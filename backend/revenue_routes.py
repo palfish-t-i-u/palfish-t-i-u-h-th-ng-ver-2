@@ -115,6 +115,45 @@ def _format_sdt(kh: dict[str, Any] | None) -> str:
     return str(sdt)
 
 
+def _info_code_from_ma(ma_don: str | None) -> str:
+    ma = (ma_don or "").strip()
+    return f"Thanh toan {ma}" if ma else ""
+
+
+def _enrich_ledger_rows(sb, db_rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    order_ids = [r["don_hang_id"] for r in db_rows if r.get("don_hang_id")]
+    order_map: dict[str, dict[str, Any]] = {}
+    if order_ids:
+        try:
+            res = (
+                sb.table("don_hang")
+                .select("id, info_code, ma_don_hang, crm_order_id")
+                .in_("id", order_ids)
+                .execute()
+            )
+            order_map = {str(r["id"]): r for r in (res.data or [])}
+        except Exception as exc:
+            print(f"[revenue] enrich don_hang failed: {exc}")
+
+    out: list[dict[str, Any]] = []
+    for r in db_rows:
+        ledger = _row_to_ledger(r)
+        oid = r.get("don_hang_id")
+        if oid and str(oid) in order_map:
+            o = order_map[str(oid)]
+            ledger["infoCode"] = o.get("info_code") or _info_code_from_ma(
+                o.get("ma_don_hang") or ledger.get("maDonHang")
+            )
+            if not ledger.get("crmOrderId"):
+                ledger["crmOrderId"] = o.get("crm_order_id") or ""
+            if not ledger.get("maDonHang"):
+                ledger["maDonHang"] = o.get("ma_don_hang") or ""
+        else:
+            ledger["infoCode"] = _info_code_from_ma(ledger.get("maDonHang"))
+        out.append(ledger)
+    return out
+
+
 def _row_to_ledger(row: dict[str, Any]) -> dict[str, Any]:
     ngay = row.get("ngay_tien_ve")
     ngay_str = ngay[:10] if isinstance(ngay, str) else (ngay.isoformat() if ngay else "")
@@ -140,6 +179,7 @@ def _row_to_ledger(row: dict[str, Any]) -> dict[str, Any]:
         "donHangId": row.get("don_hang_id"),
         "maDonHang": row.get("ma_don_hang") or "",
         "crmOrderId": row.get("crm_order_id") or "",
+        "infoCode": _info_code_from_ma(row.get("ma_don_hang")),
         "createdByEmail": row.get("created_by_email") or "",
         "updatedByEmail": row.get("updated_by_email") or "",
         "createdAt": row.get("created_at") or "",
@@ -317,7 +357,7 @@ def register_revenue_routes(app, get_supabase) -> None:
             if loai_nhap in ("tu_dong", "tay"):
                 q = q.eq("loai_nhap", loai_nhap)
             res = q.execute()
-            rows = [_row_to_ledger(r) for r in (res.data or [])]
+            rows = _enrich_ledger_rows(sb, res.data or [])
             return {"rows": rows, "count": len(rows)}
         except HTTPException:
             raise

@@ -7,6 +7,7 @@ import LedgerFormModal, {
   emptyLedgerForm,
   type LedgerFormState,
 } from "./LedgerFormModal";
+import LedgerSummaryCards from "./LedgerSummaryCards";
 import Button from "./ui/Button";
 import Badge from "./ui/Badge";
 import { Input } from "./ui/Input";
@@ -44,6 +45,14 @@ function rowToForm(row: RevenueLedgerRow): LedgerFormState {
     note2: row.note2,
     paymentMethod: row.paymentMethod,
   };
+}
+
+function todayIso() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function orderIdDisplay(row: RevenueLedgerRow) {
+  return row.crmOrderId || row.maDonHang || "—";
 }
 
 export default function SoDoanhThuTab() {
@@ -186,13 +195,25 @@ export default function SoDoanhThuTab() {
         <Button variant="secondary" onClick={load} disabled={loading}>
           {loading ? "Đang tải…" : "Làm mới"}
         </Button>
+        <Button
+          variant="ghost"
+          onClick={() => {
+            const t = todayIso();
+            setFrom(t);
+            setTo(t);
+          }}
+        >
+          Hôm nay
+        </Button>
         <Button onClick={openCreate}>+ Thêm dòng</Button>
       </div>
+
+      <LedgerSummaryCards rows={rows} from={from} to={to} loading={loading} />
 
       {error && <p className="text-sm text-red-600">{error}</p>}
 
       <TableScrollWrap>
-        <Table className="min-w-[1100px]">
+        <Table className="min-w-[1280px]">
           <thead>
             <Tr>
               <Th className={cn(stickyTableHead, stickyTableHeadTop, "min-w-[9rem]")}>User Name</Th>
@@ -200,6 +221,8 @@ export default function SoDoanhThuTab() {
               <Th className={cn(stickyTableHead, stickyTableHeadTop)}>UID</Th>
               <Th className={cn(stickyTableHead, stickyTableHeadTop)}>Pay Time</Th>
               <Th className={cn(stickyTableHead, stickyTableHeadTop, "min-w-[8rem]")}>Real Pay (VND)</Th>
+              <Th className={cn(stickyTableHead, stickyTableHeadTop, "min-w-[10rem]")}>Nội dung CK</Th>
+              <Th className={cn(stickyTableHead, stickyTableHeadTop, "min-w-[7rem]")}>ID đơn hàng</Th>
               <Th className={cn(stickyTableHead, stickyTableHeadTop)}>Payment method</Th>
               <Th className={cn(stickyTableHead, stickyTableHeadTop)}>Type</Th>
               <Th className={cn(stickyTableHead, stickyTableHeadTop)}>Sales</Th>
@@ -210,7 +233,7 @@ export default function SoDoanhThuTab() {
           <tbody>
             {rows.length === 0 && !loading && (
               <Tr>
-                <Td colSpan={10} className="text-center text-gmv-muted">
+                <Td colSpan={12} className="text-center text-gmv-muted">
                   Chưa có dòng — bấm Thêm dòng hoặc xác nhận M3.
                 </Td>
               </Tr>
@@ -229,6 +252,8 @@ export default function SoDoanhThuTab() {
                 <Td className="text-right font-medium tabular-nums">
                   {formatVndNumber(row.soTienVnd) || "—"}
                 </Td>
+                <Td className="text-left text-xs font-mono">{row.infoCode || "—"}</Td>
+                <Td className="text-left text-sm font-mono">{orderIdDisplay(row)}</Td>
                 <Td className="text-left text-sm">{row.paymentMethod || "—"}</Td>
                 <Td className="text-left text-sm">{row.loai || "—"}</Td>
                 <Td className="text-left text-sm">{row.saleCrmName || "—"}</Td>

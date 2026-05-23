@@ -22,6 +22,7 @@ export interface RevenueLedgerRow {
   donHangId: string | null;
   maDonHang: string;
   crmOrderId: string;
+  infoCode: string;
 }
 
 export interface RevenuePivotSale {
