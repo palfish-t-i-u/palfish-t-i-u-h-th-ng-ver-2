@@ -1,48 +1,10 @@
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   LineChart, Line, BarChart, Bar, XAxis, YAxis,
   CartesianGrid, Tooltip, ResponsiveContainer, Cell,
 } from "recharts";
-
-// --------------------------------------------------------------------------
-// Mock Data
-// --------------------------------------------------------------------------
-const LEAD_TREND = [
-  { date: "13/5", L1: 18, L3: 10, L8: 2 },
-  { date: "14/5", L1: 22, L3: 13, L8: 3 },
-  { date: "15/5", L1: 15, L3: 8,  L8: 1 },
-  { date: "16/5", L1: 28, L3: 16, L8: 4 },
-  { date: "17/5", L1: 20, L3: 12, L8: 2 },
-  { date: "18/5", L1: 25, L3: 15, L8: 3 },
-  { date: "19/5", L1: 30, L3: 18, L8: 5 },
-  { date: "20/5", L1: 24, L3: 14, L8: 3 },
-  { date: "21/5", L1: 32, L3: 20, L8: 6 },
-  { date: "22/5", L1: 19, L3: 11, L8: 2 },
-  { date: "23/5", L1: 27, L3: 16, L8: 4 },
-];
-
-const TOP_SALES = [
-  { name: "Nguyễn Hiếu",  gmv: 18500000 },
-  { name: "Trần Lan",     gmv: 15200000 },
-  { name: "Lê Minh",      gmv: 12800000 },
-  { name: "Phạm Thu",     gmv: 10500000 },
-  { name: "Đỗ Hùng",      gmv: 8900000  },
-];
-
-const CONVERSION = [
-  { label: "L2/L1", value: 78 },
-  { label: "L3/L2", value: 56 },
-  { label: "L4/L3", value: 43 },
-  { label: "L8/L4", value: 20 },
-];
-
-const TABLE_ROWS = [
-  { team: "Team A", sale: "Hiếu",  tgoi: "2:30", tyle: "72%", leads: 32, l3: 20, l4: 15, l8: 6,  gmv: 18500000, aov: 3083333 },
-  { team: "Team A", sale: "Lan",   tgoi: "2:10", tyle: "68%", leads: 28, l3: 16, l4: 11, l8: 4,  gmv: 15200000, aov: 3800000 },
-  { team: "Team B", sale: "Minh",  tgoi: "2:45", tyle: "65%", leads: 25, l3: 14, l4: 10, l8: 3,  gmv: 12800000, aov: 4266667 },
-  { team: "Team B", sale: "Thu",   tgoi: "1:55", tyle: "61%", leads: 22, l3: 12, l4: 8,  l8: 3,  gmv: 10500000, aov: 3500000 },
-  { team: "Team C", sale: "Hùng",  tgoi: "3:00", tyle: "58%", leads: 20, l3: 10, l4: 7,  l8: 2,  gmv: 8900000,  aov: 4450000 },
-];
+import { endpoints } from "../lib/api";
+import type { DashboardSummary } from "../types/order";
 
 // --------------------------------------------------------------------------
 // Helpers
@@ -50,12 +12,26 @@ const TABLE_ROWS = [
 function fmt(n: number) {
   return new Intl.NumberFormat("vi-VN").format(n);
 }
-
 function fmtM(n: number) {
   if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + "M";
   if (n >= 1_000)     return (n / 1_000).toFixed(0) + "K";
   return String(n);
 }
+function todayStr() { return new Date().toISOString().slice(0, 10); }
+function firstOfMonth() {
+  const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-01`;
+}
+
+const BAR_COLORS = ["#6366f1","#8b5cf6","#a78bfa","#c4b5fd","#ddd6fe",
+                    "#818cf8","#7c3aed","#4f46e5","#6d28d9","#5b21b6"];
+
+const RANGE_OPTIONS = [
+  { key: "today",      label: "Hôm nay" },
+  { key: "week",       label: "Tuần này" },
+  { key: "month",      label: "Tháng này" },
+  { key: "last_month", label: "Tháng trước" },
+  { key: "custom",     label: "Tùy chọn" },
+];
 
 // --------------------------------------------------------------------------
 // Sub-components
@@ -65,12 +41,10 @@ function KpiCard({ label, value, sub, highlight }: {
 }) {
   return (
     <div className={`rounded-xl p-4 ring-1 ${
-      highlight
-        ? "bg-blue-900/40 ring-blue-600"
-        : "bg-slate-800/60 ring-slate-700"
+      highlight ? "bg-blue-900/40 ring-blue-600" : "bg-slate-800/60 ring-slate-700"
     }`}>
       <p className="text-xs font-medium text-slate-400">{label}</p>
-      <p className={`mt-1 text-2xl font-bold tabular-nums ${
+      <p className={`mt-1 text-xl font-bold tabular-nums leading-tight ${
         highlight ? "text-blue-300" : "text-slate-100"
       }`}>{value}</p>
       {sub && <p className="mt-0.5 text-xs text-slate-500">{sub}</p>}
@@ -84,8 +58,8 @@ function ConversionBar({ label, value }: { label: string; value: number }) {
       <span className="w-12 text-right text-xs font-semibold text-slate-400">{label}</span>
       <div className="flex-1 h-5 rounded-full bg-slate-700 overflow-hidden">
         <div
-          className="h-full rounded-full bg-gradient-to-r from-blue-500 to-indigo-500 transition-all"
-          style={{ width: `${value}%` }}
+          className="h-full rounded-full bg-gradient-to-r from-blue-500 to-indigo-500 transition-all duration-500"
+          style={{ width: `${Math.min(value, 100)}%` }}
         />
       </div>
       <span className="w-10 text-xs text-slate-300 tabular-nums">{value}%</span>
@@ -93,26 +67,59 @@ function ConversionBar({ label, value }: { label: string; value: number }) {
   );
 }
 
-const TODAY_STATS = [
-  { label: "Số cuộc gọi",            value: "40" },
-  { label: "Thời gian gọi trung bình",value: "2:30" },
-  { label: "Số lead mới (L1)",        value: "20" },
-  { label: "Mời học thử thành công",  value: "10" },
-  { label: "Lớp học thử thành công",  value: "8" },
-  { label: "Số L8 thành công",        value: "2" },
-  { label: "Doanh thu hôm nay",       value: "5.000.000 ₫" },
-];
-
-const DATE_RANGES = ["Hôm nay", "Tuần này", "Tháng này", "Tháng trước", "Tùy chọn"];
-const BAR_COLORS = ["#6366f1", "#8b5cf6", "#a78bfa", "#c4b5fd", "#ddd6fe"];
-
 // --------------------------------------------------------------------------
 // Main component
 // --------------------------------------------------------------------------
 export default function Module6Tab() {
-  const [dateRange, setDateRange] = useState("Tháng này");
-  const [teamFilter, setTeamFilter] = useState("Tất cả");
-  const [saleFilter, setSaleFilter] = useState("Tất cả");
+  const [rangeKey, setRangeKey]       = useState("month");
+  const [customStart, setCustomStart] = useState(firstOfMonth());
+  const [customEnd, setCustomEnd]     = useState(todayStr());
+  const [teamFilter, setTeamFilter]   = useState("");
+  const [saleFilter, setSaleFilter]   = useState("");
+
+  const [data, setData]         = useState<DashboardSummary | null>(null);
+  const [loading, setLoading]   = useState(false);
+  const [error, setError]       = useState("");
+  const [teams, setTeams]       = useState<string[]>([]);
+  const [sales, setSales]       = useState<string[]>([]);
+  const [hasCrmData, setHasCrmData] = useState<boolean | null>(null);
+
+  // Load filter options once
+  useEffect(() => {
+    endpoints.dashboard.filters()
+      .then((r) => {
+        setTeams(r.data.teams);
+        setSales(r.data.sales);
+        setHasCrmData(r.data.sales.length > 0);
+      })
+      .catch(() => setHasCrmData(false));
+  }, []);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const params: Record<string, string> = { range_key: rangeKey };
+      if (rangeKey === "custom") { params.start = customStart; params.end = customEnd; }
+      if (teamFilter) params.team = teamFilter;
+      if (saleFilter) params.sale = saleFilter;
+      const res = await endpoints.dashboard.summary(params);
+      setData(res.data);
+    } catch (e: unknown) {
+      const msg = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      setError(msg || "Không tải được dữ liệu dashboard.");
+    } finally {
+      setLoading(false);
+    }
+  }, [rangeKey, customStart, customEnd, teamFilter, saleFilter]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const kpi = data?.kpi;
+  const revenueData = data?.revenue_by_date ?? [];
+  const topSales    = data?.top_sales ?? [];
+  const conversion  = data?.conversion ?? [];
+  const today       = data?.today;
 
   return (
     <div className="space-y-5 p-5">
@@ -121,190 +128,244 @@ export default function Module6Tab() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-lg font-bold text-slate-100">Sale Leader / System</h2>
-          <p className="text-xs text-slate-400">Dashboard tổng quan hiệu suất Sale — Mock Data</p>
+          <p className="text-xs text-slate-400">
+            {data ? `${data.period.start} → ${data.period.end}` : "Dashboard tổng quan hiệu suất Sale"}
+          </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          {/* Date Range */}
+          {/* Date range tabs */}
           <div className="flex rounded-lg overflow-hidden ring-1 ring-slate-600">
-            {DATE_RANGES.map((r) => (
-              <button
-                key={r}
-                onClick={() => setDateRange(r)}
+            {RANGE_OPTIONS.map(({ key, label }) => (
+              <button key={key} onClick={() => setRangeKey(key)}
                 className={`px-3 py-1.5 text-xs font-medium transition ${
-                  dateRange === r
-                    ? "bg-blue-600 text-white"
-                    : "bg-slate-800 text-slate-300 hover:bg-slate-700"
-                }`}
-              >{r}</button>
+                  rangeKey === key ? "bg-blue-600 text-white" : "bg-slate-800 text-slate-300 hover:bg-slate-700"
+                }`}>{label}</button>
             ))}
           </div>
-          {/* Team filter */}
-          <select
-            value={teamFilter}
-            onChange={(e) => setTeamFilter(e.target.value)}
-            className="rounded-lg border border-slate-600 bg-slate-800 px-3 py-1.5 text-xs text-slate-300 focus:outline-none"
-          >
-            {["Tất cả", "Team A", "Team B", "Team C"].map((t) => (
-              <option key={t}>{t}</option>
-            ))}
+          {/* Custom date pickers */}
+          {rangeKey === "custom" && (
+            <div className="flex items-center gap-2">
+              <input type="date" value={customStart} onChange={(e) => setCustomStart(e.target.value)}
+                className="rounded-lg border border-slate-600 bg-slate-800 px-2 py-1.5 text-xs text-slate-200 focus:outline-none" />
+              <span className="text-slate-500 text-xs">→</span>
+              <input type="date" value={customEnd} onChange={(e) => setCustomEnd(e.target.value)}
+                className="rounded-lg border border-slate-600 bg-slate-800 px-2 py-1.5 text-xs text-slate-200 focus:outline-none" />
+            </div>
+          )}
+          {/* Filters */}
+          <select value={teamFilter} onChange={(e) => setTeamFilter(e.target.value)}
+            className="rounded-lg border border-slate-600 bg-slate-800 px-3 py-1.5 text-xs text-slate-300 focus:outline-none">
+            <option value="">Tất cả team</option>
+            {teams.map((t) => <option key={t}>{t}</option>)}
           </select>
-          {/* Sale filter */}
-          <select
-            value={saleFilter}
-            onChange={(e) => setSaleFilter(e.target.value)}
-            className="rounded-lg border border-slate-600 bg-slate-800 px-3 py-1.5 text-xs text-slate-300 focus:outline-none"
-          >
-            {["Tất cả", "Hiếu", "Lan", "Minh", "Thu", "Hùng"].map((s) => (
-              <option key={s}>{s}</option>
-            ))}
+          <select value={saleFilter} onChange={(e) => setSaleFilter(e.target.value)}
+            className="rounded-lg border border-slate-600 bg-slate-800 px-3 py-1.5 text-xs text-slate-300 focus:outline-none">
+            <option value="">Tất cả sale</option>
+            {sales.map((s) => <option key={s}>{s}</option>)}
           </select>
+          <button onClick={load} disabled={loading}
+            className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-500 disabled:opacity-50 transition">
+            {loading ? "⟳" : "Làm mới"}
+          </button>
         </div>
       </div>
 
+      {/* No CRM data warning */}
+      {hasCrmData === false && (
+        <div className="rounded-lg bg-amber-950/60 px-4 py-3 text-sm text-amber-300 ring-1 ring-amber-800">
+          Chưa có dữ liệu CRM trong database — vào tab <strong>Đồng bộ CRM</strong>, bấm{" "}
+          <strong>LẤY DỮ LIỆU</strong> ít nhất một lần, rồi quay lại đây bấm <strong>Làm mới</strong>.
+        </div>
+      )}
+
+      {hasCrmData && kpi?.total_orders === 0 && !loading && (
+        <div className="rounded-lg bg-amber-950/60 px-4 py-3 text-sm text-amber-300 ring-1 ring-amber-800">
+          Có dữ liệu CRM nhưng không khớp bộ lọc thời gian hiện tại ({data?.period.start} → {data?.period.end}).
+          Thử chọn <strong>Tháng này</strong> hoặc <strong>Tùy chọn</strong> trùng ngày đã export.
+        </div>
+      )}
+
+      {error && (
+        <div className="rounded-lg bg-red-950/60 px-4 py-3 text-sm text-red-300 ring-1 ring-red-800">{error}</div>
+      )}
+
       {/* ── KPI CARDS ── */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-7">
-        <KpiCard label="Tổng số L1"    value="230" />
-        <KpiCard label="Tổng số L3"    value="130" />
-        <KpiCard label="Tổng số L4"    value="100" />
-        <KpiCard label="Tổng số L8"    value="20"  />
-        <KpiCard label="Doanh thu (tạo QR)"  value="62.333.000 ₫" sub="Đã tạo mã QR" />
-        <KpiCard label="Doanh thu (đã thu)"  value="52.333.000 ₫" sub="Tiền về TK" highlight />
-        <KpiCard label="AOV (đã thu)"        value="2.616.650 ₫"  sub="Trung bình/đơn" />
+        <KpiCard label="Tổng số L1"   value={fmt(kpi?.l1 ?? 0)} />
+        <KpiCard label="Tổng số L3"   value={fmt(kpi?.l3 ?? 0)} />
+        <KpiCard label="Tổng số L4"   value={fmt(kpi?.l4 ?? 0)} />
+        <KpiCard label="Tổng số L8"   value={fmt(kpi?.l8 ?? 0)} />
+        <KpiCard label="Doanh thu (tạo QR)"  value={fmt(kpi?.total_amount_qr ?? 0) + " ₫"} sub="Đã tạo mã" />
+        <KpiCard label="Doanh thu (đã thu)"  value={fmt(kpi?.total_collected ?? 0) + " ₫"} sub="Tiền về TK" highlight />
+        <KpiCard label="AOV (đã thu)"        value={fmt(kpi?.aov ?? 0) + " ₫"} sub="Trung bình/đơn" />
       </div>
 
       {/* ── CHARTS ROW ── */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-
-        {/* Line chart — chiếm 2/3 */}
+        {/* Line chart */}
         <div className="lg:col-span-2 rounded-xl bg-slate-800/60 p-4 ring-1 ring-slate-700">
-          <p className="mb-3 text-sm font-semibold text-slate-300">
-            Chart biến thiên số lượng Lead mỗi ngày
-          </p>
-          <ResponsiveContainer width="100%" height={220}>
-            <LineChart data={LEAD_TREND} margin={{ top: 4, right: 8, bottom: 0, left: -16 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
-              <XAxis dataKey="date" tick={{ fill: "#94a3b8", fontSize: 11 }} />
-              <YAxis tick={{ fill: "#94a3b8", fontSize: 11 }} />
-              <Tooltip
-                contentStyle={{ background: "#1e293b", border: "1px solid #334155", borderRadius: 8 }}
-                labelStyle={{ color: "#e2e8f0" }}
-              />
-              <Line type="monotone" dataKey="L1" stroke="#6366f1" strokeWidth={2} dot={false} name="L1 mới" />
-              <Line type="monotone" dataKey="L3" stroke="#22c55e" strokeWidth={2} dot={false} name="L3" />
-              <Line type="monotone" dataKey="L8" stroke="#f59e0b" strokeWidth={2} dot={false} name="L8 (chốt)" />
-            </LineChart>
-          </ResponsiveContainer>
-          <div className="mt-2 flex gap-4 text-xs text-slate-400">
-            {[["#6366f1","L1 mới"],["#22c55e","L3"],["#f59e0b","L8 chốt"]].map(([c,l])=>(
-              <span key={l} className="flex items-center gap-1">
-                <span className="inline-block h-2 w-4 rounded-full" style={{background:c}}/>
-                {l}
-              </span>
-            ))}
-          </div>
+          <p className="mb-3 text-sm font-semibold text-slate-300">Doanh thu theo ngày</p>
+          {revenueData.length > 0 ? (
+            <>
+              <ResponsiveContainer width="100%" height={220}>
+                <LineChart data={revenueData} margin={{ top: 4, right: 8, bottom: 0, left: -16 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
+                  <XAxis dataKey="date" tick={{ fill: "#94a3b8", fontSize: 10 }}
+                    tickFormatter={(v) => v.slice(5)} />
+                  <YAxis tick={{ fill: "#94a3b8", fontSize: 10 }}
+                    tickFormatter={(v) => fmtM(v)} />
+                  <Tooltip
+                    contentStyle={{ background: "#1e293b", border: "1px solid #334155", borderRadius: 8 }}
+                    formatter={(v) => [fmt(Number(v)) + " ₫"]}
+                    labelStyle={{ color: "#e2e8f0" }}
+                  />
+                  <Line type="monotone" dataKey="amount"    stroke="#6366f1" strokeWidth={2} dot={false} name="Tạo QR" />
+                  <Line type="monotone" dataKey="collected" stroke="#22c55e" strokeWidth={2} dot={false} name="Đã thu" />
+                </LineChart>
+              </ResponsiveContainer>
+              <div className="mt-2 flex gap-4 text-xs text-slate-400">
+                {[["#6366f1","Tạo QR"],["#22c55e","Đã thu"]].map(([c,l])=>(
+                  <span key={l} className="flex items-center gap-1">
+                    <span className="inline-block h-2 w-4 rounded-full" style={{background:c}}/>
+                    {l}
+                  </span>
+                ))}
+              </div>
+            </>
+          ) : (
+            <div className="flex h-[220px] items-center justify-center text-sm text-slate-500">
+              {loading ? "Đang tải…" : "Chưa có dữ liệu"}
+            </div>
+          )}
         </div>
 
-        {/* Today panel — 1/3 */}
+        {/* Today panel */}
         <div className="rounded-xl bg-slate-800/60 p-4 ring-1 ring-slate-700">
           <p className="mb-3 text-sm font-semibold text-slate-300">Hôm nay</p>
-          <div className="space-y-2.5">
-            {TODAY_STATS.map(({ label, value }) => (
+          <div className="space-y-3">
+            {[
+              ["Số đơn mới",         fmt(today?.orders ?? 0)],
+              ["Doanh thu tạo QR",   fmt(today?.amount ?? 0) + " ₫"],
+              ["Doanh thu đã thu",   fmt(today?.collected ?? 0) + " ₫"],
+            ].map(([label, val]) => (
               <div key={label} className="flex items-center justify-between">
                 <span className="text-xs text-slate-400">{label}</span>
-                <span className="text-xs font-semibold text-slate-200 tabular-nums">{value}</span>
+                <span className="text-xs font-semibold text-slate-200 tabular-nums">{val}</span>
               </div>
             ))}
           </div>
+          {/* Tỷ lệ thu */}
+          {today && today.amount > 0 && (
+            <div className="mt-4">
+              <p className="mb-2 text-xs text-slate-400">Tỷ lệ thu hôm nay</p>
+              <div className="h-3 rounded-full bg-slate-700 overflow-hidden">
+                <div
+                  className="h-full rounded-full bg-emerald-500 transition-all"
+                  style={{ width: `${Math.round(today.collected / today.amount * 100)}%` }}
+                />
+              </div>
+              <p className="mt-1 text-right text-xs text-emerald-400">
+                {Math.round(today.collected / today.amount * 100)}%
+              </p>
+            </div>
+          )}
         </div>
       </div>
 
       {/* ── CONVERSION + TOP SALES ── */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-
-        {/* Conversion rates */}
+        {/* Conversion */}
         <div className="rounded-xl bg-slate-800/60 p-4 ring-1 ring-slate-700">
           <p className="mb-4 text-sm font-semibold text-slate-300">Tỷ lệ chuyển đổi từng giai đoạn</p>
           <div className="space-y-3">
-            {CONVERSION.map((c) => (
-              <ConversionBar key={c.label} label={c.label} value={c.value} />
-            ))}
+            {(conversion.length > 0 ? conversion : [
+              {label:"L2/L1",value:0},{label:"L3/L2",value:0},
+              {label:"L4/L3",value:0},{label:"L8/L4",value:0},
+            ]).map((c) => <ConversionBar key={c.label} label={c.label} value={c.value} />)}
           </div>
+          {conversion.every((c) => c.value === 0) && (
+            <p className="mt-3 text-xs text-slate-500 text-center">
+              Tỷ lệ tính từ CRM: L2=接通, L3=邀约, L4=完课, L8=签单
+            </p>
+          )}
         </div>
 
-        {/* Top 5 Sales — horizontal bar */}
+        {/* Top Sales */}
         <div className="rounded-xl bg-slate-800/60 p-4 ring-1 ring-slate-700">
-          <p className="mb-3 text-sm font-semibold text-slate-300">Top 5 Sale (GMV)</p>
-          <ResponsiveContainer width="100%" height={180}>
-            <BarChart
-              data={TOP_SALES}
-              layout="vertical"
-              margin={{ top: 0, right: 40, bottom: 0, left: 60 }}
-            >
-              <CartesianGrid strokeDasharray="3 3" stroke="#334155" horizontal={false} />
-              <XAxis
-                type="number"
-                tickFormatter={(v) => fmtM(v)}
-                tick={{ fill: "#94a3b8", fontSize: 10 }}
-              />
-              <YAxis
-                type="category"
-                dataKey="name"
-                tick={{ fill: "#cbd5e1", fontSize: 11 }}
-                width={58}
-              />
-              <Tooltip
-                formatter={(v) => [fmt(Number(v)) + " ₫", "GMV"]}
-                contentStyle={{ background: "#1e293b", border: "1px solid #334155", borderRadius: 8 }}
-              />
-              <Bar dataKey="gmv" radius={[0, 4, 4, 0]}>
-                {TOP_SALES.map((_, i) => (
-                  <Cell key={i} fill={BAR_COLORS[i]} />
-                ))}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
+          <p className="mb-3 text-sm font-semibold text-slate-300">Top Sale (Doanh thu)</p>
+          {topSales.length > 0 ? (
+            <ResponsiveContainer width="100%" height={200}>
+              <BarChart data={topSales} layout="vertical"
+                margin={{ top: 0, right: 50, bottom: 0, left: 70 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#334155" horizontal={false} />
+                <XAxis type="number" tickFormatter={(v) => fmtM(v)}
+                  tick={{ fill: "#94a3b8", fontSize: 10 }} />
+                <YAxis type="category" dataKey="sale_name" width={68}
+                  tick={{ fill: "#cbd5e1", fontSize: 11 }} />
+                <Tooltip
+                  formatter={(v) => [fmt(Number(v)) + " ₫"]}
+                  contentStyle={{ background: "#1e293b", border: "1px solid #334155", borderRadius: 8 }}
+                />
+                <Bar dataKey="total_amount" radius={[0,4,4,0]} name="Doanh thu">
+                  {topSales.map((_, i) => <Cell key={i} fill={BAR_COLORS[i % BAR_COLORS.length]} />)}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          ) : (
+            <div className="flex h-[200px] items-center justify-center text-sm text-slate-500">
+              {loading ? "Đang tải…" : "Chưa có dữ liệu"}
+            </div>
+          )}
         </div>
       </div>
 
       {/* ── DETAIL TABLE ── */}
       <div className="rounded-xl bg-slate-800/60 ring-1 ring-slate-700 overflow-x-auto">
-        <div className="p-4 border-b border-slate-700">
+        <div className="p-4 border-b border-slate-700 flex items-center justify-between">
           <p className="text-sm font-semibold text-slate-300">Chi tiết theo Sale</p>
+          <span className="text-xs text-slate-500">{topSales.length} sale</span>
         </div>
-        <table className="w-full text-xs">
-          <thead>
-            <tr className="border-b border-slate-700 text-slate-400">
-              {["Team","Sale","TG gọi TB","Tỷ lệ gọi thành","Leads","L3","L4","L8","GMV","AOV"].map((h)=>(
-                <th key={h} className="px-3 py-2.5 text-left font-medium whitespace-nowrap">{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {TABLE_ROWS
-              .filter((r) => teamFilter === "Tất cả" || r.team === teamFilter)
-              .filter((r) => saleFilter === "Tất cả" || r.sale === saleFilter)
-              .map((r, i) => (
-                <tr key={i} className="border-b border-slate-700/50 hover:bg-slate-700/30 transition">
-                  <td className="px-3 py-2 text-slate-400">{r.team}</td>
-                  <td className="px-3 py-2 font-medium text-slate-200">{r.sale}</td>
-                  <td className="px-3 py-2 tabular-nums text-slate-300">{r.tgoi}</td>
-                  <td className="px-3 py-2 tabular-nums text-slate-300">{r.tyle}</td>
-                  <td className="px-3 py-2 tabular-nums text-slate-100 font-semibold">{r.leads}</td>
-                  <td className="px-3 py-2 tabular-nums text-green-400">{r.l3}</td>
-                  <td className="px-3 py-2 tabular-nums text-blue-400">{r.l4}</td>
-                  <td className="px-3 py-2 tabular-nums text-yellow-400 font-bold">{r.l8}</td>
-                  <td className="px-3 py-2 tabular-nums text-slate-200 whitespace-nowrap">{fmt(r.gmv)} ₫</td>
-                  <td className="px-3 py-2 tabular-nums text-slate-400 whitespace-nowrap">{fmt(r.aov)} ₫</td>
-                </tr>
-              ))}
-          </tbody>
-        </table>
+        {topSales.length > 0 ? (
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="border-b border-slate-700 text-slate-400">
+                {["#","Sale","Team","Số đơn","Doanh thu QR","Đã thu","Tỷ lệ thu"].map((h) => (
+                  <th key={h} className="px-3 py-2.5 text-left font-medium whitespace-nowrap">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {topSales.map((r, i) => {
+                const collectRate = r.total_amount > 0
+                  ? Math.round(r.collected / r.total_amount * 100) : 0;
+                return (
+                  <tr key={r.sale_name} className="border-b border-slate-700/50 hover:bg-slate-700/30 transition">
+                    <td className="px-3 py-2 text-slate-500">{i + 1}</td>
+                    <td className="px-3 py-2 font-medium text-slate-200">{r.sale_name}</td>
+                    <td className="px-3 py-2 text-slate-400">{r.team}</td>
+                    <td className="px-3 py-2 tabular-nums text-slate-100 font-semibold">{r.orders}</td>
+                    <td className="px-3 py-2 tabular-nums text-slate-200 whitespace-nowrap">{fmt(r.total_amount)} ₫</td>
+                    <td className="px-3 py-2 tabular-nums text-emerald-400 whitespace-nowrap">{fmt(r.collected)} ₫</td>
+                    <td className="px-3 py-2">
+                      <div className="flex items-center gap-2">
+                        <div className="w-16 h-1.5 rounded-full bg-slate-700">
+                          <div className="h-full rounded-full bg-emerald-500"
+                            style={{ width: `${collectRate}%` }} />
+                        </div>
+                        <span className="tabular-nums text-slate-400">{collectRate}%</span>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        ) : (
+          <div className="py-12 text-center text-sm text-slate-500">
+            {loading ? "Đang tải dữ liệu…" : "Chưa có data — lấy dữ liệu CRM ở tab Đồng bộ CRM trước"}
+          </div>
+        )}
       </div>
-
-      {/* Mock data notice */}
-      <p className="text-center text-xs text-slate-600">
-        ⚠ Đang hiển thị Mock Data — kết nối API thật ở bước tiếp theo
-      </p>
     </div>
   );
 }

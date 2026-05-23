@@ -129,10 +129,20 @@ export default function Module5Tab() {
       downloadBlob(blob, `Master_Sales_Data_${label}.xlsx`);
       setSuccessMsg(`Tải file thành công! (${startDate} → ${endDate})`);
     } catch (e: unknown) {
-      const detail =
-        (e as { response?: { data?: { detail?: string } } })?.response?.data
-          ?.detail;
-      setError(detail || "Xuất dữ liệu thất bại. Kiểm tra token CRM và kết nối mạng.");
+      // Khi responseType="blob", axios trả lỗi dưới dạng Blob → cần parse thủ công
+      try {
+        const errData = (e as { response?: { data?: unknown } })?.response?.data;
+        if (errData instanceof Blob) {
+          const text = await errData.text();
+          const parsed = JSON.parse(text);
+          setError(parsed?.detail || text || "Xuất dữ liệu thất bại.");
+        } else {
+          const detail = (errData as { detail?: string })?.detail;
+          setError(detail || "Xuất dữ liệu thất bại. Kiểm tra log backend.");
+        }
+      } catch {
+        setError("Xuất dữ liệu thất bại. Kiểm tra log backend để biết chi tiết.");
+      }
     } finally {
       setLoading(false);
     }
@@ -295,11 +305,13 @@ export default function Module5Tab() {
             >
               sea.pri.ibanyu.com
             </a>{" "}
-            và đăng nhập / thực hiện bất kỳ thao tác nào
+            → đăng nhập → <strong className="text-slate-200">bấm Export/Tải dữ liệu 1 lần</strong>{" "}
+            (extension sẽ bắt token + payload thật)
           </li>
           <li>
-            <span className="font-medium text-slate-300">5.</span> Extension sẽ tự động gửi cookie về backend →{" "}
-            <span className="font-medium text-slate-200">Token Status</span> chuyển xanh ✓
+            <span className="font-medium text-slate-300">5.</span> Quay lại tab này → bấm{" "}
+            <span className="font-medium text-slate-200">Làm mới</span> token →{" "}
+            <span className="font-medium text-slate-200">LẤY DỮ LIỆU</span>
           </li>
         </ol>
       </div>
