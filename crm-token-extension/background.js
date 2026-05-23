@@ -9,8 +9,8 @@
  */
 
 const BACKEND_URLS = [
-  "http://localhost:8000/system/update-crm-token",
-  // Khi deploy production, thêm URL Render vào đây nếu cần
+  "http://localhost:8000/system/update-crm-token",         // local dev
+  "https://palfish-gmv-api.onrender.com/system/update-crm-token", // production Render
 ];
 const DEBOUNCE_MS = 30_000; // 30 giây
 
