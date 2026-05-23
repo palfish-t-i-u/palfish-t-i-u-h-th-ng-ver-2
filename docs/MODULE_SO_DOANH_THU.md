@@ -1,6 +1,6 @@
 # Module 5 — Sổ doanh thu & Sales Performance
 
-> **Trạng thái:** MVP live prod (2026-05-23). UI Sổ refactor theo feedback Hiếu (modal + bảng read-only).  
+> **Trạng thái:** MVP live prod (2026-05-23). UI Sổ: modal + bảng read-only + **thẻ tổng hợp Type fixx** (feedback Hiếu 2026-05-23).  
 > **Người dùng:** Thu Hiền + System (`OPS_EMAILS`).  
 > **Tham chiếu:** [ALL File Thu Hiền](https://docs.google.com/spreadsheets/d/1sEthbH-zcMavoQ1qi9J_CNnHAJoyt0gfsE-xsMW0LCc/edit?gid=0#gid=0), `HNxHCM GMV.xlsx` (anh Hiếu).  
 > **Vận hành seed/deploy:** `docs/M5_OPERATIONS.md`.
@@ -55,16 +55,72 @@ Một tab, một bảng `so_doanh_thu`. M3 auto + điền tay chung — **Sales 
 | UID | `uid` |
 | Pay Time | `ngay_tien_ve` |
 | Real Pay (VND) | `so_tien_vnd` — separator `12.875.000` |
+| Nội dung CK | `info_code` (join `don_hang` hoặc suy từ `ma_don_hang`) |
+| ID đơn hàng | `crm_order_id` ưu tiên, fallback `ma_don_hang` |
 | Payment method | `payment_method` |
-| Type | `loai` |
+| Type | pivot sau **Type fixx** (xem §2.5) — nhãn song ngữ |
 | Sales | `sale_crm_name` |
 | Team | `team` |
 
-**Cột phụ** (Package, GMV RMB, Type 2, ghi chú, …): chỉ trong **modal** — không hiện bảng chính.
+**Cột phụ** (Package, GMV RMB, Type 2 / `loai_2`, ghi chú, …): chỉ trong **modal** — Type 2 dùng cho kênh con khi `loai` = Quảng cáo.
 
-Component: `LedgerFormModal.tsx`, `SoDoanhThuTab.tsx`.
+Component: `LedgerFormModal.tsx`, `SoDoanhThuTab.tsx`, `LedgerSummaryCards.tsx`, `frontend/src/lib/typeFixx.ts`.
 
-### 2.4 Quyền
+### 2.4 Thẻ tổng hợp + lọc ngày (feedback Hiếu — 2026-05-23)
+
+**Mục đích:** Hiền đối chiếu GMV / số đơn theo ngày nhanh — khớp pivot sheet Hiếu.
+
+| Thành phần | Hành vi |
+|------------|---------|
+| **Mặc định** | Từ ngày = Đến ngày = **hôm nay** (giờ VN) |
+| **Hôm nay** | Set lại filter 1 ngày = today |
+| **Reset bộ lọc** | Về mặc định (hôm nay + Nguồn dòng Tất cả) |
+| **2 thẻ trên** | Tổng GMV (VND), Số đơn — theo filter |
+| **5 thẻ nguồn** | Other, Kho chung, Ads, Renew, Refer — GMV + số đơn từng nhóm |
+
+Thẻ và bảng cùng dataset đã lọc. Thẻ `0 đơn` hiển thị mờ.
+
+**Lưu ý API:** Supabase/PostgREST giới hạn **1000 dòng/request**. Backend `/revenue/ledger` paginate hết kết quả trong khoảng lọc (`revenue_routes._fetch_so_doanh_thu`). Không lọc ngày trên DB lớn → vẫn tải đủ sau paginate (chậm hơn).
+
+### 2.5 Type fixx → pivot Type (sheet Hiếu — Trang tính5)
+
+Đối chiếu chi tiết từng nguồn **không** group thẳng cột `loai` — phải qua **Type fixx** (cột C → D) rồi gom **5 cột pivot**.
+
+**Bước 1 — Type gốc**
+
+- Thường lấy `loai`.
+- Nếu sau fixx bước đầu = Quảng cáo (`广告`) **và** có `loai_2` → lấy `loai_2` làm gốc (KOC, Livestream, Booth…).
+
+**Bước 2 — Map Type fixx (C → D)**
+
+| Type gốc (C) | Type fixx (D) |
+|--------------|---------------|
+| 广告, PNS, Bán mới | 广告 |
+| 转介绍, Refer, Khách giới thiệu | 转介绍 |
+| 续费, Resell, Gia hạn | 续费 |
+| 公海, GD, Kho chung | 公海 |
+| KOC | KOC |
+| Lives, Livestream | Lives |
+| Offline, Booth | Offline |
+| Other, KFT, KET, Nguồn khác | Other |
+
+*(Bảng đầy đủ trong code: `frontend/src/lib/typeFixx.ts`.)*
+
+**Bước 3 — Pivot 5 cột (đối chiếu ngày)**
+
+| Type fixx | Pivot hiển thị thẻ |
+|-----------|-------------------|
+| KOC, Lives, Offline, 广告 | **Ads - 广告** |
+| 公海 | **Kho chung - 公海** |
+| 续费 | **Renew - 续费** |
+| 转介绍 | **Refer - 转介绍** |
+| Other | **Other** |
+
+Nhãn tiếng Trung trên thẻ / cột Type: `English - 中文` (vd. `Kho chung - 公海`).
+
+Code: `typeFixx.ts` → `ledgerSource.ts` → `LedgerSummaryCards.tsx`.
+
+### 2.6 Quyền
 
 | Ai | Quyền |
 |----|--------|
@@ -132,6 +188,7 @@ Layout: Team | Sale | các tháng | Tổng GMV. Lọc từ/tháng. Xuất Excel 
 | M5-03 | FE Sổ — modal + bảng read-only | done |
 | M5-04 | FE Sales Performance (pivot) | done |
 | M5-08 | UI Hiếu: cột chính, modal, scroll, VND sep | done |
+| M5-10 | Thẻ tổng hợp + Type fixx + lọc mặc định hôm nay | done |
 | M5-05 | Xuất Excel Sổ + pivot | pending |
 | M5-06 | Import `HNxHCM GMV.xlsx` (script sẵn) | pending |
 | M5-07 | Tỷ giá theo thời điểm | pending |

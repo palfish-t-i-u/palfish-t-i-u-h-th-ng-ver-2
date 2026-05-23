@@ -89,6 +89,15 @@ python scripts/seed_so_doanh_thu.py --xlsx "e:\PalFish\DA\HNxHCM GMV.xlsx" --lim
 
 Import full (~14k dòng): bỏ `--limit` — mất vài phút. **Chạy lại = trùng dòng** — không dedupe.
 
+**Import full sau khi đã seed `--limit 500`:**
+
+```powershell
+python scripts/cleanup_so_doanh_thu.py --all --dry-run
+python scripts/cleanup_so_doanh_thu.py --all
+python scripts/seed_so_doanh_thu.py --xlsx "e:\PalFish\DA\HNxHCM GMV.xlsx"
+python scripts/seed_so_doanh_thu.py --backfill-m3
+```
+
 Seed **không** cần Vercel deploy — ghi thẳng Supabase. Reload tab Sổ sau khi chạy.
 
 ---
@@ -124,7 +133,9 @@ Phân loại test vs thật theo `created_by_email`:
 |---|------|---------|
 | 1 | Sidebar **Sales Performance** (không còn "Doanh thu Sale") | Đúng tên mới |
 | 2 | Tab **Sổ doanh thu** → **+ Thêm dòng** | Modal form (không còn form inline đầu bảng) |
-| 3 | Bảng | Cột: User Name, Phone, UID, Pay Time, Real Pay (VND), Payment method, Type, Sales, Team — **read-only** |
+| 3 | Bảng | Cột: User Name, Phone, UID, Pay Time, Real Pay (VND), **Nội dung CK**, **ID đơn hàng**, Payment method, Type (sau fixx), Sales, Team — **read-only** |
+| 3b | Thẻ tổng hợp | Tổng GMV + Số đơn; 5 thẻ Type pivot; mặc định **hôm nay** |
+| 3c | Type fixx | Ngày 22/05 (vd.) — tổng + từng nguồn khớp sheet Hiếu (Resell→Renew, Refer→Refer…) |
 | 4 | VND | Separator `12.875.000` trong bảng |
 | 5 | **Chỉnh sửa** | Mở modal, **Lưu** OK |
 | 6 | **Xóa** | Chỉ dòng **TAY** |

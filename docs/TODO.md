@@ -141,6 +141,7 @@
 | M5-03 | FE tab **Sổ doanh thu** (Hiền/System) | done | 2026-05-23 | 2026-05-23 | Modal + bảng read-only — `LedgerFormModal.tsx` |
 | M5-04 | FE tab **Sales Performance** (pivot) | done | 2026-05-23 | 2026-05-23 | Đổi tên từ Doanh thu Sale — `DoanhThuSaleTab.tsx` |
 | M5-08 | UI Hiếu: cột chính HNxHCM, modal, scroll, VND sep, xóa tay | done | 2026-05-23 | 2026-05-23 | Xem MODULE §2.3 |
+| M5-10 | Thẻ tổng hợp Sổ + Type fixx + cột CK/Order ID + filter hôm nay | done | 2026-05-23 | 2026-05-23 | MODULE §2.4–§2.5; `typeFixx.ts`, paginate BE |
 | M5-05 | Xuất Excel Sổ + pivot | pending | 2026-05-23 | | |
 | M5-06 | Import lịch sử `HNxHCM GMV.xlsx` | pending | 2026-05-23 | | Script sẵn: `scripts/seed_so_doanh_thu.py --xlsx` — xem M5_OPERATIONS §2.2 |
 | M5-07 | Cấu hình tỷ giá theo thời điểm (System) | pending | 2026-05-23 | | Phase 2 |
