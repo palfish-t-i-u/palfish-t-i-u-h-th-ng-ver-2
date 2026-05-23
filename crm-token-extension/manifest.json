@@ -7,6 +7,7 @@
   "host_permissions": [
     "*://sea.pri.ibanyu.com/*",
     "http://localhost:8000/*",
+    "https://palfish-gmv-api.onrender.com/*",
     "https://palfish-gmv-manager.vercel.app/*"
   ],
   "background": {
