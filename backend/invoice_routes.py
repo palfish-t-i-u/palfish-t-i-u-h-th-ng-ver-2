@@ -153,70 +153,136 @@ def _openpyxl_imports():
         raise HTTPException(500, f"Thiếu thư viện openpyxl — pip install openpyxl: {exc}") from exc
 
 
-def _style_header(ws, headers: list[str], col_widths: list[int], fill_color: str, openpyxl_mods):
-    _, Font, PatternFill, Alignment, Border, Side, get_column_letter = openpyxl_mods
-    hfill = PatternFill("solid", fgColor=fill_color)
-    hfont = Font(bold=True, color="FFFFFF", size=11)
-    halign = Alignment(horizontal="center", vertical="center", wrap_text=True)
-    thin = Side(style="thin", color="000000")
-    bord = Border(left=thin, right=thin, top=thin, bottom=thin)
-    for ci, (h, w) in enumerate(zip(headers, col_widths), 1):
-        cell = ws.cell(row=1, column=ci, value=h)
-        cell.fill = hfill
-        cell.font = hfont
-        cell.alignment = halign
-        cell.border = bord
-        ws.column_dimensions[get_column_letter(ci)].width = w
-    ws.row_dimensions[1].height = 30
-    return bord
+def _fmt_sdt(raw: str) -> str:
+    """Chuẩn hoá SĐT sang dạng 84-XXXXXXXXX."""
+    digits = "".join(c for c in (raw or "") if c.isdigit())
+    if digits.startswith("84") and len(digits) == 11:
+        return f"84-{digits[2:]}"
+    if digits.startswith("0") and len(digits) == 10:
+        return f"84-{digits[1:]}"
+    if len(digits) == 9:
+        return f"84-{digits}"
+    return raw or ""
+
+
+def _apply_cell_style(cell, font, alignment, border):
+    cell.font = font
+    cell.alignment = alignment
+    cell.border = border
 
 
 def _build_excel_orders(orders: list[dict[str, Any]]) -> bytes:
-    """File 1: Danh sách đơn hàng / hóa đơn."""
-    mods = _openpyxl_imports()
-    openpyxl, _, _, Alignment, _, _, _ = mods
+    """File 1: don_hang.xlsx — 2-dòng header với merge cells theo mẫu kế toán."""
+    try:
+        import openpyxl
+        from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+        from openpyxl.utils import get_column_letter
+    except ImportError as exc:
+        raise HTTPException(500, f"Thiếu thư viện openpyxl: {exc}") from exc
+
     wb = openpyxl.Workbook()
     ws = wb.active
-    ws.title = "Đơn Hàng"
+    ws.title = "Đơn hàng"
 
-    headers = [
-        "STT", "Mã Hóa Đơn", "Mã Đơn Hàng", "Họ Tên Khách Hàng",
-        "Số Điện Thoại", "Gói Học", "Mã Sản Phẩm", "Tên Sản Phẩm (Thuế)",
-        "Số Tiền (VND)", "Hình Thức Thanh Toán", "Nguồn",
-        "Mã CRM Order", "Ngày Xác Nhận M3",
+    thin = Side(style="thin", color="000000")
+    bord = Border(left=thin, right=thin, top=thin, bottom=thin)
+    center = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    left   = Alignment(horizontal="left",   vertical="center", wrap_text=False)
+
+    # ── Dòng 1: nhóm gộp ô ──────────────────────────────────────────────────
+    groups = [
+        ("A1:G1",  "Thông tin chung",    "4472C4"),
+        ("H1:O1",  "Thông tin sản phẩm", "70AD47"),
+        ("P1:Q1",  "Thông tin lô hàng",  "ED7D31"),
     ]
-    col_widths = [5, 16, 14, 26, 18, 32, 12, 36, 18, 22, 14, 18, 22]
-    bord = _style_header(ws, headers, col_widths, "4472C4", mods)
+    for rng, label, color in groups:
+        ws.merge_cells(rng)
+        first_col = rng.split(":")[0]
+        cell = ws[first_col]
+        cell.value = label
+        cell.font      = Font(bold=True, color="FFFFFF", size=11)
+        cell.fill      = PatternFill("solid", fgColor=color)
+        cell.alignment = center
+        cell.border    = bord
+    # border cho các ô bị gộp (openpyxl không tự áp border vào ô con)
+    for rng, _, color in groups:
+        start_col_letter, end_col_letter = rng.split(":")[0][0], rng.split(":")[1][0]
+        start_ci = ord(start_col_letter) - ord("A") + 1
+        end_ci   = ord(end_col_letter)   - ord("A") + 1
+        for ci in range(start_ci, end_ci + 1):
+            c = ws.cell(row=1, column=ci)
+            c.border = bord
+    ws.row_dimensions[1].height = 22
 
-    for ri, o in enumerate(orders, 2):
-        m3_date = ""
+    # ── Dòng 2: tên cột ──────────────────────────────────────────────────────
+    # Chú ý: "Thuế suất " có dấu cách cuối — giữ nguyên theo spec
+    headers_r2 = [
+        "Mã đơn hàng*",          # A
+        "Mã khách hàng",          # B
+        "Tên khách hàng*",        # C
+        "Tên người mua",          # D
+        "Ngày hóa đơn",           # E
+        "Hình thức thanh toán",   # F
+        "Ghi chú",                # G
+        "Mã sản phẩm",            # H
+        "Tên sản phẩm*",          # I
+        "Đơn vị tính",            # J
+        "Số lượng*",              # K
+        "Đơn giá*",               # L
+        "Giảm giá sản phẩm",      # M
+        "Thuế suất ",             # N  ← dấu cách cuối theo spec
+        "Tiền sau thuế",          # O
+        "Mã lô*",                 # P
+        "Lượng hàng*",            # Q
+    ]
+    col_widths = [18, 18, 22, 22, 16, 20, 14, 16, 36, 12, 10, 16, 18, 12, 16, 12, 12]
+    h2_fill = PatternFill("solid", fgColor="D9D9D9")
+    h2_font = Font(bold=True, size=10)
+    for ci, (h, w) in enumerate(zip(headers_r2, col_widths), 1):
+        cell = ws.cell(row=2, column=ci, value=h)
+        cell.fill      = h2_fill
+        cell.font      = h2_font
+        cell.alignment = center
+        cell.border    = bord
+        ws.column_dimensions[get_column_letter(ci)].width = w
+    ws.row_dimensions[2].height = 28
+
+    # ── Data từ dòng 3 ────────────────────────────────────────────────────────
+    data_font = Font(size=10)
+    for ri, o in enumerate(orders, 3):
+        inv_date = ""
         if o.get("m3ApprovedAt"):
             try:
                 dt = datetime.fromisoformat(str(o["m3ApprovedAt"]).replace("Z", "+00:00"))
-                m3_date = dt.strftime("%d/%m/%Y %H:%M")
+                inv_date = dt.strftime("%Y-%m-%d")
             except Exception:
-                m3_date = str(o["m3ApprovedAt"])
+                inv_date = str(o["m3ApprovedAt"])[:10]
 
         row_vals = [
-            ri - 1,
-            o.get("taxInvoiceCode", ""),
-            o.get("maDonHang", ""),
-            o.get("tenKhach", ""),
-            o.get("sdt", ""),
-            o.get("goiHoc", ""),
-            o.get("taxProductCode", ""),
-            o.get("taxProductName", ""),
-            int(o.get("tongTien", 0)),
-            "Chuyển khoản",
-            o.get("nguon", ""),
-            o.get("crmOrderId", ""),
-            m3_date,
+            o.get("taxInvoiceCode", ""),   # A  Mã đơn hàng*
+            _fmt_sdt(o.get("sdt", "")),    # B  Mã khách hàng
+            "",                            # C  Tên khách hàng* (để trống)
+            "",                            # D  Tên người mua (để trống)
+            inv_date,                      # E  Ngày hóa đơn
+            "TM/CK",                       # F  Hình thức thanh toán
+            "",                            # G  Ghi chú
+            o.get("taxProductCode", ""),   # H  Mã sản phẩm
+            o.get("taxProductName", "") or o.get("goiHoc", ""),  # I  Tên sản phẩm*
+            "Khóa",                        # J  Đơn vị tính
+            1,                             # K  Số lượng*
+            int(o.get("tongTien", 0)),     # L  Đơn giá*
+            "",                            # M  Giảm giá sản phẩm
+            "KCT",                         # N  Thuế suất
+            "",                            # O  Tiền sau thuế
+            "",                            # P  Mã lô*
+            "",                            # Q  Lượng hàng*
         ]
         for ci, val in enumerate(row_vals, 1):
             cell = ws.cell(row=ri, column=ci, value=val)
-            cell.border = bord
-            cell.alignment = Alignment(horizontal="center" if ci == 1 else "left", vertical="center")
-            if ci == 9:
+            cell.font      = data_font
+            cell.border    = bord
+            cell.alignment = center if ci in (10, 11) else left
+            if ci == 12:  # Đơn giá — format số
                 cell.number_format = "#,##0"
 
     buf = io.BytesIO()
@@ -225,39 +291,76 @@ def _build_excel_orders(orders: list[dict[str, Any]]) -> bytes:
 
 
 def _build_excel_customers(orders: list[dict[str, Any]]) -> bytes:
-    """File 2: Danh sách khách hàng — deduplicate by SĐT, format 84-XXXXXXXXX."""
-    mods = _openpyxl_imports()
-    openpyxl, _, _, Alignment, _, _, _ = mods
+    """File 2: khach_hang.xlsx — flat header, deduplicate theo Mã KH (84-SĐT)."""
+    try:
+        import openpyxl
+        from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+        from openpyxl.utils import get_column_letter
+    except ImportError as exc:
+        raise HTTPException(500, f"Thiếu thư viện openpyxl: {exc}") from exc
 
+    # Deduplicate theo 84-SĐT (Mã KH)
     seen: set[str] = set()
     unique_rows: list[dict[str, Any]] = []
     for o in orders:
-        digits = "".join(c for c in (o.get("sdt") or "") if c.isdigit())
-        if digits.startswith("84") and len(digits) == 11:
-            fmt = f"84-{digits[2:]}"
-        elif digits.startswith("0") and len(digits) == 10:
-            fmt = f"84-{digits[1:]}"
-        elif len(digits) == 9:
-            fmt = f"84-{digits}"
-        else:
-            fmt = o.get("sdt", "")
-        if fmt not in seen:
-            seen.add(fmt)
-            unique_rows.append({**o, "_sdtFmt": fmt})
+        ma_kh = _fmt_sdt(o.get("sdt", ""))
+        if ma_kh not in seen:
+            seen.add(ma_kh)
+            unique_rows.append({**o, "_maKH": ma_kh})
 
     wb = openpyxl.Workbook()
     ws = wb.active
-    ws.title = "Khách Hàng"
-    headers = ["STT", "Họ Tên Khách Hàng", "SĐT Chuẩn Thuế (84-...)", "SĐT Gốc", "Gói Học"]
-    col_widths = [5, 30, 26, 20, 35]
-    bord = _style_header(ws, headers, col_widths, "70AD47", mods)
+    ws.title = "Khách hàng"
 
-    for ri, c in enumerate(unique_rows, 2):
-        row_vals = [ri - 1, c.get("tenKhach", ""), c["_sdtFmt"], c.get("sdt", ""), c.get("goiHoc", "")]
+    thin  = Side(style="thin", color="000000")
+    bord  = Border(left=thin, right=thin, top=thin, bottom=thin)
+    center = Alignment(horizontal="center", vertical="center")
+    left   = Alignment(horizontal="left",   vertical="center")
+
+    headers = [
+        "Mã KH/NCC",          # 1
+        "Tên đơn vị (*)",     # 2
+        "Tên người mua",      # 3
+        "Loại (*)",           # 4
+        "Địa chỉ",            # 5
+        "Số điện thoại",      # 6
+        "Ngày sinh",          # 7
+        "Số CCCD",            # 8
+        "Mã số thuế",         # 9
+        "Email",              # 10
+        "Số tài khoản",       # 11
+        "Tên ngân hàng",      # 12
+        "Giới tính",          # 13
+        "Mô tả",              # 14
+    ]
+    col_widths = [20, 30, 24, 14, 30, 18, 12, 16, 16, 24, 18, 20, 10, 20]
+
+    h_fill = PatternFill("solid", fgColor="70AD47")
+    h_font = Font(bold=True, color="FFFFFF", size=10)
+    for ci, (h, w) in enumerate(zip(headers, col_widths), 1):
+        cell = ws.cell(row=1, column=ci, value=h)
+        cell.fill      = h_fill
+        cell.font      = h_font
+        cell.alignment = center
+        cell.border    = bord
+        ws.column_dimensions[get_column_letter(ci)].width = w
+    ws.row_dimensions[1].height = 26
+
+    data_font = Font(size=10)
+    for ri, row in enumerate(unique_rows, 2):
+        # 14 cột; chỉ điền 1, 3, 4 — còn lại rỗng
+        row_vals = [
+            row["_maKH"],           # 1  Mã KH/NCC = 84-SĐT
+            "",                     # 2  Tên đơn vị
+            row.get("tenKhach", ""),# 3  Tên người mua = họ tên khách
+            "Khách hàng",           # 4  Loại
+            "", "", "", "", "", "", "", "", "", "",  # 5–14
+        ]
         for ci, val in enumerate(row_vals, 1):
             cell = ws.cell(row=ri, column=ci, value=val)
-            cell.border = bord
-            cell.alignment = Alignment(horizontal="center" if ci == 1 else "left", vertical="center")
+            cell.font      = data_font
+            cell.border    = bord
+            cell.alignment = left
 
     buf = io.BytesIO()
     wb.save(buf)
@@ -265,31 +368,72 @@ def _build_excel_customers(orders: list[dict[str, Any]]) -> bytes:
 
 
 def _build_excel_products(orders: list[dict[str, Any]]) -> bytes:
-    """File 3: Danh sách sản phẩm (1 dòng / đơn — mã PF chốt cứng)."""
-    mods = _openpyxl_imports()
-    openpyxl, _, _, Alignment, _, _, _ = mods
+    """File 3: san_pham.xlsx — flat header, 1 dòng / đơn, không lọc trùng."""
+    try:
+        import openpyxl
+        from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+        from openpyxl.utils import get_column_letter
+    except ImportError as exc:
+        raise HTTPException(500, f"Thiếu thư viện openpyxl: {exc}") from exc
 
     wb = openpyxl.Workbook()
     ws = wb.active
-    ws.title = "Sản Phẩm"
-    headers = ["STT", "Mã Sản Phẩm", "Tên Sản Phẩm (Thuế)", "Tên Gói Học (Nội bộ)", "Đơn Giá (VND)", "Mã Hóa Đơn"]
-    col_widths = [5, 14, 40, 36, 18, 16]
-    bord = _style_header(ws, headers, col_widths, "ED7D31", mods)
+    ws.title = "Sản phẩm"
 
+    thin  = Side(style="thin", color="000000")
+    bord  = Border(left=thin, right=thin, top=thin, bottom=thin)
+    center = Alignment(horizontal="center", vertical="center")
+    left   = Alignment(horizontal="left",   vertical="center")
+
+    headers = [
+        "Mã sản phẩm (*)",              # 1
+        "Tên sản phẩm (*)",             # 2
+        "Barcode",                       # 3
+        "Nhóm sản phẩm",                # 4
+        "Giá nhập",                      # 5
+        "Giá bán (*)",                   # 6
+        "Đơn vị tính",                   # 7
+        "Theo dõi hàng tồn kho",         # 8
+        "Số lượng tồn kho",              # 9
+        "Hạn mức tồn",                   # 10
+        "Áp dụng thuế",                  # 11
+        "Ảnh",                           # 12
+        "Mô tả",                         # 13
+        "Thuế giảm trừ",                 # 14
+        "Nhóm ngành nghề tính thuế",     # 15
+    ]
+    col_widths = [18, 36, 14, 18, 14, 16, 14, 22, 18, 12, 14, 10, 20, 16, 28]
+
+    h_fill = PatternFill("solid", fgColor="ED7D31")
+    h_font = Font(bold=True, color="FFFFFF", size=10)
+    for ci, (h, w) in enumerate(zip(headers, col_widths), 1):
+        cell = ws.cell(row=1, column=ci, value=h)
+        cell.fill      = h_fill
+        cell.font      = h_font
+        cell.alignment = center
+        cell.border    = bord
+        ws.column_dimensions[get_column_letter(ci)].width = w
+    ws.row_dimensions[1].height = 26
+
+    data_font = Font(size=10)
     for ri, o in enumerate(orders, 2):
         row_vals = [
-            ri - 1,
-            o.get("taxProductCode", ""),
-            o.get("taxProductName", "") or o.get("goiHoc", ""),
-            o.get("goiHoc", ""),
-            int(o.get("tongTien", 0)),
-            o.get("taxInvoiceCode", ""),
+            o.get("taxProductCode", ""),                            # 1  Mã sản phẩm (*)
+            o.get("taxProductName", "") or o.get("goiHoc", ""),    # 2  Tên sản phẩm (*)
+            "",                                                      # 3  Barcode
+            "",                                                      # 4  Nhóm sản phẩm
+            "",                                                      # 5  Giá nhập
+            int(o.get("tongTien", 0)),                              # 6  Giá bán (*)
+            "Khóa",                                                  # 7  Đơn vị tính
+            "Không",                                                 # 8  Theo dõi hàng tồn kho
+            "", "", "", "", "", "", "",                              # 9–15
         ]
         for ci, val in enumerate(row_vals, 1):
             cell = ws.cell(row=ri, column=ci, value=val)
-            cell.border = bord
-            cell.alignment = Alignment(horizontal="center" if ci == 1 else "left", vertical="center")
-            if ci == 5:
+            cell.font      = data_font
+            cell.border    = bord
+            cell.alignment = left
+            if ci == 6:
                 cell.number_format = "#,##0"
 
     buf = io.BytesIO()
@@ -646,9 +790,9 @@ def register_invoice_routes(app, get_supabase) -> None:
         batch_label = today.strftime("%Y%m%d")
         zip_buf = io.BytesIO()
         with zipfile.ZipFile(zip_buf, "w", zipfile.ZIP_DEFLATED) as zf:
-            zf.writestr(f"01_don_hang_{batch_label}.xlsx", excel_orders)
-            zf.writestr(f"02_khach_hang_{batch_label}.xlsx", excel_customers)
-            zf.writestr(f"03_san_pham_{batch_label}.xlsx", excel_products)
+            zf.writestr(f"01_1don_hang_{batch_label}.xlsx", excel_orders)
+            zf.writestr(f"02_khach_hang1_{batch_label}.xlsx", excel_customers)
+            zf.writestr(f"03_sanpham1_{batch_label}.xlsx", excel_products)
         zip_buf.seek(0)
 
         filename = f"hoa_don_thue_{batch_label}_{n}don.zip"
