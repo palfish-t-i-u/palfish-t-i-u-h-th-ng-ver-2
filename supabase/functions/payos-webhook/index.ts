@@ -1,3 +1,4 @@
+// @ts-nocheck — Deno runtime, không dùng Node.js TypeScript checker
 /**
  * Supabase Edge Function: payos-webhook
  *
