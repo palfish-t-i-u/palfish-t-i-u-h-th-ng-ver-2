@@ -3,7 +3,7 @@
   "name": "PalFish CRM Token Sync",
   "version": "1.0.0",
   "description": "Tự động đồng bộ cookie/token CRM PalFish sang hệ thống quản lý GMV",
-  "permissions": ["webRequest", "storage"],
+  "permissions": ["webRequest", "storage", "cookies", "tabs"],
   "host_permissions": [
     "*://sea.pri.ibanyu.com/*",
     "http://localhost:8000/*",

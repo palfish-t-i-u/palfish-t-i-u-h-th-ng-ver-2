@@ -1,33 +1,23 @@
 /**
  * PalFish CRM Token Sync — background service worker (Manifest V3)
  *
- * Luồng hoạt động:
- *  1. Lắng nghe mọi request tới sea.pri.ibanyu.com/api/*
- *  2. Trích xuất Cookie header (chứa token= và id=)
- *  3. Debounce 30 giây để tránh spam
- *  4. POST cookie_str về backend /system/update-crm-token
+ * Dùng chrome.cookies API thay vì webRequest header (tin cậy hơn trong MV3).
+ * Kích hoạt khi user load/chuyển sang tab sea.pri.ibanyu.com.
  */
 
 const BACKEND_URLS = [
-  "http://localhost:8000/system/update-crm-token",         // local dev
-  "https://palfish-gmv-api.onrender.com/system/update-crm-token", // production Render
+  "http://localhost:8000/system/update-crm-token",
+  "https://palfish-gmv-api.onrender.com/system/update-crm-token",
 ];
-const DEBOUNCE_MS = 30_000; // 30 giây
+const CRM_HOST = "sea.pri.ibanyu.com";
+const DEBOUNCE_MS = 30_000;
 
 let _lastCookie = "";
 let _lastSentAt = 0;
 let _syncCount = 0;
-let _lastStatus = "idle"; // "idle" | "ok" | "error"
 
-// Lưu trạng thái vào storage để popup đọc được
 function _saveState(status, msg) {
-  _lastStatus = status;
-  chrome.storage.local.set({
-    status,
-    msg,
-    lastSentAt: _lastSentAt,
-    syncCount: _syncCount,
-  });
+  chrome.storage.local.set({ status, msg, lastSentAt: _lastSentAt, syncCount: _syncCount });
 }
 
 async function _pushToken(cookieStr) {
@@ -43,48 +33,64 @@ async function _pushToken(cookieStr) {
         _syncCount++;
         _saveState("ok", `Đã đồng bộ lúc ${new Date().toLocaleTimeString("vi-VN")}`);
         console.log("[PalFish Sync] token pushed →", url);
-        return; // Thành công → dừng
-      } else {
-        errors.push(`${url}: HTTP ${res.status}`);
+        return;
       }
+      errors.push(`${url}: HTTP ${res.status}`);
     } catch (err) {
       errors.push(`${url}: ${err.message}`);
     }
   }
-  const errMsg = errors.join("; ");
-  _saveState("error", `Lỗi: ${errMsg}`);
-  console.warn("[PalFish Sync] push failed:", errMsg);
+  _saveState("error", `Lỗi backend: ${errors.join(" | ")}`);
+  console.warn("[PalFish Sync] push failed:", errors);
 }
 
-chrome.webRequest.onBeforeSendHeaders.addListener(
-  (details) => {
-    const headers = details.requestHeaders || [];
-    const cookieHeader = headers.find(
-      (h) => h.name.toLowerCase() === "cookie"
-    );
-    if (!cookieHeader?.value) return;
+async function grabAndSendCookies() {
+  let cookies = [];
+  try {
+    cookies = await chrome.cookies.getAll({ domain: CRM_HOST });
+  } catch (e) {
+    console.warn("[PalFish Sync] cookies.getAll failed:", e);
+    return;
+  }
 
-    const cookie = cookieHeader.value;
+  if (!cookies.length) {
+    _saveState("idle", "Chưa có cookie — hãy đăng nhập CRM trước.");
+    return;
+  }
 
-    // Chỉ xử lý cookie có chứa token= hoặc id= (token CRM PalFish)
-    const hasToken = cookie.includes("token=") || cookie.includes("id=");
-    if (!hasToken) return;
+  const cookieStr = cookies.map((c) => `${c.name}=${c.value}`).join("; ");
+  const hasToken = cookieStr.includes("token=") || cookieStr.includes("id=");
+  if (!hasToken) {
+    _saveState("idle", "Cookie không có token — thử đăng nhập lại.");
+    return;
+  }
 
-    const now = Date.now();
+  const now = Date.now();
+  // Debounce: bỏ qua nếu cùng cookie và chưa đủ 30s
+  if (cookieStr === _lastCookie && now - _lastSentAt < DEBOUNCE_MS) return;
 
-    // Debounce: bỏ qua nếu cùng cookie và chưa đủ 30s
-    if (cookie === _lastCookie && now - _lastSentAt < DEBOUNCE_MS) return;
+  _lastCookie = cookieStr;
+  _lastSentAt = now;
+  _saveState("idle", "Đang gửi token…");
 
-    _lastCookie = cookie;
-    _lastSentAt = now;
+  await _pushToken(cookieStr);
+}
 
-    // Push bất đồng bộ — không chặn request gốc
-    _pushToken(cookie);
-  },
-  { urls: ["*://sea.pri.ibanyu.com/api/*"] },
-  ["requestHeaders", "extraHeaders"]
-);
+// Kích hoạt khi tab CRM load xong
+chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+  if (changeInfo.status !== "complete") return;
+  if (!tab.url?.includes(CRM_HOST)) return;
+  grabAndSendCookies();
+});
 
-// Khởi tạo state
-_saveState("idle", "Đang chờ request từ CRM PalFish…");
-console.log("[PalFish Sync] service worker started");
+// Kích hoạt khi user chuyển sang tab CRM
+chrome.tabs.onActivated.addListener(async (activeInfo) => {
+  try {
+    const tab = await chrome.tabs.get(activeInfo.tabId);
+    if (!tab.url?.includes(CRM_HOST)) return;
+    grabAndSendCookies();
+  } catch (_) {}
+});
+
+_saveState("idle", "Đang chờ — hãy mở tab CRM PalFish…");
+console.log("[PalFish Sync] service worker started (cookies API mode)");
