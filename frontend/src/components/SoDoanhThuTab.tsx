@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { endpoints } from "../lib/api";
+import { formatVndInput, parseVndInput } from "../lib/vndFormat";
 import type { LedgerCreatePayload, LedgerPatchPayload, RevenueLedgerRow } from "../types/revenue";
 import Button from "./ui/Button";
 import Badge from "./ui/Badge";
@@ -10,10 +11,6 @@ const TEAM_OPTIONS = ["Inhouse 1", "Inhouse 2", "HCM (Online)", "Khác"];
 
 function todayIso() {
   return new Date().toISOString().slice(0, 10);
-}
-
-function fmtVnd(n: number) {
-  return new Intl.NumberFormat("vi-VN").format(n);
 }
 
 function fmtRmb(n: number) {
@@ -35,6 +32,38 @@ const emptyDraft = (): LedgerCreatePayload => ({
   paymentMethod: "",
 });
 
+function VndInput({
+  value,
+  onCommit,
+  className,
+  placeholder,
+}: {
+  value: number;
+  onCommit: (n: number) => void;
+  className?: string;
+  placeholder?: string;
+}) {
+  const [raw, setRaw] = useState(value ? String(value) : "");
+
+  useEffect(() => {
+    setRaw(value ? String(value) : "");
+  }, [value]);
+
+  return (
+    <input
+      className={className}
+      placeholder={placeholder}
+      value={formatVndInput(raw)}
+      onChange={(e) => setRaw(e.target.value.replace(/\D/g, ""))}
+      onBlur={() => {
+        const n = parseVndInput(raw);
+        if (n !== value) onCommit(n);
+      }}
+      inputMode="numeric"
+    />
+  );
+}
+
 export default function SoDoanhThuTab() {
   const [rows, setRows] = useState<RevenueLedgerRow[]>([]);
   const [loading, setLoading] = useState(false);
@@ -43,6 +72,7 @@ export default function SoDoanhThuTab() {
   const [to, setTo] = useState("");
   const [loaiFilter, setLoaiFilter] = useState("");
   const [draft, setDraft] = useState<LedgerCreatePayload>(emptyDraft);
+  const [vndRaw, setVndRaw] = useState("");
   const [savingId, setSavingId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -68,10 +98,12 @@ export default function SoDoanhThuTab() {
 
   async function handleCreate() {
     setError("");
+    const payload = { ...draft, soTienVnd: parseVndInput(vndRaw) };
     try {
-      const res = await endpoints.revenue.createLedger(draft);
+      const res = await endpoints.revenue.createLedger(payload);
       setRows((prev) => [res.data, ...prev]);
       setDraft(emptyDraft());
+      setVndRaw("");
     } catch {
       setError("Không thêm được dòng mới.");
     }
@@ -135,7 +167,12 @@ export default function SoDoanhThuTab() {
               <option key={t} value={t}>{t}</option>
             ))}
           </select>
-          <Input placeholder="VND" type="number" value={draft.soTienVnd || ""} onChange={(e) => setDraft({ ...draft, soTienVnd: Number(e.target.value) })} />
+          <Input
+            placeholder="VND (VD: 12.875.000)"
+            value={formatVndInput(vndRaw)}
+            onChange={(e) => setVndRaw(e.target.value.replace(/\D/g, ""))}
+            inputMode="numeric"
+          />
           <Input placeholder="Gói học" value={draft.goiHoc} onChange={(e) => setDraft({ ...draft, goiHoc: e.target.value })} />
         </div>
         <div className="mt-2 flex gap-2">
@@ -208,15 +245,11 @@ export default function SoDoanhThuTab() {
                   </select>
                 </Td>
                 <Td>
-                  <input
-                    className="w-28 rounded border border-gmv-border px-2 py-1 text-sm text-right"
-                    defaultValue={String(row.soTienVnd)}
-                    onBlur={(e) => {
-                      const n = parseInt(e.target.value.replace(/\D/g, ""), 10) || 0;
-                      if (n !== row.soTienVnd) patchField(row, { soTienVnd: n });
-                    }}
+                  <VndInput
+                    className="w-32 rounded border border-gmv-border px-2 py-1 text-sm text-right"
+                    value={row.soTienVnd}
+                    onCommit={(n) => patchField(row, { soTienVnd: n })}
                   />
-                  <div className="text-xs text-gmv-muted">{fmtVnd(row.soTienVnd)}</div>
                 </Td>
                 <Td>
                   <input
