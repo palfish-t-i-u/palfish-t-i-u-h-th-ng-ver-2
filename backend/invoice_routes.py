@@ -20,6 +20,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from rbac import can_confirm_payment, resolve_actor
+from revenue_routes import sync_ledger_from_m3_order
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -554,6 +555,7 @@ def register_invoice_routes(app, get_supabase) -> None:
                 .limit(1)
                 .execute()
             )
+            sync_ledger_from_m3_order(sb, body.id, actor.email)
             return _row_to_invoice_order(row, kh_res.data[0] if kh_res.data else None)
         except HTTPException:
             raise
@@ -609,6 +611,7 @@ def register_invoice_routes(app, get_supabase) -> None:
                 )
                 if upd.data:
                     approved_ids.append(row["id"])
+                    sync_ledger_from_m3_order(sb, row["id"], actor.email)
             except Exception:
                 pass  # skip đơn lỗi, tiếp tục các đơn còn lại
 

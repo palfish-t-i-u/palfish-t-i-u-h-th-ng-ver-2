@@ -13,6 +13,7 @@ from pydantic import BaseModel
 
 from admin_routes import register_admin_routes
 from invoice_routes import register_invoice_routes
+from revenue_routes import register_revenue_routes
 from rbac import can_confirm_payment, resolve_actor, visible_creator_emails
 
 CANCEL_ANY_ROLES = {"manager", "system", "ops"}
@@ -1134,3 +1135,4 @@ def bank_simulate(body: BankSimulateBody):
 
 register_admin_routes(app, _supabase)
 register_invoice_routes(app, _supabase)
+register_revenue_routes(app, _supabase)

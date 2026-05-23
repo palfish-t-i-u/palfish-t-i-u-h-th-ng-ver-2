@@ -2,6 +2,12 @@ import axios from "axios";
 import { resolveApiBaseUrl } from "./apiBaseUrl";
 import { supabase } from "./supabase";
 import type { CreateOrderPayload, InvoiceOrder, Order } from "../types/order";
+import type {
+  LedgerCreatePayload,
+  LedgerPatchPayload,
+  RevenueLedgerRow,
+  RevenuePivotResponse,
+} from "../types/revenue";
 
 export const API_BASE_URL = resolveApiBaseUrl();
 
@@ -103,6 +109,16 @@ export const endpoints = {
       api.post<{ ok: boolean; id: string }>("/invoice/m4-cancel", { id }),
     exportBatch: () =>
       api.post<Blob>("/invoice/export-batch", {}, { responseType: "blob" }),
+  },
+  revenue: {
+    listLedger: (params?: { from?: string; to?: string; loai_nhap?: string }) =>
+      api.get<{ rows: RevenueLedgerRow[]; count: number }>("/revenue/ledger", { params }),
+    createLedger: (body: LedgerCreatePayload) =>
+      api.post<RevenueLedgerRow>("/revenue/ledger", body),
+    patchLedger: (id: string, body: LedgerPatchPayload) =>
+      api.patch<RevenueLedgerRow>(`/revenue/ledger/${id}`, body),
+    pivot: (params?: { from?: string; to?: string; team?: string }) =>
+      api.get<RevenuePivotResponse>("/revenue/pivot", { params }),
   },
   me: {
     get: () => api.get("/me"),
