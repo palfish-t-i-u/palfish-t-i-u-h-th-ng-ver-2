@@ -5,10 +5,16 @@
  * Kích hoạt khi user load/chuyển sang tab sea.pri.ibanyu.com.
  */
 
+// Supabase — ghi token thẳng vào DB (không qua Render, luôn hoạt động)
+const SUPABASE_URL = "https://jozcvbbypwvzaefteoxn.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpvemN2YmJ5cHd2emFlZnRlb3huIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkyNjM4NzEsImV4cCI6MjA5NDgzOTg3MX0.DlXwhPzx4hQCyzJOOtt65WBFT6WtSTmfbHRUfjjNLHU";
+
+// Fallback: backend local/Render
 const BACKEND_URLS = [
   "http://localhost:8000/system/update-crm-token",
   "https://palfish-gmv-api.onrender.com/system/update-crm-token",
 ];
+
 const CRM_HOST = "sea.pri.ibanyu.com";
 const DEBOUNCE_MS = 30_000;
 
@@ -21,7 +27,40 @@ function _saveState(status, msg) {
 }
 
 async function _pushToken(cookieStr) {
-  const errors = [];
+  // Ưu tiên 1: ghi thẳng vào Supabase (luôn hoạt động, không cần Render)
+  try {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/crm_tokens`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "apikey": SUPABASE_ANON_KEY,
+        "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
+        "Prefer": "resolution=merge-duplicates",
+      },
+      body: JSON.stringify({
+        id: 1,
+        cookie_value: cookieStr,
+        updated_at: new Date().toISOString(),
+      }),
+    });
+    if (res.ok || res.status === 201) {
+      _syncCount++;
+      _saveState("ok", `Đã đồng bộ lúc ${new Date().toLocaleTimeString("vi-VN")}`);
+      console.log("[PalFish Sync] token → Supabase OK");
+      // Cũng gửi về backend local nếu đang chạy (không block)
+      fetch(BACKEND_URLS[0], {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ cookie_str: cookieStr }),
+      }).catch(() => {});
+      return;
+    }
+    console.warn("[PalFish Sync] Supabase status:", res.status, await res.text());
+  } catch (err) {
+    console.warn("[PalFish Sync] Supabase push failed:", err.message);
+  }
+
+  // Fallback: thử backend URLs
   for (const url of BACKEND_URLS) {
     try {
       const res = await fetch(url, {
@@ -31,17 +70,12 @@ async function _pushToken(cookieStr) {
       });
       if (res.ok) {
         _syncCount++;
-        _saveState("ok", `Đã đồng bộ lúc ${new Date().toLocaleTimeString("vi-VN")}`);
-        console.log("[PalFish Sync] token pushed →", url);
+        _saveState("ok", `Đã đồng bộ (backend) lúc ${new Date().toLocaleTimeString("vi-VN")}`);
         return;
       }
-      errors.push(`${url}: HTTP ${res.status}`);
-    } catch (err) {
-      errors.push(`${url}: ${err.message}`);
-    }
+    } catch (_) {}
   }
-  _saveState("error", `Lỗi backend: ${errors.join(" | ")}`);
-  console.warn("[PalFish Sync] push failed:", errors);
+  _saveState("error", "Lỗi: không gửi được token về Supabase hay backend");
 }
 
 async function grabAndSendCookies() {
