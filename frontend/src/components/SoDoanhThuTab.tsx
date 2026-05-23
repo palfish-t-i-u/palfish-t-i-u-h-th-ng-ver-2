@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { endpoints } from "../lib/api";
 import { cn } from "../lib/cn";
 import { formatVndNumber } from "../lib/vndFormat";
+import { formatLoaiLabel } from "../lib/loaiLabel";
 import type { LedgerPatchPayload, RevenueLedgerRow } from "../types/revenue";
 import LedgerFormModal, {
   emptyLedgerForm,
@@ -169,6 +170,14 @@ export default function SoDoanhThuTab() {
     }
   }
 
+  function resetFilters() {
+    setFrom("");
+    setTo("");
+    setLoaiFilter("");
+  }
+
+  const hasActiveFilter = Boolean(from || to || loaiFilter);
+
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-end gap-3">
@@ -205,6 +214,9 @@ export default function SoDoanhThuTab() {
         >
           Hôm nay
         </Button>
+        <Button variant="ghost" onClick={resetFilters} disabled={!hasActiveFilter}>
+          Reset bộ lọc
+        </Button>
         <Button onClick={openCreate}>+ Thêm dòng</Button>
       </div>
 
@@ -234,7 +246,9 @@ export default function SoDoanhThuTab() {
             {rows.length === 0 && !loading && (
               <Tr>
                 <Td colSpan={12} className="text-center text-gmv-muted">
-                  Chưa có dòng — bấm Thêm dòng hoặc xác nhận M3.
+                  {hasActiveFilter
+                    ? "Không có dòng trong khoảng đã lọc — thử Reset bộ lọc hoặc mở rộng ngày."
+                    : "Chưa có dòng — bấm Thêm dòng hoặc xác nhận M3."}
                 </Td>
               </Tr>
             )}
@@ -255,7 +269,7 @@ export default function SoDoanhThuTab() {
                 <Td className="text-left text-xs font-mono">{row.infoCode || "—"}</Td>
                 <Td className="text-left text-sm font-mono">{orderIdDisplay(row)}</Td>
                 <Td className="text-left text-sm">{row.paymentMethod || "—"}</Td>
-                <Td className="text-left text-sm">{row.loai || "—"}</Td>
+                <Td className="text-left text-sm">{formatLoaiLabel(row.loai)}</Td>
                 <Td className="text-left text-sm">{row.saleCrmName || "—"}</Td>
                 <Td className="text-left text-sm">{row.team || "—"}</Td>
                 <Td>
