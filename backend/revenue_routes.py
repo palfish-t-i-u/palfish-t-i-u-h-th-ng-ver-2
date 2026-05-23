@@ -120,6 +120,39 @@ def _info_code_from_ma(ma_don: str | None) -> str:
     return f"Thanh toan {ma}" if ma else ""
 
 
+_SUPABASE_PAGE = 1000
+
+
+def _fetch_so_doanh_thu(
+    sb,
+    select: str,
+    *,
+    from_date: str | None = None,
+    to_date: str | None = None,
+    loai_nhap: str | None = None,
+) -> list[dict[str, Any]]:
+    """PostgREST trả tối đa 1000 dòng/lần — paginate hết kết quả."""
+    rows: list[dict[str, Any]] = []
+    offset = 0
+    while True:
+        q = sb.table("so_doanh_thu").select(select).order("ngay_tien_ve", desc=True)
+        if from_date:
+            q = q.gte("ngay_tien_ve", from_date[:10])
+        if to_date:
+            q = q.lte("ngay_tien_ve", to_date[:10])
+        if loai_nhap in ("tu_dong", "tay"):
+            q = q.eq("loai_nhap", loai_nhap)
+        res = q.range(offset, offset + _SUPABASE_PAGE - 1).execute()
+        chunk = res.data or []
+        if not chunk:
+            break
+        rows.extend(chunk)
+        if len(chunk) < _SUPABASE_PAGE:
+            break
+        offset += _SUPABASE_PAGE
+    return rows
+
+
 def _enrich_ledger_rows(sb, db_rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     order_ids = [r["don_hang_id"] for r in db_rows if r.get("don_hang_id")]
     order_map: dict[str, dict[str, Any]] = {}
@@ -349,15 +382,14 @@ def register_revenue_routes(app, get_supabase) -> None:
         actor = resolve_actor(sb, authorization)
         _require_ops(actor)
         try:
-            q = sb.table("so_doanh_thu").select("*").order("ngay_tien_ve", desc=True)
-            if from_date:
-                q = q.gte("ngay_tien_ve", from_date[:10])
-            if to_date:
-                q = q.lte("ngay_tien_ve", to_date[:10])
-            if loai_nhap in ("tu_dong", "tay"):
-                q = q.eq("loai_nhap", loai_nhap)
-            res = q.execute()
-            rows = _enrich_ledger_rows(sb, res.data or [])
+            db_rows = _fetch_so_doanh_thu(
+                sb,
+                "*",
+                from_date=from_date,
+                to_date=to_date,
+                loai_nhap=loai_nhap,
+            )
+            rows = _enrich_ledger_rows(sb, db_rows)
             return {"rows": rows, "count": len(rows)}
         except HTTPException:
             raise
@@ -492,15 +524,12 @@ def register_revenue_routes(app, get_supabase) -> None:
         actor = resolve_actor(sb, authorization)
         _require_ops(actor)
         try:
-            q = sb.table("so_doanh_thu").select(
-                "ngay_tien_ve, gmv_rmb, sale_crm_name, team, team_pivot_label"
+            rows = _fetch_so_doanh_thu(
+                sb,
+                "ngay_tien_ve, gmv_rmb, sale_crm_name, team, team_pivot_label",
+                from_date=from_date,
+                to_date=to_date,
             )
-            if from_date:
-                q = q.gte("ngay_tien_ve", from_date[:10])
-            if to_date:
-                q = q.lte("ngay_tien_ve", to_date[:10])
-            res = q.execute()
-            rows = res.data or []
 
             month_set: set[str] = set()
             grouped: dict[str, dict[str, dict[str, float]]] = {}

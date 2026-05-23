@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { endpoints } from "../lib/api";
 import { cn } from "../lib/cn";
 import { formatVndNumber } from "../lib/vndFormat";
-import { formatLoaiLabel } from "../lib/loaiLabel";
+import { pivotTypeFromRow, pivotTypeLabel } from "../lib/typeFixx";
 import type { LedgerPatchPayload, RevenueLedgerRow } from "../types/revenue";
 import LedgerFormModal, {
   emptyLedgerForm,
@@ -49,7 +49,13 @@ function rowToForm(row: RevenueLedgerRow): LedgerFormState {
 }
 
 function todayIso() {
-  return new Date().toISOString().slice(0, 10);
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+function isDefaultDateFilter(from: string, to: string) {
+  const t = todayIso();
+  return from === t && to === t;
 }
 
 function orderIdDisplay(row: RevenueLedgerRow) {
@@ -60,8 +66,8 @@ export default function SoDoanhThuTab() {
   const [rows, setRows] = useState<RevenueLedgerRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [from, setFrom] = useState("");
-  const [to, setTo] = useState("");
+  const [from, setFrom] = useState(() => todayIso());
+  const [to, setTo] = useState(() => todayIso());
   const [loaiFilter, setLoaiFilter] = useState("");
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
@@ -171,12 +177,13 @@ export default function SoDoanhThuTab() {
   }
 
   function resetFilters() {
-    setFrom("");
-    setTo("");
+    const t = todayIso();
+    setFrom(t);
+    setTo(t);
     setLoaiFilter("");
   }
 
-  const hasActiveFilter = Boolean(from || to || loaiFilter);
+  const hasActiveFilter = !isDefaultDateFilter(from, to) || Boolean(loaiFilter);
 
   return (
     <div className="space-y-4">
@@ -269,7 +276,9 @@ export default function SoDoanhThuTab() {
                 <Td className="text-left text-xs font-mono">{row.infoCode || "—"}</Td>
                 <Td className="text-left text-sm font-mono">{orderIdDisplay(row)}</Td>
                 <Td className="text-left text-sm">{row.paymentMethod || "—"}</Td>
-                <Td className="text-left text-sm">{formatLoaiLabel(row.loai)}</Td>
+                <Td className="text-left text-sm">
+                  {pivotTypeLabel(pivotTypeFromRow(row.loai, row.loai2))}
+                </Td>
                 <Td className="text-left text-sm">{row.saleCrmName || "—"}</Td>
                 <Td className="text-left text-sm">{row.team || "—"}</Td>
                 <Td>
