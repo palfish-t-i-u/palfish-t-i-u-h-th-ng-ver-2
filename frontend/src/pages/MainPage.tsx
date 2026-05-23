@@ -109,7 +109,7 @@ const TITLES: Record<ViewId, { title: string; subtitle?: string }> = {
   module3: { title: "Xác nhận CRM", subtitle: "M3 — Điền tên sản phẩm thuế & mã CRM Order" },
   module4: { title: "Xuất hóa đơn thuế", subtitle: "M4 — Cấp mã M.../PF... và tải file ZIP 3 Excel" },
   revenueLedger: { title: "Sổ doanh thu", subtitle: "Ghi từng khoản thu — tự động (M3) + điền tay" },
-  revenuePivot: { title: "Doanh thu Sale", subtitle: "Tổng GMV (RMB) theo team × sale × tháng" },
+  revenuePivot: { title: "Sales Performance", subtitle: "Tổng GMV (RMB) theo team × sale × tháng" },
   staffCrm: { title: "Nhân sự Sale", subtitle: "Master data Metabase — gán role / team" },
   authAccounts: { title: "Tài khoản Auth", subtitle: "Supabase Auth — khoá/mở account" },
 };
@@ -211,7 +211,7 @@ export default function MainPage() {
         },
         {
           id: "revenuePivot",
-          label: "Doanh thu Sale",
+          label: "Sales Performance",
           icon: I.chart,
         }
       );

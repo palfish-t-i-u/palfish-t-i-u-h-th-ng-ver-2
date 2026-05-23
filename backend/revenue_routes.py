@@ -422,6 +422,25 @@ def register_revenue_routes(app, get_supabase) -> None:
         except Exception as exc:
             raise HTTPException(500, f"Lỗi cập nhật Sổ: {exc}") from exc
 
+    @app.delete("/revenue/ledger/{row_id}")
+    def delete_ledger(row_id: str, authorization: str | None = Header(None)):
+        sb = _sb()
+        actor = resolve_actor(sb, authorization)
+        _require_ops(actor)
+        try:
+            cur = sb.table("so_doanh_thu").select("*").eq("id", row_id).limit(1).execute()
+            if not cur.data:
+                raise HTTPException(404, "Không tìm thấy dòng")
+            row = cur.data[0]
+            if row.get("loai_nhap") != "tay":
+                raise HTTPException(403, "Chỉ được xóa dòng điền tay")
+            sb.table("so_doanh_thu").delete().eq("id", row_id).execute()
+            return {"ok": True, "id": row_id}
+        except HTTPException:
+            raise
+        except Exception as exc:
+            raise HTTPException(500, f"Lỗi xóa dòng Sổ: {exc}") from exc
+
     @app.get("/revenue/pivot")
     def revenue_pivot(
         authorization: str | None = Header(None),

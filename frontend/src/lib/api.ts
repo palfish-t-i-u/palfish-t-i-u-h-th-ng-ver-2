@@ -117,6 +117,8 @@ export const endpoints = {
       api.post<RevenueLedgerRow>("/revenue/ledger", body),
     patchLedger: (id: string, body: LedgerPatchPayload) =>
       api.patch<RevenueLedgerRow>(`/revenue/ledger/${id}`, body),
+    deleteLedger: (id: string) =>
+      api.delete<{ ok: boolean; id: string }>(`/revenue/ledger/${id}`),
     pivot: (params?: { from?: string; to?: string; team?: string }) =>
       api.get<RevenuePivotResponse>("/revenue/pivot", { params }),
   },
