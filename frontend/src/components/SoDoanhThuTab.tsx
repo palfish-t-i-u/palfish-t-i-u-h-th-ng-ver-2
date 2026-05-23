@@ -1,20 +1,25 @@
 import { useCallback, useEffect, useState } from "react";
 import { endpoints } from "../lib/api";
-import { formatVndInput, parseVndInput } from "../lib/vndFormat";
+import { cn } from "../lib/cn";
+import { digitsOnly, formatVndInput, parseVndInput } from "../lib/vndFormat";
 import type { LedgerCreatePayload, LedgerPatchPayload, RevenueLedgerRow } from "../types/revenue";
 import Button from "./ui/Button";
 import Badge from "./ui/Badge";
 import { Input } from "./ui/Input";
-import { Table, TableWrap, Td, Th, Tr } from "./ui/Table";
+import {
+  Table,
+  TableScrollWrap,
+  Td,
+  Th,
+  Tr,
+  stickyTableHead,
+  stickyTableHeadTop,
+} from "./ui/Table";
 
 const TEAM_OPTIONS = ["Inhouse 1", "Inhouse 2", "HCM (Online)", "Khác"];
 
 function todayIso() {
   return new Date().toISOString().slice(0, 10);
-}
-
-function fmtRmb(n: number) {
-  return new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 }).format(n);
 }
 
 const emptyDraft = (): LedgerCreatePayload => ({
@@ -32,34 +37,97 @@ const emptyDraft = (): LedgerCreatePayload => ({
   paymentMethod: "",
 });
 
-function VndInput({
+function VndField({
   value,
+  onChange,
   onCommit,
   className,
   placeholder,
 }: {
   value: number;
-  onCommit: (n: number) => void;
+  onChange?: (n: number) => void;
+  onCommit?: (n: number) => void;
   className?: string;
   placeholder?: string;
 }) {
-  const [raw, setRaw] = useState(value ? String(value) : "");
+  const [raw, setRaw] = useState(() => (value ? digitsOnly(String(value)) : ""));
+  const [focused, setFocused] = useState(false);
 
   useEffect(() => {
-    setRaw(value ? String(value) : "");
-  }, [value]);
+    if (!focused) {
+      setRaw(value ? digitsOnly(String(Math.trunc(value))) : "");
+    }
+  }, [value, focused]);
+
+  const commit = useCallback(
+    (nextRaw: string) => {
+      const n = parseVndInput(nextRaw);
+      onChange?.(n);
+      onCommit?.(n);
+    },
+    [onChange, onCommit]
+  );
 
   return (
-    <input
-      className={className}
+    <Input
+      type="text"
+      inputMode="numeric"
+      autoComplete="off"
       placeholder={placeholder}
+      className={cn("tabular-nums text-right", className)}
       value={formatVndInput(raw)}
-      onChange={(e) => setRaw(e.target.value.replace(/\D/g, ""))}
+      onFocus={() => setFocused(true)}
+      onChange={(e) => {
+        const next = digitsOnly(e.target.value);
+        setRaw(next);
+        onChange?.(parseVndInput(next));
+      }}
       onBlur={() => {
-        const n = parseVndInput(raw);
+        setFocused(false);
+        commit(raw);
+      }}
+    />
+  );
+}
+
+function RmbField({
+  value,
+  onCommit,
+  className,
+}: {
+  value: number;
+  onCommit: (n: number) => void;
+  className?: string;
+}) {
+  const [text, setText] = useState(() => (value ? String(value) : ""));
+  const [focused, setFocused] = useState(false);
+
+  useEffect(() => {
+    if (!focused) {
+      setText(value ? String(value) : "");
+    }
+  }, [value, focused]);
+
+  const display = focused
+    ? text
+    : value
+      ? value.toLocaleString("en-US", { maximumFractionDigits: 2 })
+      : "";
+
+  return (
+    <Input
+      type="text"
+      inputMode="decimal"
+      autoComplete="off"
+      className={cn("tabular-nums text-right", className)}
+      value={display}
+      onFocus={() => setFocused(true)}
+      onChange={(e) => setText(e.target.value.replace(/[^\d.,]/g, ""))}
+      onBlur={() => {
+        setFocused(false);
+        const n = parseFloat(text.replace(/,/g, "")) || 0;
         if (n !== value) onCommit(n);
       }}
-      inputMode="numeric"
     />
   );
 }
@@ -72,8 +140,9 @@ export default function SoDoanhThuTab() {
   const [to, setTo] = useState("");
   const [loaiFilter, setLoaiFilter] = useState("");
   const [draft, setDraft] = useState<LedgerCreatePayload>(emptyDraft);
-  const [vndRaw, setVndRaw] = useState("");
+  const [draftVnd, setDraftVnd] = useState(0);
   const [savingId, setSavingId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -98,12 +167,12 @@ export default function SoDoanhThuTab() {
 
   async function handleCreate() {
     setError("");
-    const payload = { ...draft, soTienVnd: parseVndInput(vndRaw) };
+    const payload = { ...draft, soTienVnd: draftVnd };
     try {
       const res = await endpoints.revenue.createLedger(payload);
       setRows((prev) => [res.data, ...prev]);
       setDraft(emptyDraft());
-      setVndRaw("");
+      setDraftVnd(0);
     } catch {
       setError("Không thêm được dòng mới.");
     }
@@ -118,6 +187,21 @@ export default function SoDoanhThuTab() {
       setError("Lưu thất bại.");
     } finally {
       setSavingId(null);
+    }
+  }
+
+  async function handleDelete(row: RevenueLedgerRow) {
+    const label = row.tenKhach || row.maDonHang || "dòng này";
+    if (!window.confirm(`Xóa dòng "${label}"? Không khôi phục được.`)) return;
+    setError("");
+    setDeletingId(row.id);
+    try {
+      await endpoints.revenue.deleteLedger(row.id);
+      setRows((prev) => prev.filter((r) => r.id !== row.id));
+    } catch {
+      setError("Không xóa được dòng.");
+    } finally {
+      setDeletingId(null);
     }
   }
 
@@ -167,11 +251,10 @@ export default function SoDoanhThuTab() {
               <option key={t} value={t}>{t}</option>
             ))}
           </select>
-          <Input
+          <VndField
             placeholder="VND (VD: 12.875.000)"
-            value={formatVndInput(vndRaw)}
-            onChange={(e) => setVndRaw(e.target.value.replace(/\D/g, ""))}
-            inputMode="numeric"
+            value={draftVnd}
+            onChange={setDraftVnd}
           />
           <Input placeholder="Gói học" value={draft.goiHoc} onChange={(e) => setDraft({ ...draft, goiHoc: e.target.value })} />
         </div>
@@ -182,28 +265,29 @@ export default function SoDoanhThuTab() {
         <p className="mt-2 text-xs text-gmv-muted">RMB tự tính VND ÷ 3700. Có thể sửa RMB trên bảng sau khi thêm.</p>
       </div>
 
-      <TableWrap>
+      <TableScrollWrap>
         <Table>
           <thead>
             <Tr>
-              <Th>Ngày tiền về</Th>
-              <Th>Loại</Th>
-              <Th>Khách / Sale</Th>
-              <Th>Team</Th>
-              <Th>VND</Th>
-              <Th>GMV (RMB)</Th>
-              <Th>Mã đơn</Th>
-              <Th>Ghi chú</Th>
+              <Th className={cn(stickyTableHead, stickyTableHeadTop)}>Ngày tiền về</Th>
+              <Th className={cn(stickyTableHead, stickyTableHeadTop)}>Loại</Th>
+              <Th className={cn(stickyTableHead, stickyTableHeadTop)}>Khách / Sale</Th>
+              <Th className={cn(stickyTableHead, stickyTableHeadTop)}>Team</Th>
+              <Th className={cn(stickyTableHead, stickyTableHeadTop, "min-w-[11rem]")}>VND</Th>
+              <Th className={cn(stickyTableHead, stickyTableHeadTop, "min-w-[8rem]")}>GMV (RMB)</Th>
+              <Th className={cn(stickyTableHead, stickyTableHeadTop)}>Mã đơn</Th>
+              <Th className={cn(stickyTableHead, stickyTableHeadTop)}>Ghi chú</Th>
+              <Th className={cn(stickyTableHead, stickyTableHeadTop, "w-20")} />
             </Tr>
           </thead>
           <tbody>
             {rows.length === 0 && !loading && (
               <Tr>
-                <Td colSpan={8} className="text-center text-gmv-muted">Chưa có dòng — thêm tay hoặc xác nhận M3.</Td>
+                <Td colSpan={9} className="text-center text-gmv-muted">Chưa có dòng — thêm tay hoặc xác nhận M3.</Td>
               </Tr>
             )}
             {rows.map((row) => (
-              <Tr key={row.id} className={savingId === row.id ? "opacity-60" : ""}>
+              <Tr key={row.id} className={savingId === row.id || deletingId === row.id ? "opacity-60" : ""}>
                 <Td>
                   <input
                     type="date"
@@ -245,22 +329,18 @@ export default function SoDoanhThuTab() {
                   </select>
                 </Td>
                 <Td>
-                  <VndInput
-                    className="w-32 rounded border border-gmv-border px-2 py-1 text-sm text-right"
+                  <VndField
+                    className="min-w-[10rem] py-1"
                     value={row.soTienVnd}
-                    onCommit={(n) => patchField(row, { soTienVnd: n })}
+                    onCommit={(n) => n !== row.soTienVnd && patchField(row, { soTienVnd: n })}
                   />
                 </Td>
                 <Td>
-                  <input
-                    className="w-24 rounded border border-gmv-border px-2 py-1 text-sm text-right"
-                    defaultValue={String(row.gmvRmb)}
-                    onBlur={(e) => {
-                      const n = parseFloat(e.target.value) || 0;
-                      if (n !== row.gmvRmb) patchField(row, { gmvRmb: n });
-                    }}
+                  <RmbField
+                    className="min-w-[7rem] py-1"
+                    value={row.gmvRmb}
+                    onCommit={(n) => n !== row.gmvRmb && patchField(row, { gmvRmb: n })}
                   />
-                  <div className="text-xs text-gmv-muted">{fmtRmb(row.gmvRmb)}</div>
                 </Td>
                 <Td className="text-xs">
                   {row.maDonHang || "—"}
@@ -273,11 +353,25 @@ export default function SoDoanhThuTab() {
                     onBlur={(e) => e.target.value !== row.note && patchField(row, { note: e.target.value })}
                   />
                 </Td>
+                <Td>
+                  {row.loaiNhap === "tay" ? (
+                    <Button
+                      variant="danger"
+                      size="sm"
+                      disabled={deletingId === row.id}
+                      onClick={() => handleDelete(row)}
+                    >
+                      {deletingId === row.id ? "…" : "Xóa"}
+                    </Button>
+                  ) : (
+                    <span className="text-gmv-muted">—</span>
+                  )}
+                </Td>
               </Tr>
             ))}
           </tbody>
         </Table>
-      </TableWrap>
+      </TableScrollWrap>
     </div>
   );
 }
