@@ -91,45 +91,78 @@ function InlinePaymentCard({
     } catch { return null; }
   }
 
-  async function blobFromCanvas(): Promise<Blob | null> {
+  // Tạo ảnh tổng hợp: QR + nội dung chuyển khoản bên dưới
+  async function buildCompositeBlob(): Promise<Blob | null> {
     const img = imgRef.current;
     if (!img || !img.complete || img.naturalWidth === 0) return null;
     try {
+      const pad = 20;
+      const textAreaH = 64;
+      const qrW = img.naturalWidth;
+      const qrH = img.naturalHeight;
       const canvas = document.createElement("canvas");
-      canvas.width = img.naturalWidth;
-      canvas.height = img.naturalHeight;
+      canvas.width = qrW + pad * 2;
+      canvas.height = qrH + textAreaH + pad * 2;
       const ctx = canvas.getContext("2d");
       if (!ctx) return null;
-      ctx.drawImage(img, 0, 0);
-      return await new Promise<Blob | null>((resolve) => canvas.toBlob((b) => resolve(b), "image/png"));
+
+      // Nền trắng
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      // QR image
+      ctx.drawImage(img, pad, pad, qrW, qrH);
+
+      // Đường kẻ phân cách
+      ctx.strokeStyle = "#e5e7eb";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(pad, qrH + pad + 10);
+      ctx.lineTo(canvas.width - pad, qrH + pad + 10);
+      ctx.stroke();
+
+      // Label nhỏ
+      ctx.fillStyle = "#6b7280";
+      ctx.font = "13px sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillText("Nội dung chuyển khoản:", canvas.width / 2, qrH + pad + 30);
+
+      // infoCode nổi bật
+      ctx.fillStyle = "#d97706";
+      ctx.font = "bold 18px monospace";
+      ctx.textAlign = "center";
+      ctx.fillText(infoCode, canvas.width / 2, qrH + pad + 55);
+
+      return await new Promise<Blob | null>((resolve) =>
+        canvas.toBlob((b) => resolve(b), "image/png")
+      );
     } catch { return null; }
   }
 
   async function handleCopyQr() {
+    const composite = await buildCompositeBlob();
+    const blobToUse = composite || null;
+    if (!blobToUse) {
+      flash({ kind: "err", msg: "Không lấy được ảnh QR. Thử chụp màn hình." });
+      return;
+    }
+
     const supports =
       typeof window !== "undefined" &&
       typeof window.ClipboardItem !== "undefined" &&
       !!navigator.clipboard?.write;
     if (supports) {
       try {
-        const item = new window.ClipboardItem({
-          "image/png": (async () => {
-            const blob = (await fetchQrBlob()) || (await blobFromCanvas());
-            if (!blob) throw new Error("no-blob");
-            return blob;
-          })(),
-        });
-        await navigator.clipboard.write([item]);
+        await navigator.clipboard.write([
+          new window.ClipboardItem({ "image/png": blobToUse }),
+        ]);
         flash({ kind: "ok" });
         return;
-      } catch { /* fall through */ }
+      } catch { /* fall through to download */ }
     }
-    const blob = (await fetchQrBlob()) || (await blobFromCanvas());
-    if (!blob) {
-      flash({ kind: "err", msg: "Không lấy được ảnh QR. Thử chụp màn hình." });
-      return;
-    }
-    const url = URL.createObjectURL(blob);
+
+    // Fallback: tải file xuống
+    const url = URL.createObjectURL(blobToUse);
     const a = document.createElement("a");
     a.href = url;
     a.download = `QR-${maDonHang}.png`;
