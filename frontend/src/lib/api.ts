@@ -120,6 +120,16 @@ export const endpoints = {
     pivot: (params?: { from?: string; to?: string; team?: string }) =>
       api.get<RevenuePivotResponse>("/revenue/pivot", { params }),
   },
+  crmData: {
+    tokenStatus: () =>
+      api.get<{ hasToken: boolean; updatedAt: string | null }>("/crm/token-status"),
+    exportMaster: (startDate: string, endDate: string) =>
+      api.get<Blob>("/crm/export-master", {
+        params: { start_date: startDate, end_date: endDate },
+        responseType: "blob",
+        timeout: 120_000,
+      }),
+  },
   me: {
     get: () => api.get("/me"),
     patch: (body: {
