@@ -5,18 +5,8 @@ import Button from "./ui/Button";
 import Badge from "./ui/Badge";
 import { Table, TableWrap, Td, Th, Tr } from "./ui/Table";
 
-const STATUS_DONE = ["CHO_XUAT_HD", "DA_XUAT_HD"];
-
-function downloadBlob(blob: Blob, filename: string) {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(url);
-}
+const STATUS_APPROVED = ["CHO_XUAT_HD", "DA_XUAT_HD"]; // đã qua bước xuất từng dòng
+const STATUS_FULLY_DONE = "DA_XUAT_HD";                // đã xuất hóa đơn xong hoàn toàn
 
 function fmtMoney(n: number) {
   return new Intl.NumberFormat("vi-VN").format(n) + " ₫";
@@ -58,6 +48,8 @@ export default function Module3Tab() {
   const [saveOk, setSaveOk] = useState<Record<string, boolean>>({});
   const [exportingBatch, setExportingBatch] = useState(false);
   const [confirmBatchExport, setConfirmBatchExport] = useState(false);
+  const [savingBulk, setSavingBulk] = useState(false);
+  const [confirmBulkSave, setConfirmBulkSave] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -124,31 +116,47 @@ export default function Module3Tab() {
     setExportingBatch(true);
     setError("");
     try {
-      // Bước 1: bulk-approve tất cả đơn đang CHO_XAC_NHAN → CHO_XUAT_HD
-      const waitingToApprove = orders.filter((o) => o.trangThaiThuTuc === "CHO_XAC_NHAN");
-      if (waitingToApprove.length > 0) {
-        await endpoints.invoice.approveBulk();
-      }
-      // Bước 2: xuất hóa đơn hàng loạt → tải ZIP
-      const res = await endpoints.invoice.exportBatch();
-      const blob = res.data;
-      const disposition = (res as unknown as { headers?: Record<string, string> }).headers?.["content-disposition"] ?? "";
-      const match = disposition.match(/filename="([^"]+)"/);
-      const filename = match?.[1] ?? `hoa_don_thue_${new Date().toISOString().slice(0, 10).replace(/-/g, "")}.zip`;
-      downloadBlob(blob, filename);
+      await endpoints.invoice.approveBulk();
       await load();
     } catch (e: unknown) {
       const msg = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-      setError(msg || "Xuất hóa đơn hàng loạt thất bại. Vui lòng thử lại.");
+      setError(msg || "Xuất hàng loạt thất bại. Vui lòng thử lại.");
     } finally {
       setExportingBatch(false);
     }
   }
 
-  const pending = orders.filter((o) => !STATUS_DONE.includes(o.trangThaiThuTuc));
-  const done = orders.filter((o) => STATUS_DONE.includes(o.trangThaiThuTuc));
-  // Đơn "còn xuất được" = CHO_XAC_NHAN + CHO_XUAT_HD (chưa hoàn tất DA_XUAT_HD)
-  const exportableOrders = orders.filter((o) => o.trangThaiThuTuc !== "DA_XUAT_HD");
+  async function handleBulkSave() {
+    setConfirmBulkSave(false);
+    setSavingBulk(true);
+    setError("");
+    const targets = orders.filter((o) => o.trangThaiThuTuc !== STATUS_FULLY_DONE);
+    const errors: string[] = [];
+    for (const o of targets) {
+      try {
+        const crmVal = crmEdits[o.id] ?? o.crmOrderId ?? "";
+        await endpoints.invoice.saveM3CrmId(o.id, crmVal);
+        setOrders((prev) =>
+          prev.map((x) => x.id === o.id ? { ...x, crmOrderId: crmVal } : x)
+        );
+        setSaveOk((p) => ({ ...p, [o.id]: true }));
+        setTimeout(() => setSaveOk((p) => ({ ...p, [o.id]: false })), 2500);
+      } catch {
+        errors.push(o.maDonHang);
+      }
+    }
+    if (errors.length > 0) {
+      setError(`Lưu thất bại: ${errors.join(", ")}`);
+    }
+    setSavingBulk(false);
+  }
+
+  // pending = CHO_XAC_NHAN (chưa xuất sang Tab 4)
+  const pending = orders.filter((o) => !STATUS_APPROVED.includes(o.trangThaiThuTuc));
+  // done = CHO_XUAT_HD + DA_XUAT_HD (đã xuất sang Tab 4 hoặc đã hoàn tất)
+  const done = orders.filter((o) => STATUS_APPROVED.includes(o.trangThaiThuTuc));
+  // saveable = tất cả đơn chưa DA_XUAT_HD (có thể vẫn sửa CRM ID)
+  const saveable = orders.filter((o) => o.trangThaiThuTuc !== STATUS_FULLY_DONE);
   const sorted = [...pending, ...done];
 
   return (
@@ -162,14 +170,41 @@ export default function Module3Tab() {
             (TT tiền về được confirm).
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <Button variant="secondary" size="sm" onClick={load} disabled={loading || exportingBatch}>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button variant="secondary" size="sm" onClick={load} disabled={loading || exportingBatch || savingBulk}>
             {loading ? "Đang tải…" : "Làm mới"}
+          </Button>
+          <Button
+            variant="secondary"
+            size="md"
+            disabled={saveable.length === 0 || savingBulk || exportingBatch || loading}
+            onClick={() => setConfirmBulkSave(true)}
+          >
+            {savingBulk ? (
+              <>
+                <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+                </svg>
+                Đang lưu…
+              </>
+            ) : (
+              <>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v14a2 2 0 0 1-2 2z" />
+                  <polyline points="17 21 17 13 7 13 7 21" />
+                  <polyline points="7 3 7 8 15 8" />
+                </svg>
+                Lưu hàng loạt
+                {saveable.length > 0 && (
+                  <Badge tone="primary" className="ml-1">{saveable.length}</Badge>
+                )}
+              </>
+            )}
           </Button>
           <Button
             variant="primary"
             size="md"
-            disabled={exportableOrders.length === 0 || exportingBatch || loading}
+            disabled={pending.length === 0 || exportingBatch || loading}
             onClick={() => setConfirmBatchExport(true)}
             className="font-bold"
           >
@@ -183,13 +218,11 @@ export default function Module3Tab() {
             ) : (
               <>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                  <polyline points="7 10 12 15 17 10" />
-                  <line x1="12" y1="15" x2="12" y2="3" />
+                  <path d="M5 12h14M12 5l7 7-7 7" />
                 </svg>
-                Xuất hóa đơn hàng loạt
-                {exportableOrders.length > 0 && (
-                  <Badge tone="ok" className="ml-1">{exportableOrders.length}</Badge>
+                Xuất hàng loạt
+                {pending.length > 0 && (
+                  <Badge tone="ok" className="ml-1">{pending.length}</Badge>
                 )}
               </>
             )}
@@ -197,23 +230,41 @@ export default function Module3Tab() {
         </div>
       </div>
 
+      {/* Confirm bulk save dialog */}
+      {confirmBulkSave && (
+        <div className="rounded-gmv-md border border-gmv-border bg-gmv-canvas px-4 py-3">
+          <p className="mb-2 text-sm font-semibold text-gmv-text-strong">
+            Lưu thông tin hàng loạt cho {pending.length} đơn?
+          </p>
+          <p className="mb-3 text-xs text-gmv-muted">
+            Hệ thống sẽ lưu ID CRM Order hiện tại trong ô nhập của{" "}
+            <strong>{saveable.length} đơn</strong> chưa hoàn tất.
+            Các đơn để trống sẽ được lưu với giá trị rỗng.
+          </p>
+          <div className="flex gap-2">
+            <Button variant="primary" size="sm" onClick={handleBulkSave}>
+              Xác nhận — Lưu tất cả
+            </Button>
+            <Button variant="secondary" size="sm" onClick={() => setConfirmBulkSave(false)}>
+              Hủy
+            </Button>
+          </div>
+        </div>
+      )}
+
       {/* Confirm batch export dialog */}
       {confirmBatchExport && (
         <div className="rounded-gmv-md border border-gmv-primary/30 bg-gmv-primary-soft px-4 py-3">
           <p className="mb-2 text-sm font-semibold text-gmv-text-strong">
-            Xác nhận xuất hóa đơn hàng loạt cho {exportableOrders.length} đơn?
+            Xuất {pending.length} đơn sang hàng đợi Tab 4?
           </p>
           <p className="mb-3 text-xs text-gmv-muted">
-            {pending.length > 0 && (
-              <><strong>{pending.length} đơn</strong> đang chờ xác nhận sẽ được tự động duyệt qua M3.{" "}</>
-            )}
-            Hệ thống sẽ cấp mã <strong>M...</strong> và <strong>PF...</strong> cho toàn bộ{" "}
-            <strong>{exportableOrders.length} đơn</strong> chưa xuất.
-            Thao tác này <strong>không thể hoàn tác</strong>.
+            <strong>{pending.length} đơn</strong> đang chờ xác nhận sẽ được chuyển sang trạng thái{" "}
+            <strong>Chờ xuất HD</strong> và xuất hiện trong Tab 4 để tải hóa đơn.
           </p>
           <div className="flex gap-2">
             <Button variant="primary" size="sm" onClick={handleBatchExport}>
-              Xác nhận — Tải xuống ZIP
+              Xác nhận — Xuất hàng loạt
             </Button>
             <Button variant="secondary" size="sm" onClick={() => setConfirmBatchExport(false)}>
               Hủy
@@ -263,7 +314,8 @@ export default function Module3Tab() {
             </thead>
             <tbody>
               {sorted.map((o) => {
-                const isDone = STATUS_DONE.includes(o.trangThaiThuTuc);
+                const isFullyDone = o.trangThaiThuTuc === STATUS_FULLY_DONE;
+                const isApproved = STATUS_APPROVED.includes(o.trangThaiThuTuc);
                 const isSaving = saving[o.id] ?? false;
                 const isExporting = exporting[o.id] ?? false;
                 const didSave = saveOk[o.id] ?? false;
@@ -271,10 +323,10 @@ export default function Module3Tab() {
                 const isDirty = crmVal !== (o.crmOrderId || "");
 
                 return (
-                  <Tr key={o.id} className={isDone ? "opacity-60" : ""}>
-                    {/* ID đơn hàng từ CRM — chỉ edit khi chưa done */}
+                  <Tr key={o.id} className={isFullyDone ? "opacity-60" : ""}>
+                    {/* ID đơn hàng từ CRM — chỉ edit khi chưa DA_XUAT_HD */}
                     <Td className="text-left">
-                      {isDone ? (
+                      {isFullyDone ? (
                         <span className="font-mono text-xs text-gmv-muted">{o.crmOrderId || "—"}</span>
                       ) : (
                         <input
@@ -314,9 +366,9 @@ export default function Module3Tab() {
                       {fmtMoney(o.tongTien)}
                     </Td>
 
-                    {/* Thao tác — Lưu thông tin */}
+                    {/* Thao tác — Lưu thông tin (ẩn khi DA_XUAT_HD) */}
                     <Td className="text-center">
-                      {isDone ? null : (
+                      {isFullyDone ? null : (
                         <Button
                           size="sm"
                           variant={didSave ? "secondary" : isDirty ? "primary" : "secondary"}
@@ -329,9 +381,9 @@ export default function Module3Tab() {
                       )}
                     </Td>
 
-                    {/* Xuất hóa đơn */}
+                    {/* Xuất hóa đơn (từng dòng) */}
                     <Td className="text-center">
-                      {isDone ? (
+                      {isApproved ? (
                         <StatusBadge status={o.trangThaiThuTuc} />
                       ) : (
                         <button

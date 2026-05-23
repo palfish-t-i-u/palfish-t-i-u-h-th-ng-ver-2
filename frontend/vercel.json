@@ -7,6 +7,10 @@
   },
   "rewrites": [
     {
+      "source": "/webhook/payos",
+      "destination": "https://jozcvbbypwvzaefteoxn.supabase.co/functions/v1/payos-webhook"
+    },
+    {
       "source": "/api/:path*",
       "destination": "https://palfish-gmv-api.onrender.com/:path*"
     },
