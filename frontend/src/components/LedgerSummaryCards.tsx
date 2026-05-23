@@ -1,32 +1,28 @@
 import { useMemo } from "react";
 import { formatVndNumber } from "../lib/vndFormat";
+import {
+  computeSourceBuckets,
+  formatSourceLabel,
+} from "../lib/ledgerSource";
 import type { RevenueLedgerRow } from "../types/revenue";
 import { cn } from "../lib/cn";
 
 export interface LedgerSummary {
   totalGmvVnd: number;
   orderCount: number;
-  byLoai: { loai: string; gmvVnd: number; count: number }[];
+  bySource: ReturnType<typeof computeSourceBuckets>;
 }
 
 export function computeLedgerSummary(rows: RevenueLedgerRow[]): LedgerSummary {
   let totalGmvVnd = 0;
-  const loaiMap = new Map<string, { gmvVnd: number; count: number }>();
-
   for (const row of rows) {
     totalGmvVnd += row.soTienVnd || 0;
-    const key = (row.loai || "").trim() || "(Chưa phân loại)";
-    const cur = loaiMap.get(key) ?? { gmvVnd: 0, count: 0 };
-    cur.gmvVnd += row.soTienVnd || 0;
-    cur.count += 1;
-    loaiMap.set(key, cur);
   }
-
-  const byLoai = [...loaiMap.entries()]
-    .map(([loai, v]) => ({ loai, ...v }))
-    .sort((a, b) => b.gmvVnd - a.gmvVnd);
-
-  return { totalGmvVnd, orderCount: rows.length, byLoai };
+  return {
+    totalGmvVnd,
+    orderCount: rows.length,
+    bySource: computeSourceBuckets(rows),
+  };
 }
 
 function StatCard({
@@ -34,16 +30,19 @@ function StatCard({
   value,
   sub,
   className,
+  muted,
 }: {
   label: string;
   value: string;
   sub?: string;
   className?: string;
+  muted?: boolean;
 }) {
   return (
     <div
       className={cn(
         "rounded-gmv-lg border border-gmv-border bg-gmv-canvas px-4 py-3 shadow-gmv-1",
+        muted && "opacity-60",
         className
       )}
     >
@@ -87,28 +86,22 @@ export default function LedgerSummaryCards({
         <StatCard
           label="Tổng GMV"
           value={`${formatVndNumber(summary.totalGmvVnd) || "0"} ₫`}
-          sub={`${summary.orderCount} đơn`}
         />
-        <StatCard
-          label="Số đơn"
-          value={String(summary.orderCount)}
-          sub={summary.orderCount > 0 ? `${summary.byLoai.length} loại doanh thu` : undefined}
-        />
+        <StatCard label="Số đơn" value={String(summary.orderCount)} />
       </div>
 
-      {summary.byLoai.length > 0 && (
-        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {summary.byLoai.map(({ loai, gmvVnd, count }) => (
-            <StatCard
-              key={loai}
-              label={loai}
-              value={`${formatVndNumber(gmvVnd) || "0"} ₫`}
-              sub={`${count} đơn`}
-              className="py-2.5"
-            />
-          ))}
-        </div>
-      )}
+      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8">
+        {summary.bySource.map(({ source, gmvVnd, count }) => (
+          <StatCard
+            key={source}
+            label={formatSourceLabel(source)}
+            value={`${formatVndNumber(gmvVnd) || "0"} ₫`}
+            sub={`${count} đơn`}
+            className="py-2.5"
+            muted={count === 0}
+          />
+        ))}
+      </div>
     </div>
   );
 }
