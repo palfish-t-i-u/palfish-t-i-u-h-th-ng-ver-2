@@ -9,6 +9,7 @@ import Module4Tab from "../components/Module4Tab";
 import SoDoanhThuTab from "../components/SoDoanhThuTab";
 import DoanhThuSaleTab from "../components/DoanhThuSaleTab";
 import Module5Tab from "../components/Module5Tab";
+import Module6Tab from "../components/Module6Tab";
 import { useAuth } from "../hooks/useAuth";
 import { useMe } from "../hooks/useMe";
 import { endpoints } from "../lib/api";
@@ -27,6 +28,7 @@ type ViewId =
   | "revenueLedger"
   | "revenuePivot"
   | "module5"
+  | "module6"
   | "staffCrm"
   | "authAccounts";
 
@@ -120,6 +122,7 @@ const TITLES: Record<ViewId, { title: string; subtitle?: string }> = {
   revenueLedger: { title: "Sổ doanh thu", subtitle: "Ghi từng khoản thu — tự động (M3) + điền tay" },
   revenuePivot: { title: "Doanh thu Sale", subtitle: "Tổng GMV (RMB) theo team × sale × tháng" },
   module5: { title: "Đồng bộ CRM", subtitle: "M5 — Lấy & xuất Master Data CRM PalFish" },
+  module6: { title: "Dashboard Sale", subtitle: "M6 — Tổng quan hiệu suất theo team & cá nhân" },
   staffCrm: { title: "Nhân sự Sale", subtitle: "Master data Metabase — gán role / team" },
   authAccounts: { title: "Tài khoản Auth", subtitle: "Supabase Auth — khoá/mở account" },
 };
@@ -229,6 +232,11 @@ export default function MainPage() {
           label: "Đồng bộ CRM",
           icon: I.database,
           section: "Dữ liệu",
+        },
+        {
+          id: "module6",
+          label: "Dashboard Sale",
+          icon: I.chart,
         }
       );
     }
@@ -309,6 +317,11 @@ export default function MainPage() {
       {showInvoice && (
         <div style={{ display: activeView === "module5" ? "block" : "none" }}>
           <Module5Tab />
+        </div>
+      )}
+      {showInvoice && (
+        <div style={{ display: activeView === "module6" ? "block" : "none" }}>
+          <Module6Tab />
         </div>
       )}
       {showStaffCrm && (
