@@ -7,7 +7,19 @@ import type { Order } from "../types/order";
 import { Button } from "./ui";
 import Badge from "./ui/Badge";
 import Modal from "./ui/Modal";
-import { TableWrap, Table, Th, Td, Tr } from "./ui/Table";
+import {
+  TableScrollWrap,
+  Table,
+  Th,
+  Td,
+  Tr,
+  stickyTableCell,
+  stickyTableCellRight,
+  stickyTableHead,
+  stickyTableHeadCorner,
+  stickyTableHeadRight,
+  stickyTableHeadTop,
+} from "./ui/Table";
 import { cn } from "../lib/cn";
 
 interface Props {
@@ -177,24 +189,57 @@ export default function Tab2Table({
         />
       </div>
 
-      <TableWrap>
-        <Table className="min-w-[1300px]">
+      <TableScrollWrap>
+        <Table className="min-w-[1600px]">
           <thead>
             <tr>
-              <Th>STT</Th>
-              <Th>Mã đơn</Th>
-              <Th>UID</Th>
-              <Th>Tên khách</Th>
-              <Th>Số điện thoại</Th>
-              <Th>Gói học</Th>
-              <Th>Tổng tiền</Th>
-              <Th>Nguồn</Th>
-              <Th>Nội dung CK (Info Code)</Th>
-              <Th>TT Tiền về</Th>
-              <Th>TT CRM</Th>
-              <Th>Địa chỉ</Th>
-              <Th>Biên lai</Th>
-              <Th>Hành động</Th>
+              <Th className={cn(stickyTableHead, stickyTableHeadTop, stickyTableHeadCorner, "left-0 w-12 min-w-[3rem]")}>
+                STT
+              </Th>
+              <Th
+                className={cn(stickyTableHead, stickyTableHeadTop, stickyTableHeadCorner, "left-12 w-24 min-w-[6rem]")}
+              >
+                Mã đơn
+              </Th>
+              <Th
+                className={cn(
+                  stickyTableHead,
+                  stickyTableHeadTop,
+                  stickyTableHeadCorner,
+                  "left-36 w-28 min-w-[7rem] shadow-[4px_0_6px_-2px_rgba(0,0,0,0.1)]"
+                )}
+              >
+                UID
+              </Th>
+              <Th className={cn("sticky z-30", stickyTableHeadTop, "min-w-[7rem]")}>Tên khách</Th>
+              <Th className={cn("sticky z-30", stickyTableHeadTop, "min-w-[8.5rem]")}>Số điện thoại</Th>
+              <Th className={cn("sticky z-30", stickyTableHeadTop, "min-w-[12rem]")}>Gói học</Th>
+              <Th className={cn("sticky z-30", stickyTableHeadTop, "min-w-[6.5rem]")}>Tổng tiền</Th>
+              <Th className={cn("sticky z-30", stickyTableHeadTop, "min-w-[5.5rem]")}>Nguồn</Th>
+              <Th className={cn("sticky z-30", stickyTableHeadTop, "min-w-[11rem]")}>Nội dung CK (Info Code)</Th>
+              <Th className={cn("sticky z-30", stickyTableHeadTop, "min-w-[5rem]")}>TT Tiền về</Th>
+              <Th className={cn("sticky z-30", stickyTableHeadTop, "min-w-[4.5rem]")}>TT CRM</Th>
+              <Th className={cn("sticky z-30", stickyTableHeadTop, "min-w-[10rem]")}>Địa chỉ</Th>
+              <Th
+                className={cn(
+                  stickyTableHeadRight,
+                  stickyTableHeadTop,
+                  stickyTableHeadCorner,
+                  "right-[8.25rem] w-[7.5rem] min-w-[7.5rem]"
+                )}
+              >
+                Biên lai
+              </Th>
+              <Th
+                className={cn(
+                  stickyTableHeadRight,
+                  stickyTableHeadTop,
+                  stickyTableHeadCorner,
+                  "right-0 w-[8.25rem] min-w-[8.25rem] shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.1)]"
+                )}
+              >
+                Hành động
+              </Th>
             </tr>
           </thead>
           <tbody>
@@ -210,13 +255,17 @@ export default function Tab2Table({
                 const tongTienFmt = o.tongTien > 0 ? `${o.tongTien.toLocaleString("vi-VN")} đ` : "";
                 const isCancelled = o.trangThai === "huy";
 
+                const rowBg = isCancelled ? "bg-gmv-bg" : "bg-gmv-canvas";
+                const stickyCell = cn(stickyTableCell, rowBg, "group-hover:bg-gmv-row-hover");
+                const stickyCellRight = cn(stickyTableCellRight, rowBg, "group-hover:bg-gmv-row-hover");
+
                 return (
                   <Tr
                     key={o.id}
                     className={cn(isCancelled && "opacity-55 line-through bg-gmv-bg")}
                   >
-                    <Td>{idx + 1}</Td>
-                    <Td className="font-bold">
+                    <Td className={cn(stickyCell, "left-0 w-12 min-w-[3rem]")}>{idx + 1}</Td>
+                    <Td className={cn(stickyCell, "left-12 w-24 min-w-[6rem] font-bold")}>
                       {o.maDonHang}
                       {isCancelled && (
                         <Badge tone="danger" className="ml-1 normal-case no-underline">
@@ -224,12 +273,23 @@ export default function Tab2Table({
                         </Badge>
                       )}
                     </Td>
-                    <Td className="text-left">{o.uid || "—"}</Td>
-                    <Td className="text-left">{o.tenKhach}</Td>
-                    <Td>{o.sdt || "—"}</Td>
-                    <Td className="text-left">{o.goiHoc || "—"}</Td>
-                    <Td className="text-right font-bold text-gmv-warn">{tongTienFmt}</Td>
-                    <Td>
+                    <Td
+                      className={cn(
+                        stickyCell,
+                        "left-36 w-28 min-w-[7rem] text-left shadow-[4px_0_6px_-2px_rgba(0,0,0,0.08)]"
+                      )}
+                    >
+                      {o.uid || "—"}
+                    </Td>
+                    <Td className="min-w-[7rem] text-left group-hover:bg-gmv-row-hover">{o.tenKhach}</Td>
+                    <Td className="min-w-[8.5rem] whitespace-nowrap group-hover:bg-gmv-row-hover">
+                      {o.sdt || "—"}
+                    </Td>
+                    <Td className="min-w-[12rem] text-left group-hover:bg-gmv-row-hover">{o.goiHoc || "—"}</Td>
+                    <Td className="min-w-[6.5rem] text-right font-bold text-gmv-warn group-hover:bg-gmv-row-hover">
+                      {tongTienFmt}
+                    </Td>
+                    <Td className="min-w-[5.5rem] group-hover:bg-gmv-row-hover">
                       {o.nguon ? (
                         <Badge tone="ok" className="normal-case">
                           {o.nguon}
@@ -238,12 +298,12 @@ export default function Tab2Table({
                         "—"
                       )}
                     </Td>
-                    <Td>
+                    <Td className="min-w-[11rem] group-hover:bg-gmv-row-hover">
                       <span className="inline-block whitespace-nowrap rounded-gmv-sm border border-gmv-primary/30 bg-gmv-primary-soft px-1.5 py-0.5 text-xs font-bold text-gmv-primary">
                         {o.infoCode}
                       </span>
                     </Td>
-                    <Td>
+                    <Td className="min-w-[5rem] group-hover:bg-gmv-row-hover">
                       <input
                         type="checkbox"
                         className="h-[18px] w-[18px] disabled:cursor-not-allowed disabled:opacity-50"
@@ -257,7 +317,7 @@ export default function Tab2Table({
                         onChange={(e) => handleTienVeChange(o, e.target.checked, operatorRole)}
                       />
                     </Td>
-                    <Td>
+                    <Td className="min-w-[4.5rem] group-hover:bg-gmv-row-hover">
                       <input
                         type="checkbox"
                         className="h-[18px] w-[18px] disabled:cursor-not-allowed disabled:opacity-50"
@@ -266,8 +326,12 @@ export default function Tab2Table({
                         onChange={(e) => handleDonCRMChange(o, e.target.checked, operatorRole)}
                       />
                     </Td>
-                    <Td className="max-w-[220px] text-left text-xs">{o.diaChi || "—"}</Td>
-                    <Td>
+                    <Td className="min-w-[10rem] text-left text-xs group-hover:bg-gmv-row-hover">
+                      {o.diaChi || "—"}
+                    </Td>
+                    <Td
+                      className={cn(stickyCellRight, "right-[8.25rem] w-[7.5rem] min-w-[7.5rem]")}
+                    >
                       <input
                         type="file"
                         accept="image/*"
@@ -298,7 +362,12 @@ export default function Tab2Table({
                         {uploading === o.id ? "Đang tải..." : o.billImage ? "Xem ảnh" : "Up ảnh bill"}
                       </Button>
                     </Td>
-                    <Td>
+                    <Td
+                      className={cn(
+                        stickyCellRight,
+                        "right-0 w-[8.25rem] min-w-[8.25rem] shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.08)]"
+                      )}
+                    >
                       <div className="flex flex-wrap justify-center gap-1.5">
                         <Button
                           type="button"
@@ -334,7 +403,7 @@ export default function Tab2Table({
             )}
           </tbody>
         </Table>
-      </TableWrap>
+      </TableScrollWrap>
 
       <div className="mt-5 text-xs leading-relaxed text-gmv-muted">
         <strong className="text-gmv-text-strong">* Ghi chú:</strong>

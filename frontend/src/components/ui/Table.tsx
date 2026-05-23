@@ -3,11 +3,42 @@ import { cn } from "../../lib/cn";
 
 export function TableWrap({ children, className }: HTMLAttributes<HTMLDivElement>) {
   return (
-    <div className={cn("w-full overflow-x-auto rounded-gmv-md border border-gmv-border bg-gmv-canvas shadow-gmv-1", className)}>
+    <div
+      className={cn(
+        "w-full overflow-x-auto rounded-gmv-md border border-gmv-border bg-gmv-canvas shadow-gmv-1",
+        className
+      )}
+    >
       {children}
     </div>
   );
 }
+
+/** Tab 2 — scroll ngang + dọc trong vùng bảng, mini scrollbar. */
+export function TableScrollWrap({ children, className }: HTMLAttributes<HTMLDivElement>) {
+  return (
+    <div
+      className={cn(
+        "gmv-table-scroll w-full max-h-[min(70vh,calc(100svh-14rem))] overflow-auto rounded-gmv-md border border-gmv-border bg-gmv-canvas shadow-gmv-1 [scrollbar-gutter:stable]",
+        className
+      )}
+    >
+      {children}
+    </div>
+  );
+}
+
+/** Freeze cột trái/phải + header khi scroll (Tab 2). */
+export const stickyTableHead =
+  "sticky z-30 bg-gmv-table-head shadow-[2px_0_4px_-2px_rgba(0,0,0,0.08)]";
+export const stickyTableHeadTop = "top-0";
+export const stickyTableHeadCorner = "z-40";
+export const stickyTableCell =
+  "sticky z-20 bg-gmv-canvas shadow-[2px_0_4px_-2px_rgba(0,0,0,0.06)]";
+export const stickyTableHeadRight =
+  "sticky z-30 bg-gmv-table-head shadow-[-2px_0_4px_-2px_rgba(0,0,0,0.08)]";
+export const stickyTableCellRight =
+  "sticky z-20 bg-gmv-canvas shadow-[-2px_0_4px_-2px_rgba(0,0,0,0.06)]";
 
 export function Table({ children, className, ...rest }: TableHTMLAttributes<HTMLTableElement>) {
   return (
@@ -47,7 +78,7 @@ export function Td({ children, className, ...rest }: TdHTMLAttributes<HTMLTableC
 
 export function Tr({ children, className, ...rest }: HTMLAttributes<HTMLTableRowElement>) {
   return (
-    <tr className={cn("hover:[&>td]:bg-gmv-row-hover", className)} {...rest}>
+    <tr className={cn("group hover:[&>td]:bg-gmv-row-hover", className)} {...rest}>
       {children}
     </tr>
   );

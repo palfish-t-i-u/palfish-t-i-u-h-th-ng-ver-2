@@ -1,6 +1,7 @@
 # Cấu hình môi trường (local)
 
-> Deploy production: xem **`docs/DEPLOY.md`**. Task theo dõi: **`docs/TODO.md`**.
+> **Làm UI trên ver-2:** clone `palfish-t-i-u/palfish-t-i-u-h-th-ng-ver-2`, branch `ui/ux-anh-minh` — checklist đổi máy: **`docs/WORKFLOW_UI_UX.md`**.  
+> Deploy production: **`docs/DEPLOY.md`**. Task: **`docs/TODO.md`**.
 
 ## Bước 1 — Schema Supabase
 

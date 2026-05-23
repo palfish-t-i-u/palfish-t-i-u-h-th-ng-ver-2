@@ -33,8 +33,8 @@ Sales (Tab 1) ──► Supabase (khach_hang, don_hang)
 
 - **UI:** Sidebar (`AppShell`), design tokens `#7260ff` (`docs/DESIGN.md`, `components/ui/`); bottom nav mobile; nhóm **Quản lý quyền** → **Nhân sự Sale** + **Tài khoản Auth**
 - Auth: **Google OAuth** (khuyến nghị), magic link, Resend SMTP; **Confirm email** tắt (`AUTH_SETUP.md` §0); redirect localhost trong Supabase Redirect URLs
-- **Tạo đơn:** gợi ý UID (`GET /crm/customers`), tạo đơn, QR + **Copy**
-- **Quản lý đơn:** bảng đơn, up bill, **Hủy đơn** (`POST /orders/{id}/cancel`), tick tiền về/CRM; poll 15s
+- **Tạo đơn (Tab 1):** gợi ý UID, multi UID, đặt cọc, lead kênh, format VND; **Số buổi học** tự tính (`packageParse.ts`); SĐT +84 (9 số, bỏ 0) + whitelist đầu số; QR + **Copy**
+- **Quản lý đơn (Tab 2):** bảng freeze 3 cột trái + 2 cột phải, scroll ngang giữa; up bill, **Hủy đơn**, tick tiền về/CRM; poll 15s
 - **Lịch sử PayOS:** `GET /payos/transactions` — `khop` / `sai_tien` / `chua_xu_ly`
 - **Thông tin cá nhân:** helper ghép CRM vs tên hiển thị (`PATCH /me`)
 - RBAC 4 cấp; nhân sự VN (`vn_staff.py`); `SYSTEM_ADMIN_EMAILS` local + Render
@@ -51,8 +51,7 @@ Sales (Tab 1) ──► Supabase (khach_hang, don_hang)
 - Sync Metabase 24h cron
 - Dashboard Leader (GMV tổng hợp team)
 - CRM auto-activate sau thanh toán
-
-**Loại trừ:** Module xuất 3 file thuế (NH).
+- **Module 3 & 4** — xuất 3 file hóa đơn thuế (spec: **`docs/MODULE_3_4.md`**, SQL: `supabase_schema_patch_v5_invoice.sql`)
 
 ---
 
@@ -92,6 +91,9 @@ pf-gmv-reconciliation/
 │   ├── supabase_schema_patch_v2.sql
 │   ├── supabase_schema_patch_v3.sql
 │   ├── supabase_schema_patch_v4.sql
+│   ├── supabase_schema_patch_v5.sql      # Tab1: dat_coc, lead_kenh, uid_phu
+│   ├── supabase_schema_patch_v5_invoice.sql  # M3/M4 hóa đơn
+│   ├── MODULE_3_4.md                     # Spec triển khai M3/M4 (đọc trước khi code)
 │   ├── supabase_diagnose.sql
 │   └── supabase_storage_setup.md
 ├── scripts/
@@ -108,12 +110,13 @@ pf-gmv-reconciliation/
 | Bảng | Vai trò |
 |------|---------|
 | `khach_hang` | KH: `crm_uid`, địa chỉ, SĐT |
-| `don_hang` | Đơn: `info_code`, `tien_ve`, `bill_image`, `sale_crm_name`, … |
+| `don_hang` | Đơn: `info_code`, `tien_ve`, `bill_image`, `sale_crm_name`, …; M3/M4: `crm_order_id`, `ma_san_pham`, `cho_xuat_hoa_don`, … |
+| `xuat_hoa_don_batch` | Batch xuất 3 file Excel + zip (M4) — sau patch v5_invoice |
 | `giao_dich` | Tiền thật vào bank — khớp `info_code` |
 | `nhan_su_sale` | 149 sale / 15 team — role, team, email link (patch v2) |
 | `don_hang_audit` | Audit log đơn (schema sẵn, chưa ghi từ app) |
 
-Patch (SQL Editor, thứ tự): **v1** → **v2** → **v3** (cột Module 1) → **v4** (`trang_thai` CHECK, `ghi_chu`). Prod đã có v2: chạy **v3** (+ `NOTIFY pgrst, 'reload schema'`). Xem `supabase_diagnose.sql` nếu lỗi cột.
+Patch (SQL Editor, thứ tự): **v1** → **v2** → **v3** → **v4** → **v5** (Tab1 feedback 22/05) → **v5_invoice** (M3/M4). Cuối mỗi patch: `NOTIFY pgrst, 'reload schema'`. Xem `supabase_diagnose.sql` nếu lỗi cột.
 
 ---
 
@@ -132,7 +135,7 @@ Chi tiết: `docs/WIREFRAMES.md`.
 
 ---
 
-## Tiến độ (cập nhật 2026-05-21 — UI refresh + MB VietQR defaults)
+## Tiến độ (cập nhật 2026-05-22 — M3/M4 MVP + test feedback round 2)
 
 ### Hoàn thành
 
@@ -146,6 +149,16 @@ Chi tiết: `docs/WIREFRAMES.md`.
 | Schema prod | v3 + v4 + `NOTIFY pgrst`; `crm_uid`, `created_by`, `bill_image` |
 | PayOS + P3 | Webhook Giang, copy QR, signup Google-first |
 | RBAC + VN staff | `vn_staff.py`; local `SYSTEM_ADMIN_EMAILS` |
+| Module 3 & 4 MVP | `Tab3CRMConfirm`, `Tab4InvoiceQueue`, `invoice_routes`, `tax_export.py` — spec `MODULE_3_4.md` |
+| M3 bulk xuất + parser floor tháng | Toolbar **Xuất hóa đơn**, `queue-batch`, `floor(tuần/4)` |
+
+### Đang chờ / backlog M3-M4
+
+| Hạng mục | Ghi chú |
+|----------|---------|
+| Bucket `tax_exports` (Supabase) | TODO M3-01 |
+| Excel layout merged header như mẫu | TODO M3-05 — `Report/3 file thuế/` |
+| Smoke E2E prod sau deploy round 2 | TODO M34-01 |
 
 ### Đang chờ
 
@@ -218,7 +231,10 @@ Local: `http://localhost:5173` (hoặc 5174/5175 nếu port bận). Cần `SYSTE
 
 ## Liên kết
 
-- GitHub: https://github.com/palfish-t-i-u/palfish-gmv-manager
+- GitHub FE (ver-2, UI/UX): https://github.com/palfish-t-i-u/palfish-t-i-u-h-th-ng-ver-2 — branch `ui/ux-anh-minh`
+- GitHub BE (Render): https://github.com/palfish-t-i-u/palfish-gmv-manager
+- Workflow UI/UX + đổi máy: `docs/WORKFLOW_UI_UX.md`
 - Supabase ref: `jozcvbbypwvzaefteoxn`
 - Task board: `docs/TODO.md`
+- Module 3 & 4 (xuất hóa đơn): `docs/MODULE_3_4.md`
 - UI / tokens: `docs/DESIGN.md`
