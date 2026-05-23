@@ -1,0 +1,14 @@
+.git
+references/
+frontend/node_modules/
+frontend/dist/
+frontend/coverage/
+**/__pycache__/
+**/*.py[cod]
+**/.venv/
+**/venv/
+backend/.env
+api_pipe/.env
+frontend/.env
+frontend/.env.local
+.agents/

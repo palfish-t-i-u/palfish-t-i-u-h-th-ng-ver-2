@@ -1,0 +1,26 @@
+services:
+  - type: web
+    name: palfish-gmv-api
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: .
+    plan: free
+    envVars:
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: FRONTEND_URL
+        sync: false
+      - key: SYSTEM_ADMIN_EMAILS
+        sync: false
+      - key: OPS_EMAILS
+        sync: false
+      - key: PAYOS_CLIENT_ID
+        sync: false
+      - key: PAYOS_API_KEY
+        sync: false
+      - key: PAYOS_CHECKSUM_KEY
+        sync: false
+    healthCheckPath: /healthz
+    autoDeploy: true

@@ -1,0 +1,264 @@
+import { useCallback, useEffect, useMemo, useState } from "react";
+import Tab1Form from "../components/Tab1Form";
+import Tab2Table from "../components/Tab2Table";
+import PayosHistoryTab from "../components/PayosHistoryTab";
+import StaffCRMTab from "../components/StaffCRMTab";
+import AuthAccountsTab from "../components/AuthAccountsTab";
+import Module3Tab from "../components/Module3Tab";
+import Module4Tab from "../components/Module4Tab";
+import { useAuth } from "../hooks/useAuth";
+import { useMe } from "../hooks/useMe";
+import { endpoints } from "../lib/api";
+import ProfilePage from "./ProfilePage";
+import AppShell, { type NavItem } from "../layouts/AppShell";
+import Badge from "../components/ui/Badge";
+import type { Order } from "../types/order";
+
+type ViewId =
+  | "tab1"
+  | "tab2"
+  | "payos"
+  | "profile"
+  | "module3"
+  | "module4"
+  | "staffCrm"
+  | "authAccounts";
+
+const I = {
+  plus: (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <line x1="12" y1="5" x2="12" y2="19" />
+      <line x1="5" y1="12" x2="19" y2="12" />
+    </svg>
+  ),
+  list: (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <line x1="8" y1="6" x2="21" y2="6" />
+      <line x1="8" y1="12" x2="21" y2="12" />
+      <line x1="8" y1="18" x2="21" y2="18" />
+      <line x1="3" y1="6" x2="3.01" y2="6" />
+      <line x1="3" y1="12" x2="3.01" y2="12" />
+      <line x1="3" y1="18" x2="3.01" y2="18" />
+    </svg>
+  ),
+  history: (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 12a9 9 0 1 0 3-6.7L3 8" />
+      <polyline points="3 3 3 8 8 8" />
+      <line x1="12" y1="7" x2="12" y2="12" />
+      <line x1="12" y1="12" x2="15" y2="14" />
+    </svg>
+  ),
+  user: (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+      <circle cx="12" cy="7" r="4" />
+    </svg>
+  ),
+  team: (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+      <circle cx="9" cy="7" r="4" />
+      <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+      <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+    </svg>
+  ),
+  shield: (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+    </svg>
+  ),
+  check: (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M9 11l3 3L22 4" /><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
+    </svg>
+  ),
+  invoice: (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+      <polyline points="14 2 14 8 20 8" />
+      <line x1="16" y1="13" x2="8" y2="13" /><line x1="16" y1="17" x2="8" y2="17" />
+      <polyline points="10 9 9 9 8 9" />
+    </svg>
+  ),
+};
+
+const TITLES: Record<ViewId, { title: string; subtitle?: string }> = {
+  tab1: { title: "Tạo đơn", subtitle: "Tạo đơn hàng mới + sinh Info Code" },
+  tab2: { title: "Quản lý đơn", subtitle: "Theo dõi tiền về, biên lai, CRM" },
+  payos: { title: "Lịch sử PayOS", subtitle: "Giao dịch ngân hàng đã đối soát" },
+  profile: { title: "Thông tin cá nhân" },
+  module3: { title: "Xác nhận CRM", subtitle: "M3 — Điền tên sản phẩm thuế & mã CRM Order" },
+  module4: { title: "Xuất hóa đơn thuế", subtitle: "M4 — Cấp mã M.../PF... và tải file ZIP 3 Excel" },
+  staffCrm: { title: "Nhân sự Sale", subtitle: "Master data Metabase — gán role / team" },
+  authAccounts: { title: "Tài khoản Auth", subtitle: "Supabase Auth — khoá/mở account" },
+};
+
+export default function MainPage() {
+  const { user, signOut, isDevMode } = useAuth();
+  const { profile } = useMe();
+  const [activeView, setActiveView] = useState<ViewId>("tab1");
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [dbExcel, setDbExcel] = useState<{ uid: string; diaChi: string }[]>([]);
+  const [dbFileName, setDbFileName] = useState("");
+  const [loadingOrders, setLoadingOrders] = useState(false);
+
+  const refreshOrders = useCallback(async () => {
+    setLoadingOrders(true);
+    try {
+      const res = await endpoints.orders.list();
+      setOrders(res.data.orders);
+    } catch {
+      console.warn("Không tải được danh sách đơn — backend đang chạy?");
+    } finally {
+      setLoadingOrders(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    refreshOrders();
+  }, [refreshOrders]);
+
+  useEffect(() => {
+    if (activeView !== "tab2") return;
+    const id = window.setInterval(() => refreshOrders(), 15000);
+    return () => window.clearInterval(id);
+  }, [activeView, refreshOrders]);
+
+  useEffect(() => {
+    const onFocus = () => {
+      if (activeView === "tab2") refreshOrders();
+    };
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, [activeView, refreshOrders]);
+
+  function handleOrderCreated(order: Order) {
+    setOrders((prev) => {
+      const exists = prev.some((o) => o.id === order.id);
+      return exists ? prev.map((o) => (o.id === order.id ? order : o)) : [...prev, order];
+    });
+    refreshOrders();
+  }
+
+  function handleOrderUpdated(order: Order) {
+    setOrders((prev) => prev.map((o) => (o.id === order.id ? order : o)));
+  }
+
+  function handleDbLoaded(db: { uid: string; diaChi: string }[], fileName: string) {
+    setDbExcel(db);
+    setDbFileName(`Đã tải: ${fileName} (Chứa ${db.length} dữ liệu UID & Địa chỉ)`);
+  }
+
+  const opsPayment = profile?.canConfirmPayment ?? (isDevMode ? true : false);
+  const showInvoice = profile?.canConfirmPayment ?? isDevMode;
+  const showStaffCrm = profile?.canAccessAdmin ?? isDevMode;
+  const showAuthAccounts = profile?.canManageStaff ?? isDevMode;
+
+  const items: NavItem[] = useMemo(() => {
+    const list: NavItem[] = [
+      { id: "tab1", label: "Tạo đơn", icon: I.plus },
+      {
+        id: "tab2",
+        label: "Quản lý đơn",
+        icon: I.list,
+        badge:
+          orders.length > 0 ? (
+            <Badge tone="primary">{loadingOrders ? "…" : orders.length}</Badge>
+          ) : null,
+      },
+      { id: "payos", label: "Lịch sử PayOS", icon: I.history },
+      { id: "profile", label: "Thông tin cá nhân", icon: I.user },
+    ];
+    if (showInvoice) {
+      list.push(
+        {
+          id: "module3",
+          label: "Xác nhận CRM",
+          icon: I.check,
+          section: "Hóa đơn thuế",
+        },
+        {
+          id: "module4",
+          label: "Xuất hóa đơn",
+          icon: I.invoice,
+        }
+      );
+    }
+    if (showStaffCrm) {
+      list.push({
+        id: "staffCrm",
+        label: "Nhân sự Sale",
+        icon: I.team,
+        section: "Quản lý quyền",
+      });
+    }
+    if (showAuthAccounts) {
+      list.push({
+        id: "authAccounts",
+        label: "Tài khoản Auth",
+        icon: I.shield,
+        section: "Quản lý quyền",
+      });
+    }
+    return list;
+  }, [orders.length, loadingOrders, showInvoice, showStaffCrm, showAuthAccounts]);
+
+  const head = TITLES[activeView];
+
+  return (
+    <AppShell
+      items={items}
+      activeId={activeView}
+      onSelect={(id) => {
+        setActiveView(id as ViewId);
+        if (id === "tab2") refreshOrders();
+      }}
+      title={head.title}
+      subtitle={head.subtitle}
+      userEmail={user?.email || undefined}
+      userRole={profile?.role}
+      isDevMode={isDevMode}
+      onSignOut={signOut}
+    >
+      <div style={{ display: activeView === "tab1" ? "block" : "none" }}>
+        <Tab1Form onOrderCreated={handleOrderCreated} dbExcel={dbExcel} createdBy={user?.email} />
+      </div>
+      <div style={{ display: activeView === "tab2" ? "block" : "none" }}>
+        <Tab2Table
+          orders={orders}
+          onDbLoaded={handleDbLoaded}
+          dbFileName={dbFileName}
+          canConfirmPayment={opsPayment}
+          onOrderUpdated={handleOrderUpdated}
+        />
+      </div>
+      <div style={{ display: activeView === "payos" ? "block" : "none" }}>
+        <PayosHistoryTab />
+      </div>
+      <div style={{ display: activeView === "profile" ? "block" : "none" }}>
+        <ProfilePage />
+      </div>
+      {showInvoice && (
+        <div style={{ display: activeView === "module3" ? "block" : "none" }}>
+          <Module3Tab />
+        </div>
+      )}
+      {showInvoice && (
+        <div style={{ display: activeView === "module4" ? "block" : "none" }}>
+          <Module4Tab />
+        </div>
+      )}
+      {showStaffCrm && (
+        <div style={{ display: activeView === "staffCrm" ? "block" : "none" }}>
+          <StaffCRMTab />
+        </div>
+      )}
+      {showAuthAccounts && (
+        <div style={{ display: activeView === "authAccounts" ? "block" : "none" }}>
+          <AuthAccountsTab />
+        </div>
+      )}
+    </AppShell>
+  );
+}

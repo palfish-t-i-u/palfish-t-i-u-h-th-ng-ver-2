@@ -1,0 +1,2025 @@
+{
+  "generated_at": "2026-05-21T04:28:03.526Z",
+  "source_file": "d:\\File làm việc\\automation\\docs dự án sao kê\\ds gói học và tên sale.xlsx",
+  "logic": "team = depart7 || (depart6 ~ /online/i ? \"HCM (Online)\" : depart6); sub_team = depart8 (Inhouse 1)",
+  "total_sales": 149,
+  "tree": {
+    "Inhouse 2": {
+      "": [
+        {
+          "sale": "Le Thi Thuy Van",
+          "team": "Inhouse 2",
+          "sub_team": "",
+          "depart6": [
+            "HN Inhouse"
+          ],
+          "depart7": [
+            "Inhouse 2"
+          ],
+          "depart8": [],
+          "order_count_2y": 146
+        },
+        {
+          "sale": "Le Hung Cuong",
+          "team": "Inhouse 2",
+          "sub_team": "",
+          "depart6": [
+            "HN Inhouse"
+          ],
+          "depart7": [
+            "Inhouse 2"
+          ],
+          "depart8": [],
+          "order_count_2y": 108
+        },
+        {
+          "sale": "Vu Thi Khanh Huyen",
+          "team": "Inhouse 2",
+          "sub_team": "",
+          "depart6": [
+            "HN Inhouse"
+          ],
+          "depart7": [
+            "Inhouse 2"
+          ],
+          "depart8": [],
+          "order_count_2y": 83
+        },
+        {
+          "sale": "Vu Cam Ly",
+          "team": "Inhouse 2",
+          "sub_team": "",
+          "depart6": [
+            "HN Inhouse"
+          ],
+          "depart7": [
+            "Inhouse 2"
+          ],
+          "depart8": [],
+          "order_count_2y": 82
+        },
+        {
+          "sale": "Nguyen Thi Trang",
+          "team": "Inhouse 2",
+          "sub_team": "",
+          "depart6": [
+            "HN Inhouse"
+          ],
+          "depart7": [
+            "Inhouse 2"
+          ],
+          "depart8": [],
+          "order_count_2y": 78
+        },
+        {
+          "sale": "Kieu Lan Anh",
+          "team": "Inhouse 2",
+          "sub_team": "",
+          "depart6": [
+            "HN Inhouse"
+          ],
+          "depart7": [
+            "Inhouse 2"
+          ],
+          "depart8": [],
+          "order_count_2y": 75
+        },
+        {
+          "sale": "Vu Ho Thanh Huong",
+          "team": "Inhouse 2",
+          "sub_team": "",
+          "depart6": [
+            "HN Inhouse"
+          ],
+          "depart7": [
+            "Inhouse 2"
+          ],
+          "depart8": [],
+          "order_count_2y": 66
+        },
+        {
+          "sale": "Mai Thi Lien",
+          "team": "Inhouse 2",
+          "sub_team": "",
+          "depart6": [
+            "HN Inhouse"
+          ],
+          "depart7": [
+            "Inhouse 2"
+          ],
+          "depart8": [],
+          "order_count_2y": 66
+        },
+        {
+          "sale": "Bui Thi Nga",
+          "team": "Inhouse 2",
+          "sub_team": "",
+          "depart6": [
+            "HN Inhouse"
+          ],
+          "depart7": [
+            "Inhouse 2"
+          ],
+          "depart8": [],
+          "order_count_2y": 60
+        },
+        {
+          "sale": "To Thi Ha",
+          "team": "Inhouse 2",
+          "sub_team": "",
+          "depart6": [
+            "HN Inhouse"
+          ],
+          "depart7": [
+            "Inhouse 2"
+          ],
+          "depart8": [],
+          "order_count_2y": 48
+        },
+        {
+          "sale": "Nguyen Thi Hai Yen",
+          "team": "Inhouse 2",
+          "sub_team": "",
+          "depart6": [
+            "HN Inhouse"
+          ],
+          "depart7": [
+            "Inhouse 2"
+          ],
+          "depart8": [],
+          "order_count_2y": 46
+        },
+        {
+          "sale": "Nguyen Thi Thu Huyen",
+          "team": "Inhouse 2",
+          "sub_team": "",
+          "depart6": [
+            "HN Inhouse"
+          ],
+          "depart7": [
+            "Inhouse 2"
+          ],
+          "depart8": [],
+          "order_count_2y": 45
+        },
+        {
+          "sale": "Ta Thi Thu Phuong",
+          "team": "Inhouse 2",
+          "sub_team": "",
+          "depart6": [
+            "HN Inhouse"
+          ],
+          "depart7": [
+            "Inhouse 2"
+          ],
+          "depart8": [],
+          "order_count_2y": 25
+        },
+        {
+          "sale": "Le Thi Tram",
+          "team": "Inhouse 2",
+          "sub_team": "",
+          "depart6": [
+            "HN Inhouse"
+          ],
+          "depart7": [
+            "Inhouse 2"
+          ],
+          "depart8": [],
+          "order_count_2y": 16
+        },
+        {
+          "sale": "Pham Long Vu",
+          "team": "Inhouse 2",
+          "sub_team": "",
+          "depart6": [
+            "HN Inhouse"
+          ],
+          "depart7": [
+            "Inhouse 2"
+          ],
+          "depart8": [],
+          "order_count_2y": 7
+        },
+        {
+          "sale": "Nguyen Phuong Thao",
+          "team": "Inhouse 2",
+          "sub_team": "",
+          "depart6": [
+            "HN Inhouse"
+          ],
+          "depart7": [
+            "Inhouse 2"
+          ],
+          "depart8": [],
+          "order_count_2y": 4
+        },
+        {
+          "sale": "Le Thuy Quynh",
+          "team": "Inhouse 2",
+          "sub_team": "",
+          "depart6": [
+            "HN Inhouse"
+          ],
+          "depart7": [
+            "Inhouse 2"
+          ],
+          "depart8": [],
+          "order_count_2y": 4
+        },
+        {
+          "sale": "Hoang Thi Hong Tham 1",
+          "team": "Inhouse 2",
+          "sub_team": "",
+          "depart6": [
+            "HN Inhouse"
+          ],
+          "depart7": [
+            "Inhouse 2"
+          ],
+          "depart8": [],
+          "order_count_2y": 2
+        },
+        {
+          "sale": "Bui Thi Hong Nhung",
+          "team": "Inhouse 2",
+          "sub_team": "",
+          "depart6": [
+            "HN Inhouse"
+          ],
+          "depart7": [
+            "Inhouse 2"
+          ],
+          "depart8": [],
+          "order_count_2y": 2
+        },
+        {
+          "sale": "Nguyen Thi Thuy Trang",
+          "team": "Inhouse 2",
+          "sub_team": "",
+          "depart6": [
+            "HN Inhouse"
+          ],
+          "depart7": [
+            "Inhouse 2"
+          ],
+          "depart8": [],
+          "order_count_2y": 1
+        },
+        {
+          "sale": "Pham Thi Ngoc Linh",
+          "team": "Inhouse 2",
+          "sub_team": "",
+          "depart6": [
+            "HN Inhouse"
+          ],
+          "depart7": [
+            "Inhouse 2"
+          ],
+          "depart8": [],
+          "order_count_2y": 1
+        },
+        {
+          "sale": "Nguyen Thi Hoai Linh",
+          "team": "Inhouse 2",
+          "sub_team": "",
+          "depart6": [
+            "HN Inhouse"
+          ],
+          "depart7": [
+            "Inhouse 2"
+          ],
+          "depart8": [],
+          "order_count_2y": 1
+        },
+        {
+          "sale": "Nguyen Ha Giang",
+          "team": "Inhouse 2",
+          "sub_team": "",
+          "depart6": [
+            "HN Inhouse"
+          ],
+          "depart7": [
+            "Inhouse 2"
+          ],
+          "depart8": [],
+          "order_count_2y": 1
+        }
+      ]
+    },
+    "Inhouse 1": {
+      "Team 3": [
+        {
+          "sale": "Ta Thuy Van",
+          "team": "Inhouse 1",
+          "sub_team": "Team 3",
+          "depart6": [
+            "HN Inhouse"
+          ],
+          "depart7": [
+            "Inhouse 1"
+          ],
+          "depart8": [
+            "Team 3"
+          ],
+          "order_count_2y": 830
+        },
+        {
+          "sale": "Pham Thi Thao",
+          "team": "Inhouse 1",
+          "sub_team": "Team 3",
+          "depart6": [
+            "HN Inhouse"
+          ],
+          "depart7": [
+            "Inhouse 1"
+          ],
+          "depart8": [
+            "Team 3"
+          ],
+          "order_count_2y": 310
+        },
+        {
+          "sale": "Nguyen Phuong Thuy",
+          "team": "Inhouse 1",
+          "sub_team": "Team 3",
+          "depart6": [
+            "HN Inhouse"
+          ],
+          "depart7": [
+            "Inhouse 1"
+          ],
+          "depart8": [
+            "Team 3"
+          ],
+          "order_count_2y": 122
+        },
+        {
+          "sale": "Nguyen Thi Hang Nga",
+          "team": "Inhouse 1",
+          "sub_team": "Team 3",
+          "depart6": [
+            "HN Inhouse"
+          ],
+          "depart7": [
+            "Inhouse 1"
+          ],
+          "depart8": [
+            "Team 3"
+          ],
+          "order_count_2y": 112
+        },
+        {
+          "sale": "Dang Kim Thuong",
+          "team": "Inhouse 1",
+          "sub_team": "Team 3",
+          "depart6": [
+            "HN Inhouse"
+          ],
+          "depart7": [
+            "Inhouse 1"
+          ],
+          "depart8": [
+            "Team 3"
+          ],
+          "order_count_2y": 108
+        },
+        {
+          "sale": "Nguyen Thi Huong",
+          "team": "Inhouse 1",
+          "sub_team": "Team 3",
+          "depart6": [
+            "HN Inhouse"
+          ],
+          "depart7": [
+            "Inhouse 1"
+          ],
+          "depart8": [
+            "Team 3"
+          ],
+          "order_count_2y": 9
+        },
+        {
+          "sale": "Do Tran Phuong Anh",
+          "team": "Inhouse 1",
+          "sub_team": "Team 3",
+          "depart6": [
+            "HN Inhouse"
+          ],
+          "depart7": [
+            "Inhouse 1"
+          ],
+          "depart8": [
+            "Team 3"
+          ],
+          "order_count_2y": 2
+        },
+        {
+          "sale": "Do Thi Hang",
+          "team": "Inhouse 1",
+          "sub_team": "Team 3",
+          "depart6": [
+            "HN Inhouse"
+          ],
+          "depart7": [
+            "Inhouse 1"
+          ],
+          "depart8": [
+            "Team 3"
+          ],
+          "order_count_2y": 2
+        },
+        {
+          "sale": "Dang Huyen Trang",
+          "team": "Inhouse 1",
+          "sub_team": "Team 3",
+          "depart6": [
+            "HN Inhouse"
+          ],
+          "depart7": [
+            "Inhouse 1"
+          ],
+          "depart8": [
+            "Team 3"
+          ],
+          "order_count_2y": 1
+        }
+      ],
+      "Sales": [
+        {
+          "sale": "Le To Hai My",
+          "team": "Inhouse 1",
+          "sub_team": "Sales",
+          "depart6": [
+            "HN Inhouse"
+          ],
+          "depart7": [
+            "Inhouse 1"
+          ],
+          "depart8": [
+            "Sales"
+          ],
+          "order_count_2y": 725
+        },
+        {
+          "sale": "Ho Thi Thanh",
+          "team": "Inhouse 1",
+          "sub_team": "Sales",
+          "depart6": [
+            "HN Inhouse"
+          ],
+          "depart7": [
+            "Inhouse 1"
+          ],
+          "depart8": [
+            "Sales"
+          ],
+          "order_count_2y": 667
+        },
+        {
+          "sale": "Bui Thi Thai Duong",
+          "team": "Inhouse 1",
+          "sub_team": "Sales",
+          "depart6": [
+            "HN Inhouse"
+          ],
+          "depart7": [
+            "Inhouse 1"
+          ],
+          "depart8": [
+            "Sales"
+          ],
+          "order_count_2y": 507
+        },
+        {
+          "sale": "Kieu Thi Thu Quynh",
+          "team": "Inhouse 1",
+          "sub_team": "Sales",
+          "depart6": [
+            "HN Inhouse"
+          ],
+          "depart7": [
+            "Inhouse 1"
+          ],
+          "depart8": [
+            "Sales"
+          ],
+          "order_count_2y": 382
+        },
+        {
+          "sale": "Nguyen Ngoc Bao Trang",
+          "team": "Inhouse 1",
+          "sub_team": "Sales",
+          "depart6": [
+            "HN Inhouse"
+          ],
+          "depart7": [
+            "Inhouse 1"
+          ],
+          "depart8": [
+            "Sales"
+          ],
+          "order_count_2y": 9
+        },
+        {
+          "sale": "Tran Thi Thaoo",
+          "team": "Inhouse 1",
+          "sub_team": "Sales",
+          "depart6": [
+            "HN Inhouse"
+          ],
+          "depart7": [
+            "Inhouse 1"
+          ],
+          "depart8": [
+            "Sales"
+          ],
+          "order_count_2y": 8
+        },
+        {
+          "sale": "Nguyen Ngoc Bao Tram",
+          "team": "Inhouse 1",
+          "sub_team": "Sales",
+          "depart6": [
+            "HN Inhouse"
+          ],
+          "depart7": [
+            "Inhouse 1"
+          ],
+          "depart8": [
+            "Sales"
+          ],
+          "order_count_2y": 7
+        },
+        {
+          "sale": "Nina",
+          "team": "Inhouse 1",
+          "sub_team": "Sales",
+          "depart6": [
+            "HN Inhouse"
+          ],
+          "depart7": [
+            "Inhouse 1"
+          ],
+          "depart8": [
+            "Sales"
+          ],
+          "order_count_2y": 6
+        },
+        {
+          "sale": "Tran Thi Thu Hang",
+          "team": "Inhouse 1",
+          "sub_team": "Sales",
+          "depart6": [
+            "HN Inhouse"
+          ],
+          "depart7": [
+            "Inhouse 1"
+          ],
+          "depart8": [
+            "Sales"
+          ],
+          "order_count_2y": 6
+        },
+        {
+          "sale": "Nguyen Thi Ngoc Duyen",
+          "team": "Inhouse 1",
+          "sub_team": "Sales",
+          "depart6": [
+            "HN Inhouse"
+          ],
+          "depart7": [
+            "Inhouse 1"
+          ],
+          "depart8": [
+            "Sales"
+          ],
+          "order_count_2y": 3
+        },
+        {
+          "sale": "Nguyen Linh Chi",
+          "team": "Inhouse 1",
+          "sub_team": "Sales",
+          "depart6": [
+            "HN Inhouse"
+          ],
+          "depart7": [
+            "Inhouse 1"
+          ],
+          "depart8": [
+            "Sales"
+          ],
+          "order_count_2y": 2
+        }
+      ],
+      "Team 4": [
+        {
+          "sale": "Bui Thi Hong Van",
+          "team": "Inhouse 1",
+          "sub_team": "Team 4",
+          "depart6": [
+            "HN Inhouse"
+          ],
+          "depart7": [
+            "Inhouse 1"
+          ],
+          "depart8": [
+            "Team 4"
+          ],
+          "order_count_2y": 478
+        },
+        {
+          "sale": "Le Thi Tuyet",
+          "team": "Inhouse 1",
+          "sub_team": "Team 4",
+          "depart6": [
+            "HN Inhouse"
+          ],
+          "depart7": [
+            "Inhouse 1"
+          ],
+          "depart8": [
+            "Team 4"
+          ],
+          "order_count_2y": 307
+        },
+        {
+          "sale": "Le Thi Thuy Trang",
+          "team": "Inhouse 1",
+          "sub_team": "Team 4",
+          "depart6": [
+            "HN Inhouse"
+          ],
+          "depart7": [
+            "Inhouse 1"
+          ],
+          "depart8": [
+            "Team 4"
+          ],
+          "order_count_2y": 197
+        },
+        {
+          "sale": "Dao Ngoc Lan Anh",
+          "team": "Inhouse 1",
+          "sub_team": "Team 4",
+          "depart6": [
+            "HN Inhouse"
+          ],
+          "depart7": [
+            "Inhouse 1"
+          ],
+          "depart8": [
+            "Team 4"
+          ],
+          "order_count_2y": 104
+        }
+      ],
+      "Team 2": [
+        {
+          "sale": "Tran Thi Son",
+          "team": "Inhouse 1",
+          "sub_team": "Team 2",
+          "depart6": [
+            "HN Inhouse"
+          ],
+          "depart7": [
+            "Inhouse 1"
+          ],
+          "depart8": [
+            "Team 2"
+          ],
+          "order_count_2y": 1191
+        },
+        {
+          "sale": "Le Thi Thu Yen",
+          "team": "Inhouse 1",
+          "sub_team": "Team 2",
+          "depart6": [
+            "HN Inhouse"
+          ],
+          "depart7": [
+            "Inhouse 1"
+          ],
+          "depart8": [
+            "Team 2"
+          ],
+          "order_count_2y": 238
+        },
+        {
+          "sale": "Nguyen Nhu Ngoc",
+          "team": "Inhouse 1",
+          "sub_team": "Team 2",
+          "depart6": [
+            "HN Inhouse"
+          ],
+          "depart7": [
+            "Inhouse 1"
+          ],
+          "depart8": [
+            "Team 2"
+          ],
+          "order_count_2y": 126
+        },
+        {
+          "sale": "Luu Thi Hoang Ngan",
+          "team": "Inhouse 1",
+          "sub_team": "Team 2",
+          "depart6": [
+            "HN Inhouse"
+          ],
+          "depart7": [
+            "Inhouse 1"
+          ],
+          "depart8": [
+            "Team 2"
+          ],
+          "order_count_2y": 113
+        },
+        {
+          "sale": "Bui Lam Linh",
+          "team": "Inhouse 1",
+          "sub_team": "Team 2",
+          "depart6": [
+            "HN Inhouse"
+          ],
+          "depart7": [
+            "Inhouse 1"
+          ],
+          "depart8": [
+            "Team 2"
+          ],
+          "order_count_2y": 72
+        },
+        {
+          "sale": "Nguyen Thi Nhung",
+          "team": "Inhouse 1",
+          "sub_team": "Team 2",
+          "depart6": [
+            "HN Inhouse"
+          ],
+          "depart7": [
+            "Inhouse 1"
+          ],
+          "depart8": [
+            "Team 2"
+          ],
+          "order_count_2y": 3
+        },
+        {
+          "sale": "Le Thi Thanh Hien",
+          "team": "Inhouse 1",
+          "sub_team": "Team 2",
+          "depart6": [
+            "HN Inhouse"
+          ],
+          "depart7": [
+            "Inhouse 1"
+          ],
+          "depart8": [
+            "Team 2"
+          ],
+          "order_count_2y": 3
+        },
+        {
+          "sale": "Dang Thu Trang",
+          "team": "Inhouse 1",
+          "sub_team": "Team 2",
+          "depart6": [
+            "HN Inhouse"
+          ],
+          "depart7": [
+            "Inhouse 1"
+          ],
+          "depart8": [
+            "Team 2"
+          ],
+          "order_count_2y": 1
+        }
+      ],
+      "Team 5": [
+        {
+          "sale": "Le Thi Lan Anh",
+          "team": "Inhouse 1",
+          "sub_team": "Team 5",
+          "depart6": [
+            "HN Inhouse"
+          ],
+          "depart7": [
+            "Inhouse 1"
+          ],
+          "depart8": [
+            "Team 5"
+          ],
+          "order_count_2y": 745
+        },
+        {
+          "sale": "Nguyen Thi Phuong",
+          "team": "Inhouse 1",
+          "sub_team": "Team 5",
+          "depart6": [
+            "HN Inhouse"
+          ],
+          "depart7": [
+            "Inhouse 1"
+          ],
+          "depart8": [
+            "Team 5"
+          ],
+          "order_count_2y": 312
+        },
+        {
+          "sale": "Pham Thi Tam Thuy",
+          "team": "Inhouse 1",
+          "sub_team": "Team 5",
+          "depart6": [
+            "HN Inhouse"
+          ],
+          "depart7": [
+            "Inhouse 1"
+          ],
+          "depart8": [
+            "Team 5"
+          ],
+          "order_count_2y": 172
+        },
+        {
+          "sale": "Nguyen Cam Tu",
+          "team": "Inhouse 1",
+          "sub_team": "Team 5",
+          "depart6": [
+            "HN Inhouse"
+          ],
+          "depart7": [
+            "Inhouse 1"
+          ],
+          "depart8": [
+            "Team 5"
+          ],
+          "order_count_2y": 40
+        },
+        {
+          "sale": "Cao Thi Lua",
+          "team": "Inhouse 1",
+          "sub_team": "Team 5",
+          "depart6": [
+            "HN Inhouse"
+          ],
+          "depart7": [
+            "Inhouse 1"
+          ],
+          "depart8": [
+            "Team 5"
+          ],
+          "order_count_2y": 40
+        },
+        {
+          "sale": "Nguyen Thi My Linh",
+          "team": "Inhouse 1",
+          "sub_team": "Team 5",
+          "depart6": [
+            "HN Inhouse"
+          ],
+          "depart7": [
+            "Inhouse 1"
+          ],
+          "depart8": [
+            "Team 5"
+          ],
+          "order_count_2y": 8
+        }
+      ],
+      "Team 1": [
+        {
+          "sale": "Le Kim Chi",
+          "team": "Inhouse 1",
+          "sub_team": "Team 1",
+          "depart6": [
+            "HN Inhouse"
+          ],
+          "depart7": [
+            "Inhouse 1"
+          ],
+          "depart8": [
+            "Team 1"
+          ],
+          "order_count_2y": 1045
+        },
+        {
+          "sale": "Nguyen Kieu Trang",
+          "team": "Inhouse 1",
+          "sub_team": "Team 1",
+          "depart6": [
+            "HN Inhouse"
+          ],
+          "depart7": [
+            "Inhouse 1"
+          ],
+          "depart8": [
+            "Team 1"
+          ],
+          "order_count_2y": 860
+        },
+        {
+          "sale": "Nguyen Thuy Trang",
+          "team": "Inhouse 1",
+          "sub_team": "Team 1",
+          "depart6": [
+            "HN Inhouse"
+          ],
+          "depart7": [
+            "Inhouse 1"
+          ],
+          "depart8": [
+            "Team 1"
+          ],
+          "order_count_2y": 576
+        },
+        {
+          "sale": "Le Thuy Nhung",
+          "team": "Inhouse 1",
+          "sub_team": "Team 1",
+          "depart6": [
+            "HN Inhouse"
+          ],
+          "depart7": [
+            "Inhouse 1"
+          ],
+          "depart8": [
+            "Team 1"
+          ],
+          "order_count_2y": 414
+        },
+        {
+          "sale": "Nguyen Thi Thao Ngoc",
+          "team": "Inhouse 1",
+          "sub_team": "Team 1",
+          "depart6": [
+            "HN Inhouse"
+          ],
+          "depart7": [
+            "Inhouse 1"
+          ],
+          "depart8": [
+            "Team 1"
+          ],
+          "order_count_2y": 336
+        },
+        {
+          "sale": "Do Thi Tuyet Nhung",
+          "team": "Inhouse 1",
+          "sub_team": "Team 1",
+          "depart6": [
+            "HN Inhouse"
+          ],
+          "depart7": [
+            "Inhouse 1"
+          ],
+          "depart8": [
+            "Team 1"
+          ],
+          "order_count_2y": 219
+        },
+        {
+          "sale": "Phan Thi Huong",
+          "team": "Inhouse 1",
+          "sub_team": "Team 1",
+          "depart6": [
+            "HN Inhouse"
+          ],
+          "depart7": [
+            "Inhouse 1"
+          ],
+          "depart8": [
+            "Team 1"
+          ],
+          "order_count_2y": 192
+        },
+        {
+          "sale": "Vu Thi Tuyet Trinh",
+          "team": "Inhouse 1",
+          "sub_team": "Team 1",
+          "depart6": [
+            "HN Inhouse"
+          ],
+          "depart7": [
+            "Inhouse 1"
+          ],
+          "depart8": [
+            "Team 1"
+          ],
+          "order_count_2y": 186
+        },
+        {
+          "sale": "Nguyen Nhat Vy",
+          "team": "Inhouse 1",
+          "sub_team": "Team 1",
+          "depart6": [
+            "HN Inhouse"
+          ],
+          "depart7": [
+            "Inhouse 1"
+          ],
+          "depart8": [
+            "Team 1"
+          ],
+          "order_count_2y": 88
+        },
+        {
+          "sale": "Nguyen Thao Anh",
+          "team": "Inhouse 1",
+          "sub_team": "Team 1",
+          "depart6": [
+            "HN Inhouse"
+          ],
+          "depart7": [
+            "Inhouse 1"
+          ],
+          "depart8": [
+            "Team 1"
+          ],
+          "order_count_2y": 41
+        },
+        {
+          "sale": "Team 1 admin",
+          "team": "Inhouse 1",
+          "sub_team": "Team 1",
+          "depart6": [
+            "HN Inhouse"
+          ],
+          "depart7": [
+            "Inhouse 1"
+          ],
+          "depart8": [
+            "Team 1"
+          ],
+          "order_count_2y": 23
+        },
+        {
+          "sale": "Do Thi Hong Nhung",
+          "team": "Inhouse 1",
+          "sub_team": "Team 1",
+          "depart6": [
+            "HN Inhouse"
+          ],
+          "depart7": [
+            "Inhouse 1"
+          ],
+          "depart8": [
+            "Team 1"
+          ],
+          "order_count_2y": 4
+        },
+        {
+          "sale": "Tran Thi Thu Huong",
+          "team": "Inhouse 1",
+          "sub_team": "Team 1",
+          "depart6": [
+            "HN Inhouse"
+          ],
+          "depart7": [
+            "Inhouse 1"
+          ],
+          "depart8": [
+            "Team 1"
+          ],
+          "order_count_2y": 1
+        },
+        {
+          "sale": "Le Thi Thuy Trinh",
+          "team": "Inhouse 1",
+          "sub_team": "Team 1",
+          "depart6": [
+            "HN Inhouse"
+          ],
+          "depart7": [
+            "Inhouse 1"
+          ],
+          "depart8": [
+            "Team 1"
+          ],
+          "order_count_2y": 1
+        },
+        {
+          "sale": "Nguyen Thi Hien",
+          "team": "Inhouse 1",
+          "sub_team": "Team 1",
+          "depart6": [
+            "HN Inhouse"
+          ],
+          "depart7": [
+            "Inhouse 1"
+          ],
+          "depart8": [
+            "Team 1"
+          ],
+          "order_count_2y": 1
+        },
+        {
+          "sale": "Le Thi Thanh Tam",
+          "team": "Inhouse 1",
+          "sub_team": "Team 1",
+          "depart6": [
+            "HN Inhouse"
+          ],
+          "depart7": [
+            "Inhouse 1"
+          ],
+          "depart8": [
+            "Team 1"
+          ],
+          "order_count_2y": 1
+        }
+      ],
+      "": [
+        {
+          "sale": "DAO THI TRANG",
+          "team": "Inhouse 1",
+          "sub_team": "",
+          "depart6": [
+            "HN Inhouse"
+          ],
+          "depart7": [
+            "Inhouse 1"
+          ],
+          "depart8": [],
+          "order_count_2y": 1369
+        },
+        {
+          "sale": "Pham Minh Thuy",
+          "team": "Inhouse 1",
+          "sub_team": "",
+          "depart6": [
+            "HN Inhouse"
+          ],
+          "depart7": [
+            "Inhouse 1"
+          ],
+          "depart8": [],
+          "order_count_2y": 1
+        }
+      ]
+    },
+    "An Binh Store": {
+      "": [
+        {
+          "sale": "Vu Thuy Huong",
+          "team": "An Binh Store",
+          "sub_team": "",
+          "depart6": [
+            "HN Offline Store"
+          ],
+          "depart7": [
+            "An Binh Store"
+          ],
+          "depart8": [],
+          "order_count_2y": 51
+        },
+        {
+          "sale": "Bui Thi Anh",
+          "team": "An Binh Store",
+          "sub_team": "",
+          "depart6": [
+            "HN Offline Store"
+          ],
+          "depart7": [
+            "An Binh Store"
+          ],
+          "depart8": [],
+          "order_count_2y": 9
+        },
+        {
+          "sale": "Nguyen Thu Phuong",
+          "team": "An Binh Store",
+          "sub_team": "",
+          "depart6": [
+            "HN Offline Store"
+          ],
+          "depart7": [
+            "An Binh Store"
+          ],
+          "depart8": [],
+          "order_count_2y": 3
+        }
+      ]
+    },
+    "Linh Dam Store": {
+      "": [
+        {
+          "sale": "Hoang Thi Hong Tham",
+          "team": "Linh Dam Store",
+          "sub_team": "",
+          "depart6": [
+            "HN Offline Store"
+          ],
+          "depart7": [
+            "Linh Dam Store"
+          ],
+          "depart8": [],
+          "order_count_2y": 219
+        },
+        {
+          "sale": "Vo Thi Thom",
+          "team": "Linh Dam Store",
+          "sub_team": "",
+          "depart6": [
+            "HN Offline Store"
+          ],
+          "depart7": [
+            "Linh Dam Store"
+          ],
+          "depart8": [],
+          "order_count_2y": 59
+        },
+        {
+          "sale": "Phan Viet Khanh",
+          "team": "Linh Dam Store",
+          "sub_team": "",
+          "depart6": [
+            "HN Offline Store"
+          ],
+          "depart7": [
+            "Linh Dam Store"
+          ],
+          "depart8": [],
+          "order_count_2y": 35
+        },
+        {
+          "sale": "Pham Minh Anh",
+          "team": "Linh Dam Store",
+          "sub_team": "",
+          "depart6": [
+            "HN Offline Store"
+          ],
+          "depart7": [
+            "Linh Dam Store"
+          ],
+          "depart8": [],
+          "order_count_2y": 25
+        },
+        {
+          "sale": "Tran Thi Anh Tuyet",
+          "team": "Linh Dam Store",
+          "sub_team": "",
+          "depart6": [
+            "HN Offline Store"
+          ],
+          "depart7": [
+            "Linh Dam Store"
+          ],
+          "depart8": [],
+          "order_count_2y": 18
+        },
+        {
+          "sale": "Cu Thi Thu Hien",
+          "team": "Linh Dam Store",
+          "sub_team": "",
+          "depart6": [
+            "HN Offline Store"
+          ],
+          "depart7": [
+            "Linh Dam Store"
+          ],
+          "depart8": [],
+          "order_count_2y": 10
+        },
+        {
+          "sale": "Nguyen Thi Lan",
+          "team": "Linh Dam Store",
+          "sub_team": "",
+          "depart6": [
+            "HN Offline Store"
+          ],
+          "depart7": [
+            "Linh Dam Store"
+          ],
+          "depart8": [],
+          "order_count_2y": 8
+        },
+        {
+          "sale": "Ngo Thi Thuy Linh",
+          "team": "Linh Dam Store",
+          "sub_team": "",
+          "depart6": [
+            "HN Offline Store"
+          ],
+          "depart7": [
+            "Linh Dam Store"
+          ],
+          "depart8": [],
+          "order_count_2y": 6
+        },
+        {
+          "sale": "Nguyen Thi Ngoc Anh",
+          "team": "Linh Dam Store",
+          "sub_team": "",
+          "depart6": [
+            "HN Offline Store"
+          ],
+          "depart7": [
+            "Linh Dam Store"
+          ],
+          "depart8": [],
+          "order_count_2y": 5
+        },
+        {
+          "sale": "Hoang To Uyen",
+          "team": "Linh Dam Store",
+          "sub_team": "",
+          "depart6": [
+            "HN Offline Store"
+          ],
+          "depart7": [
+            "Linh Dam Store"
+          ],
+          "depart8": [],
+          "order_count_2y": 4
+        },
+        {
+          "sale": "Vu Quynh Nga",
+          "team": "Linh Dam Store",
+          "sub_team": "",
+          "depart6": [
+            "HN Offline Store"
+          ],
+          "depart7": [
+            "Linh Dam Store"
+          ],
+          "depart8": [],
+          "order_count_2y": 2
+        },
+        {
+          "sale": "Le Quang Tung",
+          "team": "Linh Dam Store",
+          "sub_team": "",
+          "depart6": [
+            "HN Offline Store"
+          ],
+          "depart7": [
+            "Linh Dam Store"
+          ],
+          "depart8": [],
+          "order_count_2y": 1
+        },
+        {
+          "sale": "Le Thanh Phuong",
+          "team": "Linh Dam Store",
+          "sub_team": "",
+          "depart6": [
+            "HN Offline Store"
+          ],
+          "depart7": [
+            "Linh Dam Store"
+          ],
+          "depart8": [],
+          "order_count_2y": 1
+        }
+      ]
+    },
+    "HCM (Online)": {
+      "": [
+        {
+          "sale": "Le Minh Thanh",
+          "team": "HCM (Online)",
+          "sub_team": "",
+          "depart6": [
+            "ONLINE"
+          ],
+          "depart7": [],
+          "depart8": [],
+          "order_count_2y": 242
+        },
+        {
+          "sale": "Lai Ngoc Thuy Linh",
+          "team": "HCM (Online)",
+          "sub_team": "",
+          "depart6": [
+            "ONLINE"
+          ],
+          "depart7": [],
+          "depart8": [],
+          "order_count_2y": 184
+        },
+        {
+          "sale": "Nguyen Minh Phat",
+          "team": "HCM (Online)",
+          "sub_team": "",
+          "depart6": [
+            "ONLINE"
+          ],
+          "depart7": [],
+          "depart8": [],
+          "order_count_2y": 149
+        },
+        {
+          "sale": "Hau",
+          "team": "HCM (Online)",
+          "sub_team": "",
+          "depart6": [
+            "ONLINE"
+          ],
+          "depart7": [],
+          "depart8": [],
+          "order_count_2y": 27
+        },
+        {
+          "sale": "Vo Thu Huong",
+          "team": "HCM (Online)",
+          "sub_team": "",
+          "depart6": [
+            "ONLINE"
+          ],
+          "depart7": [],
+          "depart8": [],
+          "order_count_2y": 19
+        },
+        {
+          "sale": "Tran Vo Minh Thu",
+          "team": "HCM (Online)",
+          "sub_team": "",
+          "depart6": [
+            "ONLINE"
+          ],
+          "depart7": [],
+          "depart8": [],
+          "order_count_2y": 14
+        },
+        {
+          "sale": "Phuong Thao Nhi",
+          "team": "HCM (Online)",
+          "sub_team": "",
+          "depart6": [
+            "ONLINE"
+          ],
+          "depart7": [],
+          "depart8": [],
+          "order_count_2y": 14
+        },
+        {
+          "sale": "Tran Ngoc Thuy Linh",
+          "team": "HCM (Online)",
+          "sub_team": "",
+          "depart6": [
+            "ONLINE"
+          ],
+          "depart7": [],
+          "depart8": [],
+          "order_count_2y": 10
+        },
+        {
+          "sale": "Nguyen Duy Thinh",
+          "team": "HCM (Online)",
+          "sub_team": "",
+          "depart6": [
+            "ONLINE"
+          ],
+          "depart7": [],
+          "depart8": [],
+          "order_count_2y": 2
+        },
+        {
+          "sale": "Chang Thi Thanh Binh",
+          "team": "HCM (Online)",
+          "sub_team": "",
+          "depart6": [
+            "ONLINE"
+          ],
+          "depart7": [],
+          "depart8": [],
+          "order_count_2y": 2
+        },
+        {
+          "sale": "Nguyen Le Thanh Huyen",
+          "team": "HCM (Online)",
+          "sub_team": "",
+          "depart6": [
+            "ONLINE"
+          ],
+          "depart7": [],
+          "depart8": [],
+          "order_count_2y": 1
+        },
+        {
+          "sale": "Nguyen Nhung Nhu Ngoc",
+          "team": "HCM (Online)",
+          "sub_team": "",
+          "depart6": [
+            "ONLINE"
+          ],
+          "depart7": [],
+          "depart8": [],
+          "order_count_2y": 1
+        },
+        {
+          "sale": "Le Vo Anh Thu",
+          "team": "HCM (Online)",
+          "sub_team": "",
+          "depart6": [
+            "ONLINE"
+          ],
+          "depart7": [],
+          "depart8": [],
+          "order_count_2y": 1
+        },
+        {
+          "sale": "Dang Thi Kim Tuyen",
+          "team": "HCM (Online)",
+          "sub_team": "",
+          "depart6": [
+            "ONLINE"
+          ],
+          "depart7": [],
+          "depart8": [],
+          "order_count_2y": 1
+        },
+        {
+          "sale": "Nguyen Minh Hieu",
+          "team": "HCM (Online)",
+          "sub_team": "",
+          "depart6": [
+            "ONLINE"
+          ],
+          "depart7": [],
+          "depart8": [],
+          "order_count_2y": 1
+        }
+      ]
+    },
+    "Khác / Chưa phân loại": {
+      "": [
+        {
+          "sale": "Le Thi Thanh Thuy",
+          "team": "Khác / Chưa phân loại",
+          "sub_team": "",
+          "depart6": [],
+          "depart7": [],
+          "depart8": [],
+          "order_count_2y": 196
+        },
+        {
+          "sale": "Nguyen Hong Nhu",
+          "team": "Khác / Chưa phân loại",
+          "sub_team": "",
+          "depart6": [],
+          "depart7": [],
+          "depart8": [],
+          "order_count_2y": 38
+        },
+        {
+          "sale": "Dao Thi Hoang Yen",
+          "team": "Khác / Chưa phân loại",
+          "sub_team": "",
+          "depart6": [],
+          "depart7": [],
+          "depart8": [],
+          "order_count_2y": 32
+        },
+        {
+          "sale": "Vo Tran Anh Thuy",
+          "team": "Khác / Chưa phân loại",
+          "sub_team": "",
+          "depart6": [],
+          "depart7": [],
+          "depart8": [],
+          "order_count_2y": 23
+        },
+        {
+          "sale": "Nguyen Thi Kim Duyen",
+          "team": "Khác / Chưa phân loại",
+          "sub_team": "",
+          "depart6": [],
+          "depart7": [],
+          "depart8": [],
+          "order_count_2y": 22
+        },
+        {
+          "sale": "Josh",
+          "team": "Khác / Chưa phân loại",
+          "sub_team": "",
+          "depart6": [],
+          "depart7": [],
+          "depart8": [],
+          "order_count_2y": 18
+        },
+        {
+          "sale": "Dinh Luong Nhu Ngoc",
+          "team": "Khác / Chưa phân loại",
+          "sub_team": "",
+          "depart6": [],
+          "depart7": [],
+          "depart8": [],
+          "order_count_2y": 13
+        },
+        {
+          "sale": "彭胜君",
+          "team": "Khác / Chưa phân loại",
+          "sub_team": "",
+          "depart6": [],
+          "depart7": [],
+          "depart8": [],
+          "order_count_2y": 9
+        },
+        {
+          "sale": "Nguyen Thi Suong Mai",
+          "team": "Khác / Chưa phân loại",
+          "sub_team": "",
+          "depart6": [],
+          "depart7": [],
+          "depart8": [],
+          "order_count_2y": 9
+        },
+        {
+          "sale": "Nguyen Thuy Linh 1",
+          "team": "Khác / Chưa phân loại",
+          "sub_team": "",
+          "depart6": [],
+          "depart7": [],
+          "depart8": [],
+          "order_count_2y": 6
+        },
+        {
+          "sale": "Tran",
+          "team": "Khác / Chưa phân loại",
+          "sub_team": "",
+          "depart6": [],
+          "depart7": [],
+          "depart8": [],
+          "order_count_2y": 4
+        },
+        {
+          "sale": "Tran Hieu Thao",
+          "team": "Khác / Chưa phân loại",
+          "sub_team": "",
+          "depart6": [],
+          "depart7": [],
+          "depart8": [],
+          "order_count_2y": 1
+        },
+        {
+          "sale": "Dang Thi Kim Ngan",
+          "team": "Khác / Chưa phân loại",
+          "sub_team": "",
+          "depart6": [],
+          "depart7": [],
+          "depart8": [],
+          "order_count_2y": 1
+        },
+        {
+          "sale": "KThuyen",
+          "team": "Khác / Chưa phân loại",
+          "sub_team": "",
+          "depart6": [],
+          "depart7": [],
+          "depart8": [],
+          "order_count_2y": 1
+        },
+        {
+          "sale": "文秀莺",
+          "team": "Khác / Chưa phân loại",
+          "sub_team": "",
+          "depart6": [],
+          "depart7": [],
+          "depart8": [],
+          "order_count_2y": 1
+        },
+        {
+          "sale": "DANG THI THANH THUY",
+          "team": "Khác / Chưa phân loại",
+          "sub_team": "",
+          "depart6": [],
+          "depart7": [],
+          "depart8": [],
+          "order_count_2y": 1
+        },
+        {
+          "sale": "朱振博",
+          "team": "Khác / Chưa phân loại",
+          "sub_team": "",
+          "depart6": [],
+          "depart7": [],
+          "depart8": [],
+          "order_count_2y": 1
+        }
+      ]
+    },
+    "HN Offline Store": {
+      "": [
+        {
+          "sale": "Pham Thuy Linh",
+          "team": "HN Offline Store",
+          "sub_team": "",
+          "depart6": [
+            "HN Offline Store"
+          ],
+          "depart7": [],
+          "depart8": [],
+          "order_count_2y": 119
+        }
+      ]
+    },
+    "Marketing": {
+      "": [
+        {
+          "sale": "Vuong Phuong Anh",
+          "team": "Marketing",
+          "sub_team": "",
+          "depart6": [
+            "Marketing"
+          ],
+          "depart7": [],
+          "depart8": [],
+          "order_count_2y": 5
+        }
+      ]
+    },
+    "HN Inhouse": {
+      "": [
+        {
+          "sale": "Ruby Advisor",
+          "team": "HN Inhouse",
+          "sub_team": "",
+          "depart6": [
+            "HN Inhouse"
+          ],
+          "depart7": [],
+          "depart8": [],
+          "order_count_2y": 38
+        },
+        {
+          "sale": "Ellie Advisor",
+          "team": "HN Inhouse",
+          "sub_team": "",
+          "depart6": [
+            "HN Inhouse"
+          ],
+          "depart7": [],
+          "depart8": [],
+          "order_count_2y": 2
+        }
+      ]
+    },
+    "Team 1": {
+      "": [
+        {
+          "sale": "Bui Thi Men",
+          "team": "Team 1",
+          "sub_team": "",
+          "depart6": [
+            "Sales"
+          ],
+          "depart7": [
+            "Team 1"
+          ],
+          "depart8": [],
+          "order_count_2y": 24
+        },
+        {
+          "sale": "Ngo Thi Bich Ngoc",
+          "team": "Team 1",
+          "sub_team": "",
+          "depart6": [
+            "Sales"
+          ],
+          "depart7": [
+            "Team 1"
+          ],
+          "depart8": [],
+          "order_count_2y": 8
+        },
+        {
+          "sale": "Huynh Minh Giang",
+          "team": "Team 1",
+          "sub_team": "",
+          "depart6": [
+            "Sales"
+          ],
+          "depart7": [
+            "Team 1"
+          ],
+          "depart8": [],
+          "order_count_2y": 8
+        },
+        {
+          "sale": "Nguyen Thi Thuy Hieu",
+          "team": "Team 1",
+          "sub_team": "",
+          "depart6": [
+            "Sales"
+          ],
+          "depart7": [
+            "Team 1"
+          ],
+          "depart8": [],
+          "order_count_2y": 3
+        },
+        {
+          "sale": "Nguyen Thi Hong",
+          "team": "Team 1",
+          "sub_team": "",
+          "depart6": [
+            "Sales"
+          ],
+          "depart7": [
+            "Team 1"
+          ],
+          "depart8": [],
+          "order_count_2y": 2
+        },
+        {
+          "sale": "Nguyen Thi Thu Ha",
+          "team": "Team 1",
+          "sub_team": "",
+          "depart6": [
+            "Sales"
+          ],
+          "depart7": [
+            "Team 1"
+          ],
+          "depart8": [],
+          "order_count_2y": 1
+        }
+      ]
+    },
+    "Tele sale": {
+      "Area 2": [
+        {
+          "sale": "Sirirak.Grace",
+          "team": "Tele sale",
+          "sub_team": "Area 2",
+          "depart6": [
+            "Thailand sale"
+          ],
+          "depart7": [
+            "Tele sale"
+          ],
+          "depart8": [
+            "Area 2"
+          ],
+          "order_count_2y": 3
+        }
+      ],
+      "Team Au": [
+        {
+          "sale": "Saowaluk.Smile",
+          "team": "Tele sale",
+          "sub_team": "Team Au",
+          "depart6": [
+            "Thailand sale"
+          ],
+          "depart7": [
+            "Tele sale"
+          ],
+          "depart8": [
+            "Team Au"
+          ],
+          "order_count_2y": 2
+        }
+      ]
+    },
+    "Group KL": {
+      "": [
+        {
+          "sale": "Nguyen Thi Minh Phuong",
+          "team": "Group KL",
+          "sub_team": "",
+          "depart6": [
+            "Group KL"
+          ],
+          "depart7": [],
+          "depart8": [],
+          "order_count_2y": 10
+        },
+        {
+          "sale": "Nguyen Thi Phuong Linh",
+          "team": "Group KL",
+          "sub_team": "",
+          "depart6": [
+            "Group KL"
+          ],
+          "depart7": [],
+          "depart8": [],
+          "order_count_2y": 9
+        },
+        {
+          "sale": "Vu Thi Thu Thuy",
+          "team": "Group KL",
+          "sub_team": "",
+          "depart6": [
+            "Group KL"
+          ],
+          "depart7": [],
+          "depart8": [],
+          "order_count_2y": 7
+        },
+        {
+          "sale": "Tran Thi Thanh Van",
+          "team": "Group KL",
+          "sub_team": "",
+          "depart6": [
+            "Group KL"
+          ],
+          "depart7": [],
+          "depart8": [],
+          "order_count_2y": 4
+        },
+        {
+          "sale": "Tran Thi Thuy Trang",
+          "team": "Group KL",
+          "sub_team": "",
+          "depart6": [
+            "Group KL"
+          ],
+          "depart7": [],
+          "depart8": [],
+          "order_count_2y": 2
+        }
+      ]
+    },
+    "Team 2": {
+      "": [
+        {
+          "sale": "Huynh Thi Nhu Hang",
+          "team": "Team 2",
+          "sub_team": "",
+          "depart6": [
+            "Sales"
+          ],
+          "depart7": [
+            "Team 2"
+          ],
+          "depart8": [],
+          "order_count_2y": 3
+        }
+      ]
+    },
+    "P'AU Group": {
+      "Team Lookkaew": [
+        {
+          "sale": "Jittralai.Puii",
+          "team": "P'AU Group",
+          "sub_team": "Team Lookkaew",
+          "depart6": [
+            "Telesales Business"
+          ],
+          "depart7": [
+            "P'AU Group"
+          ],
+          "depart8": [
+            "Team Lookkaew"
+          ],
+          "order_count_2y": 1
+        }
+      ],
+      "Team Aon": [
+        {
+          "sale": "Apipong.Aon",
+          "team": "P'AU Group",
+          "sub_team": "Team Aon",
+          "depart6": [
+            "Telesales Business"
+          ],
+          "depart7": [
+            "P'AU Group"
+          ],
+          "depart8": [
+            "Team Aon"
+          ],
+          "order_count_2y": 1
+        },
+        {
+          "sale": "Peerawas.Pee",
+          "team": "P'AU Group",
+          "sub_team": "Team Aon",
+          "depart6": [
+            "Telesales Business"
+          ],
+          "depart7": [
+            "P'AU Group"
+          ],
+          "depart8": [
+            "Team Aon"
+          ],
+          "order_count_2y": 1
+        }
+      ]
+    },
+    "P'TEE Group": {
+      "Team James": [
+        {
+          "sale": "Thanakorn.Wan",
+          "team": "P'TEE Group",
+          "sub_team": "Team James",
+          "depart6": [
+            "Telesales Business"
+          ],
+          "depart7": [
+            "P'TEE Group"
+          ],
+          "depart8": [
+            "Team James"
+          ],
+          "order_count_2y": 1
+        }
+      ]
+    }
+  }
+}

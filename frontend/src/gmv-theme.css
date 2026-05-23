@@ -1,0 +1,43 @@
+/**
+ * PalFish GMV — luôn hiển thị kiểu sáng, kể cả khi OS/browser bật dark mode.
+ */
+.gmv-light-ui {
+  color-scheme: light;
+  background-color: var(--gmv-bg);
+  color: var(--gmv-text);
+}
+
+.gmv-light-ui input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
+.gmv-light-ui select,
+.gmv-light-ui textarea {
+  background-color: var(--gmv-canvas) !important;
+  color: var(--gmv-text-strong) !important;
+  border-color: var(--gmv-border) !important;
+  -webkit-text-fill-color: var(--gmv-text-strong) !important;
+}
+
+.gmv-light-ui input::placeholder,
+.gmv-light-ui textarea::placeholder {
+  color: var(--gmv-muted) !important;
+  opacity: 1;
+}
+
+.gmv-light-ui select:disabled,
+.gmv-light-ui input:disabled,
+.gmv-light-ui textarea:disabled {
+  background-color: var(--gmv-bg) !important;
+  color: var(--gmv-muted) !important;
+}
+
+.gmv-light-ui select option {
+  background-color: var(--gmv-canvas);
+  color: var(--gmv-text-strong);
+}
+
+.gmv-light-ui input[type="checkbox"] {
+  accent-color: var(--gmv-primary);
+}
+
+.gmv-light-ui label {
+  color: var(--gmv-text-strong);
+}

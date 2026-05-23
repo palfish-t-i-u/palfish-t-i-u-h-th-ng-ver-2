@@ -1,0 +1,575 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hệ thống Quản lý Đơn hàng Pro</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <style>
+        :root {
+            --primary-color: #0056b3;
+            --secondary-color: #e6f0fa;
+            --accent-color: #d35400;
+            --bg-body: #f4f7f9;
+        }
+
+        body { font-family: 'Segoe UI', Arial, sans-serif; margin: 20px; background-color: var(--bg-body); color: #333; }
+
+        /* TABS */
+        .tab-buttons { display: flex; margin-bottom: 20px; border-bottom: 2px solid #dee2e6; }
+        .tab-buttons button {
+            background: #e9ecef; border: none; outline: none; cursor: pointer;
+            padding: 12px 25px; font-size: 15px; font-weight: 600; transition: 0.3s;
+            border-radius: 8px 8px 0 0; margin-right: 5px; color: #495057;
+        }
+        .tab-buttons button.active { background: #fff; color: var(--primary-color); border: 1px solid #dee2e6; border-bottom: 3px solid var(--primary-color); }
+
+        .tab-content { display: none; animation: fadeIn 0.4s; }
+        .tab-content.active { display: block; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+        /* TAB 1: FORM DESIGN */
+        .tab1-container { display: flex; justify-content: center; }
+        .form-section {
+            width: 100%; max-width: 850px; background: #fff;
+            border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); overflow: hidden;
+        }
+        .form-header { background: var(--primary-color); color: #fff; padding: 20px; text-align: center; font-size: 20px; font-weight: bold; }
+        .form-body { padding: 30px 50px; }
+
+        /* Group Styling */
+        .form-group-title {
+            font-size: 16px; font-weight: bold; color: var(--primary-color);
+            margin: 20px 0 15px 0; padding-bottom: 5px; border-bottom: 1px solid #eee;
+            display: flex; align-items: center; gap: 10px;
+        }
+
+        .form-item { display: flex; align-items: center; margin-bottom: 18px; }
+        .form-item.align-top { align-items: flex-start; }
+        .form-item label {
+            width: 170px; min-width: 170px; font-size: 14px; text-align: right;
+            margin-right: 25px; font-weight: 600; color: #555;
+        }
+        .form-item.align-top label { padding-top: 10px; }
+        .form-item input[type="text"], .form-item select {
+            flex: 1; padding: 11px; border: 1px solid #ced4da; border-radius: 6px;
+            font-size: 14px; transition: border-color 0.2s; min-width: 0;
+        }
+        .form-item input:focus, .form-item select:focus { border-color: var(--primary-color); outline: none; box-shadow: 0 0 0 3px rgba(0,86,179,0.1); }
+
+        .matched-field { background-color: #e8f5e9 !important; border-color: #28a745 !important; }
+
+        .address-container, .phone-container { flex: 1; display: flex; flex-direction: column; gap: 10px; min-width: 0;}
+        .row-gap { display: flex; gap: 10px; }
+        .row-gap select, .row-gap input { flex: 1; min-width: 0;}
+
+        .sale-note { font-size: 12px; color: var(--accent-color); font-style: italic; font-weight: bold; margin-top: 4px; }
+        #status-msg { text-align: center; font-size: 13px; font-weight: bold; margin-bottom: 15px; min-height: 20px; }
+
+        /* BUTTONS */
+        .btn-container { display: flex; justify-content: center; gap: 15px; margin-top: 35px; padding-top: 20px; border-top: 1px solid #eee; }
+        .btn-main {
+            padding: 13px 35px; background: var(--primary-color); color: #fff; border: none;
+            border-radius: 8px; cursor: pointer; font-weight: bold; font-size: 16px; transition: 0.3s;
+        }
+        .btn-main:hover { background: #004494; transform: translateY(-2px); }
+        .btn-reset {
+            padding: 13px 25px; background: #fff; color: #6c757d; border: 1px solid #ced4da;
+            border-radius: 8px; cursor: pointer; font-weight: 600; transition: 0.2s;
+        }
+        .btn-reset:hover { background: #f8f9fa; color: #333; }
+
+        /* TAB 2: TABLE */
+        .table-responsive { width: 100%; overflow-x: auto; background: #fff; border-radius: 8px; border: 1px solid #dee2e6; }
+        table { width: 100%; border-collapse: collapse; min-width: 1400px; }
+        th, td { border: 1px solid #dee2e6; padding: 12px; text-align: center; font-size: 13px; }
+        th { background: #f8f9fa; font-weight: bold; color: #333; position: sticky; top: 0; white-space: nowrap;}
+        tr:hover { background-color: #fcfcfc; }
+        .text-left { text-align: left; }
+        .text-right { text-align: right; }
+
+        .badge { padding: 5px 8px; border-radius: 4px; font-size: 12px; font-weight: bold; white-space: nowrap; }
+        .badge-info { background: #e7f3ff; color: #007bff; border: 1px solid #cce5ff; }
+        .badge-success { background: #e6fcf5; color: #087f5b; border: 1px solid #c3fae8; }
+        .status-checkbox { width: 18px; height: 18px; cursor: pointer; }
+
+        .action-btn { padding: 6px 10px; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: bold; margin: 2px; transition: 0.2s; white-space: nowrap;}
+        .btn-qr { background: #17a2b8; } .btn-qr:hover { background: #138496; }
+        .btn-bill { background: #6c757d; } .btn-bill:hover { background: #5a6268; }
+        .btn-view { background: #28a745; } .btn-view:hover { background: #218838; }
+
+        /* MODAL CHUNG */
+        .modal {
+            display: none; position: fixed; z-index: 2000; left: 0; top: 0;
+            width: 100%; height: 100%; background: rgba(0,0,0,0.7);
+            align-items: center; justify-content: center;
+        }
+        .modal-content { background: #fff; padding: 30px; border-radius: 15px; position: relative; max-width: 600px; width: 90%; box-shadow: 0 10px 30px rgba(0,0,0,0.2); }
+        .close-btn { position: absolute; right: 20px; top: 15px; font-size: 30px; font-weight: bold; color: #aaa; cursor: pointer; }
+        .close-btn:hover { color: #333; }
+
+        /* Modal Thanh Toán */
+        .payment-card { display: flex; gap: 30px; align-items: stretch; border-top: 1px solid #eee; padding-top: 20px; }
+        .info-box span { font-weight: bold; color: var(--primary-color); }
+        .highlight-code { background: #fff3cd; color: var(--accent-color); padding: 5px 10px; border-radius: 5px; border: 1px dashed var(--accent-color); display: inline-block; margin-top: 5px; font-size: 16px; }
+
+        /* Modal Xem Ảnh */
+        .modal-bill-content { max-width: 800px; text-align: center; }
+        #billView { max-width: 100%; max-height: 75vh; border-radius: 8px; margin-top: 15px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+    </style>
+</head>
+<body>
+
+<div class="tab-buttons">
+    <button class="tab-link active" id="btn-tab1" onclick="openTab(event, 'Tab1')">TẠO ĐƠN HÀNG</button>
+    <button class="tab-link" id="btn-tab2" onclick="openTab(event, 'Tab2')">QUẢN LÝ ĐƠN HÀNG</button>
+</div>
+
+<div id="Tab1" class="tab-content active">
+    <div class="tab1-container">
+        <div class="form-section">
+            <div class="form-header">FORM LÊN ĐƠN HÀNG MỚI</div>
+            <div class="form-body">
+                <div id="status-msg"></div>
+
+                <div class="form-group-title"><span>👤</span> Thông tin khách hàng</div>
+
+                <div class="form-item">
+                    <label>UID Học sinh</label>
+                    <input type="text" id="kh-uid" list="uid-list" placeholder="Chọn từ danh sách hoặc gõ UID...">
+                    <datalist id="uid-list"></datalist>
+                </div>
+
+                <div class="form-item">
+                    <label>Tên khách hàng</label>
+                    <input type="text" id="kh-ten" placeholder="Nhập họ và tên khách hàng...">
+                </div>
+
+                <div class="form-item align-top">
+                    <label>SĐT Khách hàng</label>
+                    <div class="phone-container">
+                        <div class="row-gap">
+                            <input type="text" id="kh-code" list="code-list" value="+84 (VN - Vietnam)" placeholder="Tìm mã vùng (VD: 84, Vietnam)..." style="max-width: 220px;">
+                            <datalist id="code-list"></datalist>
+                            <input type="text" id="kh-sdt" placeholder="Nhập số điện thoại...">
+                        </div>
+                        <div class="sale-note">⚠️ Sale: Có thể gõ số mã vùng hoặc tên quốc gia để tìm. Điền đúng đầu số (Bỏ số 0 ở đầu).</div>
+                    </div>
+                </div>
+
+                <div class="form-item align-top">
+                    <label>Địa chỉ Khách hàng</label>
+                    <div class="address-container">
+                        <div class="row-gap">
+                            <select id="kh-tinh"><option value="" disabled selected hidden>Tỉnh/Thành phố</option></select>
+                            <select id="kh-quan" disabled><option value="" disabled selected hidden>Quận/Huyện</option></select>
+                            <select id="kh-phuong" disabled><option value="" disabled selected hidden>Phường/Xã</option></select>
+                        </div>
+                        <input type="text" id="kh-diachichitiet" placeholder="Số nhà, tên đường (Tùy chọn)...">
+                    </div>
+                </div>
+
+                <div class="form-group-title"><span>💰</span> Thông tin đơn hàng & Thanh toán</div>
+
+                <div class="form-item">
+                    <label>Gói học chọn mua</label>
+                    <input type="text" id="kh-goihoc" list="goihoc-list" placeholder="Chọn từ danh sách hoặc gõ mới (VD: Tiếng Anh Giao Tiếp)...">
+                    <datalist id="goihoc-list">
+                        <option value="IELTS Foundation 2025"></option>
+                        <option value="IELTS Intensive 2026"></option>
+                        <option value="Tiếng Anh Giao Tiếp 2025"></option>
+                        <option value="Tiếng Anh Giao Tiếp 2026"></option>
+                        <option value="Khóa Trại Hè 2025"></option>
+                    </datalist>
+                </div>
+
+                <div class="form-item">
+                    <label>Tổng tiền cần CK</label>
+                    <div style="flex:1; position:relative;">
+                        <input type="text" id="kh-tongtien" placeholder="Ví dụ: 5.000.000" oninput="formatCurrency(this)">
+                        <span style="position:absolute; right:15px; top:11px; color:#aaa; font-size:14px; font-weight:bold;">VNĐ</span>
+                    </div>
+                </div>
+
+                <div class="form-item">
+                    <label>Nguồn doanh thu</label>
+                    <select id="kh-nguon">
+                        <option value="" disabled selected hidden>-- Chọn nguồn khách --</option>
+                        <option value="Gia hạn">Gia hạn</option>
+                        <option value="Referral">Referral</option>
+                    </select>
+                </div>
+
+                <div class="form-item">
+                    <label>Ghi chú đơn</label>
+                    <input type="text" id="kh-ghichu" placeholder="Nhập các lưu ý đặc biệt cho đơn hàng này...">
+                </div>
+
+                <div class="btn-container">
+                    <button class="btn-reset" onclick="resetForm()">Làm mới Form</button>
+                    <button class="btn-main" id="taoDonBtn">Tạo đơn & Xuất mã QR</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="Tab2" class="tab-content">
+    <div style="background:#fff; padding:20px; border-radius:8px; margin-bottom:20px; border:1px dashed var(--primary-color); display:flex; align-items:center; justify-content:space-between; box-shadow: 0 2px 5px rgba(0,0,0,0.05);">
+        <span style="font-size:14px; color:#555; font-weight:bold;">Tải file dữ liệu gốc để tự động gom danh sách UID, Gói học và hỗ trợ tự điền Địa chỉ:</span>
+        <button class="btn-reset" onclick="document.getElementById('excelInput').click()">📁 Nạp cơ sở dữ liệu Excel (.xlsx)</button>
+        <input type="file" id="excelInput" accept=".xlsx, .xls, .csv" style="display:none;">
+    </div>
+
+    <div class="table-responsive">
+        <table>
+            <thead>
+            <tr>
+                <th>STT</th>
+                <th>Mã đơn</th>
+                <th>Tên khách</th>
+                <th>UID</th>
+                <th>SĐT</th>
+                <th>Gói học</th>
+                <th>Tổng tiền</th>
+                <th>Nguồn</th>
+                <th>Nội dung CK</th>
+                <th>Tiền về</th>
+                <th>CRM</th>
+                <th>Địa chỉ</th>
+                <th>Biên lai</th>
+                <th>Hành động</th>
+            </tr>
+            </thead>
+            <tbody id="bang-don-hang"></tbody>
+        </table>
+    </div>
+</div>
+
+<div id="qrModal" class="modal">
+    <div class="modal-content">
+        <span class="close-btn" onclick="closeQRModal()">&times;</span>
+        <h3 style="text-align:center; color:var(--primary-color); margin-top:0;">THÔNG TIN CHUYỂN KHOẢN</h3>
+        <div class="payment-card">
+            <div class="info-box" style="flex:1; line-height:2.2; font-size: 15px;">
+                <div>Ngân hàng: <span id="m-bank"></span></div>
+                <div>STK: <span id="m-acc"></span></div>
+                <div>Chủ TK: <span id="m-name"></span></div>
+                <div>Số tiền: <span id="m-amount" style="color:var(--accent-color); font-size:18px;"></span> VNĐ</div>
+                <div style="margin-top:5px; line-height: 1.5;">Nội dung CK (Info Code):<br><span id="m-code" class="highlight-code"></span></div>
+            </div>
+            <div style="width:230px; text-align:center; border-left: 1px dashed #ccc; padding-left: 20px;">
+                <img id="qrImg" src="" alt="VietQR" style="width:100%; border:1px solid #eee; border-radius:10px;">
+                <div style="font-size:12px; color:#777; margin-top:8px; font-style: italic;">Quét bằng App Ngân Hàng<br>để tự động điền thông tin</div>
+            </div>
+        </div>
+        <div style="text-align:center; margin-top:25px;">
+            <button class="btn-main" onclick="window.print()" style="padding:10px 25px; font-size:14px; background:#6c757d;">Chụp màn hình / In Thẻ</button>
+        </div>
+    </div>
+</div>
+
+<div id="billModal" class="modal">
+    <div class="modal-content modal-bill-content">
+        <span class="close-btn" onclick="document.getElementById('billModal').style.display='none'">&times;</span>
+        <h3 style="margin-top:0; color:var(--primary-color);">BẰNG CHỨNG GIAO DỊCH - <span id="billTitle"></span></h3>
+        <img id="billView" src="" alt="Biên lai">
+    </div>
+</div>
+
+<script>
+    // CẤU HÌNH NGÂN HÀNG
+    const BANK = {
+        bin: "vcb", accountNo: "1040607692", accountName: "NGUYEN DINH GIANG", displayName: "Vietcombank (VCB)"
+    };
+
+    let databaseExcel = [];
+    let billsStore = {};
+
+    // 1. CHUYỂN TAB
+    function openTab(evt, tabName) {
+        document.querySelectorAll(".tab-content").forEach(tab => tab.classList.remove("active"));
+        document.querySelectorAll(".tab-link").forEach(link => link.classList.remove("active"));
+        document.getElementById(tabName).classList.add("active");
+        if(evt) evt.currentTarget.classList.add("active");
+    }
+
+    // 2. FORMAT TIỀN TỆ KHI GÕ
+    function formatCurrency(input) {
+        let value = input.value.replace(/\D/g, "");
+        input.value = value.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+    }
+
+    // 3. LÀM MỚI FORM
+    function resetForm() {
+        if(!confirm("Bạn có chắc chắn muốn xóa hết thông tin trên form?")) return;
+        resetFormWithoutConfirm();
+    }
+
+    function resetFormWithoutConfirm() {
+        const ids = ['kh-uid', 'kh-ten', 'kh-sdt', 'kh-goihoc', 'kh-tongtien', 'kh-nguon', 'kh-ghichu', 'kh-diachichitiet'];
+        ids.forEach(id => {
+            document.getElementById(id).value = "";
+            document.getElementById(id).classList.remove('matched-field');
+        });
+        document.getElementById('kh-code').value = "+84 (VN - Vietnam)";
+        document.getElementById('kh-tinh').value = "";
+        document.getElementById('kh-quan').innerHTML = '<option value="" disabled selected hidden>Quận/Huyện</option>';
+        document.getElementById('kh-phuong').innerHTML = '<option value="" disabled selected hidden>Phường/Xã</option>';
+        document.getElementById('kh-quan').disabled = document.getElementById('kh-phuong').disabled = true;
+        document.getElementById('status-msg').innerHTML = "";
+    }
+
+    // 4. API MÃ VÙNG ĐIỆN THOẠI VỚI DATALIST SEARCH
+    fetch('https://restcountries.com/v3.1/all?fields=name,cca2,idd').then(res => res.json()).then(data => {
+        const datalist = document.getElementById('code-list');
+        let codes = [];
+        data.forEach(item => {
+            if (item.idd && item.idd.root) {
+                let c = item.idd.root + (item.idd.suffixes && item.idd.suffixes.length === 1 ? item.idd.suffixes[0] : "");
+                codes.push({ code: c, name: item.name.common, iso: item.cca2 });
+            }
+        });
+        codes.sort((a,b) => a.name.localeCompare(b.name));
+
+        // Render vào Datalist
+        codes.forEach(c => {
+            if(c.iso !== 'VN') datalist.appendChild(new Option(`${c.code} (${c.iso} - ${c.name})`));
+        });
+    }).catch(err => console.error(err));
+
+    // 5. API TỈNH THÀNH VN
+    const tSel = document.getElementById('kh-tinh'), qSel = document.getElementById('kh-quan'), pSel = document.getElementById('kh-phuong');
+    fetch('https://provinces.open-api.vn/api/p/').then(res => res.json()).then(data => {
+        data.forEach(t => {
+            let o = new Option(t.name, t.name); o.setAttribute('data-code', t.code); tSel.add(o);
+        });
+    });
+
+    tSel.addEventListener('change', function() {
+        qSel.innerHTML = '<option value="" disabled selected hidden>Quận/Huyện</option>';
+        pSel.innerHTML = '<option value="" disabled selected hidden>Phường/Xã</option>';
+        qSel.disabled = pSel.disabled = true;
+        const code = this.options[this.selectedIndex].getAttribute('data-code');
+        if(code) fetch(`https://provinces.open-api.vn/api/p/${code}?depth=2`).then(res => res.json()).then(data => {
+            data.districts.forEach(q => {
+                let o = new Option(q.name, q.name); o.setAttribute('data-code', q.code); qSel.add(o);
+            });
+            qSel.disabled = false;
+        });
+    });
+
+    qSel.addEventListener('change', function() {
+        pSel.innerHTML = '<option value="" disabled selected hidden>Phường/Xã</option>';
+        pSel.disabled = true;
+        const code = this.options[this.selectedIndex].getAttribute('data-code');
+        if(code) fetch(`https://provinces.open-api.vn/api/d/${code}?depth=2`).then(res => res.json()).then(data => {
+            data.wards.forEach(p => pSel.add(new Option(p.name, p.name)));
+            pSel.disabled = false;
+        });
+    });
+
+    // 6. ĐỐI CHIẾU UID
+    document.getElementById('kh-uid').addEventListener('change', function() {
+        if(databaseExcel.length === 0) return;
+        const uid = this.value.trim().toLowerCase();
+        if(!uid) return;
+
+        const found = databaseExcel.find(i => i.uid.toLowerCase() === uid);
+        const msg = document.getElementById('status-msg');
+        const dcBox = document.getElementById('kh-diachichitiet');
+
+        if(found) {
+            msg.innerHTML = '<span class="status-success">✓ Đã tìm thấy UID trong hệ thống. Tự động điền dữ liệu liên quan!</span>';
+            if(found.diaChi && !dcBox.value) {
+                dcBox.value = found.diaChi;
+                dcBox.classList.add('matched-field');
+            }
+        } else {
+            msg.innerHTML = '<span class="status-warning">ℹ UID mới (Chưa có trong hệ thống dữ liệu gốc).</span>';
+            dcBox.classList.remove('matched-field');
+        }
+    });
+
+    document.getElementById('kh-uid').addEventListener('input', function() {
+        document.getElementById('status-msg').innerHTML = "";
+        document.getElementById('kh-diachichitiet').classList.remove('matched-field');
+    });
+
+    // 7. TẠO ĐƠN & GHI BẢNG
+    document.getElementById('taoDonBtn').addEventListener('click', function() {
+        const uid = document.getElementById('kh-uid').value.trim();
+        const ten = document.getElementById('kh-ten').value.trim();
+
+        // Xử lý tách lấy số mã vùng (cắt bỏ phần text quốc gia trong ngoặc)
+        const codeFull = document.getElementById('kh-code').value.trim();
+        const sdtCode = codeFull.split(' ')[0]; // Chỉ lấy phần tử đầu tiên (VD: lấy "+84" từ "+84 (VN - Vietnam)")
+
+        const sdtMain = document.getElementById('kh-sdt').value.trim();
+        const sdt = sdtMain ? (sdtCode + " " + sdtMain) : "";
+
+        const goiHoc = document.getElementById('kh-goihoc').value.trim();
+        const tongTien = document.getElementById('kh-tongtien').value.trim();
+        const nguon = document.getElementById('kh-nguon').value;
+
+        if(!uid || !ten || !tongTien || !nguon) {
+            alert("Vui lòng điền đủ: UID, Tên khách, Tổng tiền và Nguồn doanh thu!");
+            return;
+        }
+
+        const tinh = tSel.value; const quan = qSel.value; const phuong = pSel.value;
+        const chiTiet = document.getElementById('kh-diachichitiet').value.trim();
+        let arrDiaChi = [];
+        if(chiTiet) arrDiaChi.push(chiTiet);
+        if(phuong) arrDiaChi.push(phuong);
+        if(quan) arrDiaChi.push(quan);
+        if(tinh) arrDiaChi.push(tinh);
+        const diaChi = arrDiaChi.join(", ");
+
+        // Ghi vào bảng Tab 2 và lấy mã đơn sinh ra
+        const maDonMoi = chenDonHangVaoBang(uid, ten, sdt, diaChi, goiHoc, tongTien, nguon);
+
+        // Tự động clear form
+        resetFormWithoutConfirm();
+
+        // Chuyển Tab và Mở thẻ thanh toán
+        document.getElementById('btn-tab2').click();
+        openPaymentModal(maDonMoi, tongTien);
+    });
+
+    // 8. CHÈN BẢNG TAB 2
+    function chenDonHangVaoBang(uid, ten, sdt, diaChi, goiHoc, tongTien, nguon) {
+        const tbody = document.getElementById('bang-don-hang');
+        const rowCount = tbody.rows.length + 1;
+        const maDon = "KH" + String(rowCount).padStart(3, '0');
+        const infoCode = `Thanh toan ${maDon}`;
+
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+                <td>${rowCount}</td>
+                <td style="font-weight:bold; color:var(--primary-color);">${maDon}</td>
+                <td class="text-left" style="font-weight:bold;">${ten}</td>
+                <td>${uid}</td>
+                <td>${sdt}</td>
+                <td class="text-left">${goiHoc}</td>
+                <td class="text-right" style="color:var(--accent-color); font-weight:bold;">${tongTien} đ</td>
+                <td><span class="badge badge-success">${nguon}</span></td>
+                <td><span class="badge badge-info">${infoCode}</span></td>
+                <td><input type="checkbox" class="status-checkbox"></td>
+                <td><input type="checkbox" class="status-checkbox"></td>
+                <td class="text-left" style="font-size:12px; max-width:200px; white-space:normal;">${diaChi}</td>
+                <td>
+                    <input type="file" id="input-bill-${maDon}" accept="image/*" style="display:none;" onchange="handleBillUpload(this, '${maDon}')">
+                    <button class="action-btn btn-bill" id="btn-bill-${maDon}" onclick="onBillButtonClick('${maDon}')">Tải bill</button>
+                </td>
+                <td>
+                    <button class="action-btn btn-qr" onclick="openPaymentModal('${maDon}', '${tongTien}')">Thẻ QR</button>
+                </td>
+            `;
+        tbody.appendChild(tr);
+        return maDon;
+    }
+
+    // 9. MODAL THẺ THANH TOÁN
+    const qrModal = document.getElementById("qrModal");
+    function openPaymentModal(maDon, tongTienStr) {
+        const tongTienSo = parseInt(tongTienStr.replace(/\D/g, '')) || 0;
+        const infoCode = `Thanh toan ${maDon}`;
+
+        document.getElementById("m-bank").innerText = BANK.displayName;
+        document.getElementById("m-acc").innerText = BANK.accountNo;
+        document.getElementById("m-name").innerText = BANK.accountName;
+        document.getElementById("m-amount").innerText = tongTienStr;
+        document.getElementById("m-code").innerText = infoCode;
+
+        const qrUrl = `https://img.vietqr.io/image/${BANK.bin}-${BANK.accountNo}-compact2.png?amount=${tongTienSo}&addInfo=${encodeURIComponent(infoCode)}&accountName=${encodeURIComponent(BANK.accountName)}`;
+        document.getElementById("qrImg").src = qrUrl;
+        qrModal.style.display = "flex";
+    }
+    function closeQRModal() { qrModal.style.display = "none"; document.getElementById("qrImg").src = ""; }
+
+    // 10. MODAL VÀ LƯU ẢNH BIÊN LAI
+    const billModal = document.getElementById("billModal");
+    function handleBillUpload(inputObj, maDon) {
+        if (inputObj.files && inputObj.files[0]) {
+            const file = inputObj.files[0];
+            if (file.type.startsWith('image/')) {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    billsStore[maDon] = e.target.result;
+                    const btn = document.getElementById(`btn-bill-${maDon}`);
+                    btn.innerText = "Xem ảnh";
+                    btn.className = "action-btn btn-view";
+                };
+                reader.readAsDataURL(file);
+            } else alert("Vui lòng chọn định dạng ảnh!");
+        }
+    }
+    function onBillButtonClick(maDon) {
+        if (billsStore[maDon]) {
+            document.getElementById("billTitle").innerText = maDon;
+            document.getElementById("billView").src = billsStore[maDon];
+            billModal.style.display = "flex";
+        } else {
+            document.getElementById(`input-bill-${maDon}`).click();
+        }
+    }
+
+    window.onclick = function(e) {
+        if (e.target == qrModal) closeQRModal();
+        if (e.target == billModal) billModal.style.display = "none";
+    }
+
+    // 11. IMPORT EXCEL TỰ ĐỘNG LẤY ĐỊA CHỈ, UID VÀ GÓI HỌC
+    const excelInput = document.getElementById('excelInput');
+    excelInput.addEventListener('change', function() {
+        if(this.files.length === 0) return;
+        const file = this.files[0];
+        const reader = new FileReader();
+
+        reader.onload = function(e) {
+            const data = new Uint8Array(e.target.result);
+            const workbook = XLSX.read(data, { type: 'array' });
+            const jsonRows = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]]);
+
+            if(jsonRows.length === 0) { alert("File Excel trống!"); return; }
+
+            let uniqueUIDs = new Set();
+            let uniqueCourses = new Set();
+
+            databaseExcel = jsonRows.map(row => {
+                let uid = "", diaChi = "", goiHoc = "";
+                for (let key in row) {
+                    let k = key.toLowerCase();
+                    if (k.includes('uid') || k.includes('id') || k.includes('học sinh')) uid = String(row[key]);
+                    else if (k.includes('địa chỉ') || k.includes('diachi') || k.includes('address')) diaChi = String(row[key]);
+                    else if (k.includes('gói') || k.includes('khóa') || k.includes('course')) goiHoc = String(row[key]);
+                }
+                if(uid) uniqueUIDs.add(uid.trim());
+                if(goiHoc) uniqueCourses.add(goiHoc.trim());
+
+                return { uid: uid.trim(), diaChi: diaChi.trim(), goiHoc: goiHoc.trim() };
+            }).filter(item => item.uid !== "");
+
+            // Nạp data vào Datalist
+            const uidList = document.getElementById('uid-list');
+            const goiHocList = document.getElementById('goihoc-list');
+
+            uidList.innerHTML = '';
+            uniqueUIDs.forEach(u => uidList.appendChild(new Option(u)));
+
+            uniqueCourses.forEach(c => {
+                if(!Array.from(goiHocList.options).some(opt => opt.value === c)) {
+                    goiHocList.appendChild(new Option(c));
+                }
+            });
+
+            alert(`Nạp thành công! Đã cập nhật danh sách tự động cho UID (${uniqueUIDs.size}) và Gói học.`);
+            excelInput.value = '';
+        };
+        reader.readAsArrayBuffer(file);
+    });
+
+</script>
+</body>
+</html>

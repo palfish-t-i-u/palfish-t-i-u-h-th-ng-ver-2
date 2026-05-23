@@ -1,0 +1,20 @@
+Quy trình khởi động hàng ngày
+Terminal 1 — Backend
+powershell -ExecutionPolicy Bypass -File "C:\job\palfish-gmv-manager\backend\run.ps1"
+Terminal 2 — Frontend
+powershell -ExecutionPolicy Bypass -Command "$env:PATH = [System.Environment]::GetEnvironmentVariable('PATH','Machine') + ';' + [System.Environment]::GetEnvironmentVariable('PATH','User'); cd 'C:\job\palfish-gmv-manager\frontend'; npm run dev"
+Terminal 3 — ngrok (chỉ cần nếu dùng PayOS thật)
+cd C:\job\palfish-gmv-manager\api_pipe
+.\ngrok.exe http 8000
+→ Copy URL ngrok mới → cập nhật vào PayOS Dashboard → Webhook
+
+Sau khi khởi động
+App	URL
+Frontend
+http://localhost:5173 (hoặc 5174 nếu 5173 bận)
+Backend API
+http://127.0.0.1:8000
+API Docs
+http://127.0.0.1:8000/docs
+ngrok Inspector
+http://127.0.0.1:4040

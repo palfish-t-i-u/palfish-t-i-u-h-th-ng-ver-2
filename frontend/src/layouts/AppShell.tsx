@@ -1,0 +1,162 @@
+import type { ReactNode } from "react";
+import Badge from "../components/ui/Badge";
+import { cn } from "../lib/cn";
+
+export interface NavItem {
+  id: string;
+  label: string;
+  icon: ReactNode;
+  badge?: ReactNode;
+  /** Nhóm sidebar — hiện tiêu đề phân cách (vd. quản lý quyền) */
+  section?: string;
+}
+
+interface Props {
+  items: NavItem[];
+  activeId: string;
+  onSelect: (id: string) => void;
+  title: string;
+  subtitle?: string;
+  userEmail?: string;
+  userRole?: string;
+  isDevMode?: boolean;
+  onSignOut?: () => void;
+  children: ReactNode;
+}
+
+function NavButton({
+  it,
+  active,
+  onSelect,
+  compact,
+}: {
+  it: NavItem;
+  active: boolean;
+  onSelect: (id: string) => void;
+  compact?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={() => onSelect(it.id)}
+      className={cn(
+        "flex w-full items-center gap-3 font-medium transition",
+        compact ? "min-h-[44px] flex-col gap-1 px-1 py-2 text-[10px]" : "rounded-gmv-md px-3 py-2 text-sm",
+        active
+          ? "bg-gmv-primary-soft text-gmv-primary"
+          : "text-gmv-text hover:bg-gmv-bg hover:text-gmv-text-strong"
+      )}
+    >
+      <span className={active ? "text-gmv-primary" : "text-gmv-muted"}>{it.icon}</span>
+      {!compact && (
+        <>
+          <span className="flex-1 text-left">{it.label}</span>
+          {it.badge}
+        </>
+      )}
+      {compact && <span className="max-w-full truncate text-center leading-tight">{it.label.split(" ")[0]}</span>}
+    </button>
+  );
+}
+
+export default function AppShell({
+  items,
+  activeId,
+  onSelect,
+  title,
+  subtitle,
+  userEmail,
+  userRole,
+  isDevMode,
+  onSignOut,
+  children,
+}: Props) {
+  return (
+    <div className="flex min-h-screen w-full bg-gmv-bg font-sans text-gmv-text">
+      <aside className="hidden w-60 shrink-0 flex-col border-r border-gmv-border bg-gmv-canvas md:flex">
+        <div className="flex h-16 items-center gap-2 border-b border-gmv-border px-5">
+          <div className="flex h-8 w-8 items-center justify-center rounded-gmv-md bg-gmv-primary text-white">
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M3 3h7v7H3zM14 3h7v7h-7zM14 14h7v7h-7zM3 14h7v7H3z" />
+            </svg>
+          </div>
+          <div className="leading-tight">
+            <div className="text-sm font-semibold text-gmv-text-strong">PalFish GMV</div>
+            <div className="text-[11px] text-gmv-muted">Reconciliation</div>
+          </div>
+        </div>
+        <nav className="flex-1 overflow-y-auto px-3 py-4">
+          <ul className="space-y-1">
+            {items.map((it, idx) => {
+              const active = it.id === activeId;
+              const prevSection = idx > 0 ? items[idx - 1]?.section : undefined;
+              const showSection = it.section && it.section !== prevSection;
+              return (
+                <li key={it.id}>
+                  {showSection && (
+                    <div className="mb-1 mt-3 px-3 text-[10px] font-semibold uppercase tracking-wide text-gmv-muted first:mt-0">
+                      {it.section}
+                    </div>
+                  )}
+                  <NavButton it={it} active={active} onSelect={onSelect} />
+                </li>
+              );
+            })}
+          </ul>
+        </nav>
+        <div className="border-t border-gmv-border p-3 text-[11px] text-gmv-muted">v1 · PalFish · 2026</div>
+      </aside>
+
+      <div className="flex min-h-screen min-w-0 flex-1 flex-col pb-[72px] md:pb-0">
+        <header className="sticky top-0 z-20 flex h-16 items-center justify-between border-b border-gmv-border bg-gmv-canvas/95 px-4 shadow-gmv-1 backdrop-blur md:px-6">
+          <div className="min-w-0">
+            <h1 className="truncate text-base font-semibold text-gmv-text-strong">{title}</h1>
+            {subtitle && <p className="truncate text-xs text-gmv-muted">{subtitle}</p>}
+          </div>
+          <div className="flex shrink-0 items-center gap-2 md:gap-3">
+            {isDevMode && (
+              <Badge tone="warn" className="hidden sm:inline-flex">
+                Dev Mode
+              </Badge>
+            )}
+            {userRole && <Badge tone="neutral">{userRole}</Badge>}
+            <span className="hidden text-xs text-gmv-muted sm:inline">{userEmail || "dev@local"}</span>
+            {onSignOut && (
+              <button
+                type="button"
+                onClick={onSignOut}
+                className="min-h-[44px] rounded-gmv-md border border-gmv-border bg-gmv-canvas px-3 py-1.5 text-xs font-medium text-gmv-text-strong hover:bg-gmv-bg"
+              >
+                Đăng xuất
+              </button>
+            )}
+          </div>
+        </header>
+
+        <main className="flex-1 overflow-x-auto p-4 md:p-6">
+          <div className="mx-auto max-w-[1400px]">{children}</div>
+        </main>
+      </div>
+
+      <nav
+        className="fixed bottom-0 left-0 right-0 z-30 flex border-t border-gmv-border bg-gmv-canvas px-1 py-1 shadow-gmv-2 md:hidden"
+        aria-label="Điều hướng chính"
+      >
+        {items.slice(0, 5).map((it) => (
+          <div key={it.id} className="min-w-0 flex-1">
+            <NavButton it={it} active={it.id === activeId} onSelect={onSelect} compact />
+          </div>
+        ))}
+      </nav>
+    </div>
+  );
+}

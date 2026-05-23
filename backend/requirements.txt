@@ -1,0 +1,16 @@
+# Core
+fastapi>=0.111.0
+uvicorn[standard]>=0.29.0
+python-multipart>=0.0.9
+
+# Supabase / DB
+supabase>=2.4.0
+
+# HTTP client
+httpx>=0.27.0
+
+# Env
+python-dotenv>=1.0.0
+
+# Excel generation (Module 4 — xuất hóa đơn thuế)
+openpyxl>=3.1.0

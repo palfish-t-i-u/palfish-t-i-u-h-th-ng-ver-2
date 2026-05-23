@@ -1,0 +1,485 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8" />
+<title>PalFish GMV — Wireframes draft 21/05/2026</title>
+<style>
+  :root {
+    --bg: #f6f7fb;
+    --panel: #ffffff;
+    --line: #d6dae4;
+    --line-strong: #94a0b8;
+    --text: #1f2330;
+    --muted: #6b7388;
+    --accent: #2f6feb;
+    --accent-soft: #e7eefd;
+    --ok: #2f9e44;
+    --warn: #f08c00;
+    --danger: #c92a2a;
+    --tag-bg: #eef1f8;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; font-family: "Inter", "Segoe UI", system-ui, sans-serif;
+    background: var(--bg); color: var(--text); line-height: 1.45;
+  }
+  header.top {
+    position: sticky; top: 0; z-index: 5;
+    background: #fff; border-bottom: 1px solid var(--line);
+    padding: 14px 32px; display: flex; align-items: baseline; gap: 18px;
+  }
+  header.top h1 { font-size: 18px; margin: 0; }
+  header.top .meta { color: var(--muted); font-size: 13px; }
+  header.top nav { margin-left: auto; display: flex; gap: 14px; font-size: 13px; }
+  header.top nav a { color: var(--accent); text-decoration: none; }
+  main { max-width: 1180px; margin: 0 auto; padding: 32px; }
+  section.frame { margin-bottom: 56px; }
+  section.frame > h2 {
+    font-size: 20px; margin: 0 0 6px;
+    display: flex; align-items: center; gap: 10px;
+  }
+  section.frame > .sub { color: var(--muted); font-size: 13px; margin-bottom: 14px; }
+  .role-tag {
+    display: inline-block; padding: 2px 9px; border-radius: 999px;
+    font-size: 11px; font-weight: 600; letter-spacing: .3px; text-transform: uppercase;
+  }
+  .role-sale   { background: #e7f5ea; color: #2f7339; }
+  .role-leader { background: #fff4dc; color: #8a5a08; }
+  .role-ops    { background: #e7eefd; color: #1b4dc4; }
+  .role-system { background: #fde2e6; color: #a01b30; }
+
+  /* Browser-chrome frame */
+  .browser {
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: 10px; box-shadow: 0 2px 10px rgba(20,30,60,.06);
+    overflow: hidden;
+  }
+  .browser .chrome {
+    background: #eef0f5; padding: 8px 14px; display: flex; align-items: center; gap: 10px;
+    border-bottom: 1px solid var(--line);
+  }
+  .browser .dots { display: flex; gap: 6px; }
+  .browser .dots i { width: 11px; height: 11px; border-radius: 50%; background: #c5cad6; display: block; }
+  .browser .url { background: #fff; border: 1px solid var(--line); border-radius: 6px;
+    padding: 4px 10px; font-size: 12px; color: var(--muted); flex: 1; }
+  .browser .body { padding: 20px; }
+
+  /* App layout inside frame */
+  .app-nav {
+    display: flex; align-items: center; gap: 18px; padding-bottom: 14px;
+    border-bottom: 1px solid var(--line); margin-bottom: 18px; font-size: 14px;
+  }
+  .app-nav .brand { font-weight: 700; color: var(--accent); }
+  .app-nav .tabs { display: flex; gap: 18px; }
+  .app-nav .tabs a { color: var(--muted); text-decoration: none; padding-bottom: 4px; }
+  .app-nav .tabs a.active { color: var(--text); font-weight: 600; border-bottom: 2px solid var(--accent); }
+  .app-nav .user { margin-left: auto; color: var(--muted); font-size: 12px; display: flex; align-items: center; gap: 8px; }
+
+  .filters { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; align-items: center; }
+  .pill {
+    border: 1px dashed var(--line-strong); background: #fff; color: var(--muted);
+    padding: 5px 10px; border-radius: 6px; font-size: 12px; display: inline-flex; gap: 4px; align-items: center;
+  }
+  .pill.solid { background: var(--accent); color: #fff; border-style: solid; border-color: var(--accent); }
+  .pill.soft  { background: var(--accent-soft); color: var(--accent); border-style: solid; border-color: var(--accent-soft); }
+  .pill .car { font-size: 10px; opacity: .7; }
+
+  /* Stat cards */
+  .stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 18px; }
+  .stat {
+    background: #fafbfe; border: 1px dashed var(--line); border-radius: 8px;
+    padding: 12px 14px;
+  }
+  .stat .lbl { color: var(--muted); font-size: 12px; }
+  .stat .val { font-size: 22px; font-weight: 700; margin-top: 4px; }
+  .stat .delta { font-size: 11px; color: var(--ok); }
+
+  /* Tables */
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { padding: 8px 10px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: middle; }
+  th { background: #f3f5fa; color: var(--muted); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: .3px; }
+  tr:hover td { background: #fafbfe; }
+  td .tag { font-size: 11px; padding: 2px 6px; border-radius: 4px; background: var(--tag-bg); color: var(--muted); }
+  td .ok { color: var(--ok); font-weight: 700; }
+  td .no { color: var(--muted); }
+  td .warn { color: var(--warn); }
+  td .danger { color: var(--danger); }
+  td button {
+    font-size: 11px; border: 1px solid var(--line-strong); background: #fff;
+    border-radius: 4px; padding: 2px 8px; cursor: default;
+  }
+  .checkbox {
+    display: inline-block; width: 16px; height: 16px; border: 1px solid var(--line-strong);
+    border-radius: 3px; vertical-align: middle; background: #fff;
+  }
+  .checkbox.on { background: var(--accent); border-color: var(--accent); position: relative; }
+  .checkbox.on::after { content: "✓"; color: #fff; font-size: 12px; position: absolute; left: 2px; top: -3px; }
+  .checkbox.dis { background: #eef0f5; border-color: var(--line); }
+
+  /* Right side panel (drawer) */
+  .drawer {
+    border: 1px dashed var(--line-strong); border-radius: 8px; padding: 14px;
+    background: #fafbfe; font-size: 13px;
+  }
+  .drawer h4 { margin: 0 0 10px; font-size: 14px; }
+  .drawer ul { margin: 0; padding-left: 18px; color: var(--muted); }
+  .drawer ul li + li { margin-top: 4px; }
+
+  /* Two-column layout */
+  .two-col { display: grid; grid-template-columns: 1fr 280px; gap: 18px; }
+
+  /* Hierarchy tree */
+  .tree { font-size: 13px; }
+  .tree details { padding-left: 4px; }
+  .tree summary { cursor: pointer; padding: 4px 6px; border-radius: 4px; }
+  .tree summary:hover { background: var(--accent-soft); }
+  .tree .leaf { color: var(--muted); padding: 2px 6px 2px 22px; }
+  .tree .count { color: var(--muted); font-size: 11px; margin-left: 6px; }
+
+  /* Permission matrix */
+  .perm { width: 100%; font-size: 13px; }
+  .perm th { text-align: center; }
+  .perm td { text-align: center; }
+  .perm td.label { text-align: left; font-weight: 500; }
+  .y { color: var(--ok); font-weight: 700; }
+  .n { color: #aab1bf; }
+  .h { color: var(--warn); font-weight: 700; }
+
+  /* Note callout */
+  .callout {
+    border-left: 3px solid var(--accent); background: #f1f5ff;
+    padding: 10px 14px; border-radius: 0 8px 8px 0; font-size: 13px; color: var(--text);
+    margin: 14px 0;
+  }
+  .callout b { color: var(--accent); }
+
+  @media print {
+    header.top { position: static; }
+    section.frame { page-break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+
+<header class="top">
+  <h1>PalFish GMV — Wireframes (draft)</h1>
+  <span class="meta">21/05/2026 · Minh · v0.1 · để propose lại với QL</span>
+  <nav>
+    <a href="#perm">Phân quyền</a>
+    <a href="#tree">Cây team</a>
+    <a href="#sale">Sale</a>
+    <a href="#leader">Leader</a>
+    <a href="#ops">Ops</a>
+    <a href="#admin">Admin</a>
+    <a href="#audit">Audit</a>
+  </nav>
+</header>
+
+<main>
+
+<section class="frame" id="perm">
+  <h2>1. Ma trận phân quyền</h2>
+  <p class="sub">4 cấp: Sale (L1) → Sale Leader (L2) → Ops/Thu Hiền (L3) → System/Kem (L4). Mọi cấp đều có thể tạo QR.</p>
+  <div class="browser">
+    <div class="chrome"><div class="dots"><i></i><i></i><i></i></div><div class="url">app/admin/permissions</div></div>
+    <div class="body">
+      <table class="perm">
+        <thead>
+          <tr>
+            <th class="label">Hành động</th>
+            <th><span class="role-tag role-sale">Sale</span></th>
+            <th><span class="role-tag role-leader">Leader</span></th>
+            <th><span class="role-tag role-ops">Ops</span></th>
+            <th><span class="role-tag role-system">System</span></th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td class="label">Tạo đơn + sinh QR + Info Code</td><td class="y">✓</td><td class="y">✓</td><td class="y">✓</td><td class="y">✓</td></tr>
+          <tr><td class="label">Xem đơn của chính mình</td><td class="y">✓</td><td class="y">✓</td><td class="y">✓</td><td class="y">✓</td></tr>
+          <tr><td class="label">Xem đơn của (sub-)team mình</td><td class="n">—</td><td class="y">✓</td><td class="y">✓</td><td class="y">✓</td></tr>
+          <tr><td class="label">Xem đơn toàn hệ thống VN</td><td class="n">—</td><td class="n">—</td><td class="y">✓</td><td class="y">✓</td></tr>
+          <tr><td class="label">Upload / thay bill</td><td class="y">✓ (đơn mình)</td><td class="y">✓ (team mình)</td><td class="y">✓</td><td class="y">✓</td></tr>
+          <tr><td class="label">Tick thủ công "tiền về"</td><td class="n">—</td><td class="n">—</td><td class="y">✓</td><td class="y">✓</td></tr>
+          <tr><td class="label">Tick "đơn CRM đã tạo"</td><td class="n">—</td><td class="n">—</td><td class="y">✓</td><td class="y">✓</td></tr>
+          <tr><td class="label">Sửa SĐT / địa chỉ / gói (có log)</td><td class="h">đơn mình</td><td class="n">—</td><td class="y">✓</td><td class="y">✓</td></tr>
+          <tr><td class="label">Export Excel / 3 file thuế</td><td class="n">—</td><td class="y">team</td><td class="y">✓</td><td class="y">✓</td></tr>
+          <tr><td class="label">Sync nhân sự CRM thủ công</td><td class="n">—</td><td class="n">—</td><td class="n">—</td><td class="y">✓</td></tr>
+          <tr><td class="label">Khoá / xoá tài khoản, đổi role, gán team</td><td class="n">—</td><td class="n">—</td><td class="n">—</td><td class="y">✓</td></tr>
+        </tbody>
+      </table>
+      <div class="callout"><b>Bất biến:</b> mọi sửa đổi đơn đều ghi <code>don_hang_audit</code> với <code>actor_email</code> + <code>old/new_value</code>. Không có hành động overwrite.</div>
+    </div>
+  </div>
+</section>
+
+<section class="frame" id="tree">
+  <h2>2. Cây team Sale (logic phân loại)</h2>
+  <p class="sub">Nguồn: Metabase question <code>14393-remaining-lesson-vn</code>. <b>149 sale / 15 team</b>. Định danh = cột <code>Sale</code>. Team = <code>depart7</code>; nếu rỗng & <code>depart6=ONLINE</code> → HCM. Sub-team = <code>depart8</code> (chỉ Inhouse 1).</p>
+  <div class="browser">
+    <div class="chrome"><div class="dots"><i></i><i></i><i></i></div><div class="url">app/admin/sales/tree</div></div>
+    <div class="body">
+      <div class="two-col">
+        <div class="tree">
+          <details open><summary><b>Inhouse 1</b> <span class="count">54 sale · 5 sub-team</span></summary>
+            <details><summary>Team 1 <span class="count">16 sale · Leader: ?</span></summary>
+              <div class="leaf">Le Kim Chi (1045) · Nguyen Kieu Trang (860) · Nguyen Thuy Trang (576) · …</div>
+            </details>
+            <details><summary>Team 2 <span class="count">8 sale · Leader: Tran Thi Son?</span></summary>
+              <div class="leaf">Tran Thi Son (1191) · Le Thi Thu Yen (238) · Nguyen Nhu Ngoc (126) · …</div>
+            </details>
+            <details><summary>Team 3 <span class="count">9 sale · Leader: Ta Thuy Van?</span></summary>
+              <div class="leaf">Ta Thuy Van (830) · Pham Thi Thao (310) · Nguyen Phuong Thuy (122) · …</div>
+            </details>
+            <details><summary>Team 4 <span class="count">4 sale · Leader: Bui Thi Hong Van?</span></summary>
+              <div class="leaf">Bui Thi Hong Van (478) · Le Thi Tuyet (307) · Le Thi Thuy Trang (197) · Dao Ngoc Lan Anh (104)</div>
+            </details>
+            <details><summary>Team 5 <span class="count">6 sale · Leader: Le Thi Lan Anh?</span></summary>
+              <div class="leaf">Le Thi Lan Anh (745) · Nguyen Thi Phuong (312) · Pham Thi Tam Thuy (172) · …</div>
+            </details>
+            <details><summary>Sales (sub-team) <span class="count">11 sale</span></summary>
+              <div class="leaf">Le To Hai My (725) · Ho Thi Thanh (667) · Bui Thi Thai Duong (507) · Kieu Thi Thu Quynh (382) · Nina (6) · …</div>
+            </details>
+            <details><summary>(không gán sub-team) <span class="count">2 sale</span></summary>
+              <div class="leaf">DAO THI TRANG (1369) · Pham Minh Thuy (1)</div>
+            </details>
+          </details>
+          <details><summary><b>Inhouse 2</b> <span class="count">23 sale · không sub-team</span></summary>
+            <div class="leaf">Le Thi Thuy Van (146) · Le Hung Cuong (108) · Vu Thi Khanh Huyen (83) · Vu Cam Ly (82) · …</div>
+          </details>
+          <details><summary><b>HCM (Online)</b> <span class="count">15 sale</span></summary>
+            <div class="leaf">Le Minh Thanh (242) · Lai Ngoc Thuy Linh (184) · Nguyen Minh Phat (149) · Hau (27) · …</div>
+          </details>
+          <details><summary><b>HN Offline Store</b> <span class="count">1 sale</span></summary>
+            <div class="leaf">Pham Thuy Linh (119)</div>
+          </details>
+          <details><summary><b>Linh Dam Store</b> <span class="count">13 sale</span></summary>
+            <div class="leaf">Hoang Thi Hong Tham (219) · Vo Thi Thom (59) · …</div>
+          </details>
+          <details><summary><b>An Binh Store</b> <span class="count">3 sale</span></summary>
+            <div class="leaf">Vu Thuy Huong (51) · Bui Thi Anh (9) · Nguyen Thu Phuong (3)</div>
+          </details>
+          <details><summary><b>HN Inhouse</b> <span class="count">2 sale · advisor</span></summary>
+            <div class="leaf">Ruby Advisor (38) · Ellie Advisor (2)</div>
+          </details>
+          <details><summary><b>Group KL</b> <span class="count">5 sale</span></summary>
+            <div class="leaf">Nguyen Thi Minh Phuong (10) · Nguyen Thi Phuong Linh (9) · …</div>
+          </details>
+          <details><summary><b>Team 1 / Team 2</b> (Sales VN) <span class="count">7 sale</span></summary>
+            <div class="leaf">Bui Thi Men (24) · Ngo Thi Bich Ngoc (8) · Huynh Thi Nhu Hang (3) · …</div>
+          </details>
+          <details><summary><b>Tele sale</b> (Thailand) <span class="count">2 sale · ngoài phạm vi</span></summary>
+            <div class="leaf">Sirirak.Grace · Saowaluk.Smile</div>
+          </details>
+          <details><summary><b>P'AU Group / P'TEE Group</b> (Thailand) <span class="count">4 sale · ngoài phạm vi</span></summary>
+            <div class="leaf">Apipong.Aon · Peerawas.Pee · Jittralai.Puii · Thanakorn.Wan</div>
+          </details>
+          <details><summary><b>Marketing</b> <span class="count">1 sale</span></summary>
+            <div class="leaf">Vuong Phuong Anh</div>
+          </details>
+          <details><summary><b>(Chưa phân loại — cần admin gán tay)</b> <span class="count">17 sale</span></summary>
+            <div class="leaf">Le Thi Thanh Thuy (196) · Nguyen Hong Nhu (38) · Dao Thi Hoang Yen (32) · Josh (18) · …</div>
+          </details>
+        </div>
+        <div class="drawer">
+          <h4>Logic phân loại</h4>
+          <ul>
+            <li><b>team</b> = <code>depart7</code></li>
+            <li>nếu rỗng & <code>depart6 ~ /online/i</code> → <b>HCM (Online)</b></li>
+            <li>còn lại lấy <code>depart6</code></li>
+            <li><b>sub_team</b> = <code>depart8</code> (chỉ Inhouse 1)</li>
+          </ul>
+          <h4 style="margin-top:14px;">Câu hỏi cho QL</h4>
+          <ul>
+            <li>Ai là Leader thực tế ở từng sub-team?</li>
+            <li>Có cần thêm cờ <code>is_leader</code> trên Metabase không?</li>
+            <li>Thailand sale có nằm trong scope GMV VN không?</li>
+            <li>17 sale chưa phân loại → ai onboard?</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="frame" id="sale">
+  <h2>3. Tab 2 — view của <span class="role-tag role-sale">Sale</span></h2>
+  <p class="sub">Chỉ thấy đơn của chính mình. Ô "tiền về" / "CRM" disabled. Có thể sửa SĐT/địa chỉ của đơn mình (ghi log).</p>
+  <div class="browser">
+    <div class="chrome"><div class="dots"><i></i><i></i><i></i></div><div class="url">app.palfish.../tab2</div></div>
+    <div class="body">
+      <div class="app-nav">
+        <span class="brand">PalFish GMV</span>
+        <div class="tabs"><a>Tab 1: Tạo mã</a><a class="active">Tab 2: Đơn của tôi</a></div>
+        <div class="user">Le Kim Chi · sale · Inhouse 1 / Team 1 ▾</div>
+      </div>
+      <div class="filters">
+        <span class="pill">Ngày: 01/05 – 21/05 ▾</span>
+        <span class="pill">Trạng thái: tất cả ▾</span>
+        <span class="pill">Gói học ▾</span>
+        <span class="pill solid">+ Tạo đơn mới</span>
+        <span style="color:var(--muted); font-size:12px; margin-left:auto;">12 đơn của bạn</span>
+      </div>
+      <table>
+        <thead><tr><th>Mã đơn</th><th>UID / Khách</th><th>SĐT</th><th>Gói</th><th>Tổng tiền</th><th>Info Code</th><th>Bill</th><th>Tiền về</th><th>CRM</th></tr></thead>
+        <tbody>
+          <tr><td>KH012</td><td>3311716270<br><span class="tag">Trần A</span></td><td>+84 912…</td><td>NEW 48 PHI+5</td><td>7,280,000</td><td>KH012 · QR</td><td>📷 + upload</td><td><span class="ok">✓</span></td><td><span class="checkbox dis"></span></td></tr>
+          <tr><td>KH011</td><td>3311687704<br><span class="tag">Trần B</span></td><td>+82 010…</td><td>UPSALE 96 PHI+10</td><td>29,680,000</td><td>KH011 · QR</td><td>+ upload</td><td><span class="checkbox dis"></span></td><td><span class="checkbox dis"></span></td></tr>
+          <tr><td>KH010</td><td>3311639517<br><span class="tag">Phạm C</span></td><td>+420 777…</td><td>Both AB REFER 96</td><td>14,840,000</td><td>KH010 · QR</td><td>📷</td><td><span class="ok">✓</span></td><td><span class="checkbox dis"></span></td></tr>
+        </tbody>
+      </table>
+      <div class="callout">Click vào hàng → mở drawer chi tiết + audit log của đơn (chỉ đơn của mình).</div>
+    </div>
+  </div>
+</section>
+
+<section class="frame" id="leader">
+  <h2>4. Dashboard — view của <span class="role-tag role-leader">Sale Leader</span></h2>
+  <p class="sub">Chọn team / sub-team thuộc phạm vi mình quản lý. Read-only với đơn của member, không sửa được.</p>
+  <div class="browser">
+    <div class="chrome"><div class="dots"><i></i><i></i><i></i></div><div class="url">app/.../dashboard/team</div></div>
+    <div class="body">
+      <div class="app-nav">
+        <span class="brand">PalFish GMV</span>
+        <div class="tabs"><a>Tab 1</a><a>Tab 2</a><a class="active">Dashboard Team</a></div>
+        <div class="user">Tran Thi Son · leader · Inhouse 1 / Team 2 ▾</div>
+      </div>
+      <div class="filters">
+        <span class="pill soft">Team: Inhouse 1 ▾</span>
+        <span class="pill soft">Sub-team: Team 2 ▾</span>
+        <span class="pill">Sale: tất cả ▾</span>
+        <span class="pill">Ngày: tháng này ▾</span>
+        <span class="pill" style="margin-left:auto;">⬇ Export Excel</span>
+      </div>
+      <div class="stats">
+        <div class="stat"><div class="lbl">GMV tháng</div><div class="val">1.24 tỷ ₫</div><div class="delta">+12% vs tháng trước</div></div>
+        <div class="stat"><div class="lbl"># đơn</div><div class="val">286</div><div class="delta">+18</div></div>
+        <div class="stat"><div class="lbl">Tỉ lệ tiền về</div><div class="val">92%</div><div class="delta">22 đơn pending</div></div>
+        <div class="stat"><div class="lbl">CRM đã tạo</div><div class="val">274 / 286</div><div class="delta">12 đơn chờ ops</div></div>
+      </div>
+      <table>
+        <thead><tr><th>Sale</th><th># đơn</th><th>GMV</th><th>Tiền về</th><th>CRM done</th><th>Có bill</th></tr></thead>
+        <tbody>
+          <tr><td>Tran Thi Son <span class="tag">leader</span></td><td>112</td><td>620M</td><td>108/112</td><td>105/112</td><td>112/112</td></tr>
+          <tr><td>Le Thi Thu Yen</td><td>54</td><td>238M</td><td>50/54</td><td>49/54</td><td>54/54</td></tr>
+          <tr><td>Nguyen Nhu Ngoc</td><td>38</td><td>126M</td><td>35/38</td><td>35/38</td><td>36/38</td></tr>
+          <tr><td>Luu Thi Hoang Ngan</td><td>32</td><td>113M</td><td>29/32</td><td>29/32</td><td>32/32</td></tr>
+          <tr><td>Bui Lam Linh</td><td>28</td><td>72M</td><td>26/28</td><td>25/28</td><td>26/28</td></tr>
+        </tbody>
+      </table>
+      <div class="callout">Click cột "Sale" → drill xuống bảng đơn của sale đó (read-only).</div>
+    </div>
+  </div>
+</section>
+
+<section class="frame" id="ops">
+  <h2>5. Tab 2 — view của <span class="role-tag role-ops">Ops / Thu Hiền</span></h2>
+  <p class="sub">Thấy toàn bộ đơn VN. Được phép tick tiền về, tick CRM, sửa thông tin (có log), bulk action, export 3 file thuế.</p>
+  <div class="browser">
+    <div class="chrome"><div class="dots"><i></i><i></i><i></i></div><div class="url">app/.../tab2?scope=all</div></div>
+    <div class="body">
+      <div class="app-nav">
+        <span class="brand">PalFish GMV</span>
+        <div class="tabs"><a>Tab 1</a><a class="active">Tab 2 (ops)</a><a>Dashboard tổng</a></div>
+        <div class="user">Thu Hien · ops</div>
+      </div>
+      <div class="filters">
+        <span class="pill">Team ▾</span>
+        <span class="pill">Sub-team ▾</span>
+        <span class="pill">Sale ▾</span>
+        <span class="pill">Trạng thái ▾</span>
+        <span class="pill">Có bill ▾</span>
+        <span class="pill soft" style="margin-left:auto;">⬇ Export 3 file thuế</span>
+        <span class="pill">Bulk: tick tiền về</span>
+      </div>
+      <table>
+        <thead><tr><th style="width:24px;"><span class="checkbox"></span></th><th>Mã đơn</th><th>Sale (team)</th><th>Tổng tiền</th><th>Bill</th><th>Tiền về</th><th>CRM</th><th>Action</th></tr></thead>
+        <tbody>
+          <tr><td><span class="checkbox on"></span></td><td>KH012</td><td>Le Kim Chi <span class="tag">I1/T1</span></td><td>7.28M</td><td>📷</td><td><span class="checkbox on"></span></td><td><span class="checkbox"></span></td><td><button>sửa</button> <button>log</button></td></tr>
+          <tr><td><span class="checkbox"></span></td><td>KH011</td><td>Le Kim Chi <span class="tag">I1/T1</span></td><td>29.6M</td><td>—</td><td><span class="checkbox"></span></td><td><span class="checkbox"></span></td><td><button>sửa</button> <button>log</button></td></tr>
+          <tr><td><span class="checkbox"></span></td><td>KH010</td><td>Ta Thuy Van <span class="tag">I1/T3</span></td><td>14.8M</td><td>📷</td><td><span class="checkbox on"></span></td><td><span class="checkbox on"></span></td><td><button>sửa</button> <button>log</button></td></tr>
+          <tr><td><span class="checkbox"></span></td><td>KH009</td><td>Le Minh Thanh <span class="tag">HCM</span></td><td>7.28M</td><td>📷</td><td><span class="checkbox on"></span></td><td><span class="checkbox"></span></td><td><button>sửa</button> <button>log</button></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<section class="frame" id="admin">
+  <h2>6. Tab Admin — view của <span class="role-tag role-system">System (Kem / Minh)</span></h2>
+  <p class="sub">Quản trị nhân sự + tài khoản + audit log + sync CRM. Đẩy xuống cuối roadmap nhưng cần khung sẵn để Kem code.</p>
+  <div class="browser">
+    <div class="chrome"><div class="dots"><i></i><i></i><i></i></div><div class="url">app/admin/sales</div></div>
+    <div class="body">
+      <div class="app-nav">
+        <span class="brand">PalFish GMV</span>
+        <div class="tabs"><a>Tab 1</a><a>Tab 2</a><a class="active">Admin</a></div>
+        <div class="user">Kem · system</div>
+      </div>
+      <div class="filters">
+        <span class="pill solid">Nhân sự Sale</span>
+        <span class="pill">Tài khoản</span>
+        <span class="pill">Audit log</span>
+        <span class="pill">Sync CRM</span>
+        <span style="margin-left:auto; color: var(--muted); font-size: 12px;">149 sale · sync 21/05 02:00 ✓</span>
+      </div>
+      <div class="filters">
+        <span class="pill">🔍 tìm tên/email</span>
+        <span class="pill">Team ▾</span>
+        <span class="pill">Sub-team ▾</span>
+        <span class="pill">Role ▾</span>
+        <span class="pill">Trạng thái ▾</span>
+        <span class="pill soft" style="margin-left:auto;">↻ Sync now</span>
+      </div>
+      <table>
+        <thead><tr><th>CRM name</th><th>Email</th><th>Team</th><th>Sub-team</th><th>Role</th><th>Trạng thái</th><th>Action</th></tr></thead>
+        <tbody>
+          <tr><td>Le Kim Chi</td><td>lkc@…</td><td>Inhouse 1</td><td>Team 1</td><td><span class="role-tag role-sale">sale</span> ▾</td><td><span class="ok">active</span></td><td><button>sửa</button> <button>off</button></td></tr>
+          <tr><td>Tran Thi Son</td><td>tts@…</td><td>Inhouse 1</td><td>Team 2</td><td><span class="role-tag role-leader">leader</span> ▾</td><td><span class="ok">active</span></td><td><button>sửa</button> <button>off</button></td></tr>
+          <tr><td>Ta Thuy Van</td><td>ttv@…</td><td>Inhouse 1</td><td>Team 3</td><td><span class="role-tag role-leader">leader</span> ▾</td><td><span class="ok">active</span></td><td><button>sửa</button> <button>off</button></td></tr>
+          <tr><td>Thu Hien</td><td>th@…</td><td>(Ops)</td><td>—</td><td><span class="role-tag role-ops">ops</span> ▾</td><td><span class="ok">active</span></td><td><button>sửa</button> <button>off</button></td></tr>
+          <tr><td>DAO THI TRANG</td><td><span class="warn">chưa link email</span></td><td>Inhouse 1</td><td>—</td><td>leader ▾</td><td><span class="warn">cần link</span></td><td><button>link mail</button></td></tr>
+          <tr><td>Le Thi Thanh Thuy</td><td><span class="warn">chưa phân loại</span></td><td>—</td><td>—</td><td>sale ▾</td><td><span class="warn">cần gán team</span></td><td><button>gán team</button></td></tr>
+          <tr><td>Le Minh Thanh</td><td>lmt@…</td><td>HCM (Online)</td><td>—</td><td>sale ▾</td><td><span class="ok">active</span></td><td><button>sửa</button> <button>off</button></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<section class="frame" id="audit">
+  <h2>7. Audit log (xuyên suốt)</h2>
+  <p class="sub">Hiển thị trong drawer chi tiết đơn + có tab Admin riêng để filter toàn bộ.</p>
+  <div class="browser">
+    <div class="chrome"><div class="dots"><i></i><i></i><i></i></div><div class="url">app/.../orders/KH012/audit</div></div>
+    <div class="body">
+      <table>
+        <thead><tr><th style="width: 130px;">Thời gian</th><th>Actor</th><th>Action</th><th>Trường</th><th>Cũ → Mới</th></tr></thead>
+        <tbody>
+          <tr><td>21/05 09:15</td><td>Le Kim Chi <span class="role-tag role-sale">sale</span></td><td>create</td><td>—</td><td>KH012 / Info=KH012 / tổng 7.28M</td></tr>
+          <tr><td>21/05 09:20</td><td>Le Kim Chi <span class="role-tag role-sale">sale</span></td><td>upload_bill</td><td>bill_image</td><td>— → (base64 64KB)</td></tr>
+          <tr><td>21/05 10:02</td><td>Thu Hien <span class="role-tag role-ops">ops</span></td><td>tick_tien_ve</td><td>tien_ve</td><td><code>false</code> → <code>true</code></td></tr>
+          <tr><td>21/05 10:30</td><td>Thu Hien <span class="role-tag role-ops">ops</span></td><td>update</td><td>sdt</td><td><code>+84912…</code> → <code>+84913…</code></td></tr>
+          <tr><td>21/05 10:45</td><td>Kem <span class="role-tag role-system">system</span></td><td>update</td><td>sale_crm_name</td><td><code>"Tran A"</code> → <code>"Tran An"</code></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<section class="frame" id="qa">
+  <h2>8. Câu hỏi chốt với QL trước khi Kem code</h2>
+  <div class="browser"><div class="body">
+    <ol>
+      <li><b>Leader thực tế</b> ở từng sub-team là ai? (Data Metabase hiện không có cờ này.)</li>
+      <li>Ops có thấy team <b>Thailand</b> không? (Đề xuất: <b>không</b>, ngoài scope GMV VN.)</li>
+      <li>Sale có thấy <b>GMV tổng cá nhân</b> không? (Đề xuất: chỉ list đơn, không tổng số.)</li>
+      <li>Sale nghỉ việc → đơn cũ giữ <code>sale_crm_name</code> + disable account? (Đề xuất: có.)</li>
+      <li>Sub-team <b>Sales</b> trong Inhouse 1 — tên gọi thực tế là gì? (Có Nina, Le To Hai My …)</li>
+      <li>17 sale <b>chưa phân loại</b> trên Metabase — Thu Hiền onboard tay hay block ngay từ login?</li>
+    </ol>
+  </div></div>
+</section>
+
+</main>
+</body>
+</html>

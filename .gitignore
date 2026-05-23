@@ -1,0 +1,39 @@
+# Bỏ qua thư mục chứa file mẫu
+references/
+
+# Brief nội bộ (PDF + script tạo PDF — không commit)
+docs/Brief_Module3_Module4_xuat_hoa_don.pdf
+scripts/gen_module34_brief_pdf.py
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.env
+frontend/.env.local
+frontend/coverage/
+
+# Backend
+backend/__pycache__/
+backend/*.py[cod]
+backend/.venv/
+backend/venv/
+backend/.env
+api_pipe/.env
+api_pipe/__pycache__/
+api_pipe/*.py[cod]
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Local AI skills — chỉ chạy trên máy cá nhân (RTK, caveman, cavemem)
+.agents/
+skills-lock.json
+.cursor/rules/caveman.mdc
+.clinerules/
+.windsurf/
+.opencode/
+.github/copilot-instructions.md
+AGENTS.md
+RTK.md
+.cavemem/
