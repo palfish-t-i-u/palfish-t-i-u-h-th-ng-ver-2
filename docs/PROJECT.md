@@ -135,7 +135,7 @@ Chi tiết: `docs/WIREFRAMES.md`.
 
 ---
 
-## Tiến độ (cập nhật 2026-05-22 — M3/M4 MVP + test feedback round 2)
+## Tiến độ (cập nhật 2026-05-23 — UI/UX PR #2 merged)
 
 ### Hoàn thành
 
@@ -144,6 +144,8 @@ Chi tiết: `docs/WIREFRAMES.md`.
 | Module 1 E2E | Tạo đơn, QR, Tab 2, bill, PayOS tab, hủy đơn — prod + local |
 | UI sidebar | `AppShell`, flatten Quản lý quyền |
 | UI design system | `gmv-tokens`, `components/ui`, brand tím — `docs/DESIGN.md` |
+| UI/UX merge `main` | PR #2 `ui/ux-anh-minh` → `main` — **Done** |
+| Tab 2 sticky table | Freeze 3 trái + 2 phải, scroll + scrollbar — **Done** |
 | VietQR defaults | MB Bank `970422` / `1680011668899` — override `VITE_BANK_*` |
 | Production deploy | Vercel + Render, Docker context `.`, `python-multipart` |
 | Schema prod | v3 + v4 + `NOTIFY pgrst`; `crm_uid`, `created_by`, `bill_image` |
@@ -164,6 +166,7 @@ Chi tiết: `docs/WIREFRAMES.md`.
 
 | Hạng mục | Ghi chú |
 |----------|---------|
+| UI refresh Tab1 / sidebar / mobile | UX-04 — Tab2 Done |
 | CK thật / nghiệm thu QR | STK MB trong env; PayOS + bank app — Giang |
 | UID CRM từ API CRM/Metabase | Fallback `/crm/customers` |
 | Audit log Tab 2 | Schema có, code chưa |

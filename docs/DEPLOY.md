@@ -16,6 +16,7 @@ Thứ tự khuyến nghị: **Backend (Render) trước** → lấy URL API → 
 
 - [x] Code push GitHub `palfish-t-i-u/palfish-gmv-manager` (BE Render — lịch sử)
 - [x] FE Vercel: repo **`palfish-t-i-u/palfish-t-i-u-h-th-ng-ver-2`**, branch UI/UX: **`ui/ux-anh-minh`** — xem **`docs/WORKFLOW_UI_UX.md`**
+- [x] PR #2 merge `ui/ux-anh-minh` → `main` (2026-05-23) — **Done**
 - [x] Chạy `supabase_schema_patch.sql` + `v2` + **`v3`** + **`v4`** (prod: v3 bắt buộc nếu chỉ có v2; sau ALTER → `NOTIFY pgrst, 'reload schema'`)
 - [x] Seed `nhan_su_sale` (`scripts/seed_nhan_su_sale.py`) hoặc **Sync Metabase now** (System)
 - [x] Test local Module 1 pass

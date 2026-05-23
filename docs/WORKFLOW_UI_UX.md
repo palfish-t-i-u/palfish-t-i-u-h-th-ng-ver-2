@@ -155,9 +155,10 @@ git push origin ui/ux-anh-minh
 
 ### Checklist review (Giang / Đức)
 
-- [ ] Tab **Tạo đơn** / **Quản lý đơn** — layout, mobile, không tràn bảng
-- [ ] Không vỡ API: Network `/api/me`, `/api/orders` → 200
-- [ ] PayOS / tick tiền về / CRM — hành vi giữ như trước (nếu không đổi spec)
+- [ ] Tab **Tạo đơn** — layout, mobile
+- [x] Tab **Quản lý đơn** — freeze cột + scroll ngang + scrollbar — **Done** (PR #2)
+- [x] Không vỡ API: Network `/api/me`, `/api/orders` → 200 — **Done** (smoke merge)
+- [x] PayOS / tick tiền về / CRM — hành vi giữ như trước — **Done** (không đổi spec UI lần này)
 - [ ] Sidebar, Hóa đơn thuế (nếu có thay đổi ở vùng đó)
 
 **Comment xong →** approve PR hoặc nhắn Minh merge.
@@ -172,7 +173,7 @@ git push origin ui/ux-anh-minh
 | `main` | Sau review | Ổn định, merge từ `ui/ux-anh-minh` |
 | `giang-đức'back-and-fr` (hoặc tương tự) | Giang, Đức | Backend / tính năng — **không** merge thẳng vào UI branch |
 
-**Sau khi merge `ui/ux-anh-minh` → `main`:**
+**Sau khi merge `ui/ux-anh-minh` → `main`:** Done — PR #2 (2026-05-23).
 
 - Giữ Production Branch = `ui/ux-anh-minh` **hoặc** đổi lại `main` (thống nhất một cách).
 - Nếu đổi Production Branch về `main`: mỗi lần chỉ UI vẫn có thể merge PR vào `main` rồi push.
@@ -214,4 +215,4 @@ Cập nhật trạng thái trong **`docs/TODO.md`** — mục **UI/UX branch `ui
 
 ---
 
-*Cập nhật: 2026-05-23 — sau khi gắn ver-2 lên Vercel, Production Branch `ui/ux-anh-minh`.*
+*Cập nhật: 2026-05-23 — PR #2 merged `ui/ux-anh-minh` → `main`; Tab2 sticky Done.*

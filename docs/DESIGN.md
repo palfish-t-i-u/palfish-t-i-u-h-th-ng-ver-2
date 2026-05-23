@@ -39,7 +39,7 @@ Import order: `index.css` → `gmv-tokens.css` → `gmv-theme.css` (`main.tsx`).
 | `Input` / `Select` / `Textarea` | Focus ring primary |
 | `Card` + `CardHeader` + `CardBody` | Header soft `#eeebff` |
 | `Badge` | Pill trạng thái |
-| `Table` + `TableWrap` + `Th`/`Td`/`Tr` | Ops tables |
+| `Table` + `TableWrap` + `Th`/`Td`/`Tr` | Ops tables; sticky left/right + `.gmv-table-scroll` — **Done** Tab2 |
 | `Modal` | Payment + bill preview |
 | `PageSection` | Title block trong tab |
 

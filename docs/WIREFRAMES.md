@@ -1,6 +1,6 @@
 # Wireframes & logic phân quyền — Module 1/2 phụ trợ
 
-> Cập nhật 21/05/2026 — Minh. **UI production:** [`docs/DESIGN.md`](DESIGN.md) (brand `#7260ff`, `components/ui/`). Bản vẽ draft (accent `#2f6feb`): **`docs/wireframes.html`**. Nhân sự: **`docs/team_hierarchy.md`**.
+> Cập nhật 23/05/2026 — Minh. **UI production:** [`docs/DESIGN.md`](DESIGN.md) (brand `#7260ff`, `components/ui/`). Bản vẽ draft (accent `#2f6feb`): **`docs/wireframes.html`**. Nhân sự: **`docs/team_hierarchy.md`**.
 
 ---
 
@@ -17,6 +17,7 @@
 7. PayOS webhook — `api_pipe/payos_webhook.py` + `POST /webhook/payos`.
 8. UI shell — `AppShell.tsx` sidebar + bottom nav mobile (`docs/DESIGN.md`).
 9. RBAC 4 cấp + `apiBaseUrl.ts`.
+10. Tab 2 — freeze 3 cột trái + 2 cột phải, scroll ngang, scrollbar styled (`Tab2Table`, `Table.tsx`, `gmv-theme.css`) — **Done** (PR #2, 2026-05-23).
 
 **Chưa code (backlog):**
 
