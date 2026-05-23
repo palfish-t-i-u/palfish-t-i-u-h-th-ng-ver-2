@@ -81,16 +81,6 @@ function InlinePaymentCard({
     setTimeout(() => setQrCopy({ kind: "idle" }), 2500);
   }, []);
 
-  async function fetchQrBlob(): Promise<Blob | null> {
-    if (!payosQrUrl) return null;
-    try {
-      const res = await fetch(payosQrUrl, { mode: "cors", cache: "no-store" });
-      if (!res.ok) return null;
-      const blob = await res.blob();
-      return blob.type.startsWith("image/") ? blob : null;
-    } catch { return null; }
-  }
-
   // Tạo ảnh tổng hợp: QR + nội dung chuyển khoản bên dưới
   async function buildCompositeBlob(): Promise<Blob | null> {
     const img = imgRef.current;
