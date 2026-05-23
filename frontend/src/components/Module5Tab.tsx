@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { endpoints } from "../lib/api";
+import { supabase } from "../lib/supabase";
 import Button from "./ui/Button";
 
 // --------------------------------------------------------------------------
@@ -75,13 +76,21 @@ export default function Module5Tab() {
   const [hasToken, setHasToken] = useState<boolean | null>(null);
   const [tokenUpdatedAt, setTokenUpdatedAt] = useState<string | null>(null);
 
-  // Kiểm tra trạng thái token khi mở tab
+  // Đọc token status thẳng từ Supabase — không qua backend Render
   const checkToken = useCallback(async () => {
     setHasToken(null);
     try {
-      const res = await endpoints.crmData.tokenStatus();
-      setHasToken(res.data.hasToken);
-      setTokenUpdatedAt(res.data.updatedAt ?? null);
+      const { data, error } = await supabase
+        .from("crm_tokens")
+        .select("updated_at")
+        .eq("id", 1)
+        .maybeSingle();
+      if (error || !data) {
+        setHasToken(false);
+      } else {
+        setHasToken(true);
+        setTokenUpdatedAt(data.updated_at ?? null);
+      }
     } catch {
       setHasToken(false);
     }
