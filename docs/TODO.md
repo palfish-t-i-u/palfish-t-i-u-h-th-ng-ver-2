@@ -89,7 +89,42 @@
 
 | ID | Task | Status | created_at | completed_at | Ghi chú |
 |----|------|--------|------------|--------------|---------|
-| X-01 | Module xuất file thuế (3 format NH) | cancelled | 2026-05-20 10:00 | | Out of scope hiện tại |
+| X-01 | Module xuất file thuế (3 format NH) | cancelled | 2026-05-20 10:00 | 2026-05-22 12:00 | Thay bằng **Module 3 & 4** — spec `docs/MODULE_3_4.md` |
+
+---
+
+## Module 3 & 4 — Xuất hóa đơn thuế
+
+> Spec đầy đủ: **`docs/MODULE_3_4.md`**. SQL: `supabase_schema_patch_v5.sql` (Tab1) rồi `supabase_schema_patch_v5_invoice.sql`.
+
+| ID | Task | Status | created_at | completed_at | Ghi chú |
+|----|------|--------|------------|--------------|---------|
+| M3-01 | Chạy SQL v5 + v5_invoice + bucket `tax_exports` | pending | 2026-05-22 12:00 | | SQL prod done; cần bucket `tax_exports` private |
+| M3-02 | `backend/tax_export.py` — 3 file Excel (openpyxl) | done | 2026-05-22 12:00 | 2026-05-22 18:00 | MVP flat header; layout mẫu → **M3-05** |
+| M3-03 | API: pending-crm, crm-order, queue/unqueue, export-batch | done | 2026-05-22 12:00 | 2026-05-22 18:00 | + `POST /invoices/queue-batch` |
+| M3-04 | FE `Tab3CRMConfirm.tsx` — nhập Order ID, parser, Xuất | done | 2026-05-22 12:00 | 2026-05-22 18:00 | Toolbar **Xuất hóa đơn** hàng loạt |
+| M4-01 | FE `Tab4InvoiceQueue.tsx` — queue, Tải hóa đơn, Hủy queue | done | 2026-05-22 12:00 | 2026-05-22 18:00 | Zip 3 file / batch ngày |
+| M4-02 | `MainPage` sidebar «Hóa đơn» + types/api | done | 2026-05-22 12:00 | 2026-05-22 18:00 | Icon M3 (clipboard) ≠ M4 (file↓) |
+| M3-05 | Excel 3 file — format merged header như `Report/3 file thuế/` | pending | 2026-05-22 18:00 | | Backlog sau smoke round 2 |
+| M34-01 | Smoke E2E: Tab1 → tiền về → M3 → M4 → mở 3 Excel | pending | 2026-05-22 12:00 | | Round 2: tải 3 file OK; retest bulk + floor tháng |
+| M34-02 | Deploy M3/M4 prod (SQL + Render + Vercel) | pending | 2026-05-22 12:00 | | Sau commit round 2 |
+
+**Phase 2 (không trong MVP):** fetch CRM theo Order ID; phân bổ 1 QR→N đơn; UID lock 24h — xem MODULE_3_4 §11.
+
+---
+
+## UI/UX — branch `ui/ux-anh-minh` (repo ver-2)
+
+> Workflow: **`docs/WORKFLOW_UI_UX.md`**. Repo: `palfish-t-i-u/palfish-t-i-u-h-th-ng-ver-2`. Live: `palfish-gmv-manager.vercel.app`.
+
+| ID | Task | Status | created_at | completed_at | Ghi chú |
+|----|------|--------|------------|--------------|---------|
+| UX-01 | Vercel: repo ver-2 + Root `frontend` + Production Branch `ui/ux-anh-minh` | done | 2026-05-23 | 2026-05-23 | Xem WORKFLOW §2 |
+| UX-02 | Ghi doc workflow + checklist đổi máy | done | 2026-05-23 | 2026-05-23 | `WORKFLOW_UI_UX.md` |
+| UX-03 | Giang/Đức: review PR `ui/ux-anh-minh` → `main` | pending | 2026-05-23 | | Comment GitHub + smoke Vercel |
+| UX-04 | UI refresh theo `WIREFRAMES.md` / `DESIGN.md` (từng tab) | in_progress | 2026-05-23 | | Push → auto deploy Vercel |
+| UX-05 | Đồng bộ doc `docs/` từ máy cũ → ver-2 (commit trên `ui/ux-anh-minh`) | pending | 2026-05-23 | | Sau khi copy máy mới |
+| UX-06 | (Sau merge UI) Render: có cần gắn BE ver-2? | pending | 2026-05-23 | | Chỉ khi Giang/Đức đổi API |
 
 ---
 
