@@ -6,6 +6,8 @@ import StaffCRMTab from "../components/StaffCRMTab";
 import AuthAccountsTab from "../components/AuthAccountsTab";
 import Module3Tab from "../components/Module3Tab";
 import Module4Tab from "../components/Module4Tab";
+import SoDoanhThuTab from "../components/SoDoanhThuTab";
+import DoanhThuSaleTab from "../components/DoanhThuSaleTab";
 import { useAuth } from "../hooks/useAuth";
 import { useMe } from "../hooks/useMe";
 import { endpoints } from "../lib/api";
@@ -21,6 +23,8 @@ type ViewId =
   | "profile"
   | "module3"
   | "module4"
+  | "revenueLedger"
+  | "revenuePivot"
   | "staffCrm"
   | "authAccounts";
 
@@ -81,6 +85,20 @@ const I = {
       <polyline points="10 9 9 9 8 9" />
     </svg>
   ),
+  ledger: (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
+      <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
+      <line x1="8" y1="7" x2="16" y2="7" /><line x1="8" y1="11" x2="14" y2="11" />
+    </svg>
+  ),
+  chart: (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <line x1="18" y1="20" x2="18" y2="10" />
+      <line x1="12" y1="20" x2="12" y2="4" />
+      <line x1="6" y1="20" x2="6" y2="14" />
+    </svg>
+  ),
 };
 
 const TITLES: Record<ViewId, { title: string; subtitle?: string }> = {
@@ -90,6 +108,8 @@ const TITLES: Record<ViewId, { title: string; subtitle?: string }> = {
   profile: { title: "Thông tin cá nhân" },
   module3: { title: "Xác nhận CRM", subtitle: "M3 — Điền tên sản phẩm thuế & mã CRM Order" },
   module4: { title: "Xuất hóa đơn thuế", subtitle: "M4 — Cấp mã M.../PF... và tải file ZIP 3 Excel" },
+  revenueLedger: { title: "Sổ doanh thu", subtitle: "Ghi từng khoản thu — tự động (M3) + điền tay" },
+  revenuePivot: { title: "Doanh thu Sale", subtitle: "Tổng GMV (RMB) theo team × sale × tháng" },
   staffCrm: { title: "Nhân sự Sale", subtitle: "Master data Metabase — gán role / team" },
   authAccounts: { title: "Tài khoản Auth", subtitle: "Supabase Auth — khoá/mở account" },
 };
@@ -182,6 +202,17 @@ export default function MainPage() {
           id: "module4",
           label: "Xuất hóa đơn",
           icon: I.invoice,
+        },
+        {
+          id: "revenueLedger",
+          label: "Sổ doanh thu",
+          icon: I.ledger,
+          section: "Doanh thu",
+        },
+        {
+          id: "revenuePivot",
+          label: "Doanh thu Sale",
+          icon: I.chart,
         }
       );
     }
@@ -247,6 +278,16 @@ export default function MainPage() {
       {showInvoice && (
         <div style={{ display: activeView === "module4" ? "block" : "none" }}>
           <Module4Tab />
+        </div>
+      )}
+      {showInvoice && (
+        <div style={{ display: activeView === "revenueLedger" ? "block" : "none" }}>
+          <SoDoanhThuTab />
+        </div>
+      )}
+      {showInvoice && (
+        <div style={{ display: activeView === "revenuePivot" ? "block" : "none" }}>
+          <DoanhThuSaleTab />
         </div>
       )}
       {showStaffCrm && (

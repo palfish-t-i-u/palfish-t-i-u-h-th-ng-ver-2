@@ -243,3 +243,38 @@
 - `frontend/.env.example`, `docs/DEPLOY.md`, `docs/SETUP_ENV.md` — đồng bộ `VITE_BANK_*`.
 
 **Docs sync:** `PROJECT.md`, `TODO.md`, `WIREFRAMES.md`, `DESIGN.md`.
+
+---
+
+## 2026-05-23 — UI/UX PR #2 + doc task sync
+
+**Frontend — Tab 2**
+- `Tab2Table.tsx` — freeze 3 cột trái + 2 phải, scroll ngang.
+- `components/ui/Table.tsx` — export `stickyTableHead*` / `stickyTableCell*`.
+- `gmv-theme.css` — `.gmv-table-scroll` scrollbar styled.
+
+**Git**
+- PR #2 merge `ui/ux-anh-minh` → `main` (no conflict).
+
+**Docs sync:** `TODO.md` (UX-03, UX-05, UX-07 done), `WORKFLOW_UI_UX.md`, `WIREFRAMES.md`, `PROJECT.md`, `DESIGN.md`, `DEPLOY.md`.
+
+---
+
+## 2026-05-23 — Spec Module 5 (Sổ doanh thu + Doanh thu Sale)
+
+- Thêm `docs/MODULE_SO_DOANH_THU.md` — 2 tab, map team, tỷ giá 3700, pivot theo ngày tiền về.
+- Cập nhật `docs/TODO.md` — block M5-01..M5-07.
+
+---
+
+## 2026-05-23 — Module 5 MVP (Sổ doanh thu + Doanh thu Sale)
+
+**Backend**
+- `revenue_routes.py` — CRUD `/revenue/ledger`, pivot `/revenue/pivot`, sync M3 → Sổ.
+- `invoice_routes.py` — hook sau `m3-approve` + bulk.
+
+**Frontend**
+- `SoDoanhThuTab.tsx`, `DoanhThuSaleTab.tsx` — sidebar nhóm Doanh thu (Ops/System).
+- `types/revenue.ts`, `api.ts` endpoints.
+
+**Docs:** `TODO.md` M5-01..04 done.

@@ -1,6 +1,7 @@
 # TODO — PalFish GMV Reconciliation
 
-> **Quy tắc:** Thêm task mới vào cuối danh sách. Khi hoàn thành, điền `completed_at` và đổi `status` → `done`. Không xóa task đã done (giữ lịch sử).
+> **Quy tắc:** Thêm task mới vào cuối danh sách. Khi hoàn thành, điền `completed_at` và đổi `status` → `done`. Không xóa task đã done (giữ lịch sử).  
+> **Đọc nhanh:** chỉ xem dòng `pending` / `in_progress` — phần `done` giữ lịch sử, không cần đọc lại.
 
 **Định dạng thời gian:** `YYYY-MM-DD HH:mm` (giờ địa phương UTC+7 trừ khi ghi chú khác).
 
@@ -121,10 +122,27 @@
 |----|------|--------|------------|--------------|---------|
 | UX-01 | Vercel: repo ver-2 + Root `frontend` + Production Branch `ui/ux-anh-minh` | done | 2026-05-23 | 2026-05-23 | Xem WORKFLOW §2 |
 | UX-02 | Ghi doc workflow + checklist đổi máy | done | 2026-05-23 | 2026-05-23 | `WORKFLOW_UI_UX.md` |
-| UX-03 | Giang/Đức: review PR `ui/ux-anh-minh` → `main` | pending | 2026-05-23 | | Comment GitHub + smoke Vercel |
-| UX-04 | UI refresh theo `WIREFRAMES.md` / `DESIGN.md` (từng tab) | in_progress | 2026-05-23 | | Push → auto deploy Vercel |
-| UX-05 | Đồng bộ doc `docs/` từ máy cũ → ver-2 (commit trên `ui/ux-anh-minh`) | pending | 2026-05-23 | | Sau khi copy máy mới |
+| UX-03 | Giang/Đức: review PR `ui/ux-anh-minh` → `main` | done | 2026-05-23 | 2026-05-23 | PR #2 merge commit; no conflict |
+| UX-04 | UI refresh theo `WIREFRAMES.md` / `DESIGN.md` (từng tab) | in_progress | 2026-05-23 | | Tab2 Done (UX-07); Tab1/sidebar/… còn lại |
+| UX-05 | Đồng bộ doc `docs/` từ máy cũ → ver-2 (commit trên `ui/ux-anh-minh`) | done | 2026-05-23 | 2026-05-23 | Done — docs trên ver-2 + branch UI |
 | UX-06 | (Sau merge UI) Render: có cần gắn BE ver-2? | pending | 2026-05-23 | | Chỉ khi Giang/Đức đổi API |
+| UX-07 | Tab2: freeze 3 cột trái + 2 phải, scroll ngang + scrollbar | done | 2026-05-23 | 2026-05-23 | `Tab2Table.tsx`, `Table.tsx`, `gmv-theme.css`; merged `main` |
+
+---
+
+## Module 5 — Sổ doanh thu & Doanh thu Sale
+
+> Spec: **`docs/MODULE_SO_DOANH_THU.md`**. Tỷ giá mặc định **1 RMB = 3.700 VND**. Pivot tháng = **ngày tiền về**.
+
+| ID | Task | Status | created_at | completed_at | Ghi chú |
+|----|------|--------|------------|--------------|---------|
+| M5-01 | SQL bảng `so_doanh_thu` + audit | done | 2026-05-23 | 2026-05-23 | v7 prod OK |
+| M5-02 | API Sổ + hook M3 tạo dòng tự động | done | 2026-05-23 | 2026-05-23 | `revenue_routes.py`; VND÷3700 |
+| M5-03 | FE tab **Sổ doanh thu** (Hiền/System) | done | 2026-05-23 | 2026-05-23 | `SoDoanhThuTab.tsx` |
+| M5-04 | FE tab **Doanh thu Sale** (pivot team×sale×tháng) | done | 2026-05-23 | 2026-05-23 | `DoanhThuSaleTab.tsx` |
+| M5-05 | Xuất Excel Sổ + pivot | pending | 2026-05-23 | | |
+| M5-06 | Import lịch sử `HNxHCM GMV.xlsx` | pending | 2026-05-23 | | Backlog sau MVP |
+| M5-07 | Cấu hình tỷ giá theo thời điểm (System) | pending | 2026-05-23 | | Phase 2 — 1 ô điều chỉnh |
 
 ---
 
