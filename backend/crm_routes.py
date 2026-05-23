@@ -40,6 +40,114 @@ CRM_DOWNLOAD_URL = (
 
 MAX_DAYS = 31
 
+# ---------------------------------------------------------------------------
+# Column mapping: tên cột CRM (tiếng Trung/Anh) → schema crm_sales_data
+# Mỗi key là tên cột đích, value là danh sách tên cột CRM có thể gặp
+# ---------------------------------------------------------------------------
+_COL_MAP: dict[str, list[str]] = {
+    "crm_order_id": ["订单ID", "订单号", "合同号", "order_id", "crm_order_id", "id", "ID"],
+    "uid":          ["客户ID", "客户UID", "uid", "user_id", "UID", "客户id"],
+    "sale_name":    ["销售", "销售姓名", "销售人员", "sale_name", "sale", "Sale", "销售员"],
+    "team":         ["组", "团队", "小组", "team", "Team", "销售组"],
+    "department":   ["部门", "department", "Department", "销售部门", "bộ phận"],
+    "package_name": ["课程", "课程名称", "产品", "套餐", "package_name", "package",
+                     "Package", "gói học", "产品名称"],
+    "amount":       ["金额", "合同金额", "amount", "Amount", "价格", "GMV",
+                     "gmv", "收入", "单价"],
+}
+
+def _find_col(df_cols: list[str], candidates: list[str]) -> str | None:
+    """Tìm tên cột đầu tiên khớp (case-insensitive) trong DataFrame."""
+    lower_map = {c.lower(): c for c in df_cols}
+    for candidate in candidates:
+        if candidate in df_cols:
+            return candidate
+        if candidate.lower() in lower_map:
+            return lower_map[candidate.lower()]
+    return None
+
+
+def _df_to_upsert_rows(df: "pd.DataFrame") -> list[dict]:
+    """
+    Map DataFrame từ CRM → list dicts cho bảng crm_sales_data.
+    Mọi cột gốc được lưu vào raw_data để không mất dữ liệu.
+    """
+    import json
+    import math
+
+    cols = list(df.columns)
+    mapping = {field: _find_col(cols, candidates)
+               for field, candidates in _COL_MAP.items()}
+
+    rows = []
+    for _, row in df.iterrows():
+        raw = {}
+        for c in cols:
+            val = row[c]
+            # Convert numpy/pandas types to Python primitives
+            if hasattr(val, "item"):
+                val = val.item()
+            if isinstance(val, float) and math.isnan(val):
+                val = None
+            raw[c] = val
+
+        # Lấy crm_order_id — nếu không tìm được thì dùng index làm fallback
+        order_id_col = mapping.get("crm_order_id")
+        crm_order_id = str(raw.get(order_id_col, "")) if order_id_col else ""
+        if not crm_order_id or crm_order_id in ("", "None", "nan"):
+            continue  # Bỏ qua row không có order ID
+
+        def _get(field: str):
+            col = mapping.get(field)
+            return str(raw.get(col, "") or "") if col else ""
+
+        def _get_num(field: str) -> int:
+            col = mapping.get(field)
+            if not col:
+                return 0
+            try:
+                return int(float(raw.get(col, 0) or 0))
+            except (ValueError, TypeError):
+                return 0
+
+        report_date = str(raw.get("Date_Report", ""))
+
+        rows.append({
+            "crm_order_id": crm_order_id,
+            "report_date":  report_date or None,
+            "uid":          _get("uid") or None,
+            "sale_name":    _get("sale_name") or None,
+            "team":         _get("team") or None,
+            "department":   _get("department") or None,
+            "package_name": _get("package_name") or None,
+            "amount":       _get_num("amount"),
+            "raw_data":     json.dumps(raw, ensure_ascii=False, default=str),
+        })
+    return rows
+
+
+def _upsert_crm_sales(sb, df: "pd.DataFrame") -> int:
+    """Upsert DataFrame vào bảng crm_sales_data. Trả về số rows đã upsert."""
+    if sb is None:
+        return 0
+    rows = _df_to_upsert_rows(df)
+    if not rows:
+        return 0
+
+    BATCH = 200  # Supabase giới hạn payload ~1MB/request
+    total = 0
+    for i in range(0, len(rows), BATCH):
+        batch = rows[i : i + BATCH]
+        try:
+            sb.table("crm_sales_data").upsert(
+                batch,
+                on_conflict="crm_order_id,report_date",
+            ).execute()
+            total += len(batch)
+        except Exception as exc:
+            print(f"[CRM Upsert] batch {i//BATCH} failed: {exc}")
+    return total
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -226,6 +334,15 @@ def register_crm_routes(app, supabase_factory):
         # Gộp toàn bộ data
         master_df = pd.concat(all_dfs, ignore_index=True)
 
+        # ── Upsert vào crm_sales_data (background, không block file download) ──
+        upserted = 0
+        if sb:
+            try:
+                upserted = _upsert_crm_sales(sb, master_df)
+                print(f"[CRM Upsert] {upserted}/{len(master_df)} rows → crm_sales_data")
+            except Exception as exc:
+                print(f"[CRM Upsert] failed (non-fatal): {exc}")
+
         output = io.BytesIO()
         with pd.ExcelWriter(output, engine="openpyxl") as writer:
             master_df.to_excel(writer, index=False, sheet_name="Master")
@@ -237,8 +354,8 @@ def register_crm_routes(app, supabase_factory):
         # Ghi log tóm tắt
         print(
             f"[CRM Export] {len(master_df)} rows | "
-            f"{len(all_dfs)} ngày OK | "
-            f"{len(failed_days)} ngày lỗi: {failed_days}"
+            f"{len(all_dfs)} ngày OK | {len(failed_days)} ngày lỗi | "
+            f"{upserted} rows upserted to DB"
         )
 
         return StreamingResponse(
