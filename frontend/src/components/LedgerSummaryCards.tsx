@@ -90,7 +90,7 @@ export default function LedgerSummaryCards({
         <StatCard label="Số đơn" value={String(summary.orderCount)} />
       </div>
 
-      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8">
+      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
         {summary.bySource.map(({ source, gmvVnd, count }) => (
           <StatCard
             key={source}
