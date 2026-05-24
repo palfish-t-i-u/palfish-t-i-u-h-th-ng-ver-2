@@ -1214,6 +1214,7 @@ def register_revenue_routes(app, get_supabase) -> None:
                 limit=body.limit or 0,
                 dry_run=body.dryRun,
                 actor_email=actor.email or "import:gsheet",
+                sb_factory=_sb,
             )
             return result
         except FileNotFoundError as exc:

@@ -5,11 +5,13 @@ from __future__ import annotations
 import hashlib
 import os
 import re
-from datetime import date, datetime, time
+import time
+from datetime import date, datetime
+from datetime import time as dt_time
 from decimal import Decimal, ROUND_HALF_UP
-from typing import Any
+from typing import Any, Callable
 
-from revenue_routes import _resolve_team, team_to_pivot_label, vnd_to_rmb
+from revenue_routes import team_to_pivot_label, vnd_to_rmb
 
 DEFAULT_SPREADSHEET_ID = "1sEthbH-zcMavoQ1qi9J_CNnHAJoyt0gfsE-xsMW0LCc"
 DEFAULT_SHEET_TABS = ("SM Hanoi", "HCM REV")
@@ -29,6 +31,106 @@ DEFAULT_TEAM_BY_TAB: dict[str, str] = {
     "SM Hanoi": "Inhouse 1",
     "HCM REV": "HCM (Online)",
 }
+
+MAP_PROGRESS_EVERY = 2000
+INSERT_BATCH = 50
+INSERT_PAUSE_SEC = 0.05
+SUPABASE_MAX_ATTEMPTS = 5
+
+
+def _log(msg: str) -> None:
+    print(msg, flush=True)
+
+
+def _is_retryable_supabase_error(exc: BaseException) -> bool:
+    name = type(exc).__name__
+    if name in (
+        "RemoteProtocolError",
+        "ReadTimeout",
+        "ConnectTimeout",
+        "ConnectError",
+        "NetworkError",
+        "WriteError",
+        "PoolTimeout",
+    ):
+        return True
+    msg = str(exc)
+    return any(
+        token in msg
+        for token in (
+            "ConnectionTerminated",
+            "connection reset",
+            "Connection reset",
+            "Server disconnected",
+            "Broken pipe",
+            "503",
+            "502",
+            "504",
+        )
+    )
+
+
+def _execute_supabase(
+    fn: Callable[[], Any],
+    *,
+    log: Callable[[str], None] = _log,
+    label: str = "Supabase",
+) -> Any:
+    last: BaseException | None = None
+    for attempt in range(1, SUPABASE_MAX_ATTEMPTS + 1):
+        try:
+            return fn()
+        except Exception as exc:
+            last = exc
+            if not _is_retryable_supabase_error(exc) or attempt >= SUPABASE_MAX_ATTEMPTS:
+                raise
+            wait = min(2**attempt, 30)
+            log(f"  {label} tạm lỗi ({exc}) — retry {attempt}/{SUPABASE_MAX_ATTEMPTS} sau {wait}s…")
+            time.sleep(wait)
+    assert last is not None
+    raise last
+
+
+class TeamLookupCache:
+    """Load nhan_su_sale once — tránh query Supabase từng dòng khi map."""
+
+    def __init__(self, sb) -> None:
+        self._by_sale: dict[str, str] = {}
+        self._load(sb)
+
+    def _load(self, sb) -> None:
+        offset = 0
+        while True:
+            res = _execute_supabase(
+                lambda off=offset: (
+                    sb.table("nhan_su_sale")
+                    .select("crm_name, team")
+                    .eq("is_active", True)
+                    .range(off, off + 999)
+                    .execute()
+                ),
+                label="Load nhan_su_sale",
+            )
+            chunk = res.data or []
+            if not chunk:
+                break
+            for row in chunk:
+                name = (row.get("crm_name") or "").strip()
+                team = (row.get("team") or "").strip()
+                if name and team:
+                    self._by_sale[name] = team
+            if len(chunk) < 1000:
+                break
+            offset += 1000
+
+    @property
+    def size(self) -> int:
+        return len(self._by_sale)
+
+    def team_for_sale(self, sale_name: str | None) -> str:
+        if not sale_name:
+            return ""
+        return self._by_sale.get(sale_name.strip(), "")
 
 
 def _cell(row: list[Any], idx: int) -> Any:
@@ -72,24 +174,35 @@ def _parse_pay_time(value: Any, fallback_day: date | None) -> datetime | None:
     if isinstance(value, datetime):
         return value
     if isinstance(value, date):
-        return datetime.combine(value, time.min)
+        return datetime.combine(value, dt_time.min)
     d = _parse_date(value)
     if d:
-        return datetime.combine(d, time.min)
+        return datetime.combine(d, dt_time.min)
     if fallback_day:
-        return datetime.combine(fallback_day, time.min)
+        return datetime.combine(fallback_day, dt_time.min)
     return None
 
 
 def _parse_time(value: Any) -> str | None:
     if value is None:
         return None
-    if isinstance(value, time):
+    if isinstance(value, dt_time):
         return value.isoformat()
     if isinstance(value, datetime):
         return value.time().isoformat()
     s = str(value).strip()
-    return s or None
+    if not s:
+        return None
+    # Google Sheet typo: "13;36" → "13:36"
+    s = s.replace(";", ":")
+    # Chỉ giữ phần HH:MM hoặc HH:MM:SS hợp lệ
+    m = re.match(r"^(\d{1,2}):(\d{2})(?::(\d{2}))?", s)
+    if m:
+        h, mi, sec = int(m.group(1)), int(m.group(2)), m.group(3)
+        if sec is not None:
+            return f"{h:02d}:{mi:02d}:{int(sec):02d}"
+        return f"{h:02d}:{mi:02d}"
+    return None
 
 
 def _to_int_vnd(value: Any) -> int:
@@ -130,7 +243,7 @@ def _gmv_from_vnd(vnd: int, gmv_hint: float | None) -> float:
 
 
 def _resolve_team_fields(
-    sb,
+    team_cache: TeamLookupCache,
     *,
     tab: str,
     sale_name: str | None,
@@ -140,7 +253,7 @@ def _resolve_team_fields(
     if raw:
         app_team = TEAM_FROM_EXCEL.get(raw, raw)
         return app_team, team_to_pivot_label(app_team)
-    resolved = (_resolve_team(sb, sale_name, None) or "").strip()
+    resolved = team_cache.team_for_sale(sale_name)
     if resolved:
         return resolved, team_to_pivot_label(resolved)
     fallback = DEFAULT_TEAM_BY_TAB.get(tab)
@@ -160,7 +273,7 @@ def row_fingerprint(payload: dict[str, Any]) -> str:
     return hashlib.sha256("|".join(parts).encode()).hexdigest()[:32]
 
 
-def map_hcm_rev_row(sb, row: list[Any], *, tab: str = "HCM REV") -> dict[str, Any] | None:
+def map_hcm_rev_row(team_cache: TeamLookupCache, row: list[Any], *, tab: str = "HCM REV") -> dict[str, Any] | None:
     vnd = _to_int_vnd(_cell(row, 9))
     if vnd <= 0:
         return None
@@ -170,7 +283,7 @@ def map_hcm_rev_row(sb, row: list[Any], *, tab: str = "HCM REV") -> dict[str, An
     if not ngay:
         return None
     sale = str(_cell(row, 13) or "").strip() or None
-    team, pivot = _resolve_team_fields(sb, tab=tab, sale_name=sale)
+    team, pivot = _resolve_team_fields(team_cache, tab=tab, sale_name=sale)
     gmv_hint = _to_float_gmv(_cell(row, 10))
     uid = _normalize_uid(_cell(row, 5))
     return {
@@ -200,7 +313,7 @@ def map_hcm_rev_row(sb, row: list[Any], *, tab: str = "HCM REV") -> dict[str, An
     }
 
 
-def map_sm_hanoi_row(sb, row: list[Any], *, tab: str = "SM Hanoi") -> dict[str, Any] | None:
+def map_sm_hanoi_row(team_cache: TeamLookupCache, row: list[Any], *, tab: str = "SM Hanoi") -> dict[str, Any] | None:
     vnd = _to_int_vnd(_cell(row, 10))
     if vnd <= 0:
         return None
@@ -210,7 +323,7 @@ def map_sm_hanoi_row(sb, row: list[Any], *, tab: str = "SM Hanoi") -> dict[str, 
     if not ngay:
         return None
     sale = str(_cell(row, 21) or "").strip() or None
-    team, pivot = _resolve_team_fields(sb, tab=tab, sale_name=sale)
+    team, pivot = _resolve_team_fields(team_cache, tab=tab, sale_name=sale)
     gmv_hint = _to_float_gmv(_cell(row, 11))
     uid = _normalize_uid(_cell(row, 5))
     return {
@@ -240,11 +353,11 @@ def map_sm_hanoi_row(sb, row: list[Any], *, tab: str = "SM Hanoi") -> dict[str, 
     }
 
 
-def map_tab_row(sb, tab: str, row: list[Any]) -> dict[str, Any] | None:
+def map_tab_row(team_cache: TeamLookupCache, tab: str, row: list[Any]) -> dict[str, Any] | None:
     if tab == "SM Hanoi":
-        return map_sm_hanoi_row(sb, row, tab=tab)
+        return map_sm_hanoi_row(team_cache, row, tab=tab)
     if tab == "HCM REV":
-        return map_hcm_rev_row(sb, row, tab=tab)
+        return map_hcm_rev_row(team_cache, row, tab=tab)
     raise ValueError(f"Tab không hỗ trợ: {tab}")
 
 
@@ -278,25 +391,30 @@ def fetch_gsheet_tab_values(
 
 
 def collect_payloads_from_gsheet(
-    sb,
+    team_cache: TeamLookupCache,
     *,
     spreadsheet_id: str,
     tabs: tuple[str, ...] = DEFAULT_SHEET_TABS,
     credentials_path: str | None = None,
     limit: int = 0,
+    log: Callable[[str], None] = _log,
 ) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     seen: set[str] = set()
     for tab in tabs:
+        log(f"  Tải Google Sheet tab «{tab}»…")
         rows = fetch_gsheet_tab_values(
             spreadsheet_id=spreadsheet_id,
             tab=tab,
             credentials_path=credentials_path,
         )
+        data_rows = max(len(rows) - 1, 0)
+        log(f"  «{tab}»: {len(rows)} dòng ({data_rows} data) — đang map…")
+        mapped = 0
         for i, row in enumerate(rows):
             if i == 0:
                 continue  # header
-            payload = map_tab_row(sb, tab, row)
+            payload = map_tab_row(team_cache, tab, row)
             if not payload:
                 continue
             fp = row_fingerprint(payload)
@@ -304,21 +422,30 @@ def collect_payloads_from_gsheet(
                 continue
             seen.add(fp)
             out.append(payload)
+            mapped += 1
+            if mapped % MAP_PROGRESS_EVERY == 0:
+                log(f"  «{tab}»: đã map {mapped} dòng hợp lệ…")
             if limit and len(out) >= limit:
+                log(f"  Dừng sớm — limit {limit}")
                 return out
+        log(f"  «{tab}»: xong — {mapped} dòng hợp lệ")
     return out
 
 
-def _load_existing_import_fingerprints(sb) -> set[str]:
+def _load_existing_import_fingerprints(sb, *, log: Callable[[str], None] = _log) -> set[str]:
     fps: set[str] = set()
     offset = 0
     while True:
-        res = (
-            sb.table("so_doanh_thu")
-            .select("uid, pay_time, so_tien_vnd, sale_crm_name, sdt")
-            .like("created_by_email", "import:gsheet:%")
-            .range(offset, offset + 999)
-            .execute()
+        res = _execute_supabase(
+            lambda off=offset: (
+                sb.table("so_doanh_thu")
+                .select("uid, pay_time, so_tien_vnd, sale_crm_name, sdt")
+                .like("created_by_email", "import:gsheet:%")
+                .range(off, off + 999)
+                .execute()
+            ),
+            log=log,
+            label="Load fingerprint",
         )
         chunk = res.data or []
         if not chunk:
@@ -328,6 +455,7 @@ def _load_existing_import_fingerprints(sb) -> set[str]:
         if len(chunk) < 1000:
             break
         offset += 1000
+    log(f"  Đã có {len(fps)} fingerprint import:gsheet trong Sổ")
     return fps
 
 
@@ -340,16 +468,31 @@ def sync_gsheet_to_ledger(
     limit: int = 0,
     dry_run: bool = False,
     actor_email: str = "import:gsheet",
+    log: Callable[[str], None] = _log,
+    sb_factory: Callable[[], Any] | None = None,
 ) -> dict[str, Any]:
     sid = (spreadsheet_id or os.environ.get("GOOGLE_SHEETS_ID") or DEFAULT_SPREADSHEET_ID).strip()
+    log("Load team cache (nhan_su_sale)…")
+    team_cache = TeamLookupCache(sb)
+    log(f"  {team_cache.size} sale → team")
+
+    log("Map dữ liệu từ Google Sheet…")
     payloads = collect_payloads_from_gsheet(
-        sb,
+        team_cache,
         spreadsheet_id=sid,
         tabs=tabs,
         credentials_path=credentials_path,
         limit=limit,
+        log=log,
     )
-    existing = _load_existing_import_fingerprints(sb) if not dry_run else set()
+    log(f"Tổng {len(payloads)} dòng unique sau map")
+
+    if dry_run:
+        existing: set[str] = set()
+    else:
+        log("Kiểm tra dòng đã import…")
+        existing = _load_existing_import_fingerprints(sb, log=log)
+
     to_insert: list[dict[str, Any]] = []
     skipped = 0
     for p in payloads:
@@ -364,11 +507,35 @@ def sync_gsheet_to_ledger(
 
     inserted = 0
     if not dry_run and to_insert:
-        batch = 100
-        for i in range(0, len(to_insert), batch):
-            chunk = to_insert[i : i + batch]
-            sb.table("so_doanh_thu").insert(chunk).execute()
+        log(f"Insert {len(to_insert)} dòng mới (batch {INSERT_BATCH})…")
+        client = sb
+        for i in range(0, len(to_insert), INSERT_BATCH):
+            chunk = to_insert[i : i + INSERT_BATCH]
+            try:
+                _execute_supabase(
+                    lambda c=client, ch=chunk: c.table("so_doanh_thu").insert(ch).execute(),
+                    log=log,
+                    label="Insert batch",
+                )
+            except Exception:
+                if sb_factory:
+                    log("  Tạo lại Supabase client sau lỗi kết nối…")
+                    client = sb_factory()
+                    _execute_supabase(
+                        lambda c=client, ch=chunk: c.table("so_doanh_thu").insert(ch).execute(),
+                        log=log,
+                        label="Insert batch (client mới)",
+                    )
+                else:
+                    raise
             inserted += len(chunk)
+            log(f"  inserted {inserted}/{len(to_insert)}")
+            if INSERT_PAUSE_SEC and i + INSERT_BATCH < len(to_insert):
+                time.sleep(INSERT_PAUSE_SEC)
+    elif dry_run:
+        log(f"Dry-run — sẽ insert {len(to_insert)} dòng (skip {skipped} đã có)")
+    else:
+        log(f"Không có dòng mới (skip {skipped} đã có)")
 
     return {
         "spreadsheetId": sid,

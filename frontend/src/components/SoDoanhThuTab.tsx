@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { endpoints } from "../lib/api";
+import { formatApiError } from "../lib/apiErrors";
 import { cn } from "../lib/cn";
 import { formatVndNumber } from "../lib/vndFormat";
 import { typeFixxFromRow, typeFixxLabel } from "../lib/typeFixx";
@@ -23,6 +24,13 @@ import {
 } from "./ui/Table";
 
 const PAGE_SIZE = 60;
+
+const GSHEET_SYNC_CONFIRM =
+  "Sync dữ liệu từ Google Sheet «All File Thu Hiền» (tab SM Hanoi + HCM REV)?\n\n" +
+  "• Chỉ thêm dòng mới — không xóa/sửa dòng đã có\n" +
+  "• Lần đầu hoặc nhiều dòng mới: khoảng 5–15 phút (~14.000 dòng)\n" +
+  "• Lần sau (đã sync phần lớn): khoảng 2–5 phút\n\n" +
+  "Không đóng tab và không bấm lại nút trong lúc chờ.";
 
 function fmtPayTime(iso: string) {
   if (!iso) return "—";
@@ -90,6 +98,10 @@ export default function SoDoanhThuTab() {
   const [editRow, setEditRow] = useState<RevenueLedgerRow | null>(null);
   const [modalSaving, setModalSaving] = useState(false);
   const [modalError, setModalError] = useState("");
+
+  const [syncing, setSyncing] = useState(false);
+  const [syncMessage, setSyncMessage] = useState("");
+  const [syncError, setSyncError] = useState("");
 
   const loadMoreRef = useRef<HTMLTableRowElement | null>(null);
   const loadingMoreRef = useRef(false);
@@ -268,8 +280,66 @@ export default function SoDoanhThuTab() {
     }
   }
 
+  async function handleSyncGsheet() {
+    if (syncing) return;
+    if (!window.confirm(GSHEET_SYNC_CONFIRM)) return;
+    setSyncing(true);
+    setSyncError("");
+    setSyncMessage("");
+    setError("");
+    try {
+      const res = await endpoints.revenue.syncGsheet();
+      const { inserted, skippedExisting, fetched } = res.data;
+      setSyncMessage(
+        `Sync xong: thêm ${inserted.toLocaleString("vi-VN")} dòng mới` +
+          ` (bỏ qua ${skippedExisting.toLocaleString("vi-VN")} đã có, đọc ${fetched.toLocaleString("vi-VN")} từ sheet).`
+      );
+      await reloadAll();
+    } catch (err) {
+      setSyncError(formatApiError(err, "Sync Google Sheet thất bại."));
+    } finally {
+      setSyncing(false);
+    }
+  }
+
   return (
     <div className="min-w-0 space-y-4 overflow-x-hidden">
+      <div className="rounded-gmv-md border border-gmv-border bg-gmv-bg/60 p-4">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0 max-w-3xl space-y-1">
+            <p className="text-sm font-semibold text-gmv-text-strong">Sync Data — All File Thu Hiền</p>
+            <p className="text-xs leading-relaxed text-gmv-muted">
+              Tải tab <strong>SM Hanoi</strong> + <strong>HCM REV</strong> từ Google Sheet và thêm dòng mới vào Sổ
+              (dedupe — không xóa/sửa dòng cũ).
+            </p>
+            <p className="text-xs leading-relaxed text-amber-800">
+              Thời gian ước lượng:{" "}
+              <strong>5–15 phút</strong> nếu lần đầu hoặc còn nhiều dòng mới (~14.000 dòng);{" "}
+              <strong>2–5 phút</strong> nếu đã sync phần lớn. Không đóng tab trong lúc chờ.
+            </p>
+          </div>
+          <Button
+            variant="secondary"
+            onClick={handleSyncGsheet}
+            disabled={syncing || loading}
+            className="shrink-0"
+          >
+            {syncing ? "Đang sync…" : "Sync Data"}
+          </Button>
+        </div>
+        {syncing && (
+          <p className="mt-3 text-xs text-gmv-primary">
+            Đang tải sheet và ghi Supabase — có thể mất vài phút, vui lòng chờ…
+          </p>
+        )}
+        {syncMessage && !syncing && (
+          <p className="mt-3 text-xs text-gmv-ok">{syncMessage}</p>
+        )}
+        {syncError && !syncing && (
+          <p className="mt-3 text-xs text-red-600">{syncError}</p>
+        )}
+      </div>
+
       <div className="flex flex-wrap items-end gap-3">
         <label className="text-sm text-gmv-muted">
           Từ ngày

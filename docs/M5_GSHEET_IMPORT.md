@@ -97,14 +97,28 @@ python scripts/import_gsheet_so_doanh_thu.py --limit 500
 
 Logic:
 
-- Chỉ insert dòng `loai_nhap = tay`, tag `created_by_email = import:gsheet:SM Hanoi`
+- Load `nhan_su_sale` **một lần** (team cache) — map ~14k dòng trong vài giây thay vì query từng dòng
+- Chỉ insert dòng `loai_nhap = tay`, tag `created_by_email = import:gsheet:{tab}`
 - **Dedupe** theo `uid + pay_time + so_tien_vnd + sale + sdt` — chạy lại không nhân đôi
 - **Không xóa** dòng cũ; **không đè** dòng M3 (`tu_dong`)
-- Team: lookup `nhan_su_sale` theo tên sale; fallback SM Hanoi → Inhouse 1, HCM REV → HCM (Online)
+- Team: lookup cache `nhan_su_sale`; fallback SM Hanoi → Inhouse 1, HCM REV → HCM (Online)
+- **Log tiến độ** (mức A): tải tab, map mỗi 2000 dòng, insert mỗi batch 100
+
+Thời gian ước lượng (mức A — full fetch mỗi lần):
+
+| Bước | Lần đầu (Sổ trống) | Lần sau (dedupe) |
+|------|-------------------|------------------|
+| Tải 2 tab Google | ~10–20s | ~10–20s |
+| Map + team cache | ~5–15s | ~5–15s |
+| Insert Supabase | ~5–10 phút (~14k dòng) | ~30s (chủ yếu skip) |
+
+> Nếu import đang chạy **trước** khi có team cache — **Ctrl+C** và chạy lại script mới.
 
 ---
 
-## Bước 6 — Import từ app (API)
+## Bước 6 — Import từ app (API / nút Sync)
+
+Trên tab **Sổ doanh thu**, nút **Sync Data** (OPS) gọi endpoint dưới. UI có cảnh báo thời gian chờ 5–15 phút.
 
 Sau khi deploy backend có env Google:
 
@@ -150,6 +164,16 @@ python scripts/import_gsheet_so_doanh_thu.py
 ```
 
 Hoặc gọi `POST /revenue/ledger/sync-gsheet` từ scheduler nội bộ.
+
+---
+
+## Roadmap sync (A → B → C)
+
+| Mức | Trạng thái | Mô tả |
+|-----|------------|-------|
+| **A** | ✅ | Team cache + progress log; full fetch mỗi lần; append-only dedupe |
+| **B** | Kế hoạch | `--since` / watermark — chỉ fetch dòng mới theo ngày |
+| **C** | Kế hoạch | Apps Script `onEdit` → webhook upsert/delete realtime |
 
 ---
 

@@ -116,7 +116,7 @@ const TITLES: Record<ViewId, { title: string; subtitle?: string }> = {
   profile: { title: "Thông tin cá nhân" },
   module3: { title: "Xác nhận CRM", subtitle: "M3 — Điền tên sản phẩm thuế & mã CRM Order" },
   module4: { title: "Xuất hóa đơn thuế", subtitle: "M4 — Cấp mã M.../PF... và tải file ZIP 3 Excel" },
-  revenueLedger: { title: "Sổ doanh thu", subtitle: "Ghi từng khoản thu — tự động (M3) + điền tay" },
+  revenueLedger: { title: "Sổ doanh thu", subtitle: "Ghi từng khoản thu — M3 tự động + điền tay + Sync All File Thu Hiền" },
   bc01: { title: "BC01: Sales performance", subtitle: "Tổng GMV theo team × sale × tháng" },
   bc02: { title: "BC02: Key Data", subtitle: "Dữ liệu then chốt quy trình bán hàng" },
   bc03: { title: "BC03: Tổng bộ hàng ngày", subtitle: "Tổng hợp vận hành hàng ngày" },

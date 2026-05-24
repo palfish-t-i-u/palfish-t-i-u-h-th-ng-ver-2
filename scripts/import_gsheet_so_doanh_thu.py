@@ -69,6 +69,9 @@ def main() -> int:
     sb = create_client(url, key)
     tabs = tuple(args.tabs) if args.tabs else DEFAULT_SHEET_TABS
 
+    def sb_factory():
+        return create_client(url, key)
+
     try:
         result = sync_gsheet_to_ledger(
             sb,
@@ -77,6 +80,7 @@ def main() -> int:
             credentials_path=args.credentials or None,
             limit=args.limit,
             dry_run=args.dry_run,
+            sb_factory=sb_factory,
         )
     except FileNotFoundError as exc:
         print(exc, file=sys.stderr)
@@ -85,7 +89,7 @@ def main() -> int:
         print(f"Lỗi import: {exc}", file=sys.stderr)
         return 1
 
-    print(f"Spreadsheet: {result['spreadsheetId']}")
+    print("\n--- Kết quả ---")
     print(f"Tabs: {', '.join(result['tabs'])}")
     print(f"Fetched (unique): {result['fetched']}")
     print(f"Skipped (đã import): {result['skippedExisting']}")

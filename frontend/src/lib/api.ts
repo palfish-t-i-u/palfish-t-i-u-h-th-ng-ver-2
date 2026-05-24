@@ -10,6 +10,7 @@ import type {
   RevenueLedgerListResponse,
   RevenueLedgerRow,
   RevenuePivotResponse,
+  GsheetSyncResponse,
 } from "../types/revenue";
 
 export const API_BASE_URL = resolveApiBaseUrl();
@@ -135,6 +136,10 @@ export const endpoints = {
       api.get<RevenuePivotResponse>("/revenue/pivot/sales-performance", { params }),
     pivotKeyData: (params?: { from?: string; to?: string; team?: string }) =>
       api.get<RevenueKeyDataResponse>("/revenue/pivot/key-data", { params }),
+    syncGsheet: (body?: { dryRun?: boolean; limit?: number }) =>
+      api.post<GsheetSyncResponse>("/revenue/ledger/sync-gsheet", body ?? {}, {
+        timeout: 900_000,
+      }),
   },
   dashboard: {
     summary: (params?: {
