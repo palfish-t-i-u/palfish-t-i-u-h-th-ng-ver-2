@@ -1,0 +1,10 @@
+﻿python :   File "<string>", line 11
+At E:\Temp\ps-script-77c8c39a-adfb-430b-80c9-5a93e8c1837d.ps1:87 char:32
++ $env:PYTHONIOENCODING='utf-8'; python -c "
++                                ~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (  File "<string>", line 11:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+    path = os.environ['GOOGLE_SERVICE_ACCOUNT_JSON'].strip().strip('" ).strip(" \)
+                                                                   ^
+SyntaxError: unterminated string literal (detected at line 11)

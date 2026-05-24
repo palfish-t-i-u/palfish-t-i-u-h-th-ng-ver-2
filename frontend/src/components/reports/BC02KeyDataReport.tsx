@@ -90,6 +90,7 @@ export default function BC02KeyDataReport() {
     <div className="min-w-0 space-y-4 overflow-x-hidden">
       <p className="text-sm text-gmv-muted">
         BC02 — GMV theo ngày và loại nguồn (tab GMV sheet Hiếu).
+        Team lọc theo cột <strong>TEAM</strong> trên SM Hanoi (cột AH) — khớp COUNTIFS tab GMV, không theo roster sale hiện tại.
         {data?.scopeLabel && (
           <>
             {" "}
