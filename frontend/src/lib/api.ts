@@ -155,8 +155,12 @@ export const endpoints = {
         ok: boolean;
         rows_fetched: number;
         rows_upserted: number;
+        summary_rows?: number;
+        daily_rows?: number;
         days_ok: number;
         days_failed: string[];
+        department_fallback?: boolean;
+        sync_mode?: string;
         period: { start: string; end: string };
       }>("/crm/sync", { start_date: startDate, end_date: endDate }, { timeout: 120_000 }),
     exportMaster: (startDate: string, endDate: string) =>
