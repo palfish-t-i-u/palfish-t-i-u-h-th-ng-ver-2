@@ -10,6 +10,7 @@ import SoDoanhThuTab from "../components/SoDoanhThuTab";
 import ReportsHub from "../components/ReportsHub";
 import Module5Tab from "../components/Module5Tab";
 import Module6Tab from "../components/Module6Tab";
+import ReportBC03Tab from "../components/ReportBC03Tab";
 import { useAuth } from "../hooks/useAuth";
 import { useMe } from "../hooks/useMe";
 import { endpoints } from "../lib/api";
@@ -29,6 +30,7 @@ type ViewId =
   | "reportsHub"
   | "module5"
   | "module6"
+  | "bc03"
   | "staffCrm"
   | "authAccounts";
 
@@ -114,8 +116,9 @@ const TITLES: Record<ViewId, { title: string; subtitle?: string }> = {
   module4: { title: "Xuất hóa đơn thuế", subtitle: "M4 — Cấp mã M.../PF... và tải file ZIP 3 Excel" },
   revenueLedger: { title: "Sổ doanh thu", subtitle: "Ghi từng khoản thu — tự động (M3) + điền tay" },
   reportsHub: { title: "Báo cáo", subtitle: "BC01 · BC02 · BC03" },
-  module5: { title: "Đồng bộ CRM", subtitle: "M5 — Lấy & xuất Master Data CRM PalFish" },
+  module5: { title: "Đồng bộ CRM", subtitle: "M5 — 1-Click sync dữ liệu CRM PalFish" },
   module6: { title: "Dashboard Sale", subtitle: "M6 — Tổng quan hiệu suất theo team & cá nhân" },
+  bc03: { title: "BC03 — Báo cáo tổng bộ", subtitle: "KPI thủ công + doanh thu / trial / referral tự động" },
   staffCrm: { title: "Nhân sự Sale", subtitle: "Master data Metabase — gán role / team" },
   authAccounts: { title: "Tài khoản Auth", subtitle: "Supabase Auth — khoá/mở account" },
 };
@@ -233,6 +236,11 @@ export default function MainPage() {
           id: "module6",
           label: "Dashboard Sale",
           icon: I.chart,
+        },
+        {
+          id: "bc03",
+          label: "BC03",
+          icon: I.ledger,
         }
       );
     }
@@ -315,6 +323,11 @@ export default function MainPage() {
       {showInvoice && (
         <div style={{ display: activeView === "module6" ? "block" : "none" }}>
           <Module6Tab />
+        </div>
+      )}
+      {showInvoice && (
+        <div style={{ display: activeView === "bc03" ? "block" : "none" }}>
+          <ReportBC03Tab />
         </div>
       )}
       {showStaffCrm && (
