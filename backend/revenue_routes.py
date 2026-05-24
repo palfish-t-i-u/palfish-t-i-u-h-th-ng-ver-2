@@ -68,7 +68,7 @@ BC02_TYPE_ORDER: list[str] = [
     "Giới thiệu",
     "KOC",
     "Gia hạn",
-    "Biển công cộng",
+    "Kho chung",
     "Lives",
     "Offline",
     "Other",
@@ -87,9 +87,9 @@ BC02_TYPE_ALIASES: dict[str, str] = {
     "续费": "Gia hạn",
     "Resell": "Gia hạn",
     "Gia hạn": "Gia hạn",
-    "公海": "Biển công cộng",
-    "GD": "Biển công cộng",
-    "Kho chung": "Biển công cộng",
+    "公海": "Kho chung",
+    "GD": "Kho chung",
+    "Kho chung": "Kho chung",
     "Lives": "Lives",
     "Livestream": "Lives",
     "Offline": "Offline",
@@ -107,7 +107,7 @@ BC02_GMV_GROUPS: list[tuple[str, str, str, str]] = [
     ("ads", "Quảng cáo", "Số đơn đầu", "GMV"),
     ("offline", "Offline", "Số đơn đầu", "GMV"),
     ("refer", "Giới thiệu", "Số đơn đầu", "GMV"),
-    ("public_pool", "Biển công cộng", "Số đơn", "GMV"),
+    ("public_pool", "Kho chung", "Số đơn", "GMV"),
     ("renew", "Gia hạn", "Số đơn", "GMV"),
     ("koc", "KOC", "Số đơn", "GMV"),
     ("other", "Khác", "Số đơn", "GMV"),
@@ -118,7 +118,7 @@ BC02_TYPE_TO_GMV_KEY: dict[str, str] = {
     "Quảng cáo": "ads",
     "Offline": "offline",
     "Giới thiệu": "refer",
-    "Biển công cộng": "public_pool",
+    "Kho chung": "public_pool",
     "Gia hạn": "renew",
     "KOC": "koc",
     "Other": "other",
@@ -181,10 +181,7 @@ def _bc02_type_goc(loai: str | None, loai2: str | None) -> str:
     l1_norm = BC02_TYPE_ALIASES.get(l1, l1)
     if l1_norm in BC02_AD_SOURCES or l1 in BC02_AD_SOURCES:
         if l2:
-            l2_norm = BC02_TYPE_ALIASES.get(l2, l2)
-            if l2 in BC02_AD_LOAI2_OWN_COLUMN or (
-                l2_norm not in BC02_AD_SOURCES and l2_norm not in ("Other", "Quảng cáo")
-            ):
+            if l2 in BC02_AD_LOAI2_OWN_COLUMN:
                 return l2
             return l1 or l2
     return l1 or l2
@@ -491,8 +488,7 @@ def _ledger_type_goc(loai: str | None, loai2: str | None) -> str:
     l2 = (loai2 or "").strip()
     l1_fixed = _apply_ledger_type_fixx(l1)
     if l1_fixed == "广告" and l2:
-        l2_fixed = _apply_ledger_type_fixx(l2)
-        if l2 in LEDGER_AD_LOAI2_OWN_COLUMN or (l2_fixed != "广告" and l2_fixed != "Other"):
+        if l2 in LEDGER_AD_LOAI2_OWN_COLUMN:
             return l2
         return l1 or l2
     return l1 or l2

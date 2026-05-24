@@ -86,7 +86,7 @@ export default function BC02KeyDataReport() {
   const colSpan = 3 + groups.length * 2;
 
   return (
-    <div className="min-w-0 space-y-4 overflow-x-hidden">
+    <div className="flex min-h-0 min-w-0 flex-col gap-4 overflow-hidden">
       <p className="text-sm text-gmv-muted">
         BC02 — GMV theo ngày và loại nguồn (tab GMV sheet Hiếu).
         {data?.scopeLabel && (
@@ -133,7 +133,7 @@ export default function BC02KeyDataReport() {
         </p>
       )}
 
-      <TableScrollWrap>
+      <TableScrollWrap className="max-h-none min-h-0 flex-1 basis-0 overflow-auto [height:calc(100svh-16rem)]">
         <Table className="min-w-[1200px]">
           <thead>
             <Tr>
