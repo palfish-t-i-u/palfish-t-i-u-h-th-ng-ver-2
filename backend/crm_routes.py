@@ -1,8 +1,9 @@
 """CRM routes — Module 5: Đồng bộ & xuất dữ liệu CRM PalFish.
 
-Luồng:
+Luồng (Hybrid):
   Extension → POST /system/update-crm-token  (cookie + headers — không bắt Export)
-  Frontend  → POST /crm/sync               (dual pull, payload server-side → upsert DB)
+  Frontend  → POST /crm/sync               (incremental 1 ngày → upsert crm_sales_data)
+  Dashboard → fetch_live_crm_rows()        (PalFish live — không lưu DB)
   Frontend  → GET  /crm/export-master      (cào dữ liệu + trả file Excel — legacy)
 
 SQL cần chạy trên Supabase (nếu chưa có bảng crm_tokens):
@@ -15,6 +16,7 @@ SQL cần chạy trên Supabase (nếu chưa có bảng crm_tokens):
 
 from __future__ import annotations
 
+import asyncio
 import io
 import copy
 import json
@@ -48,6 +50,8 @@ CRM_DOWNLOAD_URL = (
 )
 
 MAX_DAYS = 31
+BACKFILL_CONCURRENCY_DEFAULT = 5
+BACKFILL_CONCURRENCY_MAX = 8
 # Team con (vd. 越南崛起团队) đôi khi export API trả CSV chỉ header — fallback org VN
 VN_ORG_DEPARTMENT_ID = 2242153
 # show_type=2 → đủ nhân sự team con dưới org (API PalFish, không cần Export thủ công)
@@ -102,8 +106,8 @@ _COL_MAP: dict[str, list[str]] = {
         "Gói học", "产品名称", "Course", "Product",
     ],
     "amount": [
-        "业绩(元)", "业绩", "GMV", "金额", "合同金额", "amount", "Amount",
-        "价格", "gmv", "收入", "Doanh thu", "Revenue",
+        "gmv_rmb", "业绩(元)", "业绩", "GMV", "金额", "合同金额", "amount", "Amount",
+        "价格", "gmv", "收入", "Doanh thu", "Revenue", "Performance (CNY)",
     ],
     "completed_classes": [
         "Completed Class Number", "完课数", "completed_classes",
@@ -111,6 +115,56 @@ _COL_MAP: dict[str, list[str]] = {
     "referral_leads": [
         "Referral leads", "Referral Leads", "转介绍Leads数", "referral_leads",
     ],
+}
+
+# Bộ từ điển chuẩn hóa Header PalFish CRM → snake_case (Dashboard / raw_data)
+COLUMN_MAPPING: dict[str, str] = {
+    "Department": "department",
+    "Sales": "sale_name",
+    "AD leads": "ad_leads",
+    "AD leads manual entry": "ad_leads_manual",
+    "fb messenger 会话数": "fb_messenger_sessions",
+    "Referral leads": "referral_leads",
+    "Referral Leads": "referral_leads",
+    "fb messenger转化Leads数": "fb_messenger_converted",
+    "Total leads": "total_leads",
+    "GD leads": "gd_leads",
+    "GD Leads": "gd_leads",
+    "Invitation Number": "invitation_number",
+    "Number of invitations": "invitation_number",
+    "Scheduled Class Number": "scheduled_classes",
+    "Scheduled Class number": "scheduled_classes",
+    "Preview Rate": "preview_rate",
+    "Preview rate": "preview_rate",
+    "Completed Class Number": "completed_classes",
+    "Completion Rate": "completion_rate",
+    "Completion rate": "completion_rate",
+    "Attendance Rate": "attendance_rate",
+    "Order": "orders",
+    "Orders": "orders",
+    "GMV": "gmv_rmb",
+    "Performance (CNY)": "gmv_rmb",
+    "Avg.Price per Customer (RMB)": "avg_price",
+    "Total Call Time": "total_call_time",
+    "Total Dials": "total_dials",
+    "Total Connections": "total_connections",
+    "Connection Rate": "connection_rate",
+    "Over 3 Min.Connections": "over_3min_connections",
+    "Over 3 Min Connections": "over_3min_connections",
+    "Over 3 Min.Rate": "over_3min_rate",
+    "Over 3 Min Rate": "over_3min_rate",
+}
+
+_PALFISH_RATE_COLUMNS: tuple[str, ...] = (
+    "preview_rate",
+    "completion_rate",
+    "attendance_rate",
+    "connection_rate",
+    "over_3min_rate",
+)
+
+_COLUMN_MAPPING_LOWER: dict[str, str] = {
+    k.lower().strip(): v for k, v in COLUMN_MAPPING.items()
 }
 
 _SKIP_SALE_NAMES = frozenset(
@@ -200,11 +254,10 @@ def _resolve_order_id(
     sale: str,
     dept: str,
     idx: int,
-    record_type: str = "daily",
 ) -> str:
-    """Khóa synthetic: record_type|sale|date — tránh trùng summary vs daily."""
+    """Khóa synthetic: sale|date — một dòng / sale / ngày."""
     if sale and sale.lower() not in _SKIP_SALE_NAMES:
-        return f"{record_type}|{sale}|{report_date}"
+        return f"{sale}|{report_date}"
 
     order_id_col = mapping.get("crm_order_id")
     if order_id_col:
@@ -272,6 +325,43 @@ def _clean_crm_dataframe(df: "pd.DataFrame") -> "pd.DataFrame":
     return out.reset_index(drop=True)
 
 
+def _normalize_palfish_columns(df: "pd.DataFrame") -> "pd.DataFrame":
+    """Rename PalFish headers → snake_case; parse cột % sau khi rename."""
+    if df is None or df.empty:
+        return df
+
+    out = df.copy()
+    rename: dict[Any, str] = {}
+    for col in out.columns:
+        cs = str(col).strip()
+        if cs in COLUMN_MAPPING:
+            rename[col] = COLUMN_MAPPING[cs]
+        elif cs.lower() in _COLUMN_MAPPING_LOWER:
+            rename[col] = _COLUMN_MAPPING_LOWER[cs.lower()]
+
+    if rename:
+        out = out.rename(columns=rename)
+
+    for col in _PALFISH_RATE_COLUMNS:
+        if col not in out.columns:
+            continue
+        out[col] = out[col].apply(
+            lambda v: parse_rate(v) if v is not None and str(v).strip().lower() not in ("", "nan", "none") else 0.0
+        )
+
+    return out
+
+
+def _prepare_crm_dataframe(df: "pd.DataFrame | None") -> "pd.DataFrame | None":
+    """Clean + chuẩn hóa tên cột — dùng cho mọi luồng PalFish (sync + live)."""
+    if df is None or df.empty:
+        return df
+    out = _clean_crm_dataframe(df)
+    if out is None or out.empty:
+        return out
+    return _normalize_palfish_columns(out)
+
+
 def _row_sale_name(raw: dict, mapping: dict) -> str:
     col = mapping.get("sale_name")
     if col:
@@ -287,8 +377,9 @@ def _is_crm_header_row(raw: dict, mapping: dict) -> bool:
     if sale in _HEADER_SALE_NAMES:
         return True
     for key in (
-        "总Leads数", "Total leads", "邀约数", "Invitation Number", "Number of invitations",
-        "完课数", "Completed Class Number", "签单数", "Order", "业绩(元)", "GMV",
+        "总Leads数", "Total leads", "total_leads", "邀约数", "Invitation Number",
+        "Number of invitations", "invitation_number", "完课数", "Completed Class Number",
+        "completed_classes", "签单数", "Order", "orders", "业绩(元)", "GMV", "gmv_rmb",
     ):
         val = raw.get(key)
         if val is not None and str(val).strip().lower() in _HEADER_CELL_LABELS:
@@ -296,10 +387,8 @@ def _is_crm_header_row(raw: dict, mapping: dict) -> bool:
     return False
 
 
-def _df_to_insert_rows(df: "pd.DataFrame", record_type: str = "daily") -> list[dict]:
-    """
-    Map DataFrame CRM → crm_sales_data với record_type ('summary' | 'daily').
-    """
+def _df_to_insert_rows(df: "pd.DataFrame") -> list[dict]:
+    """Map DataFrame CRM → crm_sales_data (pure daily rows)."""
     cols = list(df.columns)
     mapping = {field: _find_col(cols, candidates) for field, candidates in _COL_MAP.items()}
 
@@ -341,21 +430,15 @@ def _df_to_insert_rows(df: "pd.DataFrame", record_type: str = "daily") -> list[d
         if not is_valid_sale_name(sale):
             continue
 
-        rtype = str(raw.get("record_type") or record_type).strip().lower()
-        if rtype not in ("summary", "daily"):
-            rtype = record_type
-
         raw["date_report"] = report_date
         raw["Date_Report"] = report_date
-        raw["record_type"] = rtype
         crm_order_id = _resolve_order_id(
-            raw, mapping, cols, report_date, sale, dept, int(idx), rtype
+            raw, mapping, cols, report_date, sale, dept, int(idx)
         )
 
         rows.append({
             "crm_order_id": crm_order_id,
             "report_date":  report_date,
-            "record_type":  rtype,
             "uid":          _get("uid") or None,
             "sale_name":    sale,
             "team":         team_val,
@@ -401,17 +484,17 @@ def _dataframe_nan_to_none(df: "pd.DataFrame") -> "pd.DataFrame":
 
 
 def _upsert_crm_rows(sb, rows: list[dict]) -> int:
-    """UPSERT theo (sale_name, report_date, record_type) — không delete thủ công."""
+    """UPSERT theo (sale_name, report_date) — incremental daily only."""
     if sb is None or not rows:
         return 0
 
     rows = _sanitize_rows_for_db(rows)
     print(
         f"[CRM Upsert] {len(rows)} rows | sample sale={rows[0].get('sale_name')} "
-        f"type={rows[0].get('record_type')} date={rows[0].get('report_date')}"
+        f"date={rows[0].get('report_date')}"
     )
 
-    conflict = "sale_name,report_date,record_type"
+    conflict = "sale_name,report_date"
     fallbacks = (
         conflict,
         "crm_order_id,report_date",
@@ -467,8 +550,27 @@ class CrmTokenBody(BaseModel):
 
 
 class CrmSyncBody(BaseModel):
+    sync_date: str | None = None
+
+
+class CrmBackfillBody(BaseModel):
     start_date: str
     end_date: str
+    concurrency: int = BACKFILL_CONCURRENCY_DEFAULT
+
+
+def _default_sync_date() -> date:
+    """Cron / mặc định: hôm qua (PalFish thường chốt số sau 0h)."""
+    return date.today() - timedelta(days=1)
+
+
+def _parse_sync_date(raw: str | None) -> date:
+    if not raw or not str(raw).strip():
+        return _default_sync_date()
+    try:
+        return date.fromisoformat(str(raw).strip()[:10])
+    except ValueError:
+        raise HTTPException(400, "sync_date phải có dạng YYYY-MM-DD")
 
 
 def _validate_date_range(start_date: str, end_date: str) -> tuple[date, date]:
@@ -642,11 +744,11 @@ async def _download_crm_dataframe(
         return None
 
     before = len(df)
-    df = _clean_crm_dataframe(df)
-    if df.empty:
-        print(f"[CRM {label}] {before} rows → 0 after clean")
+    df = _prepare_crm_dataframe(df)
+    if df is None or df.empty:
+        print(f"[CRM {label}] {before} rows → 0 after prepare")
         return None
-    print(f"[CRM {label}] OK {before} raw → {len(df)} clean (dept={payload.get('department_id')})")
+    print(f"[CRM {label}] OK {before} raw → {len(df)} prepared (dept={payload.get('department_id')})")
     return df
 
 
@@ -697,130 +799,71 @@ async def _resolve_sync_department_id(
     )
 
 
-async def _fetch_crm_summary_df(
+async def _fetch_crm_day_df(
     client: httpx.AsyncClient,
     prefs: dict[str, Any],
-    d_start: date,
-    d_end: date,
+    day: date,
     department_id: int,
-) -> "pd.DataFrame":
-    """Bước B: 1 request cả kỳ → record_type=summary."""
-    end_iso = d_end.isoformat()
-    payload = _build_range_payload(prefs, d_start, d_end)
+) -> "pd.DataFrame | None":
+    """Tải CRM đúng 1 ngày — incremental sync."""
+    day_iso = day.isoformat()
+    payload = _build_day_payload(prefs, day)
     payload["department_id"] = department_id
-
-    df = await _download_crm_dataframe(client, payload, label="Summary")
-    if df is not None and not df.empty:
-        df["date_report"] = end_iso
-        df["Date_Report"] = end_iso
-        df["record_type"] = "summary"
-        return df
-
-    raise HTTPException(
-        502,
-        "CRM không trả dữ liệu summary cho kỳ này — kiểm tra token CRM hoặc CRM_DEPARTMENT_ID.",
-    )
+    df = await _download_crm_dataframe(client, payload, label=f"Daily/{day_iso}")
+    if df is None or df.empty:
+        return None
+    df["date_report"] = day_iso
+    df["Date_Report"] = day_iso
+    return df
 
 
-async def _fetch_crm_daily_df(
-    client: httpx.AsyncClient,
-    prefs: dict[str, Any],
-    d_start: date,
-    d_end: date,
-    department_id: int,
-) -> tuple["pd.DataFrame", list[str]]:
-    """Bước C: vòng lặp từng ngày → record_type=daily."""
-    day_prefs = copy.deepcopy(prefs)
-    day_prefs["department_id"] = department_id
-    all_dfs: list = []
-    failed_days: list[str] = []
-
-    current = d_start
-    while current <= d_end:
-        day_iso = current.isoformat()
-        payload = _build_day_payload(
-            day_prefs, current, d_start=d_start, d_end=d_end
-        )
-        try:
-            df = await _download_crm_dataframe(client, payload, label=f"Daily/{day_iso}")
-            if df is None or df.empty:
-                failed_days.append(day_iso)
-            else:
-                df["date_report"] = day_iso
-                df["Date_Report"] = day_iso
-                df["record_type"] = "daily"
-                all_dfs.append(df)
-        except HTTPException:
-            raise
-        except Exception as exc:
-            print(f"[CRM Daily] {day_iso} failed: {exc}")
-            failed_days.append(day_iso)
-        current += timedelta(days=1)
-
-    if not all_dfs:
-        return pd.DataFrame(), failed_days
-    return pd.concat(all_dfs, ignore_index=True), failed_days
-
-
-async def _run_dual_pull_sync(
-    sb, d_start: date, d_end: date
+async def _upsert_day_dataframe(
+    sb, df: "pd.DataFrame", sync_day: date,
 ) -> dict[str, Any]:
-    """
-    Kiến trúc Kéo Kép:
-      B — summary 1 lần
-      C — daily loop
-      → upsert (sale_name, report_date, record_type)
-    """
-    ps, pe = d_start.isoformat(), d_end.isoformat()
+    """Parse + upsert 1 ngày — dùng chung client backfill."""
+    day_iso = sync_day.isoformat()
+    if df is None or df.empty:
+        raise HTTPException(
+            502,
+            f"CRM không trả dữ liệu cho ngày {day_iso} — kiểm tra token hoặc CRM_DEPARTMENT_ID.",
+        )
+    df = _dataframe_nan_to_none(df)
+    insert_rows = _df_to_insert_rows(df)
+    upserted = 0
+    if sb and insert_rows:
+        upserted = _upsert_crm_rows(sb, insert_rows)
+        print(f"[CRM Incremental] {day_iso} upserted={upserted}/{len(insert_rows)}")
+    return {
+        "upserted": upserted,
+        "rows_fetched": len(df),
+        "insert_rows": len(insert_rows),
+    }
+
+
+async def _run_incremental_day_sync(sb, sync_day: date) -> dict[str, Any]:
+    """Incremental: 1 ngày → upsert (sale_name, report_date)."""
+    day_iso = sync_day.isoformat()
 
     client, bundle = await _crm_http_client(sb)
     prefs = _extract_crm_prefs(bundle.get("download_payload"))
     print(
-        f"[CRM Sync] autonomous payload dept={prefs.get('department_id')} "
+        f"[CRM Sync] incremental day={day_iso} dept={prefs.get('department_id')} "
         f"show_type={prefs.get('show_type')} "
         f"(capture={'yes' if bundle.get('download_payload') else 'no — token only'})"
     )
 
     async with client:
         dept_id, dept_fallback, captured_dept = await _resolve_sync_department_id(
-            client, prefs, d_end
+            client, prefs, sync_day
         )
-        summary_df = await _fetch_crm_summary_df(
-            client, prefs, d_start, d_end, dept_id
-        )
-        daily_df, failed_days = await _fetch_crm_daily_df(
-            client, prefs, d_start, d_end, dept_id
-        )
+        df = await _fetch_crm_day_df(client, prefs, sync_day, dept_id)
 
-    summary_df = _dataframe_nan_to_none(summary_df)
-    daily_df = _dataframe_nan_to_none(daily_df)
-
-    summary_rows = _df_to_insert_rows(summary_df, "summary")
-    daily_rows = _df_to_insert_rows(daily_df, "daily") if not daily_df.empty else []
-    data_to_upsert = summary_rows + daily_rows
-
-    upserted = 0
-    if sb and data_to_upsert:
-        upserted = _upsert_crm_rows(sb, data_to_upsert)
-        print(
-            f"[CRM Dual Pull] {ps}→{pe} upserted={upserted} "
-            f"summary={len(summary_rows)} daily={len(daily_rows)}"
-        )
-
-    master_df = pd.concat(
-        [summary_df] + ([daily_df] if not daily_df.empty else []),
-        ignore_index=True,
-    )
+    stats = await _upsert_day_dataframe(sb, df, sync_day)
 
     return {
-        "master_df": master_df,
-        "deleted": 0,
-        "inserted": upserted,
-        "upserted": upserted,
-        "summary_rows": len(summary_rows),
-        "daily_rows": len(daily_rows),
-        "failed_days": failed_days,
-        "days_ok": (d_end - d_start).days + 1 - len(failed_days),
+        "master_df": df,
+        **stats,
+        "failed_days": [],
         "department_id_used": dept_id,
         "department_id_captured": captured_dept,
         "department_fallback": dept_fallback,
@@ -828,10 +871,147 @@ async def _run_dual_pull_sync(
     }
 
 
+async def _run_backfill_range(
+    sb,
+    d_start: date,
+    d_end: date,
+    *,
+    concurrency: int = BACKFILL_CONCURRENCY_DEFAULT,
+) -> dict[str, Any]:
+    """
+    Backfill nhanh: 1 token + 1 dept probe, N ngày song song (semaphore).
+    ~31 ngày / 5 luồng ≈ 7 vòng × ~3s ≈ 20–40s thay vì 2–3 phút tuần tự.
+    """
+    conc = max(1, min(int(concurrency or BACKFILL_CONCURRENCY_DEFAULT), BACKFILL_CONCURRENCY_MAX))
+
+    days: list[date] = []
+    cur = d_start
+    while cur <= d_end:
+        days.append(cur)
+        cur += timedelta(days=1)
+
+    client, bundle = await _crm_http_client(sb)
+    prefs = _extract_crm_prefs(bundle.get("download_payload"))
+    print(
+        f"[CRM Backfill] {d_start}→{d_end} days={len(days)} concurrency={conc} "
+        f"dept={prefs.get('department_id')}"
+    )
+
+    days_ok: list[dict] = []
+    days_failed: list[dict] = []
+    dept_id = VN_ORG_DEPARTMENT_ID
+    dept_fallback = False
+    captured_dept = int(prefs.get("department_id") or VN_ORG_DEPARTMENT_ID)
+    show_type_used = prefs.get("show_type")
+
+    sem = asyncio.Semaphore(conc)
+
+    async def _sync_one(day: date) -> None:
+        nonlocal days_ok, days_failed
+        day_iso = day.isoformat()
+        async with sem:
+            try:
+                df = await _fetch_crm_day_df(client, prefs, day, dept_id)
+                stats = await _upsert_day_dataframe(sb, df, day)
+                days_ok.append({
+                    "date": day_iso,
+                    "rows_upserted": stats["upserted"],
+                    "rows_fetched": stats["rows_fetched"],
+                })
+            except HTTPException as exc:
+                days_failed.append({"date": day_iso, "error": str(exc.detail)})
+            except Exception as exc:
+                days_failed.append({"date": day_iso, "error": str(exc)})
+
+    async with client:
+        dept_id, dept_fallback, captured_dept = await _resolve_sync_department_id(
+            client, prefs, d_end
+        )
+        await asyncio.gather(*[_sync_one(d) for d in days])
+
+    days_ok.sort(key=lambda x: x["date"])
+    days_failed.sort(key=lambda x: x["date"])
+
+    return {
+        "ok": len(days_failed) == 0,
+        "period": {"start": d_start.isoformat(), "end": d_end.isoformat()},
+        "days_ok": len(days_ok),
+        "days_failed": len(days_failed),
+        "concurrency": conc,
+        "results": days_ok,
+        "failed": days_failed,
+        "sync_mode": "incremental_backfill_parallel",
+        "department_id_used": dept_id,
+        "department_id_captured": captured_dept,
+        "department_fallback": dept_fallback,
+        "show_type_used": show_type_used,
+    }
+
+
+async def fetch_live_crm_rows(
+    sb, d_start: date, d_end: date,
+) -> tuple[list[dict], dict[str, Any]]:
+    """
+    PalFish live — 1 request cả dải ngày, lọc 汇总, KHÔNG lưu DB.
+    Dùng cho GET /dashboard/live_summary.
+    """
+    client, bundle = await _crm_http_client(sb)
+    prefs = _extract_crm_prefs(bundle.get("download_payload"))
+
+    async with client:
+        dept_id, dept_fallback, captured_dept = await _resolve_sync_department_id(
+            client, prefs, d_end
+        )
+        payload = _build_range_payload(prefs, d_start, d_end)
+        payload["department_id"] = dept_id
+        df = await _download_crm_dataframe(client, payload, label="LiveSummary")
+
+    if df is None or df.empty:
+        raise HTTPException(
+            502,
+            "CRM không trả dữ liệu live cho kỳ này — kiểm tra token CRM hoặc CRM_DEPARTMENT_ID.",
+        )
+
+    df = _dataframe_nan_to_none(df)
+    end_iso = d_end.isoformat()
+    df["date_report"] = end_iso
+    df["Date_Report"] = end_iso
+    rows = _df_to_insert_rows(df)
+
+    meta = {
+        "source": "palfish_live",
+        "department_id_used": dept_id,
+        "department_id_captured": captured_dept,
+        "department_fallback": dept_fallback,
+        "show_type_used": prefs.get("show_type"),
+        "row_count": len(rows),
+    }
+    return rows, meta
+
+
+async def _fetch_crm_range_df(sb, d_start: date, d_end: date) -> "pd.DataFrame":
+    """Export Excel — live fetch cả kỳ, không ghi DB."""
+    client, bundle = await _crm_http_client(sb)
+    prefs = _extract_crm_prefs(bundle.get("download_payload"))
+
+    async with client:
+        dept_id, _, _ = await _resolve_sync_department_id(client, prefs, d_end)
+        payload = _build_range_payload(prefs, d_start, d_end)
+        payload["department_id"] = dept_id
+        df = await _download_crm_dataframe(client, payload, label="ExportRange")
+
+    if df is None or df.empty:
+        raise HTTPException(502, "CRM không trả dữ liệu cho kỳ export.")
+    df = _dataframe_nan_to_none(df)
+    df["date_report"] = d_end.isoformat()
+    df["Date_Report"] = d_end.isoformat()
+    return df
+
+
 async def _fetch_crm_master_df(sb, d_start: date, d_end: date) -> tuple["pd.DataFrame", list[str]]:
-    """Export Excel — chạy dual pull (đã ghi DB)."""
-    result = await _run_dual_pull_sync(sb, d_start, d_end)
-    return result["master_df"], result["failed_days"]
+    """Export Excel — live range, không upsert."""
+    df = await _fetch_crm_range_df(sb, d_start, d_end)
+    return df, []
 
 
 def _ts_ms_vn(d: date, end_of_day: bool = False) -> int:
@@ -1061,7 +1241,7 @@ async def _fetch_crm_response_df(client: httpx.AsyncClient, resp: httpx.Response
         if not resp.content:
             return None
         hint = ct
-        return _read_tabular(io.BytesIO(resp.content), hint)
+        return _prepare_crm_dataframe(_read_tabular(io.BytesIO(resp.content), hint))
 
     try:
         jbody = resp.json()
@@ -1098,7 +1278,7 @@ async def _fetch_crm_response_df(client: httpx.AsyncClient, resp: httpx.Response
 
     file_ct = file_resp.headers.get("content-type", "").lower()
     hint = f"{file_url} {file_ct}"
-    return _read_tabular(io.BytesIO(file_resp.content), hint)
+    return _prepare_crm_dataframe(_read_tabular(io.BytesIO(file_resp.content), hint))
 
 
 # ---------------------------------------------------------------------------
@@ -1152,48 +1332,57 @@ def register_crm_routes(app, supabase_factory):
 
     @app.post("/crm/sync", tags=["CRM"])
     async def crm_sync(body: CrmSyncBody):
-        """Dual pull: xóa kỳ → summary 1 lần + daily loop → insert."""
-        d_start, d_end = _validate_date_range(body.start_date, body.end_date)
+        """Incremental: đúng 1 ngày → upsert (sale_name, report_date)."""
+        sync_day = _parse_sync_date(body.sync_date)
         sb = supabase_factory()
 
         try:
-            result = await _run_dual_pull_sync(sb, d_start, d_end)
+            result = await _run_incremental_day_sync(sb, sync_day)
         except HTTPException:
             raise
         except Exception as exc:
             raise HTTPException(500, f"Sync CRM thất bại: {exc}") from exc
 
+        day_iso = sync_day.isoformat()
         return {
             "ok": True,
-            "rows_fetched": len(result["master_df"]),
+            "sync_date": day_iso,
+            "rows_fetched": result["rows_fetched"],
             "rows_deleted": 0,
             "rows_inserted": result["upserted"],
             "rows_upserted": result["upserted"],
-            "summary_rows": result["summary_rows"],
-            "daily_rows": result["daily_rows"],
-            "days_ok": result["days_ok"],
-            "days_failed": result["failed_days"],
-            "sync_mode": "dual_pull_autonomous",
+            "sync_mode": "incremental_daily",
             "payload_autonomous": True,
             "show_type_used": result.get("show_type_used"),
             "department_id_used": result.get("department_id_used"),
             "department_fallback": result.get("department_fallback", False),
-            "period": {"start": body.start_date, "end": body.end_date},
         }
+
+    @app.post("/crm/sync/backfill", tags=["CRM"])
+    async def crm_sync_backfill(body: CrmBackfillBody):
+        """Backfill incremental — song song N ngày/lúc (mặc định 5, tối đa 8)."""
+        d_start, d_end = _validate_date_range(body.start_date, body.end_date)
+        sb = supabase_factory()
+
+        try:
+            return await _run_backfill_range(
+                sb, d_start, d_end, concurrency=body.concurrency,
+            )
+        except HTTPException:
+            raise
+        except Exception as exc:
+            raise HTTPException(500, f"Backfill CRM thất bại: {exc}") from exc
 
     @app.get("/crm/export-master", tags=["CRM"])
     async def export_master(
         start_date: str = Query(..., description="YYYY-MM-DD"),
         end_date: str = Query(..., description="YYYY-MM-DD"),
     ):
-        """Dual pull + trả file Excel (summary + daily sheets)."""
+        """Live fetch cả kỳ + trả file Excel (không ghi DB)."""
         d_start, d_end = _validate_date_range(start_date, end_date)
         sb = supabase_factory()
 
-        result = await _run_dual_pull_sync(sb, d_start, d_end)
-        master_df = result["master_df"]
-        failed_days = result["failed_days"]
-        inserted = result["inserted"]
+        master_df, failed_days = await _fetch_crm_master_df(sb, d_start, d_end)
 
         output = io.BytesIO()
         with pd.ExcelWriter(output, engine="openpyxl") as writer:
@@ -1205,8 +1394,7 @@ def register_crm_routes(app, supabase_factory):
 
         print(
             f"[CRM Export] {len(master_df)} rows | "
-            f"{(d_end - d_start).days + 1 - len(failed_days)} ngày OK | {len(failed_days)} ngày lỗi | "
-            f"{inserted} rows inserted to DB"
+            f"{(d_end - d_start).days + 1 - len(failed_days)} ngày OK | {len(failed_days)} ngày lỗi"
         )
 
         return StreamingResponse(

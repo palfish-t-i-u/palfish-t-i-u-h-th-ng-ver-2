@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { endpoints } from "../lib/api";
 import { isValidSaleName } from "../lib/metrics";
-import type { Bc03DailyRevenue, Bc03Report, Bc03StaffOption } from "../types/order";
+import type { Bc03DailyRevenue, Bc03Report, Bc03StaffOption, DashboardLiveSummary } from "../types/order";
 
 type CurrencyMode = "VND" | "RMB";
 type AutoTab = "revenue" | "trial" | "referral";
@@ -204,6 +204,8 @@ export default function ReportBC03Tab() {
   const [currency, setCurrency] = useState<CurrencyMode>("VND");
   const [autoTab, setAutoTab] = useState<AutoTab>("revenue");
   const [report, setReport] = useState<Bc03Report | null>(null);
+  const [liveSummary, setLiveSummary] = useState<DashboardLiveSummary | null>(null);
+  const [kpiLoading, setKpiLoading] = useState(false);
   const [kpiDraft, setKpiDraft] = useState<Record<string, KpiDraft>>({});
   const [excludedStaff, setExcludedStaff] = useState<Set<string>>(() => new Set());
   const [staffOptions, setStaffOptions] = useState<Bc03StaffOption[]>([]);
@@ -317,18 +319,26 @@ export default function ReportBC03Tab() {
 
   const loadReport = useCallback(async () => {
     setLoading(true);
+    setKpiLoading(true);
     setError("");
+    const liveParams = { start_date: rangeStart, end_date: rangeEnd };
     try {
-      const res = await endpoints.reports.bc03({
-        range_key: "custom",
-        start: rangeStart,
-        end: rangeEnd,
-      });
-      setReport(res.data);
+      const [bc03Res, liveRes] = await Promise.all([
+        endpoints.reports.bc03({
+          range_key: "custom",
+          start: rangeStart,
+          end: rangeEnd,
+        }),
+        endpoints.dashboard.liveSummary(liveParams).finally(() => setKpiLoading(false)),
+      ]);
+      setReport(bc03Res.data);
+      setLiveSummary(liveRes.data);
     } catch (e: unknown) {
+      setKpiLoading(false);
       const msg = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
       setError(msg || "Không tải được báo cáo BC03.");
       setReport(null);
+      setLiveSummary(null);
     } finally {
       setLoading(false);
     }
@@ -466,7 +476,7 @@ export default function ReportBC03Tab() {
           .filter((r) => {
             const row = mergedRevenueRows.find((x) => x.sale_name === r.sale_name);
             const hasActual = row && (row.orders > 0 || row.collected_vnd > 0 || row.gmv_rmb > 0);
-            return hasActual || r.b2_orders > 0 || r.b4_gmv_vnd > 0;
+            return hasActual || r.b4_gmv_vnd > 0 || k.b4Gmv > 0;
           }),
       });
       setSavedMeta({ at: res.data.updated_at, by: res.data.updated_by });
@@ -528,6 +538,59 @@ export default function ReportBC03Tab() {
             Kỳ: {report.period.start} → {report.period.end}
           </p>
         )}
+      </div>
+
+      {report?.meta?.missing_dates && report.meta.missing_dates.length > 0 && (
+        <div className="rounded-lg bg-amber-950/60 px-4 py-3 text-sm text-amber-200 ring-1 ring-amber-800">
+          <strong>Thiếu dữ liệu daily trong DB:</strong>{" "}
+          {report.meta.synced_days ?? 0}/{report.meta.expected_days ?? "?"} ngày đã sync.
+          {" "}Các ngày chưa có:{" "}
+          {report.meta.missing_dates.slice(0, 12).map((d) => d.slice(8, 10) + "/" + d.slice(5, 7)).join(", ")}
+          {(report.meta.missing_dates.length > 12) ? ` … (+${report.meta.missing_dates.length - 12} ngày)` : ""}.
+          {" "}Vào tab <strong>Đồng bộ CRM</strong> → backfill từng ngày hoặc gọi{" "}
+          <code className="text-amber-100">POST /crm/sync/backfill</code>.
+        </div>
+      )}
+
+      {/* PalFish live KPI — khớp 100% với CRM gốc */}
+      <div className="relative rounded-xl bg-slate-800/60 p-4 ring-1 ring-slate-700">
+        {kpiLoading && (
+          <div className="absolute inset-0 z-10 flex items-center justify-center rounded-xl bg-slate-900/70">
+            <span className="flex items-center gap-2 text-sm text-slate-300">
+              <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-blue-500 border-t-transparent" />
+              Đang lấy tổng CRM từ PalFish…
+            </span>
+          </div>
+        )}
+        <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-500">
+          Tổng kỳ (PalFish live — không lưu DB)
+        </p>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <div>
+            <p className="text-[10px] text-slate-500">L1</p>
+            <p className="text-lg font-bold tabular-nums text-slate-100">
+              {new Intl.NumberFormat("vi-VN").format(liveSummary?.kpi?.l1 ?? 0)}
+            </p>
+          </div>
+          <div>
+            <p className="text-[10px] text-slate-500">L8 (đơn CRM)</p>
+            <p className="text-lg font-bold tabular-nums text-slate-100">
+              {new Intl.NumberFormat("vi-VN").format(liveSummary?.kpi?.l8 ?? 0)}
+            </p>
+          </div>
+          <div>
+            <p className="text-[10px] text-slate-500">GMV CRM (RMB)</p>
+            <p className="text-lg font-bold tabular-nums text-slate-100">
+              {new Intl.NumberFormat("vi-VN").format(liveSummary?.kpi?.total_gmv_rmb ?? 0)}
+            </p>
+          </div>
+          <div>
+            <p className="text-[10px] text-slate-500">Đã thu (VND)</p>
+            <p className="text-lg font-bold tabular-nums text-emerald-300">
+              {new Intl.NumberFormat("vi-VN").format(liveSummary?.kpi?.total_collected_vnd ?? 0)} ₫
+            </p>
+          </div>
+        </div>
       </div>
 
       {/* Toolbar — không còn form KPI riêng */}
@@ -761,9 +824,7 @@ export default function ReportBC03Tab() {
                     ×
                   </th>
                   <th className="px-2 py-2.5 text-left font-medium whitespace-nowrap">Team</th>
-                  <th className="px-2 py-2.5 text-center font-medium whitespace-nowrap">B2 KPI</th>
-                  <th className="px-2 py-2.5 text-center font-medium whitespace-nowrap">B4 KPI (₫)</th>
-                  <th className="px-2 py-2.5 text-left font-medium whitespace-nowrap">% Đơn</th>
+                  <th className="px-2 py-2.5 text-center font-medium whitespace-nowrap">GMV KPI (₫)</th>
                   <th className="px-2 py-2.5 text-left font-medium whitespace-nowrap">% GMV</th>
                   <th className="px-2 py-2.5 text-right font-medium whitespace-nowrap">Tổng ĐT</th>
                   <th className="px-2 py-2.5 text-right font-medium whitespace-nowrap">Tổng đơn</th>
@@ -777,7 +838,7 @@ export default function ReportBC03Tab() {
               <tbody>
                 {mergedRevenueRows.length === 0 ? (
                   <tr>
-                    <td colSpan={9 + dates.length} className="py-10 text-center text-slate-500">
+                    <td colSpan={7 + dates.length} className="py-10 text-center text-slate-500">
                       Chưa có dòng — thêm nhân sự ở trên hoặc nhập Sổ / M2 / đồng bộ CRM.
                     </td>
                   </tr>
@@ -785,7 +846,6 @@ export default function ReportBC03Tab() {
                   mergedRevenueRows.map((r) => {
                     const kpi = getKpi(r.sale_name);
                     const { vndTotal } = revTotals(r, exchangeRate);
-                    const orderPct = pctProgress(r.orders, kpi.b2Orders);
                     const gmvPct = pctProgress(vndTotal, kpi.b4Gmv);
                     const primaryTotal = currency === "VND" ? vndTotal : revTotals(r, exchangeRate).rmbTotal;
                     const isKpiOnly =
@@ -812,31 +872,18 @@ export default function ReportBC03Tab() {
                         <td className="px-2 py-2 text-slate-400 whitespace-nowrap">{r.team}</td>
                         <td className="px-2 py-2 text-center">
                           <InlineKpiInput
-                            value={kpi.b2Orders}
-                            onChange={(n) => patchKpi(r.sale_name, { b2Orders: n })}
-                          />
-                        </td>
-                        <td className="px-2 py-2 text-center">
-                          <InlineKpiInput
                             value={kpi.b4Gmv}
                             onChange={(n) => patchKpi(r.sale_name, { b4Gmv: n })}
                             className="w-24"
                           />
                         </td>
                         <td className="px-2 py-2">
-                          <KpiProgressBar actual={r.orders} target={kpi.b2Orders} label="Tiến độ số đơn" />
-                        </td>
-                        <td className="px-2 py-2">
                           <KpiProgressBar actual={vndTotal} target={kpi.b4Gmv} label="Tiến độ GMV VND" />
                         </td>
                         <td className="px-2 py-2 text-right tabular-nums whitespace-nowrap">
                           <span className="font-medium text-emerald-400">{fmtMoney(primaryTotal, currency)}</span>
-                          {(orderPct !== null || gmvPct !== null) && (
-                            <div className="text-[10px] text-slate-500">
-                              {orderPct !== null ? `${orderPct}% đơn` : ""}
-                              {orderPct !== null && gmvPct !== null ? " · " : ""}
-                              {gmvPct !== null ? `${gmvPct}% GMV` : ""}
-                            </div>
+                          {gmvPct !== null && (
+                            <div className="text-[10px] text-slate-500">{gmvPct}% GMV</div>
                           )}
                         </td>
                         <td className="px-2 py-2 text-right tabular-nums text-slate-200">{r.orders}</td>
