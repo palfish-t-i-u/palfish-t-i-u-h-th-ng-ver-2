@@ -28,6 +28,7 @@ interface Props {
   dbFileName: string;
   canConfirmPayment: boolean;
   onOrderUpdated: (order: Order) => void;
+  onOpenCreateOrder?: () => void;
 }
 
 export default function Tab2Table({
@@ -36,6 +37,7 @@ export default function Tab2Table({
   dbFileName,
   canConfirmPayment,
   onOrderUpdated,
+  onOpenCreateOrder,
 }: Props) {
   const [qrModal, setQrModal] = useState<{
     open: boolean;
@@ -152,6 +154,13 @@ export default function Tab2Table({
 
   return (
     <div>
+      {onOpenCreateOrder && (
+        <div className="mb-4 flex justify-end">
+          <Button type="button" onClick={onOpenCreateOrder}>
+            + Tạo mã QR mới
+          </Button>
+        </div>
+      )}
       <div className="mb-5 flex flex-col items-stretch justify-between gap-4 rounded-gmv-md border border-dashed border-gmv-primary/50 bg-gmv-canvas p-4 shadow-gmv-1 sm:flex-row sm:items-center">
         <div
           className={cn(
