@@ -11,10 +11,13 @@ from pydantic import BaseModel, Field
 
 from crm_metrics import (
     aggregate_label,
+    exclude_legacy_summary_rows,
     extract_row_metrics,
+    fetch_crm_sales_rows,
+    is_detail_sale_row,
     is_valid_sale_name,
     parse_metric,
-    select_crm_rows,
+    sync_coverage_meta,
     team_label,
 )
 from rbac import can_confirm_payment, resolve_actor
@@ -441,17 +444,12 @@ def register_report_routes(app, supabase_factory):
         dates = _list_dates(d_start, d_end)
 
         try:
-            q = (
-                sb.table("crm_sales_data")
-                .select("*")
-                .gte("report_date", d_start)
-                .lte("report_date", d_end)
+            raw_rows = fetch_crm_sales_rows(
+                sb, d_start, d_end, team=team, department=department,
             )
-            if team:
-                q = q.eq("team", team)
-            if department:
-                q = q.eq("department", department)
-            rows, _data_mode = select_crm_rows(q.execute().data or [])
+            rows = exclude_legacy_summary_rows(raw_rows)
+            rows = [r for r in rows if is_detail_sale_row(r)]
+            coverage = sync_coverage_meta(rows, d_start, d_end)
         except Exception as exc:
             raise HTTPException(500, f"Query BC03 thất bại: {exc}") from exc
 
@@ -497,6 +495,11 @@ def register_report_routes(app, supabase_factory):
             "revenue": revenue,
             "trial": trial,
             "referral": referral,
+            "meta": {
+                "source": "supabase_daily",
+                "row_count": len(rows),
+                **coverage,
+            },
         }
 
     @app.get("/reports/bc03/staff", tags=["Reports"])

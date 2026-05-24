@@ -181,6 +181,34 @@ export interface DashboardSummary {
   };
 }
 
+/** Hybrid — DB incremental daily (charts, BC03 scroll) */
+export interface DashboardDailyTrends {
+  period: { start: string; end: string };
+  row_count: number;
+  revenue_by_date: DashboardSummary["revenue_by_date"];
+  meta?: {
+    source?: string;
+    sync_days?: number;
+    crm_gmv_currency?: "RMB";
+    collected_currency?: "VND";
+  };
+}
+
+/** Hybrid — PalFish live (KPI cards, Top Sale) */
+export interface DashboardLiveSummary {
+  period: { start: string; end: string };
+  row_count?: number;
+  meta?: DashboardSummary["meta"] & {
+    kpi_source?: "palfish_live";
+    source?: string;
+    department_fallback?: boolean;
+  };
+  kpi: DashboardSummary["kpi"];
+  top_sales: DashboardSummary["top_sales"];
+  conversion: DashboardSummary["conversion"];
+  today: DashboardSummary["today"];
+}
+
 // BC03 Report
 export interface Bc03KpiRow {
   id: string;
@@ -249,4 +277,11 @@ export interface Bc03Report {
     referral_leads: number;
     daily: Record<string, number>;
   }[];
+  meta?: {
+    source?: string;
+    row_count?: number;
+    synced_days?: number;
+    expected_days?: number;
+    missing_dates?: string[];
+  };
 }

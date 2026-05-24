@@ -5,7 +5,7 @@ import {
 } from "recharts";
 import { endpoints } from "../lib/api";
 import { fmtRate, isValidSaleName, pctOf, safeDivide } from "../lib/metrics";
-import type { DashboardSummary } from "../types/order";
+import type { DashboardDailyTrends, DashboardLiveSummary } from "../types/order";
 
 // --------------------------------------------------------------------------
 // Helpers
@@ -23,6 +23,31 @@ function firstOfMonth() {
   const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-01`;
 }
 
+function resolvePeriod(rangeKey: string, customStart: string, customEnd: string) {
+  const today = todayStr();
+  if (rangeKey === "today") return { start: today, end: today };
+  if (rangeKey === "week") {
+    const d = new Date();
+    const monday = new Date(d);
+    const dow = d.getDay();
+    monday.setDate(d.getDate() - (dow === 0 ? 6 : dow - 1));
+    return { start: monday.toISOString().slice(0, 10), end: today };
+  }
+  if (rangeKey === "month") return { start: firstOfMonth(), end: today };
+  if (rangeKey === "last_month") {
+    const d = new Date();
+    const firstThis = new Date(d.getFullYear(), d.getMonth(), 1);
+    const lastPrev = new Date(firstThis.getTime() - 86_400_000);
+    const firstPrev = new Date(lastPrev.getFullYear(), lastPrev.getMonth(), 1);
+    return {
+      start: firstPrev.toISOString().slice(0, 10),
+      end: lastPrev.toISOString().slice(0, 10),
+    };
+  }
+  if (rangeKey === "custom") return { start: customStart, end: customEnd };
+  return { start: firstOfMonth(), end: today };
+}
+
 const BAR_COLORS = ["#6366f1","#8b5cf6","#a78bfa","#c4b5fd","#ddd6fe",
                     "#818cf8","#7c3aed","#4f46e5","#6d28d9","#5b21b6"];
 
@@ -34,7 +59,7 @@ const RANGE_OPTIONS = [
   { key: "custom",     label: "Tùy chọn" },
 ];
 
-type SaleDetailRow = DashboardSummary["top_sales"][number];
+type SaleDetailRow = DashboardLiveSummary["top_sales"][number];
 
 type DetailColKind = "text" | "num" | "rate" | "rmb" | "minutes" | "aov";
 
@@ -156,8 +181,10 @@ export default function Module6Tab() {
   const [teamFilter, setTeamFilter]   = useState("");
   const [saleFilter, setSaleFilter]   = useState("");
 
-  const [data, setData]         = useState<DashboardSummary | null>(null);
-  const [loading, setLoading]   = useState(false);
+  const [live, setLive]         = useState<DashboardLiveSummary | null>(null);
+  const [trends, setTrends]     = useState<DashboardDailyTrends | null>(null);
+  const [kpiLoading, setKpiLoading] = useState(false);
+  const [trendsLoading, setTrendsLoading] = useState(false);
   const [error, setError]       = useState("");
   const [teams, setTeams]       = useState<string[]>([]);
   const [sales, setSales]       = useState<string[]>([]);
@@ -175,40 +202,52 @@ export default function Module6Tab() {
   }, []);
 
   const load = useCallback(async () => {
-    setLoading(true);
     setError("");
+    setKpiLoading(true);
+    setTrendsLoading(true);
+
+    const { start, end } = resolvePeriod(rangeKey, customStart, customEnd);
+    const params = {
+      start_date: start,
+      end_date: end,
+      ...(teamFilter ? { team: teamFilter } : {}),
+      ...(saleFilter ? { sale: saleFilter } : {}),
+    };
+
     try {
-      const params: Record<string, string> = { range_key: rangeKey };
-      if (rangeKey === "custom") { params.start = customStart; params.end = customEnd; }
-      if (teamFilter) params.team = teamFilter;
-      if (saleFilter) params.sale = saleFilter;
-      const res = await endpoints.dashboard.summary(params);
-      setData(res.data);
+      const [liveRes, trendsRes] = await Promise.all([
+        endpoints.dashboard.liveSummary(params).finally(() => setKpiLoading(false)),
+        endpoints.dashboard.dailyTrends(params).finally(() => setTrendsLoading(false)),
+      ]);
+      setLive(liveRes.data);
+      setTrends(trendsRes.data);
     } catch (e: unknown) {
+      setKpiLoading(false);
+      setTrendsLoading(false);
       const msg = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
       setError(msg || "Không tải được dữ liệu dashboard.");
-    } finally {
-      setLoading(false);
     }
   }, [rangeKey, customStart, customEnd, teamFilter, saleFilter]);
 
   useEffect(() => { load(); }, [load]);
 
-  const kpi = data?.kpi;
-  const meta = data?.meta;
+  const period = live?.period ?? trends?.period;
+  const kpi = live?.kpi;
+  const meta = live?.meta;
   const fx = meta?.exchange_rate ?? kpi?.exchange_rate ?? 3700;
-  const revenueData = (data?.revenue_by_date ?? []).map((d) => ({
+  const revenueData = (trends?.revenue_by_date ?? []).map((d) => ({
     ...d,
     gmv_rmb: d.gmv_rmb ?? d.amount ?? 0,
     collected_vnd: d.collected_vnd ?? d.collected ?? 0,
   }));
-  const topSales    = (data?.top_sales ?? []).filter((r) => isValidSaleName(r.sale_name));
+  const topSales    = (live?.top_sales ?? []).filter((r) => isValidSaleName(r.sale_name));
   const topSalesChart = topSales.slice(0, 10).map((r) => ({
     ...r,
     gmv_rmb: r.gmv_rmb ?? r.total_amount ?? 0,
   }));
-  const conversion  = data?.conversion ?? [];
-  const today       = data?.today;
+  const conversion  = live?.conversion ?? [];
+  const today       = live?.today;
+  const loading = kpiLoading || trendsLoading;
   const gmvRmb = (n: number) => fmt(n) + " RMB";
   const vnd = (n: number) => fmt(n) + " ₫";
   const todayLabel = today?.is_calendar_today === false && today?.date
@@ -223,7 +262,7 @@ export default function Module6Tab() {
         <div>
           <h2 className="text-lg font-bold text-slate-100">Sale Leader / System</h2>
           <p className="text-xs text-slate-400">
-            {data ? `${data.period.start} → ${data.period.end}` : "Dashboard tổng quan hiệu suất Sale"}
+            {period ? `${period.start} → ${period.end}` : "Dashboard tổng quan hiệu suất Sale"}
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -272,39 +311,21 @@ export default function Module6Tab() {
         </div>
       )}
 
-      {data?.data_mode === "summary" && !loading && (
-        <div className="rounded-lg bg-blue-950/50 px-4 py-3 text-sm text-blue-200 ring-1 ring-blue-800">
-          CRM export kỳ này chỉ có dòng <strong>汇总</strong> (tổng theo phòng ban), không có tên sale cá nhân.
-          Dashboard đang hiển thị theo <strong>phòng ban</strong>. Sync lại sau khi restart backend để bỏ dòng header &quot;Sales&quot;.
-        </div>
-      )}
-
-      {hasCrmData && (data?.row_count ?? 0) === 0 && !loading && (
+      {hasCrmData && (trends?.row_count ?? 0) === 0 && !trendsLoading && period && (
         <div className="rounded-lg bg-amber-950/60 px-4 py-3 text-sm text-amber-300 ring-1 ring-amber-800">
-          Có dữ liệu CRM trong database nhưng <strong>không có dòng nào</strong> trong kỳ{" "}
-          {data?.period.start} → {data?.period.end}.
-          Thử <strong>Tùy chọn</strong> và chọn đúng ngày đã sync (vd. 19/05 → 22/05).
+          Có dữ liệu CRM trong database nhưng <strong>không có dòng daily</strong> trong kỳ{" "}
+          {period.start} → {period.end}.
+          Vào tab <strong>Đồng bộ CRM</strong> và sync từng ngày trong kỳ.
         </div>
       )}
 
-      {hasCrmData && (data?.row_count ?? 0) > 0 && !loading && (
+      {(live || trends) && !loading && (
         <div className="rounded-lg bg-slate-800/50 px-4 py-2 text-xs text-slate-400 ring-1 ring-slate-700">
-          GMV CRM = <strong className="text-slate-300">RMB</strong> · Tiền về = <strong className="text-slate-300">VND</strong>.
-          Tỷ giá: 1 RMB = {fmt(fx)} ₫.
-          {meta?.kpi_source === "summary" ? (
-            <> KPI & bảng Sale lấy từ <strong className="text-slate-300">summary</strong> ({meta.summary_rows ?? 0} dòng).</>
-          ) : (
-            <> KPI fallback từ daily (chưa có summary — hãy sync lại).</>
-          )}
-          {" "}Biểu đồ dùng <strong className="text-slate-300">daily</strong> ({meta?.daily_rows ?? 0} dòng).
-        </div>
-      )}
-
-      {hasCrmData && (data?.row_count ?? 0) > 0 && (kpi?.total_gmv_rmb ?? kpi?.total_amount_qr ?? 0) === 0 && (kpi?.total_collected_vnd ?? kpi?.total_collected ?? 0) === 0 && (kpi?.l1 ?? 0) === 0 && (kpi?.l3 ?? 0) === 0 && (kpi?.l4 ?? 0) === 0 && !loading && (
-        <div className="rounded-lg bg-slate-800/80 px-4 py-3 text-sm text-slate-400 ring-1 ring-slate-700">
-          Đã có {data?.row_count} dòng CRM trong kỳ này nhưng metric L1/L8/GMV đang bằng 0 —
-          kiểm tra cột trong <code className="text-slate-300">raw_data</code> trên Supabase
-          hoặc sync lại sau patch v2.
+          Kiến trúc Hybrid: KPI & Top Sale = <strong className="text-slate-300">PalFish live</strong>
+          {meta?.department_fallback ? " (fallback org VN)" : ""} · Biểu đồ ={" "}
+          <strong className="text-slate-300">DB daily</strong>
+          ({trends?.meta?.sync_days ?? 0} ngày sync, {trends?.row_count ?? 0} dòng).
+          GMV CRM = RMB · Tiền về = VND · Tỷ giá: 1 RMB = {fmt(fx)} ₫.
         </div>
       )}
 
@@ -312,7 +333,16 @@ export default function Module6Tab() {
         <div className="rounded-lg bg-red-950/60 px-4 py-3 text-sm text-red-300 ring-1 ring-red-800">{error}</div>
       )}
 
-      {/* ── KPI CARDS ── */}
+      {/* ── KPI CARDS (PalFish live — có thể mất 1–2s) ── */}
+      <div className="relative">
+        {kpiLoading && (
+          <div className="absolute inset-0 z-10 flex items-center justify-center rounded-xl bg-slate-900/70 backdrop-blur-[1px]">
+            <span className="flex items-center gap-2 text-sm text-slate-300">
+              <span className="inline-block h-5 w-5 animate-spin rounded-full border-2 border-blue-500 border-t-transparent" />
+              Đang lấy KPI từ PalFish…
+            </span>
+          </div>
+        )}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-7">
         <KpiCard label="Tổng số L1"   value={fmt(kpi?.l1 ?? 0)} />
         <KpiCard label="Tổng số L3"   value={fmt(kpi?.l3 ?? 0)} />
@@ -333,12 +363,13 @@ export default function Module6Tab() {
         <KpiCard label="L1.2 — Giới thiệu" value={fmt(kpi?.l1_2 ?? 0)} />
         <KpiCard label="L3.3 — Preview" value={fmtRate(kpi?.l3_3)} sub={`Lịch hẹn: ${fmt(kpi?.l3_1 ?? 0)}`} />
       </div>
+      </div>
 
       {/* ── CHARTS ROW ── */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         {/* Line chart */}
         <div className="lg:col-span-2 rounded-xl bg-slate-800/60 p-4 ring-1 ring-slate-700">
-          <p className="mb-3 text-sm font-semibold text-slate-300">GMV MTD & tiền về theo ngày</p>
+          <p className="mb-3 text-sm font-semibold text-slate-300">GMV CRM & tiền về theo ngày (DB daily)</p>
           {revenueData.length > 0 ? (
             <>
               <ResponsiveContainer width="100%" height={220}>
@@ -359,12 +390,12 @@ export default function Module6Tab() {
                     }}
                     labelStyle={{ color: "#e2e8f0" }}
                   />
-                  <Line yAxisId="rmb" type="monotone" dataKey="gmv_rmb" stroke="#6366f1" strokeWidth={2} dot={false} name="GMV MTD (RMB)" />
+                  <Line yAxisId="rmb" type="monotone" dataKey="gmv_rmb" stroke="#6366f1" strokeWidth={2} dot={false} name="GMV (RMB)" />
                   <Line yAxisId="vnd" type="monotone" dataKey="collected_vnd" stroke="#22c55e" strokeWidth={2} dot={false} name="Đã thu (VND)" />
                 </LineChart>
               </ResponsiveContainer>
               <div className="mt-2 flex gap-4 text-xs text-slate-400">
-                {[["#6366f1","GMV MTD (RMB)"],["#22c55e","Đã thu (VND)"]].map(([c,l])=>(
+                {[["#6366f1","GMV (RMB)"],["#22c55e","Đã thu (VND)"]].map(([c,l])=>(
                   <span key={l} className="flex items-center gap-1">
                     <span className="inline-block h-2 w-4 rounded-full" style={{background:c}}/>
                     {l}
@@ -374,7 +405,7 @@ export default function Module6Tab() {
             </>
           ) : (
             <div className="flex h-[220px] items-center justify-center text-sm text-slate-500">
-              {loading ? "Đang tải…" : "Chưa có dữ liệu"}
+              {trendsLoading ? "Đang tải biểu đồ…" : "Chưa có dữ liệu daily — sync CRM từng ngày"}
             </div>
           )}
         </div>
@@ -437,7 +468,7 @@ export default function Module6Tab() {
 
         {/* Top Sales */}
         <div className="rounded-xl bg-slate-800/60 p-4 ring-1 ring-slate-700">
-          <p className="mb-3 text-sm font-semibold text-slate-300">Top {data?.data_mode === "summary" ? "phòng ban" : "Sale"} (GMV RMB)</p>
+          <p className="mb-3 text-sm font-semibold text-slate-300">Top Sale (GMV RMB — PalFish live)</p>
           {topSales.length > 0 ? (
             <ResponsiveContainer width="100%" height={200}>
               <BarChart data={topSalesChart} layout="vertical"
@@ -458,7 +489,7 @@ export default function Module6Tab() {
             </ResponsiveContainer>
           ) : (
             <div className="flex h-[200px] items-center justify-center text-sm text-slate-500">
-              {loading ? "Đang tải…" : "Chưa có dữ liệu"}
+              {kpiLoading ? "Đang tải từ PalFish…" : "Chưa có dữ liệu"}
             </div>
           )}
         </div>
