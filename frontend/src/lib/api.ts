@@ -5,6 +5,7 @@ import type { CreateOrderPayload, DashboardSummary, InvoiceOrder, Order } from "
 import type {
   LedgerCreatePayload,
   LedgerPatchPayload,
+  RevenueKeyDataResponse,
   RevenueLedgerRow,
   RevenuePivotResponse,
 } from "../types/revenue";
@@ -117,8 +118,14 @@ export const endpoints = {
       api.post<RevenueLedgerRow>("/revenue/ledger", body),
     patchLedger: (id: string, body: LedgerPatchPayload) =>
       api.patch<RevenueLedgerRow>(`/revenue/ledger/${id}`, body),
+    deleteLedger: (id: string) =>
+      api.delete<{ ok: boolean; id: string }>(`/revenue/ledger/${id}`),
     pivot: (params?: { from?: string; to?: string; team?: string }) =>
       api.get<RevenuePivotResponse>("/revenue/pivot", { params }),
+    pivotSalesPerformance: (params?: { from?: string; to?: string; team?: string }) =>
+      api.get<RevenuePivotResponse>("/revenue/pivot/sales-performance", { params }),
+    pivotKeyData: (params?: { from?: string; to?: string }) =>
+      api.get<RevenueKeyDataResponse>("/revenue/pivot/key-data", { params }),
   },
   dashboard: {
     summary: (params?: {

@@ -278,3 +278,41 @@
 - `types/revenue.ts`, `api.ts` endpoints.
 
 **Docs:** `TODO.md` M5-01..04 done.
+
+---
+
+## 2026-05-23 — Module 5 UI Hiếu + vận hành
+
+**Frontend**
+- `LedgerFormModal.tsx` — form thêm/sửa dòng Sổ (popup, giống QR Tab 2).
+- `SoDoanhThuTab.tsx` — bảng read-only cột chính HNxHCM; **+ Thêm dòng**, **Chỉnh sửa**, **Xóa** (chỉ TAY); VND separator; `TableScrollWrap`.
+- `DoanhThuSaleTab.tsx`, `MainPage.tsx` — đổi tên tab **Sales Performance**.
+- `frontend/src/lib/vndFormat.ts` — `formatVndInput`, `formatVndNumber`.
+- `frontend/src/lib/api.ts` — `deleteLedger`.
+
+**Backend**
+- `revenue_routes.py` — `DELETE /revenue/ledger/{id}` (chỉ `loai_nhap=tay`).
+
+**Scripts**
+- `scripts/seed_so_doanh_thu.py` — `--backfill-m3`, `--xlsx`, `--limit`, `--dry-run`.
+- `scripts/cleanup_so_doanh_thu.py` — `--all`, `--keep-import-only`, `--before`, `--dry-run`.
+
+**Docs**
+- `docs/M5_OPERATIONS.md` — deploy Promote, seed, cleanup, smoke test Sổ.
+- Cập nhật `MODULE_SO_DOANH_THU.md`, `WORKFLOW_UI_UX.md` (Promote), `DEPLOY.md` (v7, `/revenue/*`), `TODO.md` (M5-08).
+
+---
+
+## 2026-05-23 — Module 5.1 Sổ: thẻ tổng hợp, Type fixx, lọc hôm nay
+
+**Frontend**
+- `LedgerSummaryCards.tsx` — Tổng GMV, Số đơn, 5 thẻ pivot Type (Other / Kho chung / Ads / Renew / Refer).
+- `frontend/src/lib/typeFixx.ts` — map Type gốc → Type fixx (sheet Hiếu Trang tính5 C→D) → pivot 5 cột.
+- `frontend/src/lib/ledgerSource.ts` — gom bucket thẻ từ dòng Sổ.
+- `SoDoanhThuTab.tsx` — cột Nội dung CK, ID đơn hàng; filter mặc định **hôm nay**; Hôm nay / Reset bộ lọc; Type hiển thị sau fixx.
+
+**Backend**
+- `revenue_routes.py` — `infoCode` join `don_hang`; `_fetch_so_doanh_thu` paginate (tránh giới hạn 1000 dòng PostgREST).
+
+**Docs**
+- `MODULE_SO_DOANH_THU.md` §2.4–§2.5, M5-10; `TODO.md` M5-10; `M5_OPERATIONS.md` smoke + import full.

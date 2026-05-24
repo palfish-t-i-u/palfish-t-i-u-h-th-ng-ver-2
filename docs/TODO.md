@@ -130,19 +130,22 @@
 
 ---
 
-## Module 5 — Sổ doanh thu & Doanh thu Sale
+## Module 5 — Sổ doanh thu & Sales Performance
 
-> Spec: **`docs/MODULE_SO_DOANH_THU.md`**. Tỷ giá mặc định **1 RMB = 3.700 VND**. Pivot tháng = **ngày tiền về**.
+> Spec: **`docs/MODULE_SO_DOANH_THU.md`**. Vận hành seed/deploy: **`docs/M5_OPERATIONS.md`**. Tỷ giá mặc định **1 RMB = 3.700 VND**. Pivot tháng = **ngày tiền về**.
 
 | ID | Task | Status | created_at | completed_at | Ghi chú |
 |----|------|--------|------------|--------------|---------|
 | M5-01 | SQL bảng `so_doanh_thu` + audit | done | 2026-05-23 | 2026-05-23 | v7 prod OK |
-| M5-02 | API Sổ + hook M3 tạo dòng tự động | done | 2026-05-23 | 2026-05-23 | `revenue_routes.py`; VND÷3700 |
-| M5-03 | FE tab **Sổ doanh thu** (Hiền/System) | done | 2026-05-23 | 2026-05-23 | `SoDoanhThuTab.tsx` |
-| M5-04 | FE tab **Doanh thu Sale** (pivot team×sale×tháng) | done | 2026-05-23 | 2026-05-23 | `DoanhThuSaleTab.tsx` |
+| M5-02 | API Sổ + hook M3 + DELETE dòng tay | done | 2026-05-23 | 2026-05-23 | `revenue_routes.py`; Render cần redeploy khi thêm route |
+| M5-03 | FE tab **Sổ doanh thu** (Hiền/System) | done | 2026-05-23 | 2026-05-23 | Modal + bảng read-only — `LedgerFormModal.tsx` |
+| M5-04 | FE tab **Sales Performance** (pivot) | done | 2026-05-23 | 2026-05-23 | Đổi tên từ Doanh thu Sale — `DoanhThuSaleTab.tsx` |
+| M5-08 | UI Hiếu: cột chính HNxHCM, modal, scroll, VND sep, xóa tay | done | 2026-05-23 | 2026-05-23 | Xem MODULE §2.3 |
+| M5-10 | Thẻ tổng hợp Sổ + Type fixx + cột CK/Order ID + filter hôm nay | done | 2026-05-23 | 2026-05-23 | MODULE §2.4–§2.5; `typeFixx.ts`, paginate BE |
 | M5-05 | Xuất Excel Sổ + pivot | pending | 2026-05-23 | | |
-| M5-06 | Import lịch sử `HNxHCM GMV.xlsx` | pending | 2026-05-23 | | Backlog sau MVP |
-| M5-07 | Cấu hình tỷ giá theo thời điểm (System) | pending | 2026-05-23 | | Phase 2 — 1 ô điều chỉnh |
+| M5-06 | Import lịch sử `HNxHCM GMV.xlsx` | pending | 2026-05-23 | | Script sẵn: `scripts/seed_so_doanh_thu.py --xlsx` — xem M5_OPERATIONS §2.2 |
+| M5-07 | Cấu hình tỷ giá theo thời điểm (System) | pending | 2026-05-23 | | Phase 2 |
+| M5-09 | Promote Vercel sau push UI M5 (không chỉ preview) | pending | 2026-05-23 | | WORKFLOW §2.1, M5_OPERATIONS §1 |
 
 ---
 

@@ -26,10 +26,7 @@ Project: **palfish-gmv-manager**
 |-----|---------|
 | **Git repository** | `palfish-t-i-u/palfish-t-i-u-h-th-ng-ver-2` |
 | **Root Directory** | `frontend` |
-| **Production Branch** | **`ui/ux-anh-minh`** ← push branch này = cập nhật site chính |
 | **Framework** | Vite (từ `frontend/vercel.json`) |
-
-**Đường dẫn dashboard:** Project → **Settings** → **Git** → Production Branch.
 
 **Env (Settings → Environment Variables)** — tick **Production** + **Preview**:
 
@@ -39,7 +36,25 @@ Project: **palfish-gmv-manager**
 
 Không bắt buộc set `VITE_API_BASE_URL` trên Vercel: build dùng `/api` (proxy Render).
 
-**Sau khi đổi Production Branch:** Deployments → deployment mới từ `ui/ux-anh-minh` → **Visit** → xác nhận UI mới.
+### 2.1 Đưa UI lên production (quan trọng)
+
+Push branch **`ui/ux-anh-minh`** chỉ tạo **Preview deployment** — prod URL **không** tự đổi nếu chưa Promote.
+
+**Cách A — Promote (khuyến nghị, mọi gói Vercel):**
+
+1. Vercel → project **`palfish-gmv-manager`** → **Deployments**.
+2. Tìm deployment mới nhất: branch **`ui/ux-anh-minh`**, commit đúng.
+3. Bấm **`⋯`** → **Promote to Production**.
+4. Đợi badge **Current** chuyển sang deployment đó.
+5. Mở `https://palfish-gmv-manager.vercel.app` → **Ctrl+Shift+R** (hard refresh).
+
+**Cách B — Production Branch (nếu Settings → Git có mục này):**
+
+- Set **Production Branch** = **`ui/ux-anh-minh`** → mỗi push branch đó có thể auto lên prod (tùy cấu hình team).
+
+**Lưu ý:** Preview URL dài — login Google có thể redirect về **prod URL** (Supabase Site URL = prod). Đừng dùng preview để kết luận UI prod — luôn kiểm tra sau Promote.
+
+Chi tiết Module 5 (seed, smoke test): **`docs/M5_OPERATIONS.md`** §1.
 
 ---
 
@@ -123,9 +138,10 @@ git commit -m "ui: mô tả ngắn thay đổi"
 git push origin ui/ux-anh-minh
 ```
 
-1. Vercel tự build (1–3 phút).
-2. Mở https://palfish-gmv-manager.vercel.app — kiểm tra UI.
-3. Báo Giang/Đức: link branch GitHub + “đã push, xem trên Vercel”.
+1. Vercel tự build preview (1–3 phút).
+2. **Promote to Production** (§2.1) nếu cần Hiền/Giang xem trên URL chính.
+3. Mở `https://palfish-gmv-manager.vercel.app` — hard refresh — kiểm tra UI.
+4. Báo Giang/Đức: link branch GitHub + “đã push + Promote”.
 
 **Phạm vi nên sửa (UI/UX):**
 
@@ -150,7 +166,7 @@ git push origin ui/ux-anh-minh
 
 ### Cách xem chạy thật
 
-- URL: https://palfish-gmv-manager.vercel.app (sau khi Vercel Production Branch = `ui/ux-anh-minh`).
+- URL: https://palfish-gmv-manager.vercel.app (sau **Promote** deployment mới nhất — §2.1).
 - Đăng nhập tài khoản Google đã có quyền (sale / system).
 
 ### Checklist review (Giang / Đức)
@@ -173,12 +189,9 @@ git push origin ui/ux-anh-minh
 | `main` | Sau review | Ổn định, merge từ `ui/ux-anh-minh` |
 | `giang-đức'back-and-fr` (hoặc tương tự) | Giang, Đức | Backend / tính năng — **không** merge thẳng vào UI branch |
 
-**Sau khi merge `ui/ux-anh-minh` → `main`:** Done — PR #2 (2026-05-23).
+**Sau khi merge `ui/ux-anh-minh` → `main`:** Done — PR #2 (2026-05-23). UI tiếp tục phát triển trên branch **`ui/ux-anh-minh`** — prod cập nhật qua **Promote** (§2.1), không chỉ merge.
 
-- Giữ Production Branch = `ui/ux-anh-minh` **hoặc** đổi lại `main` (thống nhất một cách).
-- Nếu đổi Production Branch về `main`: mỗi lần chỉ UI vẫn có thể merge PR vào `main` rồi push.
-
-**Backend ver-2:** Khi Giang/Đức sẵn sàng đưa BE lên Render → cập nhật `docs/DEPLOY.md` §1 (đổi repo Render) — tách task, không gộp UI.
+**Backend ver-2:** Module 5 API (`/revenue/*`) nằm repo ver-2. Render hiện deploy từ `palfish-gmv-manager` — cần **Manual Deploy** hoặc sync repo khi thêm route mới. Xem `docs/DEPLOY.md` §1.4, `docs/M5_OPERATIONS.md` §1C.
 
 ---
 
@@ -215,4 +228,4 @@ Cập nhật trạng thái trong **`docs/TODO.md`** — mục **UI/UX branch `ui
 
 ---
 
-*Cập nhật: 2026-05-23 — PR #2 merged `ui/ux-anh-minh` → `main`; Tab2 sticky Done.*
+*Cập nhật: 2026-05-23 — Promote workflow; Module 5 MVP live; Tab2 sticky Done.*

@@ -17,7 +17,7 @@ Thứ tự khuyến nghị: **Backend (Render) trước** → lấy URL API → 
 - [x] Code push GitHub `palfish-t-i-u/palfish-gmv-manager` (BE Render — lịch sử)
 - [x] FE Vercel: repo **`palfish-t-i-u/palfish-t-i-u-h-th-ng-ver-2`**, branch UI/UX: **`ui/ux-anh-minh`** — xem **`docs/WORKFLOW_UI_UX.md`**
 - [x] PR #2 merge `ui/ux-anh-minh` → `main` (2026-05-23) — **Done**
-- [x] Chạy `supabase_schema_patch.sql` + `v2` + **`v3`** + **`v4`** (prod: v3 bắt buộc nếu chỉ có v2; sau ALTER → `NOTIFY pgrst, 'reload schema'`)
+- [x] Chạy `supabase_schema_patch.sql` + `v2` + **`v3`** + **`v4`** + **`v7`** (Module 5 Sổ — `supabase_schema_patch_v7_so_doanh_thu.sql`; prod: v3 bắt buộc nếu chỉ có v2; sau ALTER → `NOTIFY pgrst, 'reload schema'`)
 - [x] Seed `nhan_su_sale` (`scripts/seed_nhan_su_sale.py`) hoặc **Sync Metabase now** (System)
 - [x] Test local Module 1 pass
 - [x] Supabase URL, anon key, service_role key
@@ -86,6 +86,17 @@ Tùy chọn Metabase (gói học):
 
 **PayOS:** Dashboard PayOS → Webhook URL = `https://<render-url>/webhook/payos`.
 
+### 1.4 Module 5 — route `/revenue/*` (Sổ doanh thu)
+
+API: `GET/POST/PATCH/DELETE /revenue/ledger`, `GET /revenue/pivot`. Code trong repo **ver-2** (`backend/revenue_routes.py`).
+
+1. Render → service **`palfish-gmv-api`** → kiểm tra repo/branch team đang dùng.
+2. Sau khi merge code M5 → **Manual Deploy** nếu auto-deploy chưa chạy.
+3. Mở `https://palfish-gmv-api.onrender.com/docs` — phải thấy `/revenue/ledger`.
+4. Supabase prod: chạy **`docs/supabase_schema_patch_v7_so_doanh_thu.sql`** (một lần). **Không** chạy lại v6 nếu DB đã có cột M3/M4.
+
+Thiếu route → tab Sổ báo "Không tải được" (404), dù FE đã Promote. Chi tiết: **`docs/M5_OPERATIONS.md`**.
+
 ---
 
 ## 2. Deploy Frontend — Vercel
@@ -93,8 +104,9 @@ Tùy chọn Metabase (gói học):
 ### 2.0 Repo trên Vercel (ver-2 + branch UI)
 
 - **Repo FE:** `palfish-t-i-u/palfish-t-i-u-h-th-ng-ver-2` (GitHub App org `palfish-t-i-u` phải grant repo này).
-- **Production Branch (UI/UX):** `ui/ux-anh-minh` — chi tiết **`docs/WORKFLOW_UI_UX.md`**.
-- Repo cũ `palfish-gmv-manager` vẫn dùng cho **Render** (backend) nếu chưa đổi.
+- **Branch làm việc UI:** `ui/ux-anh-minh` — chi tiết **`docs/WORKFLOW_UI_UX.md`**.
+- **Prod URL cập nhật:** push branch → build preview → **Promote to Production** (WORKFLOW §2.1). Một số gói Vercel không có mục Production Branch — Promote là bắt buộc.
+- Repo cũ `palfish-gmv-manager` vẫn dùng cho **Render** (backend) nếu chưa đổi repo Render sang ver-2.
 
 ### 2.1 Import project
 
@@ -159,6 +171,9 @@ Sau khi đổi env Render → **Manual Deploy** (env mới không áp dụng ser
 | `Error sending confirmation email` | Confirm email bật + SMTP | Tắt Confirm email — `AUTH_SETUP.md` §0; ưu tiên Google |
 | Upload bill fail | Bucket `bills` chưa tạo | Chạy `docs/supabase_storage_setup.md` trên Supabase |
 | PayOS tab trống | Chưa có webhook / chưa có `giao_dich` | Cấu hình PayOS callback; test CK |
+| Prod UI cũ sau login Google | Chưa Promote deployment mới; OAuth redirect về prod URL cũ | Vercel → Deployments → **Promote to Production** → Ctrl+Shift+R |
+| Tab Sổ "Không tải được" / Xóa 404 | Render thiếu `/revenue/*` | Redeploy BE + kiểm tra `/docs`; chạy SQL v7 |
+| Preview Vercel khác prod | Preview ≠ Production deployment | Luôn test trên `palfish-gmv-manager.vercel.app` sau Promote |
 
 ---
 
@@ -197,7 +212,9 @@ Sau khi đổi env Render → **Manual Deploy** (env mới không áp dụng ser
 
 ## 6. Tài liệu liên quan
 
-- **UI/UX branch + đổi máy:** `docs/WORKFLOW_UI_UX.md`
+- **UI/UX branch + đổi máy + Promote:** `docs/WORKFLOW_UI_UX.md`
+- **Module 5 vận hành (seed, cleanup, smoke):** `docs/M5_OPERATIONS.md`
+- **Spec Sổ + Sales Performance:** `docs/MODULE_SO_DOANH_THU.md`
 - Cấu hình local: `docs/SETUP_ENV.md`
 - Auth SMTP + Google: `docs/AUTH_SETUP.md`
 - Tiến độ & kiến trúc: `docs/PROJECT.md`

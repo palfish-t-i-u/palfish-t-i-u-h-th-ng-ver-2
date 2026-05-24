@@ -22,6 +22,7 @@ export interface RevenueLedgerRow {
   donHangId: string | null;
   maDonHang: string;
   crmOrderId: string;
+  infoCode: string;
 }
 
 export interface RevenuePivotSale {
@@ -40,6 +41,19 @@ export interface RevenuePivotTeam {
 export interface RevenuePivotResponse {
   months: string[];
   teams: RevenuePivotTeam[];
+  grandTotalRow: Record<string, number>;
+  grandTotal: number;
+}
+
+export interface RevenueKeyDataTypeRow {
+  typeLabel: string;
+  cells: Record<string, number>;
+  total: number;
+}
+
+export interface RevenueKeyDataResponse {
+  months: string[];
+  types: RevenueKeyDataTypeRow[];
   grandTotalRow: Record<string, number>;
   grandTotal: number;
 }
