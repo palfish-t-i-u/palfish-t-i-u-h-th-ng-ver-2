@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { endpoints } from "../lib/api";
 import { isValidSaleName } from "../lib/metrics";
+import { cn } from "../lib/cn";
 import type { Bc03DailyRevenue, Bc03Report, Bc03StaffOption } from "../types/order";
 
 type CurrencyMode = "VND" | "RMB";
@@ -54,6 +55,10 @@ function fmtMoney(n: number, mode: CurrencyMode) {
 function fmtCompact(n: number) {
   if (n === 0) return "—";
   return new Intl.NumberFormat("vi-VN", { notation: "compact", maximumFractionDigits: 1 }).format(n);
+}
+
+function fmtInt(n: number) {
+  return new Intl.NumberFormat("vi-VN").format(n);
 }
 
 function fmtSavedAt(iso: string | null) {
@@ -147,12 +152,165 @@ const NAV_KEYS = new Set(["ArrowLeft", "ArrowRight", "Home", "End"]);
 
 const STICKY =
   "sticky left-0 z-10 bg-slate-900 shadow-[2px_0_6px_-2px_rgba(0,0,0,0.4)] min-w-[9rem] max-w-[11rem]";
+const STICKY_TEAM =
+  "sticky left-0 z-20 min-w-[7rem] max-w-[8rem] shadow-[2px_0_6px_-2px_rgba(0,0,0,0.4)]";
+const STICKY_STAFF =
+  "sticky left-[7rem] z-20 min-w-[9rem] max-w-[11rem] shadow-[2px_0_6px_-2px_rgba(0,0,0,0.4)]";
 
 const AUTO_TABS: { key: AutoTab; label: string }[] = [
   { key: "revenue", label: "Doanh thu & Order" },
   { key: "trial", label: "Trial (L4)" },
   { key: "referral", label: "Referral (L1.2)" },
 ];
+
+const BC03_TEAM_ORDER = [
+  "Inhouse 1",
+  "Inhouse 2",
+  "HCM (Online)",
+  "Linh Dam (Store)",
+  "Offline",
+  "An Binh (Store)",
+  "Khác",
+] as const;
+
+const TEAM_FILTERS = [
+  { value: "", label: "Toàn công ty" },
+  { value: "Inhouse 1", label: "Inhouse 1" },
+  { value: "Inhouse 2", label: "Inhouse 2" },
+  { value: "HCM (Online)", label: "HCM (Online)" },
+  { value: "Linh Dam (Store)", label: "Linh Dam (Store)" },
+  { value: "Offline", label: "Offline" },
+  { value: "An Binh (Store)", label: "An Binh (Store)" },
+  { value: "Khác", label: "Khác" },
+] as const;
+
+function normalizeTeam(team: string | undefined): string {
+  const t = (team || "").trim() || "Khác";
+  return (BC03_TEAM_ORDER as readonly string[]).includes(t) ? t : "Khác";
+}
+
+function emptyDailyBucket(): Bc03DailyRevenue {
+  return {
+    gmv_rmb_crm: 0,
+    gmv_rmb_ledger: 0,
+    collected_vnd: 0,
+    collected_vnd_m2: 0,
+    orders_crm: 0,
+    orders_ledger: 0,
+    orders_m2: 0,
+    gmv_rmb: 0,
+    orders: 0,
+  };
+}
+
+function sumRevRows(rows: RevRow[], team: string, dates: string[]): RevRow {
+  const daily: Record<string, Bc03DailyRevenue> = {};
+  for (const d of dates) {
+    daily[d] = emptyDailyBucket();
+    for (const r of rows) {
+      const b = r.daily?.[d];
+      if (!b) continue;
+      const t = daily[d];
+      t.gmv_rmb_crm += b.gmv_rmb_crm || 0;
+      t.gmv_rmb_ledger += b.gmv_rmb_ledger || 0;
+      t.collected_vnd += b.collected_vnd || 0;
+      t.collected_vnd_m2 += b.collected_vnd_m2 || 0;
+      t.orders_crm += b.orders_crm || 0;
+      t.orders_ledger += b.orders_ledger || 0;
+      t.orders_m2 += b.orders_m2 || 0;
+      t.gmv_rmb += b.gmv_rmb || 0;
+      t.orders += b.orders || 0;
+    }
+  }
+  const base = rows.reduce(
+    (acc, r) => ({
+      gmv_rmb: acc.gmv_rmb + (r.gmv_rmb || 0),
+      gmv_rmb_crm: acc.gmv_rmb_crm + (r.gmv_rmb_crm || 0),
+      gmv_rmb_ledger: acc.gmv_rmb_ledger + (r.gmv_rmb_ledger || 0),
+      collected_vnd: acc.collected_vnd + (r.collected_vnd || 0),
+      collected_vnd_m2: acc.collected_vnd_m2 + (r.collected_vnd_m2 || 0),
+      orders: acc.orders + (r.orders || 0),
+      orders_crm: acc.orders_crm + (r.orders_crm || 0),
+      orders_ledger: acc.orders_ledger + (r.orders_ledger || 0),
+      orders_m2: acc.orders_m2 + (r.orders_m2 || 0),
+    }),
+    {
+      gmv_rmb: 0,
+      gmv_rmb_crm: 0,
+      gmv_rmb_ledger: 0,
+      collected_vnd: 0,
+      collected_vnd_m2: 0,
+      orders: 0,
+      orders_crm: 0,
+      orders_ledger: 0,
+      orders_m2: 0,
+    }
+  );
+  return {
+    sale_name: "__team_total__",
+    team,
+    ...base,
+    daily,
+  };
+}
+
+function sumKpiForSales(saleNames: string[], kpiDraft: Record<string, KpiDraft>): KpiDraft {
+  return saleNames.reduce(
+    (acc, name) => {
+      const k = kpiDraft[name] ?? { b2Orders: 0, b4Gmv: 0 };
+      return { b2Orders: acc.b2Orders + k.b2Orders, b4Gmv: acc.b4Gmv + k.b4Gmv };
+    },
+    { b2Orders: 0, b4Gmv: 0 }
+  );
+}
+
+type RevenueDisplayRow =
+  | { kind: "team-total"; team: string; row: RevRow; kpi: KpiDraft }
+  | { kind: "staff"; row: RevRow };
+
+function buildRevenueDisplayRows(
+  rows: RevRow[],
+  dates: string[],
+  kpiDraft: Record<string, KpiDraft>,
+  teamFilter: string
+): RevenueDisplayRow[] {
+  const filtered = teamFilter
+    ? rows.filter((r) => normalizeTeam(r.team) === teamFilter)
+    : rows;
+
+  const byTeam = new Map<string, RevRow[]>();
+  for (const r of filtered) {
+    const t = normalizeTeam(r.team);
+    const list = byTeam.get(t) ?? [];
+    list.push(r);
+    byTeam.set(t, list);
+  }
+
+  const teamKeys = teamFilter
+    ? [teamFilter]
+    : [
+        ...BC03_TEAM_ORDER.filter((t) => byTeam.has(t)),
+        ...[...byTeam.keys()].filter((t) => !(BC03_TEAM_ORDER as readonly string[]).includes(t)).sort(),
+      ];
+
+  const out: RevenueDisplayRow[] = [];
+  for (const team of teamKeys) {
+    const members = byTeam.get(team) ?? [];
+    if (members.length === 0) continue;
+    members.sort((a, b) => (b.collected_vnd || 0) - (a.collected_vnd || 0));
+    const names = members.map((m) => m.sale_name);
+    out.push({
+      kind: "team-total",
+      team,
+      row: sumRevRows(members, team, dates),
+      kpi: sumKpiForSales(names, kpiDraft),
+    });
+    for (const row of members) {
+      out.push({ kind: "staff", row });
+    }
+  }
+  return out;
+}
 
 function KpiProgressBar({ actual, target, label }: { actual: number; target: number; label: string }) {
   const pct = pctProgress(actual, target);
@@ -202,6 +360,7 @@ export default function ReportBC03Tab() {
   const [customEnd, setCustomEnd] = useState(initialMonth.end);
   const [exchangeRate, setExchangeRate] = useState(3700);
   const [currency, setCurrency] = useState<CurrencyMode>("VND");
+  const [teamFilter, setTeamFilter] = useState("");
   const [autoTab, setAutoTab] = useState<AutoTab>("revenue");
   const [report, setReport] = useState<Bc03Report | null>(null);
   const [kpiDraft, setKpiDraft] = useState<Record<string, KpiDraft>>({});
@@ -323,6 +482,7 @@ export default function ReportBC03Tab() {
         range_key: "custom",
         start: rangeStart,
         end: rangeEnd,
+        team: teamFilter || undefined,
       });
       setReport(res.data);
     } catch (e: unknown) {
@@ -332,7 +492,7 @@ export default function ReportBC03Tab() {
     } finally {
       setLoading(false);
     }
-  }, [rangeStart, rangeEnd]);
+  }, [rangeStart, rangeEnd, teamFilter]);
 
   const loadMonthly = useCallback(async () => {
     setLoadingMonthly(true);
@@ -384,6 +544,7 @@ export default function ReportBC03Tab() {
     const map = new Map<string, RevRow>();
     for (const r of report?.revenue ?? []) {
       if (!excludedStaff.has(r.sale_name) && isValidSaleName(r.sale_name)) {
+        if (teamFilter && normalizeTeam(r.team) !== teamFilter) continue;
         map.set(r.sale_name, r);
       }
     }
@@ -400,7 +561,24 @@ export default function ReportBC03Tab() {
       if (bv !== av) return bv - av;
       return a.sale_name.localeCompare(b.sale_name, "vi");
     });
-  }, [report, excludedStaff, kpiDraft, staffTeamMap, dates, exchangeRate]);
+  }, [report, excludedStaff, kpiDraft, staffTeamMap, dates, exchangeRate, teamFilter]);
+
+  const revenueDisplayRows = useMemo(
+    () => buildRevenueDisplayRows(mergedRevenueRows, dates, kpiDraft, teamFilter),
+    [mergedRevenueRows, dates, kpiDraft, teamFilter]
+  );
+
+  const trialRowsFiltered = useMemo(() => {
+    const rows = report?.trial ?? [];
+    if (!teamFilter) return rows;
+    return rows.filter((r) => normalizeTeam(r.team) === teamFilter);
+  }, [report?.trial, teamFilter]);
+
+  const referralRowsFiltered = useMemo(() => {
+    const rows = report?.referral ?? [];
+    if (!teamFilter) return rows;
+    return rows.filter((r) => normalizeTeam(r.team) === teamFilter);
+  }, [report?.referral, teamFilter]);
 
   const visibleSaleNames = useMemo(
     () => new Set(mergedRevenueRows.map((r) => r.sale_name)),
@@ -410,6 +588,7 @@ export default function ReportBC03Tab() {
   const pickableStaff = useMemo(() => {
     const q = staffSearch.trim().toLowerCase();
     return staffOptions.filter((s) => {
+      if (teamFilter && normalizeTeam(s.team) !== teamFilter) return false;
       if (visibleSaleNames.has(s.crm_name)) return false;
       if (!q) return true;
       return (
@@ -418,7 +597,7 @@ export default function ReportBC03Tab() {
         s.team.toLowerCase().includes(q)
       );
     });
-  }, [staffOptions, staffSearch, visibleSaleNames]);
+  }, [staffOptions, staffSearch, visibleSaleNames, teamFilter]);
 
   function addSelectedStaff() {
     if (pickSelection.length === 0) return;
@@ -486,8 +665,8 @@ export default function ReportBC03Tab() {
     }
   }
 
-  const trialRows = report?.trial ?? [];
-  const referralRows = report?.referral ?? [];
+  const trialRows = trialRowsFiltered;
+  const referralRows = referralRowsFiltered;
 
   const monthLabel = useMemo(() => {
     const [y, m] = monthKey.split("-");
@@ -597,6 +776,21 @@ export default function ReportBC03Tab() {
             </label>
           </>
         )}
+
+        <label className="block">
+          <span className="mb-1 block text-xs font-medium text-slate-400">Team</span>
+          <select
+            value={teamFilter}
+            onChange={(e) => setTeamFilter(e.target.value)}
+            className="min-w-[10rem] rounded-lg border border-slate-600 bg-slate-900 px-3 py-2 text-sm text-slate-100 focus:border-blue-500 focus:outline-none"
+          >
+            {TEAM_FILTERS.map((t) => (
+              <option key={t.value || "all"} value={t.value}>
+                {t.label}
+              </option>
+            ))}
+          </select>
+        </label>
 
         <label className="block">
           <span className="mb-1 block text-xs font-medium text-slate-400">Tỷ giá ¥ → ₫</span>
@@ -756,11 +950,11 @@ export default function ReportBC03Tab() {
             <table className="min-w-max w-full border-collapse text-xs">
               <thead>
                 <tr className="border-b border-slate-700 bg-slate-900/80 text-slate-400">
-                  <th className={`${STICKY} px-3 py-2.5 text-left font-medium`}>Tên Sale</th>
-                  <th className="px-2 py-2.5 text-center font-medium w-10" title="Xóa dòng">
+                  <th className={`${STICKY_TEAM} bg-slate-900 px-3 py-2.5 text-left font-medium`}>Team</th>
+                  <th className={`${STICKY_STAFF} bg-slate-900 px-3 py-2.5 text-left font-medium`}>Nhân sự</th>
+                  <th className="px-2 py-2.5 text-center font-medium w-10" title="Xóa dòng KPI">
                     ×
                   </th>
-                  <th className="px-2 py-2.5 text-left font-medium whitespace-nowrap">Team</th>
                   <th className="px-2 py-2.5 text-center font-medium whitespace-nowrap">B2 KPI</th>
                   <th className="px-2 py-2.5 text-center font-medium whitespace-nowrap">B4 KPI (₫)</th>
                   <th className="px-2 py-2.5 text-left font-medium whitespace-nowrap">% Đơn</th>
@@ -775,62 +969,110 @@ export default function ReportBC03Tab() {
                 </tr>
               </thead>
               <tbody>
-                {mergedRevenueRows.length === 0 ? (
+                {revenueDisplayRows.length === 0 ? (
                   <tr>
                     <td colSpan={9 + dates.length} className="py-10 text-center text-slate-500">
-                      Chưa có dòng — thêm nhân sự ở trên hoặc nhập Sổ / M2 / đồng bộ CRM.
+                      Chưa có dòng — đổi Team / kỳ ngày hoặc thêm nhân sự KPI.
                     </td>
                   </tr>
                 ) : (
-                  mergedRevenueRows.map((r) => {
-                    const kpi = getKpi(r.sale_name);
+                  revenueDisplayRows.map((item) => {
+                    const isTotal = item.kind === "team-total";
+                    const r = item.row;
+                    const kpi = isTotal ? item.kpi : getKpi(r.sale_name);
                     const { vndTotal } = revTotals(r, exchangeRate);
                     const orderPct = pctProgress(r.orders, kpi.b2Orders);
                     const gmvPct = pctProgress(vndTotal, kpi.b4Gmv);
                     const primaryTotal = currency === "VND" ? vndTotal : revTotals(r, exchangeRate).rmbTotal;
                     const isKpiOnly =
-                      r.orders === 0 && r.collected_vnd === 0 && r.gmv_rmb === 0 && r.gmv_rmb_crm === 0;
+                      !isTotal &&
+                      r.orders === 0 &&
+                      r.collected_vnd === 0 &&
+                      r.gmv_rmb === 0 &&
+                      r.gmv_rmb_crm === 0;
+                    const rowKey = isTotal ? `total-${item.team}` : r.sale_name;
 
                     return (
-                      <tr key={r.sale_name} className="border-b border-slate-700/40 hover:bg-slate-700/15">
-                        <td className={`${STICKY} px-3 py-2 font-medium text-slate-100`}>
-                          {r.sale_name}
+                      <tr
+                        key={rowKey}
+                        className={cn(
+                          "border-b border-slate-700/40",
+                          isTotal
+                            ? "bg-amber-950/40 font-semibold text-amber-100"
+                            : "hover:bg-slate-700/15"
+                        )}
+                      >
+                        <td
+                          className={cn(
+                            STICKY_TEAM,
+                            "px-3 py-2 whitespace-nowrap",
+                            isTotal ? "bg-amber-950 text-amber-100" : "bg-slate-900 text-slate-500"
+                          )}
+                        >
+                          {isTotal ? item.team : ""}
+                        </td>
+                        <td
+                          className={cn(
+                            STICKY_STAFF,
+                            "px-3 py-2 font-medium",
+                            isTotal ? "bg-amber-950 text-amber-50" : "bg-slate-900 text-slate-100"
+                          )}
+                        >
+                          {isTotal ? "Total" : r.sale_name}
                           {isKpiOnly && (
-                            <span className="ml-1 rounded bg-slate-700 px-1 py-0.5 text-[9px] text-slate-400">KPI</span>
+                            <span className="ml-1 rounded bg-slate-700 px-1 py-0.5 text-[9px] text-slate-400">
+                              KPI
+                            </span>
                           )}
                         </td>
-                        <td className="px-2 py-2 text-center">
-                          <button
-                            type="button"
-                            onClick={() => removeStaffRow(r.sale_name)}
-                            className="rounded p-1 text-slate-500 hover:bg-red-950/50 hover:text-red-400"
-                            title="Xóa dòng khỏi bảng KPI"
-                          >
-                            ×
-                          </button>
+                        <td className={cn("px-2 py-2 text-center", isTotal && "bg-amber-950/40")}>
+                          {!isTotal && (
+                            <button
+                              type="button"
+                              onClick={() => removeStaffRow(r.sale_name)}
+                              className="rounded p-1 text-slate-500 hover:bg-red-950/50 hover:text-red-400"
+                              title="Xóa dòng khỏi bảng KPI"
+                            >
+                              ×
+                            </button>
+                          )}
                         </td>
-                        <td className="px-2 py-2 text-slate-400 whitespace-nowrap">{r.team}</td>
-                        <td className="px-2 py-2 text-center">
-                          <InlineKpiInput
-                            value={kpi.b2Orders}
-                            onChange={(n) => patchKpi(r.sale_name, { b2Orders: n })}
-                          />
+                        <td className={cn("px-2 py-2 text-center tabular-nums", isTotal && "bg-amber-950/40")}>
+                          {isTotal ? (
+                            <span className="text-amber-200">{fmtInt(kpi.b2Orders)}</span>
+                          ) : (
+                            <InlineKpiInput
+                              value={kpi.b2Orders}
+                              onChange={(n) => patchKpi(r.sale_name, { b2Orders: n })}
+                            />
+                          )}
                         </td>
-                        <td className="px-2 py-2 text-center">
-                          <InlineKpiInput
-                            value={kpi.b4Gmv}
-                            onChange={(n) => patchKpi(r.sale_name, { b4Gmv: n })}
-                            className="w-24"
-                          />
+                        <td className={cn("px-2 py-2 text-center tabular-nums", isTotal && "bg-amber-950/40")}>
+                          {isTotal ? (
+                            <span className="text-amber-200">{fmtInt(kpi.b4Gmv)}</span>
+                          ) : (
+                            <InlineKpiInput
+                              value={kpi.b4Gmv}
+                              onChange={(n) => patchKpi(r.sale_name, { b4Gmv: n })}
+                              className="w-24"
+                            />
+                          )}
                         </td>
-                        <td className="px-2 py-2">
+                        <td className={cn("px-2 py-2", isTotal && "bg-amber-950/40")}>
                           <KpiProgressBar actual={r.orders} target={kpi.b2Orders} label="Tiến độ số đơn" />
                         </td>
-                        <td className="px-2 py-2">
+                        <td className={cn("px-2 py-2", isTotal && "bg-amber-950/40")}>
                           <KpiProgressBar actual={vndTotal} target={kpi.b4Gmv} label="Tiến độ GMV VND" />
                         </td>
-                        <td className="px-2 py-2 text-right tabular-nums whitespace-nowrap">
-                          <span className="font-medium text-emerald-400">{fmtMoney(primaryTotal, currency)}</span>
+                        <td
+                          className={cn(
+                            "px-2 py-2 text-right tabular-nums whitespace-nowrap",
+                            isTotal && "bg-amber-950/40"
+                          )}
+                        >
+                          <span className={isTotal ? "text-amber-50" : "font-medium text-emerald-400"}>
+                            {fmtMoney(primaryTotal, currency)}
+                          </span>
                           {(orderPct !== null || gmvPct !== null) && (
                             <div className="text-[10px] text-slate-500">
                               {orderPct !== null ? `${orderPct}% đơn` : ""}
@@ -839,12 +1081,22 @@ export default function ReportBC03Tab() {
                             </div>
                           )}
                         </td>
-                        <td className="px-2 py-2 text-right tabular-nums text-slate-200">{r.orders}</td>
+                        <td
+                          className={cn(
+                            "px-2 py-2 text-right tabular-nums",
+                            isTotal ? "bg-amber-950/40 text-amber-50" : "text-slate-200"
+                          )}
+                        >
+                          {r.orders}
+                        </td>
                         {dates.map((d) => {
                           const bucket = r.daily?.[d];
                           if (!bucket) {
                             return (
-                              <td key={d} className="px-2 py-2 text-right text-slate-600">
+                              <td
+                                key={d}
+                                className={cn("px-2 py-2 text-right text-slate-600", isTotal && "bg-amber-950/40")}
+                              >
                                 —
                               </td>
                             );
@@ -854,8 +1106,14 @@ export default function ReportBC03Tab() {
                               ? revVndFromBucket(bucket, exchangeRate)
                               : revRmbFromBucket(bucket, exchangeRate);
                           return (
-                            <td key={d} className="px-2 py-2 text-right tabular-nums whitespace-nowrap">
-                              <div className={dayVal > 0 ? "text-slate-200" : "text-slate-600"}>
+                            <td
+                              key={d}
+                              className={cn(
+                                "px-2 py-2 text-right tabular-nums whitespace-nowrap",
+                                isTotal && "bg-amber-950/40"
+                              )}
+                            >
+                              <div className={dayVal > 0 ? (isTotal ? "text-amber-50" : "text-slate-200") : "text-slate-600"}>
                                 {dayVal > 0 ? fmtCompact(dayVal) : "—"}
                               </div>
                               {bucket.orders > 0 && (

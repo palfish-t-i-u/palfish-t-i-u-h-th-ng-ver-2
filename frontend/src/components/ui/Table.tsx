@@ -32,9 +32,10 @@ export function TableScrollWrap({ children, className }: HTMLAttributes<HTMLDivE
 export const stickyTableHead =
   "sticky z-30 bg-gmv-table-head shadow-[2px_0_4px_-2px_rgba(0,0,0,0.08)]";
 export const stickyTableHeadTop = "top-0";
-/** BC02 two-row header: row 2 sticks below row 1; shadow fills 1px tbody bleed gap */
-export const stickyTableHeadSecondRow =
-  "sticky top-10 z-30 bg-gmv-table-head shadow-[0_-4px_0_0] shadow-gmv-table-head";
+/** BC02 two-row header — dùng sticky trên `<thead>`, không set top riêng row 2. */
+export const stickyTableHeadSecondRow = "bg-gmv-table-head";
+/** Sticky thead block (BC02) — cả 2 hàng header dính nhau khi scroll dọc. */
+export const stickyThead = "sticky top-0 z-30 bg-gmv-table-head shadow-[0_1px_0_0] shadow-gmv-border";
 export const stickyTableHeadCorner = "z-40";
 export const stickyTableCell =
   "sticky z-20 bg-gmv-canvas shadow-[2px_0_4px_-2px_rgba(0,0,0,0.06)]";
@@ -42,6 +43,11 @@ export const stickyTableHeadRight =
   "sticky z-30 bg-gmv-table-head shadow-[-2px_0_4px_-2px_rgba(0,0,0,0.08)]";
 export const stickyTableCellRight =
   "sticky z-20 bg-gmv-canvas shadow-[-2px_0_4px_-2px_rgba(0,0,0,0.06)]";
+/** Grand-total row pinned to bottom of scroll area (BC01). */
+export const stickyTableFoot =
+  "sticky bottom-0 z-[25] shadow-[0_-2px_4px_-2px_rgba(0,0,0,0.08)]";
+/** Team subtotal row — sticks under thead while scrolling sales (BC01). */
+export const stickyTableSubtotalRow = "sticky top-9 z-[15]";
 
 export function Table({ children, className, ...rest }: TableHTMLAttributes<HTMLTableElement>) {
   return (
