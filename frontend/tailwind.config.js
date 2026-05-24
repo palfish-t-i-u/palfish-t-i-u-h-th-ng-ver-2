@@ -24,6 +24,10 @@ export default {
           "table-head": "var(--gmv-table-head)",
           "row-hover": "var(--gmv-row-hover)",
           secondary: "var(--gmv-secondary-text)",
+          "bc01-grand-month": "var(--gmv-bc01-grand-month-bg)",
+          "bc01-grand-month-fg": "var(--gmv-bc01-grand-month-fg)",
+          "bc01-grand-sum": "var(--gmv-bc01-grand-sum-bg)",
+          "bc01-grand-sum-fg": "var(--gmv-bc01-grand-sum-fg)",
         },
       },
       fontFamily: {

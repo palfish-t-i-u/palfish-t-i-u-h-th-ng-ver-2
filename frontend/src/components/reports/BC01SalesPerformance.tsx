@@ -54,7 +54,9 @@ const TEAM_FILTERS = [
   { value: "Khác", label: "Khác" },
 ] as const;
 
-const grandTotalBg = "bg-amber-200";
+const grandTotalMonthBg = "bg-gmv-bc01-grand-month text-gmv-bc01-grand-month-fg";
+const grandTotalSumBg =
+  "bg-gmv-bc01-grand-sum text-gmv-bc01-grand-sum-fg shadow-[-2px_0_4px_-2px_rgba(0,0,0,0.12)]";
 const teamTotalBg = "bg-sky-100";
 
 const stickyLeftTeam = cn(
@@ -191,24 +193,24 @@ export default function BC01SalesPerformance() {
               </Tr>
             )}
             {!loading && data && months.length > 0 && (
-              <Tr className={cn(stickyTableGrandRow, grandTotalBg, "font-semibold")}>
-                <Td className={cn(stickyCellTeam, grandTotalBg, "z-[21]")}>Tổng cộng</Td>
-                <Td className={cn(stickyCellSale, grandTotalBg, "z-[21]")}>—</Td>
+              <Tr className={cn(stickyTableGrandRow, grandTotalMonthBg, "font-semibold")}>
+                <Td className={cn(stickyCellTeam, grandTotalMonthBg, "z-[21]")}>Tổng cộng</Td>
+                <Td className={cn(stickyCellSale, grandTotalMonthBg, "z-[21]")}>—</Td>
                 {months.map((m) => (
-                  <Td key={m} className={cn(monthTd, grandTotalBg)}>
+                  <Td key={m} className={cn(monthTd, grandTotalMonthBg)}>
                     <GmvDataBarCell
                       value={data.grandTotalRow[m] ?? 0}
                       columnMax={columnMaxes[m] ?? 0}
                       format={fmtRmb}
-                      className={grandTotalBg}
+                      className={grandTotalMonthBg}
                     />
                   </Td>
                 ))}
                 <Td
                   className={cn(
                     stickyRightTotalCell,
-                    grandTotalBg,
-                    "z-[21] text-right tabular-nums"
+                    grandTotalSumBg,
+                    "z-[22] text-right text-base tabular-nums font-bold"
                   )}
                 >
                   {fmtRmb(data.grandTotal)}

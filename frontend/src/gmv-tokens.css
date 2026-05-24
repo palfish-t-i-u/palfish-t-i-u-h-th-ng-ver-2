@@ -23,4 +23,18 @@
   --gmv-table-head: #f3f5fa;
   --gmv-row-hover: #fafbfe;
   --gmv-secondary-text: #4e97ff;
+  /* BC01 — hàng Tổng cộng: vàng = theo tháng, tím = cột Tổng GMV */
+  --gmv-bc01-grand-month-bg: #fde68a;
+  --gmv-bc01-grand-month-fg: #1f2330;
+  --gmv-bc01-grand-sum-bg: #5246d6;
+  --gmv-bc01-grand-sum-fg: #ffffff;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --gmv-bc01-grand-month-bg: #b45309;
+    --gmv-bc01-grand-month-fg: #fffbeb;
+    --gmv-bc01-grand-sum-bg: #a5b4fc;
+    --gmv-bc01-grand-sum-fg: #1e1b4b;
+  }
 }
