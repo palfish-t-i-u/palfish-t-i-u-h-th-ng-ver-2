@@ -8,6 +8,8 @@ import Module3Tab from "../components/Module3Tab";
 import Module4Tab from "../components/Module4Tab";
 import SoDoanhThuTab from "../components/SoDoanhThuTab";
 import ReportsHub from "../components/ReportsHub";
+import Module5Tab from "../components/Module5Tab";
+import Module6Tab from "../components/Module6Tab";
 import { useAuth } from "../hooks/useAuth";
 import { useMe } from "../hooks/useMe";
 import { endpoints } from "../lib/api";
@@ -25,6 +27,8 @@ type ViewId =
   | "module4"
   | "revenueLedger"
   | "reportsHub"
+  | "module5"
+  | "module6"
   | "staffCrm"
   | "authAccounts";
 
@@ -93,6 +97,13 @@ const I = {
       <line x1="6" y1="20" x2="6" y2="14" />
     </svg>
   ),
+  database: (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <ellipse cx="12" cy="5" rx="9" ry="3" />
+      <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3" />
+      <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5" />
+    </svg>
+  ),
 };
 
 const TITLES: Record<ViewId, { title: string; subtitle?: string }> = {
@@ -103,6 +114,8 @@ const TITLES: Record<ViewId, { title: string; subtitle?: string }> = {
   module4: { title: "Xuất hóa đơn thuế", subtitle: "M4 — Cấp mã M.../PF... và tải file ZIP 3 Excel" },
   revenueLedger: { title: "Sổ doanh thu", subtitle: "Ghi từng khoản thu — tự động (M3) + điền tay" },
   reportsHub: { title: "Báo cáo", subtitle: "BC01 · BC02 · BC03" },
+  module5: { title: "Đồng bộ CRM", subtitle: "M5 — Lấy & xuất Master Data CRM PalFish" },
+  module6: { title: "Dashboard Sale", subtitle: "M6 — Tổng quan hiệu suất theo team & cá nhân" },
   staffCrm: { title: "Nhân sự Sale", subtitle: "Master data Metabase — gán role / team" },
   authAccounts: { title: "Tài khoản Auth", subtitle: "Supabase Auth — khoá/mở account" },
 };
@@ -205,7 +218,22 @@ export default function MainPage() {
           icon: I.ledger,
           section: "Báo cáo",
         },
-        { id: "reportsHub", label: "Báo cáo", icon: I.chart }
+        { 
+          id: "reportsHub", 
+          label: "Báo cáo", 
+          icon: I.chart,
+        },
+        {
+          id: "module5",
+          label: "Đồng bộ CRM",
+          icon: I.database,
+          section: "Dữ liệu",
+        },
+        {
+          id: "module6",
+          label: "Dashboard Sale",
+          icon: I.chart,
+        }
       );
     }
 
@@ -277,6 +305,16 @@ export default function MainPage() {
       {showInvoice && (
         <div style={{ display: activeView === "reportsHub" ? "block" : "none" }}>
           <ReportsHub />
+        </div>
+      )}
+      {showInvoice && (
+        <div style={{ display: activeView === "module5" ? "block" : "none" }}>
+          <Module5Tab />
+        </div>
+      )}
+      {showInvoice && (
+        <div style={{ display: activeView === "module6" ? "block" : "none" }}>
+          <Module6Tab />
         </div>
       )}
       {showStaffCrm && (

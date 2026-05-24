@@ -1,7 +1,7 @@
 import axios from "axios";
 import { resolveApiBaseUrl } from "./apiBaseUrl";
 import { supabase } from "./supabase";
-import type { CreateOrderPayload, InvoiceOrder, Order } from "../types/order";
+import type { CreateOrderPayload, DashboardSummary, InvoiceOrder, Order } from "../types/order";
 import type {
   LedgerCreatePayload,
   LedgerPatchPayload,
@@ -126,6 +126,27 @@ export const endpoints = {
       api.get<RevenuePivotResponse>("/revenue/pivot/sales-performance", { params }),
     pivotKeyData: (params?: { from?: string; to?: string }) =>
       api.get<RevenueKeyDataResponse>("/revenue/pivot/key-data", { params }),
+  },
+  dashboard: {
+    summary: (params?: {
+      range_key?: string;
+      start?: string;
+      end?: string;
+      team?: string;
+      sale?: string;
+      department?: string;
+    }) => api.get<DashboardSummary>("/dashboard/summary", { params }),
+    filters: () => api.get<{ teams: string[]; sales: string[]; departments: string[] }>("/dashboard/filters"),
+  },
+  crmData: {
+    tokenStatus: () =>
+      api.get<{ hasToken: boolean; updatedAt: string | null }>("/crm/token-status"),
+    exportMaster: (startDate: string, endDate: string) =>
+      api.get<Blob>("/crm/export-master", {
+        params: { start_date: startDate, end_date: endDate },
+        responseType: "blob",
+        timeout: 120_000,
+      }),
   },
   me: {
     get: () => api.get("/me"),
