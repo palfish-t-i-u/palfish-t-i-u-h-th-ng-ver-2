@@ -91,18 +91,162 @@ export const LEAD_KENH_OPTIONS = [
 // Module 6 — Dashboard
 export interface DashboardSummary {
   period: { start: string; end: string };
+  meta?: {
+    crm_gmv_currency: "RMB";
+    collected_currency: "VND";
+    exchange_rate: number;
+    kpi_source?: "summary" | "daily_fallback";
+    summary_rows?: number;
+    daily_rows?: number;
+  };
   kpi: {
     total_orders: number;
+    /** Số đơn tien_ve=true trong kỳ — mẫu số AOV */
+    collected_order_count?: number;
+    total_gmv_rmb: number;
+    total_collected_vnd: number;
+    gmv_vnd_est?: number;
+    exchange_rate?: number;
+    /** @deprecated alias — giá trị RMB từ CRM */
     total_amount_qr: number;
+    /** @deprecated alias — VND */
     total_collected: number;
     aov: number;
-    l1: number; l3: number; l4: number; l8: number;
+    b1_qr_count?: number;
+    b3_gmv_qr?: number;
+    l1: number;
+    l3: number;
+    l4: number;
+    l8: number;
+    l1_0?: number;
+    l1_1?: number;
+    l1_2?: number;
+    l3_1?: number;
+    l3_3?: number;
+    c1?: number;
+    c2?: number;
+    c4?: number;
+    c5?: number;
   };
-  revenue_by_date: { date: string; amount: number; collected: number; orders: number }[];
+  row_count?: number;
+  data_mode?: "detail" | "summary" | "none";
+  revenue_by_date: {
+    date: string;
+    gmv_rmb?: number;
+    gmv_rmb_mtd?: number;
+    gmv_rmb_delta?: number;
+    collected_vnd?: number;
+    orders: number;
+    amount?: number;
+    collected?: number;
+    has_sync?: boolean;
+  }[];
   top_sales: {
-    sale_name: string; team: string;
-    total_amount: number; collected: number; orders: number;
+    sale_name: string;
+    department?: string;
+    team?: string;
+    ad_leads?: number;
+    ad_leads_manual?: number;
+    referral_leads?: number;
+    total_leads?: number;
+    gd_leads?: number;
+    invitation_number?: number;
+    scheduled_classes?: number;
+    preview_rate?: number;
+    completed_classes?: number;
+    completion_rate?: number;
+    orders: number;
+    gmv_rmb?: number;
+    avg_price?: number;
+    total_call_time?: number;
+    total_dials?: number;
+    total_connections?: number;
+    connection_rate?: number;
+    over_3min_connections?: number;
+    over_3min_rate?: number;
+    total_amount: number;
+    collected_vnd?: number;
+    collected: number;
   }[];
   conversion: { label: string; value: number }[];
-  today: { orders: number; amount: number; collected: number };
+  today: {
+    date?: string;
+    is_calendar_today?: boolean;
+    orders: number;
+    gmv_rmb?: number;
+    gmv_rmb_mtd?: number;
+    collected_vnd?: number;
+    amount?: number;
+    collected?: number;
+  };
+}
+
+// BC03 Report
+export interface Bc03KpiRow {
+  id: string;
+  saleName: string;
+  b2Orders: number;
+  b4Gmv: number;
+}
+
+export interface Bc03MonthlySettings {
+  month: string;
+  exchange_rate: number;
+  updated_at: string | null;
+  updated_by: string | null;
+  kpi_rows: {
+    id: string;
+    sale_name: string;
+    b2_orders: number;
+    b4_gmv_vnd: number;
+  }[];
+}
+
+export interface Bc03DailyRevenue {
+  gmv_rmb_crm: number;
+  gmv_rmb_ledger: number;
+  collected_vnd: number;
+  collected_vnd_m2: number;
+  orders_crm: number;
+  orders_ledger: number;
+  orders_m2: number;
+  gmv_rmb: number;
+  orders: number;
+}
+
+export interface Bc03StaffOption {
+  crm_name: string;
+  team: string;
+  display_name: string;
+}
+
+export interface Bc03Report {
+  period: { start: string; end: string };
+  dates: string[];
+  revenue: {
+    sale_name: string;
+    team: string;
+    gmv_rmb: number;
+    gmv_rmb_crm: number;
+    gmv_rmb_ledger: number;
+    collected_vnd: number;
+    collected_vnd_m2: number;
+    orders: number;
+    orders_crm: number;
+    orders_ledger: number;
+    orders_m2: number;
+    daily: Record<string, Bc03DailyRevenue>;
+  }[];
+  trial: {
+    sale_name: string;
+    team: string;
+    completed_classes: number;
+    daily: Record<string, number>;
+  }[];
+  referral: {
+    sale_name: string;
+    team: string;
+    referral_leads: number;
+    daily: Record<string, number>;
+  }[];
 }

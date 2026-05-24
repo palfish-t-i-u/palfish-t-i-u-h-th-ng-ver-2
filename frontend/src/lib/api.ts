@@ -1,7 +1,7 @@
 import axios from "axios";
 import { resolveApiBaseUrl } from "./apiBaseUrl";
 import { supabase } from "./supabase";
-import type { CreateOrderPayload, DashboardSummary, InvoiceOrder, Order } from "../types/order";
+import type { Bc03Report, Bc03MonthlySettings, Bc03StaffOption, CreateOrderPayload, DashboardSummary, InvoiceOrder, Order } from "../types/order";
 import type {
   LedgerCreatePayload,
   LedgerPatchPayload,
@@ -155,12 +155,42 @@ export const endpoints = {
   crmData: {
     tokenStatus: () =>
       api.get<{ hasToken: boolean; updatedAt: string | null }>("/crm/token-status"),
+    sync: (startDate: string, endDate: string) =>
+      api.post<{
+        ok: boolean;
+        rows_fetched: number;
+        rows_upserted: number;
+        summary_rows?: number;
+        daily_rows?: number;
+        days_ok: number;
+        days_failed: string[];
+        department_fallback?: boolean;
+        sync_mode?: string;
+        period: { start: string; end: string };
+      }>("/crm/sync", { start_date: startDate, end_date: endDate }, { timeout: 120_000 }),
     exportMaster: (startDate: string, endDate: string) =>
       api.get<Blob>("/crm/export-master", {
         params: { start_date: startDate, end_date: endDate },
         responseType: "blob",
         timeout: 120_000,
       }),
+  },
+  reports: {
+    bc03: (params?: {
+      range_key?: string;
+      start?: string;
+      end?: string;
+      team?: string;
+      department?: string;
+    }) => api.get<Bc03Report>("/reports/bc03", { params }),
+    bc03Staff: () => api.get<{ sales: Bc03StaffOption[] }>("/reports/bc03/staff"),
+    monthlyGet: (month: string) =>
+      api.get<Bc03MonthlySettings>("/reports/bc03/monthly", { params: { month } }),
+    monthlySave: (body: {
+      month: string;
+      exchange_rate: number;
+      kpi_rows: { sale_name: string; b2_orders: number; b4_gmv_vnd: number }[];
+    }) => api.put<Bc03MonthlySettings>("/reports/bc03/monthly", body),
   },
   me: {
     get: () => api.get("/me"),
