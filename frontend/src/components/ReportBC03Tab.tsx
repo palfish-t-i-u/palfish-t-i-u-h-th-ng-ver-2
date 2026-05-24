@@ -476,7 +476,7 @@ export default function ReportBC03Tab() {
           .filter((r) => {
             const row = mergedRevenueRows.find((x) => x.sale_name === r.sale_name);
             const hasActual = row && (row.orders > 0 || row.collected_vnd > 0 || row.gmv_rmb > 0);
-            return hasActual || r.b4_gmv_vnd > 0 || k.b4Gmv > 0;
+            return hasActual || r.b4_gmv_vnd > 0;
           }),
       });
       setSavedMeta({ at: res.data.updated_at, by: res.data.updated_by });
