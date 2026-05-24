@@ -11,12 +11,11 @@ import {
   Th,
   Tr,
   stickyTableCellRight,
-  stickyTableFoot,
+  stickyTableGrandRow,
   stickyTableHead,
   stickyTableHeadCorner,
   stickyTableHeadRight,
   stickyTableHeadTop,
-  stickyTableSubtotalRow,
 } from "../ui/Table";
 import { cn } from "../../lib/cn";
 
@@ -111,6 +110,7 @@ export default function BC01SalesPerformance() {
 
   const months = data?.months ?? [];
   const colSpan = months.length + 3;
+  const showTeamSubtotals = (data?.teams.length ?? 0) > 1;
 
   const columnMaxes = useMemo(() => {
     if (!data) return {} as Record<string, number>;
@@ -190,25 +190,52 @@ export default function BC01SalesPerformance() {
                 </Td>
               </Tr>
             )}
+            {!loading && data && months.length > 0 && (
+              <Tr className={cn(stickyTableGrandRow, grandTotalBg, "font-semibold")}>
+                <Td className={cn(stickyCellTeam, grandTotalBg, "z-[21]")}>Tổng cộng</Td>
+                <Td className={cn(stickyCellSale, grandTotalBg, "z-[21]")}>—</Td>
+                {months.map((m) => (
+                  <Td key={m} className={cn(monthTd, grandTotalBg)}>
+                    <GmvDataBarCell
+                      value={data.grandTotalRow[m] ?? 0}
+                      columnMax={columnMaxes[m] ?? 0}
+                      format={fmtRmb}
+                      className={grandTotalBg}
+                    />
+                  </Td>
+                ))}
+                <Td
+                  className={cn(
+                    stickyRightTotalCell,
+                    grandTotalBg,
+                    "z-[21] text-right tabular-nums"
+                  )}
+                >
+                  {fmtRmb(data.grandTotal)}
+                </Td>
+              </Tr>
+            )}
             {data?.teams.map((teamBlock) => (
               <Fragment key={teamBlock.teamLabel}>
-                <Tr className={cn(stickyTableSubtotalRow, teamTotalBg, "font-semibold")}>
-                  <Td className={cn(stickyCellTeam, teamTotalBg)}>{teamBlock.teamLabel}</Td>
-                  <Td className={cn(stickyCellSale, teamTotalBg)}>Tổng</Td>
-                  {months.map((m) => (
-                    <Td key={m} className={cn(monthTd, teamTotalBg)}>
-                      <GmvDataBarCell
-                        value={teamBlock.totalRow[m] ?? 0}
-                        columnMax={columnMaxes[m] ?? 0}
-                        format={fmtRmb}
-                        className={teamTotalBg}
-                      />
+                {showTeamSubtotals && (
+                  <Tr className={cn(teamTotalBg, "font-semibold")}>
+                    <Td className={cn(stickyCellTeam, teamTotalBg)}>{teamBlock.teamLabel}</Td>
+                    <Td className={cn(stickyCellSale, teamTotalBg)}>Tổng</Td>
+                    {months.map((m) => (
+                      <Td key={m} className={cn(monthTd, teamTotalBg)}>
+                        <GmvDataBarCell
+                          value={teamBlock.totalRow[m] ?? 0}
+                          columnMax={columnMaxes[m] ?? 0}
+                          format={fmtRmb}
+                          className={teamTotalBg}
+                        />
+                      </Td>
+                    ))}
+                    <Td className={cn(stickyRightTotalCell, teamTotalBg, "text-right tabular-nums")}>
+                      {fmtRmb(teamBlock.totalRowSum)}
                     </Td>
-                  ))}
-                  <Td className={cn(stickyRightTotalCell, teamTotalBg, "text-right tabular-nums")}>
-                    {fmtRmb(teamBlock.totalRowSum)}
-                  </Td>
-                </Tr>
+                  </Tr>
+                )}
                 {teamBlock.sales.map((sale) => (
                   <Tr key={`${teamBlock.teamLabel}-${sale.sale}`}>
                     <Td className={stickyCellTeam}>{teamBlock.teamLabel}</Td>
@@ -230,33 +257,6 @@ export default function BC01SalesPerformance() {
               </Fragment>
             ))}
           </tbody>
-          {!loading && data && months.length > 0 && (
-            <tfoot>
-              <Tr className={cn(stickyTableFoot, grandTotalBg, "font-semibold")}>
-                <Td className={cn(stickyCellTeam, grandTotalBg, "z-[26]")}>Tổng cộng</Td>
-                <Td className={cn(stickyCellSale, grandTotalBg, "z-[26]")}>—</Td>
-                {months.map((m) => (
-                  <Td key={m} className={cn(monthTd, grandTotalBg)}>
-                    <GmvDataBarCell
-                      value={data.grandTotalRow[m] ?? 0}
-                      columnMax={columnMaxes[m] ?? 0}
-                      format={fmtRmb}
-                      className={grandTotalBg}
-                    />
-                  </Td>
-                ))}
-                <Td
-                  className={cn(
-                    stickyRightTotalCell,
-                    grandTotalBg,
-                    "z-[26] text-right tabular-nums"
-                  )}
-                >
-                  {fmtRmb(data.grandTotal)}
-                </Td>
-              </Tr>
-            </tfoot>
-          )}
         </Table>
       </TableScrollWrap>
     </div>

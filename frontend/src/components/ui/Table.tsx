@@ -43,11 +43,9 @@ export const stickyTableHeadRight =
   "sticky z-30 bg-gmv-table-head shadow-[-2px_0_4px_-2px_rgba(0,0,0,0.08)]";
 export const stickyTableCellRight =
   "sticky z-20 bg-gmv-canvas shadow-[-2px_0_4px_-2px_rgba(0,0,0,0.06)]";
-/** Grand-total row pinned to bottom of scroll area (BC01). */
-export const stickyTableFoot =
-  "sticky bottom-0 z-[25] shadow-[0_-2px_4px_-2px_rgba(0,0,0,0.08)]";
-/** Team subtotal row — sticks under thead while scrolling sales (BC01). */
-export const stickyTableSubtotalRow = "sticky top-9 z-[15]";
+/** Grand-total row pinned under thead when scrolling (BC01). */
+export const stickyTableGrandRow =
+  "sticky top-9 z-[20] shadow-[0_1px_0_0] shadow-gmv-border";
 
 export function Table({ children, className, ...rest }: TableHTMLAttributes<HTMLTableElement>) {
   return (

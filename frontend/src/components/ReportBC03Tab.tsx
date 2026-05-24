@@ -150,12 +150,38 @@ function isElementVisible(el: HTMLElement | null) {
 
 const NAV_KEYS = new Set(["ArrowLeft", "ArrowRight", "Home", "End"]);
 
-const STICKY =
-  "sticky left-0 z-10 bg-slate-900 shadow-[2px_0_6px_-2px_rgba(0,0,0,0.4)] min-w-[9rem] max-w-[11rem]";
-const STICKY_TEAM =
-  "sticky left-0 z-20 min-w-[7rem] max-w-[8rem] shadow-[2px_0_6px_-2px_rgba(0,0,0,0.4)]";
-const STICKY_STAFF =
-  "sticky left-[7rem] z-20 min-w-[9rem] max-w-[11rem] shadow-[2px_0_6px_-2px_rgba(0,0,0,0.4)]";
+/** Pixel widths — freeze tới cột tổng, chỉ ngày scroll ngang. */
+const REV_COL_W = [112, 144, 40, 104, 128, 104, 80];
+const TRI_COL_W = [112, 144, 80];
+
+function bc03StickyCol(
+  index: number,
+  widths: number[],
+  bg: string,
+  z = 20
+): { className: string; style: React.CSSProperties } {
+  const left = widths.slice(0, index).reduce((sum, w) => sum + w, 0);
+  const w = widths[index] ?? 80;
+  const last = index === widths.length - 1;
+  return {
+    className: cn("sticky", bg, last && "shadow-[2px_0_6px_-2px_rgba(0,0,0,0.35)]"),
+    style: { left, minWidth: w, zIndex: z },
+  };
+}
+
+function bc03StickyCell(
+  index: number,
+  widths: number[],
+  bg: string,
+  extraClass?: string,
+  z = 20
+) {
+  const sticky = bc03StickyCol(index, widths, bg, z);
+  return {
+    className: cn(sticky.className, extraClass),
+    style: sticky.style,
+  };
+}
 
 const AUTO_TABS: { key: AutoTab; label: string }[] = [
   { key: "revenue", label: "Doanh thu & Order" },
@@ -305,6 +331,118 @@ function buildRevenueDisplayRows(
       row: sumRevRows(members, team, dates),
       kpi: sumKpiForSales(names, kpiDraft),
     });
+    for (const row of members) {
+      out.push({ kind: "staff", row });
+    }
+  }
+  return out;
+}
+
+type TrialRow = Bc03Report["trial"][number];
+
+type TrialDisplayRow =
+  | { kind: "team-total"; team: string; row: TrialRow }
+  | { kind: "staff"; row: TrialRow };
+
+function sumTrialRows(rows: TrialRow[], team: string, dates: string[]): TrialRow {
+  const daily: Record<string, number> = {};
+  for (const d of dates) {
+    daily[d] = rows.reduce((s, r) => s + (r.daily?.[d] ?? 0), 0);
+  }
+  return {
+    sale_name: "__team_total__",
+    team,
+    completed_classes: Object.values(daily).reduce((a, b) => a + b, 0),
+    daily,
+  };
+}
+
+function buildTrialDisplayRows(
+  rows: TrialRow[],
+  dates: string[],
+  teamFilter: string
+): TrialDisplayRow[] {
+  const filtered = teamFilter
+    ? rows.filter((r) => normalizeTeam(r.team) === teamFilter)
+    : rows;
+
+  const byTeam = new Map<string, TrialRow[]>();
+  for (const r of filtered) {
+    const t = normalizeTeam(r.team);
+    const list = byTeam.get(t) ?? [];
+    list.push(r);
+    byTeam.set(t, list);
+  }
+
+  const teamKeys = teamFilter
+    ? [teamFilter]
+    : [
+        ...BC03_TEAM_ORDER.filter((t) => byTeam.has(t)),
+        ...[...byTeam.keys()].filter((t) => !(BC03_TEAM_ORDER as readonly string[]).includes(t)).sort(),
+      ];
+
+  const out: TrialDisplayRow[] = [];
+  for (const team of teamKeys) {
+    const members = byTeam.get(team) ?? [];
+    if (members.length === 0) continue;
+    members.sort((a, b) => (b.completed_classes || 0) - (a.completed_classes || 0));
+    out.push({ kind: "team-total", team, row: sumTrialRows(members, team, dates) });
+    for (const row of members) {
+      out.push({ kind: "staff", row });
+    }
+  }
+  return out;
+}
+
+type ReferralRow = Bc03Report["referral"][number];
+
+type ReferralDisplayRow =
+  | { kind: "team-total"; team: string; row: ReferralRow }
+  | { kind: "staff"; row: ReferralRow };
+
+function sumReferralRows(rows: ReferralRow[], team: string, dates: string[]): ReferralRow {
+  const daily: Record<string, number> = {};
+  for (const d of dates) {
+    daily[d] = rows.reduce((s, r) => s + (r.daily?.[d] ?? 0), 0);
+  }
+  return {
+    sale_name: "__team_total__",
+    team,
+    referral_leads: Object.values(daily).reduce((a, b) => a + b, 0),
+    daily,
+  };
+}
+
+function buildReferralDisplayRows(
+  rows: ReferralRow[],
+  dates: string[],
+  teamFilter: string
+): ReferralDisplayRow[] {
+  const filtered = teamFilter
+    ? rows.filter((r) => normalizeTeam(r.team) === teamFilter)
+    : rows;
+
+  const byTeam = new Map<string, ReferralRow[]>();
+  for (const r of filtered) {
+    const t = normalizeTeam(r.team);
+    const list = byTeam.get(t) ?? [];
+    list.push(r);
+    byTeam.set(t, list);
+  }
+
+  const teamKeys = teamFilter
+    ? [teamFilter]
+    : [
+        ...BC03_TEAM_ORDER.filter((t) => byTeam.has(t)),
+        ...[...byTeam.keys()].filter((t) => !(BC03_TEAM_ORDER as readonly string[]).includes(t)).sort(),
+      ];
+
+  const out: ReferralDisplayRow[] = [];
+  for (const team of teamKeys) {
+    const members = byTeam.get(team) ?? [];
+    if (members.length === 0) continue;
+    members.sort((a, b) => (b.referral_leads || 0) - (a.referral_leads || 0));
+    out.push({ kind: "team-total", team, row: sumReferralRows(members, team, dates) });
     for (const row of members) {
       out.push({ kind: "staff", row });
     }
@@ -665,8 +803,14 @@ export default function ReportBC03Tab() {
     }
   }
 
-  const trialRows = trialRowsFiltered;
-  const referralRows = referralRowsFiltered;
+  const trialDisplayRows = useMemo(
+    () => buildTrialDisplayRows(trialRowsFiltered, dates, teamFilter),
+    [trialRowsFiltered, dates, teamFilter]
+  );
+  const referralDisplayRows = useMemo(
+    () => buildReferralDisplayRows(referralRowsFiltered, dates, teamFilter),
+    [referralRowsFiltered, dates, teamFilter]
+  );
 
   const monthLabel = useMemo(() => {
     const [y, m] = monthKey.split("-");
@@ -950,17 +1094,30 @@ export default function ReportBC03Tab() {
             <table className="min-w-max w-full border-collapse text-xs">
               <thead>
                 <tr className="border-b border-slate-700 bg-slate-900/80 text-slate-400">
-                  <th className={`${STICKY_TEAM} bg-slate-900 px-3 py-2.5 text-left font-medium`}>Team</th>
-                  <th className={`${STICKY_STAFF} bg-slate-900 px-3 py-2.5 text-left font-medium`}>Nhân sự</th>
-                  <th className="px-2 py-2.5 text-center font-medium w-10" title="Xóa dòng KPI">
+                  <th {...bc03StickyCell(0, REV_COL_W, "bg-slate-900", "px-3 py-2.5 text-left font-medium")}>
+                    Team
+                  </th>
+                  <th {...bc03StickyCell(1, REV_COL_W, "bg-slate-900", "px-3 py-2.5 text-left font-medium")}>
+                    Nhân sự
+                  </th>
+                  <th
+                    {...bc03StickyCell(2, REV_COL_W, "bg-slate-900", "px-2 py-2.5 text-center font-medium w-10")}
+                    title="Xóa dòng KPI"
+                  >
                     ×
                   </th>
-                  <th className="px-2 py-2.5 text-center font-medium whitespace-nowrap">B2 KPI</th>
-                  <th className="px-2 py-2.5 text-center font-medium whitespace-nowrap">B4 KPI (₫)</th>
-                  <th className="px-2 py-2.5 text-left font-medium whitespace-nowrap">% Đơn</th>
-                  <th className="px-2 py-2.5 text-left font-medium whitespace-nowrap">% GMV</th>
-                  <th className="px-2 py-2.5 text-right font-medium whitespace-nowrap">Tổng ĐT</th>
-                  <th className="px-2 py-2.5 text-right font-medium whitespace-nowrap">Tổng đơn</th>
+                  <th {...bc03StickyCell(3, REV_COL_W, "bg-slate-900", "px-2 py-2.5 text-center font-medium whitespace-nowrap")}>
+                    GMV PKI
+                  </th>
+                  <th {...bc03StickyCell(4, REV_COL_W, "bg-slate-900", "px-2 py-2.5 text-left font-medium whitespace-nowrap")}>
+                    % GMV
+                  </th>
+                  <th {...bc03StickyCell(5, REV_COL_W, "bg-slate-900", "px-2 py-2.5 text-right font-medium whitespace-nowrap")}>
+                    Tổng ĐT
+                  </th>
+                  <th {...bc03StickyCell(6, REV_COL_W, "bg-slate-900", "px-2 py-2.5 text-right font-medium whitespace-nowrap")}>
+                    Tổng đơn
+                  </th>
                   {dates.map((d) => (
                     <th key={d} className="px-2 py-2.5 text-right font-medium whitespace-nowrap min-w-[4.5rem]">
                       {fmtDayHeader(d)}
@@ -971,7 +1128,7 @@ export default function ReportBC03Tab() {
               <tbody>
                 {revenueDisplayRows.length === 0 ? (
                   <tr>
-                    <td colSpan={9 + dates.length} className="py-10 text-center text-slate-500">
+                    <td colSpan={7 + dates.length} className="py-10 text-center text-slate-500">
                       Chưa có dòng — đổi Team / kỳ ngày hoặc thêm nhân sự KPI.
                     </td>
                   </tr>
@@ -981,7 +1138,6 @@ export default function ReportBC03Tab() {
                     const r = item.row;
                     const kpi = isTotal ? item.kpi : getKpi(r.sale_name);
                     const { vndTotal } = revTotals(r, exchangeRate);
-                    const orderPct = pctProgress(r.orders, kpi.b2Orders);
                     const gmvPct = pctProgress(vndTotal, kpi.b4Gmv);
                     const primaryTotal = currency === "VND" ? vndTotal : revTotals(r, exchangeRate).rmbTotal;
                     const isKpiOnly =
@@ -991,6 +1147,7 @@ export default function ReportBC03Tab() {
                       r.gmv_rmb === 0 &&
                       r.gmv_rmb_crm === 0;
                     const rowKey = isTotal ? `total-${item.team}` : r.sale_name;
+                    const stickyBg = isTotal ? "bg-amber-950" : "bg-slate-900";
 
                     return (
                       <tr
@@ -1003,19 +1160,21 @@ export default function ReportBC03Tab() {
                         )}
                       >
                         <td
-                          className={cn(
-                            STICKY_TEAM,
-                            "px-3 py-2 whitespace-nowrap",
-                            isTotal ? "bg-amber-950 text-amber-100" : "bg-slate-900 text-slate-500"
+                          {...bc03StickyCell(
+                            0,
+                            REV_COL_W,
+                            stickyBg,
+                            cn("px-3 py-2 whitespace-nowrap", isTotal ? "text-amber-100" : "text-slate-500")
                           )}
                         >
                           {isTotal ? item.team : ""}
                         </td>
                         <td
-                          className={cn(
-                            STICKY_STAFF,
-                            "px-3 py-2 font-medium",
-                            isTotal ? "bg-amber-950 text-amber-50" : "bg-slate-900 text-slate-100"
+                          {...bc03StickyCell(
+                            1,
+                            REV_COL_W,
+                            stickyBg,
+                            cn("px-3 py-2 font-medium", isTotal ? "text-amber-50" : "text-slate-100")
                           )}
                         >
                           {isTotal ? "Total" : r.sale_name}
@@ -1025,7 +1184,7 @@ export default function ReportBC03Tab() {
                             </span>
                           )}
                         </td>
-                        <td className={cn("px-2 py-2 text-center", isTotal && "bg-amber-950/40")}>
+                        <td {...bc03StickyCell(2, REV_COL_W, stickyBg, "px-2 py-2 text-center")}>
                           {!isTotal && (
                             <button
                               type="button"
@@ -1037,17 +1196,7 @@ export default function ReportBC03Tab() {
                             </button>
                           )}
                         </td>
-                        <td className={cn("px-2 py-2 text-center tabular-nums", isTotal && "bg-amber-950/40")}>
-                          {isTotal ? (
-                            <span className="text-amber-200">{fmtInt(kpi.b2Orders)}</span>
-                          ) : (
-                            <InlineKpiInput
-                              value={kpi.b2Orders}
-                              onChange={(n) => patchKpi(r.sale_name, { b2Orders: n })}
-                            />
-                          )}
-                        </td>
-                        <td className={cn("px-2 py-2 text-center tabular-nums", isTotal && "bg-amber-950/40")}>
+                        <td {...bc03StickyCell(3, REV_COL_W, stickyBg, "px-2 py-2 text-center tabular-nums")}>
                           {isTotal ? (
                             <span className="text-amber-200">{fmtInt(kpi.b4Gmv)}</span>
                           ) : (
@@ -1058,33 +1207,25 @@ export default function ReportBC03Tab() {
                             />
                           )}
                         </td>
-                        <td className={cn("px-2 py-2", isTotal && "bg-amber-950/40")}>
-                          <KpiProgressBar actual={r.orders} target={kpi.b2Orders} label="Tiến độ số đơn" />
-                        </td>
-                        <td className={cn("px-2 py-2", isTotal && "bg-amber-950/40")}>
+                        <td {...bc03StickyCell(4, REV_COL_W, stickyBg, "px-2 py-2")}>
                           <KpiProgressBar actual={vndTotal} target={kpi.b4Gmv} label="Tiến độ GMV VND" />
                         </td>
                         <td
-                          className={cn(
-                            "px-2 py-2 text-right tabular-nums whitespace-nowrap",
-                            isTotal && "bg-amber-950/40"
-                          )}
+                          {...bc03StickyCell(5, REV_COL_W, stickyBg, "px-2 py-2 text-right tabular-nums whitespace-nowrap")}
                         >
                           <span className={isTotal ? "text-amber-50" : "font-medium text-emerald-400"}>
                             {fmtMoney(primaryTotal, currency)}
                           </span>
-                          {(orderPct !== null || gmvPct !== null) && (
-                            <div className="text-[10px] text-slate-500">
-                              {orderPct !== null ? `${orderPct}% đơn` : ""}
-                              {orderPct !== null && gmvPct !== null ? " · " : ""}
-                              {gmvPct !== null ? `${gmvPct}% GMV` : ""}
-                            </div>
+                          {gmvPct !== null && (
+                            <div className="text-[10px] text-slate-500">{gmvPct}% GMV</div>
                           )}
                         </td>
                         <td
-                          className={cn(
-                            "px-2 py-2 text-right tabular-nums",
-                            isTotal ? "bg-amber-950/40 text-amber-50" : "text-slate-200"
+                          {...bc03StickyCell(
+                            6,
+                            REV_COL_W,
+                            stickyBg,
+                            cn("px-2 py-2 text-right tabular-nums", isTotal ? "text-amber-50" : "text-slate-200")
                           )}
                         >
                           {r.orders}
@@ -1132,9 +1273,15 @@ export default function ReportBC03Tab() {
             <table className="min-w-max w-full border-collapse text-xs">
               <thead>
                 <tr className="border-b border-slate-700 bg-slate-900/80 text-slate-400">
-                  <th className={`${STICKY} px-3 py-2.5 text-left font-medium`}>Tên Sale</th>
-                  <th className="px-2 py-2.5 text-left font-medium">Team</th>
-                  <th className="px-2 py-2.5 text-right font-medium whitespace-nowrap">Tổng L4</th>
+                  <th {...bc03StickyCell(0, TRI_COL_W, "bg-slate-900", "px-3 py-2.5 text-left font-medium")}>
+                    Team
+                  </th>
+                  <th {...bc03StickyCell(1, TRI_COL_W, "bg-slate-900", "px-3 py-2.5 text-left font-medium")}>
+                    Tên Sale
+                  </th>
+                  <th {...bc03StickyCell(2, TRI_COL_W, "bg-slate-900", "px-2 py-2.5 text-right font-medium whitespace-nowrap")}>
+                    Tổng L4
+                  </th>
                   {dates.map((d) => (
                     <th key={d} className="px-2 py-2.5 text-right font-medium whitespace-nowrap min-w-[4rem]">
                       {fmtDayHeader(d)}
@@ -1143,30 +1290,80 @@ export default function ReportBC03Tab() {
                 </tr>
               </thead>
               <tbody>
-                {trialRows.length === 0 ? (
+                {trialDisplayRows.length === 0 ? (
                   <tr>
                     <td colSpan={3 + dates.length} className="py-10 text-center text-slate-500">
                       Chưa có dữ liệu trial.
                     </td>
                   </tr>
                 ) : (
-                  trialRows.map((r) => (
-                    <tr key={r.sale_name} className="border-b border-slate-700/40 hover:bg-slate-700/15">
-                      <td className={`${STICKY} px-3 py-2 font-medium text-slate-100`}>{r.sale_name}</td>
-                      <td className="px-2 py-2 text-slate-400">{r.team}</td>
-                      <td className="px-2 py-2 text-right tabular-nums font-medium text-blue-300">
-                        {new Intl.NumberFormat("vi-VN").format(r.completed_classes)}
-                      </td>
-                      {dates.map((d) => {
-                        const v = r.daily?.[d] ?? 0;
-                        return (
-                          <td key={d} className={`px-2 py-2 text-right tabular-nums ${v ? "text-slate-200" : "text-slate-600"}`}>
-                            {v > 0 ? v : "—"}
-                          </td>
-                        );
-                      })}
-                    </tr>
-                  ))
+                  trialDisplayRows.map((item) => {
+                    const isTotal = item.kind === "team-total";
+                    const r = item.row;
+                    const stickyBg = isTotal ? "bg-amber-950" : "bg-slate-900";
+                    const rowKey = isTotal ? `trial-total-${item.team}` : r.sale_name;
+
+                    return (
+                      <tr
+                        key={rowKey}
+                        className={cn(
+                          "border-b border-slate-700/40",
+                          isTotal
+                            ? "bg-amber-950/40 font-semibold text-amber-100"
+                            : "hover:bg-slate-700/15"
+                        )}
+                      >
+                        <td
+                          {...bc03StickyCell(
+                            0,
+                            TRI_COL_W,
+                            stickyBg,
+                            cn("px-3 py-2 whitespace-nowrap", isTotal ? "text-amber-100" : "text-slate-400")
+                          )}
+                        >
+                          {isTotal ? item.team : ""}
+                        </td>
+                        <td
+                          {...bc03StickyCell(
+                            1,
+                            TRI_COL_W,
+                            stickyBg,
+                            cn("px-3 py-2 font-medium", isTotal ? "text-amber-50" : "text-slate-100")
+                          )}
+                        >
+                          {isTotal ? "Total" : r.sale_name}
+                        </td>
+                        <td
+                          {...bc03StickyCell(
+                            2,
+                            TRI_COL_W,
+                            stickyBg,
+                            cn(
+                              "px-2 py-2 text-right tabular-nums font-medium",
+                              isTotal ? "text-amber-50" : "text-blue-300"
+                            )
+                          )}
+                        >
+                          {new Intl.NumberFormat("vi-VN").format(r.completed_classes)}
+                        </td>
+                        {dates.map((d) => {
+                          const v = r.daily?.[d] ?? 0;
+                          return (
+                            <td
+                              key={d}
+                              className={cn(
+                                "px-2 py-2 text-right tabular-nums",
+                                isTotal && "bg-amber-950/40",
+                                v ? (isTotal ? "text-amber-50" : "text-slate-200") : "text-slate-600"
+                              )}
+                            >
+                              {v > 0 ? v : "—"}
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    );
+                  })
                 )}
               </tbody>
             </table>
@@ -1174,9 +1371,15 @@ export default function ReportBC03Tab() {
             <table className="min-w-max w-full border-collapse text-xs">
               <thead>
                 <tr className="border-b border-slate-700 bg-slate-900/80 text-slate-400">
-                  <th className={`${STICKY} px-3 py-2.5 text-left font-medium`}>Tên Sale</th>
-                  <th className="px-2 py-2.5 text-left font-medium">Team</th>
-                  <th className="px-2 py-2.5 text-right font-medium whitespace-nowrap">Tổng L1.2</th>
+                  <th {...bc03StickyCell(0, TRI_COL_W, "bg-slate-900", "px-3 py-2.5 text-left font-medium")}>
+                    Team
+                  </th>
+                  <th {...bc03StickyCell(1, TRI_COL_W, "bg-slate-900", "px-3 py-2.5 text-left font-medium")}>
+                    Tên Sale
+                  </th>
+                  <th {...bc03StickyCell(2, TRI_COL_W, "bg-slate-900", "px-2 py-2.5 text-right font-medium whitespace-nowrap")}>
+                    Tổng L1.2
+                  </th>
                   {dates.map((d) => (
                     <th key={d} className="px-2 py-2.5 text-right font-medium whitespace-nowrap min-w-[4rem]">
                       {fmtDayHeader(d)}
@@ -1185,30 +1388,80 @@ export default function ReportBC03Tab() {
                 </tr>
               </thead>
               <tbody>
-                {referralRows.length === 0 ? (
+                {referralDisplayRows.length === 0 ? (
                   <tr>
                     <td colSpan={3 + dates.length} className="py-10 text-center text-slate-500">
                       Chưa có dữ liệu referral.
                     </td>
                   </tr>
                 ) : (
-                  referralRows.map((r) => (
-                    <tr key={r.sale_name} className="border-b border-slate-700/40 hover:bg-slate-700/15">
-                      <td className={`${STICKY} px-3 py-2 font-medium text-slate-100`}>{r.sale_name}</td>
-                      <td className="px-2 py-2 text-slate-400">{r.team}</td>
-                      <td className="px-2 py-2 text-right tabular-nums font-medium text-violet-300">
-                        {new Intl.NumberFormat("vi-VN").format(r.referral_leads)}
-                      </td>
-                      {dates.map((d) => {
-                        const v = r.daily?.[d] ?? 0;
-                        return (
-                          <td key={d} className={`px-2 py-2 text-right tabular-nums ${v ? "text-slate-200" : "text-slate-600"}`}>
-                            {v > 0 ? v : "—"}
-                          </td>
-                        );
-                      })}
-                    </tr>
-                  ))
+                  referralDisplayRows.map((item) => {
+                    const isTotal = item.kind === "team-total";
+                    const r = item.row;
+                    const stickyBg = isTotal ? "bg-amber-950" : "bg-slate-900";
+                    const rowKey = isTotal ? `referral-total-${item.team}` : r.sale_name;
+
+                    return (
+                      <tr
+                        key={rowKey}
+                        className={cn(
+                          "border-b border-slate-700/40",
+                          isTotal
+                            ? "bg-amber-950/40 font-semibold text-amber-100"
+                            : "hover:bg-slate-700/15"
+                        )}
+                      >
+                        <td
+                          {...bc03StickyCell(
+                            0,
+                            TRI_COL_W,
+                            stickyBg,
+                            cn("px-3 py-2 whitespace-nowrap", isTotal ? "text-amber-100" : "text-slate-400")
+                          )}
+                        >
+                          {isTotal ? item.team : ""}
+                        </td>
+                        <td
+                          {...bc03StickyCell(
+                            1,
+                            TRI_COL_W,
+                            stickyBg,
+                            cn("px-3 py-2 font-medium", isTotal ? "text-amber-50" : "text-slate-100")
+                          )}
+                        >
+                          {isTotal ? "Total" : r.sale_name}
+                        </td>
+                        <td
+                          {...bc03StickyCell(
+                            2,
+                            TRI_COL_W,
+                            stickyBg,
+                            cn(
+                              "px-2 py-2 text-right tabular-nums font-medium",
+                              isTotal ? "text-amber-50" : "text-violet-300"
+                            )
+                          )}
+                        >
+                          {new Intl.NumberFormat("vi-VN").format(r.referral_leads)}
+                        </td>
+                        {dates.map((d) => {
+                          const v = r.daily?.[d] ?? 0;
+                          return (
+                            <td
+                              key={d}
+                              className={cn(
+                                "px-2 py-2 text-right tabular-nums",
+                                isTotal && "bg-amber-950/40",
+                                v ? (isTotal ? "text-amber-50" : "text-slate-200") : "text-slate-600"
+                              )}
+                            >
+                              {v > 0 ? v : "—"}
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    );
+                  })
                 )}
               </tbody>
             </table>
