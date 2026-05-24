@@ -21,6 +21,55 @@ TEAM_PIVOT_LABELS: dict[str, str] = {
     "HCM team": "HCM team",
 }
 
+KNOWN_BC01_TEAMS = frozenset({"Inhouse 1", "Inhouse 2", "HCM (Online)"})
+
+TEAM_TO_CANONICAL: dict[str, str] = {
+    "Inhouse 1": "Inhouse 1",
+    "Inhouse 2": "Inhouse 2",
+    "HCM (Online)": "HCM (Online)",
+    "In-house": "Inhouse 1",
+    "HN inhouse": "Inhouse 1",
+    "HN inhouse 2": "Inhouse 2",
+    "HCM team": "HCM (Online)",
+}
+
+BC02_TYPE_ORDER: list[str] = [
+    "Quảng cáo",
+    "Giới thiệu",
+    "KOC",
+    "Gia hạn",
+    "Biển công cộng",
+    "Lives",
+    "Offline",
+    "Other",
+]
+
+BC02_TYPE_ALIASES: dict[str, str] = {
+    "广告": "Quảng cáo",
+    "PNS": "Quảng cáo",
+    "Bán mới": "Quảng cáo",
+    "转介绍": "Giới thiệu",
+    "Refer": "Giới thiệu",
+    "Khách giới thiệu": "Giới thiệu",
+    "KOC": "KOC",
+    "续费": "Gia hạn",
+    "Resell": "Gia hạn",
+    "Gia hạn": "Gia hạn",
+    "公海": "Biển công cộng",
+    "GD": "Biển công cộng",
+    "Kho chung": "Biển công cộng",
+    "Lives": "Lives",
+    "Livestream": "Lives",
+    "Offline": "Offline",
+    "Booth": "Offline",
+    "Other": "Other",
+    "KFT": "Other",
+    "KET": "Other",
+    "Nguồn khác": "Other",
+}
+
+BC02_AD_SOURCES = frozenset({"广告", "PNS", "Bán mới", "Quảng cáo"})
+
 
 def _require_ops(actor) -> None:
     if not can_confirm_payment(actor):
@@ -55,6 +104,154 @@ def team_to_pivot_label(team: str | None) -> str:
     if not t:
         return "Khác"
     return TEAM_PIVOT_LABELS.get(t, t)
+
+
+def team_to_canonical(team: str | None, team_pivot_label: str | None = None) -> str:
+    t = (team or "").strip()
+    if t in TEAM_TO_CANONICAL:
+        return TEAM_TO_CANONICAL[t]
+    pl = (team_pivot_label or "").strip()
+    if pl in TEAM_TO_CANONICAL:
+        return TEAM_TO_CANONICAL[pl]
+    if t in KNOWN_BC01_TEAMS:
+        return t
+    return "Khác"
+
+
+def _bc02_type_goc(loai: str | None, loai2: str | None) -> str:
+    l1 = (loai or "").strip()
+    l2 = (loai2 or "").strip()
+    l1_norm = BC02_TYPE_ALIASES.get(l1, l1)
+    if l1_norm in BC02_AD_SOURCES and l2:
+        l2_norm = BC02_TYPE_ALIASES.get(l2, l2)
+        if l2_norm in BC02_TYPE_ORDER:
+            return l2
+        return l2
+    return l1 or l2
+
+
+def bc02_type_from_row(loai: str | None, loai2: str | None) -> str:
+    goc = _bc02_type_goc(loai, loai2).strip()
+    if not goc:
+        return "Other"
+    if goc in BC02_TYPE_ALIASES:
+        return BC02_TYPE_ALIASES[goc]
+    lower = goc.lower()
+    for alias, category in BC02_TYPE_ALIASES.items():
+        if alias.lower() == lower:
+            return category
+    return "Other"
+
+
+def _build_sales_performance_pivot(
+    rows: list[dict[str, Any]],
+    *,
+    team_filter: str | None = None,
+) -> dict[str, Any]:
+    month_set: set[str] = set()
+    grouped: dict[str, dict[str, dict[str, float]]] = {}
+
+    for r in rows:
+        ngay = _parse_date(r.get("ngay_tien_ve"))
+        if not ngay:
+            continue
+        mk = _month_key(ngay)
+        month_set.add(mk)
+        team_label = team_to_canonical(r.get("team"), r.get("team_pivot_label"))
+        if team_filter and team_label != team_filter:
+            continue
+        sale = (r.get("sale_crm_name") or "(Chưa gán sale)").strip()
+        gmv = float(r.get("gmv_rmb") or 0)
+        grouped.setdefault(team_label, {}).setdefault(sale, {})
+        grouped[team_label][sale][mk] = grouped[team_label][sale].get(mk, 0) + gmv
+
+    months = sorted(month_set, key=lambda m: (int(m.split("/")[0]), int(m.split("/")[1])))
+
+    team_order = ["Inhouse 1", "Inhouse 2", "HCM (Online)", "Khác"]
+    sorted_teams = [t for t in team_order if t in grouped]
+    sorted_teams.extend(sorted(t for t in grouped if t not in team_order))
+
+    teams_out = []
+    grand: dict[str, float] = {m: 0.0 for m in months}
+    grand_total = 0.0
+
+    for team_label in sorted_teams:
+        sales_map = grouped[team_label]
+        team_total_row: dict[str, float] = {m: 0.0 for m in months}
+        sales_out = []
+        for sale_name in sorted(sales_map.keys()):
+            cells = sales_map[sale_name]
+            row_total = sum(cells.get(m, 0) for m in months)
+            for m in months:
+                team_total_row[m] += cells.get(m, 0)
+            sales_out.append(
+                {
+                    "sale": sale_name,
+                    "cells": {m: round(cells.get(m, 0), 2) for m in months},
+                    "total": round(row_total, 2),
+                }
+            )
+        team_row_total = sum(team_total_row.values())
+        for m in months:
+            grand[m] += team_total_row[m]
+        grand_total += team_row_total
+        teams_out.append(
+            {
+                "teamLabel": team_label,
+                "totalRow": {m: round(team_total_row[m], 2) for m in months},
+                "totalRowSum": round(team_row_total, 2),
+                "sales": sales_out,
+            }
+        )
+
+    return {
+        "months": months,
+        "teams": teams_out,
+        "grandTotalRow": {m: round(grand[m], 2) for m in months},
+        "grandTotal": round(grand_total, 2),
+    }
+
+
+def _build_key_data_pivot(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    month_set: set[str] = set()
+    grouped: dict[str, dict[str, float]] = {t: {} for t in BC02_TYPE_ORDER}
+
+    for r in rows:
+        ngay = _parse_date(r.get("ngay_tien_ve"))
+        if not ngay:
+            continue
+        mk = _month_key(ngay)
+        month_set.add(mk)
+        type_label = bc02_type_from_row(r.get("loai"), r.get("loai_2"))
+        gmv = float(r.get("gmv_rmb") or 0)
+        grouped.setdefault(type_label, {})
+        grouped[type_label][mk] = grouped[type_label].get(mk, 0) + gmv
+
+    months = sorted(month_set, key=lambda m: (int(m.split("/")[0]), int(m.split("/")[1])))
+    grand: dict[str, float] = {m: 0.0 for m in months}
+    types_out = []
+    grand_total = 0.0
+
+    for type_label in BC02_TYPE_ORDER:
+        cells = grouped.get(type_label, {})
+        row_total = sum(cells.get(m, 0) for m in months)
+        for m in months:
+            grand[m] += cells.get(m, 0)
+        grand_total += row_total
+        types_out.append(
+            {
+                "typeLabel": type_label,
+                "cells": {m: round(cells.get(m, 0), 2) for m in months},
+                "total": round(row_total, 2),
+            }
+        )
+
+    return {
+        "months": months,
+        "types": types_out,
+        "grandTotalRow": {m: round(grand[m], 2) for m in months},
+        "grandTotal": round(grand_total, 2),
+    }
 
 
 def _resolve_team(sb, sale_crm_name: str | None, created_by: str | None) -> str:
@@ -115,6 +312,78 @@ def _format_sdt(kh: dict[str, Any] | None) -> str:
     return str(sdt)
 
 
+def _info_code_from_ma(ma_don: str | None) -> str:
+    ma = (ma_don or "").strip()
+    return f"Thanh toan {ma}" if ma else ""
+
+
+_SUPABASE_PAGE = 1000
+
+
+def _fetch_so_doanh_thu(
+    sb,
+    select: str,
+    *,
+    from_date: str | None = None,
+    to_date: str | None = None,
+    loai_nhap: str | None = None,
+) -> list[dict[str, Any]]:
+    """PostgREST trả tối đa 1000 dòng/lần — paginate hết kết quả."""
+    rows: list[dict[str, Any]] = []
+    offset = 0
+    while True:
+        q = sb.table("so_doanh_thu").select(select).order("ngay_tien_ve", desc=True)
+        if from_date:
+            q = q.gte("ngay_tien_ve", from_date[:10])
+        if to_date:
+            q = q.lte("ngay_tien_ve", to_date[:10])
+        if loai_nhap in ("tu_dong", "tay"):
+            q = q.eq("loai_nhap", loai_nhap)
+        res = q.range(offset, offset + _SUPABASE_PAGE - 1).execute()
+        chunk = res.data or []
+        if not chunk:
+            break
+        rows.extend(chunk)
+        if len(chunk) < _SUPABASE_PAGE:
+            break
+        offset += _SUPABASE_PAGE
+    return rows
+
+
+def _enrich_ledger_rows(sb, db_rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    order_ids = [r["don_hang_id"] for r in db_rows if r.get("don_hang_id")]
+    order_map: dict[str, dict[str, Any]] = {}
+    if order_ids:
+        try:
+            res = (
+                sb.table("don_hang")
+                .select("id, info_code, ma_don_hang, crm_order_id")
+                .in_("id", order_ids)
+                .execute()
+            )
+            order_map = {str(r["id"]): r for r in (res.data or [])}
+        except Exception as exc:
+            print(f"[revenue] enrich don_hang failed: {exc}")
+
+    out: list[dict[str, Any]] = []
+    for r in db_rows:
+        ledger = _row_to_ledger(r)
+        oid = r.get("don_hang_id")
+        if oid and str(oid) in order_map:
+            o = order_map[str(oid)]
+            ledger["infoCode"] = o.get("info_code") or _info_code_from_ma(
+                o.get("ma_don_hang") or ledger.get("maDonHang")
+            )
+            if not ledger.get("crmOrderId"):
+                ledger["crmOrderId"] = o.get("crm_order_id") or ""
+            if not ledger.get("maDonHang"):
+                ledger["maDonHang"] = o.get("ma_don_hang") or ""
+        else:
+            ledger["infoCode"] = _info_code_from_ma(ledger.get("maDonHang"))
+        out.append(ledger)
+    return out
+
+
 def _row_to_ledger(row: dict[str, Any]) -> dict[str, Any]:
     ngay = row.get("ngay_tien_ve")
     ngay_str = ngay[:10] if isinstance(ngay, str) else (ngay.isoformat() if ngay else "")
@@ -140,6 +409,7 @@ def _row_to_ledger(row: dict[str, Any]) -> dict[str, Any]:
         "donHangId": row.get("don_hang_id"),
         "maDonHang": row.get("ma_don_hang") or "",
         "crmOrderId": row.get("crm_order_id") or "",
+        "infoCode": _info_code_from_ma(row.get("ma_don_hang")),
         "createdByEmail": row.get("created_by_email") or "",
         "updatedByEmail": row.get("updated_by_email") or "",
         "createdAt": row.get("created_at") or "",
@@ -309,15 +579,14 @@ def register_revenue_routes(app, get_supabase) -> None:
         actor = resolve_actor(sb, authorization)
         _require_ops(actor)
         try:
-            q = sb.table("so_doanh_thu").select("*").order("ngay_tien_ve", desc=True)
-            if from_date:
-                q = q.gte("ngay_tien_ve", from_date[:10])
-            if to_date:
-                q = q.lte("ngay_tien_ve", to_date[:10])
-            if loai_nhap in ("tu_dong", "tay"):
-                q = q.eq("loai_nhap", loai_nhap)
-            res = q.execute()
-            rows = [_row_to_ledger(r) for r in (res.data or [])]
+            db_rows = _fetch_so_doanh_thu(
+                sb,
+                "*",
+                from_date=from_date,
+                to_date=to_date,
+                loai_nhap=loai_nhap,
+            )
+            rows = _enrich_ledger_rows(sb, db_rows)
             return {"rows": rows, "count": len(rows)}
         except HTTPException:
             raise
@@ -422,6 +691,70 @@ def register_revenue_routes(app, get_supabase) -> None:
         except Exception as exc:
             raise HTTPException(500, f"Lỗi cập nhật Sổ: {exc}") from exc
 
+    @app.delete("/revenue/ledger/{row_id}")
+    def delete_ledger(row_id: str, authorization: str | None = Header(None)):
+        sb = _sb()
+        actor = resolve_actor(sb, authorization)
+        _require_ops(actor)
+        try:
+            cur = sb.table("so_doanh_thu").select("*").eq("id", row_id).limit(1).execute()
+            if not cur.data:
+                raise HTTPException(404, "Không tìm thấy dòng")
+            row = cur.data[0]
+            if row.get("loai_nhap") != "tay":
+                raise HTTPException(403, "Chỉ được xóa dòng điền tay")
+            sb.table("so_doanh_thu").delete().eq("id", row_id).execute()
+            return {"ok": True, "id": row_id}
+        except HTTPException:
+            raise
+        except Exception as exc:
+            raise HTTPException(500, f"Lỗi xóa dòng Sổ: {exc}") from exc
+
+    @app.get("/revenue/pivot/sales-performance")
+    def revenue_pivot_sales_performance(
+        authorization: str | None = Header(None),
+        from_date: str | None = Query(None, alias="from"),
+        to_date: str | None = Query(None, alias="to"),
+        team_filter: str | None = Query(None, alias="team"),
+    ):
+        sb = _sb()
+        actor = resolve_actor(sb, authorization)
+        _require_ops(actor)
+        try:
+            rows = _fetch_so_doanh_thu(
+                sb,
+                "ngay_tien_ve, gmv_rmb, sale_crm_name, team, team_pivot_label",
+                from_date=from_date,
+                to_date=to_date,
+            )
+            return _build_sales_performance_pivot(rows, team_filter=team_filter or None)
+        except HTTPException:
+            raise
+        except Exception as exc:
+            raise HTTPException(500, f"Lỗi BC01 Sales Performance: {exc}") from exc
+
+    @app.get("/revenue/pivot/key-data")
+    def revenue_pivot_key_data(
+        authorization: str | None = Header(None),
+        from_date: str | None = Query(None, alias="from"),
+        to_date: str | None = Query(None, alias="to"),
+    ):
+        sb = _sb()
+        actor = resolve_actor(sb, authorization)
+        _require_ops(actor)
+        try:
+            rows = _fetch_so_doanh_thu(
+                sb,
+                "ngay_tien_ve, gmv_rmb, loai, loai_2",
+                from_date=from_date,
+                to_date=to_date,
+            )
+            return _build_key_data_pivot(rows)
+        except HTTPException:
+            raise
+        except Exception as exc:
+            raise HTTPException(500, f"Lỗi BC02 Key Data: {exc}") from exc
+
     @app.get("/revenue/pivot")
     def revenue_pivot(
         authorization: str | None = Header(None),
@@ -433,15 +766,12 @@ def register_revenue_routes(app, get_supabase) -> None:
         actor = resolve_actor(sb, authorization)
         _require_ops(actor)
         try:
-            q = sb.table("so_doanh_thu").select(
-                "ngay_tien_ve, gmv_rmb, sale_crm_name, team, team_pivot_label"
+            rows = _fetch_so_doanh_thu(
+                sb,
+                "ngay_tien_ve, gmv_rmb, sale_crm_name, team, team_pivot_label",
+                from_date=from_date,
+                to_date=to_date,
             )
-            if from_date:
-                q = q.gte("ngay_tien_ve", from_date[:10])
-            if to_date:
-                q = q.lte("ngay_tien_ve", to_date[:10])
-            res = q.execute()
-            rows = res.data or []
 
             month_set: set[str] = set()
             grouped: dict[str, dict[str, dict[str, float]]] = {}

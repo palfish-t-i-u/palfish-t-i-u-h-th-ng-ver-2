@@ -31,7 +31,7 @@ export default function DoanhThuSaleTab() {
       });
       setData(res.data);
     } catch {
-      setError("Không tải được bảng Doanh thu Sale.");
+      setError("Không tải được Sales Performance.");
     } finally {
       setLoading(false);
     }
