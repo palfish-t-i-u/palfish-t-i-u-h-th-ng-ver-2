@@ -119,10 +119,11 @@ export const endpoints = {
       from?: string;
       to?: string;
       loai_nhap?: string;
+      team?: string;
       limit?: number;
       offset?: number;
     }) => api.get<RevenueLedgerListResponse>("/revenue/ledger", { params }),
-    ledgerSummary: (params?: { from?: string; to?: string; loai_nhap?: string }) =>
+    ledgerSummary: (params?: { from?: string; to?: string; loai_nhap?: string; team?: string }) =>
       api.get<LedgerSummaryResponse>("/revenue/ledger/summary", { params }),
     createLedger: (body: LedgerCreatePayload) =>
       api.post<RevenueLedgerRow>("/revenue/ledger", body),

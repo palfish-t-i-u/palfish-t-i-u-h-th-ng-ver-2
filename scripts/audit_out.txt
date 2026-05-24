@@ -1,0 +1,43 @@
+﻿=== BC02 Inhouse 1 Apr 2026 (DB) ===
+Orders: 557 (expected sheet: 550)
+GMV RMB: 1820583.0 (expected sheet: 1815778)
+
+By loai_nhap + created_by:
+  tay|import:gsheet:SM Hanoi: 557 orders, 1820583.00 RMB, 6,736,280,305 VND
+
+Duplicate fingerprint groups in Inhouse 1 Apr: 0
+Extra orders from dupes: 0, extra GMV: 0.00
+
+Non-gsheet rows in Inhouse 1 Apr: 0, GMV 0.00
+
+=== Live Google Sheet SM Hanoi (Apr 2026) ===
+  Tß║úi Google Sheet tab ┬½SM Hanoi┬╗ΓÇª
+  ┬½SM Hanoi┬╗: 13919 d├▓ng (13918 data) ΓÇö ─æang mapΓÇª
+  ┬½SM Hanoi┬╗: ─æ├ú map 2000 d├▓ng hß╗úp lß╗çΓÇª
+  ┬½SM Hanoi┬╗: ─æ├ú map 4000 d├▓ng hß╗úp lß╗çΓÇª
+  ┬½SM Hanoi┬╗: ─æ├ú map 6000 d├▓ng hß╗úp lß╗çΓÇª
+  ┬½SM Hanoi┬╗: ─æ├ú map 8000 d├▓ng hß╗úp lß╗çΓÇª
+  ┬½SM Hanoi┬╗: ─æ├ú map 10000 d├▓ng hß╗úp lß╗çΓÇª
+  ┬½SM Hanoi┬╗: ─æ├ú map 12000 d├▓ng hß╗úp lß╗çΓÇª
+  ┬½SM Hanoi┬╗: xong ΓÇö 13823 d├▓ng hß╗úp lß╗ç
+Sheet all teams Apr: 684, GMV 2143119.00
+Sheet Inhouse 1 Apr: 557, GMV 1820583.00
+DB rows not in sheet fingerprint: 0
+Sheet rows not in DB: 0
+
+Category diff (sheet vs db Inhouse 1):
+
+Sheet Apr by team:
+  Inhouse 1: 557 / 1820583.00
+  Inhouse 2: 112 / 271059.00
+  Linh Dam Store: 12 / 39283.00
+  An Binh Store: 3 / 12194.00
+
+=== Total ledger: 14610 rows, 149,737,229,762 VND ===
+By team:
+  Inhouse 1: 11865 rows, 124,589,338,852 VND
+  Linh Dam (Store): 1066 rows, 10,877,878,120 VND
+  Inhouse 2: 819 rows, 7,655,097,141 VND
+  HCM (Online): 708 rows, 5,327,831,244 VND
+  Kh├íc: 97 rows, 669,680,995 VND
+  An Binh (Store): 55 rows, 617,403,410 VND

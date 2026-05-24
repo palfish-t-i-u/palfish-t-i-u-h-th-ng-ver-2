@@ -23,9 +23,14 @@ TEAM_FROM_EXCEL: dict[str, str] = {
     "In-house 2": "Inhouse 2",
     "HCM team": "HCM (Online)",
     "Linh Dam": "Linh Dam (Store)",
+    "Linh Dam Store": "Linh Dam (Store)",
     "Offline": "Offline",
     "An Binh": "An Binh (Store)",
+    "An Binh Store": "An Binh (Store)",
 }
+
+# SM Hanoi column AH — TEAM per row (GMV tab COUNTIFS); not current sale roster.
+SM_HANOI_COL_TEAM = 33
 
 DEFAULT_TEAM_BY_TAB: dict[str, str] = {
     "SM Hanoi": "Inhouse 1",
@@ -260,6 +265,9 @@ def _gmv_from_vnd(vnd: int, gmv_hint: float | None) -> float:
     return vnd_to_rmb(vnd, DEFAULT_TY_GIA)
 
 
+TAB_TEAM_OVERRIDE = frozenset({"HCM REV"})
+
+
 def _resolve_team_fields(
     team_cache: TeamLookupCache,
     *,
@@ -267,10 +275,19 @@ def _resolve_team_fields(
     sale_name: str | None,
     excel_team: str | None = None,
 ) -> tuple[str | None, str | None]:
+    """Team for gsheet import.
+
+    HCM REV: tab default always wins (all rows are HCM revenue).
+    SM Hanoi: column AH (TEAM) on sheet wins — historical team per row, not sale roster.
+    """
     raw = (excel_team or "").strip()
     if raw:
         app_team = TEAM_FROM_EXCEL.get(raw, raw)
         return app_team, team_to_pivot_label(app_team)
+    if tab in TAB_TEAM_OVERRIDE:
+        tab_default = DEFAULT_TEAM_BY_TAB.get(tab)
+        if tab_default:
+            return tab_default, team_to_pivot_label(tab_default)
     resolved = team_cache.team_for_sale(sale_name)
     if resolved:
         return resolved, team_to_pivot_label(resolved)
@@ -341,7 +358,10 @@ def map_sm_hanoi_row(team_cache: TeamLookupCache, row: list[Any], *, tab: str = 
     if not ngay:
         return None
     sale = str(_cell(row, 21) or "").strip() or None
-    team, pivot = _resolve_team_fields(team_cache, tab=tab, sale_name=sale)
+    excel_team = str(_cell(row, SM_HANOI_COL_TEAM) or "").strip() or None
+    team, pivot = _resolve_team_fields(
+        team_cache, tab=tab, sale_name=sale, excel_team=excel_team
+    )
     gmv_hint = _to_float_gmv(_cell(row, 11))
     uid = _normalize_uid(_cell(row, 5))
     return {
@@ -401,8 +421,8 @@ def fetch_gsheet_tab_values(
         )
     creds = service_account.Credentials.from_service_account_file(path, scopes=GSHEET_SCOPES)
     service = build("sheets", "v4", credentials=creds, cache_discovery=False)
-    # SM Hanoi cần tới cột V (Sales); HCM REV tới P
-    col_end = "V" if tab == "SM Hanoi" else "P"
+    # SM Hanoi tới AH (TEAM + Sales); HCM REV tới P
+    col_end = "AH" if tab == "SM Hanoi" else "P"
     rng = f"'{tab}'!A:{col_end}"
     result = service.spreadsheets().values().get(spreadsheetId=spreadsheet_id, range=rng).execute()
     return result.get("values") or []

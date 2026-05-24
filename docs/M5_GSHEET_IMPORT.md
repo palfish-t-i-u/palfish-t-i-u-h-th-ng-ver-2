@@ -154,7 +154,7 @@ Chỉ role **OPS** (Thu Hiền / System) gọi được.
 | gmv_rmb | GMV (K) | GMV (L) |
 | loai | Type (M) | Type (O) |
 | sale_crm_name | Sales (N) | Sales (V) |
-| team | lookup sale / default HCM | lookup sale / default Inhouse 1 |
+| team | cột **AH (TEAM)** trên SM Hanoi | lookup sale / default HCM |
 
 Code: `backend/gsheet_ledger_import.py` — `_parse_sheet_number()` xử lý format số từ API.
 

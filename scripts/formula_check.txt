@@ -1,0 +1,10 @@
+﻿python :   File "<string>", line 17
+At E:\Temp\ps-script-1dc80d78-e220-4f16-9b0b-e66ff8bfd845.ps1:87 char:32
++ $env:PYTHONIOENCODING='utf-8'; python -c "
++                                ~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (  File "<string>", line 17:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+    gmv = service.spreadsheets().values().get(spreadsheetId=sid, range=" GMV !A1:B3\).execute()
+                                                                       ^
+SyntaxError: unterminated string literal (detected at line 17)

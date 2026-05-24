@@ -507,6 +507,19 @@ def ledger_type_fixx_from_row(loai: str | None, loai2: str | None) -> str:
     return "Other"
 
 
+def _filter_rows_by_team(
+    rows: list[dict[str, Any]], team_filter: str | None
+) -> list[dict[str, Any]]:
+    if not team_filter:
+        return rows
+    want = team_filter.strip()
+    return [
+        r
+        for r in rows
+        if team_to_canonical(r.get("team"), r.get("team_pivot_label")) == want
+    ]
+
+
 def _ledger_query(
     sb,
     select: str,
@@ -552,7 +565,17 @@ def _count_so_doanh_thu(
     from_date: str | None = None,
     to_date: str | None = None,
     loai_nhap: str | None = None,
+    team_filter: str | None = None,
 ) -> int:
+    if team_filter:
+        rows = _fetch_so_doanh_thu(
+            sb,
+            "id, team, team_pivot_label",
+            from_date=from_date,
+            to_date=to_date,
+            loai_nhap=loai_nhap,
+        )
+        return len(_filter_rows_by_team(rows, team_filter))
     res = _ledger_query(
         sb,
         "id",
@@ -582,7 +605,11 @@ def _fetch_so_doanh_thu_page(
     return res.data or []
 
 
-def _build_ledger_summary(rows: list[dict[str, Any]]) -> dict[str, Any]:
+def _build_ledger_summary(
+    rows: list[dict[str, Any]], *, team_filter: str | None = None
+) -> dict[str, Any]:
+    if team_filter:
+        rows = _filter_rows_by_team(rows, team_filter)
     buckets = {k: {"gmvVnd": 0, "count": 0} for k in LEDGER_TYPE_FIXX_ORDER}
     total_gmv = 0
     for r in rows:
@@ -611,7 +638,7 @@ def _fetch_ledger_summary_rows(
     while True:
         chunk = _fetch_so_doanh_thu_page(
             sb,
-            "so_tien_vnd, loai, loai_2",
+            "so_tien_vnd, loai, loai_2, team, team_pivot_label",
             from_date=from_date,
             to_date=to_date,
             loai_nhap=loai_nhap,
@@ -888,6 +915,7 @@ def register_revenue_routes(app, get_supabase) -> None:
         from_date: str | None = Query(None, alias="from"),
         to_date: str | None = Query(None, alias="to"),
         loai_nhap: str | None = Query(None),
+        team_filter: str | None = Query(None, alias="team"),
         limit: int = Query(LEDGER_TABLE_PAGE, ge=1, le=200),
         offset: int = Query(0, ge=0),
     ):
@@ -895,22 +923,36 @@ def register_revenue_routes(app, get_supabase) -> None:
         actor = resolve_actor(sb, authorization)
         _require_ops(actor)
         try:
-            total = _count_so_doanh_thu(
-                sb,
-                from_date=from_date or None,
-                to_date=to_date or None,
-                loai_nhap=loai_nhap,
-            )
-            db_rows = _fetch_so_doanh_thu_page(
-                sb,
-                "*",
-                from_date=from_date or None,
-                to_date=to_date or None,
-                loai_nhap=loai_nhap,
-                limit=limit,
-                offset=offset,
-            )
-            rows = _enrich_ledger_rows(sb, db_rows)
+            team = (team_filter or "").strip() or None
+            if team:
+                all_rows = _fetch_so_doanh_thu(
+                    sb,
+                    "*",
+                    from_date=from_date or None,
+                    to_date=to_date or None,
+                    loai_nhap=loai_nhap,
+                )
+                filtered = _filter_rows_by_team(all_rows, team)
+                total = len(filtered)
+                page_rows = filtered[offset : offset + limit]
+                rows = _enrich_ledger_rows(sb, page_rows)
+            else:
+                total = _count_so_doanh_thu(
+                    sb,
+                    from_date=from_date or None,
+                    to_date=to_date or None,
+                    loai_nhap=loai_nhap,
+                )
+                db_rows = _fetch_so_doanh_thu_page(
+                    sb,
+                    "*",
+                    from_date=from_date or None,
+                    to_date=to_date or None,
+                    loai_nhap=loai_nhap,
+                    limit=limit,
+                    offset=offset,
+                )
+                rows = _enrich_ledger_rows(sb, db_rows)
             return {
                 "rows": rows,
                 "count": total,
@@ -929,18 +971,20 @@ def register_revenue_routes(app, get_supabase) -> None:
         from_date: str | None = Query(None, alias="from"),
         to_date: str | None = Query(None, alias="to"),
         loai_nhap: str | None = Query(None),
+        team_filter: str | None = Query(None, alias="team"),
     ):
         sb = _sb()
         actor = resolve_actor(sb, authorization)
         _require_ops(actor)
         try:
+            team = (team_filter or "").strip() or None
             summary_rows = _fetch_ledger_summary_rows(
                 sb,
                 from_date=from_date or None,
                 to_date=to_date or None,
                 loai_nhap=loai_nhap,
             )
-            return _build_ledger_summary(summary_rows)
+            return _build_ledger_summary(summary_rows, team_filter=team)
         except HTTPException:
             raise
         except Exception as exc:
