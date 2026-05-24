@@ -115,3 +115,12 @@ export type LedgerCreatePayload = {
 export type LedgerPatchPayload = Partial<LedgerCreatePayload> & {
   note2?: string;
 };
+
+export interface GsheetSyncResponse {
+  spreadsheetId: string;
+  tabs: string[];
+  fetched: number;
+  skippedExisting: number;
+  inserted: number;
+  dryRun: boolean;
+}
