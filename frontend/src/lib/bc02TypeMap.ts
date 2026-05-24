@@ -10,7 +10,7 @@ export const BC02_TYPE_ORDER = [
   "Giới thiệu",
   "KOC",
   "Gia hạn",
-  "Biển công cộng",
+  "Kho chung",
   "Lives",
   "Offline",
   "Other",
@@ -31,9 +31,9 @@ const ALIAS_TO_BC02: Record<string, Bc02Type> = {
   续费: "Gia hạn",
   Resell: "Gia hạn",
   "Gia hạn": "Gia hạn",
-  公海: "Biển công cộng",
-  GD: "Biển công cộng",
-  "Kho chung": "Biển công cộng",
+  公海: "Kho chung",
+  GD: "Kho chung",
+  "Kho chung": "Kho chung",
   Lives: "Lives",
   Livestream: "Lives",
   Offline: "Offline",
@@ -75,8 +75,7 @@ function bc02TypeGoc(loai: string, loai2: string): string {
   const l1Bc02 = mapToBc02Type(l1Fixed === l1 ? l1 : l1Fixed);
   if (AD_SOURCES.has(l1Bc02) || AD_SOURCES.has(l1Fixed) || AD_SOURCES.has(l1)) {
     if (l2) {
-      const l2Bc02 = mapToBc02Type(l2);
-      if (AD_LOAI2_OWN_COLUMN.has(l2) || (l2Bc02 !== "Quảng cáo" && l2Bc02 !== "Other")) {
+      if (AD_LOAI2_OWN_COLUMN.has(l2)) {
         return l2;
       }
       return l1 || l2;

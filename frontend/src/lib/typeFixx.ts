@@ -94,8 +94,7 @@ export function typeGocFromRow(loai: string, loai2: string): string {
   const l2 = (loai2 || "").trim();
   const l1Fixed = applyTypeFixx(l1);
   if (l1Fixed === "广告" && l2) {
-    const l2Fixed = applyTypeFixx(l2);
-    if (AD_LOAI2_OWN_COLUMN.has(l2) || (l2Fixed !== "广告" && l2Fixed !== "Other")) {
+    if (AD_LOAI2_OWN_COLUMN.has(l2)) {
       return l2;
     }
     return l1 || l2;
