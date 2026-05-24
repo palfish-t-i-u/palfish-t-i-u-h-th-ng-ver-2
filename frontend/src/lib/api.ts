@@ -1,7 +1,7 @@
 import axios from "axios";
 import { resolveApiBaseUrl } from "./apiBaseUrl";
 import { supabase } from "./supabase";
-import type { Bc03Report, Bc03MonthlySettings, Bc03StaffOption, CreateOrderPayload, DashboardSummary, InvoiceOrder, Order } from "../types/order";
+import type { Bc03Report, Bc03MonthlySettings, Bc03StaffOption, CreateOrderPayload, DashboardDailyTrends, DashboardLiveSummary, DashboardSummary, InvoiceOrder, Order } from "../types/order";
 import type {
   LedgerCreatePayload,
   LedgerPatchPayload,
@@ -150,24 +150,48 @@ export const endpoints = {
       sale?: string;
       department?: string;
     }) => api.get<DashboardSummary>("/dashboard/summary", { params }),
+    dailyTrends: (params: {
+      start_date: string;
+      end_date: string;
+      team?: string;
+      sale?: string;
+      department?: string;
+    }) => api.get<DashboardDailyTrends>("/dashboard/daily_trends", { params }),
+    liveSummary: (params: {
+      start_date: string;
+      end_date: string;
+      team?: string;
+      sale?: string;
+      department?: string;
+    }) => api.get<DashboardLiveSummary>("/dashboard/live_summary", { params, timeout: 120_000 }),
     filters: () => api.get<{ teams: string[]; sales: string[]; departments: string[] }>("/dashboard/filters"),
   },
   crmData: {
     tokenStatus: () =>
       api.get<{ hasToken: boolean; updatedAt: string | null }>("/crm/token-status"),
-    sync: (startDate: string, endDate: string) =>
+    sync: (syncDate?: string) =>
       api.post<{
         ok: boolean;
+        sync_date: string;
         rows_fetched: number;
         rows_upserted: number;
-        summary_rows?: number;
-        daily_rows?: number;
-        days_ok: number;
-        days_failed: string[];
-        department_fallback?: boolean;
         sync_mode?: string;
+        department_fallback?: boolean;
+      }>("/crm/sync", { sync_date: syncDate ?? null }, { timeout: 120_000 }),
+    syncBackfill: (startDate: string, endDate: string, concurrency = 5) =>
+      api.post<{
+        ok: boolean;
         period: { start: string; end: string };
-      }>("/crm/sync", { start_date: startDate, end_date: endDate }, { timeout: 120_000 }),
+        days_ok: number;
+        days_failed: number;
+        concurrency?: number;
+        results: { date: string; rows_upserted: number; rows_fetched: number }[];
+        failed: { date: string; error: string }[];
+      }>("/crm/sync/backfill", {
+        start_date: startDate,
+        end_date: endDate,
+        concurrency,
+      }, { timeout: 600_000 }),
     exportMaster: (startDate: string, endDate: string) =>
       api.get<Blob>("/crm/export-master", {
         params: { start_date: startDate, end_date: endDate },

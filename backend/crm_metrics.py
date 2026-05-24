@@ -10,31 +10,35 @@ from typing import Any
 # Column keys (English PalFish CRM header row)
 # ---------------------------------------------------------------------------
 CRM_COLUMNS: dict[str, tuple[str, ...]] = {
-    "department": ("Department", "部门", "department", "销售部门"),
-    "sales": ("Sales", "Sale", "销售", "销售姓名", "销售顾问"),
-    # English export + Chinese CRM (VN team dùng bản tiếng Trung)
-    "c1_call_time": ("Total Call Time", "总通话时长", "通话总时长"),
-    "c2_dials": ("Total Dials", "总拨打数", "拨打总数"),
-    "c3_connections": ("Total Connections", "总接通数", "接通数", "Connections"),
-    "c4_connection_rate": ("Connection Rate", "接通率"),
+    "department": ("department", "Department", "部门", "销售部门"),
+    "sales": ("sale_name", "Sales", "Sale", "销售", "销售姓名", "销售顾问"),
+    # Normalized snake_case (sau COLUMN_MAPPING) + English + Chinese
+    "c1_call_time": ("total_call_time", "Total Call Time", "总通话时长", "通话总时长"),
+    "c2_dials": ("total_dials", "Total Dials", "总拨打数", "拨打总数"),
+    "c3_connections": (
+        "total_connections", "Total Connections", "总接通数", "接通数", "Connections",
+    ),
+    "c4_connection_rate": ("connection_rate", "Connection Rate", "接通率"),
     "c5_over_3min_count": (
+        "over_3min_connections",
         "Over 3 Min Connections", "Over 3 Min.Connections", "超3分钟通话数", "三分钟以上通话数",
     ),
     "c5_over_3min_rate": (
+        "over_3min_rate",
         "Over 3 Min.Rate", "Over 3 Min Rate", "超3分钟占比", "接通三分钟以上率",
     ),
-    "l1_0_gd": ("GD leads", "GD Leads", "公海Leads数"),
-    "l1_1_ad": ("AD leads", "AD Leads", "投放leads数"),
-    "l1_1_ad_manual": ("AD leads manual entry", "AD Leads manual entry", "手动导入leads数"),
-    "l1_2_referral": ("Referral leads", "Referral Leads", "转介绍Leads数"),
-    "l1_total": ("Total leads", "总Leads数", "总leads数", "Leads mới"),
-    "l3_invitation": ("Invitation Number", "Number of invitations", "邀约数"),
-    "l3_1_scheduled": ("Scheduled Class Number", "Scheduled Class number", "应上课数"),
-    "l3_3_preview_rate": ("Preview Rate", "Preview rate", "预习率"),
-    "l4_completed": ("Completed Class Number", "完课数", "completed_classes"),
-    "l4_completion_rate": ("Completion Rate", "Completion rate", "完课率", "Complete Rate"),
-    "l8_orders": ("Order", "Orders", "签单数"),
-    "b3_gmv": ("GMV", "业绩(元)", "业绩", "Performance (CNY)", "amount", "Amount"),
+    "l1_0_gd": ("gd_leads", "GD leads", "GD Leads", "公海Leads数"),
+    "l1_1_ad": ("ad_leads", "AD leads", "AD Leads", "投放leads数"),
+    "l1_1_ad_manual": ("ad_leads_manual", "AD leads manual entry", "AD Leads manual entry", "手动导入leads数"),
+    "l1_2_referral": ("referral_leads", "Referral leads", "Referral Leads", "转介绍Leads数"),
+    "l1_total": ("total_leads", "Total leads", "总Leads数", "总leads数", "Leads mới"),
+    "l3_invitation": ("invitation_number", "Invitation Number", "Number of invitations", "邀约数"),
+    "l3_1_scheduled": ("scheduled_classes", "Scheduled Class Number", "Scheduled Class number", "应上课数"),
+    "l3_3_preview_rate": ("preview_rate", "Preview Rate", "Preview rate", "预习率"),
+    "l4_completed": ("completed_classes", "Completed Class Number", "完课数"),
+    "l4_completion_rate": ("completion_rate", "Completion Rate", "Completion rate", "完课率", "Complete Rate"),
+    "l8_orders": ("orders", "Order", "Orders", "签单数"),
+    "b3_gmv": ("gmv_rmb", "GMV", "业绩(元)", "业绩", "Performance (CNY)", "amount", "Amount"),
 }
 
 INVALID_TEAM_LABELS = frozenset(
@@ -330,6 +334,50 @@ def daily_mtd_snapshot_rows(
     return result
 
 
+def aggregate_daily_by_date(
+    rows: list[dict], d_start: str, d_end: str,
+) -> list[dict[str, Any]]:
+    """Kiến trúc Hybrid — mỗi dòng DB = snapshot 1 ngày / 1 sale; cộng theo ngày."""
+    from datetime import date as date_cls, timedelta
+
+    by_date: dict[str, dict[str, int]] = {}
+    for r in rows:
+        d = str(r.get("report_date", ""))[:10]
+        if not d or d < d_start or d > d_end:
+            continue
+        m = extract_row_metrics(r)
+        bucket = by_date.setdefault(d, {"gmv_rmb": 0, "orders": 0, "l1": 0, "l8": 0})
+        bucket["gmv_rmb"] += int(m["b3_gmv"])
+        bucket["orders"] += int(m["l8"])
+        bucket["l1"] += int(m["l1"])
+        bucket["l8"] += int(m["l8"])
+
+    try:
+        cur = date_cls.fromisoformat(d_start[:10])
+        end = date_cls.fromisoformat(d_end[:10])
+    except ValueError:
+        return []
+
+    result: list[dict[str, Any]] = []
+    while cur <= end:
+        ds = cur.isoformat()
+        b = by_date.get(ds, {"gmv_rmb": 0, "orders": 0, "l1": 0, "l8": 0})
+        result.append({
+            "date": ds,
+            "gmv_rmb": b["gmv_rmb"],
+            "orders": b["orders"],
+            "l1": b["l1"],
+            "l8": b["l8"],
+            "has_sync": ds in by_date,
+            "collected_vnd": 0,
+            "amount": b["gmv_rmb"],
+            "collected": 0,
+        })
+        cur += timedelta(days=1)
+
+    return result
+
+
 def daily_incremental_rows(rows: list[dict]) -> list[dict[str, Any]]:
     """Chênh lệch ngày từ snapshot tích lũy → biểu đồ doanh thu theo ngày."""
     by_sale: dict[str, list[tuple[str, dict]]] = {}
@@ -449,6 +497,13 @@ def extract_sale_detail(row: dict) -> dict[str, int | float | str]:
     else:
         completion_rate = 0.0
 
+    avg_from_raw = raw_get(raw, ("avg_price", "Avg.Price per Customer (RMB)"))
+    avg_price = (
+        int(parse_metric(avg_from_raw))
+        if avg_from_raw not in (None, "")
+        else (int(safe_divide(gmv, orders)) if orders else 0)
+    )
+
     dept = str(row.get("department") or "").strip()
     if not dept or dept.lower() in INVALID_TEAM_LABELS:
         dept = team_label(row)
@@ -468,7 +523,7 @@ def extract_sale_detail(row: dict) -> dict[str, int | float | str]:
         "completion_rate": completion_rate,
         "orders": orders,
         "gmv_rmb": gmv,
-        "avg_price": int(safe_divide(gmv, orders)) if orders else 0,
+        "avg_price": avg_price,
         "total_call_time": float(m["c1"]),
         "total_dials": int(m["c2"]),
         "total_connections": parse_metric(raw_get(raw, CRM_COLUMNS["c3_connections"])),
@@ -538,3 +593,79 @@ def sum_metrics(rows: list[dict]) -> dict[str, int | float]:
 
     tot["b1_qr"] = 0
     return tot
+
+
+_SUPABASE_PAGE = 1000
+
+
+def exclude_legacy_summary_rows(rows: list[dict]) -> list[dict]:
+    """Bỏ dòng dual-pull cũ (record_type=summary) — MTD gom 1 ngày cuối."""
+    return [
+        r for r in rows
+        if str(r.get("record_type") or "").strip().lower() != "summary"
+    ]
+
+
+def fetch_crm_sales_rows(
+    sb,
+    d_start: str,
+    d_end: str,
+    *,
+    sale: str | None = None,
+    team: str | None = None,
+    department: str | None = None,
+) -> list[dict]:
+    """Paginate crm_sales_data — PostgREST mặc định giới hạn 1000 dòng/request."""
+    rows: list[dict] = []
+    offset = 0
+    while True:
+        q = (
+            sb.table("crm_sales_data")
+            .select("*")
+            .gte("report_date", d_start)
+            .lte("report_date", d_end)
+            .order("report_date")
+            .order("sale_name")
+        )
+        if sale:
+            q = q.eq("sale_name", sale)
+        if team:
+            q = q.eq("team", team)
+        if department:
+            q = q.eq("department", department)
+        chunk = q.range(offset, offset + _SUPABASE_PAGE - 1).execute().data or []
+        if not chunk:
+            break
+        rows.extend(chunk)
+        if len(chunk) < _SUPABASE_PAGE:
+            break
+        offset += _SUPABASE_PAGE
+    return rows
+
+
+def sync_coverage_meta(rows: list[dict], d_start: str, d_end: str) -> dict[str, Any]:
+    """Ngày nào đã có dòng daily trong DB vs kỳ báo cáo."""
+    from datetime import date as date_cls, timedelta
+
+    synced = sorted({
+        str(r.get("report_date", ""))[:10]
+        for r in rows
+        if r.get("report_date")
+    })
+    try:
+        cur = date_cls.fromisoformat(d_start[:10])
+        end = date_cls.fromisoformat(d_end[:10])
+    except ValueError:
+        return {"synced_dates": synced, "synced_days": len(synced), "expected_days": 0, "missing_dates": []}
+
+    expected: list[str] = []
+    while cur <= end:
+        expected.append(cur.isoformat())
+        cur += timedelta(days=1)
+    missing = [d for d in expected if d not in synced]
+    return {
+        "synced_dates": synced,
+        "synced_days": len(synced),
+        "expected_days": len(expected),
+        "missing_dates": missing,
+    }
