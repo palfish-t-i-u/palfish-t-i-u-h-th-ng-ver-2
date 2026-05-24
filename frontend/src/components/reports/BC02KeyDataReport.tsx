@@ -42,12 +42,24 @@ const stickyDateHead = cn(
 );
 const stickyDateCell = "sticky left-0 z-20 bg-gmv-canvas text-left font-medium";
 
+const TEAM_FILTERS = [
+  { value: "", label: "Toàn công ty" },
+  { value: "Inhouse 1", label: "Inhouse 1" },
+  { value: "Inhouse 2", label: "Inhouse 2" },
+  { value: "HCM (Online)", label: "HCM (Online)" },
+  { value: "Linh Dam (Store)", label: "Linh Dam (Store)" },
+  { value: "Offline", label: "Offline" },
+  { value: "An Binh (Store)", label: "An Binh (Store)" },
+  { value: "Khác", label: "Khác" },
+] as const;
+
 export default function BC02KeyDataReport() {
   const [data, setData] = useState<RevenueKeyDataResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [from, setFrom] = useState(monthStartIso());
   const [to, setTo] = useState("");
+  const [team, setTeam] = useState("");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -56,6 +68,7 @@ export default function BC02KeyDataReport() {
       const res = await endpoints.revenue.pivotKeyData({
         from: from || undefined,
         to: to || undefined,
+        team: team || undefined,
       });
       setData(res.data);
     } catch {
@@ -63,7 +76,7 @@ export default function BC02KeyDataReport() {
     } finally {
       setLoading(false);
     }
-  }, [from, to]);
+  }, [from, to, team]);
 
   useEffect(() => {
     load();
@@ -75,8 +88,7 @@ export default function BC02KeyDataReport() {
   return (
     <div className="min-w-0 space-y-4 overflow-x-hidden">
       <p className="text-sm text-gmv-muted">
-        BC02 — GMV theo ngày và loại nguồn (tab GMV sheet Hiếu). Dữ liệu từ{" "}
-        <strong>Sổ doanh thu</strong>; chỉ xem.
+        BC02 — GMV theo ngày và loại nguồn (tab GMV sheet Hiếu).
         {data?.scopeLabel && (
           <>
             {" "}
@@ -86,6 +98,20 @@ export default function BC02KeyDataReport() {
       </p>
 
       <div className="flex flex-wrap items-end gap-3">
+        <label className="text-sm text-gmv-muted">
+          Team
+          <select
+            className="mt-1 block min-h-10 rounded-gmv-md border border-gmv-border px-3 text-sm"
+            value={team}
+            onChange={(e) => setTeam(e.target.value)}
+          >
+            {TEAM_FILTERS.map((t) => (
+              <option key={t.value || "all"} value={t.value}>
+                {t.label}
+              </option>
+            ))}
+          </select>
+        </label>
         <label className="text-sm text-gmv-muted">
           Từ ngày
           <Input type="date" className="mt-1" value={from} onChange={(e) => setFrom(e.target.value)} />

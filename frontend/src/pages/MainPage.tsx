@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import Tab1Form from "../components/Tab1Form";
 import Tab2Table from "../components/Tab2Table";
 import PayosHistoryTab from "../components/PayosHistoryTab";
@@ -7,7 +7,9 @@ import AuthAccountsTab from "../components/AuthAccountsTab";
 import Module3Tab from "../components/Module3Tab";
 import Module4Tab from "../components/Module4Tab";
 import SoDoanhThuTab from "../components/SoDoanhThuTab";
-import ReportsHub from "../components/ReportsHub";
+const BC01SalesPerformance = lazy(() => import("../components/reports/BC01SalesPerformance"));
+const BC02KeyDataReport = lazy(() => import("../components/reports/BC02KeyDataReport"));
+const BC03Placeholder = lazy(() => import("../components/reports/BC03Placeholder"));
 import Module5Tab from "../components/Module5Tab";
 import Module6Tab from "../components/Module6Tab";
 import { useAuth } from "../hooks/useAuth";
@@ -26,7 +28,9 @@ type ViewId =
   | "module3"
   | "module4"
   | "revenueLedger"
-  | "reportsHub"
+  | "bc01"
+  | "bc02"
+  | "bc03"
   | "module5"
   | "module6"
   | "staffCrm"
@@ -113,7 +117,9 @@ const TITLES: Record<ViewId, { title: string; subtitle?: string }> = {
   module3: { title: "Xác nhận CRM", subtitle: "M3 — Điền tên sản phẩm thuế & mã CRM Order" },
   module4: { title: "Xuất hóa đơn thuế", subtitle: "M4 — Cấp mã M.../PF... và tải file ZIP 3 Excel" },
   revenueLedger: { title: "Sổ doanh thu", subtitle: "Ghi từng khoản thu — tự động (M3) + điền tay" },
-  reportsHub: { title: "Báo cáo", subtitle: "BC01 · BC02 · BC03" },
+  bc01: { title: "BC01: Sales performance", subtitle: "Tổng GMV theo team × sale × tháng" },
+  bc02: { title: "BC02: Key Data", subtitle: "Dữ liệu then chốt quy trình bán hàng" },
+  bc03: { title: "BC03: Tổng bộ hàng ngày", subtitle: "Tổng hợp vận hành hàng ngày" },
   module5: { title: "Đồng bộ CRM", subtitle: "M5 — Lấy & xuất Master Data CRM PalFish" },
   module6: { title: "Dashboard Sale", subtitle: "M6 — Tổng quan hiệu suất theo team & cá nhân" },
   staffCrm: { title: "Nhân sự Sale", subtitle: "Master data Metabase — gán role / team" },
@@ -218,10 +224,27 @@ export default function MainPage() {
           icon: I.ledger,
           section: "Báo cáo",
         },
-        { 
-          id: "reportsHub", 
-          label: "Báo cáo", 
+        {
+          id: "reports",
+          label: "Báo cáo",
           icon: I.chart,
+          children: [
+            {
+              id: "bc01",
+              label: "BC01: Sales performance",
+              subtitle: "GMV theo team × sale × tháng",
+            },
+            {
+              id: "bc02",
+              label: "BC02: Key Data",
+              subtitle: "Then chốt quy trình bán",
+            },
+            {
+              id: "bc03",
+              label: "BC03: Tổng bộ ngày",
+              subtitle: "Vận hành hàng ngày",
+            },
+          ],
         },
         {
           id: "module5",
@@ -254,12 +277,14 @@ export default function MainPage() {
     return list;
   }, [orders.length, loadingOrders, showInvoice, showStaffCrm, showAuthAccounts]);
 
-  const head = TITLES[activeView];
+  const head = TITLES[activeView as keyof typeof TITLES] ?? TITLES.tab2;
+  const wideContent = activeView === "bc01" || activeView === "bc02" || activeView === "bc03";
 
   return (
     <AppShell
       items={items}
       activeId={activeView}
+      wideContent={wideContent}
       onSelect={(id) => {
         setActiveView(id as ViewId);
         if (id === "tab2") refreshOrders();
@@ -303,9 +328,17 @@ export default function MainPage() {
         </div>
       )}
       {showInvoice && (
-        <div style={{ display: activeView === "reportsHub" ? "block" : "none" }}>
-          <ReportsHub />
-        </div>
+        <Suspense fallback={<p className="text-sm text-gmv-muted">Đang tải báo cáo…</p>}>
+          <div style={{ display: activeView === "bc01" ? "block" : "none" }}>
+            <BC01SalesPerformance />
+          </div>
+          <div style={{ display: activeView === "bc02" ? "block" : "none" }}>
+            <BC02KeyDataReport />
+          </div>
+          <div style={{ display: activeView === "bc03" ? "block" : "none" }}>
+            <BC03Placeholder />
+          </div>
+        </Suspense>
       )}
       {showInvoice && (
         <div style={{ display: activeView === "module5" ? "block" : "none" }}>

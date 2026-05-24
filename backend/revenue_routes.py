@@ -77,6 +77,8 @@ BC02_TYPE_ORDER: list[str] = [
 BC02_TYPE_ALIASES: dict[str, str] = {
     "广告": "Quảng cáo",
     "PNS": "Quảng cáo",
+    "Partnership": "Quảng cáo",
+    "FB": "Quảng cáo",
     "Bán mới": "Quảng cáo",
     "转介绍": "Giới thiệu",
     "Refer": "Giới thiệu",
@@ -98,7 +100,8 @@ BC02_TYPE_ALIASES: dict[str, str] = {
     "Nguồn khác": "Other",
 }
 
-BC02_AD_SOURCES = frozenset({"广告", "PNS", "Bán mới", "Quảng cáo"})
+BC02_AD_SOURCES = frozenset({"广告", "PNS", "Bán mới", "Quảng cáo", "Partnership", "FB"})
+BC02_AD_LOAI2_OWN_COLUMN = frozenset({"KOC", "Lives", "Livestream", "Offline", "Booth", "KFT", "KET"})
 
 BC02_GMV_GROUPS: list[tuple[str, str, str, str]] = [
     ("ads", "Quảng cáo", "Số đơn đầu", "GMV"),
@@ -176,11 +179,14 @@ def _bc02_type_goc(loai: str | None, loai2: str | None) -> str:
     l1 = (loai or "").strip()
     l2 = (loai2 or "").strip()
     l1_norm = BC02_TYPE_ALIASES.get(l1, l1)
-    if l1_norm in BC02_AD_SOURCES and l2:
-        l2_norm = BC02_TYPE_ALIASES.get(l2, l2)
-        if l2_norm in BC02_TYPE_ORDER:
-            return l2
-        return l2
+    if l1_norm in BC02_AD_SOURCES or l1 in BC02_AD_SOURCES:
+        if l2:
+            l2_norm = BC02_TYPE_ALIASES.get(l2, l2)
+            if l2 in BC02_AD_LOAI2_OWN_COLUMN or (
+                l2_norm not in BC02_AD_SOURCES and l2_norm not in ("Other", "Quảng cáo")
+            ):
+                return l2
+            return l1 or l2
     return l1 or l2
 
 
@@ -197,6 +203,10 @@ def bc02_type_from_row(loai: str | None, loai2: str | None) -> str:
     return "Other"
 
 
+def _row_pay_date(row: dict[str, Any]) -> date | None:
+    return _parse_date(row.get("pay_time")) or _parse_date(row.get("ngay_tien_ve"))
+
+
 def _build_sales_performance_pivot(
     rows: list[dict[str, Any]],
     *,
@@ -206,7 +216,7 @@ def _build_sales_performance_pivot(
     grouped: dict[str, dict[str, dict[str, float]]] = {}
 
     for r in rows:
-        ngay = _parse_date(r.get("ngay_tien_ve"))
+        ngay = _row_pay_date(r)
         if not ngay:
             continue
         mk = _month_key(ngay)
@@ -269,12 +279,20 @@ def _empty_gmv_day_bucket() -> dict[str, dict[str, float]]:
     return {key: {"count": 0.0, "gmv": 0.0} for key, *_ in BC02_GMV_GROUPS}
 
 
-def _build_key_data_pivot(rows: list[dict[str, Any]]) -> dict[str, Any]:
+def _build_key_data_pivot(
+    rows: list[dict[str, Any]],
+    *,
+    team_filter: str | None = None,
+    scope_label: str = "Toàn công ty",
+) -> dict[str, Any]:
     """BC02 — tab GMV: mỗi ngày một dòng, cặp số đơn + GMV theo loại nguồn."""
     by_date: dict[str, dict[str, Any]] = {}
 
     for r in rows:
-        ngay = _parse_date(r.get("ngay_tien_ve"))
+        team_label = team_to_canonical(r.get("team"), r.get("team_pivot_label"))
+        if team_filter and team_label != team_filter:
+            continue
+        ngay = _row_pay_date(r)
         if not ngay:
             continue
         dk = ngay.isoformat()
@@ -335,7 +353,7 @@ def _build_key_data_pivot(rows: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
     return {
-        "scopeLabel": "In-house",
+        "scopeLabel": scope_label,
         "columnGroups": [
             {"key": key, "label": label, "countLabel": count_lbl, "gmvLabel": gmv_lbl}
             for key, label, count_lbl, gmv_lbl in BC02_GMV_GROUPS
@@ -429,6 +447,8 @@ LEDGER_TYPE_FIXX_MAP: dict[str, str] = {
     "Offline": "Offline",
     "Other": "Other",
     "PNS": "广告",
+    "Partnership": "广告",
+    "FB": "广告",
     "KFT": "Other",
     "KET": "Other",
     "Livestream": "Lives",
@@ -438,6 +458,8 @@ LEDGER_TYPE_FIXX_MAP: dict[str, str] = {
     "Kho chung": "公海",
     "Nguồn khác": "Other",
 }
+
+LEDGER_AD_LOAI2_OWN_COLUMN = frozenset({"KOC", "Lives", "Livestream", "Offline", "Booth", "KFT", "KET"})
 
 LEDGER_TYPE_FIXX_ORDER: list[str] = [
     "Lives",
@@ -469,7 +491,10 @@ def _ledger_type_goc(loai: str | None, loai2: str | None) -> str:
     l2 = (loai2 or "").strip()
     l1_fixed = _apply_ledger_type_fixx(l1)
     if l1_fixed == "广告" and l2:
-        return l2
+        l2_fixed = _apply_ledger_type_fixx(l2)
+        if l2 in LEDGER_AD_LOAI2_OWN_COLUMN or (l2_fixed != "广告" and l2_fixed != "Other"):
+            return l2
+        return l1 or l2
     return l1 or l2
 
 
@@ -1033,7 +1058,7 @@ def register_revenue_routes(app, get_supabase) -> None:
         try:
             rows = _fetch_so_doanh_thu(
                 sb,
-                "ngay_tien_ve, gmv_rmb, sale_crm_name, team, team_pivot_label",
+                "pay_time, ngay_tien_ve, gmv_rmb, sale_crm_name, team, team_pivot_label",
                 from_date=from_date,
                 to_date=to_date,
             )
@@ -1048,6 +1073,7 @@ def register_revenue_routes(app, get_supabase) -> None:
         authorization: str | None = Header(None),
         from_date: str | None = Query(None, alias="from"),
         to_date: str | None = Query(None, alias="to"),
+        team_filter: str | None = Query(None, alias="team"),
     ):
         sb = _sb()
         actor = resolve_actor(sb, authorization)
@@ -1055,11 +1081,12 @@ def register_revenue_routes(app, get_supabase) -> None:
         try:
             rows = _fetch_so_doanh_thu(
                 sb,
-                "ngay_tien_ve, gmv_rmb, loai, loai_2",
+                "pay_time, ngay_tien_ve, gmv_rmb, loai, loai_2, team, team_pivot_label",
                 from_date=from_date,
                 to_date=to_date,
             )
-            return _build_key_data_pivot(rows)
+            scope = (team_filter or "").strip() or "Toàn công ty"
+            return _build_key_data_pivot(rows, team_filter=team_filter or None, scope_label=scope)
         except HTTPException:
             raise
         except Exception as exc:

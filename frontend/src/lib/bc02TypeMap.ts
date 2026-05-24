@@ -21,6 +21,8 @@ export type Bc02Type = (typeof BC02_TYPE_ORDER)[number];
 const ALIAS_TO_BC02: Record<string, Bc02Type> = {
   广告: "Quảng cáo",
   PNS: "Quảng cáo",
+  Partnership: "Quảng cáo",
+  FB: "Quảng cáo",
   "Bán mới": "Quảng cáo",
   转介绍: "Giới thiệu",
   Refer: "Giới thiệu",
@@ -55,14 +57,30 @@ export function mapToBc02Type(raw: string): Bc02Type {
   return "Other";
 }
 
-/** Chuẩn hoá loai trước khi lấy gốc — dùng applyTypeFixx để khớp Sổ. */
+/** loai2 dưới Quảng cáo có cột riêng — còn lại gom Quảng cáo. */
+const AD_LOAI2_OWN_COLUMN = new Set([
+  "KOC",
+  "Lives",
+  "Livestream",
+  "Offline",
+  "Booth",
+  "KFT",
+  "KET",
+]);
+
 function bc02TypeGoc(loai: string, loai2: string): string {
   const l1 = (loai || "").trim();
   const l2 = (loai2 || "").trim();
   const l1Fixed = applyTypeFixx(l1);
   const l1Bc02 = mapToBc02Type(l1Fixed === l1 ? l1 : l1Fixed);
   if (AD_SOURCES.has(l1Bc02) || AD_SOURCES.has(l1Fixed) || AD_SOURCES.has(l1)) {
-    if (l2) return l2;
+    if (l2) {
+      const l2Bc02 = mapToBc02Type(l2);
+      if (AD_LOAI2_OWN_COLUMN.has(l2) || (l2Bc02 !== "Quảng cáo" && l2Bc02 !== "Other")) {
+        return l2;
+      }
+      return l1 || l2;
+    }
   }
   return l1 || l2;
 }
