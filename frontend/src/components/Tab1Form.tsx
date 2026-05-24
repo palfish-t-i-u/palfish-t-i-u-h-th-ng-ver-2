@@ -24,6 +24,17 @@ function parsePhone(sdt: string): { code: string; rest: string } {
   return { code: "+84", rest: sdt.trim() };
 }
 
+/** Bỏ mã vùng trùng khi user paste cả +84 vào ô số máy. */
+function localPhonePart(phoneCode: string, soMay: string): string {
+  let rest = soMay.trim();
+  if (rest.startsWith(phoneCode)) {
+    rest = rest.slice(phoneCode.length).trim();
+  }
+  const parsed = parsePhone(rest);
+  if (parsed.rest) rest = parsed.rest;
+  return rest.replace(/\s+/g, "");
+}
+
 // ---------------------------------------------------------------------------
 // Inline payment card — dùng PayOS QR
 // ---------------------------------------------------------------------------
@@ -506,7 +517,7 @@ export default function Tab1Form({ onOrderCreated, dbExcel, createdBy }: Props) 
       return;
     }
 
-    const sdtHoanChinh = `${phoneCode} ${soMay.trim()}`;
+    const sdtHoanChinh = `${phoneCode} ${localPhonePart(phoneCode, soMay)}`;
     setSubmitting(true);
     setStatusMsg(null);
 

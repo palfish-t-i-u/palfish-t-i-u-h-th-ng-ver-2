@@ -120,7 +120,8 @@ Phân loại test vs thật theo `created_by_email`:
 
 | Nguồn | `created_by_email` |
 |-------|-------------------|
-| Excel lịch sử | `import:HN`, `import:HCM` |
+| Excel lịch sử (HNxHCM) | `import:HN`, `import:HCM` |
+| Google Sheet All File | `import:gsheet:SM Hanoi`, `import:gsheet:HCM REV` |
 | M3 backfill | `backfill@m3` |
 | M3 approve live | email user lúc approve |
 | Điền tay app | email Hiền / System |
@@ -135,7 +136,8 @@ Phân loại test vs thật theo `created_by_email`:
 | 2 | Tab **Sổ doanh thu** → **+ Thêm dòng** | Modal form (không còn form inline đầu bảng) |
 | 3 | Bảng | Cột: User Name, Phone, UID, Pay Time, Real Pay (VND), **Nội dung CK**, **ID đơn hàng**, Payment method, Type (sau fixx), Sales, Team — **read-only** |
 | 3b | Thẻ tổng hợp | Tổng GMV + Số đơn; 5 thẻ Type pivot; mặc định **hôm nay** |
-| 3c | Type fixx | Ngày 22/05 (vd.) — tổng + từng nguồn khớp sheet Hiếu (Resell→Renew, Refer→Refer…) |
+| 3c | Type fixx | Range **22/05/2025–22/05/2026** — 7.522 đơn, tổng GMV **80.461.641.552** + từng bucket khớp sheet Hiếu; tháng 05/2026 vẫn đúng |
+| 3d | Lọc ngày | Filter theo **Pay Time** (`pay_time`), không `ngay_tien_ve` |
 | 4 | VND | Separator `12.875.000` trong bảng |
 | 5 | **Chỉnh sửa** | Mở modal, **Lưu** OK |
 | 6 | **Xóa** | Chỉ dòng **TAY** |
@@ -146,5 +148,6 @@ Phân loại test vs thật theo `created_by_email`:
 ## 5. Liên kết
 
 - Spec nghiệp vụ + UI Hiếu: `docs/MODULE_SO_DOANH_THU.md`
+- Import All File Thu Hiền (Google Sheet): `docs/M5_GSHEET_IMPORT.md`
 - Workflow branch UI: `docs/WORKFLOW_UI_UX.md`
 - Deploy tổng: `docs/DEPLOY.md`

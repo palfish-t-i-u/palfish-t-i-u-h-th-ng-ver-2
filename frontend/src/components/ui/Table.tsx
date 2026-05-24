@@ -32,6 +32,9 @@ export function TableScrollWrap({ children, className }: HTMLAttributes<HTMLDivE
 export const stickyTableHead =
   "sticky z-30 bg-gmv-table-head shadow-[2px_0_4px_-2px_rgba(0,0,0,0.08)]";
 export const stickyTableHeadTop = "top-0";
+/** BC02 two-row header: row 2 sticks below row 1; shadow fills 1px tbody bleed gap */
+export const stickyTableHeadSecondRow =
+  "sticky top-10 z-30 bg-gmv-table-head shadow-[0_-4px_0_0] shadow-gmv-table-head";
 export const stickyTableHeadCorner = "z-40";
 export const stickyTableCell =
   "sticky z-20 bg-gmv-canvas shadow-[2px_0_4px_-2px_rgba(0,0,0,0.06)]";

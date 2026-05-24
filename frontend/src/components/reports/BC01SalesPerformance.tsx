@@ -79,8 +79,9 @@ export default function BC01SalesPerformance() {
   return (
     <div className="min-w-0 space-y-4 overflow-x-hidden">
       <p className="text-sm text-gmv-muted">
-        BC01 — GMV (RMB) theo team × sale × tháng (ngày tiền về). Dữ liệu từ{" "}
-        <strong>Sổ doanh thu</strong>; chỉ xem.
+        BC01 — GMV (RMB) theo team × sale × tháng (cột tháng = ngày tiền về). Lọc khoảng ngày
+        theo Pay Time; nguồn <strong>Sổ doanh thu</strong> (= HNxHCM GMV). Tab pivot All File
+        Thu Hiền có thể cũ hơn Sổ.
       </p>
 
       <div className="flex flex-wrap items-end gap-3">
@@ -119,7 +120,7 @@ export default function BC01SalesPerformance() {
         </p>
       )}
 
-      <TableScrollWrap>
+      <TableScrollWrap className="max-h-[min(70vh,calc(100svh-16rem))]">
         <Table className="min-w-[900px]">
           <thead>
             <Tr>
