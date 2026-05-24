@@ -3,6 +3,7 @@ export type LoaiNhap = "tu_dong" | "tay";
 export interface RevenueLedgerRow {
   id: string;
   ngayTienVe: string;
+  payTime?: string;
   tenKhach: string;
   sdt: string;
   uid: string;
@@ -45,17 +46,54 @@ export interface RevenuePivotResponse {
   grandTotal: number;
 }
 
-export interface RevenueKeyDataTypeRow {
-  typeLabel: string;
-  cells: Record<string, number>;
-  total: number;
+export interface RevenueKeyDataCategoryCell {
+  count: number;
+  gmv: number;
+}
+
+export interface RevenueKeyDataColumnGroup {
+  key: string;
+  label: string;
+  countLabel: string;
+  gmvLabel: string;
+}
+
+export interface RevenueKeyDataDayRow {
+  date: string;
+  totalOrders: number;
+  totalGmv: number;
+  categories: Record<string, RevenueKeyDataCategoryCell>;
 }
 
 export interface RevenueKeyDataResponse {
-  months: string[];
-  types: RevenueKeyDataTypeRow[];
-  grandTotalRow: Record<string, number>;
-  grandTotal: number;
+  scopeLabel: string;
+  columnGroups: RevenueKeyDataColumnGroup[];
+  rows: RevenueKeyDataDayRow[];
+  grandTotal: {
+    totalOrders: number;
+    totalGmv: number;
+    categories: Record<string, RevenueKeyDataCategoryCell>;
+  };
+}
+
+export interface LedgerSummarySource {
+  source: string;
+  gmvVnd: number;
+  count: number;
+}
+
+export interface LedgerSummaryResponse {
+  totalGmvVnd: number;
+  orderCount: number;
+  bySource: LedgerSummarySource[];
+}
+
+export interface RevenueLedgerListResponse {
+  rows: RevenueLedgerRow[];
+  count: number;
+  offset: number;
+  limit: number;
+  hasMore: boolean;
 }
 
 export type LedgerCreatePayload = {

@@ -5,7 +5,9 @@ import type { CreateOrderPayload, DashboardSummary, InvoiceOrder, Order } from "
 import type {
   LedgerCreatePayload,
   LedgerPatchPayload,
+  LedgerSummaryResponse,
   RevenueKeyDataResponse,
+  RevenueLedgerListResponse,
   RevenueLedgerRow,
   RevenuePivotResponse,
 } from "../types/revenue";
@@ -112,8 +114,15 @@ export const endpoints = {
       api.post<Blob>("/invoice/export-batch", {}, { responseType: "blob" }),
   },
   revenue: {
-    listLedger: (params?: { from?: string; to?: string; loai_nhap?: string }) =>
-      api.get<{ rows: RevenueLedgerRow[]; count: number }>("/revenue/ledger", { params }),
+    listLedger: (params?: {
+      from?: string;
+      to?: string;
+      loai_nhap?: string;
+      limit?: number;
+      offset?: number;
+    }) => api.get<RevenueLedgerListResponse>("/revenue/ledger", { params }),
+    ledgerSummary: (params?: { from?: string; to?: string; loai_nhap?: string }) =>
+      api.get<LedgerSummaryResponse>("/revenue/ledger/summary", { params }),
     createLedger: (body: LedgerCreatePayload) =>
       api.post<RevenueLedgerRow>("/revenue/ledger", body),
     patchLedger: (id: string, body: LedgerPatchPayload) =>

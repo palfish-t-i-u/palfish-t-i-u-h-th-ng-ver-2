@@ -1,9 +1,9 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { endpoints } from "../lib/api";
 import { cn } from "../lib/cn";
 import { formatVndNumber } from "../lib/vndFormat";
-import { pivotTypeFromRow, pivotTypeLabel } from "../lib/typeFixx";
-import type { LedgerPatchPayload, RevenueLedgerRow } from "../types/revenue";
+import { typeFixxFromRow, typeFixxLabel } from "../lib/typeFixx";
+import type { LedgerPatchPayload, LedgerSummaryResponse, RevenueLedgerRow } from "../types/revenue";
 import LedgerFormModal, {
   emptyLedgerForm,
   type LedgerFormState,
@@ -21,6 +21,8 @@ import {
   stickyTableHead,
   stickyTableHeadTop,
 } from "./ui/Table";
+
+const PAGE_SIZE = 60;
 
 function fmtPayTime(iso: string) {
   if (!iso) return "—";
@@ -53,22 +55,34 @@ function todayIso() {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
-function isDefaultDateFilter(from: string, to: string) {
-  const t = todayIso();
-  return from === t && to === t;
-}
-
 function orderIdDisplay(row: RevenueLedgerRow) {
   return row.crmOrderId || row.maDonHang || "—";
 }
 
+function filterParams(from: string, to: string, loaiFilter: string) {
+  return {
+    from: from || undefined,
+    to: to || undefined,
+    loai_nhap: loaiFilter || undefined,
+  };
+}
+
 export default function SoDoanhThuTab() {
   const [rows, setRows] = useState<RevenueLedgerRow[]>([]);
+  const [summary, setSummary] = useState<LedgerSummaryResponse | null>(null);
+  const [totalCount, setTotalCount] = useState(0);
+  const [hasMore, setHasMore] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState("");
-  const [from, setFrom] = useState(() => todayIso());
-  const [to, setTo] = useState(() => todayIso());
-  const [loaiFilter, setLoaiFilter] = useState("");
+
+  const [draftFrom, setDraftFrom] = useState(() => todayIso());
+  const [draftTo, setDraftTo] = useState(() => todayIso());
+  const [appliedFrom, setAppliedFrom] = useState(() => todayIso());
+  const [appliedTo, setAppliedTo] = useState(() => todayIso());
+  const [draftLoai, setDraftLoai] = useState("");
+  const [appliedLoai, setAppliedLoai] = useState("");
+
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [modalMode, setModalMode] = useState<"create" | "edit">("create");
@@ -77,26 +91,105 @@ export default function SoDoanhThuTab() {
   const [modalSaving, setModalSaving] = useState(false);
   const [modalError, setModalError] = useState("");
 
-  const load = useCallback(async () => {
+  const loadMoreRef = useRef<HTMLTableRowElement | null>(null);
+  const loadingMoreRef = useRef(false);
+
+  const fetchPage = useCallback(
+    async (offset: number, replace: boolean) => {
+      const params = {
+        ...filterParams(appliedFrom, appliedTo, appliedLoai),
+        limit: PAGE_SIZE,
+        offset,
+      };
+      const res = await endpoints.revenue.listLedger(params);
+      setTotalCount(res.data.count);
+      setHasMore(res.data.hasMore);
+      setRows((prev) => (replace ? res.data.rows : [...prev, ...res.data.rows]));
+      return res.data;
+    },
+    [appliedFrom, appliedTo, appliedLoai]
+  );
+
+  const reloadAll = useCallback(async () => {
     setLoading(true);
     setError("");
     try {
-      const res = await endpoints.revenue.listLedger({
-        from: from || undefined,
-        to: to || undefined,
-        loai_nhap: loaiFilter || undefined,
-      });
-      setRows(res.data.rows);
+      const summaryParams = filterParams(appliedFrom, appliedTo, appliedLoai);
+      const [summaryRes] = await Promise.all([
+        endpoints.revenue.ledgerSummary(summaryParams),
+        fetchPage(0, true),
+      ]);
+      setSummary(summaryRes.data);
     } catch {
       setError("Không tải được Sổ doanh thu.");
+      setRows([]);
+      setSummary(null);
     } finally {
       setLoading(false);
     }
-  }, [from, to, loaiFilter]);
+  }, [appliedFrom, appliedTo, appliedLoai, fetchPage]);
 
   useEffect(() => {
-    load();
-  }, [load]);
+    reloadAll();
+  }, [reloadAll]);
+
+  const loadMore = useCallback(async () => {
+    if (loadingMoreRef.current || !hasMore || loading) return;
+    loadingMoreRef.current = true;
+    setLoadingMore(true);
+    try {
+      await fetchPage(rows.length, false);
+    } catch {
+      setError("Không tải thêm được dòng.");
+    } finally {
+      setLoadingMore(false);
+      loadingMoreRef.current = false;
+    }
+  }, [fetchPage, hasMore, loading, rows.length]);
+
+  useEffect(() => {
+    const el = loadMoreRef.current;
+    if (!el || !hasMore) return;
+    const root = el.closest(".gmv-table-scroll");
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) loadMore();
+      },
+      { root, rootMargin: "120px", threshold: 0 }
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [hasMore, loadMore, rows.length]);
+
+  function applyFilters() {
+    const unchanged =
+      draftFrom === appliedFrom && draftTo === appliedTo && draftLoai === appliedLoai;
+    setAppliedFrom(draftFrom);
+    setAppliedTo(draftTo);
+    setAppliedLoai(draftLoai);
+    if (unchanged) reloadAll();
+  }
+
+  function resetFilters() {
+    setDraftFrom("");
+    setDraftTo("");
+    setDraftLoai("");
+    setAppliedFrom("");
+    setAppliedTo("");
+    setAppliedLoai("");
+  }
+
+  function setTodayFilter() {
+    const t = todayIso();
+    setDraftFrom(t);
+    setDraftTo(t);
+    setAppliedFrom(t);
+    setAppliedTo(t);
+  }
+
+  const hasActiveFilter = Boolean(appliedFrom || appliedTo || appliedLoai);
+  const draftDirty =
+    draftFrom !== appliedFrom || draftTo !== appliedTo || draftLoai !== appliedLoai;
 
   function openCreate() {
     setModalMode("create");
@@ -143,17 +236,16 @@ export default function SoDoanhThuTab() {
     };
     try {
       if (modalMode === "create") {
-        const res = await endpoints.revenue.createLedger({
+        await endpoints.revenue.createLedger({
           ...body,
           ngayTienVe: payload.ngayTienVe,
         });
-        setRows((prev) => [res.data, ...prev]);
       } else if (editRow) {
-        const res = await endpoints.revenue.patchLedger(editRow.id, body);
-        setRows((prev) => prev.map((r) => (r.id === editRow.id ? res.data : r)));
+        await endpoints.revenue.patchLedger(editRow.id, body);
       }
       setModalOpen(false);
       setEditRow(null);
+      reloadAll();
     } catch {
       setModalError(modalMode === "create" ? "Không thêm được dòng mới." : "Lưu thất bại.");
     } finally {
@@ -168,7 +260,7 @@ export default function SoDoanhThuTab() {
     setDeletingId(row.id);
     try {
       await endpoints.revenue.deleteLedger(row.id);
-      setRows((prev) => prev.filter((r) => r.id !== row.id));
+      reloadAll();
     } catch {
       setError("Không xóa được dòng.");
     } finally {
@@ -176,60 +268,70 @@ export default function SoDoanhThuTab() {
     }
   }
 
-  function resetFilters() {
-    const t = todayIso();
-    setFrom(t);
-    setTo(t);
-    setLoaiFilter("");
-  }
-
-  const hasActiveFilter = !isDefaultDateFilter(from, to) || Boolean(loaiFilter);
-
   return (
-    <div className="space-y-4">
+    <div className="min-w-0 space-y-4 overflow-x-hidden">
       <div className="flex flex-wrap items-end gap-3">
         <label className="text-sm text-gmv-muted">
           Từ ngày
-          <Input type="date" className="mt-1" value={from} onChange={(e) => setFrom(e.target.value)} />
+          <Input
+            type="date"
+            className="mt-1"
+            value={draftFrom}
+            onChange={(e) => setDraftFrom(e.target.value)}
+          />
         </label>
         <label className="text-sm text-gmv-muted">
           Đến ngày
-          <Input type="date" className="mt-1" value={to} onChange={(e) => setTo(e.target.value)} />
+          <Input
+            type="date"
+            className="mt-1"
+            value={draftTo}
+            onChange={(e) => setDraftTo(e.target.value)}
+          />
         </label>
         <label className="text-sm text-gmv-muted">
           Nguồn dòng
           <select
             className="mt-1 block min-h-10 rounded-gmv-md border border-gmv-border px-3 text-sm"
-            value={loaiFilter}
-            onChange={(e) => setLoaiFilter(e.target.value)}
+            value={draftLoai}
+            onChange={(e) => setDraftLoai(e.target.value)}
           >
             <option value="">Tất cả</option>
             <option value="tu_dong">Tự động (M3)</option>
             <option value="tay">Điền tay</option>
           </select>
         </label>
-        <Button variant="secondary" onClick={load} disabled={loading}>
+        <Button variant="secondary" onClick={applyFilters} disabled={loading}>
           {loading ? "Đang tải…" : "Làm mới"}
         </Button>
-        <Button
-          variant="ghost"
-          onClick={() => {
-            const t = todayIso();
-            setFrom(t);
-            setTo(t);
-          }}
-        >
+        <Button variant="ghost" onClick={setTodayFilter}>
           Hôm nay
         </Button>
-        <Button variant="ghost" onClick={resetFilters} disabled={!hasActiveFilter}>
+        <Button variant="ghost" onClick={resetFilters} disabled={!hasActiveFilter && !draftDirty}>
           Reset bộ lọc
         </Button>
         <Button onClick={openCreate}>+ Thêm dòng</Button>
       </div>
 
-      <LedgerSummaryCards rows={rows} from={from} to={to} loading={loading} />
+      {!appliedFrom && !appliedTo && (
+        <p className="text-xs text-amber-700">
+          Đang xem tất cả ngày — bảng tải từng {PAGE_SIZE} dòng khi cuộn. Nên chọn khoảng ngày để nhanh hơn.
+        </p>
+      )}
+
+      <LedgerSummaryCards
+        summary={summary}
+        from={appliedFrom}
+        to={appliedTo}
+        loading={loading}
+      />
 
       {error && <p className="text-sm text-red-600">{error}</p>}
+
+      <p className="text-xs text-gmv-muted">
+        Hiển thị {rows.length.toLocaleString("vi-VN")} / {totalCount.toLocaleString("vi-VN")} dòng
+        {loadingMore && " · đang tải thêm…"}
+      </p>
 
       <TableScrollWrap>
         <Table className="min-w-[1280px]">
@@ -269,7 +371,7 @@ export default function SoDoanhThuTab() {
                 </Td>
                 <Td className="text-left text-sm">{row.sdt || "—"}</Td>
                 <Td className="text-left text-sm">{row.uid || "—"}</Td>
-                <Td className="whitespace-nowrap text-sm">{fmtPayTime(row.ngayTienVe)}</Td>
+                <Td className="whitespace-nowrap text-sm">{fmtPayTime(row.payTime || row.ngayTienVe)}</Td>
                 <Td className="text-right font-medium tabular-nums">
                   {formatVndNumber(row.soTienVnd) || "—"}
                 </Td>
@@ -277,7 +379,7 @@ export default function SoDoanhThuTab() {
                 <Td className="text-left text-sm font-mono">{orderIdDisplay(row)}</Td>
                 <Td className="text-left text-sm">{row.paymentMethod || "—"}</Td>
                 <Td className="text-left text-sm">
-                  {pivotTypeLabel(pivotTypeFromRow(row.loai, row.loai2))}
+                  {typeFixxLabel(typeFixxFromRow(row.loai, row.loai2))}
                 </Td>
                 <Td className="text-left text-sm">{row.saleCrmName || "—"}</Td>
                 <Td className="text-left text-sm">{row.team || "—"}</Td>
@@ -301,6 +403,13 @@ export default function SoDoanhThuTab() {
                 </Td>
               </Tr>
             ))}
+            {hasMore && (
+              <Tr ref={loadMoreRef}>
+                <Td colSpan={12} className="py-3 text-center text-sm text-gmv-muted">
+                  {loadingMore ? "Đang tải thêm…" : "Cuộn xuống để tải thêm"}
+                </Td>
+              </Tr>
+            )}
           </tbody>
         </Table>
       </TableScrollWrap>

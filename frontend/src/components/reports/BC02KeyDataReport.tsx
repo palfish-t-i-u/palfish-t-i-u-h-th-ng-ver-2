@@ -1,18 +1,46 @@
-import { useCallback, useEffect, useState } from "react";
+import { Fragment, useCallback, useEffect, useState } from "react";
 import { endpoints } from "../../lib/api";
 import type { RevenueKeyDataResponse } from "../../types/revenue";
 import Button from "../ui/Button";
 import { Input } from "../ui/Input";
-import { Table, TableWrap, Td, Th, Tr } from "../ui/Table";
+import {
+  Table,
+  TableScrollWrap,
+  Td,
+  Th,
+  Tr,
+  stickyTableHead,
+  stickyTableHeadCorner,
+  stickyTableHeadTop,
+} from "../ui/Table";
+import { cn } from "../../lib/cn";
 
 function fmtRmb(n: number) {
   return new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 }).format(n);
+}
+
+function fmtInt(n: number) {
+  return new Intl.NumberFormat("vi-VN").format(n);
+}
+
+function fmtDate(iso: string) {
+  const [y, m, d] = iso.slice(0, 10).split("-");
+  if (!y || !m || !d) return iso;
+  return `${d}/${m}/${y}`;
 }
 
 function monthStartIso() {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;
 }
+
+const stickyDateHead = cn(
+  stickyTableHead,
+  stickyTableHeadTop,
+  stickyTableHeadCorner,
+  "left-0 min-w-[6.5rem] text-left"
+);
+const stickyDateCell = "sticky left-0 z-20 bg-gmv-canvas text-left font-medium";
 
 export default function BC02KeyDataReport() {
   const [data, setData] = useState<RevenueKeyDataResponse | null>(null);
@@ -41,13 +69,20 @@ export default function BC02KeyDataReport() {
     load();
   }, [load]);
 
-  const months = data?.months ?? [];
+  const groups = data?.columnGroups ?? [];
+  const colSpan = 3 + groups.length * 2;
 
   return (
-    <div className="space-y-4">
+    <div className="min-w-0 space-y-4 overflow-x-hidden">
       <p className="text-sm text-gmv-muted">
-        BC02 — GMV (RMB) theo loại nguồn × tháng (ngày tiền về). Dữ liệu từ{" "}
+        BC02 — GMV theo ngày và loại nguồn (tab GMV sheet Hiếu). Dữ liệu từ{" "}
         <strong>Sổ doanh thu</strong>; chỉ xem.
+        {data?.scopeLabel && (
+          <>
+            {" "}
+            Phạm vi: <strong>{data.scopeLabel}</strong>
+          </>
+        )}
       </p>
 
       <div className="flex flex-wrap items-end gap-3">
@@ -68,65 +103,100 @@ export default function BC02KeyDataReport() {
 
       {data && (
         <p className="text-sm font-medium text-gmv-text-strong">
-          Tổng GMV (RMB): {fmtRmb(data.grandTotal)}
+          Tổng GMV (RMB): {fmtRmb(data.grandTotal.totalGmv)} · {fmtInt(data.grandTotal.totalOrders)} đơn
         </p>
       )}
 
-      <TableWrap>
-        <Table>
+      <TableScrollWrap>
+        <Table className="min-w-[1200px]">
           <thead>
             <Tr>
-              <Th className="sticky left-0 z-20 min-w-[10rem] bg-gmv-table-head text-left">Loại</Th>
-              {months.map((m) => (
-                <Th key={m} className="min-w-[5.5rem] text-right">
-                  {m}
+              <Th rowSpan={2} className={stickyDateHead}>
+                Ngày
+              </Th>
+              <Th rowSpan={2} className={cn(stickyTableHead, stickyTableHeadTop, "min-w-[4rem] text-right")}>
+                Tổng đơn
+              </Th>
+              <Th rowSpan={2} className={cn(stickyTableHead, stickyTableHeadTop, "min-w-[6rem] text-right")}>
+                Tổng GMV (¥)
+              </Th>
+              {groups.map((g) => (
+                <Th
+                  key={g.key}
+                  colSpan={2}
+                  className={cn(stickyTableHead, stickyTableHeadTop, "border-l border-gmv-border text-center")}
+                >
+                  {g.label}
                 </Th>
               ))}
-              <Th className="min-w-[5.5rem] text-right">Tổng GMV</Th>
+            </Tr>
+            <Tr>
+              {groups.map((g) => (
+                <Fragment key={g.key}>
+                  <Th
+                    className={cn(stickyTableHead, "min-w-[4rem] border-l border-gmv-border text-right text-[10px]")}
+                  >
+                    {g.countLabel}
+                  </Th>
+                  <Th className={cn(stickyTableHead, "min-w-[5rem] text-right text-[10px]")}>{g.gmvLabel}</Th>
+                </Fragment>
+              ))}
             </Tr>
           </thead>
           <tbody>
             {loading && !data && (
               <Tr>
-                <Td colSpan={months.length + 2} className="text-center text-gmv-muted">
+                <Td colSpan={colSpan} className="text-center text-gmv-muted">
                   Đang tải…
                 </Td>
               </Tr>
             )}
-            {!loading && data && months.length > 0 && (
+            {!loading && data && data.rows.length > 0 && (
               <Tr className="bg-amber-100 font-semibold">
-                <Td className="sticky left-0 bg-amber-100 text-left">Tổng cộng</Td>
-                {months.map((m) => (
-                  <Td key={m} className="text-right">
-                    {fmtRmb(data.grandTotalRow[m] ?? 0)}
-                  </Td>
-                ))}
-                <Td className="text-right">{fmtRmb(data.grandTotal)}</Td>
+                <Td className={cn(stickyDateCell, "bg-amber-100")}>Tổng cộng</Td>
+                <Td className="text-right tabular-nums">{fmtInt(data.grandTotal.totalOrders)}</Td>
+                <Td className="text-right tabular-nums">{fmtRmb(data.grandTotal.totalGmv)}</Td>
+                {groups.map((g) => {
+                  const cell = data.grandTotal.categories[g.key] ?? { count: 0, gmv: 0 };
+                  return (
+                    <Fragment key={g.key}>
+                      <Td className="border-l border-gmv-border text-right tabular-nums">
+                        {fmtInt(cell.count)}
+                      </Td>
+                      <Td className="text-right tabular-nums">{fmtRmb(cell.gmv)}</Td>
+                    </Fragment>
+                  );
+                })}
               </Tr>
             )}
-            {!loading && data && data.grandTotal === 0 && (
+            {!loading && data && data.rows.length === 0 && (
               <Tr>
-                <Td colSpan={Math.max(months.length + 2, 2)} className="text-center text-gmv-muted">
+                <Td colSpan={colSpan} className="text-center text-gmv-muted">
                   Chưa có dữ liệu trong khoảng ngày đã chọn.
                 </Td>
               </Tr>
             )}
-            {data?.types.map((row) =>
-              data.grandTotal === 0 ? null : (
-                <Tr key={row.typeLabel}>
-                  <Td className="sticky left-0 bg-gmv-canvas text-left font-medium">{row.typeLabel}</Td>
-                  {months.map((m) => (
-                    <Td key={m} className="text-right">
-                      {fmtRmb(row.cells[m] ?? 0)}
-                    </Td>
-                  ))}
-                  <Td className="text-right font-medium">{fmtRmb(row.total)}</Td>
-                </Tr>
-              )
-            )}
+            {data?.rows.map((row) => (
+              <Tr key={row.date}>
+                <Td className={stickyDateCell}>{fmtDate(row.date)}</Td>
+                <Td className="text-right tabular-nums">{fmtInt(row.totalOrders)}</Td>
+                <Td className="text-right tabular-nums">{fmtRmb(row.totalGmv)}</Td>
+                {groups.map((g) => {
+                  const cell = row.categories[g.key] ?? { count: 0, gmv: 0 };
+                  return (
+                    <Fragment key={g.key}>
+                      <Td className="border-l border-gmv-border text-right tabular-nums">
+                        {cell.count ? fmtInt(cell.count) : "—"}
+                      </Td>
+                      <Td className="text-right tabular-nums">{cell.gmv ? fmtRmb(cell.gmv) : "—"}</Td>
+                    </Fragment>
+                  );
+                })}
+              </Tr>
+            ))}
           </tbody>
         </Table>
-      </TableWrap>
+      </TableScrollWrap>
     </div>
   );
 }
