@@ -86,7 +86,7 @@ export default function BC02KeyDataReport() {
   const colSpan = 3 + groups.length * 2;
 
   return (
-    <div className="flex min-h-0 min-w-0 flex-col gap-4 overflow-hidden">
+    <div className="min-w-0 space-y-4 overflow-x-hidden">
       <p className="text-sm text-gmv-muted">
         BC02 — GMV theo ngày và loại nguồn (tab GMV sheet Hiếu).
         {data?.scopeLabel && (
@@ -133,7 +133,7 @@ export default function BC02KeyDataReport() {
         </p>
       )}
 
-      <TableScrollWrap className="max-h-none min-h-0 flex-1 basis-0 overflow-auto [height:calc(100svh-16rem)]">
+      <TableScrollWrap className="max-h-[min(70vh,calc(100svh-16rem))]">
         <Table className="min-w-[1200px]">
           <thead>
             <Tr>
@@ -160,11 +160,23 @@ export default function BC02KeyDataReport() {
               {groups.map((g) => (
                 <Fragment key={g.key}>
                   <Th
-                    className={cn(stickyTableHead, "min-w-[4rem] border-l border-gmv-border text-right text-[10px]")}
+                    className={cn(
+                      stickyTableHead,
+                      stickyTableHeadTop,
+                      "top-[2.35rem] min-w-[4rem] border-l border-gmv-border text-right text-[10px]"
+                    )}
                   >
                     {g.countLabel}
                   </Th>
-                  <Th className={cn(stickyTableHead, "min-w-[5rem] text-right text-[10px]")}>{g.gmvLabel}</Th>
+                  <Th
+                    className={cn(
+                      stickyTableHead,
+                      stickyTableHeadTop,
+                      "top-[2.35rem] min-w-[5rem] text-right text-[10px]"
+                    )}
+                  >
+                    {g.gmvLabel}
+                  </Th>
                 </Fragment>
               ))}
             </Tr>
