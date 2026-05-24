@@ -60,7 +60,7 @@ async function _pushToken(bundle) {
     });
     if (res.ok || res.status === 201) {
       _syncCount++;
-      const hasPayload = bundle.download_payload ? " + payload export" : "";
+      const hasPayload = bundle.download_payload ? " + dept prefs" : "";
       _saveState("ok", `Đã đồng bộ lúc ${new Date().toLocaleTimeString("vi-VN")}${hasPayload}`);
       console.log("[PalFish Sync] auth bundle → Supabase OK", bundle);
       fetch(BACKEND_URLS[0], {
@@ -206,5 +206,5 @@ chrome.tabs.onActivated.addListener(async (activeInfo) => {
   } catch (_) {}
 });
 
-_saveState("idle", "Mở CRM → đăng nhập → bấm Export 1 lần để bắt token + payload");
+_saveState("idle", "Mở CRM → đăng nhập — extension tự lấy token (không cần Export)");
 console.log("[PalFish Sync] service worker started (cookies + webRequest capture)");

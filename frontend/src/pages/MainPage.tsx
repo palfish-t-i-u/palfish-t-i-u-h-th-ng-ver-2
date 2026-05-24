@@ -9,7 +9,7 @@ import Module4Tab from "../components/Module4Tab";
 import SoDoanhThuTab from "../components/SoDoanhThuTab";
 const BC01SalesPerformance = lazy(() => import("../components/reports/BC01SalesPerformance"));
 const BC02KeyDataReport = lazy(() => import("../components/reports/BC02KeyDataReport"));
-const BC03Placeholder = lazy(() => import("../components/reports/BC03Placeholder"));
+const ReportBC03Tab = lazy(() => import("../components/ReportBC03Tab"));
 import Module5Tab from "../components/Module5Tab";
 import Module6Tab from "../components/Module6Tab";
 import { useAuth } from "../hooks/useAuth";
@@ -119,8 +119,8 @@ const TITLES: Record<ViewId, { title: string; subtitle?: string }> = {
   revenueLedger: { title: "Sổ doanh thu", subtitle: "Ghi từng khoản thu — M3 tự động + điền tay + Sync All File Thu Hiền" },
   bc01: { title: "BC01: Sales performance", subtitle: "Tổng GMV theo team × sale × tháng" },
   bc02: { title: "BC02: Key Data", subtitle: "Dữ liệu then chốt quy trình bán hàng" },
-  bc03: { title: "BC03: Tổng bộ hàng ngày", subtitle: "Tổng hợp vận hành hàng ngày" },
-  module5: { title: "Đồng bộ CRM", subtitle: "M5 — Lấy & xuất Master Data CRM PalFish" },
+  bc03: { title: "BC03 — Báo cáo tổng bộ", subtitle: "KPI thủ công + doanh thu / trial / referral tự động" },
+  module5: { title: "Đồng bộ CRM", subtitle: "M5 — 1-Click sync & xuất Master Data CRM PalFish" },
   module6: { title: "Dashboard Sale", subtitle: "M6 — Tổng quan hiệu suất theo team & cá nhân" },
   staffCrm: { title: "Nhân sự Sale", subtitle: "Master data Metabase — gán role / team" },
   authAccounts: { title: "Tài khoản Auth", subtitle: "Supabase Auth — khoá/mở account" },
@@ -241,8 +241,8 @@ export default function MainPage() {
             },
             {
               id: "bc03",
-              label: "BC03: Tổng bộ ngày",
-              subtitle: "Vận hành hàng ngày",
+              label: "BC03 — Báo cáo tổng bộ",
+              subtitle: "KPI + doanh thu / trial / referral",
             },
           ],
         },
@@ -336,7 +336,7 @@ export default function MainPage() {
             <BC02KeyDataReport />
           </div>
           <div style={{ display: activeView === "bc03" ? "block" : "none" }}>
-            <BC03Placeholder />
+            <ReportBC03Tab />
           </div>
         </Suspense>
       )}
