@@ -2,11 +2,16 @@
 """Xóa dòng test trong so_doanh_thu — giữ data thật (import Excel, sau go-live).
 
 Phân loại theo created_by_email:
-  import:HN / import:HCM  → lịch sử Excel (data thật)
+  import:HN / import:HCM  → lịch sử Excel HNxHCM
+  import:gsheet:*         → import All File Thu Hiền (Google Sheet)
   email user / backfill@m3 → test hoặc đơn app (xóa trước go-live nếu cần)
 
 Ví dụ:
-  # Xem sẽ xóa gì (giữ import:*)
+  # Xóa chỉ dòng import từ Google Sheet (All File Thu Hiền)
+  python scripts/cleanup_so_doanh_thu.py --gsheet-only --dry-run
+  python scripts/cleanup_so_doanh_thu.py --gsheet-only
+
+  # Xem sẽ xóa gì (giữ mọi import:*)
   python scripts/cleanup_so_doanh_thu.py --keep-import-only --dry-run
 
   # Xóa hết trừ import Excel
@@ -69,6 +74,11 @@ def _is_import_row(row: dict) -> bool:
     return email.startswith("import:")
 
 
+def _is_gsheet_import_row(row: dict) -> bool:
+    email = (row.get("created_by_email") or "").strip()
+    return email.startswith("import:gsheet:")
+
+
 def _match_before(row: dict, before: str) -> bool:
     created = (row.get("created_at") or "")[:10]
     return bool(created and created < before)
@@ -79,9 +89,14 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Cleanup test rows in so_doanh_thu")
     parser.add_argument("--dry-run", action="store_true", help="Chỉ in, không xóa")
     parser.add_argument(
+        "--gsheet-only",
+        action="store_true",
+        help="Xóa dòng import:gsheet:* (All File Thu Hiền qua Google Sheet)",
+    )
+    parser.add_argument(
         "--keep-import-only",
         action="store_true",
-        help="Xóa mọi dòng KHÔNG phải import:HN / import:HCM",
+        help="Xóa mọi dòng KHÔNG phải import:* (giữ HN/HCM/gsheet)",
     )
     parser.add_argument("--all", action="store_true", help="Xóa toàn bộ Sổ")
     parser.add_argument(
@@ -91,8 +106,8 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    if not args.keep_import_only and not args.all and not args.before:
-        parser.error("Cần --keep-import-only, --all, hoặc --before")
+    if not args.gsheet_only and not args.keep_import_only and not args.all and not args.before:
+        parser.error("Cần --gsheet-only, --keep-import-only, --all, hoặc --before")
 
     url = os.getenv("SUPABASE_URL", "").strip()
     key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "").strip()
@@ -109,6 +124,8 @@ def main() -> int:
     to_delete: list[dict] = []
     for row in rows:
         if args.all:
+            to_delete.append(row)
+        elif args.gsheet_only and _is_gsheet_import_row(row):
             to_delete.append(row)
         elif args.keep_import_only and not _is_import_row(row):
             to_delete.append(row)
