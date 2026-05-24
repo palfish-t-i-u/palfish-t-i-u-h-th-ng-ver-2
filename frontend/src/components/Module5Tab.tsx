@@ -127,8 +127,17 @@ export default function Module5Tab() {
       }
       setToast(msg);
     } catch (e: unknown) {
-      const detail = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-      setError(detail || "Đồng bộ thất bại. Kiểm tra token CRM và log backend.");
+      const err = e as { response?: { status?: number; data?: { detail?: string } } };
+      const status = err.response?.status;
+      const detail = err.response?.data?.detail;
+      if (status === 404) {
+        setError(
+          "API /crm/sync chưa có trên server — backend Render (palfish-gmv-api) chưa deploy bản mới. "
+          + "Vào Render Dashboard → Manual Deploy → Deploy latest commit, đợi ~5 phút rồi thử lại."
+        );
+      } else {
+        setError(detail || "Đồng bộ thất bại. Kiểm tra token CRM và log backend Render.");
+      }
     } finally {
       setLoading(false);
     }
