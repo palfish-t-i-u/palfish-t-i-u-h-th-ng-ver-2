@@ -3,9 +3,6 @@ import { endpoints } from "../lib/api";
 import { supabase } from "../lib/supabase";
 import Button from "./ui/Button";
 
-// --------------------------------------------------------------------------
-// Helpers
-// --------------------------------------------------------------------------
 function todayStr() {
   return new Date().toISOString().slice(0, 10);
 }
@@ -15,20 +12,6 @@ function firstDayOfMonth() {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;
 }
 
-function downloadBlob(blob: Blob, filename: string) {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(url);
-}
-
-// --------------------------------------------------------------------------
-// Sub-components
-// --------------------------------------------------------------------------
 function TokenStatus({ hasToken, updatedAt }: { hasToken: boolean | null; updatedAt?: string | null }) {
   if (hasToken === null) {
     return (
@@ -64,28 +47,40 @@ function TokenStatus({ hasToken, updatedAt }: { hasToken: boolean | null; update
   );
 }
 
-// --------------------------------------------------------------------------
-// Main component
-// --------------------------------------------------------------------------
+function Toast({ message, onClose }: { message: string; onClose: () => void }) {
+  useEffect(() => {
+    const t = window.setTimeout(onClose, 4000);
+    return () => window.clearTimeout(t);
+  }, [onClose]);
+
+  return (
+    <div className="fixed bottom-6 right-6 z-50 flex items-center gap-2 rounded-lg bg-emerald-600 px-5 py-3 text-sm font-medium text-white shadow-lg ring-1 ring-emerald-500/50">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+        <path d="M20 6L9 17l-5-5" />
+      </svg>
+      {message}
+    </div>
+  );
+}
+
 export default function Module5Tab() {
   const [startDate, setStartDate] = useState(firstDayOfMonth());
   const [endDate, setEndDate] = useState(todayStr());
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [successMsg, setSuccessMsg] = useState("");
+  const [toast, setToast] = useState("");
   const [hasToken, setHasToken] = useState<boolean | null>(null);
   const [tokenUpdatedAt, setTokenUpdatedAt] = useState<string | null>(null);
 
-  // Đọc token status thẳng từ Supabase — không qua backend Render
   const checkToken = useCallback(async () => {
     setHasToken(null);
     try {
-      const { data, error } = await supabase
+      const { data, error: sbErr } = await supabase
         .from("crm_tokens")
         .select("updated_at")
         .eq("id", 1)
         .maybeSingle();
-      if (error || !data) {
+      if (sbErr || !data) {
         setHasToken(false);
       } else {
         setHasToken(true);
@@ -100,7 +95,7 @@ export default function Module5Tab() {
     checkToken();
   }, [checkToken]);
 
-  async function handleExport() {
+  async function handleSync() {
     if (!startDate || !endDate) {
       setError("Vui lòng chọn đủ Từ ngày và Đến ngày.");
       return;
@@ -111,8 +106,7 @@ export default function Module5Tab() {
     }
 
     const days =
-      (new Date(endDate).getTime() - new Date(startDate).getTime()) /
-      86_400_000;
+      (new Date(endDate).getTime() - new Date(startDate).getTime()) / 86_400_000;
     if (days >= 31) {
       setError("Dải ngày tối đa 31 ngày. Vui lòng thu hẹp khoảng thời gian.");
       return;
@@ -120,29 +114,21 @@ export default function Module5Tab() {
 
     setLoading(true);
     setError("");
-    setSuccessMsg("");
 
     try {
-      const res = await endpoints.crmData.exportMaster(startDate, endDate);
-      const blob = res.data;
-      const label = `${startDate}_to_${endDate}`.replace(/-/g, "");
-      downloadBlob(blob, `Master_Sales_Data_${label}.xlsx`);
-      setSuccessMsg(`Tải file thành công! (${startDate} → ${endDate})`);
-    } catch (e: unknown) {
-      // Khi responseType="blob", axios trả lỗi dưới dạng Blob → cần parse thủ công
-      try {
-        const errData = (e as { response?: { data?: unknown } })?.response?.data;
-        if (errData instanceof Blob) {
-          const text = await errData.text();
-          const parsed = JSON.parse(text);
-          setError(parsed?.detail || text || "Xuất dữ liệu thất bại.");
-        } else {
-          const detail = (errData as { detail?: string })?.detail;
-          setError(detail || "Xuất dữ liệu thất bại. Kiểm tra log backend.");
-        }
-      } catch {
-        setError("Xuất dữ liệu thất bại. Kiểm tra log backend để biết chi tiết.");
+      const res = await endpoints.crmData.sync(startDate, endDate);
+      const { rows_upserted, rows_fetched, days_failed, department_fallback, summary_rows, daily_rows } = res.data;
+      let msg = `Đồng bộ thành công! ${rows_upserted}/${rows_fetched} dòng (summary: ${summary_rows ?? "?"}, daily: ${daily_rows ?? "?"}).`;
+      if (department_fallback) {
+        msg += " Lưu ý: team CRM export rỗng — đã dùng dữ liệu org VN.";
       }
+      if (days_failed?.length > 0) {
+        msg += ` (${days_failed.length} ngày lỗi)`;
+      }
+      setToast(msg);
+    } catch (e: unknown) {
+      const detail = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      setError(detail || "Đồng bộ thất bại. Kiểm tra token CRM và log backend.");
     } finally {
       setLoading(false);
     }
@@ -150,17 +136,17 @@ export default function Module5Tab() {
 
   return (
     <div className="space-y-6 p-6">
-      {/* Header */}
+      {toast && <Toast message={toast} onClose={() => setToast("")} />}
+
       <div>
         <h2 className="text-xl font-bold text-slate-100">
           Module 5 — Đồng bộ dữ liệu CRM
         </h2>
         <p className="mt-1 text-sm text-slate-400">
-          Lấy dữ liệu Sale từ CRM PalFish theo dải ngày, gộp thành 1 file Excel Master để download.
+          Chỉ cần mở CRM để extension lấy token — bấm LẤY DỮ LIỆU tại đây, không cần Export trên PalFish.
         </p>
       </div>
 
-      {/* Token status */}
       <div className="space-y-2">
         <div className="flex items-center justify-between">
           <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">
@@ -176,9 +162,8 @@ export default function Module5Tab() {
         <TokenStatus hasToken={hasToken} updatedAt={tokenUpdatedAt} />
       </div>
 
-      {/* Date range picker */}
       <div className="rounded-xl bg-slate-800/60 p-5 ring-1 ring-slate-700">
-        <p className="mb-4 text-sm font-semibold text-slate-300">Chọn dải ngày cần lấy dữ liệu</p>
+        <p className="mb-4 text-sm font-semibold text-slate-300">Chọn dải ngày cần đồng bộ</p>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <label className="block">
             <span className="mb-1.5 block text-xs font-medium text-slate-400">Từ ngày</span>
@@ -205,7 +190,6 @@ export default function Module5Tab() {
           </label>
         </div>
 
-        {/* Quick range buttons */}
         <div className="mt-3 flex flex-wrap gap-2">
           {[
             { label: "Hôm nay", fn: () => { setStartDate(todayStr()); setEndDate(todayStr()); } },
@@ -233,37 +217,29 @@ export default function Module5Tab() {
         </div>
       </div>
 
-      {/* Error / success */}
       {error && (
         <div className="rounded-lg bg-red-950/60 px-4 py-3 text-sm text-red-300 ring-1 ring-red-800">
           {error}
         </div>
       )}
-      {successMsg && (
-        <div className="rounded-lg bg-emerald-950/60 px-4 py-3 text-sm text-emerald-300 ring-1 ring-emerald-800">
-          ✓ {successMsg}
-        </div>
-      )}
 
-      {/* Action */}
       <div className="flex items-center gap-4">
         <Button
           size="md"
           variant="primary"
           disabled={loading || hasToken === false}
-          onClick={handleExport}
+          onClick={handleSync}
           className="min-w-[180px] bg-orange-500 hover:bg-orange-600 disabled:opacity-50"
         >
           {loading ? (
             <span className="flex items-center gap-2">
-              <span className="animate-spin">⟳</span> Đang lấy dữ liệu…
+              <span className="animate-spin">⟳</span> Đang đồng bộ…
             </span>
           ) : (
             <span className="flex items-center gap-2">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                <polyline points="7 10 12 15 17 10" />
-                <line x1="12" y1="15" x2="12" y2="3" />
+                <path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.85 1.05 6.5 2.74" />
+                <polyline points="21 3 21 9 15 9" />
               </svg>
               LẤY DỮ LIỆU
             </span>
@@ -276,7 +252,6 @@ export default function Module5Tab() {
         )}
       </div>
 
-      {/* Setup guide */}
       <div className="rounded-xl bg-slate-800/40 p-5 ring-1 ring-slate-700/50">
         <p className="mb-3 text-sm font-semibold text-slate-300">
           Hướng dẫn cài Chrome Extension
@@ -288,11 +263,11 @@ export default function Module5Tab() {
           </li>
           <li>
             <span className="font-medium text-slate-300">2.</span> Bật{" "}
-            <span className="font-medium text-slate-200">"Developer mode"</span> ở góc phải
+            <span className="font-medium text-slate-200">Developer mode</span> ở góc phải
           </li>
           <li>
             <span className="font-medium text-slate-300">3.</span> Bấm{" "}
-            <span className="font-medium text-slate-200">"Load unpacked"</span> → chọn thư mục{" "}
+            <span className="font-medium text-slate-200">Load unpacked</span> → chọn thư mục{" "}
             <code className="rounded bg-slate-700 px-1 text-xs text-slate-200">crm-token-extension/</code>
           </li>
           <li>
@@ -305,12 +280,10 @@ export default function Module5Tab() {
             >
               sea.pri.ibanyu.com
             </a>{" "}
-            → đăng nhập → <strong className="text-slate-200">bấm Export/Tải dữ liệu 1 lần</strong>{" "}
-            (extension sẽ bắt token + payload thật)
+            → đăng nhập (extension tự lấy token — <strong className="text-slate-200">không cần Export</strong>)
           </li>
           <li>
-            <span className="font-medium text-slate-300">5.</span> Quay lại tab này → bấm{" "}
-            <span className="font-medium text-slate-200">Làm mới</span> token →{" "}
+            <span className="font-medium text-slate-300">5.</span> Quay lại tab này → chọn kỳ ngày → bấm{" "}
             <span className="font-medium text-slate-200">LẤY DỮ LIỆU</span>
           </li>
         </ol>
