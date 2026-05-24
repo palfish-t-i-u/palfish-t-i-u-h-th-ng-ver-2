@@ -7,34 +7,28 @@ import AuthAccountsTab from "../components/AuthAccountsTab";
 import Module3Tab from "../components/Module3Tab";
 import Module4Tab from "../components/Module4Tab";
 import SoDoanhThuTab from "../components/SoDoanhThuTab";
-import DoanhThuSaleTab from "../components/DoanhThuSaleTab";
+import ReportsHub from "../components/ReportsHub";
 import { useAuth } from "../hooks/useAuth";
 import { useMe } from "../hooks/useMe";
 import { endpoints } from "../lib/api";
 import ProfilePage from "./ProfilePage";
 import AppShell, { type NavItem } from "../layouts/AppShell";
 import Badge from "../components/ui/Badge";
+import Modal from "../components/ui/Modal";
 import type { Order } from "../types/order";
 
 type ViewId =
-  | "tab1"
   | "tab2"
   | "payos"
   | "profile"
   | "module3"
   | "module4"
   | "revenueLedger"
-  | "revenuePivot"
+  | "reportsHub"
   | "staffCrm"
   | "authAccounts";
 
 const I = {
-  plus: (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <line x1="12" y1="5" x2="12" y2="19" />
-      <line x1="5" y1="12" x2="19" y2="12" />
-    </svg>
-  ),
   list: (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <line x1="8" y1="6" x2="21" y2="6" />
@@ -102,14 +96,13 @@ const I = {
 };
 
 const TITLES: Record<ViewId, { title: string; subtitle?: string }> = {
-  tab1: { title: "Tạo đơn", subtitle: "Tạo đơn hàng mới + sinh Info Code" },
-  tab2: { title: "Quản lý đơn", subtitle: "Theo dõi tiền về, biên lai, CRM" },
+  tab2: { title: "Quản lý mã QR", subtitle: "Theo dõi tiền về, biên lai, CRM" },
   payos: { title: "Lịch sử PayOS", subtitle: "Giao dịch ngân hàng đã đối soát" },
   profile: { title: "Thông tin cá nhân" },
   module3: { title: "Xác nhận CRM", subtitle: "M3 — Điền tên sản phẩm thuế & mã CRM Order" },
   module4: { title: "Xuất hóa đơn thuế", subtitle: "M4 — Cấp mã M.../PF... và tải file ZIP 3 Excel" },
   revenueLedger: { title: "Sổ doanh thu", subtitle: "Ghi từng khoản thu — tự động (M3) + điền tay" },
-  revenuePivot: { title: "Sales Performance", subtitle: "Tổng GMV (RMB) theo team × sale × tháng" },
+  reportsHub: { title: "Báo cáo", subtitle: "BC01 · BC02 · BC03" },
   staffCrm: { title: "Nhân sự Sale", subtitle: "Master data Metabase — gán role / team" },
   authAccounts: { title: "Tài khoản Auth", subtitle: "Supabase Auth — khoá/mở account" },
 };
@@ -117,7 +110,8 @@ const TITLES: Record<ViewId, { title: string; subtitle?: string }> = {
 export default function MainPage() {
   const { user, signOut, isDevMode } = useAuth();
   const { profile } = useMe();
-  const [activeView, setActiveView] = useState<ViewId>("tab1");
+  const [activeView, setActiveView] = useState<ViewId>("tab2");
+  const [createModalOpen, setCreateModalOpen] = useState(false);
   const [orders, setOrders] = useState<Order[]>([]);
   const [dbExcel, setDbExcel] = useState<{ uid: string; diaChi: string }[]>([]);
   const [dbFileName, setDbFileName] = useState("");
@@ -159,6 +153,7 @@ export default function MainPage() {
       return exists ? prev.map((o) => (o.id === order.id ? order : o)) : [...prev, order];
     });
     refreshOrders();
+    setCreateModalOpen(false);
   }
 
   function handleOrderUpdated(order: Order) {
@@ -177,61 +172,57 @@ export default function MainPage() {
 
   const items: NavItem[] = useMemo(() => {
     const list: NavItem[] = [
-      { id: "tab1", label: "Tạo đơn", icon: I.plus },
       {
         id: "tab2",
-        label: "Quản lý đơn",
+        label: "Quản lý mã QR",
         icon: I.list,
+        section: "Khách hàng & Đơn hàng",
         badge:
           orders.length > 0 ? (
             <Badge tone="primary">{loadingOrders ? "…" : orders.length}</Badge>
           ) : null,
       },
-      { id: "payos", label: "Lịch sử PayOS", icon: I.history },
-      { id: "profile", label: "Thông tin cá nhân", icon: I.user },
+      {
+        id: "payos",
+        label: "Lịch sử PayOS",
+        icon: I.history,
+        section: "Đối soát & Hóa đơn",
+      },
     ];
+
     if (showInvoice) {
       list.push(
-        {
-          id: "module3",
-          label: "Xác nhận CRM",
-          icon: I.check,
-          section: "Hóa đơn thuế",
-        },
-        {
-          id: "module4",
-          label: "Xuất hóa đơn",
-          icon: I.invoice,
-        },
+        { id: "module3", label: "Xác nhận CRM", icon: I.check },
+        { id: "module4", label: "Xuất hóa đơn", icon: I.invoice }
+      );
+    }
+
+    if (showInvoice) {
+      list.push(
         {
           id: "revenueLedger",
           label: "Sổ doanh thu",
           icon: I.ledger,
-          section: "Doanh thu",
+          section: "Báo cáo",
         },
-        {
-          id: "revenuePivot",
-          label: "Sales Performance",
-          icon: I.chart,
-        }
+        { id: "reportsHub", label: "Báo cáo", icon: I.chart }
       );
     }
+
+    const accountItems: NavItem[] = [];
     if (showStaffCrm) {
-      list.push({
-        id: "staffCrm",
-        label: "Nhân sự Sale",
-        icon: I.team,
-        section: "Quản lý quyền",
-      });
+      accountItems.push({ id: "staffCrm", label: "Nhân sự Sale", icon: I.team });
     }
     if (showAuthAccounts) {
-      list.push({
-        id: "authAccounts",
-        label: "Tài khoản Auth",
-        icon: I.shield,
-        section: "Quản lý quyền",
-      });
+      accountItems.push({ id: "authAccounts", label: "Tài khoản Auth", icon: I.shield });
     }
+    accountItems.push({ id: "profile", label: "Thông tin cá nhân", icon: I.user });
+
+    if (accountItems.length > 0) {
+      accountItems[0] = { ...accountItems[0], section: "Tài khoản & Quyền" };
+      list.push(...accountItems);
+    }
+
     return list;
   }, [orders.length, loadingOrders, showInvoice, showStaffCrm, showAuthAccounts]);
 
@@ -252,9 +243,6 @@ export default function MainPage() {
       isDevMode={isDevMode}
       onSignOut={signOut}
     >
-      <div style={{ display: activeView === "tab1" ? "block" : "none" }}>
-        <Tab1Form onOrderCreated={handleOrderCreated} dbExcel={dbExcel} createdBy={user?.email} />
-      </div>
       <div style={{ display: activeView === "tab2" ? "block" : "none" }}>
         <Tab2Table
           orders={orders}
@@ -262,6 +250,7 @@ export default function MainPage() {
           dbFileName={dbFileName}
           canConfirmPayment={opsPayment}
           onOrderUpdated={handleOrderUpdated}
+          onOpenCreateOrder={() => setCreateModalOpen(true)}
         />
       </div>
       <div style={{ display: activeView === "payos" ? "block" : "none" }}>
@@ -286,8 +275,8 @@ export default function MainPage() {
         </div>
       )}
       {showInvoice && (
-        <div style={{ display: activeView === "revenuePivot" ? "block" : "none" }}>
-          <DoanhThuSaleTab />
+        <div style={{ display: activeView === "reportsHub" ? "block" : "none" }}>
+          <ReportsHub />
         </div>
       )}
       {showStaffCrm && (
@@ -300,6 +289,16 @@ export default function MainPage() {
           <AuthAccountsTab />
         </div>
       )}
+
+      <Modal
+        open={createModalOpen}
+        onClose={() => setCreateModalOpen(false)}
+        title="Tạo mã QR mới"
+        wide
+        className="max-w-4xl"
+      >
+        <Tab1Form onOrderCreated={handleOrderCreated} dbExcel={dbExcel} createdBy={user?.email} />
+      </Modal>
     </AppShell>
   );
 }

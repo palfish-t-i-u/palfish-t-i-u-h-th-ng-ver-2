@@ -45,6 +45,19 @@ export interface RevenuePivotResponse {
   grandTotal: number;
 }
 
+export interface RevenueKeyDataTypeRow {
+  typeLabel: string;
+  cells: Record<string, number>;
+  total: number;
+}
+
+export interface RevenueKeyDataResponse {
+  months: string[];
+  types: RevenueKeyDataTypeRow[];
+  grandTotalRow: Record<string, number>;
+  grandTotal: number;
+}
+
 export type LedgerCreatePayload = {
   ngayTienVe: string;
   tenKhach?: string;
