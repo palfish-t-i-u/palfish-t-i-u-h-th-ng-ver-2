@@ -6,6 +6,10 @@ Pipeline: tab **`SM Hanoi`** + **`HCM REV`** → map schema Sổ → Supabase `s
 
 Sheet mặc định: [All File Thu Hiền](https://docs.google.com/spreadsheets/d/1sEthbH-zcMavoQ1qi9J_CNnHAJoyt0gfsE-xsMW0LCc/edit)
 
+**Mục đích:** Import **một lần** lịch sử từ All File → Sổ doanh thu. Sau go-live Thu Hiền làm việc trên Sổ; **không** cần sync định kỳ. Nút Sync trên app giữ cho OPS re-import khẩn cấp (append-only dedupe).
+
+**Dòng/cột thu gọn trên UI:** Google Sheets API (`values.get`) trả **toàn bộ ô** trong range — row group (vd. thu gọn dòng 2–13516 tab SM Hanoi) và cột ẩn **không** làm mất dữ liệu khi import.
+
 ---
 
 ## Bước 1 — Google Cloud: bật Sheets API
@@ -97,7 +101,8 @@ python scripts/import_gsheet_so_doanh_thu.py --limit 500
 
 Logic:
 
-- Load `nhan_su_sale` **một lần** (team cache) — map ~14k dòng trong vài giây thay vì query từng dòng
+- Load `nhan_su_sale` **một lần** (team cache) — map ~14,6k dòng trong vài giây thay vì query từng dòng
+- Parse số VND/GMV: hỗ trợ chuỗi VN `4.978.000` (tab **HCM REV** trả dạng này qua API), US `4,978,000`, và số thuần
 - Chỉ insert dòng `loai_nhap = tay`, tag `created_by_email = import:gsheet:{tab}`
 - **Dedupe** theo `uid + pay_time + so_tien_vnd + sale + sdt` — chạy lại không nhân đôi
 - **Không xóa** dòng cũ; **không đè** dòng M3 (`tu_dong`)
@@ -110,7 +115,7 @@ Thời gian ước lượng (mức A — full fetch mỗi lần):
 |------|-------------------|------------------|
 | Tải 2 tab Google | ~10–20s | ~10–20s |
 | Map + team cache | ~5–15s | ~5–15s |
-| Insert Supabase | ~5–10 phút (~14k dòng) | ~30s (chủ yếu skip) |
+| Insert Supabase | ~5–10 phút (~14,6k dòng) | ~30s (chủ yếu skip) |
 
 > Nếu import đang chạy **trước** khi có team cache — **Ctrl+C** và chạy lại script mới.
 
@@ -151,11 +156,42 @@ Chỉ role **OPS** (Thu Hiền / System) gọi được.
 | sale_crm_name | Sales (N) | Sales (V) |
 | team | lookup sale / default HCM | lookup sale / default Inhouse 1 |
 
-Code: `backend/gsheet_ledger_import.py`
+Code: `backend/gsheet_ledger_import.py` — `_parse_sheet_number()` xử lý format số từ API.
 
 ---
 
-## Lịch tự động (tuỳ chọn)
+## Đối chiếu số liệu (2026-05-24)
+
+**Nguồn đối chiếu đúng:** tab giao dịch **`SM Hanoi` + `HCM REV`** (Google Sheet live qua API). **Không** so trực tiếp tab pivot (`HN Inhouse 1` — có thể thiếu sale, xem `BC01_DOI_CHIEU_THU_HIEN.md`).
+
+| Chỉ số | Google Sheet live (map unique) | Sổ doanh thu (prod) |
+|--------|-------------------------------:|--------------------:|
+| Số dòng | 14.610 | 14.610 |
+| Real Pay (VND) | 149.737.229.762 | 149.737.229.762 |
+| GMV (RMB) | 42.354.302 | 42.354.302 |
+
+**Cách tự verify (dev):**
+
+```bash
+# Dry-run — phải thấy HCM REV ~794 dòng hợp lệ (không phải 2)
+python scripts/import_gsheet_so_doanh_thu.py --dry-run
+
+# Chỉ bù tab HCM sau khi sửa parser
+python scripts/import_gsheet_so_doanh_thu.py --tab "HCM REV"
+```
+
+**Lưu ý khi so với file `.xlsx` tải về:** bản download có thể lệch ~61 dòng / ~1 tỷ ₫ so với sheet live — do dedupe fingerprint giữa 2 tab (`uid + pay_time + so_tien_vnd + sale + sdt`). **Ưu tiên sheet live.**
+
+**Thẻ Sổ vs BC01/BC02:**
+
+| Màn hình | Đơn vị | Lọc ngày |
+|----------|--------|----------|
+| Thẻ Sổ doanh thu | VND (`so_tien_vnd`) | `pay_time` |
+| BC01 / BC02 | RMB (`gmv_rmb`) | Lọc `pay_time`; BC01 **cột tháng** = `ngay_tien_ve` |
+
+---
+
+## Lịch tự động (tuỳ chọn — thường không cần sau import lần đầu)
 
 Cron Render / GitHub Actions chạy hàng ngày:
 
@@ -185,4 +221,5 @@ Hoặc gọi `POST /revenue/ledger/sync-gsheet` từ scheduler nội bộ.
 - [ ] `GOOGLE_SHEETS_ID` + `GOOGLE_SERVICE_ACCOUNT_JSON` trong `.env`
 - [ ] `pip install -r backend/requirements.txt`
 - [ ] `--dry-run --limit 20` OK
-- [ ] Import thật + kiểm tra Sổ doanh thu filter `import:gsheet`
+- [ ] Import thật + kiểm tra Sổ: ~14.610 dòng, ~149,7 tỷ ₫ (không lọc ngày)
+- [ ] Dry-run HCM REV: **794** dòng hợp lệ (không phải ~2)

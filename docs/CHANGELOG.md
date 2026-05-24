@@ -335,3 +335,15 @@
 
 **Docs**
 - `MODULE_SO_DOANH_THU.md` §2.4–§2.6, M5-11; `M5_OPERATIONS.md` smoke 3c–3d; `TODO.md` M5-11.
+
+---
+
+## 2026-05-24 — Gsheet import: parse VN Real Pay, đối chiếu Sổ
+
+**Backend**
+- `backend/gsheet_ledger_import.py` — `_parse_sheet_number()`: parse chuỗi VN `4.978.000` (tab HCM REV qua API); trước đó ~792 dòng HCM bị skip (VND=0).
+- Re-import HCM REV prod: +792 dòng; Sổ khớp sheet live (14.610 dòng, 149,7 tỷ ₫, 42,35M RMB).
+
+**Docs**
+- `M5_GSHEET_IMPORT.md` — one-time import, row/column collapse, đối chiếu số, verify commands.
+- `M5_OPERATIONS.md` — tag `import:gsheet:*`, link M5_GSHEET_IMPORT.
