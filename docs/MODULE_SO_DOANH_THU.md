@@ -16,6 +16,8 @@
 
 Sửa số pivot → sửa dòng tương ứng ở **Sổ**, không sửa trực tiếp ô pivot.
 
+**Nguồn lịch sử (2026-05):** Import một lần từ Google Sheet [All File Thu Hiền](https://docs.google.com/spreadsheets/d/1sEthbH-zcMavoQ1qi9J_CNnHAJoyt0gfsE-xsMW0LCc/edit) tab `SM Hanoi` + `HCM REV` — xem `docs/M5_GSHEET_IMPORT.md`. Sau go-live dữ liệu mới ghi trực tiếp trên Sổ (M3 + tay), không sync sheet.
+
 ---
 
 ## 2. Sổ doanh thu — một bảng, hai nguồn

@@ -12,6 +12,7 @@ import LedgerFormModal, {
 import LedgerSummaryCards from "./LedgerSummaryCards";
 import Button from "./ui/Button";
 import Badge from "./ui/Badge";
+import Tooltip from "./ui/Tooltip";
 import { Input } from "./ui/Input";
 import {
   Table,
@@ -24,6 +25,22 @@ import {
 } from "./ui/Table";
 
 const PAGE_SIZE = 60;
+
+const GSHEET_SYNC_TOOLTIP = (
+  <>
+    <p className="font-semibold text-gmv-text-strong">
+      Sync Data từ sheet All File Thu Hiền vào Sổ doanh thu
+    </p>
+    <p className="mt-1.5 text-gmv-muted">
+      Tải tab SM Hanoi + HCM REV từ Google Sheet và thêm dòng mới vào Sổ (có check trùng — không
+      xóa/sửa dòng cũ).
+    </p>
+    <p className="mt-1.5 text-amber-800">
+      Thời gian ước lượng: 5–15 phút nếu lần đầu sync dữ liệu hoặc còn nhiều dòng mới (~14.000
+      dòng); 2–5 phút nếu trước đó đã sync phần lớn. Không đóng tab trong lúc chờ.
+    </p>
+  </>
+);
 
 const GSHEET_SYNC_CONFIRM =
   "Sync dữ liệu từ Google Sheet «All File Thu Hiền» (tab SM Hanoi + HCM REV)?\n\n" +
@@ -304,42 +321,6 @@ export default function SoDoanhThuTab() {
 
   return (
     <div className="min-w-0 space-y-4 overflow-x-hidden">
-      <div className="rounded-gmv-md border border-gmv-border bg-gmv-bg/60 p-4">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="min-w-0 max-w-3xl space-y-1">
-            <p className="text-sm font-semibold text-gmv-text-strong">Sync Data — All File Thu Hiền</p>
-            <p className="text-xs leading-relaxed text-gmv-muted">
-              Tải tab <strong>SM Hanoi</strong> + <strong>HCM REV</strong> từ Google Sheet và thêm dòng mới vào Sổ
-              (dedupe — không xóa/sửa dòng cũ).
-            </p>
-            <p className="text-xs leading-relaxed text-amber-800">
-              Thời gian ước lượng:{" "}
-              <strong>5–15 phút</strong> nếu lần đầu hoặc còn nhiều dòng mới (~14.000 dòng);{" "}
-              <strong>2–5 phút</strong> nếu đã sync phần lớn. Không đóng tab trong lúc chờ.
-            </p>
-          </div>
-          <Button
-            variant="secondary"
-            onClick={handleSyncGsheet}
-            disabled={syncing || loading}
-            className="shrink-0"
-          >
-            {syncing ? "Đang sync…" : "Sync Data"}
-          </Button>
-        </div>
-        {syncing && (
-          <p className="mt-3 text-xs text-gmv-primary">
-            Đang tải sheet và ghi Supabase — có thể mất vài phút, vui lòng chờ…
-          </p>
-        )}
-        {syncMessage && !syncing && (
-          <p className="mt-3 text-xs text-gmv-ok">{syncMessage}</p>
-        )}
-        {syncError && !syncing && (
-          <p className="mt-3 text-xs text-red-600">{syncError}</p>
-        )}
-      </div>
-
       <div className="flex flex-wrap items-end gap-3">
         <label className="text-sm text-gmv-muted">
           Từ ngày
@@ -380,8 +361,29 @@ export default function SoDoanhThuTab() {
         <Button variant="ghost" onClick={resetFilters} disabled={!hasActiveFilter && !draftDirty}>
           Reset bộ lọc
         </Button>
+        <Tooltip content={GSHEET_SYNC_TOOLTIP} align="end" panelClassName="max-w-md">
+          <Button
+            variant="secondary"
+            onClick={handleSyncGsheet}
+            disabled={syncing || loading}
+          >
+            {syncing ? "Đang sync…" : "Sync Data"}
+          </Button>
+        </Tooltip>
         <Button onClick={openCreate}>+ Thêm dòng</Button>
       </div>
+
+      {syncing && (
+        <p className="text-xs text-gmv-primary">
+          Đang tải sheet và ghi Supabase — có thể mất vài phút, vui lòng chờ…
+        </p>
+      )}
+      {syncMessage && !syncing && (
+        <p className="text-xs text-gmv-ok">{syncMessage}</p>
+      )}
+      {syncError && !syncing && (
+        <p className="text-xs text-red-600">{syncError}</p>
+      )}
 
       {!appliedFrom && !appliedTo && (
         <p className="text-xs text-amber-700">

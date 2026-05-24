@@ -120,7 +120,8 @@ Phân loại test vs thật theo `created_by_email`:
 
 | Nguồn | `created_by_email` |
 |-------|-------------------|
-| Excel lịch sử | `import:HN`, `import:HCM` |
+| Excel lịch sử (HNxHCM) | `import:HN`, `import:HCM` |
+| Google Sheet All File | `import:gsheet:SM Hanoi`, `import:gsheet:HCM REV` |
 | M3 backfill | `backfill@m3` |
 | M3 approve live | email user lúc approve |
 | Điền tay app | email Hiền / System |
@@ -147,5 +148,6 @@ Phân loại test vs thật theo `created_by_email`:
 ## 5. Liên kết
 
 - Spec nghiệp vụ + UI Hiếu: `docs/MODULE_SO_DOANH_THU.md`
+- Import All File Thu Hiền (Google Sheet): `docs/M5_GSHEET_IMPORT.md`
 - Workflow branch UI: `docs/WORKFLOW_UI_UX.md`
 - Deploy tổng: `docs/DEPLOY.md`

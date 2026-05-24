@@ -205,22 +205,40 @@ def _parse_time(value: Any) -> str | None:
     return None
 
 
-def _to_int_vnd(value: Any) -> int:
+def _parse_sheet_number(value: Any) -> float | None:
+    """Parse số từ Google Sheet — hỗ trợ VN `4.978.000`, US `4,978,000`, số thuần."""
     if value is None or value == "":
-        return 0
+        return None
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    s = str(value).strip().replace(" ", "")
+    if not s:
+        return None
+    # VN thousand sep: 4.978.000 / 38.400.000
+    if s.count(".") > 1:
+        s = s.replace(".", "")
+    else:
+        s = s.replace(",", "")
     try:
-        return int(float(str(value).replace(",", "").strip()))
+        return float(s)
     except ValueError:
+        return None
+
+
+def _to_int_vnd(value: Any) -> int:
+    n = _parse_sheet_number(value)
+    if n is None or n <= 0:
         return 0
+    return int(n)
 
 
 def _to_float_gmv(value: Any) -> float | None:
-    if value is None or value == "":
+    n = _parse_sheet_number(value)
+    if n is None or n <= 0:
         return None
-    try:
-        return float(str(value).replace(",", "").strip())
-    except ValueError:
-        return None
+    return round(n, 2)
 
 
 def _normalize_uid(value: Any) -> str | None:
