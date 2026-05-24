@@ -1,4 +1,4 @@
-"""Dashboard routes — Module 6: Thống kê từ crm_sales_data + don_hang."""
+"""Dashboard routes — Module 6: Hybrid (daily_trends từ DB + live_summary từ PalFish)."""
 
 from __future__ import annotations
 
@@ -9,11 +9,14 @@ from fastapi import HTTPException, Query
 
 from crm_metrics import (
     INVALID_TEAM_LABELS,
+    aggregate_daily_by_date,
     aggregate_label,
     conversion_rates,
     daily_mtd_snapshot_rows,
     empty_metrics,
+    exclude_legacy_summary_rows,
     extract_sale_detail,
+    fetch_crm_sales_rows,
     is_detail_sale_row,
     is_valid_sale_name,
     merge_sale_detail,
@@ -22,8 +25,10 @@ from crm_metrics import (
     safe_divide,
     select_crm_rows,
     sum_metrics,
+    sync_coverage_meta,
     team_label,
 )
+from crm_routes import MAX_DAYS, fetch_live_crm_rows
 
 DEFAULT_EXCHANGE_RATE = 3700
 
@@ -160,6 +165,64 @@ def _apply_team_filter(rows: list[dict], team: str | None) -> list[dict]:
     return out
 
 
+def _exclude_summary_rows(rows: list[dict]) -> list[dict]:
+    """Hybrid DB — bỏ legacy record_type=summary."""
+    return [
+        r for r in rows
+        if str(r.get("record_type") or "").strip().lower() != "summary"
+    ]
+
+
+def _query_crm_rows(
+    sb,
+    d_start: str,
+    d_end: str,
+    *,
+    sale: str | None = None,
+    team: str | None = None,
+) -> list[dict]:
+    rows = fetch_crm_sales_rows(sb, d_start, d_end, sale=sale, team=team)
+    rows = exclude_legacy_summary_rows(rows)
+    return _apply_team_filter(rows, team)
+
+
+def _build_top_sales(
+    kpi_rows: list[dict],
+    collected_by_sale: dict[str, int],
+) -> list[dict]:
+    sale_map: dict[str, dict] = {}
+    for r in kpi_rows:
+        sname = aggregate_label(r)
+        detail = extract_sale_detail(r)
+        collected = collected_by_sale.get(sname, 0)
+        detail["collected_vnd"] = collected
+        detail["collected"] = collected
+        if sname not in sale_map:
+            sale_map[sname] = detail
+        else:
+            merge_sale_detail(sale_map[sname], detail)
+            sale_map[sname]["collected_vnd"] = collected
+            sale_map[sname]["collected"] = collected
+
+    return sorted(
+        [x for x in sale_map.values() if is_valid_sale_name(x.get("sale_name"))],
+        key=lambda x: (x.get("gmv_rmb") or 0, x.get("sale_name") or ""),
+        reverse=True,
+    )
+
+
+def _validate_custom_range(d_start: str, d_end: str) -> None:
+    try:
+        ds = date.fromisoformat(d_start)
+        de = date.fromisoformat(d_end)
+    except ValueError:
+        raise HTTPException(400, "start/end phải có dạng YYYY-MM-DD")
+    if de < ds:
+        raise HTTPException(400, "end phải >= start")
+    if (de - ds).days >= MAX_DAYS:
+        raise HTTPException(400, f"Dải ngày tối đa {MAX_DAYS} ngày")
+
+
 def _day_bucket(daily: list[dict], day: str) -> dict[str, int]:
     for b in daily:
         if b.get("date") == day:
@@ -199,8 +262,7 @@ def register_dashboard_routes(app, supabase_factory):
                 "team, sale_name, department, raw_data, record_type"
             ).execute()
             rows = res.data or []
-            summary, daily, legacy = _split_record_types(rows)
-            pool = summary if summary else (daily if daily else legacy)
+            pool = _exclude_summary_rows(rows)
             teams: set[str] = set()
             sales: set[str] = set()
             depts: set[str] = set()
@@ -229,6 +291,146 @@ def register_dashboard_routes(app, supabase_factory):
         except Exception as exc:
             print(f"[Dashboard filters] {exc}")
             return {"teams": [], "sales": [], "departments": []}
+
+    @app.get("/dashboard/daily_trends", tags=["Dashboard"])
+    def dashboard_daily_trends(
+        start_date: str = Query(..., description="YYYY-MM-DD"),
+        end_date: str = Query(..., description="YYYY-MM-DD"),
+        team: str | None = Query(None),
+        sale: str | None = Query(None),
+        department: str | None = Query(None),
+    ):
+        """Nhanh — query crm_sales_data (incremental daily) cho biểu đồ & BC03."""
+        sb = supabase_factory()
+        if not sb:
+            raise HTTPException(503, "Supabase chưa cấu hình")
+
+        d_start, d_end = start_date[:10], end_date[:10]
+        _validate_custom_range(d_start, d_end)
+        team_filter = team or department
+
+        try:
+            rows = _query_crm_rows(sb, d_start, d_end, sale=sale, team=team_filter)
+        except Exception as exc:
+            raise HTTPException(500, f"Query crm_sales_data thất bại: {exc}") from exc
+
+        _, collected_by_date, _, _ = _load_collected_maps(sb, d_start, d_end, sale=sale)
+        revenue_by_date = aggregate_daily_by_date(rows, d_start, d_end)
+        for bucket in revenue_by_date:
+            d = str(bucket["date"])
+            bucket["collected_vnd"] = collected_by_date.get(d, 0)
+            bucket["collected"] = bucket["collected_vnd"]
+
+        sync_dates = {str(r.get("report_date", ""))[:10] for r in rows if r.get("report_date")}
+        coverage = sync_coverage_meta(rows, d_start, d_end)
+
+        return {
+            "period": {"start": d_start, "end": d_end},
+            "row_count": len(rows),
+            "revenue_by_date": revenue_by_date,
+            "meta": {
+                "source": "supabase_daily",
+                "sync_days": len(sync_dates),
+                "crm_gmv_currency": "RMB",
+                "collected_currency": "VND",
+                **{k: coverage[k] for k in ("synced_days", "expected_days", "missing_dates")},
+            },
+        }
+
+    @app.get("/dashboard/live_summary", tags=["Dashboard"])
+    async def dashboard_live_summary(
+        start_date: str = Query(..., description="YYYY-MM-DD"),
+        end_date: str = Query(..., description="YYYY-MM-DD"),
+        team: str | None = Query(None),
+        sale: str | None = Query(None),
+        department: str | None = Query(None),
+    ):
+        """Chậm — PalFish live 1 request, join don_hang, KHÔNG lưu DB."""
+        sb = supabase_factory()
+        if not sb:
+            raise HTTPException(503, "Supabase chưa cấu hình")
+
+        d_start, d_end = start_date[:10], end_date[:10]
+        _validate_custom_range(d_start, d_end)
+        team_filter = team or department
+        exchange_rate = _load_exchange_rate(sb, d_end)
+        today_str = date.today().isoformat()
+
+        ds = date.fromisoformat(d_start)
+        de = date.fromisoformat(d_end)
+
+        try:
+            live_rows, live_meta = await fetch_live_crm_rows(sb, ds, de)
+        except HTTPException:
+            raise
+        except Exception as exc:
+            raise HTTPException(502, f"PalFish live fetch thất bại: {exc}") from exc
+
+        if sale:
+            live_rows = [r for r in live_rows if (r.get("sale_name") or "").strip() == sale]
+        live_rows = _apply_team_filter(live_rows, team_filter)
+
+        empty_kpi = _kpi_payload(empty_metrics(), 0, 0, 0, exchange_rate)
+        if not live_rows:
+            return {
+                "period": {"start": d_start, "end": d_end},
+                "row_count": 0,
+                "meta": {
+                    "crm_gmv_currency": "RMB",
+                    "collected_currency": "VND",
+                    "exchange_rate": exchange_rate,
+                    "kpi_source": "palfish_live",
+                    **live_meta,
+                },
+                "kpi": empty_kpi,
+                "top_sales": [],
+                "conversion": conversion_rates(0, 0, 0, 0),
+                "today": {
+                    "date": today_str,
+                    "is_calendar_today": True,
+                    "orders": 0,
+                    "gmv_rmb": 0,
+                    "collected_vnd": 0,
+                },
+            }
+
+        kpi_rows = rows_for_kpi(live_rows)
+        tot = sum_metrics(kpi_rows)
+        crm_l8 = int(tot["l8"])
+
+        tot_collected_vnd, collected_by_date, collected_by_sale, collected_order_count = _load_collected_maps(
+            sb, d_start, d_end, sale=sale,
+        )
+        top_sales = _build_top_sales(kpi_rows, collected_by_sale)
+
+        focus_day = today_str if d_start <= today_str <= d_end else d_end
+        focus_collected = collected_by_date.get(focus_day, 0)
+
+        l1, l3, l4, l8 = int(tot["l1"]), int(tot["l3"]), int(tot["l4"]), int(tot["l8"])
+
+        return {
+            "period": {"start": d_start, "end": d_end},
+            "row_count": len(kpi_rows),
+            "meta": {
+                "crm_gmv_currency": "RMB",
+                "collected_currency": "VND",
+                "exchange_rate": exchange_rate,
+                "kpi_source": "palfish_live",
+                **live_meta,
+            },
+            "kpi": _kpi_payload(tot, crm_l8, tot_collected_vnd, collected_order_count, exchange_rate),
+            "top_sales": top_sales,
+            "conversion": conversion_rates(l1, l3, l4, l8),
+            "today": {
+                "date": focus_day,
+                "is_calendar_today": focus_day == today_str,
+                "orders": 0,
+                "gmv_rmb": 0,
+                "collected_vnd": focus_collected,
+                "amount": 0,
+                "collected": focus_collected,
+            },
+        }
 
     @app.get("/dashboard/summary", tags=["Dashboard"])
     def dashboard_summary(

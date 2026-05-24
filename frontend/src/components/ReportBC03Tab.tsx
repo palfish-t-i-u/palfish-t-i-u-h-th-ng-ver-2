@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { endpoints } from "../lib/api";
 import { isValidSaleName } from "../lib/metrics";
 import { cn } from "../lib/cn";
-import type { Bc03DailyRevenue, Bc03Report, Bc03StaffOption } from "../types/order";
+import type { Bc03DailyRevenue, Bc03Report, Bc03StaffOption, DashboardLiveSummary } from "../types/order";
 
 type CurrencyMode = "VND" | "RMB";
 type AutoTab = "revenue" | "trial" | "referral";
@@ -501,6 +501,8 @@ export default function ReportBC03Tab() {
   const [teamFilter, setTeamFilter] = useState("");
   const [autoTab, setAutoTab] = useState<AutoTab>("revenue");
   const [report, setReport] = useState<Bc03Report | null>(null);
+  const [liveSummary, setLiveSummary] = useState<DashboardLiveSummary | null>(null);
+  const [kpiLoading, setKpiLoading] = useState(false);
   const [kpiDraft, setKpiDraft] = useState<Record<string, KpiDraft>>({});
   const [excludedStaff, setExcludedStaff] = useState<Set<string>>(() => new Set());
   const [staffOptions, setStaffOptions] = useState<Bc03StaffOption[]>([]);
@@ -614,19 +616,27 @@ export default function ReportBC03Tab() {
 
   const loadReport = useCallback(async () => {
     setLoading(true);
+    setKpiLoading(true);
     setError("");
+    const liveParams = { start_date: rangeStart, end_date: rangeEnd };
     try {
-      const res = await endpoints.reports.bc03({
-        range_key: "custom",
-        start: rangeStart,
-        end: rangeEnd,
-        team: teamFilter || undefined,
-      });
-      setReport(res.data);
+      const [bc03Res, liveRes] = await Promise.all([
+        endpoints.reports.bc03({
+          range_key: "custom",
+          start: rangeStart,
+          end: rangeEnd,
+          team: teamFilter || undefined,
+        }),
+        endpoints.dashboard.liveSummary(liveParams).finally(() => setKpiLoading(false)),
+      ]);
+      setReport(bc03Res.data);
+      setLiveSummary(liveRes.data);
     } catch (e: unknown) {
+      setKpiLoading(false);
       const msg = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
       setError(msg || "Không tải được báo cáo BC03.");
       setReport(null);
+      setLiveSummary(null);
     } finally {
       setLoading(false);
     }
@@ -783,7 +793,7 @@ export default function ReportBC03Tab() {
           .filter((r) => {
             const row = mergedRevenueRows.find((x) => x.sale_name === r.sale_name);
             const hasActual = row && (row.orders > 0 || row.collected_vnd > 0 || row.gmv_rmb > 0);
-            return hasActual || r.b2_orders > 0 || r.b4_gmv_vnd > 0;
+            return hasActual || r.b4_gmv_vnd > 0;
           }),
       });
       setSavedMeta({ at: res.data.updated_at, by: res.data.updated_by });
@@ -851,6 +861,59 @@ export default function ReportBC03Tab() {
             Kỳ: {report.period.start} → {report.period.end}
           </p>
         )}
+      </div>
+
+      {report?.meta?.missing_dates && report.meta.missing_dates.length > 0 && (
+        <div className="rounded-lg bg-amber-950/60 px-4 py-3 text-sm text-amber-200 ring-1 ring-amber-800">
+          <strong>Thiếu dữ liệu daily trong DB:</strong>{" "}
+          {report.meta.synced_days ?? 0}/{report.meta.expected_days ?? "?"} ngày đã sync.
+          {" "}Các ngày chưa có:{" "}
+          {report.meta.missing_dates.slice(0, 12).map((d) => d.slice(8, 10) + "/" + d.slice(5, 7)).join(", ")}
+          {(report.meta.missing_dates.length > 12) ? ` … (+${report.meta.missing_dates.length - 12} ngày)` : ""}.
+          {" "}Vào tab <strong>Đồng bộ CRM</strong> → backfill từng ngày hoặc gọi{" "}
+          <code className="text-amber-100">POST /crm/sync/backfill</code>.
+        </div>
+      )}
+
+      {/* PalFish live KPI — khớp 100% với CRM gốc */}
+      <div className="relative rounded-xl bg-slate-800/60 p-4 ring-1 ring-slate-700">
+        {kpiLoading && (
+          <div className="absolute inset-0 z-10 flex items-center justify-center rounded-xl bg-slate-900/70">
+            <span className="flex items-center gap-2 text-sm text-slate-300">
+              <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-blue-500 border-t-transparent" />
+              Đang lấy tổng CRM từ PalFish…
+            </span>
+          </div>
+        )}
+        <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-500">
+          Tổng kỳ (PalFish live — không lưu DB)
+        </p>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <div>
+            <p className="text-[10px] text-slate-500">L1</p>
+            <p className="text-lg font-bold tabular-nums text-slate-100">
+              {new Intl.NumberFormat("vi-VN").format(liveSummary?.kpi?.l1 ?? 0)}
+            </p>
+          </div>
+          <div>
+            <p className="text-[10px] text-slate-500">L8 (đơn CRM)</p>
+            <p className="text-lg font-bold tabular-nums text-slate-100">
+              {new Intl.NumberFormat("vi-VN").format(liveSummary?.kpi?.l8 ?? 0)}
+            </p>
+          </div>
+          <div>
+            <p className="text-[10px] text-slate-500">GMV CRM (RMB)</p>
+            <p className="text-lg font-bold tabular-nums text-slate-100">
+              {new Intl.NumberFormat("vi-VN").format(liveSummary?.kpi?.total_gmv_rmb ?? 0)}
+            </p>
+          </div>
+          <div>
+            <p className="text-[10px] text-slate-500">Đã thu (VND)</p>
+            <p className="text-lg font-bold tabular-nums text-emerald-300">
+              {new Intl.NumberFormat("vi-VN").format(liveSummary?.kpi?.total_collected_vnd ?? 0)} ₫
+            </p>
+          </div>
+        </div>
       </div>
 
       {/* Toolbar — không còn form KPI riêng */}

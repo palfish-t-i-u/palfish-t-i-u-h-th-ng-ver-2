@@ -7,9 +7,10 @@ function todayStr() {
   return new Date().toISOString().slice(0, 10);
 }
 
-function firstDayOfMonth() {
+function yesterdayStr() {
   const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;
+  d.setDate(d.getDate() - 1);
+  return d.toISOString().slice(0, 10);
 }
 
 function TokenStatus({ hasToken, updatedAt }: { hasToken: boolean | null; updatedAt?: string | null }) {
@@ -64,8 +65,7 @@ function Toast({ message, onClose }: { message: string; onClose: () => void }) {
 }
 
 export default function Module5Tab() {
-  const [startDate, setStartDate] = useState(firstDayOfMonth());
-  const [endDate, setEndDate] = useState(todayStr());
+  const [syncDate, setSyncDate] = useState(yesterdayStr());
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [toast, setToast] = useState("");
@@ -96,19 +96,8 @@ export default function Module5Tab() {
   }, [checkToken]);
 
   async function handleSync() {
-    if (!startDate || !endDate) {
-      setError("Vui lòng chọn đủ Từ ngày và Đến ngày.");
-      return;
-    }
-    if (endDate < startDate) {
-      setError("Đến ngày phải >= Từ ngày.");
-      return;
-    }
-
-    const days =
-      (new Date(endDate).getTime() - new Date(startDate).getTime()) / 86_400_000;
-    if (days >= 31) {
-      setError("Dải ngày tối đa 31 ngày. Vui lòng thu hẹp khoảng thời gian.");
+    if (!syncDate) {
+      setError("Vui lòng chọn ngày cần đồng bộ.");
       return;
     }
 
@@ -116,14 +105,11 @@ export default function Module5Tab() {
     setError("");
 
     try {
-      const res = await endpoints.crmData.sync(startDate, endDate);
-      const { rows_upserted, rows_fetched, days_failed, department_fallback, summary_rows, daily_rows } = res.data;
-      let msg = `Đồng bộ thành công! ${rows_upserted}/${rows_fetched} dòng (summary: ${summary_rows ?? "?"}, daily: ${daily_rows ?? "?"}).`;
+      const res = await endpoints.crmData.sync(syncDate);
+      const { rows_upserted, rows_fetched, department_fallback, sync_date } = res.data;
+      let msg = `Đồng bộ ${sync_date ?? syncDate} thành công! ${rows_upserted}/${rows_fetched} dòng.`;
       if (department_fallback) {
         msg += " Lưu ý: team CRM export rỗng — đã dùng dữ liệu org VN.";
-      }
-      if (days_failed?.length > 0) {
-        msg += ` (${days_failed.length} ngày lỗi)`;
       }
       setToast(msg);
     } catch (e: unknown) {
@@ -172,27 +158,17 @@ export default function Module5Tab() {
       </div>
 
       <div className="rounded-xl bg-slate-800/60 p-5 ring-1 ring-slate-700">
-        <p className="mb-4 text-sm font-semibold text-slate-300">Chọn dải ngày cần đồng bộ</p>
+        <p className="mb-4 text-sm font-semibold text-slate-300">
+          Incremental sync — đúng 1 ngày / lần (cron hoặc thủ công)
+        </p>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <label className="block">
-            <span className="mb-1.5 block text-xs font-medium text-slate-400">Từ ngày</span>
+          <label className="block sm:col-span-2 max-w-xs">
+            <span className="mb-1.5 block text-xs font-medium text-slate-400">Ngày cần đồng bộ</span>
             <input
               type="date"
-              value={startDate}
-              max={endDate}
-              onChange={(e) => setStartDate(e.target.value)}
-              className="w-full rounded-lg border border-slate-600 bg-slate-900 px-3 py-2 text-sm text-slate-100
-                         focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-            />
-          </label>
-          <label className="block">
-            <span className="mb-1.5 block text-xs font-medium text-slate-400">Đến ngày</span>
-            <input
-              type="date"
-              value={endDate}
-              min={startDate}
+              value={syncDate}
               max={todayStr()}
-              onChange={(e) => setEndDate(e.target.value)}
+              onChange={(e) => setSyncDate(e.target.value)}
               className="w-full rounded-lg border border-slate-600 bg-slate-900 px-3 py-2 text-sm text-slate-100
                          focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
             />
@@ -201,18 +177,8 @@ export default function Module5Tab() {
 
         <div className="mt-3 flex flex-wrap gap-2">
           {[
-            { label: "Hôm nay", fn: () => { setStartDate(todayStr()); setEndDate(todayStr()); } },
-            {
-              label: "7 ngày qua",
-              fn: () => {
-                const d = new Date();
-                const from = new Date(d);
-                from.setDate(d.getDate() - 6);
-                setStartDate(from.toISOString().slice(0, 10));
-                setEndDate(todayStr());
-              },
-            },
-            { label: "Tháng này", fn: () => { setStartDate(firstDayOfMonth()); setEndDate(todayStr()); } },
+            { label: "Hôm qua", fn: () => setSyncDate(yesterdayStr()) },
+            { label: "Hôm nay", fn: () => setSyncDate(todayStr()) },
           ].map(({ label, fn }) => (
             <button
               key={label}
