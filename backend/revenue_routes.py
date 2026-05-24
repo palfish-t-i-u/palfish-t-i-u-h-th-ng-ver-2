@@ -1190,3 +1190,35 @@ def register_revenue_routes(app, get_supabase) -> None:
             raise
         except Exception as exc:
             raise HTTPException(500, f"Lỗi pivot Doanh thu Sale: {exc}") from exc
+
+    class GsheetSyncBody(BaseModel):
+        dryRun: bool = False
+        limit: int = 0
+        spreadsheetId: str | None = None
+        tabs: list[str] | None = None
+
+    @app.post("/revenue/ledger/sync-gsheet")
+    def sync_ledger_from_gsheet(body: GsheetSyncBody, authorization: str | None = Header(None)):
+        """Import tab SM Hanoi + HCM REV từ All File Thu Hiền → Sổ (dedupe)."""
+        sb = _sb()
+        actor = resolve_actor(sb, authorization)
+        _require_ops(actor)
+        try:
+            from gsheet_ledger_import import DEFAULT_SHEET_TABS, sync_gsheet_to_ledger
+
+            tabs = tuple(body.tabs) if body.tabs else DEFAULT_SHEET_TABS
+            result = sync_gsheet_to_ledger(
+                sb,
+                spreadsheet_id=body.spreadsheetId,
+                tabs=tabs,
+                limit=body.limit or 0,
+                dry_run=body.dryRun,
+                actor_email=actor.email or "import:gsheet",
+            )
+            return result
+        except FileNotFoundError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        except HTTPException:
+            raise
+        except Exception as exc:
+            raise HTTPException(500, f"Lỗi sync Google Sheet: {exc}") from exc
