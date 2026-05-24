@@ -1,27 +1,21 @@
 import type { RevenueLedgerRow } from "../types/revenue";
-import { pivotTypeFromRow, pivotTypeLabel } from "./typeFixx";
+import {
+  TYPE_FIXX_ORDER,
+  type TypeFixxKey,
+  typeFixxFromRow,
+  typeFixxLabel,
+} from "./typeFixx";
 
-/** Thứ tự cột Type pivot trên sheet Hiếu (đối chiếu ngày). */
-export const LEDGER_SOURCE_ORDER = [
-  "Other",
-  "公海",
-  "广告",
-  "续费",
-  "转介绍",
-] as const;
+export const LEDGER_SOURCE_ORDER = TYPE_FIXX_ORDER;
 
-export type LedgerSourceKey = (typeof LEDGER_SOURCE_ORDER)[number];
+export type LedgerSourceKey = TypeFixxKey;
 
 export function resolveLedgerSource(row: RevenueLedgerRow): LedgerSourceKey {
-  const pivot = pivotTypeFromRow(row.loai, row.loai2);
-  if ((LEDGER_SOURCE_ORDER as readonly string[]).includes(pivot)) {
-    return pivot as LedgerSourceKey;
-  }
-  return "Other";
+  return typeFixxFromRow(row.loai, row.loai2);
 }
 
 export function formatSourceLabel(source: string): string {
-  return pivotTypeLabel(source);
+  return typeFixxLabel(source);
 }
 
 export interface SourceBucket {

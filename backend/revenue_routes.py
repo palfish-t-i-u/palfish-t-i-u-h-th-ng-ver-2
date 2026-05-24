@@ -19,9 +19,31 @@ TEAM_PIVOT_LABELS: dict[str, str] = {
     "HCM (Online)": "HCM team",
     "In-house": "HN inhouse",
     "HCM team": "HCM team",
+    "Linh Dam (Store)": "Linh Dam",
+    "Offline": "Offline",
+    "An Binh (Store)": "An Binh",
 }
 
-KNOWN_BC01_TEAMS = frozenset({"Inhouse 1", "Inhouse 2", "HCM (Online)"})
+KNOWN_BC01_TEAMS = frozenset(
+    {
+        "Inhouse 1",
+        "Inhouse 2",
+        "HCM (Online)",
+        "Linh Dam (Store)",
+        "Offline",
+        "An Binh (Store)",
+    }
+)
+
+BC01_TEAM_ORDER = [
+    "Inhouse 1",
+    "Inhouse 2",
+    "HCM (Online)",
+    "Linh Dam (Store)",
+    "Offline",
+    "An Binh (Store)",
+    "Khác",
+]
 
 TEAM_TO_CANONICAL: dict[str, str] = {
     "Inhouse 1": "Inhouse 1",
@@ -31,6 +53,14 @@ TEAM_TO_CANONICAL: dict[str, str] = {
     "HN inhouse": "Inhouse 1",
     "HN inhouse 2": "Inhouse 2",
     "HCM team": "HCM (Online)",
+    "Linh Dam": "Linh Dam (Store)",
+    "Linh Dam Store": "Linh Dam (Store)",
+    "Linh Dam (Store)": "Linh Dam (Store)",
+    "Offline": "Offline",
+    "Offline Store": "Offline",
+    "An Binh": "An Binh (Store)",
+    "An Binh Store": "An Binh (Store)",
+    "An Binh (Store)": "An Binh (Store)",
 }
 
 BC02_TYPE_ORDER: list[str] = [
@@ -69,6 +99,28 @@ BC02_TYPE_ALIASES: dict[str, str] = {
 }
 
 BC02_AD_SOURCES = frozenset({"广告", "PNS", "Bán mới", "Quảng cáo"})
+
+BC02_GMV_GROUPS: list[tuple[str, str, str, str]] = [
+    ("ads", "Quảng cáo", "Số đơn đầu", "GMV"),
+    ("offline", "Offline", "Số đơn đầu", "GMV"),
+    ("refer", "Giới thiệu", "Số đơn đầu", "GMV"),
+    ("public_pool", "Biển công cộng", "Số đơn", "GMV"),
+    ("renew", "Gia hạn", "Số đơn", "GMV"),
+    ("koc", "KOC", "Số đơn", "GMV"),
+    ("other", "Khác", "Số đơn", "GMV"),
+    ("lives", "Livestream", "Số đơn", "GMV"),
+]
+
+BC02_TYPE_TO_GMV_KEY: dict[str, str] = {
+    "Quảng cáo": "ads",
+    "Offline": "offline",
+    "Giới thiệu": "refer",
+    "Biển công cộng": "public_pool",
+    "Gia hạn": "renew",
+    "KOC": "koc",
+    "Other": "other",
+    "Lives": "lives",
+}
 
 
 def _require_ops(actor) -> None:
@@ -115,6 +167,8 @@ def team_to_canonical(team: str | None, team_pivot_label: str | None = None) -> 
         return TEAM_TO_CANONICAL[pl]
     if t in KNOWN_BC01_TEAMS:
         return t
+    if pl in KNOWN_BC01_TEAMS:
+        return pl
     return "Khác"
 
 
@@ -167,9 +221,8 @@ def _build_sales_performance_pivot(
 
     months = sorted(month_set, key=lambda m: (int(m.split("/")[0]), int(m.split("/")[1])))
 
-    team_order = ["Inhouse 1", "Inhouse 2", "HCM (Online)", "Khác"]
-    sorted_teams = [t for t in team_order if t in grouped]
-    sorted_teams.extend(sorted(t for t in grouped if t not in team_order))
+    sorted_teams = [t for t in BC01_TEAM_ORDER if t in grouped]
+    sorted_teams.extend(sorted(t for t in grouped if t not in BC01_TEAM_ORDER))
 
     teams_out = []
     grand: dict[str, float] = {m: 0.0 for m in months}
@@ -212,45 +265,87 @@ def _build_sales_performance_pivot(
     }
 
 
+def _empty_gmv_day_bucket() -> dict[str, dict[str, float]]:
+    return {key: {"count": 0.0, "gmv": 0.0} for key, *_ in BC02_GMV_GROUPS}
+
+
 def _build_key_data_pivot(rows: list[dict[str, Any]]) -> dict[str, Any]:
-    month_set: set[str] = set()
-    grouped: dict[str, dict[str, float]] = {t: {} for t in BC02_TYPE_ORDER}
+    """BC02 — tab GMV: mỗi ngày một dòng, cặp số đơn + GMV theo loại nguồn."""
+    by_date: dict[str, dict[str, Any]] = {}
 
     for r in rows:
         ngay = _parse_date(r.get("ngay_tien_ve"))
         if not ngay:
             continue
-        mk = _month_key(ngay)
-        month_set.add(mk)
-        type_label = bc02_type_from_row(r.get("loai"), r.get("loai_2"))
+        dk = ngay.isoformat()
         gmv = float(r.get("gmv_rmb") or 0)
-        grouped.setdefault(type_label, {})
-        grouped[type_label][mk] = grouped[type_label].get(mk, 0) + gmv
+        type_label = bc02_type_from_row(r.get("loai"), r.get("loai_2"))
+        cat_key = BC02_TYPE_TO_GMV_KEY.get(type_label, "other")
 
-    months = sorted(month_set, key=lambda m: (int(m.split("/")[0]), int(m.split("/")[1])))
-    grand: dict[str, float] = {m: 0.0 for m in months}
-    types_out = []
-    grand_total = 0.0
-
-    for type_label in BC02_TYPE_ORDER:
-        cells = grouped.get(type_label, {})
-        row_total = sum(cells.get(m, 0) for m in months)
-        for m in months:
-            grand[m] += cells.get(m, 0)
-        grand_total += row_total
-        types_out.append(
+        day = by_date.setdefault(
+            dk,
             {
-                "typeLabel": type_label,
-                "cells": {m: round(cells.get(m, 0), 2) for m in months},
-                "total": round(row_total, 2),
+                "date": dk,
+                "totalOrders": 0,
+                "totalGmv": 0.0,
+                "categories": _empty_gmv_day_bucket(),
+            },
+        )
+        day["totalOrders"] += 1
+        day["totalGmv"] += gmv
+        day["categories"][cat_key]["count"] += 1
+        day["categories"][cat_key]["gmv"] += gmv
+
+    sorted_dates = sorted(by_date.keys(), reverse=True)
+    rows_out = []
+    grand = {
+        "totalOrders": 0,
+        "totalGmv": 0.0,
+        "categories": _empty_gmv_day_bucket(),
+    }
+
+    for dk in sorted_dates:
+        day = by_date[dk]
+        cats_rounded: dict[str, dict[str, float]] = {}
+        for key, *_ in BC02_GMV_GROUPS:
+            c = day["categories"][key]
+            cats_rounded[key] = {
+                "count": int(c["count"]),
+                "gmv": round(c["gmv"], 2),
+            }
+            grand["categories"][key]["count"] += c["count"]
+            grand["categories"][key]["gmv"] += c["gmv"]
+        grand["totalOrders"] += day["totalOrders"]
+        grand["totalGmv"] += day["totalGmv"]
+        rows_out.append(
+            {
+                "date": dk,
+                "totalOrders": day["totalOrders"],
+                "totalGmv": round(day["totalGmv"], 2),
+                "categories": cats_rounded,
             }
         )
 
+    grand_cats = {
+        key: {
+            "count": int(grand["categories"][key]["count"]),
+            "gmv": round(grand["categories"][key]["gmv"], 2),
+        }
+        for key, *_ in BC02_GMV_GROUPS
+    }
+
     return {
-        "months": months,
-        "types": types_out,
-        "grandTotalRow": {m: round(grand[m], 2) for m in months},
-        "grandTotal": round(grand_total, 2),
+        "scopeLabel": "In-house",
+        "columnGroups": [
+            {"key": key, "label": label, "countLabel": count_lbl, "gmvLabel": gmv_lbl}
+            for key, label, count_lbl, gmv_lbl in BC02_GMV_GROUPS
+        ],
+        "rows": rows_out,
+        "grandTotal": {
+            "totalOrders": grand["totalOrders"],
+            "totalGmv": round(grand["totalGmv"], 2),
+            "categories": grand_cats,
+        },
     }
 
 
@@ -318,6 +413,175 @@ def _info_code_from_ma(ma_don: str | None) -> str:
 
 
 _SUPABASE_PAGE = 1000
+LEDGER_TABLE_PAGE = 60
+
+LEDGER_TYPE_FIXX_MAP: dict[str, str] = {
+    "广告": "广告",
+    "转介绍": "转介绍",
+    "续费": "续费",
+    "公海": "公海",
+    "KOC": "KOC",
+    "Lives": "Lives",
+    "Booth": "Offline",
+    "Refer": "转介绍",
+    "Resell": "续费",
+    "GD": "公海",
+    "Offline": "Offline",
+    "Other": "Other",
+    "PNS": "广告",
+    "KFT": "Other",
+    "KET": "Other",
+    "Livestream": "Lives",
+    "Bán mới": "广告",
+    "Khách giới thiệu": "转介绍",
+    "Gia hạn": "续费",
+    "Kho chung": "公海",
+    "Nguồn khác": "Other",
+}
+
+LEDGER_TYPE_FIXX_ORDER: list[str] = [
+    "Lives",
+    "Offline",
+    "Other",
+    "公海",
+    "广告",
+    "续费",
+    "转介绍",
+    "KOC",
+]
+
+
+def _apply_ledger_type_fixx(type_goc: str) -> str:
+    key = (type_goc or "").strip()
+    if not key:
+        return "Other"
+    if key in LEDGER_TYPE_FIXX_MAP:
+        return LEDGER_TYPE_FIXX_MAP[key]
+    lower = key.lower()
+    for from_k, to_v in LEDGER_TYPE_FIXX_MAP.items():
+        if from_k.lower() == lower:
+            return to_v
+    return "Other"
+
+
+def _ledger_type_goc(loai: str | None, loai2: str | None) -> str:
+    l1 = (loai or "").strip()
+    l2 = (loai2 or "").strip()
+    l1_fixed = _apply_ledger_type_fixx(l1)
+    if l1_fixed == "广告" and l2:
+        return l2
+    return l1 or l2
+
+
+def ledger_type_fixx_from_row(loai: str | None, loai2: str | None) -> str:
+    fixed = _apply_ledger_type_fixx(_ledger_type_goc(loai, loai2))
+    if fixed in LEDGER_TYPE_FIXX_ORDER:
+        return fixed
+    return "Other"
+
+
+def _ledger_query(
+    sb,
+    select: str,
+    *,
+    from_date: str | None = None,
+    to_date: str | None = None,
+    loai_nhap: str | None = None,
+    count: str | None = None,
+):
+    if count:
+        q = sb.table("so_doanh_thu").select(select, count=count)
+    else:
+        q = sb.table("so_doanh_thu").select(select)
+    q = q.order("ngay_tien_ve", desc=True)
+    if from_date:
+        q = q.gte("ngay_tien_ve", from_date[:10])
+    if to_date:
+        q = q.lte("ngay_tien_ve", to_date[:10])
+    if loai_nhap in ("tu_dong", "tay"):
+        q = q.eq("loai_nhap", loai_nhap)
+    return q
+
+
+def _count_so_doanh_thu(
+    sb,
+    *,
+    from_date: str | None = None,
+    to_date: str | None = None,
+    loai_nhap: str | None = None,
+) -> int:
+    res = _ledger_query(
+        sb,
+        "id",
+        from_date=from_date,
+        to_date=to_date,
+        loai_nhap=loai_nhap,
+        count="exact",
+    ).limit(0).execute()
+    return int(res.count or 0)
+
+
+def _fetch_so_doanh_thu_page(
+    sb,
+    select: str,
+    *,
+    from_date: str | None = None,
+    to_date: str | None = None,
+    loai_nhap: str | None = None,
+    limit: int = LEDGER_TABLE_PAGE,
+    offset: int = 0,
+) -> list[dict[str, Any]]:
+    res = (
+        _ledger_query(sb, select, from_date=from_date, to_date=to_date, loai_nhap=loai_nhap)
+        .range(offset, offset + max(limit, 1) - 1)
+        .execute()
+    )
+    return res.data or []
+
+
+def _build_ledger_summary(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    buckets = {k: {"gmvVnd": 0, "count": 0} for k in LEDGER_TYPE_FIXX_ORDER}
+    total_gmv = 0
+    for r in rows:
+        vnd = int(r.get("so_tien_vnd") or 0)
+        total_gmv += vnd
+        key = ledger_type_fixx_from_row(r.get("loai"), r.get("loai_2"))
+        buckets[key]["gmvVnd"] += vnd
+        buckets[key]["count"] += 1
+    by_source = [
+        {"source": k, "gmvVnd": buckets[k]["gmvVnd"], "count": buckets[k]["count"]}
+        for k in LEDGER_TYPE_FIXX_ORDER
+    ]
+    return {"totalGmvVnd": total_gmv, "orderCount": len(rows), "bySource": by_source}
+
+
+def _fetch_ledger_summary_rows(
+    sb,
+    *,
+    from_date: str | None = None,
+    to_date: str | None = None,
+    loai_nhap: str | None = None,
+) -> list[dict[str, Any]]:
+    """Chỉ cột cần cho thẻ tổng hợp — paginate, không enrich."""
+    rows: list[dict[str, Any]] = []
+    offset = 0
+    while True:
+        chunk = _fetch_so_doanh_thu_page(
+            sb,
+            "so_tien_vnd, loai, loai_2",
+            from_date=from_date,
+            to_date=to_date,
+            loai_nhap=loai_nhap,
+            limit=_SUPABASE_PAGE,
+            offset=offset,
+        )
+        if not chunk:
+            break
+        rows.extend(chunk)
+        if len(chunk) < _SUPABASE_PAGE:
+            break
+        offset += _SUPABASE_PAGE
+    return rows
 
 
 def _fetch_so_doanh_thu(
@@ -574,24 +838,63 @@ def register_revenue_routes(app, get_supabase) -> None:
         from_date: str | None = Query(None, alias="from"),
         to_date: str | None = Query(None, alias="to"),
         loai_nhap: str | None = Query(None),
+        limit: int = Query(LEDGER_TABLE_PAGE, ge=1, le=200),
+        offset: int = Query(0, ge=0),
     ):
         sb = _sb()
         actor = resolve_actor(sb, authorization)
         _require_ops(actor)
         try:
-            db_rows = _fetch_so_doanh_thu(
+            total = _count_so_doanh_thu(
                 sb,
-                "*",
-                from_date=from_date,
-                to_date=to_date,
+                from_date=from_date or None,
+                to_date=to_date or None,
                 loai_nhap=loai_nhap,
             )
+            db_rows = _fetch_so_doanh_thu_page(
+                sb,
+                "*",
+                from_date=from_date or None,
+                to_date=to_date or None,
+                loai_nhap=loai_nhap,
+                limit=limit,
+                offset=offset,
+            )
             rows = _enrich_ledger_rows(sb, db_rows)
-            return {"rows": rows, "count": len(rows)}
+            return {
+                "rows": rows,
+                "count": total,
+                "offset": offset,
+                "limit": limit,
+                "hasMore": offset + len(rows) < total,
+            }
         except HTTPException:
             raise
         except Exception as exc:
             raise HTTPException(500, f"Lỗi đọc Sổ doanh thu: {exc}") from exc
+
+    @app.get("/revenue/ledger/summary")
+    def ledger_summary(
+        authorization: str | None = Header(None),
+        from_date: str | None = Query(None, alias="from"),
+        to_date: str | None = Query(None, alias="to"),
+        loai_nhap: str | None = Query(None),
+    ):
+        sb = _sb()
+        actor = resolve_actor(sb, authorization)
+        _require_ops(actor)
+        try:
+            summary_rows = _fetch_ledger_summary_rows(
+                sb,
+                from_date=from_date or None,
+                to_date=to_date or None,
+                loai_nhap=loai_nhap,
+            )
+            return _build_ledger_summary(summary_rows)
+        except HTTPException:
+            raise
+        except Exception as exc:
+            raise HTTPException(500, f"Lỗi tổng hợp Sổ: {exc}") from exc
 
     @app.post("/revenue/ledger")
     def create_ledger(body: LedgerCreateBody, authorization: str | None = Header(None)):

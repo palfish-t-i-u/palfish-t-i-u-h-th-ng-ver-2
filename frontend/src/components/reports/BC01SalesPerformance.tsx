@@ -3,7 +3,17 @@ import { endpoints } from "../../lib/api";
 import type { RevenuePivotResponse } from "../../types/revenue";
 import Button from "../ui/Button";
 import { Input } from "../ui/Input";
-import { Table, TableWrap, Td, Th, Tr } from "../ui/Table";
+import {
+  Table,
+  TableScrollWrap,
+  Td,
+  Th,
+  Tr,
+  stickyTableHead,
+  stickyTableHeadCorner,
+  stickyTableHeadTop,
+} from "../ui/Table";
+import { cn } from "../../lib/cn";
 
 function fmtRmb(n: number) {
   return new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 }).format(n);
@@ -19,8 +29,20 @@ const TEAM_FILTERS = [
   { value: "Inhouse 1", label: "Inhouse 1" },
   { value: "Inhouse 2", label: "Inhouse 2" },
   { value: "HCM (Online)", label: "HCM (Online)" },
+  { value: "Linh Dam (Store)", label: "Linh Dam (Store)" },
+  { value: "Offline", label: "Offline" },
+  { value: "An Binh (Store)", label: "An Binh (Store)" },
   { value: "Khác", label: "Khác" },
 ] as const;
+
+const stickyLeftTeam = cn(stickyTableHead, stickyTableHeadTop, stickyTableHeadCorner, "left-0 min-w-[7rem]");
+const stickyLeftSale = cn(
+  stickyTableHead,
+  stickyTableHeadTop,
+  "left-[7rem] min-w-[10rem] z-[35]"
+);
+const stickyCellTeam = "sticky left-0 z-20 bg-gmv-canvas";
+const stickyCellSale = "sticky left-[7rem] z-20 min-w-[10rem] bg-gmv-canvas";
 
 export default function BC01SalesPerformance() {
   const [data, setData] = useState<RevenuePivotResponse | null>(null);
@@ -52,9 +74,10 @@ export default function BC01SalesPerformance() {
   }, [load]);
 
   const months = data?.months ?? [];
+  const colSpan = months.length + 3;
 
   return (
-    <div className="space-y-4">
+    <div className="min-w-0 space-y-4 overflow-x-hidden">
       <p className="text-sm text-gmv-muted">
         BC01 — GMV (RMB) theo team × sale × tháng (ngày tiền về). Dữ liệu từ{" "}
         <strong>Sổ doanh thu</strong>; chỉ xem.
@@ -96,12 +119,12 @@ export default function BC01SalesPerformance() {
         </p>
       )}
 
-      <TableWrap>
-        <Table>
+      <TableScrollWrap>
+        <Table className="min-w-[900px]">
           <thead>
             <Tr>
-              <Th className="sticky left-0 z-20 bg-gmv-table-head">Team</Th>
-              <Th className="sticky left-24 z-20 min-w-[10rem] bg-gmv-table-head">Sale</Th>
+              <Th className={stickyLeftTeam}>Team</Th>
+              <Th className={stickyLeftSale}>Sale</Th>
               {months.map((m) => (
                 <Th key={m} className="min-w-[5.5rem] text-right">
                   {m}
@@ -113,15 +136,15 @@ export default function BC01SalesPerformance() {
           <tbody>
             {loading && !data && (
               <Tr>
-                <Td colSpan={months.length + 3} className="text-center text-gmv-muted">
+                <Td colSpan={colSpan} className="text-center text-gmv-muted">
                   Đang tải…
                 </Td>
               </Tr>
             )}
             {!loading && data && months.length > 0 && (
               <Tr className="bg-amber-100 font-semibold">
-                <Td className="sticky left-0 bg-amber-100">Tổng cộng</Td>
-                <Td className="sticky left-24 bg-amber-100">—</Td>
+                <Td className={cn(stickyCellTeam, "bg-amber-100")}>Tổng cộng</Td>
+                <Td className={cn(stickyCellSale, "bg-amber-100")}>—</Td>
                 {months.map((m) => (
                   <Td key={m} className="text-right">
                     {fmtRmb(data.grandTotalRow[m] ?? 0)}
@@ -132,7 +155,7 @@ export default function BC01SalesPerformance() {
             )}
             {!data?.teams.length && !loading && (
               <Tr>
-                <Td colSpan={Math.max(months.length + 3, 3)} className="text-center text-gmv-muted">
+                <Td colSpan={Math.max(colSpan, 3)} className="text-center text-gmv-muted">
                   Chưa có dữ liệu trong khoảng ngày đã chọn.
                 </Td>
               </Tr>
@@ -140,8 +163,8 @@ export default function BC01SalesPerformance() {
             {data?.teams.map((teamBlock) => (
               <Fragment key={teamBlock.teamLabel}>
                 <Tr className="bg-gmv-primary-soft/40 font-semibold">
-                  <Td className="sticky left-0 bg-gmv-primary-soft/90">{teamBlock.teamLabel}</Td>
-                  <Td className="sticky left-24 bg-gmv-primary-soft/90">Tổng</Td>
+                  <Td className={cn(stickyCellTeam, "bg-gmv-primary-soft/90")}>{teamBlock.teamLabel}</Td>
+                  <Td className={cn(stickyCellSale, "bg-gmv-primary-soft/90")}>Tổng</Td>
                   {months.map((m) => (
                     <Td key={m} className="text-right">
                       {fmtRmb(teamBlock.totalRow[m] ?? 0)}
@@ -151,21 +174,21 @@ export default function BC01SalesPerformance() {
                 </Tr>
                 {teamBlock.sales.map((sale) => (
                   <Tr key={`${teamBlock.teamLabel}-${sale.sale}`}>
-                    <Td className="sticky left-0 bg-gmv-canvas">{teamBlock.teamLabel}</Td>
-                    <Td className="sticky left-24 bg-gmv-canvas">{sale.sale}</Td>
+                    <Td className={stickyCellTeam}>{teamBlock.teamLabel}</Td>
+                    <Td className={cn(stickyCellSale, "text-left")}>{sale.sale}</Td>
                     {months.map((m) => (
-                      <Td key={m} className="text-right">
+                      <Td key={m} className="text-right tabular-nums">
                         {fmtRmb(sale.cells[m] ?? 0)}
                       </Td>
                     ))}
-                    <Td className="text-right font-medium">{fmtRmb(sale.total)}</Td>
+                    <Td className="text-right font-medium tabular-nums">{fmtRmb(sale.total)}</Td>
                   </Tr>
                 ))}
               </Fragment>
             ))}
           </tbody>
         </Table>
-      </TableWrap>
+      </TableScrollWrap>
     </div>
   );
 }

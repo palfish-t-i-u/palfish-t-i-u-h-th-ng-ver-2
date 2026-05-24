@@ -32,12 +32,18 @@ TEAM_FROM_EXCEL: dict[str, str] = {
     "In-house": "Inhouse 1",
     "In-house 2": "Inhouse 2",
     "HCM team": "HCM (Online)",
+    "Linh Dam": "Linh Dam (Store)",
+    "Offline": "Offline",
+    "An Binh": "An Binh (Store)",
 }
 
 PIVOT_FROM_APP: dict[str, str] = {
     "Inhouse 1": "HN inhouse",
     "Inhouse 2": "HN inhouse 2",
     "HCM (Online)": "HCM team",
+    "Linh Dam (Store)": "Linh Dam",
+    "Offline": "Offline",
+    "An Binh (Store)": "An Binh",
 }
 
 
