@@ -133,7 +133,7 @@ export const endpoints = {
       api.get<RevenuePivotResponse>("/revenue/pivot", { params }),
     pivotSalesPerformance: (params?: { from?: string; to?: string; team?: string }) =>
       api.get<RevenuePivotResponse>("/revenue/pivot/sales-performance", { params }),
-    pivotKeyData: (params?: { from?: string; to?: string }) =>
+    pivotKeyData: (params?: { from?: string; to?: string; team?: string }) =>
       api.get<RevenueKeyDataResponse>("/revenue/pivot/key-data", { params }),
   },
   dashboard: {

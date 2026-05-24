@@ -1,14 +1,21 @@
 import type { ReactNode } from "react";
+import { useEffect, useState } from "react";
 import Badge from "../components/ui/Badge";
 import { cn } from "../lib/cn";
+
+export interface NavChildItem {
+  id: string;
+  label: string;
+  subtitle?: string;
+}
 
 export interface NavItem {
   id: string;
   label: string;
   icon: ReactNode;
   badge?: ReactNode;
-  /** Nhóm sidebar — hiện tiêu đề phân cách (vd. quản lý quyền) */
   section?: string;
+  children?: NavChildItem[];
 }
 
 interface Props {
@@ -21,6 +28,7 @@ interface Props {
   userRole?: string;
   isDevMode?: boolean;
   onSignOut?: () => void;
+  wideContent?: boolean;
   children: ReactNode;
 }
 
@@ -29,29 +37,44 @@ function NavButton({
   active,
   onSelect,
   compact,
+  expanded,
+  onToggleExpand,
+  childActive,
 }: {
   it: NavItem;
   active: boolean;
   onSelect: (id: string) => void;
   compact?: boolean;
+  expanded?: boolean;
+  onToggleExpand?: () => void;
+  childActive?: boolean;
 }) {
+  const hasChildren = Boolean(it.children?.length);
+  const highlighted = active || childActive;
+
   return (
     <button
       type="button"
-      onClick={() => onSelect(it.id)}
+      onClick={() => {
+        if (hasChildren && onToggleExpand) onToggleExpand();
+        else onSelect(it.id);
+      }}
       className={cn(
         "flex w-full items-center gap-3 font-medium transition",
         compact ? "min-h-[44px] flex-col gap-1 px-1 py-2 text-[10px]" : "rounded-gmv-md px-3 py-2 text-sm",
-        active
+        highlighted
           ? "bg-gmv-primary-soft text-gmv-primary"
           : "text-gmv-text hover:bg-gmv-bg hover:text-gmv-text-strong"
       )}
     >
-      <span className={active ? "text-gmv-primary" : "text-gmv-muted"}>{it.icon}</span>
+      <span className={highlighted ? "text-gmv-primary" : "text-gmv-muted"}>{it.icon}</span>
       {!compact && (
         <>
           <span className="flex-1 text-left">{it.label}</span>
-          {it.badge}
+          {hasChildren && (
+            <span className={cn("text-xs text-gmv-muted transition", expanded && "rotate-90")}>›</span>
+          )}
+          {!hasChildren && it.badge}
         </>
       )}
       {compact && <span className="max-w-full truncate text-center leading-tight">{it.label.split(" ")[0]}</span>}
@@ -69,23 +92,33 @@ export default function AppShell({
   userRole,
   isDevMode,
   onSignOut,
+  wideContent,
   children,
 }: Props) {
+  const reportParentId = items.find((it) => it.children?.some((c) => c.id === activeId))?.id;
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(() => new Set(reportParentId ? [reportParentId] : []));
+
+  useEffect(() => {
+    if (reportParentId) {
+      setExpandedIds((prev) => new Set(prev).add(reportParentId));
+    }
+  }, [reportParentId]);
+
+  function toggleExpand(id: string) {
+    setExpandedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
   return (
     <div className="flex min-h-screen w-full bg-gmv-bg font-sans text-gmv-text">
       <aside className="hidden w-60 shrink-0 flex-col border-r border-gmv-border bg-gmv-canvas md:flex">
         <div className="flex h-16 items-center gap-2 border-b border-gmv-border px-5">
           <div className="flex h-8 w-8 items-center justify-center rounded-gmv-md bg-gmv-primary text-white">
-            <svg
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
               <path d="M3 3h7v7H3zM14 3h7v7h-7zM14 14h7v7h-7zM3 14h7v7H3z" />
             </svg>
           </div>
@@ -98,6 +131,7 @@ export default function AppShell({
           <ul className="space-y-1">
             {items.map((it, idx) => {
               const active = it.id === activeId;
+              const childActive = it.children?.some((c) => c.id === activeId) ?? false;
               const prevSection = idx > 0 ? items[idx - 1]?.section : undefined;
               const showSection = it.section && it.section !== prevSection;
               return (
@@ -107,7 +141,39 @@ export default function AppShell({
                       {it.section}
                     </div>
                   )}
-                  <NavButton it={it} active={active} onSelect={onSelect} />
+                  <NavButton
+                    it={it}
+                    active={active}
+                    onSelect={onSelect}
+                    expanded={expandedIds.has(it.id)}
+                    onToggleExpand={() => toggleExpand(it.id)}
+                    childActive={childActive}
+                  />
+                  {it.children && expandedIds.has(it.id) && (
+                    <ul className="mb-1 ml-3 mt-0.5 space-y-0.5 border-l border-gmv-border pl-2">
+                      {it.children.map((child) => (
+                        <li key={child.id}>
+                          <button
+                            type="button"
+                            onClick={() => onSelect(child.id)}
+                            className={cn(
+                              "w-full rounded-gmv-md px-2.5 py-2 text-left transition",
+                              child.id === activeId
+                                ? "bg-gmv-primary-soft text-gmv-primary"
+                                : "text-gmv-text hover:bg-gmv-bg hover:text-gmv-text-strong"
+                            )}
+                          >
+                            <span className="block text-xs font-medium">{child.label}</span>
+                            {child.subtitle && (
+                              <span className="mt-0.5 block text-[10px] leading-snug text-gmv-muted">
+                                {child.subtitle}
+                              </span>
+                            )}
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
                 </li>
               );
             })}
@@ -143,7 +209,7 @@ export default function AppShell({
         </header>
 
         <main className="flex-1 overflow-x-auto p-4 md:p-6">
-          <div className="mx-auto max-w-[1400px]">{children}</div>
+          <div className={cn("mx-auto", wideContent ? "max-w-none" : "max-w-[1400px]")}>{children}</div>
         </main>
       </div>
 
@@ -153,7 +219,12 @@ export default function AppShell({
       >
         {items.slice(0, 5).map((it) => (
           <div key={it.id} className="min-w-0 flex-1">
-            <NavButton it={it} active={it.id === activeId} onSelect={onSelect} compact />
+            <NavButton
+              it={it}
+              active={it.id === activeId || (it.children?.some((c) => c.id === activeId) ?? false)}
+              onSelect={onSelect}
+              compact
+            />
           </div>
         ))}
       </nav>

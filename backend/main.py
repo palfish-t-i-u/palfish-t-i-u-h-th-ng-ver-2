@@ -362,68 +362,121 @@ def _create_order_mem(body: CreateOrderBody) -> dict[str, Any]:
     return row
 
 
+def _normalize_sdt(ma_vung: str, sdt: str) -> str:
+    """Chuẩn hóa SĐT lưu DB — khớp format import (+84 0xxxxxxxxx)."""
+    code = (ma_vung or "+84").strip()
+    raw = (sdt or "").strip()
+    m = re.match(r"^(\+\d{1,4})\s*(.*)$", raw)
+    if m:
+        code = m.group(1)
+        raw = m.group(2).strip()
+    digits = re.sub(r"\D", "", raw)
+    if not digits:
+        return raw
+    if code == "+84":
+        if len(digits) == 9:
+            digits = f"0{digits}"
+        elif len(digits) == 11 and digits.startswith("84"):
+            digits = f"0{digits[2:]}"
+    return f"{code} {digits}"
+
+
+def _sdt_lookup_variants(ma_vung: str, sdt: str) -> list[str]:
+    norm = _normalize_sdt(ma_vung, sdt)
+    variants = {(sdt or "").strip(), norm}
+    m = re.match(r"^(\+\d{1,4})\s*(.*)$", norm)
+    if m:
+        code = m.group(1)
+        digits = re.sub(r"\D", "", m.group(2))
+        variants.add(f"{code} {digits}")
+        if code == "+84" and digits.startswith("0"):
+            variants.add(f"{code} {digits[1:]}")
+        elif code == "+84":
+            variants.add(f"{code} 0{digits}")
+    return [v for v in variants if v]
+
+
+def _find_khach_hang_by_phone(sb, ma_vung: str, sdt: str) -> dict[str, Any] | None:
+    for variant in _sdt_lookup_variants(ma_vung, sdt):
+        res = (
+            sb.table("khach_hang")
+            .select("id, crm_uid")
+            .eq("so_dien_thoai", variant)
+            .limit(1)
+            .execute()
+        )
+        if res.data:
+            return res.data[0]
+    return None
+
+
+def _khach_hang_fields(body: CreateOrderBody, sdt_norm: str) -> dict[str, Any]:
+    return {
+        "ho_ten": body.tenKhach.strip() or "Chưa cập nhật",
+        "so_dien_thoai": sdt_norm,
+        "ma_vung": body.maVung,
+        "dia_chi": body.diaChi.strip(),
+        "tinh": body.tinh,
+        "quan": body.quan,
+        "phuong": body.phuong,
+        "dia_chi_chi_tiet": body.diaChiChiTiet,
+    }
+
+
+def _update_khach_hang_safe(sb, kh_id: str, patch: dict[str, Any]) -> None:
+    phone = patch.get("so_dien_thoai")
+    if phone:
+        conflict = (
+            sb.table("khach_hang")
+            .select("id")
+            .eq("so_dien_thoai", phone)
+            .neq("id", kh_id)
+            .limit(1)
+            .execute()
+        )
+        if conflict.data:
+            patch = {k: v for k, v in patch.items() if k != "so_dien_thoai"}
+    if patch:
+        sb.table("khach_hang").update(patch).eq("id", kh_id).execute()
+
+
+def _resolve_khach_hang_id(sb, body: CreateOrderBody) -> str:
+    """Tìm KH theo UID, fallback SĐT — tránh duplicate so_dien_thoai_key."""
+    sdt_norm = _normalize_sdt(body.maVung, body.sdt)
+    fields = _khach_hang_fields(body, sdt_norm)
+    crm_uid = body.uid.strip()
+
+    if crm_uid:
+        by_uid = (
+            sb.table("khach_hang").select("id").eq("crm_uid", crm_uid).limit(1).execute()
+        )
+        if by_uid.data:
+            kh_id = by_uid.data[0]["id"]
+            _update_khach_hang_safe(sb, kh_id, fields)
+            return kh_id
+
+    by_phone = _find_khach_hang_by_phone(sb, body.maVung, body.sdt)
+    if by_phone:
+        kh_id = by_phone["id"]
+        patch = {k: v for k, v in fields.items() if k != "so_dien_thoai"}
+        if crm_uid and not (by_phone.get("crm_uid") or "").strip():
+            patch["crm_uid"] = crm_uid
+        _update_khach_hang_safe(sb, kh_id, patch)
+        return kh_id
+
+    payload = dict(fields)
+    if crm_uid:
+        payload["crm_uid"] = crm_uid
+    ins = sb.table("khach_hang").insert(payload).execute()
+    return ins.data[0]["id"]
+
+
 def _create_order_supabase(sb, body: CreateOrderBody) -> dict[str, Any]:
     ma_don = _next_ma_don(sb)
     amount = _parse_amount(body.tongTien)
     info = _info_code(ma_don)
-    crm_uid = body.uid.strip()
 
-    kh_id = None
-    if crm_uid:
-        existing = (
-            sb.table("khach_hang").select("id").eq("crm_uid", crm_uid).limit(1).execute()
-        )
-        if existing.data:
-            kh_id = existing.data[0]["id"]
-            sb.table("khach_hang").update(
-                {
-                    "ho_ten": body.tenKhach.strip() or "Chưa cập nhật",
-                    "so_dien_thoai": body.sdt.strip(),
-                    "ma_vung": body.maVung,
-                    "dia_chi": body.diaChi.strip(),
-                    "tinh": body.tinh,
-                    "quan": body.quan,
-                    "phuong": body.phuong,
-                    "dia_chi_chi_tiet": body.diaChiChiTiet,
-                }
-            ).eq("id", kh_id).execute()
-        else:
-            ins = (
-                sb.table("khach_hang")
-                .insert(
-                    {
-                        "crm_uid": crm_uid,
-                        "ho_ten": body.tenKhach.strip() or "Chưa cập nhật",
-                        "so_dien_thoai": body.sdt.strip(),
-                        "ma_vung": body.maVung,
-                        "dia_chi": body.diaChi.strip(),
-                        "tinh": body.tinh,
-                        "quan": body.quan,
-                        "phuong": body.phuong,
-                        "dia_chi_chi_tiet": body.diaChiChiTiet,
-                    }
-                )
-                .execute()
-            )
-            kh_id = ins.data[0]["id"]
-    else:
-        ins = (
-            sb.table("khach_hang")
-            .insert(
-                {
-                    "ho_ten": body.tenKhach.strip() or "Chưa cập nhật",
-                    "so_dien_thoai": body.sdt.strip(),
-                    "ma_vung": body.maVung,
-                    "dia_chi": body.diaChi.strip(),
-                    "tinh": body.tinh,
-                    "quan": body.quan,
-                    "phuong": body.phuong,
-                    "dia_chi_chi_tiet": body.diaChiChiTiet,
-                }
-            )
-            .execute()
-        )
-        kh_id = ins.data[0]["id"]
+    kh_id = _resolve_khach_hang_id(sb, body)
 
     uid_phu_clean = [u.strip() for u in (body.uidPhu or []) if u and u.strip()]
     don_payload: dict[str, Any] = {
