@@ -87,3 +87,22 @@ export const LEAD_KENH_OPTIONS = [
   "FB - VN",
   "FB - OV",
 ] as const;
+
+// Module 6 — Dashboard
+export interface DashboardSummary {
+  period: { start: string; end: string };
+  kpi: {
+    total_orders: number;
+    total_amount_qr: number;
+    total_collected: number;
+    aov: number;
+    l1: number; l3: number; l4: number; l8: number;
+  };
+  revenue_by_date: { date: string; amount: number; collected: number; orders: number }[];
+  top_sales: {
+    sale_name: string; team: string;
+    total_amount: number; collected: number; orders: number;
+  }[];
+  conversion: { label: string; value: number }[];
+  today: { orders: number; amount: number; collected: number };
+}
