@@ -379,15 +379,45 @@ def _bump_metric_daily(entry: dict, day: str | None, field: str, amount: int) ->
     daily[day] = int(daily.get(day) or 0) + int(amount or 0)
 
 
+def _load_sale_team_roster(sb) -> dict[str, str]:
+    """crm_name → team app (nhan_su_sale) — ưu tiên hơn department CRM."""
+    out: dict[str, str] = {}
+    try:
+        res = (
+            sb.table("nhan_su_sale")
+            .select("crm_name, team")
+            .eq("is_active", True)
+            .execute()
+        )
+        for r in res.data or []:
+            name = (r.get("crm_name") or "").strip()
+            team = (r.get("team") or "").strip()
+            if name and team:
+                out[name] = team
+    except Exception as exc:
+        print(f"[BC03] nhan_su_sale roster failed: {exc}")
+    return out
+
+
+def _resolve_bc03_team(sname: str, crm_team: str, roster: dict[str, str]) -> str:
+    from revenue_routes import team_to_canonical
+
+    roster_team = roster.get(sname)
+    if roster_team:
+        return team_to_canonical(roster_team, None)
+    return team_to_canonical(crm_team, None) if crm_team and crm_team != "—" else "Khác"
+
+
 def _finalize_metric_rows(metric_map: dict[str, dict], field: str, dates: list[str]) -> list[dict]:
     rows = []
     for v in metric_map.values():
         raw_daily = v.get("daily") or {}
         daily_out = {d: int(raw_daily.get(d) or 0) for d in dates}
+        total = sum(daily_out.values())
         rows.append({
             "sale_name": v["sale_name"],
             "team": v["team"],
-            field: v[field],
+            field: total,
             "daily": daily_out,
         })
     return sorted(rows, key=lambda x: x[field], reverse=True)
@@ -425,6 +455,8 @@ def register_report_routes(app, supabase_factory):
         except Exception as exc:
             raise HTTPException(500, f"Query BC03 thất bại: {exc}") from exc
 
+        roster = _load_sale_team_roster(sb)
+
         rev_map: dict[str, dict] = {}
         trial_map: dict[str, dict] = {}
         ref_map: dict[str, dict] = {}
@@ -439,7 +471,7 @@ def register_report_routes(app, supabase_factory):
             orders = int(m["l8"])
             completed = int(m["l4"])
             referral = int(m["l1_2"])
-            team_l = team_label(r)
+            team_l = _resolve_bc03_team(sname, team_label(r), roster)
 
             rev = _ensure_rev(rev_map, sname, team_l)
             rev["gmv_rmb_crm"] += gmv
@@ -447,11 +479,9 @@ def register_report_routes(app, supabase_factory):
             _bump_rev_daily(rev, day, gmv_rmb_crm=gmv, orders_crm=orders)
 
             trial = _ensure_metric_row(trial_map, sname, team_l, "completed_classes")
-            trial["completed_classes"] += completed
             _bump_metric_daily(trial, day, "completed_classes", completed)
 
             ref = _ensure_metric_row(ref_map, sname, team_l, "referral_leads")
-            ref["referral_leads"] += referral
             _bump_metric_daily(ref, day, "referral_leads", referral)
 
         ledger_map, linked_don = _load_ledger_revenue(sb, d_start, d_end, team)
