@@ -99,7 +99,7 @@ def _row_from_excel(row: tuple, sheet: str) -> dict | None:
     if vnd <= 0:
         return None
 
-    ngay = _parse_date(row[0]) or _parse_date(row[8])
+    ngay = _parse_date(row[8]) or _parse_date(row[0])
     if not ngay:
         return None
 

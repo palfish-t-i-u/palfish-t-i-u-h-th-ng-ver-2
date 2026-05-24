@@ -489,15 +489,16 @@ def _ledger_query(
     loai_nhap: str | None = None,
     count: str | None = None,
 ):
+    """Lọc theo Pay Time (pay_time) — khớp pivot Excel Hiếu, không dùng ngay_tien_ve."""
     if count:
         q = sb.table("so_doanh_thu").select(select, count=count)
     else:
         q = sb.table("so_doanh_thu").select(select)
-    q = q.order("ngay_tien_ve", desc=True)
+    q = q.order("pay_time", desc=True)
     if from_date:
-        q = q.gte("ngay_tien_ve", from_date[:10])
+        q = q.gte("pay_time", f"{from_date[:10]}T00:00:00")
     if to_date:
-        q = q.lte("ngay_tien_ve", to_date[:10])
+        q = q.lte("pay_time", f"{to_date[:10]}T23:59:59")
     if loai_nhap in ("tu_dong", "tay"):
         q = q.eq("loai_nhap", loai_nhap)
     return q
@@ -596,11 +597,11 @@ def _fetch_so_doanh_thu(
     rows: list[dict[str, Any]] = []
     offset = 0
     while True:
-        q = sb.table("so_doanh_thu").select(select).order("ngay_tien_ve", desc=True)
+        q = sb.table("so_doanh_thu").select(select).order("pay_time", desc=True)
         if from_date:
-            q = q.gte("ngay_tien_ve", from_date[:10])
+            q = q.gte("pay_time", f"{from_date[:10]}T00:00:00")
         if to_date:
-            q = q.lte("ngay_tien_ve", to_date[:10])
+            q = q.lte("pay_time", f"{to_date[:10]}T23:59:59")
         if loai_nhap in ("tu_dong", "tay"):
             q = q.eq("loai_nhap", loai_nhap)
         res = q.range(offset, offset + _SUPABASE_PAGE - 1).execute()
@@ -651,9 +652,14 @@ def _enrich_ledger_rows(sb, db_rows: list[dict[str, Any]]) -> list[dict[str, Any
 def _row_to_ledger(row: dict[str, Any]) -> dict[str, Any]:
     ngay = row.get("ngay_tien_ve")
     ngay_str = ngay[:10] if isinstance(ngay, str) else (ngay.isoformat() if ngay else "")
+    pay = row.get("pay_time")
+    pay_str = pay[:10] if isinstance(pay, str) else ""
+    if not pay_str and pay and hasattr(pay, "isoformat"):
+        pay_str = pay.isoformat()[:10]
     return {
         "id": row["id"],
         "ngayTienVe": ngay_str,
+        "payTime": pay_str or ngay_str,
         "tenKhach": row.get("ten_khach") or "",
         "sdt": row.get("sdt") or "",
         "uid": row.get("uid") or "",
@@ -726,6 +732,7 @@ def sync_ledger_from_m3_order(sb, don_hang_id: str, actor_email: str) -> str | N
 
         payload = {
             "ngay_tien_ve": ngay.isoformat(),
+            "pay_time": f"{ngay.isoformat()}T00:00:00",
             "ten_khach": kh.get("ho_ten") or "",
             "sdt": _format_sdt(kh),
             "uid": str(kh.get("crm_uid") or ""),

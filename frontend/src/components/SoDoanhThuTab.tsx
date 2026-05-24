@@ -371,7 +371,7 @@ export default function SoDoanhThuTab() {
                 </Td>
                 <Td className="text-left text-sm">{row.sdt || "—"}</Td>
                 <Td className="text-left text-sm">{row.uid || "—"}</Td>
-                <Td className="whitespace-nowrap text-sm">{fmtPayTime(row.ngayTienVe)}</Td>
+                <Td className="whitespace-nowrap text-sm">{fmtPayTime(row.payTime || row.ngayTienVe)}</Td>
                 <Td className="text-right font-medium tabular-nums">
                   {formatVndNumber(row.soTienVnd) || "—"}
                 </Td>

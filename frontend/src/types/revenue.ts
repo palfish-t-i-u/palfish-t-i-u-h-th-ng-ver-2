@@ -3,6 +3,7 @@ export type LoaiNhap = "tu_dong" | "tay";
 export interface RevenueLedgerRow {
   id: string;
   ngayTienVe: string;
+  payTime?: string;
   tenKhach: string;
   sdt: string;
   uid: string;
