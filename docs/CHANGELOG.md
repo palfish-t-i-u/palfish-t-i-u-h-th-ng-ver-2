@@ -316,3 +316,34 @@
 
 **Docs**
 - `MODULE_SO_DOANH_THU.md` §2.4–§2.5, M5-10; `TODO.md` M5-10; `M5_OPERATIONS.md` smoke + import full.
+
+---
+
+## 2026-05-24 — Type fixx ad rollup, BC02 Kho chung + scroll
+
+**Frontend**
+- `frontend/src/lib/typeFixx.ts` — `typeGocFromRow`: dưới `广告` chỉ tách cột riêng KOC/Lives/Offline/KFT/KET; subchannel khác gom Quảng cáo.
+- `frontend/src/lib/bc02TypeMap.ts` — cùng logic; cột **Kho chung** (thay “Biển công cộng”).
+- `frontend/src/components/reports/BC02KeyDataReport.tsx` — vùng bảng cố định `calc(100svh - 16rem)` — scroll ngang không cần kéo hết bảng dọc.
+
+**Backend**
+- `revenue_routes.py` — `_ledger_type_goc`, `_bc02_type_goc` mirror FE; BC02 label `Kho chung`.
+
+**Scripts**
+- `scripts/audit_type_fixx_range.py` — đối chiếu bucket Type fixx theo `pay_time`.
+- `scripts/test_ad_rollup_rule.py` — kiểm tra rule rollup nhanh.
+
+**Docs**
+- `MODULE_SO_DOANH_THU.md` §2.4–§2.6, M5-11; `M5_OPERATIONS.md` smoke 3c–3d; `TODO.md` M5-11.
+
+---
+
+## 2026-05-24 — Gsheet import: parse VN Real Pay, đối chiếu Sổ
+
+**Backend**
+- `backend/gsheet_ledger_import.py` — `_parse_sheet_number()`: parse chuỗi VN `4.978.000` (tab HCM REV qua API); trước đó ~792 dòng HCM bị skip (VND=0).
+- Re-import HCM REV prod: +792 dòng; Sổ khớp sheet live (14.610 dòng, 149,7 tỷ ₫, 42,35M RMB).
+
+**Docs**
+- `M5_GSHEET_IMPORT.md` — one-time import, row/column collapse, đối chiếu số, verify commands.
+- `M5_OPERATIONS.md` — tag `import:gsheet:*`, link M5_GSHEET_IMPORT.

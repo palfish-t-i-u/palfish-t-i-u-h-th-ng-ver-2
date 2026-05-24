@@ -19,6 +19,9 @@ backend/.venv/
 backend/venv/
 backend/.env
 api_pipe/.env
+**/secrets/
+*gsheet*.json
+*service-account*.json
 api_pipe/__pycache__/
 api_pipe/*.py[cod]
 

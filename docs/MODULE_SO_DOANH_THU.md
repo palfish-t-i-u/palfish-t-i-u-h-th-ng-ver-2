@@ -16,6 +16,8 @@
 
 Sửa số pivot → sửa dòng tương ứng ở **Sổ**, không sửa trực tiếp ô pivot.
 
+**Nguồn lịch sử (2026-05):** Import một lần từ Google Sheet [All File Thu Hiền](https://docs.google.com/spreadsheets/d/1sEthbH-zcMavoQ1qi9J_CNnHAJoyt0gfsE-xsMW0LCc/edit) tab `SM Hanoi` + `HCM REV` — xem `docs/M5_GSHEET_IMPORT.md`. Sau go-live dữ liệu mới ghi trực tiếp trên Sổ (M3 + tay), không sync sheet.
+
 ---
 
 ## 2. Sổ doanh thu — một bảng, hai nguồn
@@ -82,6 +84,8 @@ Thẻ và bảng cùng dataset đã lọc. Thẻ `0 đơn` hiển thị mờ.
 
 **Lưu ý API:** Supabase/PostgREST giới hạn **1000 dòng/request**. Backend `/revenue/ledger` paginate hết kết quả trong khoảng lọc (`revenue_routes._fetch_so_doanh_thu`). Không lọc ngày trên DB lớn → vẫn tải đủ sau paginate (chậm hơn).
 
+**Lọc ngày:** Sổ + BC01/BC02 lọc theo **`pay_time`** (Pay Time sheet Hiếu), không dùng `ngay_tien_ve`. Thẻ tổng hợp gọi `/revenue/ledger/summary` — cùng logic Type fixx với bảng.
+
 ### 2.5 Type fixx → pivot Type (sheet Hiếu — Trang tính5)
 
 Đối chiếu chi tiết từng nguồn **không** group thẳng cột `loai` — phải qua **Type fixx** (cột C → D) rồi gom **5 cột pivot**.
@@ -89,13 +93,14 @@ Thẻ và bảng cùng dataset đã lọc. Thẻ `0 đơn` hiển thị mờ.
 **Bước 1 — Type gốc**
 
 - Thường lấy `loai`.
-- Nếu sau fixx bước đầu = Quảng cáo (`广告`) **và** có `loai_2` → lấy `loai_2` làm gốc (KOC, Livestream, Booth…).
+- Nếu sau fixx bước đầu = Quảng cáo (`广告`) **và** có `loai_2` → lấy `loai_2` làm gốc **chỉ khi** `loai_2` thuộc tập cột riêng: **KOC, Lives, Livestream, Offline, Booth, KFT, KET**.
+- Subchannel khác dưới `广告` (vd. `转介绍`, `Refer`, `公海`, `GD`, `Partnership`, `FB`, `PNS`…) **giữ `loai`** → gom **Quảng cáo** (khớp pivot sheet Hiếu / tab GMV).
 
 **Bước 2 — Map Type fixx (C → D)**
 
 | Type gốc (C) | Type fixx (D) |
 |--------------|---------------|
-| 广告, PNS, Bán mới | 广告 |
+| 广告, PNS, Bán mới, Partnership, FB | 广告 |
 | 转介绍, Refer, Khách giới thiệu | 转介绍 |
 | 续费, Resell, Gia hạn | 续费 |
 | 公海, GD, Kho chung | 公海 |
@@ -118,9 +123,23 @@ Thẻ và bảng cùng dataset đã lọc. Thẻ `0 đơn` hiển thị mờ.
 
 Nhãn tiếng Trung trên thẻ / cột Type: `English - 中文` (vd. `Kho chung - 公海`).
 
-Code: `typeFixx.ts` → `ledgerSource.ts` → `LedgerSummaryCards.tsx`.
+Code: `typeFixx.ts` → `ledgerSource.ts` → `LedgerSummaryCards.tsx`. Backend mirror: `revenue_routes._ledger_type_goc`.
 
-### 2.6 Quyền
+**Đối chiếu đã verify (2026-05-24):** Range `22/05/2025`–`22/05/2026` — 7.522 đơn, tổng GMV + từng bucket Type fixx khớp pivot `HNxHCM GMV.xlsx` (Hiếu). Script: `scripts/audit_type_fixx_range.py`.
+
+### 2.6 BC01 / BC02 / BC03 (Báo cáo)
+
+Sidebar **Báo cáo** → BC01 Sales Performance, **BC02 Key Data**, BC03 (placeholder). Cùng nguồn `so_doanh_thu`, lọc `pay_time`, logic Type fixx như §2.5.
+
+| Báo cáo | Mô tả ngắn |
+|---------|------------|
+| BC01 | Pivot team × sale × tháng (GMV RMB) |
+| BC02 | GMV theo ngày × loại nguồn (tab GMV sheet Hiếu); cột **Kho chung** (không dùng nhãn “Biển công cộng”); bảng scroll cố định viewport |
+| BC03 | Tổng bộ ngày — backlog |
+
+Code: `BC01SalesPerformance.tsx`, `BC02KeyDataReport.tsx`, `bc02TypeMap.ts`, `revenue_routes.py` (`/revenue/pivot/*`).
+
+### 2.7 Quyền
 
 | Ai | Quyền |
 |----|--------|
@@ -189,6 +208,7 @@ Layout: Team | Sale | các tháng | Tổng GMV. Lọc từ/tháng. Xuất Excel 
 | M5-04 | FE Sales Performance (pivot) | done |
 | M5-08 | UI Hiếu: cột chính, modal, scroll, VND sep | done |
 | M5-10 | Thẻ tổng hợp + Type fixx + lọc mặc định hôm nay | done |
+| M5-11 | Type fixx: `广告` + `loai_2` rollup + lọc `pay_time` + BC02 | done |
 | M5-05 | Xuất Excel Sổ + pivot | pending |
 | M5-06 | Import `HNxHCM GMV.xlsx` (script sẵn) | pending |
 | M5-07 | Tỷ giá theo thời điểm | pending |

@@ -11,6 +11,7 @@ export {
   Tr,
   stickyTableHead,
   stickyTableHeadTop,
+  stickyTableHeadSecondRow,
   stickyTableHeadCorner,
   stickyTableCell,
   stickyTableHeadRight,

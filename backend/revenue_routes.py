@@ -68,7 +68,7 @@ BC02_TYPE_ORDER: list[str] = [
     "Giới thiệu",
     "KOC",
     "Gia hạn",
-    "Biển công cộng",
+    "Kho chung",
     "Lives",
     "Offline",
     "Other",
@@ -77,6 +77,8 @@ BC02_TYPE_ORDER: list[str] = [
 BC02_TYPE_ALIASES: dict[str, str] = {
     "广告": "Quảng cáo",
     "PNS": "Quảng cáo",
+    "Partnership": "Quảng cáo",
+    "FB": "Quảng cáo",
     "Bán mới": "Quảng cáo",
     "转介绍": "Giới thiệu",
     "Refer": "Giới thiệu",
@@ -85,9 +87,9 @@ BC02_TYPE_ALIASES: dict[str, str] = {
     "续费": "Gia hạn",
     "Resell": "Gia hạn",
     "Gia hạn": "Gia hạn",
-    "公海": "Biển công cộng",
-    "GD": "Biển công cộng",
-    "Kho chung": "Biển công cộng",
+    "公海": "Kho chung",
+    "GD": "Kho chung",
+    "Kho chung": "Kho chung",
     "Lives": "Lives",
     "Livestream": "Lives",
     "Offline": "Offline",
@@ -98,13 +100,14 @@ BC02_TYPE_ALIASES: dict[str, str] = {
     "Nguồn khác": "Other",
 }
 
-BC02_AD_SOURCES = frozenset({"广告", "PNS", "Bán mới", "Quảng cáo"})
+BC02_AD_SOURCES = frozenset({"广告", "PNS", "Bán mới", "Quảng cáo", "Partnership", "FB"})
+BC02_AD_LOAI2_OWN_COLUMN = frozenset({"KOC", "Lives", "Livestream", "Offline", "Booth", "KFT", "KET"})
 
 BC02_GMV_GROUPS: list[tuple[str, str, str, str]] = [
     ("ads", "Quảng cáo", "Số đơn đầu", "GMV"),
     ("offline", "Offline", "Số đơn đầu", "GMV"),
     ("refer", "Giới thiệu", "Số đơn đầu", "GMV"),
-    ("public_pool", "Biển công cộng", "Số đơn", "GMV"),
+    ("public_pool", "Kho chung", "Số đơn", "GMV"),
     ("renew", "Gia hạn", "Số đơn", "GMV"),
     ("koc", "KOC", "Số đơn", "GMV"),
     ("other", "Khác", "Số đơn", "GMV"),
@@ -115,7 +118,7 @@ BC02_TYPE_TO_GMV_KEY: dict[str, str] = {
     "Quảng cáo": "ads",
     "Offline": "offline",
     "Giới thiệu": "refer",
-    "Biển công cộng": "public_pool",
+    "Kho chung": "public_pool",
     "Gia hạn": "renew",
     "KOC": "koc",
     "Other": "other",
@@ -176,11 +179,11 @@ def _bc02_type_goc(loai: str | None, loai2: str | None) -> str:
     l1 = (loai or "").strip()
     l2 = (loai2 or "").strip()
     l1_norm = BC02_TYPE_ALIASES.get(l1, l1)
-    if l1_norm in BC02_AD_SOURCES and l2:
-        l2_norm = BC02_TYPE_ALIASES.get(l2, l2)
-        if l2_norm in BC02_TYPE_ORDER:
-            return l2
-        return l2
+    if l1_norm in BC02_AD_SOURCES or l1 in BC02_AD_SOURCES:
+        if l2:
+            if l2 in BC02_AD_LOAI2_OWN_COLUMN:
+                return l2
+            return l1 or l2
     return l1 or l2
 
 
@@ -197,6 +200,16 @@ def bc02_type_from_row(loai: str | None, loai2: str | None) -> str:
     return "Other"
 
 
+def _row_pay_date(row: dict[str, Any]) -> date | None:
+    """BC02 day bucket — Pay Time (pay_time), fallback ngay_tien_ve."""
+    return _parse_date(row.get("pay_time")) or _parse_date(row.get("ngay_tien_ve"))
+
+
+def _row_month_date(row: dict[str, Any]) -> date | None:
+    """BC01 month bucket — ngay_tien_ve per MODULE_SO_DOANH_THU §3.3."""
+    return _parse_date(row.get("ngay_tien_ve"))
+
+
 def _build_sales_performance_pivot(
     rows: list[dict[str, Any]],
     *,
@@ -206,7 +219,7 @@ def _build_sales_performance_pivot(
     grouped: dict[str, dict[str, dict[str, float]]] = {}
 
     for r in rows:
-        ngay = _parse_date(r.get("ngay_tien_ve"))
+        ngay = _row_month_date(r)
         if not ngay:
             continue
         mk = _month_key(ngay)
@@ -269,12 +282,20 @@ def _empty_gmv_day_bucket() -> dict[str, dict[str, float]]:
     return {key: {"count": 0.0, "gmv": 0.0} for key, *_ in BC02_GMV_GROUPS}
 
 
-def _build_key_data_pivot(rows: list[dict[str, Any]]) -> dict[str, Any]:
+def _build_key_data_pivot(
+    rows: list[dict[str, Any]],
+    *,
+    team_filter: str | None = None,
+    scope_label: str = "Toàn công ty",
+) -> dict[str, Any]:
     """BC02 — tab GMV: mỗi ngày một dòng, cặp số đơn + GMV theo loại nguồn."""
     by_date: dict[str, dict[str, Any]] = {}
 
     for r in rows:
-        ngay = _parse_date(r.get("ngay_tien_ve"))
+        team_label = team_to_canonical(r.get("team"), r.get("team_pivot_label"))
+        if team_filter and team_label != team_filter:
+            continue
+        ngay = _row_pay_date(r)
         if not ngay:
             continue
         dk = ngay.isoformat()
@@ -335,7 +356,7 @@ def _build_key_data_pivot(rows: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
     return {
-        "scopeLabel": "In-house",
+        "scopeLabel": scope_label,
         "columnGroups": [
             {"key": key, "label": label, "countLabel": count_lbl, "gmvLabel": gmv_lbl}
             for key, label, count_lbl, gmv_lbl in BC02_GMV_GROUPS
@@ -429,6 +450,8 @@ LEDGER_TYPE_FIXX_MAP: dict[str, str] = {
     "Offline": "Offline",
     "Other": "Other",
     "PNS": "广告",
+    "Partnership": "广告",
+    "FB": "广告",
     "KFT": "Other",
     "KET": "Other",
     "Livestream": "Lives",
@@ -438,6 +461,8 @@ LEDGER_TYPE_FIXX_MAP: dict[str, str] = {
     "Kho chung": "公海",
     "Nguồn khác": "Other",
 }
+
+LEDGER_AD_LOAI2_OWN_COLUMN = frozenset({"KOC", "Lives", "Livestream", "Offline", "Booth", "KFT", "KET"})
 
 LEDGER_TYPE_FIXX_ORDER: list[str] = [
     "Lives",
@@ -469,7 +494,9 @@ def _ledger_type_goc(loai: str | None, loai2: str | None) -> str:
     l2 = (loai2 or "").strip()
     l1_fixed = _apply_ledger_type_fixx(l1)
     if l1_fixed == "广告" and l2:
-        return l2
+        if l2 in LEDGER_AD_LOAI2_OWN_COLUMN:
+            return l2
+        return l1 or l2
     return l1 or l2
 
 
@@ -494,7 +521,7 @@ def _ledger_query(
         q = sb.table("so_doanh_thu").select(select, count=count)
     else:
         q = sb.table("so_doanh_thu").select(select)
-    q = q.order("pay_time", desc=True)
+    q = q.order("pay_time", desc=True).order("id", desc=True)
     if from_date:
         q = q.gte("pay_time", f"{from_date[:10]}T00:00:00")
     if to_date:
@@ -502,6 +529,21 @@ def _ledger_query(
     if loai_nhap in ("tu_dong", "tay"):
         q = q.eq("loai_nhap", loai_nhap)
     return q
+
+
+def _dedupe_rows_by_id(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """PostgREST offset pagination can repeat rows when pay_time ties — keep first."""
+    seen: set[str] = set()
+    out: list[dict[str, Any]] = []
+    for row in rows:
+        rid = row.get("id")
+        if rid:
+            key = str(rid)
+            if key in seen:
+                continue
+            seen.add(key)
+        out.append(row)
+    return out
 
 
 def _count_so_doanh_thu(
@@ -594,10 +636,11 @@ def _fetch_so_doanh_thu(
     loai_nhap: str | None = None,
 ) -> list[dict[str, Any]]:
     """PostgREST trả tối đa 1000 dòng/lần — paginate hết kết quả."""
+    select_cols = select if "id" in select else f"id, {select}"
     rows: list[dict[str, Any]] = []
     offset = 0
     while True:
-        q = sb.table("so_doanh_thu").select(select).order("pay_time", desc=True)
+        q = sb.table("so_doanh_thu").select(select_cols).order("pay_time", desc=True).order("id", desc=True)
         if from_date:
             q = q.gte("pay_time", f"{from_date[:10]}T00:00:00")
         if to_date:
@@ -612,7 +655,7 @@ def _fetch_so_doanh_thu(
         if len(chunk) < _SUPABASE_PAGE:
             break
         offset += _SUPABASE_PAGE
-    return rows
+    return _dedupe_rows_by_id(rows)
 
 
 def _enrich_ledger_rows(sb, db_rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -1033,7 +1076,7 @@ def register_revenue_routes(app, get_supabase) -> None:
         try:
             rows = _fetch_so_doanh_thu(
                 sb,
-                "ngay_tien_ve, gmv_rmb, sale_crm_name, team, team_pivot_label",
+                "pay_time, ngay_tien_ve, gmv_rmb, sale_crm_name, team, team_pivot_label",
                 from_date=from_date,
                 to_date=to_date,
             )
@@ -1048,6 +1091,7 @@ def register_revenue_routes(app, get_supabase) -> None:
         authorization: str | None = Header(None),
         from_date: str | None = Query(None, alias="from"),
         to_date: str | None = Query(None, alias="to"),
+        team_filter: str | None = Query(None, alias="team"),
     ):
         sb = _sb()
         actor = resolve_actor(sb, authorization)
@@ -1055,11 +1099,12 @@ def register_revenue_routes(app, get_supabase) -> None:
         try:
             rows = _fetch_so_doanh_thu(
                 sb,
-                "ngay_tien_ve, gmv_rmb, loai, loai_2",
+                "pay_time, ngay_tien_ve, gmv_rmb, loai, loai_2, team, team_pivot_label",
                 from_date=from_date,
                 to_date=to_date,
             )
-            return _build_key_data_pivot(rows)
+            scope = (team_filter or "").strip() or "Toàn công ty"
+            return _build_key_data_pivot(rows, team_filter=team_filter or None, scope_label=scope)
         except HTTPException:
             raise
         except Exception as exc:
@@ -1145,3 +1190,36 @@ def register_revenue_routes(app, get_supabase) -> None:
             raise
         except Exception as exc:
             raise HTTPException(500, f"Lỗi pivot Doanh thu Sale: {exc}") from exc
+
+    class GsheetSyncBody(BaseModel):
+        dryRun: bool = False
+        limit: int = 0
+        spreadsheetId: str | None = None
+        tabs: list[str] | None = None
+
+    @app.post("/revenue/ledger/sync-gsheet")
+    def sync_ledger_from_gsheet(body: GsheetSyncBody, authorization: str | None = Header(None)):
+        """Import tab SM Hanoi + HCM REV từ All File Thu Hiền → Sổ (dedupe)."""
+        sb = _sb()
+        actor = resolve_actor(sb, authorization)
+        _require_ops(actor)
+        try:
+            from gsheet_ledger_import import DEFAULT_SHEET_TABS, sync_gsheet_to_ledger
+
+            tabs = tuple(body.tabs) if body.tabs else DEFAULT_SHEET_TABS
+            result = sync_gsheet_to_ledger(
+                sb,
+                spreadsheet_id=body.spreadsheetId,
+                tabs=tabs,
+                limit=body.limit or 0,
+                dry_run=body.dryRun,
+                actor_email=actor.email or "import:gsheet",
+                sb_factory=_sb,
+            )
+            return result
+        except FileNotFoundError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        except HTTPException:
+            raise
+        except Exception as exc:
+            raise HTTPException(500, f"Lỗi sync Google Sheet: {exc}") from exc

@@ -16,6 +16,8 @@ const TYPE_FIXX: Record<string, string> = {
   Offline: "Offline",
   Other: "Other",
   PNS: "广告",
+  Partnership: "广告",
+  FB: "广告",
   KFT: "Other",
   KET: "Other",
   Livestream: "Lives",
@@ -26,6 +28,17 @@ const TYPE_FIXX: Record<string, string> = {
   "Kho chung": "公海",
   "Nguồn khác": "Other",
 };
+
+/** loai2 dưới 广告 có cột Type fixx riêng — còn lại (PNS, FB, Partnership…) gom 广告. */
+const AD_LOAI2_OWN_COLUMN = new Set([
+  "KOC",
+  "Lives",
+  "Livestream",
+  "Offline",
+  "Booth",
+  "KFT",
+  "KET",
+]);
 
 /** Pivot Type (5 cột) — chỉ dùng khi cần gom ngắn; KHÔNG dùng cho thẻ Sổ. */
 const FIXX_TO_PIVOT: Record<string, string> = {
@@ -75,12 +88,17 @@ export function applyTypeFixx(typeGoc: string): string {
   return "Other";
 }
 
-/** Lấy Type gốc từ dòng Sổ — 广告 + loai2 thì lấy kênh con (KOC, Livestream…). */
+/** Lấy Type gốc từ dòng Sổ — 广告 + loai2: chỉ tách cột riêng (KOC, Lives…). */
 export function typeGocFromRow(loai: string, loai2: string): string {
   const l1 = (loai || "").trim();
   const l2 = (loai2 || "").trim();
   const l1Fixed = applyTypeFixx(l1);
-  if (l1Fixed === "广告" && l2) return l2;
+  if (l1Fixed === "广告" && l2) {
+    if (AD_LOAI2_OWN_COLUMN.has(l2)) {
+      return l2;
+    }
+    return l1 || l2;
+  }
   return l1 || l2;
 }
 
