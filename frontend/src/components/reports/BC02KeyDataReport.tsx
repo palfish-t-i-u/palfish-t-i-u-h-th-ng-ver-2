@@ -11,6 +11,7 @@ import {
   Tr,
   stickyTableHead,
   stickyTableHeadCorner,
+  stickyTableHeadSecondRow,
   stickyTableHeadTop,
 } from "../ui/Table";
 import { cn } from "../../lib/cn";
@@ -161,18 +162,16 @@ export default function BC02KeyDataReport() {
                 <Fragment key={g.key}>
                   <Th
                     className={cn(
-                      stickyTableHead,
-                      stickyTableHeadTop,
-                      "top-[2.35rem] min-w-[4rem] border-l border-gmv-border text-right text-[10px]"
+                      stickyTableHeadSecondRow,
+                      "min-w-[4rem] border-l border-gmv-border text-right text-[10px]"
                     )}
                   >
                     {g.countLabel}
                   </Th>
                   <Th
                     className={cn(
-                      stickyTableHead,
-                      stickyTableHeadTop,
-                      "top-[2.35rem] min-w-[5rem] text-right text-[10px]"
+                      stickyTableHeadSecondRow,
+                      "min-w-[5rem] text-right text-[10px]"
                     )}
                   >
                     {g.gmvLabel}

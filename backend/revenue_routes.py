@@ -201,7 +201,13 @@ def bc02_type_from_row(loai: str | None, loai2: str | None) -> str:
 
 
 def _row_pay_date(row: dict[str, Any]) -> date | None:
+    """BC02 day bucket — Pay Time (pay_time), fallback ngay_tien_ve."""
     return _parse_date(row.get("pay_time")) or _parse_date(row.get("ngay_tien_ve"))
+
+
+def _row_month_date(row: dict[str, Any]) -> date | None:
+    """BC01 month bucket — ngay_tien_ve per MODULE_SO_DOANH_THU §3.3."""
+    return _parse_date(row.get("ngay_tien_ve"))
 
 
 def _build_sales_performance_pivot(
@@ -213,7 +219,7 @@ def _build_sales_performance_pivot(
     grouped: dict[str, dict[str, dict[str, float]]] = {}
 
     for r in rows:
-        ngay = _row_pay_date(r)
+        ngay = _row_month_date(r)
         if not ngay:
             continue
         mk = _month_key(ngay)
