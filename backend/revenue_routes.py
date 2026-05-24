@@ -515,7 +515,7 @@ def _ledger_query(
         q = sb.table("so_doanh_thu").select(select, count=count)
     else:
         q = sb.table("so_doanh_thu").select(select)
-    q = q.order("pay_time", desc=True)
+    q = q.order("pay_time", desc=True).order("id", desc=True)
     if from_date:
         q = q.gte("pay_time", f"{from_date[:10]}T00:00:00")
     if to_date:
@@ -523,6 +523,21 @@ def _ledger_query(
     if loai_nhap in ("tu_dong", "tay"):
         q = q.eq("loai_nhap", loai_nhap)
     return q
+
+
+def _dedupe_rows_by_id(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """PostgREST offset pagination can repeat rows when pay_time ties — keep first."""
+    seen: set[str] = set()
+    out: list[dict[str, Any]] = []
+    for row in rows:
+        rid = row.get("id")
+        if rid:
+            key = str(rid)
+            if key in seen:
+                continue
+            seen.add(key)
+        out.append(row)
+    return out
 
 
 def _count_so_doanh_thu(
@@ -615,10 +630,11 @@ def _fetch_so_doanh_thu(
     loai_nhap: str | None = None,
 ) -> list[dict[str, Any]]:
     """PostgREST trả tối đa 1000 dòng/lần — paginate hết kết quả."""
+    select_cols = select if "id" in select else f"id, {select}"
     rows: list[dict[str, Any]] = []
     offset = 0
     while True:
-        q = sb.table("so_doanh_thu").select(select).order("pay_time", desc=True)
+        q = sb.table("so_doanh_thu").select(select_cols).order("pay_time", desc=True).order("id", desc=True)
         if from_date:
             q = q.gte("pay_time", f"{from_date[:10]}T00:00:00")
         if to_date:
@@ -633,7 +649,7 @@ def _fetch_so_doanh_thu(
         if len(chunk) < _SUPABASE_PAGE:
             break
         offset += _SUPABASE_PAGE
-    return rows
+    return _dedupe_rows_by_id(rows)
 
 
 def _enrich_ledger_rows(sb, db_rows: list[dict[str, Any]]) -> list[dict[str, Any]]:

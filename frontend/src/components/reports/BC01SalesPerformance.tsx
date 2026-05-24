@@ -119,7 +119,7 @@ export default function BC01SalesPerformance() {
         </p>
       )}
 
-      <TableScrollWrap>
+      <TableScrollWrap className="max-h-[min(70vh,calc(100svh-16rem))]">
         <Table className="min-w-[900px]">
           <thead>
             <Tr>
