@@ -1,29 +1,7 @@
-import { useMemo } from "react";
 import { formatVndNumber } from "../lib/vndFormat";
-import {
-  computeSourceBuckets,
-  formatSourceLabel,
-} from "../lib/ledgerSource";
-import type { RevenueLedgerRow } from "../types/revenue";
+import { formatSourceLabel } from "../lib/ledgerSource";
+import type { LedgerSummaryResponse } from "../types/revenue";
 import { cn } from "../lib/cn";
-
-export interface LedgerSummary {
-  totalGmvVnd: number;
-  orderCount: number;
-  bySource: ReturnType<typeof computeSourceBuckets>;
-}
-
-export function computeLedgerSummary(rows: RevenueLedgerRow[]): LedgerSummary {
-  let totalGmvVnd = 0;
-  for (const row of rows) {
-    totalGmvVnd += row.soTienVnd || 0;
-  }
-  return {
-    totalGmvVnd,
-    orderCount: rows.length,
-    bySource: computeSourceBuckets(rows),
-  };
-}
 
 function StatCard({
   label,
@@ -54,6 +32,7 @@ function StatCard({
 }
 
 function filterLabel(from: string, to: string): string {
+  if (!from && !to) return "Tất cả ngày";
   if (from && to && from === to) return `Ngày ${from.split("-").reverse().join("/")}`;
   if (from && to) return `${from.split("-").reverse().join("/")} – ${to.split("-").reverse().join("/")}`;
   if (from) return `Từ ${from.split("-").reverse().join("/")}`;
@@ -62,17 +41,16 @@ function filterLabel(from: string, to: string): string {
 }
 
 export default function LedgerSummaryCards({
-  rows,
+  summary,
   from,
   to,
   loading,
 }: {
-  rows: RevenueLedgerRow[];
+  summary: LedgerSummaryResponse | null;
   from: string;
   to: string;
   loading: boolean;
 }) {
-  const summary = useMemo(() => computeLedgerSummary(rows), [rows]);
   const period = filterLabel(from, to);
 
   return (
@@ -85,13 +63,13 @@ export default function LedgerSummaryCards({
       <div className="grid gap-3 sm:grid-cols-2">
         <StatCard
           label="Tổng GMV"
-          value={`${formatVndNumber(summary.totalGmvVnd) || "0"} ₫`}
+          value={`${formatVndNumber(summary?.totalGmvVnd ?? 0) || "0"} ₫`}
         />
-        <StatCard label="Số đơn" value={String(summary.orderCount)} />
+        <StatCard label="Số đơn" value={String(summary?.orderCount ?? 0)} />
       </div>
 
-      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
-        {summary.bySource.map(({ source, gmvVnd, count }) => (
+      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8">
+        {(summary?.bySource ?? []).map(({ source, gmvVnd, count }) => (
           <StatCard
             key={source}
             label={formatSourceLabel(source)}

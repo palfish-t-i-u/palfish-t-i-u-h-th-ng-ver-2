@@ -1,4 +1,4 @@
-import type { HTMLAttributes, TableHTMLAttributes, TdHTMLAttributes, ThHTMLAttributes } from "react";
+import { forwardRef, type HTMLAttributes, type TableHTMLAttributes, type TdHTMLAttributes, type ThHTMLAttributes } from "react";
 import { cn } from "../../lib/cn";
 
 export function TableWrap({ children, className }: HTMLAttributes<HTMLDivElement>) {
@@ -76,10 +76,12 @@ export function Td({ children, className, ...rest }: TdHTMLAttributes<HTMLTableC
   );
 }
 
-export function Tr({ children, className, ...rest }: HTMLAttributes<HTMLTableRowElement>) {
-  return (
-    <tr className={cn("group hover:[&>td]:bg-gmv-row-hover", className)} {...rest}>
-      {children}
-    </tr>
-  );
-}
+export const Tr = forwardRef<HTMLTableRowElement, HTMLAttributes<HTMLTableRowElement>>(
+  function Tr({ children, className, ...rest }, ref) {
+    return (
+      <tr ref={ref} className={cn("group hover:[&>td]:bg-gmv-row-hover", className)} {...rest}>
+        {children}
+      </tr>
+    );
+  }
+);
