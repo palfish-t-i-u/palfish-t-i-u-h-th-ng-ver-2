@@ -191,6 +191,27 @@ function bc03StickyCell(
   };
 }
 
+/** Header cells: freeze row khi scroll dọc + freeze Team/Nhân sự khi scroll ngang. */
+function bc03StickyHeadCell(
+  index: number,
+  widths: number[],
+  bg: string,
+  extraClass?: string
+) {
+  const topZ = index < BC03_FREEZE_COLS ? 34 - index : 30;
+  if (index < BC03_FREEZE_COLS) {
+    const h = bc03StickyCol(index, widths, bg, topZ);
+    return {
+      className: cn("sticky top-0", h.className, extraClass),
+      style: { ...h.style, zIndex: topZ },
+    };
+  }
+  return {
+    className: cn("sticky top-0", bg, extraClass),
+    style: { zIndex: topZ },
+  };
+}
+
 const AUTO_TABS: { key: AutoTab; label: string }[] = [
   { key: "revenue", label: "Doanh thu & Order" },
   { key: "trial", label: "Trial (L4)" },
@@ -1168,32 +1189,35 @@ export default function ReportBC03Tab() {
             <table className="min-w-max w-full border-collapse text-xs">
               <thead>
                 <tr className="border-b border-gmv-border bg-gmv-table-head text-gmv-muted">
-                  <th {...bc03StickyCell(0, REV_COL_W, "bg-gmv-table-head", "px-3 py-2.5 text-left font-medium")}>
+                  <th {...bc03StickyHeadCell(0, REV_COL_W, "bg-gmv-table-head", "px-3 py-2.5 text-left font-medium")}>
                     Team
                   </th>
-                  <th {...bc03StickyCell(1, REV_COL_W, "bg-gmv-table-head", "px-3 py-2.5 text-left font-medium")}>
+                  <th {...bc03StickyHeadCell(1, REV_COL_W, "bg-gmv-table-head", "px-3 py-2.5 text-left font-medium")}>
                     Nhân sự
                   </th>
                   <th
-                    {...bc03StickyCell(2, REV_COL_W, "bg-gmv-table-head", "px-2 py-2.5 text-center font-medium w-10")}
+                    {...bc03StickyHeadCell(2, REV_COL_W, "bg-gmv-table-head", "px-2 py-2.5 text-center font-medium w-10")}
                     title="Xóa dòng KPI"
                   >
                     ×
                   </th>
-                  <th {...bc03StickyCell(3, REV_COL_W, "bg-gmv-canvas", "px-2 py-2.5 text-center font-medium whitespace-nowrap")}>
+                  <th {...bc03StickyHeadCell(3, REV_COL_W, "bg-gmv-table-head", "px-2 py-2.5 text-center font-medium whitespace-nowrap")}>
                     GMV PKI
                   </th>
-                  <th {...bc03StickyCell(4, REV_COL_W, "bg-gmv-canvas", "px-2 py-2.5 text-left font-medium whitespace-nowrap")}>
+                  <th {...bc03StickyHeadCell(4, REV_COL_W, "bg-gmv-table-head", "px-2 py-2.5 text-left font-medium whitespace-nowrap")}>
                     % GMV
                   </th>
-                  <th {...bc03StickyCell(5, REV_COL_W, "bg-gmv-canvas", "px-2 py-2.5 text-right font-medium whitespace-nowrap")}>
+                  <th {...bc03StickyHeadCell(5, REV_COL_W, "bg-gmv-table-head", "px-2 py-2.5 text-right font-medium whitespace-nowrap")}>
                     Tổng ĐT
                   </th>
-                  <th {...bc03StickyCell(6, REV_COL_W, "bg-gmv-canvas", "px-2 py-2.5 text-right font-medium whitespace-nowrap")}>
+                  <th {...bc03StickyHeadCell(6, REV_COL_W, "bg-gmv-table-head", "px-2 py-2.5 text-right font-medium whitespace-nowrap")}>
                     Tổng đơn
                   </th>
                   {dates.map((d) => (
-                    <th key={d} className="px-2 py-2.5 text-right font-medium whitespace-nowrap min-w-[4.5rem]">
+                    <th
+                      key={d}
+                      className="sticky top-0 z-30 bg-gmv-table-head px-2 py-2.5 text-right font-medium whitespace-nowrap min-w-[4.5rem]"
+                    >
                       {fmtDayHeader(d)}
                     </th>
                   ))}
@@ -1347,17 +1371,20 @@ export default function ReportBC03Tab() {
             <table className="min-w-max w-full border-collapse text-xs">
               <thead>
                 <tr className="border-b border-gmv-border bg-gmv-table-head text-gmv-muted">
-                  <th {...bc03StickyCell(0, TRI_COL_W, "bg-gmv-canvas", "px-3 py-2.5 text-left font-medium")}>
+                  <th {...bc03StickyHeadCell(0, TRI_COL_W, "bg-gmv-table-head", "px-3 py-2.5 text-left font-medium")}>
                     Team
                   </th>
-                  <th {...bc03StickyCell(1, TRI_COL_W, "bg-gmv-canvas", "px-3 py-2.5 text-left font-medium")}>
+                  <th {...bc03StickyHeadCell(1, TRI_COL_W, "bg-gmv-table-head", "px-3 py-2.5 text-left font-medium")}>
                     Tên Sale
                   </th>
-                  <th {...bc03StickyCell(2, TRI_COL_W, "bg-gmv-canvas", "px-2 py-2.5 text-right font-medium whitespace-nowrap")}>
+                  <th {...bc03StickyHeadCell(2, TRI_COL_W, "bg-gmv-table-head", "px-2 py-2.5 text-right font-medium whitespace-nowrap")}>
                     Tổng L4
                   </th>
                   {dates.map((d) => (
-                    <th key={d} className="px-2 py-2.5 text-right font-medium whitespace-nowrap min-w-[4rem]">
+                    <th
+                      key={d}
+                      className="sticky top-0 z-30 bg-gmv-table-head px-2 py-2.5 text-right font-medium whitespace-nowrap min-w-[4rem]"
+                    >
                       {fmtDayHeader(d)}
                     </th>
                   ))}
@@ -1445,17 +1472,20 @@ export default function ReportBC03Tab() {
             <table className="min-w-max w-full border-collapse text-xs">
               <thead>
                 <tr className="border-b border-gmv-border bg-gmv-table-head text-gmv-muted">
-                  <th {...bc03StickyCell(0, TRI_COL_W, "bg-gmv-canvas", "px-3 py-2.5 text-left font-medium")}>
+                  <th {...bc03StickyHeadCell(0, TRI_COL_W, "bg-gmv-table-head", "px-3 py-2.5 text-left font-medium")}>
                     Team
                   </th>
-                  <th {...bc03StickyCell(1, TRI_COL_W, "bg-gmv-canvas", "px-3 py-2.5 text-left font-medium")}>
+                  <th {...bc03StickyHeadCell(1, TRI_COL_W, "bg-gmv-table-head", "px-3 py-2.5 text-left font-medium")}>
                     Tên Sale
                   </th>
-                  <th {...bc03StickyCell(2, TRI_COL_W, "bg-gmv-canvas", "px-2 py-2.5 text-right font-medium whitespace-nowrap")}>
+                  <th {...bc03StickyHeadCell(2, TRI_COL_W, "bg-gmv-table-head", "px-2 py-2.5 text-right font-medium whitespace-nowrap")}>
                     Tổng L1.2
                   </th>
                   {dates.map((d) => (
-                    <th key={d} className="px-2 py-2.5 text-right font-medium whitespace-nowrap min-w-[4rem]">
+                    <th
+                      key={d}
+                      className="sticky top-0 z-30 bg-gmv-table-head px-2 py-2.5 text-right font-medium whitespace-nowrap min-w-[4rem]"
+                    >
                       {fmtDayHeader(d)}
                     </th>
                   ))}

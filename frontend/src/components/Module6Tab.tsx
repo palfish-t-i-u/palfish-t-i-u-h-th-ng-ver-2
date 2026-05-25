@@ -93,9 +93,9 @@ const SALE_DETAIL_COLUMNS: {
 ];
 
 const STICKY_HEAD =
-  "sticky left-0 z-20 bg-slate-900 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.25)]";
+  "sticky left-0 z-20 bg-gmv-table-head shadow-[2px_0_5px_-2px_rgba(0,0,0,0.08)]";
 const STICKY_CELL =
-  "sticky left-0 z-10 bg-slate-800 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.25)]";
+  "sticky left-0 z-10 bg-gmv-canvas shadow-[2px_0_5px_-2px_rgba(0,0,0,0.06)]";
 
 function cellText(v: unknown): string {
   if (v == null || v === "") return "—";
@@ -142,14 +142,22 @@ function KpiCard({ label, value, sub, highlight }: {
   label: string; value: string; sub?: string; highlight?: boolean;
 }) {
   return (
-    <div className={`rounded-xl p-4 ring-1 ${
-      highlight ? "bg-blue-900/40 ring-blue-600" : "bg-slate-800/60 ring-slate-700"
-    }`}>
-      <p className="text-xs font-medium text-slate-400">{label}</p>
-      <p className={`mt-1 text-xl font-bold tabular-nums leading-tight ${
-        highlight ? "text-blue-300" : "text-slate-100"
-      }`}>{value}</p>
-      {sub && <p className="mt-0.5 text-xs text-slate-500">{sub}</p>}
+    <div
+      className={`flex min-h-[5.5rem] min-w-0 flex-col justify-center rounded-xl p-3 ring-1 sm:p-4 ${
+        highlight
+          ? "bg-gmv-primary-soft ring-gmv-primary/35"
+          : "bg-gmv-canvas ring-gmv-border shadow-gmv-1"
+      }`}
+    >
+      <p className="line-clamp-2 text-xs font-medium text-gmv-muted">{label}</p>
+      <p
+        className={`mt-1 break-words text-base font-bold tabular-nums leading-snug sm:text-lg ${
+          highlight ? "text-gmv-primary" : "text-gmv-text-strong"
+        }`}
+      >
+        {value}
+      </p>
+      {sub && <p className="mt-0.5 line-clamp-2 text-[11px] text-gmv-muted">{sub}</p>}
     </div>
   );
 }
@@ -159,14 +167,14 @@ function ConversionBar({ label, value }: { label: string; value: number }) {
   const barWidth = Math.min(Math.abs(pct), 100);
   return (
     <div className="flex items-center gap-3">
-      <span className="w-12 text-right text-xs font-semibold text-slate-400">{label}</span>
-      <div className="flex-1 h-5 rounded-full bg-slate-700 overflow-hidden">
+      <span className="w-12 text-right text-xs font-semibold text-gmv-muted">{label}</span>
+      <div className="h-5 flex-1 overflow-hidden rounded-full bg-gmv-border">
         <div
-          className="h-full rounded-full bg-gradient-to-r from-blue-500 to-indigo-500 transition-all duration-500"
+          className="h-full rounded-full bg-gradient-to-r from-gmv-primary to-indigo-500 transition-all duration-500"
           style={{ width: `${barWidth}%` }}
         />
       </div>
-      <span className="w-14 text-right text-xs text-slate-300 tabular-nums">{pct.toFixed(1)}%</span>
+      <span className="w-14 text-right text-xs tabular-nums text-gmv-text-strong">{pct.toFixed(1)}%</span>
     </div>
   );
 }
@@ -255,23 +263,23 @@ export default function Module6Tab() {
     : "Hôm nay";
 
   return (
-    <div className="space-y-5 p-5">
+    <div className="dashboard-sale space-y-5 p-5 text-gmv-text-strong">
 
       {/* ── HEADER & FILTERS ── */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="text-lg font-bold text-slate-100">Sale Leader / System</h2>
-          <p className="text-xs text-slate-400">
+          <h2 className="text-lg font-bold text-gmv-text-strong">Sale Leader / System</h2>
+          <p className="text-xs text-gmv-muted">
             {period ? `${period.start} → ${period.end}` : "Dashboard tổng quan hiệu suất Sale"}
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
           {/* Date range tabs */}
-          <div className="flex rounded-lg overflow-hidden ring-1 ring-slate-600">
+          <div className="flex rounded-lg overflow-hidden ring-1 ring-gmv-border">
             {RANGE_OPTIONS.map(({ key, label }) => (
               <button key={key} onClick={() => setRangeKey(key)}
                 className={`px-3 py-1.5 text-xs font-medium transition ${
-                  rangeKey === key ? "bg-blue-600 text-white" : "bg-slate-800 text-slate-300 hover:bg-slate-700"
+                  rangeKey === key ? "bg-blue-600 text-white" : "bg-gmv-canvas text-gmv-text hover:bg-gmv-row-hover"
                 }`}>{label}</button>
             ))}
           </div>
@@ -279,20 +287,20 @@ export default function Module6Tab() {
           {rangeKey === "custom" && (
             <div className="flex items-center gap-2">
               <input type="date" value={customStart} onChange={(e) => setCustomStart(e.target.value)}
-                className="rounded-lg border border-slate-600 bg-slate-800 px-2 py-1.5 text-xs text-slate-200 focus:outline-none" />
-              <span className="text-slate-500 text-xs">→</span>
+                className="rounded-lg border border-gmv-border bg-gmv-canvas px-2 py-1.5 text-xs text-gmv-text-strong focus:outline-none" />
+              <span className="text-gmv-muted text-xs">→</span>
               <input type="date" value={customEnd} onChange={(e) => setCustomEnd(e.target.value)}
-                className="rounded-lg border border-slate-600 bg-slate-800 px-2 py-1.5 text-xs text-slate-200 focus:outline-none" />
+                className="rounded-lg border border-gmv-border bg-gmv-canvas px-2 py-1.5 text-xs text-gmv-text-strong focus:outline-none" />
             </div>
           )}
           {/* Filters */}
           <select value={teamFilter} onChange={(e) => setTeamFilter(e.target.value)}
-            className="rounded-lg border border-slate-600 bg-slate-800 px-3 py-1.5 text-xs text-slate-300 focus:outline-none">
+            className="rounded-lg border border-gmv-border bg-gmv-canvas px-3 py-1.5 text-xs text-gmv-text focus:outline-none">
             <option value="">Tất cả team</option>
             {teams.map((t) => <option key={t}>{t}</option>)}
           </select>
           <select value={saleFilter} onChange={(e) => setSaleFilter(e.target.value)}
-            className="rounded-lg border border-slate-600 bg-slate-800 px-3 py-1.5 text-xs text-slate-300 focus:outline-none">
+            className="rounded-lg border border-gmv-border bg-gmv-canvas px-3 py-1.5 text-xs text-gmv-text focus:outline-none">
             <option value="">Tất cả sale</option>
             {sales.map((s) => <option key={s}>{s}</option>)}
           </select>
@@ -320,10 +328,10 @@ export default function Module6Tab() {
       )}
 
       {(live || trends) && !loading && (
-        <div className="rounded-lg bg-slate-800/50 px-4 py-2 text-xs text-slate-400 ring-1 ring-slate-700">
-          Kiến trúc Hybrid: KPI & Top Sale = <strong className="text-slate-300">PalFish live</strong>
+        <div className="rounded-lg bg-gmv-canvas/50 px-4 py-2 text-xs text-gmv-muted ring-1 ring-gmv-border">
+          Kiến trúc Hybrid: KPI & Top Sale = <strong className="text-gmv-text">PalFish live</strong>
           {meta?.department_fallback ? " (fallback org VN)" : ""} · Biểu đồ ={" "}
-          <strong className="text-slate-300">DB daily</strong>
+          <strong className="text-gmv-text">DB daily</strong>
           ({trends?.meta?.sync_days ?? 0} ngày sync, {trends?.row_count ?? 0} dòng).
           GMV CRM = RMB · Tiền về = VND · Tỷ giá: 1 RMB = {fmt(fx)} ₫.
         </div>
@@ -336,14 +344,14 @@ export default function Module6Tab() {
       {/* ── KPI CARDS (PalFish live — có thể mất 1–2s) ── */}
       <div className="relative">
         {kpiLoading && (
-          <div className="absolute inset-0 z-10 flex items-center justify-center rounded-xl bg-slate-900/70 backdrop-blur-[1px]">
-            <span className="flex items-center gap-2 text-sm text-slate-300">
+          <div className="absolute inset-0 z-10 flex items-center justify-center rounded-xl bg-gmv-bg/70 backdrop-blur-[1px]">
+            <span className="flex items-center gap-2 text-sm text-gmv-text">
               <span className="inline-block h-5 w-5 animate-spin rounded-full border-2 border-blue-500 border-t-transparent" />
               Đang lấy KPI từ PalFish…
             </span>
           </div>
         )}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-7">
+      <div className="grid grid-cols-[repeat(auto-fill,minmax(148px,1fr))] gap-3">
         <KpiCard label="Tổng số L1"   value={fmt(kpi?.l1 ?? 0)} />
         <KpiCard label="Tổng số L3"   value={fmt(kpi?.l3 ?? 0)} />
         <KpiCard label="Tổng số L4"   value={fmt(kpi?.l4 ?? 0)} />
@@ -353,7 +361,7 @@ export default function Module6Tab() {
         <KpiCard label="AOV (đã thu)"        value={vnd(kpi?.aov ?? 0)} sub="VND / đơn đã thu (PayOS)" />
       </div>
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-8">
+      <div className="mt-3 grid grid-cols-[repeat(auto-fill,minmax(132px,1fr))] gap-3">
         <KpiCard label="C1 — Thời lượng gọi" value={`${(kpi?.c1 ?? 0).toFixed(1)} phút`} />
         <KpiCard label="C2 — Số cuộc gọi" value={fmt(kpi?.c2 ?? 0)} />
         <KpiCard label="C4 — Tỷ lệ kết nối" value={fmtRate(kpi?.c4)} />
@@ -368,33 +376,33 @@ export default function Module6Tab() {
       {/* ── CHARTS ROW ── */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         {/* Line chart */}
-        <div className="lg:col-span-2 rounded-xl bg-slate-800/60 p-4 ring-1 ring-slate-700">
-          <p className="mb-3 text-sm font-semibold text-slate-300">GMV CRM & tiền về theo ngày (DB daily)</p>
+        <div className="lg:col-span-2 rounded-xl bg-gmv-canvas/60 p-4 ring-1 ring-gmv-border">
+          <p className="mb-3 text-sm font-semibold text-gmv-text">GMV CRM & tiền về theo ngày (DB daily)</p>
           {revenueData.length > 0 ? (
             <>
               <ResponsiveContainer width="100%" height={220}>
                 <LineChart data={revenueData} margin={{ top: 4, right: 8, bottom: 0, left: -16 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
-                  <XAxis dataKey="date" tick={{ fill: "#94a3b8", fontSize: 10 }}
+                  <CartesianGrid strokeDasharray="3 3" stroke="#d6dae4" />
+                  <XAxis dataKey="date" tick={{ fill: "#5c7db8", fontSize: 10 }}
                     tickFormatter={(v) => v.slice(5)} />
-                  <YAxis yAxisId="rmb" tick={{ fill: "#94a3b8", fontSize: 10 }}
+                  <YAxis yAxisId="rmb" tick={{ fill: "#5c7db8", fontSize: 10 }}
                     tickFormatter={(v) => fmtM(v)} />
-                  <YAxis yAxisId="vnd" orientation="right" tick={{ fill: "#94a3b8", fontSize: 10 }}
+                  <YAxis yAxisId="vnd" orientation="right" tick={{ fill: "#5c7db8", fontSize: 10 }}
                     tickFormatter={(v) => fmtM(v)} />
                   <Tooltip
-                    contentStyle={{ background: "#1e293b", border: "1px solid #334155", borderRadius: 8 }}
+                    contentStyle={{ background: "#ffffff", border: "1px solid #d6dae4", borderRadius: 8, color: "#1f2330" }}
                     formatter={(v, name) => {
                       const n = Number(v);
                       if (String(name).includes("VND") || String(name).includes("Đã thu")) return [vnd(n), name];
                       return [gmvRmb(n), name];
                     }}
-                    labelStyle={{ color: "#e2e8f0" }}
+                    labelStyle={{ color: "#1f2330" }}
                   />
                   <Line yAxisId="rmb" type="monotone" dataKey="gmv_rmb" stroke="#6366f1" strokeWidth={2} dot={false} name="GMV (RMB)" />
                   <Line yAxisId="vnd" type="monotone" dataKey="collected_vnd" stroke="#22c55e" strokeWidth={2} dot={false} name="Đã thu (VND)" />
                 </LineChart>
               </ResponsiveContainer>
-              <div className="mt-2 flex gap-4 text-xs text-slate-400">
+              <div className="mt-2 flex gap-4 text-xs text-gmv-muted">
                 {[["#6366f1","GMV (RMB)"],["#22c55e","Đã thu (VND)"]].map(([c,l])=>(
                   <span key={l} className="flex items-center gap-1">
                     <span className="inline-block h-2 w-4 rounded-full" style={{background:c}}/>
@@ -404,15 +412,15 @@ export default function Module6Tab() {
               </div>
             </>
           ) : (
-            <div className="flex h-[220px] items-center justify-center text-sm text-slate-500">
+            <div className="flex h-[220px] items-center justify-center text-sm text-gmv-muted">
               {trendsLoading ? "Đang tải biểu đồ…" : "Chưa có dữ liệu daily — sync CRM từng ngày"}
             </div>
           )}
         </div>
 
         {/* Today panel */}
-        <div className="rounded-xl bg-slate-800/60 p-4 ring-1 ring-slate-700">
-          <p className="mb-3 text-sm font-semibold text-slate-300">{todayLabel}</p>
+        <div className="rounded-xl bg-gmv-canvas/60 p-4 ring-1 ring-gmv-border">
+          <p className="mb-3 text-sm font-semibold text-gmv-text">{todayLabel}</p>
           <div className="space-y-3">
             {[
               ["Số đơn mới",         fmt(today?.orders ?? 0)],
@@ -421,8 +429,8 @@ export default function Module6Tab() {
               ["Doanh thu đã thu",   vnd(today?.collected_vnd ?? today?.collected ?? 0)],
             ].map(([label, val]) => (
               <div key={label} className="flex items-center justify-between">
-                <span className="text-xs text-slate-400">{label}</span>
-                <span className="text-xs font-semibold text-slate-200 tabular-nums">{val}</span>
+                <span className="text-xs text-gmv-muted">{label}</span>
+                <span className="text-xs font-semibold text-gmv-text-strong tabular-nums">{val}</span>
               </div>
             ))}
           </div>
@@ -432,14 +440,14 @@ export default function Module6Tab() {
             const collectPct = pctOf(today?.collected_vnd ?? today?.collected ?? 0, gmvVndEst);
             return (
             <div className="mt-4">
-              <p className="mb-2 text-xs text-slate-400">Tỷ lệ thu hôm nay</p>
-              <div className="h-3 rounded-full bg-slate-700 overflow-hidden">
+              <p className="mb-2 text-xs text-gmv-muted">Tỷ lệ thu hôm nay</p>
+              <div className="h-3 overflow-hidden rounded-full bg-gmv-border">
                 <div
                   className="h-full rounded-full bg-emerald-500 transition-all"
                   style={{ width: `${collectPct}%` }}
                 />
               </div>
-              <p className="mt-1 text-right text-xs text-emerald-400">
+              <p className="mt-1 text-right text-xs text-emerald-700">
                 {collectPct}%
               </p>
             </div>
@@ -451,8 +459,8 @@ export default function Module6Tab() {
       {/* ── CONVERSION + TOP SALES ── */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         {/* Conversion */}
-        <div className="rounded-xl bg-slate-800/60 p-4 ring-1 ring-slate-700">
-          <p className="mb-4 text-sm font-semibold text-slate-300">Tỷ lệ chuyển đổi từng giai đoạn</p>
+        <div className="rounded-xl bg-gmv-canvas/60 p-4 ring-1 ring-gmv-border">
+          <p className="mb-4 text-sm font-semibold text-gmv-text">Tỷ lệ chuyển đổi từng giai đoạn</p>
           <div className="space-y-3">
             {(conversion.length > 0 ? conversion : [
               {label:"L3/L1",value:0},{label:"L4/L3",value:0},
@@ -460,24 +468,24 @@ export default function Module6Tab() {
             ]).map((c) => <ConversionBar key={c.label} label={c.label} value={c.value} />)}
           </div>
           {conversion.every((c) => c.value === 0) && (
-            <p className="mt-3 text-xs text-slate-500 text-center">
+            <p className="mt-3 text-xs text-gmv-muted text-center">
               Tỷ lệ tính từ CRM: L3=邀约, L4=完课, L8=签单
             </p>
           )}
         </div>
 
         {/* Top Sales */}
-        <div className="rounded-xl bg-slate-800/60 p-4 ring-1 ring-slate-700">
-          <p className="mb-3 text-sm font-semibold text-slate-300">Top Sale (GMV RMB — PalFish live)</p>
+        <div className="rounded-xl bg-gmv-canvas/60 p-4 ring-1 ring-gmv-border">
+          <p className="mb-3 text-sm font-semibold text-gmv-text">Top Sale (GMV RMB — PalFish live)</p>
           {topSales.length > 0 ? (
             <ResponsiveContainer width="100%" height={200}>
               <BarChart data={topSalesChart} layout="vertical"
                 margin={{ top: 0, right: 50, bottom: 0, left: 70 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#334155" horizontal={false} />
+                <CartesianGrid strokeDasharray="3 3" stroke="#d6dae4" horizontal={false} />
                 <XAxis type="number" tickFormatter={(v) => fmtM(v) + " RMB"}
-                  tick={{ fill: "#94a3b8", fontSize: 10 }} />
+                  tick={{ fill: "#5c7db8", fontSize: 10 }} />
                 <YAxis type="category" dataKey="sale_name" width={68}
-                  tick={{ fill: "#cbd5e1", fontSize: 11 }} />
+                  tick={{ fill: "#1f2330", fontSize: 11 }} />
                 <Tooltip
                   formatter={(v) => [gmvRmb(Number(v))]}
                   contentStyle={{ background: "#1e293b", border: "1px solid #334155", borderRadius: 8 }}
@@ -488,7 +496,7 @@ export default function Module6Tab() {
               </BarChart>
             </ResponsiveContainer>
           ) : (
-            <div className="flex h-[200px] items-center justify-center text-sm text-slate-500">
+            <div className="flex h-[200px] items-center justify-center text-sm text-gmv-muted">
               {kpiLoading ? "Đang tải từ PalFish…" : "Chưa có dữ liệu"}
             </div>
           )}
@@ -496,16 +504,16 @@ export default function Module6Tab() {
       </div>
 
       {/* ── DETAIL TABLE ── */}
-      <div className="rounded-xl bg-slate-800/60 ring-1 ring-slate-700">
-        <div className="p-4 border-b border-slate-700 flex items-center justify-between">
-          <p className="text-sm font-semibold text-slate-300">Chi tiết theo Sale</p>
-          <span className="text-xs text-slate-500">{topSales.length} sale</span>
+      <div className="rounded-xl bg-gmv-canvas/60 ring-1 ring-gmv-border">
+        <div className="p-4 border-b border-gmv-border flex items-center justify-between">
+          <p className="text-sm font-semibold text-gmv-text">Chi tiết theo Sale</p>
+          <span className="text-xs text-gmv-muted">{topSales.length} sale</span>
         </div>
         {topSales.length > 0 ? (
           <div className="overflow-x-auto max-w-full">
             <table className="w-full min-w-[1200px] text-xs">
               <thead>
-                <tr className="border-b border-slate-700 text-slate-400">
+                <tr className="border-b border-gmv-border text-gmv-muted">
                   {SALE_DETAIL_COLUMNS.map((col) => (
                     <th
                       key={col.label}
@@ -522,17 +530,17 @@ export default function Module6Tab() {
                 {topSales.map((r) => (
                   <tr
                     key={r.sale_name}
-                    className="group border-b border-slate-700/50 hover:bg-slate-700/30 transition"
+                    className="group border-b border-gmv-border/50 hover:bg-gmv-row-hover/30 transition"
                   >
                     {SALE_DETAIL_COLUMNS.map((col) => (
                       <td
                         key={col.label}
                         className={`px-3 py-2 tabular-nums whitespace-nowrap ${
                           col.sticky
-                            ? `${STICKY_CELL} group-hover:bg-slate-700/30 font-medium text-slate-100`
+                            ? `${STICKY_CELL} group-hover:bg-gmv-row-hover/30 font-medium text-gmv-text-strong`
                             : col.key === "department"
-                              ? "text-slate-400"
-                              : "text-slate-200"
+                              ? "text-gmv-muted"
+                              : "text-gmv-text-strong"
                         }`}
                       >
                         {detailCellValue(r, col)}
@@ -544,7 +552,7 @@ export default function Module6Tab() {
             </table>
           </div>
         ) : (
-          <div className="py-12 text-center text-sm text-slate-500">
+          <div className="py-12 text-center text-sm text-gmv-muted">
             {loading ? "Đang tải dữ liệu…" : "Chưa có data — lấy dữ liệu CRM ở tab Đồng bộ CRM trước"}
           </div>
         )}
