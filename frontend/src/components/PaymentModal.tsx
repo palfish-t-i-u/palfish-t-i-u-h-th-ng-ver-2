@@ -26,9 +26,11 @@ export default function PaymentModal({ open, maDonHang, tongTien, infoCode, onCl
   const [payosQrUrl, setPayosQrUrl] = useState("");
   const [payosCheckoutUrl, setPayosCheckoutUrl] = useState("");
   const [payosError, setPayosError] = useState("");
+  const [transferContent, setTransferContent] = useState("");
 
   const vietQrUrl = buildVietQrUrl(tongTien, infoCode);
   const displayQrUrl = payosQrUrl || vietQrUrl;
+  const displayTransferContent = payosQrUrl && transferContent ? transferContent : infoCode;
   const amountLabel = tongTien > 0 ? tongTien.toLocaleString("vi-VN") : "Chưa nhập";
 
   useEffect(() => {
@@ -37,6 +39,7 @@ export default function PaymentModal({ open, maDonHang, tongTien, infoCode, onCl
       setPayosQrUrl("");
       setPayosCheckoutUrl("");
       setPayosError("");
+      setTransferContent("");
       return;
     }
     let cancelled = false;
@@ -44,13 +47,15 @@ export default function PaymentModal({ open, maDonHang, tongTien, infoCode, onCl
     setPayosError("");
     setPayosQrUrl("");
     setPayosCheckoutUrl("");
+    setTransferContent("");
     setQrCopy({ kind: "idle" });
 
     endpoints.payos
       .createLink({ amount: tongTien, infoCode, maDonHang })
       .then((res) => {
         if (cancelled) return;
-        const { qrCode, checkoutUrl } = res.data;
+        const { qrCode, checkoutUrl, transferContent: tc } = res.data;
+        setTransferContent(tc || infoCode);
         setPayosQrUrl(
           `https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=${encodeURIComponent(qrCode)}`,
         );
@@ -111,7 +116,7 @@ export default function PaymentModal({ open, maDonHang, tongTien, infoCode, onCl
 
       ctx.fillStyle = "#d97706";
       ctx.font = "bold 18px monospace";
-      ctx.fillText(infoCode, canvas.width / 2, qrH + pad + 55);
+      ctx.fillText(displayTransferContent, canvas.width / 2, qrH + pad + 55);
 
       return await new Promise<Blob | null>((resolve) =>
         canvas.toBlob((b) => resolve(b), "image/png"),
@@ -185,12 +190,17 @@ export default function PaymentModal({ open, maDonHang, tongTien, infoCode, onCl
           <InfoLine label="Số tiền" value={`${amountLabel} VNĐ`} />
           <div className="pt-2">
             <div className="text-gmv-text">Nội dung CK (Info Code):</div>
-            <span className="mt-1 inline-block rounded-gmv-sm border border-dashed border-gmv-warn bg-gmv-warn-soft px-2.5 py-1 text-base font-bold text-gmv-warn">
-              {infoCode}
+            <span className="mt-1 inline-block rounded-gmv-sm border border-dashed border-gmv-warn bg-gmv-warn-soft px-2.5 py-1 text-base font-bold text-gmv-warn break-all">
+              {displayTransferContent}
             </span>
             <p className="mt-1 text-xs italic text-gmv-danger">
-              Khách PHẢI ghi đúng nội dung này khi chuyển khoản
+              Khách PHẢI ghi đúng nội dung này khi chuyển khoản (khớp QR PayOS / app ngân hàng)
             </p>
+            {payosQrUrl && transferContent && transferContent !== infoCode && (
+              <p className="mt-1 text-xs text-gmv-muted">
+                Mã đơn hệ thống: <strong>{infoCode}</strong>
+              </p>
+            )}
           </div>
           {payosCheckoutUrl && (
             <div className="pt-1">

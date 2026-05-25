@@ -57,10 +57,14 @@ export const endpoints = {
   },
   payos: {
     createLink: (data: { amount: number; infoCode: string; maDonHang: string }) =>
-      api.post<{ checkoutUrl: string; qrCode: string; orderCode: number; description: string }>(
-        "/payos/create-link",
-        data
-      ),
+      api.post<{
+        checkoutUrl: string;
+        qrCode: string;
+        orderCode: number;
+        description: string;
+        transferContent: string;
+        paymentLinkId?: string;
+      }>("/payos/create-link", data),
     transactions: (params?: {
       limit?: number;
       from?: string;
