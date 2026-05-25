@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { BANK_INFO, buildVietQrUrl } from "../constants/bank";
+import { endpoints } from "../lib/api";
 import { Button } from "./ui";
 import Modal from "./ui/Modal";
+
 interface Props {
   open: boolean;
   maDonHang: string;
@@ -20,12 +22,56 @@ export default function PaymentModal({ open, maDonHang, tongTien, infoCode, onCl
   const [qrCopy, setQrCopy] = useState<QrCopyState>({ kind: "idle" });
   const imgRef = useRef<HTMLImageElement | null>(null);
 
-  const qrUrl = buildVietQrUrl(tongTien, infoCode);
+  const [payosLoading, setPayosLoading] = useState(true);
+  const [payosQrUrl, setPayosQrUrl] = useState("");
+  const [payosCheckoutUrl, setPayosCheckoutUrl] = useState("");
+  const [payosError, setPayosError] = useState("");
+
+  const vietQrUrl = buildVietQrUrl(tongTien, infoCode);
+  const displayQrUrl = payosQrUrl || vietQrUrl;
   const amountLabel = tongTien > 0 ? tongTien.toLocaleString("vi-VN") : "Chưa nhập";
 
   useEffect(() => {
+    if (!open || tongTien <= 0) {
+      setPayosLoading(false);
+      setPayosQrUrl("");
+      setPayosCheckoutUrl("");
+      setPayosError("");
+      return;
+    }
+    let cancelled = false;
+    setPayosLoading(true);
+    setPayosError("");
+    endpoints.payos
+      .createLink({ amount: tongTien, infoCode, maDonHang })
+      .then((res) => {
+        if (cancelled) return;
+        const { qrCode, checkoutUrl } = res.data;
+        setPayosQrUrl(
+          `https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=${encodeURIComponent(qrCode)}`
+        );
+        setPayosCheckoutUrl(checkoutUrl);
+      })
+      .catch((e: unknown) => {
+        if (cancelled) return;
+        const msg =
+          (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail ||
+          "Không tạo được QR PayOS — dùng VietQR dự phòng.";
+        setPayosError(msg);
+        setPayosQrUrl("");
+        setPayosCheckoutUrl("");
+      })
+      .finally(() => {
+        if (!cancelled) setPayosLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, tongTien, infoCode, maDonHang]);
+
+  useEffect(() => {
     if (open) setQrCopy({ kind: "idle" });
-  }, [open, qrUrl]);
+  }, [open, displayQrUrl]);
 
   const flash = useCallback((s: QrCopyState) => {
     setQrCopy(s);
@@ -34,7 +80,7 @@ export default function PaymentModal({ open, maDonHang, tongTien, infoCode, onCl
 
   async function fetchQrBlob(): Promise<Blob | null> {
     try {
-      const res = await fetch(qrUrl, { mode: "cors", cache: "no-store" });
+      const res = await fetch(displayQrUrl, { mode: "cors", cache: "no-store" });
       if (!res.ok) return null;
       const blob = await res.blob();
       return blob.type.startsWith("image/") ? blob : null;
@@ -65,7 +111,7 @@ export default function PaymentModal({ open, maDonHang, tongTien, infoCode, onCl
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `QR-${maDonHang || "vietqr"}.png`;
+    a.download = `QR-${maDonHang || "pay"}.png`;
     document.body.appendChild(a);
     a.click();
     a.remove();
@@ -91,6 +137,7 @@ export default function PaymentModal({ open, maDonHang, tongTien, infoCode, onCl
         flash({ kind: "ok" });
         return;
       } catch {
+        /* fallback download */
       }
     }
 
@@ -116,6 +163,11 @@ export default function PaymentModal({ open, maDonHang, tongTien, infoCode, onCl
 
       <p className="-mt-2 mb-4 text-center text-sm text-gmv-muted">
         Mã đơn: <strong className="text-gmv-text-strong">{maDonHang}</strong>
+        {payosQrUrl ? (
+          <span className="ml-2 text-xs text-gmv-ok">· QR PayOS (webhook tự đối soát)</span>
+        ) : payosError ? (
+          <span className="ml-2 text-xs text-gmv-warn">· VietQR dự phòng</span>
+        ) : null}
       </p>
 
       <div className="flex flex-col gap-6 md:flex-row md:items-stretch">
@@ -131,36 +183,56 @@ export default function PaymentModal({ open, maDonHang, tongTien, infoCode, onCl
               {infoCode}
             </span>
           </div>
+          {payosCheckoutUrl && (
+            <p className="pt-2">
+              <a
+                href={payosCheckoutUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="text-sm font-semibold text-gmv-primary underline"
+              >
+                Mở link thanh toán PayOS
+              </a>
+            </p>
+          )}
         </div>
 
         <div className="flex flex-col items-center justify-center border-t border-dashed border-gmv-border pt-4 md:w-[220px] md:border-l md:border-t-0 md:pl-5 md:pt-0">
-          <img
-            ref={imgRef}
-            src={qrUrl}
-            alt="QR chuyển khoản"
-            crossOrigin="anonymous"
-            className="max-w-full rounded-gmv-md border border-gmv-border p-1"
-          />
+          {payosLoading && (
+            <p className="text-xs text-gmv-muted">Đang tạo QR PayOS…</p>
+          )}
+          {payosError && !payosLoading && !payosQrUrl && (
+            <p className="mb-2 max-w-[200px] text-center text-xs text-gmv-warn">{payosError}</p>
+          )}
+          {!payosLoading && (
+            <img
+              ref={imgRef}
+              src={displayQrUrl}
+              alt="QR chuyển khoản"
+              crossOrigin="anonymous"
+              className="max-w-full rounded-gmv-md border border-gmv-border p-1"
+            />
+          )}
           <p className="mt-2 text-center text-xs italic text-gmv-muted">
-            Quét mã bằng App Ngân Hàng
-            <br />
-            để điền tự động Số Tiền &amp; Nội Dung
+            {payosQrUrl
+              ? "PayOS — tiền về tự tick TT Tiền về sau webhook"
+              : "VietQR — cần tick thủ công nếu không qua PayOS"}
           </p>
         </div>
       </div>
 
       <div className="mt-5 flex flex-wrap items-center justify-center gap-3">
-        <Button type="button" variant="primary" size="sm" onClick={handleCopyQr}>
+        <Button type="button" variant="primary" size="sm" onClick={handleCopyQr} disabled={payosLoading}>
           Copy mã QR
         </Button>
         {qrCopy.kind === "ok" && (
           <span className="inline-block rounded-gmv-sm border border-gmv-ok/30 bg-gmv-ok-soft px-2.5 py-1 text-xs font-semibold text-gmv-ok">
-            ✓ Đã copy mã QR — paste vào Zalo / chat / Word
+            ✓ Đã copy mã QR
           </span>
         )}
         {qrCopy.kind === "downloaded" && (
           <span className="inline-block rounded-gmv-sm border border-gmv-warn/30 bg-gmv-warn-soft px-2.5 py-1 text-xs font-semibold text-gmv-warn">
-            ↓ Trình duyệt không hỗ trợ copy ảnh — đã tải file QR, đính kèm thủ công
+            ↓ Đã tải file QR
           </span>
         )}
         {qrCopy.kind === "err" && (
