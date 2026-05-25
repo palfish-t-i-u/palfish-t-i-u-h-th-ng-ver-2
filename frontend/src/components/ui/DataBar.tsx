@@ -2,23 +2,28 @@ import { cn } from "../../lib/cn";
 
 type GmvDataBarCellProps = {
   value: number;
-  /** Max trong cùng cột tháng — chuẩn hóa độ dài thanh. */
+  /** Mẫu số chuẩn hóa thanh (vd. tổng team trong tháng). */
   columnMax: number;
   format: (n: number) => string;
   className?: string;
   barClassName?: string;
+  /** false = chỉ hiển thị số (tổng team / tổng cộng). */
+  showBar?: boolean;
 };
 
-/** Số trên, thanh ngang ngắn ngay bên dưới (data bar theo cột tháng). */
+/** Số trên, thanh ngang ngắn ngay bên dưới (% so với columnMax). */
 export function GmvDataBarCell({
   value,
   columnMax,
   format,
   className,
   barClassName = "bg-teal-400/80",
+  showBar = true,
 }: GmvDataBarCellProps) {
   const pct =
-    columnMax > 0 && value > 0 ? Math.min(100, (value / columnMax) * 100) : 0;
+    showBar && columnMax > 0 && value > 0
+      ? Math.min(100, (value / columnMax) * 100)
+      : 0;
 
   return (
     <div
