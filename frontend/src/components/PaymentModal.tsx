@@ -22,7 +22,7 @@ export default function PaymentModal({ open, maDonHang, tongTien, infoCode, onCl
   const [qrCopy, setQrCopy] = useState<QrCopyState>({ kind: "idle" });
   const imgRef = useRef<HTMLImageElement | null>(null);
 
-  const [payosLoading, setPayosLoading] = useState(true);
+  const [payosLoading, setPayosLoading] = useState(false);
   const [payosQrUrl, setPayosQrUrl] = useState("");
   const [payosCheckoutUrl, setPayosCheckoutUrl] = useState("");
   const [payosError, setPayosError] = useState("");
@@ -42,15 +42,19 @@ export default function PaymentModal({ open, maDonHang, tongTien, infoCode, onCl
     let cancelled = false;
     setPayosLoading(true);
     setPayosError("");
+    setPayosQrUrl("");
+    setPayosCheckoutUrl("");
+    setQrCopy({ kind: "idle" });
+
     endpoints.payos
       .createLink({ amount: tongTien, infoCode, maDonHang })
       .then((res) => {
         if (cancelled) return;
         const { qrCode, checkoutUrl } = res.data;
         setPayosQrUrl(
-          `https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=${encodeURIComponent(qrCode)}`
+          `https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=${encodeURIComponent(qrCode)}`,
         );
-        setPayosCheckoutUrl(checkoutUrl);
+        setPayosCheckoutUrl(checkoutUrl || "");
       })
       .catch((e: unknown) => {
         if (cancelled) return;
@@ -64,41 +68,51 @@ export default function PaymentModal({ open, maDonHang, tongTien, infoCode, onCl
       .finally(() => {
         if (!cancelled) setPayosLoading(false);
       });
+
     return () => {
       cancelled = true;
     };
   }, [open, tongTien, infoCode, maDonHang]);
-
-  useEffect(() => {
-    if (open) setQrCopy({ kind: "idle" });
-  }, [open, displayQrUrl]);
 
   const flash = useCallback((s: QrCopyState) => {
     setQrCopy(s);
     setTimeout(() => setQrCopy({ kind: "idle" }), 2500);
   }, []);
 
-  async function fetchQrBlob(): Promise<Blob | null> {
-    try {
-      const res = await fetch(displayQrUrl, { mode: "cors", cache: "no-store" });
-      if (!res.ok) return null;
-      const blob = await res.blob();
-      return blob.type.startsWith("image/") ? blob : null;
-    } catch {
-      return null;
-    }
-  }
-
-  async function blobFromCanvas(): Promise<Blob | null> {
+  async function buildCompositeBlob(): Promise<Blob | null> {
     const img = imgRef.current;
     if (!img || !img.complete || img.naturalWidth === 0) return null;
     try {
+      const pad = 20;
+      const textAreaH = 64;
+      const qrW = img.naturalWidth;
+      const qrH = img.naturalHeight;
       const canvas = document.createElement("canvas");
-      canvas.width = img.naturalWidth;
-      canvas.height = img.naturalHeight;
+      canvas.width = qrW + pad * 2;
+      canvas.height = qrH + textAreaH + pad * 2;
       const ctx = canvas.getContext("2d");
       if (!ctx) return null;
-      ctx.drawImage(img, 0, 0);
+
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(img, pad, pad, qrW, qrH);
+
+      ctx.strokeStyle = "#e5e7eb";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(pad, qrH + pad + 10);
+      ctx.lineTo(canvas.width - pad, qrH + pad + 10);
+      ctx.stroke();
+
+      ctx.fillStyle = "#6b7280";
+      ctx.font = "13px sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillText("Nội dung chuyển khoản:", canvas.width / 2, qrH + pad + 30);
+
+      ctx.fillStyle = "#d97706";
+      ctx.font = "bold 18px monospace";
+      ctx.fillText(infoCode, canvas.width / 2, qrH + pad + 55);
+
       return await new Promise<Blob | null>((resolve) =>
         canvas.toBlob((b) => resolve(b), "image/png"),
       );
@@ -107,18 +121,13 @@ export default function PaymentModal({ open, maDonHang, tongTien, infoCode, onCl
     }
   }
 
-  function downloadBlob(blob: Blob) {
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `QR-${maDonHang || "pay"}.png`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
-  }
-
   async function handleCopyQr() {
+    const blobToUse = await buildCompositeBlob();
+    if (!blobToUse) {
+      flash({ kind: "err", msg: "Không lấy được ảnh QR. Thử chụp màn hình." });
+      return;
+    }
+
     const supportsClipboardImage =
       typeof window !== "undefined" &&
       typeof window.ClipboardItem !== "undefined" &&
@@ -126,27 +135,24 @@ export default function PaymentModal({ open, maDonHang, tongTien, infoCode, onCl
 
     if (supportsClipboardImage && typeof window.ClipboardItem !== "undefined") {
       try {
-        const item = new window.ClipboardItem({
-          "image/png": (async () => {
-            const blob = (await fetchQrBlob()) || (await blobFromCanvas());
-            if (!blob) throw new Error("no-blob");
-            return blob;
-          })(),
-        });
-        await navigator.clipboard.write([item]);
+        await navigator.clipboard.write([
+          new window.ClipboardItem({ "image/png": blobToUse }),
+        ]);
         flash({ kind: "ok" });
         return;
       } catch {
-        /* fallback download */
+        /* fall through to download */
       }
     }
 
-    const blob = (await fetchQrBlob()) || (await blobFromCanvas());
-    if (!blob) {
-      flash({ kind: "err", msg: "Không lấy được ảnh QR. Thử lại hoặc chụp màn hình." });
-      return;
-    }
-    downloadBlob(blob);
+    const url = URL.createObjectURL(blobToUse);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `QR-${maDonHang || "payos"}.png`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
     flash({ kind: "downloaded" });
   }
 
@@ -182,52 +188,79 @@ export default function PaymentModal({ open, maDonHang, tongTien, infoCode, onCl
             <span className="mt-1 inline-block rounded-gmv-sm border border-dashed border-gmv-warn bg-gmv-warn-soft px-2.5 py-1 text-base font-bold text-gmv-warn">
               {infoCode}
             </span>
+            <p className="mt-1 text-xs italic text-gmv-danger">
+              Khách PHẢI ghi đúng nội dung này khi chuyển khoản
+            </p>
           </div>
           {payosCheckoutUrl && (
-            <p className="pt-2">
+            <div className="pt-1">
               <a
                 href={payosCheckoutUrl}
                 target="_blank"
-                rel="noreferrer"
-                className="text-sm font-semibold text-gmv-primary underline"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 rounded-gmv-md border border-gmv-primary px-3 py-1.5 text-sm font-semibold text-gmv-primary hover:bg-gmv-primary-soft"
               >
-                Mở link thanh toán PayOS
+                Mở trang thanh toán PayOS →
               </a>
-            </p>
+            </div>
           )}
         </div>
 
-        <div className="flex flex-col items-center justify-center border-t border-dashed border-gmv-border pt-4 md:w-[220px] md:border-l md:border-t-0 md:pl-5 md:pt-0">
+        <div className="flex flex-col items-center justify-center border-t border-dashed border-gmv-border pt-4 md:w-[260px] md:border-l md:border-t-0 md:pl-5 md:pt-0">
           {payosLoading && (
-            <p className="text-xs text-gmv-muted">Đang tạo QR PayOS…</p>
+            <div className="flex h-[240px] w-[240px] items-center justify-center rounded-gmv-md border border-gmv-border">
+              <span className="animate-spin text-2xl text-gmv-muted">⟳</span>
+            </div>
           )}
           {payosError && !payosLoading && !payosQrUrl && (
-            <p className="mb-2 max-w-[200px] text-center text-xs text-gmv-warn">{payosError}</p>
+            <div className="mb-2 flex h-[120px] w-full flex-col items-center justify-center rounded-gmv-md border border-gmv-danger/30 bg-gmv-danger-soft p-4 text-center text-xs text-gmv-danger">
+              <p className="font-semibold">Không tạo được QR PayOS</p>
+              <p className="mt-1 opacity-75">{payosError}</p>
+            </div>
           )}
-          {!payosLoading && (
-            <img
-              ref={imgRef}
-              src={displayQrUrl}
-              alt="QR chuyển khoản"
-              crossOrigin="anonymous"
-              className="max-w-full rounded-gmv-md border border-gmv-border p-1"
-            />
+          {!payosLoading && displayQrUrl && (
+            <>
+              <img
+                ref={imgRef}
+                src={displayQrUrl}
+                alt={payosQrUrl ? "QR PayOS thanh toán" : "QR VietQR dự phòng"}
+                crossOrigin="anonymous"
+                className="max-w-full rounded-gmv-md border border-gmv-border p-1"
+                width={240}
+                height={240}
+              />
+              {payosQrUrl ? (
+                <>
+                  <p className="mt-2 text-center text-xs font-semibold text-gmv-primary">
+                    Quét bằng App Ngân Hàng bất kỳ
+                  </p>
+                  <p className="mt-0.5 text-center text-xs italic text-gmv-muted">
+                    Tiền về tự tick TT Tiền về sau webhook
+                  </p>
+                </>
+              ) : (
+                <p className="mt-2 text-center text-xs italic text-gmv-warn">
+                  VietQR — cần tick thủ công nếu không qua PayOS
+                </p>
+              )}
+            </>
           )}
-          <p className="mt-2 text-center text-xs italic text-gmv-muted">
-            {payosQrUrl
-              ? "PayOS — tiền về tự tick TT Tiền về sau webhook"
-              : "VietQR — cần tick thủ công nếu không qua PayOS"}
-          </p>
         </div>
       </div>
 
       <div className="mt-5 flex flex-wrap items-center justify-center gap-3">
-        <Button type="button" variant="primary" size="sm" onClick={handleCopyQr} disabled={payosLoading}>
+        <Button
+          type="button"
+          variant="primary"
+          size="sm"
+          onClick={handleCopyQr}
+          disabled={payosLoading || !displayQrUrl}
+        >
           Copy mã QR
         </Button>
         {qrCopy.kind === "ok" && (
           <span className="inline-block rounded-gmv-sm border border-gmv-ok/30 bg-gmv-ok-soft px-2.5 py-1 text-xs font-semibold text-gmv-ok">
-            ✓ Đã copy mã QR
+            ✓ Đã copy mã QR — paste vào Zalo / chat / Word
           </span>
         )}
         {qrCopy.kind === "downloaded" && (
