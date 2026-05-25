@@ -34,7 +34,12 @@ import sys
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from api_pipe.payos_webhook import handle_payos_webhook, reconcile_bank_payment
+from api_pipe.payos_webhook import (
+    handle_payos_webhook,
+    normalize_reconcile_status,
+    reconcile_bank_payment,
+    reconcile_status_filter_values,
+)
 
 app = FastAPI(title="PalFish GMV Reconciliation API")
 
@@ -1051,7 +1056,11 @@ def list_payos_transactions(
             "don_hang_id, don_hang(ma_don_hang, created_by)"
         )
         if status:
-            query = query.eq("trang_thai_doi_soat", status)
+            status_values = reconcile_status_filter_values(status)
+            if len(status_values) == 1:
+                query = query.eq("trang_thai_doi_soat", status_values[0])
+            else:
+                query = query.in_("trang_thai_doi_soat", status_values)
         if from_date:
             query = query.gte("thoi_gian_giao_dich", from_date)
         if to_date:
@@ -1078,7 +1087,9 @@ def list_payos_transactions(
                     "noiDung": row.get("noi_dung_chuyen_khoan"),
                     "thoiGian": row.get("thoi_gian_giao_dich"),
                     "infoCode": row.get("info_code_thuc_te"),
-                    "trangThaiDoiSoat": row.get("trang_thai_doi_soat"),
+                    "trangThaiDoiSoat": normalize_reconcile_status(
+                        row.get("trang_thai_doi_soat"),
+                    ),
                     "maDonHang": (don or {}).get("ma_don_hang"),
                 }
             )
