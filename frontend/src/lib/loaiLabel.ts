@@ -64,8 +64,33 @@ export const LEDGER_LOAI2_OPTIONS = [
   "Partnership",
 ] as const;
 
-/** Lần thanh toán — sheet All File Thu Hiền. */
-export const LEDGER_PAYMENT_OPTIONS = ["1st", "2nd", "3rd"] as const;
+function ordinalPayment(n: number): string {
+  const s = ["th", "st", "nd", "rd"];
+  const v = n % 100;
+  return `${n}${s[(v - 20) % 10] || s[v] || s[0]}`;
+}
+
+/** Lần thanh toán — 1st … 20th (sheet + mở rộng). */
+export const LEDGER_PAYMENT_OPTIONS = Array.from({ length: 20 }, (_, i) =>
+  ordinalPayment(i + 1)
+) as readonly string[];
+
+/** Một nhãn hiển thị → một giá trị lưu DB (tránh trùng «广告 - Ads» nhiều lần). */
+export function ledgerLoaiSelectOptions(): { value: string; label: string }[] {
+  const seen = new Set<string>();
+  const out: { value: string; label: string }[] = [];
+  for (const v of LEDGER_LOAI_OPTIONS) {
+    const label = formatLoaiLabel(v);
+    if (seen.has(label)) continue;
+    seen.add(label);
+    out.push({ value: v, label });
+  }
+  return out;
+}
+
+export function ledgerPaymentSelectOptions(): { value: string; label: string }[] {
+  return LEDGER_PAYMENT_OPTIONS.map((p) => ({ value: p, label: p }));
+}
 
 export const LEDGER_VND_RMB_RATE = 3700;
 

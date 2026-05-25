@@ -2,11 +2,29 @@ import { formatLoaiLabel } from "./loaiLabel";
 import { typeFixxFromRow, typeGocFromRow } from "./typeFixx";
 
 /** Pill style — khớp màu sheet All File Thu Hiền (Payment + Type). */
+const PAYMENT_CYCLE = [
+  "bg-sky-400 text-white",
+  "bg-emerald-500 text-white",
+  "bg-amber-400 text-amber-950",
+  "bg-violet-400 text-white",
+  "bg-rose-400 text-white",
+] as const;
+
 const PAYMENT_STYLES: Record<string, string> = {
-  "1st": "bg-sky-400 text-white",
-  "2nd": "bg-emerald-500 text-white",
-  "3rd": "bg-amber-400 text-amber-950",
+  "1st": PAYMENT_CYCLE[0],
+  "2nd": PAYMENT_CYCLE[1],
+  "3rd": PAYMENT_CYCLE[2],
 };
+
+function paymentStyleKey(method: string): string {
+  const m = (method || "").trim().toLowerCase();
+  const match = m.match(/^(\d+)(?:st|nd|rd|th)?$/);
+  if (match) {
+    const n = parseInt(match[1], 10);
+    if (n >= 1 && n <= 20) return PAYMENT_CYCLE[(n - 1) % PAYMENT_CYCLE.length];
+  }
+  return PAYMENT_STYLES[method] ?? "bg-slate-500 text-white";
+}
 
 const TYPE_RAW_STYLES: Record<string, string> = {
   Booth: "bg-sky-200 text-sky-950",
@@ -54,7 +72,9 @@ function lookupStyle(map: Record<string, string>, value: string): string | undef
 }
 
 export function paymentMethodCellClass(method: string): string {
-  return lookupStyle(PAYMENT_STYLES, method) ?? DEFAULT_PILL;
+  const key = (method || "").trim();
+  if (!key) return DEFAULT_PILL;
+  return PAYMENT_STYLES[key] ?? paymentStyleKey(key);
 }
 
 export function typeCellClass(loai: string, loai2: string): string {
