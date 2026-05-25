@@ -1,4 +1,5 @@
-import { typeFixxFromRow } from "./typeFixx";
+import { formatLoaiLabel } from "./loaiLabel";
+import { typeFixxFromRow, typeGocFromRow } from "./typeFixx";
 
 /** Pill style — khớp màu sheet All File Thu Hiền (Payment + Type). */
 const PAYMENT_STYLES: Record<string, string> = {
@@ -67,11 +68,11 @@ export function typeCellClass(loai: string, loai2: string): string {
   );
 }
 
-/** Nhãn Type ngắn trên bảng — ưu tiên loai gốc như sheet. */
+/** Nhãn Type trên bảng — song ngữ (Chinese - English), không đổi giá trị lưu. */
 export function typeDisplayLabel(loai: string, loai2: string): string {
-  const l1 = normalizeKey(loai);
-  const l2 = normalizeKey(loai2);
-  return l1 || l2 || "—";
+  const goc = typeGocFromRow(loai, loai2);
+  if (!goc) return "—";
+  return formatLoaiLabel(goc);
 }
 
 export const ledgerPillBase =

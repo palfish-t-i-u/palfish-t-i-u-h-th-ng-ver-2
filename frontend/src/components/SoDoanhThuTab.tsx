@@ -9,6 +9,7 @@ import {
   typeCellClass,
   typeDisplayLabel,
 } from "../lib/ledgerCellStyle";
+import { LEDGER_VND_RMB_RATE } from "../lib/loaiLabel";
 import type { LedgerPatchPayload, LedgerSummaryResponse, RevenueLedgerRow } from "../types/revenue";
 import LedgerFormModal, {
   emptyLedgerForm,
@@ -348,6 +349,14 @@ export default function SoDoanhThuTab() {
 
   return (
     <div className="min-w-0 space-y-4 overflow-x-hidden">
+      <p className="text-xs text-gmv-muted">
+        Sổ doanh thu: lọc theo <span className="font-medium text-gmv-text">Pay Time</span> (ngày tiền về).
+        Quy đổi RMB mặc định:{" "}
+        <span className="font-medium text-gmv-text">
+          GMV (RMB) = VND ÷ {LEDGER_VND_RMB_RATE.toLocaleString("vi-VN")}
+        </span>
+        .
+      </p>
       <div className="flex flex-wrap items-end gap-3">
         <label className="text-sm text-gmv-muted">
           Từ ngày

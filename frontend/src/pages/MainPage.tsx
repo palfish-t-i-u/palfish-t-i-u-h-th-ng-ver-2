@@ -114,9 +114,15 @@ const TITLES: Record<ViewId, { title: string; subtitle?: string }> = {
   tab2: { title: "Quản lý mã QR", subtitle: "Theo dõi tiền về, biên lai, CRM" },
   payos: { title: "Lịch sử PayOS", subtitle: "Giao dịch ngân hàng đã đối soát" },
   profile: { title: "Thông tin cá nhân" },
-  module3: { title: "Xác nhận CRM", subtitle: "M3 — Điền tên sản phẩm thuế & mã CRM Order" },
+  module3: {
+    title: "Kích hoạt khóa học",
+    subtitle: "M3 — Gắn CRM Order & kích hoạt sau khi tiền về",
+  },
   module4: { title: "Xuất hóa đơn thuế", subtitle: "M4 — Cấp mã M.../PF... và tải file ZIP 3 Excel" },
-  revenueLedger: { title: "Sổ doanh thu", subtitle: "Ghi từng khoản thu — M3 tự động + điền tay + Sync All File Thu Hiền" },
+  revenueLedger: {
+    title: "Sổ doanh thu",
+    subtitle: "Pay Time · GMV RMB = VND÷3700 — M3 tự động + điền tay + Sync sheet",
+  },
   bc01: { title: "BC01: Sales performance", subtitle: "Tổng GMV theo team × sale × tháng" },
   bc02: { title: "BC02: Key Data", subtitle: "Dữ liệu then chốt quy trình bán hàng" },
   bc03: { title: "BC03 — Báo cáo tổng bộ", subtitle: "KPI thủ công + doanh thu / trial / referral tự động" },
@@ -211,7 +217,7 @@ export default function MainPage() {
 
     if (showInvoice) {
       list.push(
-        { id: "module3", label: "Xác nhận CRM", icon: I.check },
+        { id: "module3", label: "Kích hoạt khóa học", icon: I.check },
         { id: "module4", label: "Xuất hóa đơn", icon: I.invoice }
       );
     }
