@@ -16,12 +16,14 @@ CRM_COLUMNS: dict[str, tuple[str, ...]] = {
     "c1_call_time": ("total_call_time", "Total Call Time", "总通话时长", "通话总时长"),
     "c2_dials": ("total_dials", "Total Dials", "总拨打数", "拨打总数"),
     "c3_connections": (
-        "total_connections", "Total Connections", "总接通数", "接通数", "Connections",
+        "total_connections", "Total Connections", "Total Connection",
+        "总接通数", "接通数", "接通次数", "接通总次数", "Connections",
     ),
     "c4_connection_rate": ("connection_rate", "Connection Rate", "接通率"),
     "c5_over_3min_count": (
         "over_3min_connections",
-        "Over 3 Min Connections", "Over 3 Min.Connections", "超3分钟通话数", "三分钟以上通话数",
+        "Over 3 Min Connections", "Over 3 Min.Connections", "Over 3 Min. Conn",
+        "超3分钟通话数", "三分钟以上通话数", "接通三分钟以上",
     ),
     "c5_over_3min_rate": (
         "over_3min_rate",
@@ -436,6 +438,15 @@ def empty_metrics() -> dict[str, int | float]:
     }
 
 
+def rate_per_call_time(numerator: int | float, call_time_minutes: float) -> float:
+    """C4/C5 — PalFish: count / Total Call Time (phút) × 100."""
+    return safe_divide(numerator, call_time_minutes, as_percent=True)
+
+
+def preview_count_from_rate(preview_rate: float, scheduled: int) -> float:
+    return float(preview_rate) / 100.0 * float(scheduled)
+
+
 def extract_row_metrics(row: dict) -> dict[str, int | float]:
     """Normalize one crm_sales_data row → dashboard metric keys."""
     raw = row.get("raw_data") if isinstance(row.get("raw_data"), dict) else {}
@@ -458,18 +469,26 @@ def extract_row_metrics(row: dict) -> dict[str, int | float]:
     l3 = parse_metric(raw_get(raw, CRM_COLUMNS["l3_invitation"]))
     l8 = parse_metric(raw_get(raw, CRM_COLUMNS["l8_orders"]))
 
+    c1 = parse_duration_minutes(raw_get(raw, CRM_COLUMNS["c1_call_time"]))
+    c3 = parse_metric(raw_get(raw, CRM_COLUMNS["c3_connections"]))
+    c5_count = parse_metric(raw_get(raw, CRM_COLUMNS["c5_over_3min_count"]))
+    l3_1 = parse_metric(raw_get(raw, CRM_COLUMNS["l3_1_scheduled"]))
+    preview_rate = parse_rate(raw_get(raw, CRM_COLUMNS["l3_3_preview_rate"]))
+
     return {
-        "c1": parse_duration_minutes(raw_get(raw, CRM_COLUMNS["c1_call_time"])),
+        "c1": c1,
         "c2": parse_metric(raw_get(raw, CRM_COLUMNS["c2_dials"])),
-        "c4": parse_rate(raw_get(raw, CRM_COLUMNS["c4_connection_rate"])),
-        "c5": parse_rate(raw_get(raw, CRM_COLUMNS["c5_over_3min_rate"])),
+        "c3": c3,
+        "c5_count": c5_count,
+        "c4": rate_per_call_time(c3, c1),
+        "c5": rate_per_call_time(c5_count, c1),
         "l1_0": parse_metric(raw_get(raw, CRM_COLUMNS["l1_0_gd"])),
         "l1_1": ad + ad_manual,
         "l1_2": l1_2,
         "l1": l1,
         "l3": l3,
-        "l3_1": parse_metric(raw_get(raw, CRM_COLUMNS["l3_1_scheduled"])),
-        "l3_3": parse_rate(raw_get(raw, CRM_COLUMNS["l3_3_preview_rate"])),
+        "l3_1": l3_1,
+        "l3_3": preview_rate,
         "l4": l4,
         "l8": l8,
         "b1_qr": 0,
@@ -526,9 +545,9 @@ def extract_sale_detail(row: dict) -> dict[str, int | float | str]:
         "avg_price": avg_price,
         "total_call_time": float(m["c1"]),
         "total_dials": int(m["c2"]),
-        "total_connections": parse_metric(raw_get(raw, CRM_COLUMNS["c3_connections"])),
+        "total_connections": int(m["c3"]),
         "connection_rate": float(m["c4"]),
-        "over_3min_connections": parse_metric(raw_get(raw, CRM_COLUMNS["c5_over_3min_count"])),
+        "over_3min_connections": int(m["c5_count"]),
         "over_3min_rate": float(m["c5"]),
         # aliases chart / legacy
         "team": team_label(row),
@@ -544,8 +563,37 @@ def extract_sale_detail(row: dict) -> dict[str, int | float | str]:
     }
 
 
+def _recompute_merged_sale_rates(acc: dict) -> None:
+    """Tính lại % sau khi gộp nhiều ngày — C4/C5 theo C1, L3.3 theo L3.1."""
+    acc["connection_rate"] = rate_per_call_time(
+        acc.get("total_connections") or 0,
+        float(acc.get("total_call_time") or 0),
+    )
+    acc["over_3min_rate"] = rate_per_call_time(
+        acc.get("over_3min_connections") or 0,
+        float(acc.get("total_call_time") or 0),
+    )
+    scheduled = int(acc.get("scheduled_classes") or 0)
+    preview_done = float(acc.get("_preview_done") or 0)
+    acc["preview_rate"] = safe_divide(preview_done, scheduled, as_percent=True)
+    acc["completion_rate"] = safe_divide(
+        int(acc.get("completed_classes") or 0), scheduled, as_percent=True,
+    )
+
+
 def merge_sale_detail(acc: dict, detail: dict) -> dict:
-    """Gộp nhiều dòng cùng sale (hiếm với summary)."""
+    """Gộp nhiều dòng cùng sale (nhiều ngày trong kỳ)."""
+    acc_preview = float(acc.get("_preview_done") or 0)
+    if not acc_preview:
+        acc_preview = preview_count_from_rate(
+            float(acc.get("preview_rate") or 0),
+            int(acc.get("scheduled_classes") or 0),
+        )
+    detail_preview = preview_count_from_rate(
+        float(detail.get("preview_rate") or 0),
+        int(detail.get("scheduled_classes") or 0),
+    )
+
     sum_keys = (
         "ad_leads", "ad_leads_manual", "referral_leads", "total_leads", "gd_leads",
         "invitation_number", "scheduled_classes", "completed_classes", "orders", "gmv_rmb",
@@ -558,9 +606,8 @@ def merge_sale_detail(acc: dict, detail: dict) -> dict:
     orders = int(acc["orders"])
     acc["avg_price"] = int(safe_divide(acc["gmv_rmb"], orders)) if orders else 0
     acc["total_call_time"] = float(acc.get("total_call_time") or 0) + float(detail.get("total_call_time") or 0)
-    for rk in ("preview_rate", "completion_rate", "connection_rate", "over_3min_rate"):
-        if detail.get(rk):
-            acc[rk] = detail[rk]
+    acc["_preview_done"] = acc_preview + detail_preview
+    _recompute_merged_sale_rates(acc)
     return acc
 
 
@@ -573,24 +620,25 @@ def conversion_rates(l1: int, l3: int, l4: int, l8: int) -> list[dict]:
 
 
 def sum_metrics(rows: list[dict]) -> dict[str, int | float]:
-    """Sum additive metrics; average rate columns by row count with data."""
+    """Sum counts; recompute C4/C5/L3.3 from aggregated numerators (PalFish formulas)."""
     tot = empty_metrics()
-    rate_sums = {"c4": 0.0, "c5": 0.0, "l3_3": 0.0}
-    rate_counts = {"c4": 0, "c5": 0, "l3_3": 0}
+    c3_sum = 0
+    c5_count_sum = 0
+    preview_count_sum = 0.0
 
     for row in rows:
         m = extract_row_metrics(row)
         for k in ("c1", "c2", "l1_0", "l1_1", "l1_2", "l1", "l3", "l3_1", "l4", "l8", "b3_gmv"):
             tot[k] = (tot[k] or 0) + (m[k] or 0)  # type: ignore[operator]
-        for rk in rate_sums:
-            if m[rk]:
-                rate_sums[rk] += float(m[rk])
-                rate_counts[rk] += 1
+        c3_sum += int(m.get("c3") or 0)
+        c5_count_sum += int(m.get("c5_count") or 0)
+        scheduled = int(m.get("l3_1") or 0)
+        if scheduled:
+            preview_count_sum += preview_count_from_rate(float(m.get("l3_3") or 0), scheduled)
 
-    for rk in rate_sums:
-        if rate_counts[rk] > 0:
-            tot[rk] = round(rate_sums[rk] / rate_counts[rk], 2)
-
+    tot["c4"] = rate_per_call_time(c3_sum, float(tot.get("c1") or 0))
+    tot["c5"] = rate_per_call_time(c5_count_sum, float(tot.get("c1") or 0))
+    tot["l3_3"] = safe_divide(preview_count_sum, int(tot.get("l3_1") or 0), as_percent=True)
     tot["b1_qr"] = 0
     return tot
 
