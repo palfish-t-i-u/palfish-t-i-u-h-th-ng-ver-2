@@ -107,8 +107,11 @@ export interface DashboardSummary {
     total_collected_vnd: number;
     gmv_vnd_est?: number;
     exchange_rate?: number;
-    /** @deprecated alias — giá trị RMB từ CRM */
-    total_amount_qr: number;
+    /** Doanh thu tạo mã QR (Module 2) — VND, lọc created_at */
+    revenue_qr_created_vnd?: number;
+    qr_created_count?: number;
+    /** L8 CRM (PalFish) — chỉ dùng tỷ lệ chuyển đổi */
+    crm_l8?: number;
     /** @deprecated alias — VND */
     total_collected: number;
     aov: number;

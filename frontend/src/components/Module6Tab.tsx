@@ -333,7 +333,7 @@ export default function Module6Tab() {
           {meta?.department_fallback ? " (fallback org VN)" : ""} · Biểu đồ ={" "}
           <strong className="text-gmv-text">DB daily</strong>
           ({trends?.meta?.sync_days ?? 0} ngày sync, {trends?.row_count ?? 0} dòng).
-          GMV CRM = RMB · Tiền về = VND · Tỷ giá: 1 RMB = {fmt(fx)} ₫.
+          GMV CRM = RMB (PalFish) · Thực thu / L8 = Sổ doanh thu (ngay_tien_ve) · QR tạo = Module 2 (created_at) · Tỷ giá: 1 RMB = {fmt(fx)} ₫.
         </div>
       )}
 
@@ -352,24 +352,25 @@ export default function Module6Tab() {
           </div>
         )}
       <div className="grid grid-cols-[repeat(auto-fill,minmax(148px,1fr))] gap-3">
-        <KpiCard label="Tổng số L1"   value={fmt(kpi?.l1 ?? 0)} />
-        <KpiCard label="Tổng số L3"   value={fmt(kpi?.l3 ?? 0)} />
-        <KpiCard label="Tổng số L4"   value={fmt(kpi?.l4 ?? 0)} />
-        <KpiCard label="Tổng số L8"   value={fmt(kpi?.l8 ?? 0)} sub="Nguồn: CRM" />
-        <KpiCard label="GMV CRM" value={gmvRmb(kpi?.total_gmv_rmb ?? kpi?.total_amount_qr ?? 0)} sub={`≈ ${vnd((kpi?.gmv_vnd_est ?? (kpi?.total_gmv_rmb ?? 0) * fx))}`} />
-        <KpiCard label="Doanh thu (đã thu)"  value={vnd(kpi?.total_collected_vnd ?? kpi?.total_collected ?? 0)} sub="Nguồn: Kế toán (PayOS)" highlight />
-        <KpiCard label="AOV (đã thu)"        value={vnd(kpi?.aov ?? 0)} sub="VND / đơn đã thu (PayOS)" />
+        <KpiCard label="Tổng số L1"   value={fmt(kpi?.l1 ?? 0)} sub="Nguồn: CRM" />
+        <KpiCard label="Tổng số L3"   value={fmt(kpi?.l3 ?? 0)} sub="Nguồn: CRM" />
+        <KpiCard label="Tổng số L4"   value={fmt(kpi?.l4 ?? 0)} sub="Nguồn: CRM" />
+        <KpiCard label="Tổng số L8"   value={fmt(kpi?.l8 ?? 0)} sub="Nguồn: Sổ doanh thu" />
+        <KpiCard label="GMV CRM" value={gmvRmb(kpi?.total_gmv_rmb ?? 0)} sub={`≈ ${vnd(kpi?.gmv_vnd_est ?? (kpi?.total_gmv_rmb ?? 0) * fx)} · Nguồn: CRM`} />
+        <KpiCard label="Doanh thu thực thu" value={vnd(kpi?.total_collected_vnd ?? kpi?.total_collected ?? 0)} sub="Nguồn: Sổ doanh thu (ngay_tien_ve)" highlight />
+        <KpiCard label="Doanh thu tạo mã QR" value={vnd(kpi?.revenue_qr_created_vnd ?? 0)} sub={`${fmt(kpi?.qr_created_count ?? 0)} đơn · Module 2 (created_at)`} />
+        <KpiCard label="AOV (thực thu)" value={vnd(kpi?.aov ?? 0)} sub="VND / đơn trên Sổ" />
       </div>
 
       <div className="mt-3 grid grid-cols-[repeat(auto-fill,minmax(132px,1fr))] gap-3">
-        <KpiCard label="C1 — Thời lượng gọi" value={`${(kpi?.c1 ?? 0).toFixed(1)} phút`} />
-        <KpiCard label="C2 — Số cuộc gọi" value={fmt(kpi?.c2 ?? 0)} />
-        <KpiCard label="C4 — Tỷ lệ kết nối" value={fmtRate(kpi?.c4)} />
-        <KpiCard label="C5 — Gọi > 3 phút" value={fmtRate(kpi?.c5)} />
-        <KpiCard label="L1.0 — Kho chung" value={fmt(kpi?.l1_0 ?? 0)} />
-        <KpiCard label="L1.1 — Lead phân" value={fmt(kpi?.l1_1 ?? 0)} />
-        <KpiCard label="L1.2 — Giới thiệu" value={fmt(kpi?.l1_2 ?? 0)} />
-        <KpiCard label="L3.3 — Preview" value={fmtRate(kpi?.l3_3)} sub={`Lịch hẹn: ${fmt(kpi?.l3_1 ?? 0)}`} />
+        <KpiCard label="C1 — Thời lượng gọi" value={`${(kpi?.c1 ?? 0).toFixed(1)} phút`} sub="Nguồn: CRM" />
+        <KpiCard label="C2 — Số cuộc gọi" value={fmt(kpi?.c2 ?? 0)} sub="Nguồn: CRM" />
+        <KpiCard label="C4 — Tỷ lệ kết nối" value={fmtRate(kpi?.c4)} sub="Nguồn: CRM" />
+        <KpiCard label="C5 — Gọi > 3 phút" value={fmtRate(kpi?.c5)} sub="Nguồn: CRM" />
+        <KpiCard label="L1.0 — Kho chung" value={fmt(kpi?.l1_0 ?? 0)} sub="Nguồn: CRM" />
+        <KpiCard label="L1.1 — Lead phân" value={fmt(kpi?.l1_1 ?? 0)} sub="Nguồn: CRM" />
+        <KpiCard label="L1.2 — Giới thiệu" value={fmt(kpi?.l1_2 ?? 0)} sub="Nguồn: CRM" />
+        <KpiCard label="L3.3 — Preview" value={fmtRate(kpi?.l3_3)} sub={`Lịch hẹn: ${fmt(kpi?.l3_1 ?? 0)} · CRM`} />
       </div>
       </div>
 
@@ -377,7 +378,7 @@ export default function Module6Tab() {
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         {/* Line chart */}
         <div className="lg:col-span-2 rounded-xl bg-gmv-canvas/60 p-4 ring-1 ring-gmv-border">
-          <p className="mb-3 text-sm font-semibold text-gmv-text">GMV CRM & tiền về theo ngày (DB daily)</p>
+          <p className="mb-3 text-sm font-semibold text-gmv-text">GMV CRM (daily) & thực thu Sổ (ngay_tien_ve)</p>
           {revenueData.length > 0 ? (
             <>
               <ResponsiveContainer width="100%" height={220}>
@@ -399,11 +400,11 @@ export default function Module6Tab() {
                     labelStyle={{ color: "#1f2330" }}
                   />
                   <Line yAxisId="rmb" type="monotone" dataKey="gmv_rmb" stroke="#6366f1" strokeWidth={2} dot={false} name="GMV (RMB)" />
-                  <Line yAxisId="vnd" type="monotone" dataKey="collected_vnd" stroke="#22c55e" strokeWidth={2} dot={false} name="Đã thu (VND)" />
+                  <Line yAxisId="vnd" type="monotone" dataKey="collected_vnd" stroke="#22c55e" strokeWidth={2} dot={false} name="Thực thu Sổ (VND)" />
                 </LineChart>
               </ResponsiveContainer>
               <div className="mt-2 flex gap-4 text-xs text-gmv-muted">
-                {[["#6366f1","GMV (RMB)"],["#22c55e","Đã thu (VND)"]].map(([c,l])=>(
+                {[["#6366f1","GMV (RMB)"],["#22c55e","Thực thu Sổ (VND)"]].map(([c,l])=>(
                   <span key={l} className="flex items-center gap-1">
                     <span className="inline-block h-2 w-4 rounded-full" style={{background:c}}/>
                     {l}
@@ -426,7 +427,7 @@ export default function Module6Tab() {
               ["Số đơn mới",         fmt(today?.orders ?? 0)],
               ["GMV CRM (delta ngày)", gmvRmb(today?.gmv_rmb ?? today?.amount ?? 0)],
               ["GMV MTD (snapshot)",   gmvRmb(today?.gmv_rmb_mtd ?? 0)],
-              ["Doanh thu đã thu",   vnd(today?.collected_vnd ?? today?.collected ?? 0)],
+              ["Thực thu (Sổ)",   vnd(today?.collected_vnd ?? today?.collected ?? 0)],
             ].map(([label, val]) => (
               <div key={label} className="flex items-center justify-between">
                 <span className="text-xs text-gmv-muted">{label}</span>

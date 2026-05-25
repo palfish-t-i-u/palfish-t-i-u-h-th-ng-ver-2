@@ -419,7 +419,9 @@ export default function Tab2Table({
         <br />
         - Dữ liệu tách từng cột để lọc và xuất báo cáo.
         <br />
-        - Cột &quot;TT Tiền về&quot; tự động khi bank khớp Info Code; tick thủ công chỉ dành Thu Hiền / hệ thống.
+        - Cột &quot;TT Tiền về&quot; tự động khi PayOS webhook khớp (mở QR qua nút QR Code — tạo link PayOS). VietQR thuần không lên PayOS dashboard.
+        <br />
+        - Tick thủ công chỉ dành Thu Hiền / hệ thống.
         <br />
         - Upload biên lai tại cột &quot;Biên lai&quot;.
       </div>
