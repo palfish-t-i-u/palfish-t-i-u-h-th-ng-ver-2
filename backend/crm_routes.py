@@ -148,9 +148,11 @@ COLUMN_MAPPING: dict[str, str] = {
     "Total Call Time": "total_call_time",
     "Total Dials": "total_dials",
     "Total Connections": "total_connections",
+    "Total Connection": "total_connections",
     "Connection Rate": "connection_rate",
     "Over 3 Min.Connections": "over_3min_connections",
     "Over 3 Min Connections": "over_3min_connections",
+    "Over 3 Min. Conn": "over_3min_connections",
     "Over 3 Min.Rate": "over_3min_rate",
     "Over 3 Min Rate": "over_3min_rate",
 }
