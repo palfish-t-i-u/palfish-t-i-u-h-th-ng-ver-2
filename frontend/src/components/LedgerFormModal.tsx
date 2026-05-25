@@ -1,5 +1,12 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { cn } from "../lib/cn";
+import {
+  formatLoaiLabel,
+  LEDGER_LOAI2_OPTIONS,
+  LEDGER_LOAI_OPTIONS,
+  LEDGER_PAYMENT_OPTIONS,
+  LEDGER_VND_RMB_RATE,
+} from "../lib/loaiLabel";
 import { digitsOnly, formatVndInput, parseVndInput } from "../lib/vndFormat";
 import type { LedgerCreatePayload, LoaiNhap } from "../types/revenue";
 import Badge from "./ui/Badge";
@@ -192,19 +199,41 @@ export default function LedgerFormModal({
               placeholder="VD: 12.875.000"
             />
           </Field>
-          <Field label="Payment method">
-            <Input
+          <Field label="Lần thanh toán">
+            <select
+              className="gmv-field w-full min-h-10 rounded-gmv-md border border-gmv-border px-3 text-sm"
               value={form.paymentMethod ?? ""}
               onChange={(e) => patch("paymentMethod", e.target.value)}
-              placeholder="1st, tiền mặt, CK…"
-            />
+            >
+              <option value="">— Chọn —</option>
+              {LEDGER_PAYMENT_OPTIONS.map((p) => (
+                <option key={p} value={p}>
+                  {p}
+                </option>
+              ))}
+              {form.paymentMethod &&
+                !(LEDGER_PAYMENT_OPTIONS as readonly string[]).includes(form.paymentMethod) && (
+                  <option value={form.paymentMethod}>{form.paymentMethod}</option>
+                )}
+            </select>
           </Field>
-          <Field label="Type">
-            <Input
+          <Field label="Loại / Type">
+            <select
+              className="gmv-field w-full min-h-10 rounded-gmv-md border border-gmv-border px-3 text-sm"
               value={form.loai ?? ""}
               onChange={(e) => patch("loai", e.target.value)}
-              placeholder="KOC, Refer…"
-            />
+            >
+              <option value="">— Chọn loại —</option>
+              {LEDGER_LOAI_OPTIONS.map((v) => (
+                <option key={v} value={v}>
+                  {formatLoaiLabel(v)}
+                </option>
+              ))}
+              {form.loai &&
+                !(LEDGER_LOAI_OPTIONS as readonly string[]).includes(form.loai) && (
+                  <option value={form.loai}>{formatLoaiLabel(form.loai)}</option>
+                )}
+            </select>
           </Field>
           <Field label="Sales">
             <Input
@@ -247,11 +276,23 @@ export default function LedgerFormModal({
               placeholder="Tự tính VND ÷ 3700 nếu để trống"
             />
           </Field>
-          <Field label="Type 2">
-            <Input
+          <Field label="Loại 2 (kênh con)">
+            <select
+              className="gmv-field w-full min-h-10 rounded-gmv-md border border-gmv-border px-3 text-sm"
               value={form.loai2 ?? ""}
               onChange={(e) => patch("loai2", e.target.value)}
-            />
+            >
+              <option value="">— Không / trống —</option>
+              {LEDGER_LOAI2_OPTIONS.map((v) => (
+                <option key={v} value={v}>
+                  {formatLoaiLabel(v)}
+                </option>
+              ))}
+              {form.loai2 &&
+                !(LEDGER_LOAI2_OPTIONS as readonly string[]).includes(form.loai2) && (
+                  <option value={form.loai2}>{formatLoaiLabel(form.loai2)}</option>
+                )}
+            </select>
           </Field>
           <Field label="Ghi chú">
             <Input
@@ -268,7 +309,13 @@ export default function LedgerFormModal({
           </Field>
         </div>
 
-        <p className="text-xs text-gmv-muted">RMB mặc định = VND ÷ 3700 khi không nhập GMV (RMB).</p>
+        <p className="rounded-gmv-md border border-gmv-border bg-gmv-canvas px-3 py-2 text-xs text-gmv-muted">
+          Tỷ giá mặc định: 1 RMB = {LEDGER_VND_RMB_RATE.toLocaleString("vi-VN")} VND —{" "}
+          <span className="font-medium text-gmv-text">
+            GMV (RMB) = Real Pay (VND) ÷ {LEDGER_VND_RMB_RATE}
+          </span>{" "}
+          khi không nhập GMV (RMB) trong form.
+        </p>
 
         {error && <p className="text-sm text-red-600">{error}</p>}
 
