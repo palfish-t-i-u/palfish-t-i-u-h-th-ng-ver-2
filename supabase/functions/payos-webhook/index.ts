@@ -133,7 +133,7 @@ Deno.serve(async (req: Request) => {
     console.error("[payos-webhook] find order error:", e);
   }
 
-  let trangThaiDoiSoat = "KHONG_TIM_THAY";
+  let trangThaiDoiSoat = "chua_xu_ly";
   let donHangId: string | null = null;
   let amountOk = false;
 
@@ -141,7 +141,7 @@ Deno.serve(async (req: Request) => {
     donHangId = String(don.id);
     const expected = parseAmount(don.so_tien_can_thu ?? 0);
     amountOk = amount >= expected;
-    trangThaiDoiSoat = amountOk ? "DA_KHOP" : "SAI_SO_TIEN";
+    trangThaiDoiSoat = amountOk ? "khop" : "sai_tien";
 
     if (amountOk) {
       try {
