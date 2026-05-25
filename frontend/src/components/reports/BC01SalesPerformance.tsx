@@ -11,11 +11,10 @@ import {
   Th,
   Tr,
   stickyTableCellRight,
-  stickyTableGrandRow,
   stickyTableHead,
   stickyTableHeadCorner,
   stickyTableHeadRight,
-  stickyTableHeadTop,
+  stickyThead,
 } from "../ui/Table";
 import { cn } from "../../lib/cn";
 
@@ -59,18 +58,30 @@ const grandTotalSumBg =
   "bg-gmv-bc01-grand-sum text-gmv-bc01-grand-sum-fg shadow-[-2px_0_4px_-2px_rgba(0,0,0,0.12)]";
 const teamTotalBg = "bg-sky-100";
 
-const stickyLeftTeam = cn(
+const stickyLeftTeam = cn(stickyTableHead, stickyTableHeadCorner, "left-0 min-w-[7rem]");
+const stickyLeftSale = cn(stickyTableHead, "left-[7rem] min-w-[10rem] z-[35]");
+const stickyRightTotalHead = cn(stickyTableHeadRight, "right-0 min-w-[5.5rem] z-[35]");
+
+const stickyGrandTeam = cn(
   stickyTableHead,
-  stickyTableHeadTop,
   stickyTableHeadCorner,
-  "left-0 min-w-[7rem]"
+  "left-0 min-w-[7rem] z-[40]",
+  grandTotalMonthBg,
+  "normal-case"
 );
-const stickyLeftSale = cn(stickyTableHead, stickyTableHeadTop, "left-[7rem] min-w-[10rem] z-[35]");
-const stickyRightTotalHead = cn(
+const stickyGrandSale = cn(
+  stickyTableHead,
+  "left-[7rem] min-w-[10rem] z-[40]",
+  grandTotalMonthBg,
+  "normal-case"
+);
+const stickyGrandTotalHead = cn(
   stickyTableHeadRight,
-  stickyTableHeadTop,
-  "right-0 min-w-[5.5rem] z-[35]"
+  "right-0 min-w-[5.5rem] z-[40]",
+  grandTotalSumBg,
+  "text-right normal-case"
 );
+const monthTh = "min-w-[5.5rem] p-0 text-right normal-case font-semibold";
 
 const stickyCellTeam = "sticky left-0 z-20 bg-gmv-canvas shadow-[2px_0_4px_-2px_rgba(0,0,0,0.06)]";
 const stickyCellSale = cn(
@@ -165,7 +176,7 @@ export default function BC01SalesPerformance() {
 
       <TableScrollWrap className="max-h-[min(70vh,calc(100svh-16rem))]">
         <Table className="min-w-[900px]">
-          <thead className="sticky top-0 z-30 bg-gmv-table-head shadow-[0_1px_0_0] shadow-gmv-border">
+          <thead className={stickyThead}>
             <Tr>
               <Th className={stickyLeftTeam}>Team</Th>
               <Th className={stickyLeftSale}>Sale</Th>
@@ -176,6 +187,25 @@ export default function BC01SalesPerformance() {
               ))}
               <Th className={cn(stickyRightTotalHead, "text-right")}>Tổng GMV</Th>
             </Tr>
+            {!loading && data && months.length > 0 && (
+              <Tr className={grandTotalMonthBg}>
+                <Th className={stickyGrandTeam}>Tổng cộng</Th>
+                <Th className={stickyGrandSale}>—</Th>
+                {months.map((m) => (
+                  <Th key={m} className={cn(monthTh, grandTotalMonthBg)}>
+                    <GmvDataBarCell
+                      value={data.grandTotalRow[m] ?? 0}
+                      columnMax={columnMaxes[m] ?? 0}
+                      format={fmtRmb}
+                      className={grandTotalMonthBg}
+                    />
+                  </Th>
+                ))}
+                <Th className={cn(stickyGrandTotalHead, "text-base tabular-nums font-bold")}>
+                  {fmtRmb(data.grandTotal)}
+                </Th>
+              </Tr>
+            )}
           </thead>
           <tbody>
             {loading && !data && (
@@ -189,31 +219,6 @@ export default function BC01SalesPerformance() {
               <Tr>
                 <Td colSpan={Math.max(colSpan, 3)} className="text-center text-gmv-muted">
                   Chưa có dữ liệu trong khoảng ngày đã chọn.
-                </Td>
-              </Tr>
-            )}
-            {!loading && data && months.length > 0 && (
-              <Tr className={cn(stickyTableGrandRow, grandTotalMonthBg, "font-semibold")}>
-                <Td className={cn(stickyCellTeam, grandTotalMonthBg, "z-[21]")}>Tổng cộng</Td>
-                <Td className={cn(stickyCellSale, grandTotalMonthBg, "z-[21]")}>—</Td>
-                {months.map((m) => (
-                  <Td key={m} className={cn(monthTd, grandTotalMonthBg)}>
-                    <GmvDataBarCell
-                      value={data.grandTotalRow[m] ?? 0}
-                      columnMax={columnMaxes[m] ?? 0}
-                      format={fmtRmb}
-                      className={grandTotalMonthBg}
-                    />
-                  </Td>
-                ))}
-                <Td
-                  className={cn(
-                    stickyRightTotalCell,
-                    grandTotalSumBg,
-                    "z-[22] text-right text-base tabular-nums font-bold"
-                  )}
-                >
-                  {fmtRmb(data.grandTotal)}
                 </Td>
               </Tr>
             )}
