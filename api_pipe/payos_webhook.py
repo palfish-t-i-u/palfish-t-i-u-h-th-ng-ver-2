@@ -11,6 +11,40 @@ import datetime
 from typing import Any
 
 
+# Trạng thái đối soát — khớp frontend PayosHistoryTab (khop | sai_tien | chua_xu_ly)
+RECONCILE_STATUS_KHOP = "khop"
+RECONCILE_STATUS_SAI_TIEN = "sai_tien"
+RECONCILE_STATUS_CHUA_XU_LY = "chua_xu_ly"
+
+_LEGACY_STATUS_MAP: dict[str, str] = {
+    "DA_KHOP": RECONCILE_STATUS_KHOP,
+    "SAI_SO_TIEN": RECONCILE_STATUS_SAI_TIEN,
+    "KHONG_TIM_THAY": RECONCILE_STATUS_CHUA_XU_LY,
+    "CHUA_XU_LY": RECONCILE_STATUS_CHUA_XU_LY,
+}
+
+
+def normalize_reconcile_status(raw: str | None) -> str:
+    """Chuẩn hóa enum DB (legacy UPPER) → lowercase frontend."""
+    s = str(raw or "").strip()
+    if s in (RECONCILE_STATUS_KHOP, RECONCILE_STATUS_SAI_TIEN, RECONCILE_STATUS_CHUA_XU_LY):
+        return s
+    return _LEGACY_STATUS_MAP.get(s.upper(), RECONCILE_STATUS_CHUA_XU_LY)
+
+
+def reconcile_status_filter_values(frontend_status: str) -> list[str]:
+    """Giá trị DB khi filter — gồm legacy để không mất dòng cũ."""
+    key = normalize_reconcile_status(frontend_status)
+    groups: dict[str, list[str]] = {
+        RECONCILE_STATUS_KHOP: [RECONCILE_STATUS_KHOP, "DA_KHOP"],
+        RECONCILE_STATUS_SAI_TIEN: [RECONCILE_STATUS_SAI_TIEN, "SAI_SO_TIEN"],
+        RECONCILE_STATUS_CHUA_XU_LY: [
+            RECONCILE_STATUS_CHUA_XU_LY, "CHUA_XU_LY", "KHONG_TIM_THAY",
+        ],
+    }
+    return groups.get(key, [frontend_status])
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -100,7 +134,7 @@ def reconcile_bank_payment(
         return result
 
     don = find_don_hang(sb, description)
-    trang_thai_doi_soat = "CHUA_XU_LY"
+    trang_thai_doi_soat = RECONCILE_STATUS_CHUA_XU_LY
 
     if don:
         result["matched"] = True
@@ -110,7 +144,7 @@ def reconcile_bank_payment(
 
         if amount >= expected:
             result["amount_ok"] = True
-            trang_thai_doi_soat = "DA_KHOP"
+            trang_thai_doi_soat = RECONCILE_STATUS_KHOP
             try:
                 sb.table("don_hang").update(
                     {
@@ -122,9 +156,9 @@ def reconcile_bank_payment(
             except Exception as exc:
                 print(f"[payos_webhook] update don_hang error: {exc}")
         else:
-            trang_thai_doi_soat = "SAI_SO_TIEN"
+            trang_thai_doi_soat = RECONCILE_STATUS_SAI_TIEN
     else:
-        trang_thai_doi_soat = "KHONG_TIM_THAY"
+        trang_thai_doi_soat = RECONCILE_STATUS_CHUA_XU_LY
 
     # Ghi log giao_dich
     try:
