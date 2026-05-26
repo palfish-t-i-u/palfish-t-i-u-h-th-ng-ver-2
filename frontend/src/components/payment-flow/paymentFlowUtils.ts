@@ -89,6 +89,12 @@ export function flatCourses(ar: ActiveRequest) {
   );
 }
 
+export function nextCourseCode(ar: ActiveRequest): string {
+  const all = flatCourses(ar);
+  const arNumPart = ar.id.replace(/[^\d]/g, "").slice(-4) || "0000";
+  return `CC-${arNumPart}-${String(all.length + 1).padStart(3, "0")}`;
+}
+
 export function deriveArStatus(ar: ActiveRequest): ActiveRequestStatus {
   const all = flatCourses(ar);
   if (all.length === 0) return "pending_order";

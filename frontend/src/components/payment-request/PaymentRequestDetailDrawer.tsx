@@ -7,6 +7,7 @@ import type {
 } from "../../types/paymentRequest";
 import CountryCombo, { findCountry } from "./CountryCombo";
 import { Icons, type IconKey } from "./Icons";
+import VietnamAddressFields from "./VietnamAddressFields";
 import PaymentRequestStatusBadge from "./PaymentRequestStatusBadge";
 import {
   fmtPhone,
@@ -641,49 +642,15 @@ export default function PaymentRequestDetailDrawer({
                     />
                   </div>
                 </div>
-                <div className="info-cell">
-                  <div className="info-label">Tỉnh / Thành phố</div>
-                  <input
-                    value={draft.province}
-                    onChange={(e) => setDraft({ ...draft, province: e.target.value })}
-                    placeholder="Tỉnh / Thành phố"
-                    style={{
-                      border: "1px solid var(--border)",
-                      borderRadius: 8,
-                      padding: "8px 10px",
-                      font: "inherit",
-                      fontSize: 13,
-                    }}
-                  />
-                </div>
-                <div className="info-cell">
-                  <div className="info-label">Phường / Xã</div>
-                  <input
-                    value={draft.ward}
-                    onChange={(e) => setDraft({ ...draft, ward: e.target.value })}
-                    placeholder="Phường / Xã"
-                    style={{
-                      border: "1px solid var(--border)",
-                      borderRadius: 8,
-                      padding: "8px 10px",
-                      font: "inherit",
-                      fontSize: 13,
-                    }}
-                  />
-                </div>
-                <div className="info-cell">
-                  <div className="info-label">Số nhà, đường</div>
-                  <input
-                    value={draft.address}
-                    onChange={(e) => setDraft({ ...draft, address: e.target.value })}
-                    placeholder="VD: 119 Phúc Xá"
-                    style={{
-                      border: "1px solid var(--border)",
-                      borderRadius: 8,
-                      padding: "8px 10px",
-                      font: "inherit",
-                      fontSize: 13,
-                    }}
+                <div className="info-cell full">
+                  <div className="info-label">Địa chỉ khách hàng</div>
+                  <VietnamAddressFields
+                    province={draft.province}
+                    ward={draft.ward}
+                    address={draft.address}
+                    onProvinceChange={(v) => setDraft({ ...draft, province: v })}
+                    onWardChange={(v) => setDraft({ ...draft, ward: v })}
+                    onAddressChange={(v) => setDraft({ ...draft, address: v })}
                   />
                 </div>
                 <div className="info-cell">

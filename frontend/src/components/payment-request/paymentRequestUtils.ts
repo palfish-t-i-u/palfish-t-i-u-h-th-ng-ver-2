@@ -28,6 +28,14 @@ export const STATUS_CLASS: Record<PaymentRequestStatus, string> = {
 
 export const vnd = (value: number) => `${Math.round(value).toLocaleString("vi-VN")} đ`;
 
+/** PayOS returns EMV payload in qrCode — render via QR image API (same as Tab1Form). */
+export function payosQrImageUrl(qrCode: string | null | undefined, size = 240): string | null {
+  const raw = (qrCode || "").trim();
+  if (!raw) return null;
+  if (/^(https?:|data:image\/)/i.test(raw)) return raw;
+  return `https://api.qrserver.com/v1/create-qr-code/?size=${size}x${size}&data=${encodeURIComponent(raw)}`;
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function fromApiAttempt(raw: any, idx = 0): PaymentAttempt {
   const status = (raw.status ?? "pending") as PaymentAttempt["status"];
