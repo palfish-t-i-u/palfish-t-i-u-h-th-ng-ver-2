@@ -61,6 +61,7 @@ export function fromApiAttempt(raw: any, idx = 0): PaymentAttempt {
     checkoutUrl: raw.checkout_url ?? raw.checkoutUrl ?? null,
     cancelled: raw.cancelled ?? false,
     cancelledAt: raw.cancelled_at ?? raw.cancelledAt ?? null,
+    rejectReason: raw.reject_reason ?? raw.rejectReason ?? null,
   };
 }
 
@@ -77,6 +78,7 @@ export function fromApiPaymentRequest(raw: any): PaymentRequest {
     ward: raw.ward,
     province: raw.province,
     note: raw.note,
+    email: raw.email ?? "",
     target: raw.target ?? 0,
     source: raw.source ?? "",
     createdAt: raw.created_at ?? raw.createdAt ?? "",
@@ -202,6 +204,46 @@ export function createLocalActiveRequest(pr: PaymentRequest, existing: ActiveReq
   };
 }
 
+export function createLocalActiveRequestFromForm(
+  data: {
+    prId: string | null;
+    customerName: string;
+    uid: string;
+    phone?: string;
+    country?: string;
+    packageName: string;
+    amount: number;
+  },
+  existing: ActiveRequest[]
+): ActiveRequest {
+  const nextNum = existing.length + 1;
+  const id = `AR-2026-${String(nextNum).padStart(4, "0")}`;
+  const numPart = id.replace(/[^\d]/g, "").slice(-4);
+  return {
+    id,
+    prId: data.prId,
+    customerName: data.customerName,
+    createdAt: nowStamp(),
+    createdBy: "admin.tranminhanh",
+    uids: [
+      {
+        uid: data.uid,
+        phone: data.phone || "",
+        country: data.country || "VN",
+        courses: [
+          {
+            courseCode: `CC-${numPart}-001`,
+            packageName: data.packageName,
+            amount: data.amount,
+            orderId: "",
+            invoiced: false,
+          },
+        ],
+      },
+    ],
+  };
+}
+
 export function isBackendLineId(id: string) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
 }
@@ -216,18 +258,39 @@ export function requestBucket(request: PaymentRequest, arByPrId: Record<string, 
   return "tracking";
 }
 
-export function createdAtDate(createdAt: string) {
-  const [date, time] = createdAt.split(" ");
-  return { date: date || createdAt, time: time || "" };
+export function parsePaymentDate(dateStr: string): Date | null {
+  if (!dateStr) return null;
+  const normalized = dateStr.includes("T") ? dateStr : dateStr.replace(" ", "T");
+  const d = new Date(normalized);
+  return Number.isNaN(d.getTime()) ? null : d;
 }
 
-export function ddmmyyyy(createdAt: string) {
-  const [date] = createdAt.split(" ");
-  if (!date) return createdAt;
-  const parts = date.split("-");
-  if (parts.length !== 3) return date;
-  return `${parts[2]}/${parts[1]}/${parts[0]}`;
+function pad2(n: number) {
+  return String(n).padStart(2, "0");
 }
+
+/** Display parts for table cells — handles ISO and legacy `YYYY-MM-DD HH:mm`. */
+export function formatPaymentDateTime(dateStr: string): { date: string; time: string } {
+  const d = parsePaymentDate(dateStr);
+  if (!d) {
+    const [date = dateStr, time = ""] = dateStr.split(" ");
+    return { date, time };
+  }
+  return {
+    date: `${pad2(d.getDate())}/${pad2(d.getMonth() + 1)}/${d.getFullYear()}`,
+    time: `${pad2(d.getHours())}:${pad2(d.getMinutes())}`,
+  };
+}
+
+export function formatPaymentDateShort(dateStr: string): string {
+  return formatPaymentDateTime(dateStr).date;
+}
+
+export function formatPaymentDateFull(dateStr: string): string {
+  const { date, time } = formatPaymentDateTime(dateStr);
+  return time ? `${date} ${time}` : date;
+}
+
 
 export function fmtPhone(raw: string): string {
   if (!raw) return "";
@@ -236,10 +299,17 @@ export function fmtPhone(raw: string): string {
   return digits.replace(/(\d{4})(\d{3})(\d+)/, "$1 $2 $3");
 }
 
+export function createdAtDate(createdAt: string) {
+  return formatPaymentDateTime(createdAt);
+}
+
+export function ddmmyyyy(createdAt: string) {
+  return formatPaymentDateShort(createdAt);
+}
 export function relativeFrom(dateStr: string): string {
   if (!dateStr) return "";
-  const d = new Date(dateStr.replace(" ", "T"));
-  if (Number.isNaN(d.getTime())) return "";
+  const d = parsePaymentDate(dateStr);
+  if (!d) return "";
   const now = new Date();
   const diffMin = Math.round((now.getTime() - d.getTime()) / 60000);
   if (diffMin < 1) return "vừa xong";

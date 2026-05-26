@@ -8,6 +8,7 @@ import {
   createdAtDate,
   ddmmyyyy,
   fmtPhone,
+  formatPaymentDateShort,
   relativeFrom,
   vnd,
 } from "./paymentRequestUtils";
@@ -152,7 +153,7 @@ export default function PaymentRequestTable({
                   <td>
                     {p.state === "cancelled" ? (
                       <span style={{ color: "var(--text-3)", fontSize: 12 }}>
-                        Huỷ {p.cancelledAt?.split(" ")[0] || ""}
+                        Huỷ {formatPaymentDateShort(p.cancelledAt || "")}
                       </span>
                     ) : (
                       <PaymentRequestProgress request={p} />

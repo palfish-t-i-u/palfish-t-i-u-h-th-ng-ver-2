@@ -42,6 +42,7 @@ class PaymentRequestCreate(BaseModel):
     ward: str | None = ""
     province: str | None = ""
     note: str | None = ""
+    email: str | None = ""
     target: int | str | None = None
 
     uid_khach_hang: str | None = None
@@ -147,6 +148,7 @@ def _serialize_payment_request(row: dict[str, Any]) -> dict[str, Any]:
         "ward": row.get("ward") or "",
         "province": row.get("province") or "",
         "note": row.get("note") or "",
+        "email": row.get("email") or "",
         "target": target,
         "received": received,
         "state": row.get("state") or "pending",
@@ -321,6 +323,7 @@ def _payment_request_insert_row(body: PaymentRequestCreate) -> dict[str, Any]:
         "ward": _clean_text(body.ward),
         "province": _clean_text(body.province),
         "note": _clean_text(body.note),
+        "email": _clean_text(body.email),
         "target": target,
         "received": 0,
         "state": "pending",

@@ -24,6 +24,7 @@ export interface PaymentAttempt {
   checkoutUrl?: string | null;
   cancelled?: boolean;
   cancelledAt?: string | null;
+  rejectReason?: string | null;
 }
 
 export interface PaymentLineApiRow {
@@ -72,6 +73,7 @@ export interface PaymentRequest {
   ward?: string;
   province?: string;
   note?: string;
+  email?: string;
   target: number;
   source: string;
   createdAt: string;
@@ -93,6 +95,10 @@ export interface ActiveCourse {
   invoiced: boolean;
   invoiceId?: string;
   invoicedAt?: string | null;
+  /** Mã đơn hàng thuế (M...) — BE cấp khi export batch */
+  taxInvoiceCode?: string;
+  /** Mã sản phẩm thuế (PF...) — BE cấp khi export batch */
+  taxProductCode?: string;
   customerType?: "individual" | "business";
   name?: string;
   email?: string;
@@ -146,6 +152,7 @@ export type CreatePaymentRequestPayload = {
   province?: string;
   target: number;
   note?: string;
+  email?: string;
 };
 
 export type CreateActiveRequestCoursePayload = {

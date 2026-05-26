@@ -146,6 +146,13 @@ export const endpoints = {
         invoice_id: string;
         invoiced_at: string;
       }>(`/api/v1/active-requests/${arId}/courses/${encodeURIComponent(courseCode)}/issue-invoice`),
+    bulkIssueInvoices: (items: { ar_id: string; course_code: string }[]) =>
+      api.post<{
+        issued: { ar_id: string; course_code: string; invoice_id: string; invoiced_at: string }[];
+        issued_count: number;
+        error_count: number;
+        errors: { ar_id: string; course_code: string; detail: string }[];
+      }>("/api/v1/invoice-courses/bulk-issue", { items }),
   },
   transactions: {
     patchStatus: (id: string, status: string) =>

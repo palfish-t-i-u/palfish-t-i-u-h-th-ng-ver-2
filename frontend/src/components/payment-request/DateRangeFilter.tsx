@@ -122,7 +122,8 @@ export default function DateRangeFilter({
 export function inDateRange(dateStr: string, range: DateRange): boolean {
   if (!range || (!range.from && !range.to)) return true;
   if (!dateStr) return false;
-  const d = new Date(dateStr.replace(" ", "T"));
+  const normalized = dateStr.includes("T") ? dateStr : dateStr.replace(" ", "T");
+  const d = new Date(normalized);
   if (Number.isNaN(d.getTime())) return true;
   if (range.from && d < new Date(range.from + "T00:00:00")) return false;
   if (range.to && d > new Date(range.to + "T23:59:59")) return false;

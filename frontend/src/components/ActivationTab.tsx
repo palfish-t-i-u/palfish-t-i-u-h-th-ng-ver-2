@@ -1,12 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { COURSE_PACKAGES } from "../constants/coursePackages";
 import { usePaymentFlow } from "../contexts/PaymentFlowContext";
-import type { ActiveRequest, ActiveCourse, ActiveUidGroup } from "../types/paymentRequest";
+import type { ActiveRequest, ActiveCourse, ActiveUidGroup, PaymentRequest } from "../types/paymentRequest";
 import type { ActiveRequestStatus } from "../types/paymentRequest";
 import {
   AR_STATUS_META,
   enrichActiveRequest,
-  findInvoiceRowKey,
   flatCourses,
   nextCourseCode,
   vnd,
@@ -14,7 +13,287 @@ import {
 import CountryCombo from "./payment-request/CountryCombo";
 import DateRangeFilter, { EMPTY_RANGE, type DateRange, inDateRange } from "./payment-request/DateRangeFilter";
 import { Icons } from "./payment-request/Icons";
+import { formatPaymentDateTime } from "./payment-request/paymentRequestUtils";
+import { downloadTaxInvoiceZip } from "../utils/taxInvoiceXlsxExport";
+import type { InvoiceRow } from "./payment-flow/paymentFlowUtils";
 import "../styles/prototype-payments.css";
+
+type ArTabId = "pending_order" | "partial_order" | "ready_invoice" | "all";
+
+function PrSearchCombo({
+  prs,
+  value,
+  onChange,
+  allowNone = true,
+}: {
+  prs: PaymentRequest[];
+  value: string | null;
+  onChange: (id: string | null) => void;
+  allowNone?: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
+  }, [open]);
+
+  const selectedPr = value ? prs.find((p) => p.id === value) : null;
+  const filtered = prs
+    .filter((p) => p.state !== "cancelled")
+    .filter((p) => {
+      if (!query) return true;
+      const q = query.toLowerCase();
+      return (
+        p.id.toLowerCase().includes(q) ||
+        p.name.toLowerCase().includes(q) ||
+        p.uid.toLowerCase().includes(q) ||
+        p.phone.includes(q)
+      );
+    });
+
+  return (
+    <div className="pr-search-wrap" ref={ref}>
+      <div
+        onClick={() => setOpen(!open)}
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 10,
+          border: "1px solid var(--border)",
+          borderRadius: 8,
+          padding: "9px 11px",
+          background: "white",
+          cursor: "pointer",
+          minHeight: 40,
+        }}
+      >
+        {selectedPr ? (
+          <>
+            <span className="pr-id-pill">{selectedPr.id}</span>
+            <span
+              style={{ flex: 1, fontSize: 13, color: "var(--text-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+            >
+              {selectedPr.name}
+            </span>
+            <span style={{ fontSize: 11.5, color: "var(--text-3)" }}>
+              {vnd(selectedPr.target)} · {selectedPr.state === "done" ? "✓ Đủ" : selectedPr.state === "over" ? "⚠ Thừa" : "✗ Chưa đủ"}
+            </span>
+          </>
+        ) : (
+          <span style={{ flex: 1, color: "var(--text-3)", fontSize: 13 }}>Tìm theo PR-ID, tên, UID, SĐT…</span>
+        )}
+        <Icons.ChevronDown size={14} stroke="var(--text-3)" />
+      </div>
+      {open && (
+        <div className="pr-search-pop">
+          <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", borderBottom: "1px solid var(--border)" }}>
+            <Icons.Search size={13} stroke="var(--text-3)" />
+            <input
+              autoFocus
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Lọc nhanh…"
+              style={{ flex: 1, border: 0, outline: "none", font: "inherit", fontSize: 13 }}
+            />
+          </div>
+          {allowNone && (
+            <div className="pr-search-opt" onClick={() => { onChange(null); setOpen(false); }}>
+              <span className="pr-id-text" style={{ color: "var(--text-3)" }}>
+                — Không liên kết PR —
+              </span>
+              <span style={{ fontSize: 11, color: "var(--text-3)" }}>Standalone</span>
+              <span className="pr-meta">AR sẽ không có Payment Request gắn kèm</span>
+            </div>
+          )}
+          {filtered.length === 0 && (
+            <div style={{ padding: 12, color: "var(--text-3)", fontSize: 12 }}>Không tìm thấy PR khớp.</div>
+          )}
+          {filtered.map((p) => (
+            <div key={p.id} className="pr-search-opt" onClick={() => { onChange(p.id); setOpen(false); }}>
+              <span className="pr-id-text">{p.id}</span>
+              <span style={{ fontSize: 12.5, color: "var(--text-2)", textAlign: "right" }}>{vnd(p.target)}</span>
+              <span className="pr-meta">
+                {p.name} · UID {p.uid} ·{" "}
+                {p.state === "done" ? "Đủ tiền" : p.state === "over" ? "Thừa" : p.state === "short" ? `Còn thiếu ${vnd(p.target - p.received)}` : "Chưa thanh toán"}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ARCreateModal({
+  open,
+  onClose,
+  prs,
+  onCreate,
+}: {
+  open: boolean;
+  onClose: () => void;
+  prs: PaymentRequest[];
+  onCreate: (data: {
+    prId: string | null;
+    customerName: string;
+    uid: string;
+    packageName: string;
+    amount: number;
+  }) => void;
+}) {
+  const [linkedPrId, setLinkedPrId] = useState<string | null>(null);
+  const [firstUid, setFirstUid] = useState("");
+  const [pkgName, setPkgName] = useState("");
+  const [amount, setAmount] = useState("");
+  const [customerName, setCustomerName] = useState("");
+
+  useEffect(() => {
+    if (!open) return;
+    setLinkedPrId(null);
+    setFirstUid("");
+    setCustomerName("");
+    setAmount("");
+    setPkgName("");
+  }, [open]);
+
+  if (!open) return null;
+
+  const linkedPr = linkedPrId ? prs.find((p) => p.id === linkedPrId) : null;
+  const amountNum = parseInt(String(amount).replace(/\D/g, ""), 10) || 0;
+  const canSubmit = firstUid.trim() && pkgName.trim() && amountNum > 0 && (linkedPr ? true : customerName.trim());
+
+  return (
+    <div className="gmv-prototype-modal-scrim" onClick={onClose}>
+      <div className="modal" style={{ width: "min(720px, 100%)" }} onClick={(e) => e.stopPropagation()}>
+        <div className="modal-head">
+          <div>
+            <h3>Tạo Active Request mới</h3>
+            <div style={{ fontSize: 12, color: "var(--text-3)", marginTop: 2 }}>
+              Bước 3 · Đăng ký khoá học cho UID khách hàng, hệ thống xuất ra Course Code dùng để đối chiếu hoá đơn.
+            </div>
+          </div>
+          <button type="button" className="drawer-close" onClick={onClose}>
+            <Icons.Close size={16} />
+          </button>
+        </div>
+        <div className="modal-body">
+          <div className="field">
+            <label>
+              Liên kết Payment Request <span style={{ color: "var(--text-3)", fontWeight: 400 }}>(khuyến nghị)</span>
+            </label>
+            <PrSearchCombo
+              prs={prs}
+              value={linkedPrId}
+              onChange={(id) => {
+                setLinkedPrId(id);
+                if (id) {
+                  const p = prs.find((x) => x.id === id);
+                  if (p) {
+                    setFirstUid(p.uid);
+                    setCustomerName(p.name);
+                    if (!amount) setAmount(p.target.toLocaleString("vi-VN"));
+                  }
+                }
+              }}
+            />
+            {linkedPr && linkedPr.state !== "done" && linkedPr.state !== "over" && (
+              <div style={{ marginTop: 8, fontSize: 12, color: "var(--warning-text)", display: "flex", gap: 6, alignItems: "center" }}>
+                <Icons.AlertCircle size={13} /> PR này chưa thanh toán đủ — thường chỉ kích hoạt khi đủ tiền.
+              </div>
+            )}
+          </div>
+
+          {!linkedPr && (
+            <div className="field">
+              <label>
+                Tên khách hàng <span style={{ color: "var(--danger)" }}>*</span>
+              </label>
+              <input value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder="Họ và tên" />
+            </div>
+          )}
+
+          <div style={{ border: "1px solid var(--border)", borderRadius: 10, padding: 14, background: "var(--surface-2)" }}>
+            <div className="info-label" style={{ marginBottom: 10 }}>
+              Khoá học đầu tiên
+            </div>
+            <div className="field-row" style={{ gridTemplateColumns: "1fr 1fr", marginBottom: 10 }}>
+              <div className="field">
+                <label>
+                  UID học viên <span style={{ color: "var(--danger)" }}>*</span>
+                </label>
+                <input
+                  value={firstUid}
+                  onChange={(e) => setFirstUid(e.target.value)}
+                  placeholder="UID CRM hoặc UID nội bộ"
+                  style={{ fontFamily: "JetBrains Mono, monospace" }}
+                />
+              </div>
+              <div className="field">
+                <label>
+                  Số tiền khoá học <span style={{ color: "var(--danger)" }}>*</span>
+                </label>
+                <input
+                  value={amount}
+                  onChange={(e) => {
+                    const v = e.target.value.replace(/[^\d]/g, "");
+                    setAmount(v ? Number(v).toLocaleString("vi-VN") : "");
+                  }}
+                  placeholder="VD: 12.000.000"
+                />
+              </div>
+            </div>
+            <div className="field">
+              <label>
+                Gói học <span style={{ color: "var(--danger)" }}>*</span>
+              </label>
+              <input
+                list="ar-create-packages"
+                value={pkgName}
+                onChange={(e) => setPkgName(e.target.value)}
+                placeholder="Bắt đầu nhập hoặc chọn từ danh sách…"
+              />
+              <datalist id="ar-create-packages">
+                {COURSE_PACKAGES.map((p) => (
+                  <option key={p} value={p} />
+                ))}
+              </datalist>
+            </div>
+          </div>
+        </div>
+        <div className="modal-foot">
+          <button type="button" className="btn btn-outline" onClick={onClose}>
+            Huỷ
+          </button>
+          <button
+            type="button"
+            className="btn btn-primary"
+            disabled={!canSubmit}
+            style={!canSubmit ? { opacity: 0.4, cursor: "not-allowed" } : {}}
+            onClick={() =>
+              canSubmit &&
+              onCreate({
+                prId: linkedPrId,
+                customerName: linkedPr ? linkedPr.name : customerName.trim(),
+                uid: firstUid.trim(),
+                packageName: pkgName.trim(),
+                amount: amountNum,
+              })
+            }
+          >
+            <Icons.Plus size={14} /> Tạo AR &amp; mở chi tiết
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function ARStatusBadge({ status }: { status: ActiveRequestStatus }) {
   const meta = AR_STATUS_META[status as keyof typeof AR_STATUS_META] || AR_STATUS_META.pending_order;
@@ -35,7 +314,7 @@ function ActivationDetailDrawer({
   onSaveOrderId,
   onNavigateInvoice,
   onOpenPr,
-  onIssueInvoice,
+  onGoToInvoice,
 }: {
   ar: ActiveRequest | null;
   pr: ReturnType<typeof usePaymentFlow>["requests"][0] | null;
@@ -45,7 +324,7 @@ function ActivationDetailDrawer({
   onSaveOrderId: (courseCode: string, orderId: string) => void;
   onNavigateInvoice: () => void;
   onOpenPr?: () => void;
-  onIssueInvoice: (courseCode: string) => void;
+  onGoToInvoice: (courseCode: string) => void;
 }) {
   const [drafts, setDrafts] = useState<Record<string, string>>({});
 
@@ -439,19 +718,41 @@ function ActivationDetailDrawer({
                   />
                   <div className="invoice-cell">
                     {course.invoiced ? (
-                      <span
-                        className="invoice-chip"
-                        onClick={() => updateCourse(uidIdx, courseIdx, { invoiced: false, invoiceId: "" })}
-                        title="Đã xuất HĐ (demo: click huỷ)"
-                      >
-                        <Icons.Doc size={11} /> {course.invoiceId}
-                      </span>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                        <span
+                          className="invoice-chip"
+                          title="Đã xuất HĐ"
+                        >
+                          <Icons.Doc size={11} /> {course.invoiceId}
+                        </span>
+                        <button
+                          type="button"
+                          className="btn btn-outline btn-sm"
+                          title="Tải ZIP 3 file Excel kê khai thuế"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            const row: InvoiceRow = {
+                              key: `${ar.id}::${course.courseCode}`,
+                              ar,
+                              pr,
+                              uidObj,
+                              uidIdx,
+                              courseIdx,
+                              course,
+                            };
+                            void downloadTaxInvoiceZip([row]);
+                          }}
+                        >
+                          <Icons.Download size={12} /> Tải file thuế
+                        </button>
+                      </div>
                     ) : (
                       <button
                         type="button"
                         className="btn-invoice"
-                        title="Chuyển sang tab Xuất hóa đơn (Chờ xuất) để phát hành"
-                        onClick={() => onIssueInvoice(course.courseCode)}
+                        disabled={!course.orderId?.trim()}
+                        title={course.orderId ? "Chuyển sang B4 xuất hoá đơn" : "Cần điền Order ID trước"}
+                        onClick={() => onGoToInvoice(course.courseCode)}
                       >
                         <Icons.Doc size={12} /> Xuất HĐ
                       </button>
@@ -524,11 +825,13 @@ export default function ActivationTab() {
     setNav,
     apiNote,
     updateActiveRequest,
+    handleCreateActiveRequestFromForm,
   } = usePaymentFlow();
   const [openArId, setOpenArId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
-  const [tab, setTab] = useState<"pending" | "ready" | "all">("pending");
+  const [tab, setTab] = useState<ArTabId>("pending_order");
   const [dateRange, setDateRange] = useState<DateRange>(EMPTY_RANGE);
+  const [createOpen, setCreateOpen] = useState(false);
 
   useEffect(() => {
     if (nav.openArId) {
@@ -541,18 +844,23 @@ export default function ActivationTab() {
 
   const counts = useMemo(
     () => ({
-      pending: rows.filter((a) => a.status === "pending_order" || a.status === "partial_order").length,
-      ready: rows.filter((a) => a.status === "ready_invoice").length,
       all: rows.length,
+      pending_order: rows.filter((a) => a.status === "pending_order").length,
+      partial_order: rows.filter((a) => a.status === "partial_order").length,
+      ready_invoice: rows.filter((a) => a.status === "ready_invoice").length,
     }),
+    [rows]
+  );
+
+  const sumReady = useMemo(
+    () => rows.filter((a) => a.status === "ready_invoice").reduce((s, a) => s + a.total, 0),
     [rows]
   );
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return rows.filter((a) => {
-      if (tab === "pending" && a.status !== "pending_order" && a.status !== "partial_order") return false;
-      if (tab === "ready" && a.status !== "ready_invoice") return false;
+      if (tab !== "all" && a.status !== tab) return false;
       if (!inDateRange(a.createdAt, dateRange)) return false;
       if (!q) return true;
       return [a.id, a.prId || "", a.customerName, a.uids[0]?.uid || ""].some((v) =>
@@ -567,10 +875,15 @@ export default function ActivationTab() {
   return (
     <div className="gmv-prototype">
       <div className="page">
-        <div style={{ fontSize: 12.5, color: "var(--text-3)", maxWidth: 720, lineHeight: 1.55, marginBottom: 4 }}>
-          Sau khi PR đủ tiền, tạo <strong style={{ color: "var(--text-2)" }}>Active Request</strong> và điền{" "}
-          <strong style={{ color: "var(--text-2)" }}>Order ID CRM</strong> cho từng Course Code. Khi đủ Order ID →
-          sang B4 xuất hoá đơn.
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, marginBottom: 4 }}>
+          <div style={{ fontSize: 12.5, color: "var(--text-3)", maxWidth: 720, lineHeight: 1.55 }}>
+            Sau khi PR đủ tiền, tạo <strong style={{ color: "var(--text-2)" }}>Active Request</strong> và điền{" "}
+            <strong style={{ color: "var(--text-2)" }}>Order ID CRM</strong> cho từng Course Code. Khi đủ Order ID →
+            sang B4 xuất hoá đơn.
+          </div>
+          <button type="button" className="btn btn-primary" onClick={() => setCreateOpen(true)}>
+            <Icons.Plus size={15} strokeWidth={2.3} /> Tạo Active Request
+          </button>
         </div>
 
         {apiNote && (
@@ -591,25 +904,36 @@ export default function ActivationTab() {
 
         <div className="kpi-row">
           <div className="kpi">
+            <div className="kpi-icon">
+              <Icons.Sparkle size={16} />
+            </div>
+            <div className="kpi-label">Tổng Active Request</div>
+            <div className="kpi-value">{counts.all}</div>
+            <div className="kpi-sub">{rows.reduce((s, a) => s + a.totalCourses, 0)} khoá học</div>
+          </div>
+          <div className="kpi">
             <div className="kpi-icon" style={{ background: "var(--warning-bg)", color: "var(--warning-text)" }}>
               <Icons.Clock size={16} />
             </div>
-            <div className="kpi-label">Chờ Order ID</div>
-            <div className="kpi-value">{counts.pending}</div>
+            <div className="kpi-label">Chờ tạo đơn</div>
+            <div className="kpi-value">{counts.pending_order}</div>
+            <div className="kpi-sub">Chưa có Order ID nào</div>
+          </div>
+          <div className="kpi">
+            <div className="kpi-icon" style={{ background: "var(--info-bg)", color: "var(--info-text)" }}>
+              <Icons.Pencil size={16} />
+            </div>
+            <div className="kpi-label">Đang điền Order ID</div>
+            <div className="kpi-value">{counts.partial_order}</div>
+            <div className="kpi-sub">Admin đang xử lý</div>
           </div>
           <div className="kpi">
             <div className="kpi-icon" style={{ background: "var(--success-bg)", color: "var(--success-text)" }}>
               <Icons.CheckCircle size={16} />
             </div>
             <div className="kpi-label">Sẵn sàng xuất HĐ</div>
-            <div className="kpi-value">{counts.ready}</div>
-          </div>
-          <div className="kpi">
-            <div className="kpi-icon">
-              <Icons.Sparkle size={16} />
-            </div>
-            <div className="kpi-label">Tổng Active Request</div>
-            <div className="kpi-value">{counts.all}</div>
+            <div className="kpi-value">{counts.ready_invoice}</div>
+            <div className="kpi-sub">{vnd(sumReady)} chờ B4</div>
           </div>
         </div>
 
@@ -632,8 +956,9 @@ export default function ActivationTab() {
             <div className="tabs">
               {(
                 [
-                  { id: "pending" as const, label: "Chờ Order ID", icon: "Clock" as const, count: counts.pending },
-                  { id: "ready" as const, label: "Sẵn sàng HĐ", icon: "CheckCircle" as const, count: counts.ready },
+                  { id: "pending_order" as const, label: "Chờ tạo đơn", icon: "Clock" as const, count: counts.pending_order, attention: true },
+                  { id: "partial_order" as const, label: "Đang điền Order ID", icon: "Pencil" as const, count: counts.partial_order },
+                  { id: "ready_invoice" as const, label: "Sẵn sàng xuất HĐ", icon: "CheckCircle" as const, count: counts.ready_invoice },
                   { id: "all" as const, label: "Tất cả", icon: "Database" as const, count: counts.all },
                 ] as const
               ).map((tc) => {
@@ -641,7 +966,9 @@ export default function ActivationTab() {
                 return (
                   <div key={tc.id} className={`tab ${tab === tc.id ? "active" : ""}`} onClick={() => setTab(tc.id)}>
                     <Ico size={14} /> {tc.label}
-                    <span className={`tab-count ${tc.id === "pending" && tc.count > 0 && tab !== "pending" ? "is-attention" : ""}`}>
+                    <span
+                      className={`tab-count ${tc.attention && tc.count > 0 && tab !== tc.id ? "is-attention" : ""}`}
+                    >
                       {tc.count}
                     </span>
                   </div>
@@ -725,8 +1052,15 @@ export default function ActivationTab() {
                       <ARStatusBadge status={a.status} />
                     </td>
                     <td>
-                      <div className="cell-time">{a.createdAt?.split(" ")[0].split("-").reverse().join("/")}</div>
-                      <div className="time-relative">{a.createdAt?.split(" ")[1]}</div>
+                      {(() => {
+                        const ts = formatPaymentDateTime(a.createdAt);
+                        return (
+                          <>
+                            <div className="cell-time">{ts.date}</div>
+                            {ts.time ? <div className="time-relative">{ts.time}</div> : null}
+                          </>
+                        );
+                      })()}
                     </td>
                     <td>
                       <span className="row-action">
@@ -756,11 +1090,24 @@ export default function ActivationTab() {
             ? () => navigate("paymentRequests", { openPrId: openAr.prId })
             : undefined
         }
-        onIssueInvoice={(courseCode) => {
+        onGoToInvoice={(courseCode) => {
           if (!openAr) return;
           const key = findInvoiceRowKey(openAr, courseCode);
           setOpenArId(null);
           navigate("module4", { invoiceTab: "pending", openInvoiceKey: key ?? undefined });
+        }}
+      />
+
+      <ARCreateModal
+        open={createOpen}
+        onClose={() => setCreateOpen(false)}
+        prs={requests}
+        onCreate={(data) => {
+          void handleCreateActiveRequestFromForm(data).then((ar) => {
+            setCreateOpen(false);
+            setOpenArId(ar.id);
+            setTab("pending_order");
+          });
         }}
       />
     </div>

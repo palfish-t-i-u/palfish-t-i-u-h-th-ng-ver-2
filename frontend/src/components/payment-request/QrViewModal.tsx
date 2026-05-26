@@ -1,4 +1,4 @@
-import type { PaymentAttempt, PaymentRequest } from "../../types/paymentRequest";
+﻿import type { PaymentAttempt, PaymentRequest } from "../../types/paymentRequest";
 import BillUploadZone from "./BillUploadZone";
 import { findCountry } from "./CountryCombo";
 import { Icons } from "./Icons";
@@ -57,7 +57,7 @@ export default function QrViewModal({
     <div className="gmv-prototype gmv-prototype-modal-scrim" onClick={onClose}>
       <div className="modal" style={{ width: "min(540px, 100%)" }} onClick={(e) => e.stopPropagation()}>
         <div className="modal-head">
-          <h3>QR thanh toán · Lần #{qr.idx}</h3>
+          <h3>QR thanh to├ín ┬╖ Lß║ºn #{qr.idx}</h3>
           <button className="drawer-close" onClick={onClose}>
             <Icons.Close size={16} />
           </button>
@@ -66,25 +66,25 @@ export default function QrViewModal({
           <div className="qr-detail-card">
             <div className="qr-big">
               {qrImageUrl ? (
-                <img src={qrImageUrl} alt="Mã QR PayOS" style={{ width: 170, height: 170, objectFit: "contain" }} />
+                <img src={qrImageUrl} alt="M├ú QR PayOS" style={{ width: 170, height: 170, objectFit: "contain" }} />
               ) : (
                 <QrPlaceholder />
               )}
             </div>
             <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 8 }}>
               <div>
-                <div className="info-label">Khách hàng</div>
+                <div className="info-label">Kh├ích h├áng</div>
                 <div style={{ fontWeight: 700, fontSize: 14 }}>{request.name}</div>
                 <div style={{ fontSize: 12, color: "var(--text-3)" }}>
                   {country.flag} {country.dial} {fmtPhone(request.phone)}
                 </div>
               </div>
               <div>
-                <div className="info-label">Số tiền</div>
+                <div className="info-label">Sß╗æ tiß╗ün</div>
                 <div className="info-value money">{vnd(qr.amount)}</div>
               </div>
               <div>
-                <div className="info-label">Nội dung CK</div>
+                <div className="info-label">Nß╗Öi dung CK</div>
                 <div
                   style={{
                     fontFamily: "JetBrains Mono, monospace",
@@ -102,22 +102,22 @@ export default function QrViewModal({
                 </div>
               </div>
               <div>
-                <div className="info-label">Ngân hàng nhận</div>
-                <div className="info-value">{bank} · PalFish Vietnam Co., Ltd</div>
+                <div className="info-label">Ng├ón h├áng nhß║¡n</div>
+                <div className="info-value">{bank} ┬╖ PalFish Vietnam Co., Ltd</div>
               </div>
             </div>
           </div>
           <div style={{ display: "flex", gap: 8 }}>
             <button className="btn btn-outline" style={{ flex: 1, justifyContent: "center" }} onClick={copyTransfer}>
-              <Icons.Copy size={14} /> Copy nội dung CK
+              <Icons.Copy size={14} /> Copy nß╗Öi dung CK
             </button>
             {qr.checkoutUrl ? (
               <button className="btn btn-outline" style={{ flex: 1, justifyContent: "center" }} onClick={openCheckout}>
-                <Icons.Download size={14} /> Mở link PayOS
+                <Icons.Download size={14} /> Mß╗ƒ link PayOS
               </button>
             ) : (
               <button className="btn btn-outline" style={{ flex: 1, justifyContent: "center" }} disabled>
-                <Icons.Download size={14} /> Tải ảnh QR
+                <Icons.Download size={14} /> Tß║úi ß║únh QR
               </button>
             )}
           </div>
@@ -134,7 +134,7 @@ export default function QrViewModal({
         </div>
         <div className="modal-foot">
           <button className="btn btn-outline" onClick={onClose}>
-            Đóng
+            ─É├│ng
           </button>
         </div>
       </div>
