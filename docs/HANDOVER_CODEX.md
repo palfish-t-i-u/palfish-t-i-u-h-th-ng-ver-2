@@ -1,8 +1,11 @@
 # Bàn giao dự án — PalFish GMV Manager
 
 > **Đối tượng:** Codex / agent AI tiếp quản bảo trì và phát triển.  
-> **Cập nhật:** 2026-05-24 · branch `main` · commit gần nhất: `2c63e43`  
+> **Cập nhật:** 2026-05-27 · branch `main` · commit production: `891a623`  
 > **Ngôn ngữ UI:** Tiếng Việt · **Timezone vận hành:** UTC+7 (HCM)
+
+**⚠️ Đọc file này thay vì suy luật từ `docs/PROJECT.md` / commit cũ.**  
+Sau ngày 2026-05-27, `main` = bản production đầy đủ (đã merge `ui/ux-anh-minh`). Một lần push nhầm bản cũ lên `main` đã được khôi phục bằng merge `891a623`.
 
 ---
 
@@ -32,7 +35,9 @@ Không phải SaaS công khai — chỉ user có tài khoản Supabase Auth (Goo
 
 **Deploy tự động:** push `main` → Vercel (FE) + Render (BE, plan free có thể sleep).
 
-**Lưu ý docs cũ:** `docs/PROJECT.md`, `docs/DEPLOY.md` vẫn nhắc repo `palfish-gmv-manager` hoặc branch `ui/ux-anh-minh` — **đã merge vào `main`**. Ưu tiên file bàn giao này + code thực tế.
+**Nguồn code production (2026-05-27):** chỉ **`main`**. Branch `ui/ux-anh-minh` đã merge xong — **không** deploy/promote từ branch đó nữa trừ khi team tách lại workflow.
+
+**Lưu ý docs cũ:** `docs/PROJECT.md`, `docs/DEPLOY.md`, `docs/WORKFLOW_UI_UX.md` vẫn nhắc repo cũ hoặc “Promote từ preview branch” — **ưu tiên file bàn giao này + code trên `main`**.
 
 ---
 
@@ -43,7 +48,7 @@ Không phải SaaS công khai — chỉ user có tài khoản Supabase Auth (Goo
 | Frontend | React 19, Vite, TypeScript, Tailwind, Recharts |
 | Backend | FastAPI, Python 3.11+, httpx, pandas (CRM sync) |
 | DB + Auth | Supabase PostgreSQL + Supabase Auth |
-| Thanh toán | PayOS v2 (`/payos/create-link`, webhook) |
+| Thanh toán | PayOS v2 + **VietQR fallback** nếu PayOS lỗi (Tab2 modal) |
 | CRM nguồn | PalFish internal CRM (HTTP + cookie từ Chrome extension) |
 | Deploy | Vercel (FE), Render Docker (BE), Supabase Edge Function (webhook tùy chọn) |
 
@@ -63,6 +68,8 @@ palfish-gmv-manager/
 │
 ├── backend/
 │   ├── main.py               # FastAPI entry: orders, PayOS, đăng ký router
+│   ├── payos_qr.py           # Parse EMV QR → transferContent (tag 62)
+│   ├── xlsx_ledger_import.py # Import Excel vào Sổ doanh thu
 │   ├── admin_routes.py       # /me, /admin/*
 │   ├── crm_routes.py         # M5: sync, backfill, token, export
 │   ├── crm_metrics.py        # Column mapping CRM, C4/C5/L3.3, sum_metrics
@@ -73,6 +80,14 @@ palfish-gmv-manager/
 │   ├── rbac.py               # Sale / Leader / Manager / System
 │   ├── run.ps1               # Chạy local Windows
 │   └── Dockerfile            # Context = repo root (cần api_pipe/)
+│
+├── frontend/src/components/ui/
+│   ├── Combobox.tsx          # Sổ doanh thu / form chọn gói
+│   └── DataBar.tsx           # Thanh % trong báo cáo
+│
+├── frontend/src/lib/
+│   ├── ledgerCellStyle.ts    # Màu loại nhập / phương thức TT (Sổ)
+│   └── loaiLabel.ts          # Nhãn song ngữ loại giao dịch
 │
 ├── api_pipe/
 │   └── payos_webhook.py      # ★ CANONICAL PayOS đối soát — backend import file này
@@ -96,14 +111,14 @@ SPA một route `/` — đổi tab bằng `activeView` trong `MainPage.tsx`, **k
 | Module | Sidebar label | Component | Backend chính | Bảng DB |
 |--------|---------------|-----------|---------------|---------|
 | **M1** Tạo đơn | (Modal từ Tab 2) | `Tab1Form.tsx` | `POST /orders`, `POST /payos/create-link` | `khach_hang`, `don_hang` |
-| **M2** Quản lý đơn | Quản lý mã QR | `Tab2Table.tsx` | `GET/PATCH /orders`, poll 15s | `don_hang` |
+| **M2** Quản lý đơn | Quản lý mã QR | `Tab2Table.tsx` | `GET/PATCH /orders` (+ `trangThaiThuTuc`), poll 15s | `don_hang` |
 | **PayOS log** | Lịch sử PayOS | `PayosHistoryTab.tsx` | `GET /payos/transactions` | `giao_dich` |
 | **M3** Xác nhận CRM | Xác nhận CRM | `Module3Tab.tsx` | `invoice_routes` | `don_hang` |
 | **M4** Hóa đơn thuế | Xuất hóa đơn | `Module4Tab.tsx` | `invoice_routes` | `xuat_hoa_don_batch` |
-| **Sổ DT** | Sổ doanh thu | `SoDoanhThuTab.tsx` | `revenue_routes` | `so_doanh_thu` |
-| **BC01** | Báo cáo → BC01 | `BC01SalesPerformance.tsx` | `/revenue/pivot/sales-performance` | `so_doanh_thu` |
+| **BC01** | Báo cáo → BC01 | `BC01SalesPerformance.tsx` | `/revenue/pivot/sales-performance` | `so_doanh_thu` — header 2 dòng, sparkline, grand total |
 | **BC02** | Báo cáo → BC02 | `BC02KeyDataReport.tsx` | `/revenue/pivot/key-data` | `so_doanh_thu` |
-| **BC03** | BC03 tổng bộ | `ReportBC03Tab.tsx` | `report_routes` + live KPI | `crm_sales_data`, settings |
+| **BC03** | BC03 tổng bộ | `ReportBC03Tab.tsx` | `report_routes` + live KPI | `crm_sales_data`, settings — sticky header, filter team |
+| **Sổ DT** | Sổ doanh thu | `SoDoanhThuTab.tsx` | `revenue_routes` | `so_doanh_thu` — filter team, màu loại/PTTT, Combobox gói |
 | **M5** | Đồng bộ CRM | `Module5Tab.tsx` | `crm_routes` | `crm_sales_data`, `crm_tokens` |
 | **M6** | Dashboard Sale | `Module6Tab.tsx` | `dashboard_routes` | `crm_sales_data` + live PalFish |
 | **Admin** | Nhân sự / Auth | `StaffCRMTab`, `AuthAccountsTab` | `admin_routes` | `nhan_su_sale` |
@@ -119,28 +134,36 @@ SPA một route `/` — đổi tab bằng `activeView` trong `MainPage.tsx`, **k
 ```
 Sale mở modal Tab1Form
   → POST /orders (tạo khach_hang + don_hang, info_code = "Thanh toan KHxxx")
-  → POST /payos/create-link → PayOS API → QR EMV + checkoutUrl
-  → Hiển thị InlinePaymentCard (Tab1) hoặc PaymentModal (Tab2 xem lại QR)
+  → POST /payos/create-link → PayOS API
+       · qrCode (EMV), checkoutUrl, transferContent (parse tag 62 qua payos_qr.py)
+  → Tab1: InlinePaymentCard — luôn PayOS
+  → Tab2 xem lại QR: PaymentModal — PayOS trước, VietQR fallback nếu API lỗi
 
 Khách CK / PayOS webhook
   → POST /webhook/payos (Render) hoặc Supabase Edge Function
   → api_pipe/payos_webhook.reconcile_bank_payment()
        · Tìm đơn: regex KH|DH trong description, ILIKE info_code
-       · amount >= so_tien_can_thu → tien_ve=true, trang_thai=da_thanh_toan
+       · amount >= so_tien_can_thu → tien_ve=true, trang_thai=da_thanh_toan,
+         trang_thai_thu_tuc=CHO_XAC_NHAN
        · INSERT giao_dich (trang_thai_doi_soat: khop | sai_tien | chua_xu_ly)
 
-Tab2 poll GET /orders mỗi 15s → thấy tienVe=true
+Tab2 poll GET /orders mỗi 15s → tienVe + trangThaiThuTuc
 ```
 
-**PayOS QR:** Cả Tab1 và Tab2 đều dùng PayOS (commit `2c63e43`). Không còn VietQR tĩnh trong `PaymentModal`.
+**PayOS QR (production hiện tại):**
+- **Tab1 (`InlinePaymentCard`):** PayOS bắt buộc — hiển thị `transferContent` từ QR EMV nếu khác `infoCode`.
+- **Tab2 (`PaymentModal`):** thử PayOS trước; nếu lỗi → **VietQR dự phòng** (`buildVietQrUrl` trong `constants/bank.ts`) — cần tick tiền về thủ công nếu không qua webhook PayOS.
+- **`POST /payos/create-link`** trả thêm: `transferContent`, `paymentLinkId` (ngoài `qrCode`, `checkoutUrl`).
 
-**Trạng thái đối soát (frontend filter):** `khop` | `sai_tien` | `chua_xu_ly`. Backend ghi lowercase; API list map legacy `DA_KHOP`… khi đọc/filter.
+**Trạng thái đối soát (Tab Lịch sử PayOS):** `khop` | `sai_tien` | `chua_xu_ly`. Backend ghi lowercase; API list map legacy `DA_KHOP`… khi đọc/filter.
 
-**Webhook URL:** Có 2 đường — cấu hình PayOS Dashboard phải khớp một trong hai:
+**Webhook URL:** Cấu hình PayOS Dashboard phải khớp **một** đường:
 - Render: `https://palfish-gmv-api.onrender.com/webhook/payos`
-- Vercel rewrite: `https://palfish-gmv-manager.vercel.app/webhook/payos` → Supabase EF (có verify HMAC)
+- Vercel → Supabase EF: `https://palfish-gmv-manager.vercel.app/webhook/payos` (HMAC verify, Supabase JS v2 — commit `2816bd2`)
 
-Logic đối soát **chuẩn:** `api_pipe/payos_webhook.py`. Edge Function là bản copy TypeScript — khi sửa logic, **đồng bộ cả hai** hoặc chỉ dùng một URL.
+Logic đối soát **chuẩn:** `api_pipe/payos_webhook.py`. Edge Function là bản TypeScript song song — **đồng bộ khi sửa reconcile**.
+
+Spec luồng thanh toán dài hạn (PR/Order): `docs/PROTOTYPE_PAYMENT_FLOW.md`.
 
 ### 6.2 CRM hybrid (M5 + M6 + BC03)
 
@@ -271,8 +294,8 @@ Diagnostic: `docs/supabase_diagnose.sql`.
 
 | Nhóm | Endpoint quan trọng |
 |------|---------------------|
-| Orders | `GET/POST /orders`, `PATCH /orders/{id}`, `POST .../cancel`, `POST .../bill` |
-| PayOS | `POST /payos/create-link`, `POST /webhook/payos`, `GET /payos/transactions` |
+| Orders | `GET/POST /orders` (có `trangThaiThuTuc`), `PATCH /orders/{id}`, `POST .../cancel`, `POST .../bill` |
+| PayOS | `POST /payos/create-link` (+ `transferContent`), `POST /webhook/payos`, `GET /payos/transactions` |
 | CRM M5 | `POST /crm/sync`, `POST /crm/sync/backfill`, `GET /crm/export-master`, `GET /crm/token-status` |
 | Dashboard M6 | `GET /dashboard/live_summary`, `GET /dashboard/daily_trends`, `GET /dashboard/filters` |
 | BC03 | `GET /reports/bc03`, `PUT /reports/bc03/monthly` |
@@ -287,7 +310,7 @@ Diagnostic: `docs/supabase_diagnose.sql`.
 
 1. **Minimal diff** — không refactor lan man; match style file xung quanh.
 2. **Backend metrics CRM** — sửa `crm_metrics.py` trước; routes chỉ orchestrate.
-3. **PayOS** — sửa `api_pipe/payos_webhook.py`; `main.py` chỉ wrap. Đồng bộ Edge Function nếu đổi reconcile.
+3. **PayOS** — reconcile: `api_pipe/payos_webhook.py`; create-link + EMV parse: `backend/payos_qr.py` + `main.py`. Đồng bộ Edge Function nếu đổi reconcile.
 4. **Frontend API** — thêm endpoint vào `api.ts` + types `types/order.ts` hoặc `types/revenue.ts`.
 5. **Tiếng Việt UI** — label user-facing giữ tiếng Việt; code/comments có thể EN/VN mix như hiện tại.
 6. **Design system** — dùng `components/ui/*`, tokens `gmv-tokens.css`, brand `#7260ff` (`docs/DESIGN.md`).
@@ -308,13 +331,14 @@ Diagnostic: `docs/supabase_diagnose.sql`.
 
 | Vấn đề | Ghi chú |
 |--------|---------|
-| Docs stale | `PROJECT.md` vẫn ghi VietQR primary; `WIREFRAMES.md` map Tab1 → PaymentModal cũ |
+| Docs stale | `PROJECT.md` / `WIREFRAMES.md` / `DEPLOY.md` chưa cập nhật post-merge |
 | 3 webhook copies | `payos_webhook.py`, Edge Function, `app_payment.py` — chỉ file đầu là canonical |
 | Render free tier sleep | Webhook có thể miss nếu chỉ trỏ Render — cân nhắc Supabase EF |
+| PayOS vs VietQR Tab2 | Modal có fallback VietQR — không đồng nhất 100% với Tab1 |
 | `docs/TODO.md` | M1-08 CK thật chưa nghiệm thu; I-02 CRM auto-activate stub |
 | Metabase packages | Fallback hardcoded nếu thiếu env Metabase |
 | Audit log Tab2 | Bảng `don_hang_audit` có schema, app chưa ghi |
-| Dual repo history | FE từng ở branch `ui/ux-anh-minh` — đã merge `main` |
+| Push nhầm bản cũ | Đã fix 2026-05-27 — luôn verify `main` = `891a623+` trước khi deploy |
 
 ---
 
@@ -322,11 +346,13 @@ Diagnostic: `docs/supabase_diagnose.sql`.
 
 | Commit | Nội dung |
 |--------|----------|
-| `2c63e43` | PayOS: status khop/sai_tien/chua_xu_ly; PaymentModal → PayOS |
+| `891a623` | **Merge `ui/ux-anh-minh` → `main`** — bản production đầy đủ (BC01/03, Sổ, PayOS+, M6 UI) |
+| `28f2139` | Map `trangThaiThuTuc` trong `GET /orders` |
+| `d7a4e1f` | PayOS `transferContent` từ EMV QR (`payos_qr.py`) |
+| `f3a0baa` | File bàn giao Codex (doc này) |
+| `2c63e43` | PayOS status khop/sai_tien/chua_xu_ly |
 | `5a324ee` | Dashboard C4/C5 tính từ Total Call Time |
-| `9efe053` | Hybrid CRM: daily_trends + live_summary, backfill song song |
-| `7fa40c7` | Merge UI/UX branch vào main |
-| `45af051` | CRM autonomous sync, BC03, Dashboard Sale VN |
+| `9efe053` | Hybrid CRM: daily_trends + live_summary, backfill |
 
 CHANGELOG chi tiết: `docs/CHANGELOG.md` (chỉ append, không sửa entry cũ).
 
@@ -341,13 +367,17 @@ CHANGELOG chi tiết: `docs/CHANGELOG.md` (chỉ append, không sửa entry cũ)
 | Auth Google/SMTP | `docs/AUTH_SETUP.md` |
 | UI/UX rules | `docs/DESIGN.md`, `docs/WORKFLOW_UI_UX.md` |
 | M3/M4 hóa đơn | `docs/MODULE_3_4.md` |
-| Sổ + GSheet sync | `docs/M5_GSHEET_IMPORT.md`, `docs/M5_OPERATIONS.md` |
+| Sổ + GSheet sync | `docs/M5_GSHEET_IMPORT.md`, `docs/M5_OPERATIONS.md`, `docs/M5_DOI_CHIEU.md` |
+| BC01 đối chiếu | `docs/BC01_DOI_CHIEU_THU_HIEN.md` |
+| Luồng thanh toán PR/Order (prototype) | `docs/PROTOTYPE_PAYMENT_FLOW.md` |
+| Task nội bộ | `docs/MINH_TASKS_2026-05-26.md` |
 | Task board | `docs/TODO.md` |
 | Wireframe phân quyền | `docs/WIREFRAMES.md` |
 
 **File ưu tiên khi debug:**
 
-- PayOS: `api_pipe/payos_webhook.py`, `backend/main.py` (create-link, list transactions)
+- PayOS: `api_pipe/payos_webhook.py`, `backend/payos_qr.py`, `backend/main.py`
+- Sổ / BC01: `backend/revenue_routes.py`, `frontend/src/lib/ledgerCellStyle.ts`
 - CRM sync: `backend/crm_routes.py`
 - Dashboard KPI: `backend/crm_metrics.py`, `backend/dashboard_routes.py`
 - FE shell: `frontend/src/pages/MainPage.tsx`, `frontend/src/lib/api.ts`
