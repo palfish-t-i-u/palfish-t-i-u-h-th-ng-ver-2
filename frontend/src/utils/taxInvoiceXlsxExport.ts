@@ -241,3 +241,9 @@ export async function downloadTaxInvoiceZip(rows: InvoiceRow[], label?: string) 
   const zipBlob = await zip.generateAsync({ type: "blob" });
   downloadBlob(zipBlob, `hoa_don_thue_${batchLabel}.zip`);
 }
+
+/** Tải ZIP từ BE export-batch (persist M/PF codes); fallback caller nên dùng downloadTaxInvoiceZip. */
+export function downloadApiTaxZip(blob: Blob, label?: string) {
+  const batchLabel = label || batchDateKey();
+  downloadBlob(blob, `hoa_don_thue_${batchLabel}.zip`);
+}

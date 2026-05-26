@@ -2,12 +2,22 @@
 
 from __future__ import annotations
 
+import io
 import re
-from datetime import datetime, timezone
+import zipfile
+from datetime import date, datetime, timezone
 from typing import Any
 
 from fastapi import Body, HTTPException, Query
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
+
+from invoice_routes import (
+    _alloc_sequences,
+    _build_excel_customers,
+    _build_excel_orders,
+    _build_excel_products,
+)
 
 # Parent PR must be fully paid (100% or overpaid) before course activation.
 ALLOWED_PR_STATES = frozenset({"done", "over"})
@@ -59,6 +69,15 @@ class BulkIssueCourseItem(BaseModel):
 
 class BulkIssueCourseBody(BaseModel):
     items: list[BulkIssueCourseItem] = Field(..., min_length=1)
+
+
+class ExportBatchItem(BaseModel):
+    ar_id: str = Field(..., min_length=1)
+    course_code: str = Field(..., min_length=1)
+
+
+class ExportBatchBody(BaseModel):
+    items: list[ExportBatchItem] | None = None
 
 
 def _pr_digits(pr_id: str) -> str:
@@ -180,6 +199,7 @@ def _serialize_ar(row: dict[str, Any], pr: dict[str, Any] | None = None) -> dict
     out: dict[str, Any] = {
         "id": row.get("id"),
         "pr_id": row.get("pr_id"),
+        "customer_name": row.get("customer_name") or "",
         "uids_data": uids_data,
         "status": row.get("status") or "pending_order",
         "created_at": row.get("created_at"),
@@ -195,6 +215,7 @@ def _serialize_ar(row: dict[str, Any], pr: dict[str, Any] | None = None) -> dict
             "name": pr.get("name") or pr.get("ten_khach") or "",
             "uid": pr.get("uid") or pr.get("uid_khach_hang") or "",
             "phone": pr.get("phone") or pr.get("sdt") or "",
+            "email": pr.get("email") or "",
             "target": target,
             "received": received,
             "state": _pr_payment_state(pr),
@@ -489,6 +510,231 @@ def _revoke_course_invoice_python(sb, ar_id: str, course_code: str) -> dict[str,
     return {"active_request": _serialize_ar(merged, pr), "course_code": course_code}
 
 
+def _parse_create_ar_payload(raw: Any) -> tuple[str | None, str | None, list[Any]]:
+    """Return (pr_id, customer_name, uids_in) from body."""
+    if isinstance(raw, dict):
+        pr_id = _clean_text(raw.get("pr_id")) or None
+        customer_name = _clean_text(raw.get("customer_name")) or None
+        return pr_id, customer_name, _coerce_uids_payload(raw)
+    return None, None, _coerce_uids_payload(raw)
+
+
+def _save_active_request(
+    sb,
+    *,
+    pr_id: str | None,
+    uids_in: list[Any],
+    customer_name: str | None = None,
+    require_paid_pr: bool = False,
+) -> tuple[dict[str, Any], dict[str, Any] | None]:
+    pr: dict[str, Any] | None = None
+    if pr_id:
+        pr = _fetch_payment_request(sb, pr_id)
+        if require_paid_pr:
+            _assert_pr_paid(pr)
+
+    ar_id = _next_ar_id(sb)
+    uids_data = _assign_course_codes(uids_in, pr_id or ar_id)
+    status = _derive_status(uids_data)
+    row: dict[str, Any] = {
+        "id": ar_id,
+        "pr_id": pr_id,
+        "uids_data": uids_data,
+        "status": status,
+    }
+    if customer_name:
+        row["customer_name"] = customer_name
+
+    try:
+        res = sb.table("active_requests").insert(row).execute()
+    except Exception as exc:
+        msg = str(exc).lower()
+        if "customer_name" in msg and "customer_name" in row:
+            row.pop("customer_name", None)
+            try:
+                res = sb.table("active_requests").insert(row).execute()
+            except Exception as retry_exc:
+                raise HTTPException(500, f"Không lưu active_requests: {retry_exc}") from retry_exc
+        elif pr_id is None and ("null value" in msg or "not-null" in msg) and "pr_id" in msg:
+            raise HTTPException(
+                503,
+                "Chưa cho phép AR không gắn PR — chạy docs/supabase_schema_patch_active_requests_nullable_pr.sql",
+            ) from exc
+        else:
+            raise HTTPException(500, f"Không lưu active_requests: {exc}") from exc
+
+    saved = (res.data or [row])[0]
+    if customer_name and not saved.get("customer_name"):
+        saved["customer_name"] = customer_name
+    return saved, pr
+
+
+def _course_display_name(course: dict[str, Any], ar_row: dict[str, Any], pr: dict[str, Any] | None) -> str:
+    for key in ("name", "company_name"):
+        val = _clean_text(course.get(key))
+        if val:
+            return val
+    val = _clean_text(ar_row.get("customer_name"))
+    if val:
+        return val
+    if pr:
+        val = _clean_text(pr.get("name") or pr.get("ten_khach"))
+        if val:
+            return val
+    return _clean_text(course.get("code"))
+
+
+def _course_display_phone(
+    course: dict[str, Any], uid_block: dict[str, Any], pr: dict[str, Any] | None
+) -> str:
+    for src in (course, uid_block, pr or {}):
+        val = _clean_text(src.get("phone") or src.get("sdt"))
+        if val:
+            return val
+    return ""
+
+
+def _course_to_tax_order(
+    course: dict[str, Any],
+    uid_block: dict[str, Any],
+    ar_row: dict[str, Any],
+    pr: dict[str, Any] | None,
+    tax_invoice_code: str,
+    tax_product_code: str,
+) -> dict[str, Any]:
+    product_name = _clean_text(course.get("name")) or _clean_text(course.get("code"))
+    return {
+        "taxInvoiceCode": tax_invoice_code,
+        "taxProductCode": tax_product_code,
+        "taxProductName": product_name,
+        "goiHoc": product_name,
+        "sdt": _course_display_phone(course, uid_block, pr),
+        "tenKhach": _course_display_name(course, ar_row, pr),
+        "tongTien": int(float(course.get("amount") or 0)),
+        "m3ApprovedAt": course.get("invoiced_at") or ar_row.get("created_at") or "",
+        "email": _clean_text(course.get("email") or (pr.get("email") if pr else "")),
+    }
+
+
+def _collect_b4_export_queue(
+    sb, items: list[ExportBatchItem] | None
+) -> list[tuple[dict[str, Any], dict[str, Any], dict[str, Any], dict[str, Any] | None]]:
+    """Return [(ar_row, uid_block, course, pr), ...] ready for tax export."""
+    targets: list[tuple[str, str]] = []
+    if items:
+        targets = [(i.ar_id.strip(), i.course_code.strip()) for i in items if i.ar_id and i.course_code]
+    else:
+        try:
+            res = sb.table("active_requests").select("*").order("created_at", desc=False).execute()
+        except Exception as exc:
+            raise HTTPException(500, f"Không đọc active_requests: {exc}") from exc
+        for ar_row in res.data or []:
+            for uid_block in ar_row.get("uids_data") or []:
+                for course in uid_block.get("courses") or []:
+                    if course.get("invoiced") and not _clean_text(course.get("tax_invoice_code")):
+                        code = _clean_text(course.get("code"))
+                        if code:
+                            targets.append((str(ar_row.get("id") or ""), code))
+
+    if not targets:
+        raise HTTPException(400, "Không có course nào đủ điều kiện xuất hóa đơn thuế")
+
+    ar_ids = list({t[0] for t in targets})
+    try:
+        res = sb.table("active_requests").select("*").in_("id", ar_ids).execute()
+    except Exception as exc:
+        raise HTTPException(500, f"Không đọc active_requests: {exc}") from exc
+    ar_map = {str(r["id"]): r for r in (res.data or []) if r.get("id")}
+    pr_map = _fetch_prs_by_ids(sb, list({str(r.get("pr_id")) for r in ar_map.values() if r.get("pr_id")}))
+
+    out: list[tuple[dict[str, Any], dict[str, Any], dict[str, Any], dict[str, Any] | None]] = []
+    for ar_id, course_code in targets:
+        ar_row = ar_map.get(ar_id)
+        if not ar_row:
+            raise HTTPException(404, f"Active Request {ar_id} không tồn tại")
+        found: dict[str, Any] | None = None
+        uid_block_match: dict[str, Any] | None = None
+        for uid_block in ar_row.get("uids_data") or []:
+            for course in uid_block.get("courses") or []:
+                if course.get("code") == course_code:
+                    found = course
+                    uid_block_match = uid_block
+                    break
+            if found:
+                break
+        if not found or not uid_block_match:
+            raise HTTPException(404, f"Không tìm thấy course code {course_code} trong {ar_id}")
+        if not found.get("invoiced"):
+            raise HTTPException(400, f"Course {course_code} chưa xuất hoá đơn (INV)")
+        pr = pr_map.get(str(ar_row.get("pr_id") or "")) if ar_row.get("pr_id") else None
+        out.append((ar_row, uid_block_match, found, pr))
+    return out
+
+
+def _export_b4_tax_batch(sb, items: list[ExportBatchItem] | None) -> StreamingResponse:
+    queue = _collect_b4_export_queue(sb, items)
+    ar_map = {str(row.get("id") or ""): row for row, _, _, _ in queue}
+    n = len(queue)
+    today = date.today()
+    date_key = today.strftime("%d%m%y")
+
+    try:
+        inv_start, prod_start = _alloc_sequences(sb, n, date_key)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(500, f"Lỗi cấp sequence hóa đơn: {exc}") from exc
+
+    enriched: list[dict[str, Any]] = []
+    mutated_ar_ids: set[str] = set()
+
+    for i, (ar_row, uid_block, course, pr) in enumerate(queue):
+        existing_inv = _clean_text(course.get("tax_invoice_code"))
+        existing_prod = _clean_text(course.get("tax_product_code"))
+        tax_invoice_code = existing_inv or f"M{date_key}{inv_start + i + 1:03d}"
+        tax_product_code = existing_prod or f"PF{prod_start + i + 1:06d}"
+        if not existing_inv:
+            course["tax_invoice_code"] = tax_invoice_code
+        if not existing_prod:
+            course["tax_product_code"] = tax_product_code
+        mutated_ar_ids.add(str(ar_row.get("id") or ""))
+        enriched.append(_course_to_tax_order(course, uid_block, ar_row, pr, tax_invoice_code, tax_product_code))
+
+    for ar_id in mutated_ar_ids:
+        ar_row = ar_map.get(ar_id)
+        if not ar_row:
+            continue
+        uids_data = ar_row.get("uids_data") or []
+        status = _derive_status(uids_data)
+        try:
+            sb.table("active_requests").update({"uids_data": uids_data, "status": status}).eq("id", ar_id).execute()
+        except Exception as exc:
+            raise HTTPException(500, f"Không lưu mã thuế cho {ar_id}: {exc}") from exc
+
+    try:
+        excel_orders = _build_excel_orders(enriched)
+        excel_customers = _build_excel_customers(enriched)
+        excel_products = _build_excel_products(enriched)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(500, f"Lỗi tạo file Excel: {exc}") from exc
+
+    batch_label = today.strftime("%Y%m%d")
+    zip_buf = io.BytesIO()
+    with zipfile.ZipFile(zip_buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr(f"01_1don_hang_{batch_label}.xlsx", excel_orders)
+        zf.writestr(f"02_khach_hang1_{batch_label}.xlsx", excel_customers)
+        zf.writestr(f"03_sanpham1_{batch_label}.xlsx", excel_products)
+    zip_buf.seek(0)
+
+    return StreamingResponse(
+        zip_buf,
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="b4_tax_export_{batch_label}.zip"'},
+    )
+
+
 def register_activation_routes(app, supabase_factory):
 
     @app.get("/api/v1/active-requests", tags=["Activation"])
@@ -542,6 +788,26 @@ def register_activation_routes(app, supabase_factory):
         pr = _fetch_payment_request(sb, str(row.get("pr_id") or "")) if row.get("pr_id") else None
         return _serialize_ar(row, pr)
 
+    @app.post("/api/v1/active-requests", tags=["Activation"])
+    def create_standalone_active_request(payload: Any = Body(...)):
+        """
+        Tạo Active Request — có thể không gắn PR (pr_id null).
+        Body: `{ customer_name?, pr_id?, uids: [...] }` hoặc mảng uids.
+        """
+        sb = supabase_factory()
+        if not sb:
+            raise HTTPException(503, "Supabase chưa cấu hình")
+
+        pr_id, customer_name, uids_in = _parse_create_ar_payload(payload)
+        saved, pr = _save_active_request(
+            sb,
+            pr_id=pr_id,
+            uids_in=uids_in,
+            customer_name=customer_name,
+            require_paid_pr=bool(pr_id),
+        )
+        return _serialize_ar(saved, pr)
+
     @app.post(
         "/api/v1/payment-requests/{pr_id}/active-requests",
         tags=["Activation"],
@@ -555,27 +821,14 @@ def register_activation_routes(app, supabase_factory):
         if not sb:
             raise HTTPException(503, "Supabase chưa cấu hình")
 
-        pr = _fetch_payment_request(sb, pr_id)
-        _assert_pr_paid(pr)
-
-        raw_uids = _coerce_uids_payload(payload)
-        uids_data = _assign_course_codes(raw_uids, pr_id)
-        status = _derive_status(uids_data)
-        ar_id = _next_ar_id(sb)
-
-        row = {
-            "id": ar_id,
-            "pr_id": pr_id,
-            "uids_data": uids_data,
-            "status": status,
-        }
-
-        try:
-            res = sb.table("active_requests").insert(row).execute()
-        except Exception as exc:
-            raise HTTPException(500, f"Không lưu active_requests: {exc}") from exc
-
-        saved = (res.data or [row])[0]
+        _, customer_name, uids_in = _parse_create_ar_payload(payload)
+        saved, pr = _save_active_request(
+            sb,
+            pr_id=pr_id,
+            uids_in=uids_in,
+            customer_name=customer_name,
+            require_paid_pr=True,
+        )
         return _serialize_ar(saved, pr)
 
     @app.patch(
@@ -709,3 +962,12 @@ def register_activation_routes(app, supabase_factory):
             "error_count": len(errors),
             "errors": errors,
         }
+
+    @app.post("/api/v1/invoice-courses/export-batch", tags=["Activation"])
+    def export_invoice_courses_batch(body: ExportBatchBody | None = None):
+        """B4 — xuất ZIP 3 file Excel kê khai thuế; cấp + lưu mã M.../PF... vào course JSONB."""
+        sb = supabase_factory()
+        if not sb:
+            raise HTTPException(503, "Supabase chưa cấu hình")
+        items = body.items if body else None
+        return _export_b4_tax_batch(sb, items)

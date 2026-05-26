@@ -9,6 +9,7 @@ import type {
   AddPaymentLineResponse,
   AttachCoursePayload,
   CreateActiveRequestPayload,
+  CreateStandaloneActiveRequestPayload,
   CreatePaymentRequestPayload,
   CreatePrResponse,
   PaymentLineApiRow,
@@ -134,6 +135,8 @@ export const endpoints = {
   activeRequests: {
     list: (params?: { status?: string }) =>
       api.get<ActiveRequestApiRow[]>("/api/v1/active-requests", { params }),
+    create: (body: CreateStandaloneActiveRequestPayload) =>
+      api.post<ActiveRequestApiRow>("/api/v1/active-requests", body),
     attachCourse: (arId: string, courseCode: string, body: AttachCoursePayload) =>
       api.patch<ActiveRequest>(
         `/api/v1/active-requests/${arId}/courses/${encodeURIComponent(courseCode)}`,
@@ -153,6 +156,12 @@ export const endpoints = {
         error_count: number;
         errors: { ar_id: string; course_code: string; detail: string }[];
       }>("/api/v1/invoice-courses/bulk-issue", { items }),
+    exportTaxBatch: (items?: { ar_id: string; course_code: string }[]) =>
+      api.post<Blob>(
+        "/api/v1/invoice-courses/export-batch",
+        items?.length ? { items } : {},
+        { responseType: "blob" }
+      ),
   },
   transactions: {
     patchStatus: (id: string, status: string) =>

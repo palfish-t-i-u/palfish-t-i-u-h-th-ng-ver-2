@@ -338,6 +338,20 @@ export function PaymentFlowProvider({
         } catch {
           setApiNote("Tạo AR trên máy chủ thất bại — lưu tạm trên giao diện.");
         }
+      } else {
+        try {
+          const res = await endpoints.activeRequests.create({
+            customer_name: data.customerName,
+            uids: payload.uids,
+          });
+          const ar = fromApiActiveRequest(res.data);
+          if (!ar.customerName) ar.customerName = data.customerName;
+          setActiveRequests((prev) => [ar, ...prev.filter((x) => x.id !== ar.id)]);
+          setApiNote("");
+          return ar;
+        } catch {
+          setApiNote("Tạo AR trên máy chủ thất bại — lưu tạm trên giao diện.");
+        }
       }
       const ar = createLocalActiveRequestFromForm(data, activeRequests);
       setActiveRequests((prev) => [ar, ...prev]);
