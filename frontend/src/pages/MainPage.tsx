@@ -1,31 +1,26 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
-import Tab1Form from "../components/Tab1Form";
-import Tab2Table from "../components/Tab2Table";
-import PayosHistoryTab from "../components/PayosHistoryTab";
+import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import StaffCRMTab from "../components/StaffCRMTab";
 import AuthAccountsTab from "../components/AuthAccountsTab";
-import Module3Tab from "../components/Module3Tab";
-import Module4Tab from "../components/Module4Tab";
 import SoDoanhThuTab from "../components/SoDoanhThuTab";
 const BC01SalesPerformance = lazy(() => import("../components/reports/BC01SalesPerformance"));
 const BC02KeyDataReport = lazy(() => import("../components/reports/BC02KeyDataReport"));
 const ReportBC03Tab = lazy(() => import("../components/ReportBC03Tab"));
 const PaymentRequestsTab = lazy(() => import("../components/PaymentRequestsTab"));
+const ReconciliationTab = lazy(() => import("../components/ReconciliationTab"));
+const ActivationTab = lazy(() => import("../components/ActivationTab"));
+const InvoiceRequestTab = lazy(() => import("../components/InvoiceRequestTab"));
 import Module5Tab from "../components/Module5Tab";
 import Module6Tab from "../components/Module6Tab";
+import { PaymentFlowProvider, usePaymentFlow, type PaymentFlowView } from "../contexts/PaymentFlowContext";
 import { useAuth } from "../hooks/useAuth";
 import { useMe } from "../hooks/useMe";
-import { endpoints } from "../lib/api";
 import ProfilePage from "./ProfilePage";
 import AppShell, { type NavItem } from "../layouts/AppShell";
 import Badge from "../components/ui/Badge";
-import Modal from "../components/ui/Modal";
-import type { Order } from "../types/order";
 
 type ViewId =
   | "paymentRequests"
-  | "tab2"
-  | "payos"
+  | "reconciliation"
   | "profile"
   | "module3"
   | "module4"
@@ -37,6 +32,13 @@ type ViewId =
   | "module6"
   | "staffCrm"
   | "authAccounts";
+
+const FLOW_VIEW_MAP: Record<PaymentFlowView, ViewId> = {
+  paymentRequests: "paymentRequests",
+  reconciliation: "reconciliation",
+  module3: "module3",
+  module4: "module4",
+};
 
 const I = {
   list: (
@@ -117,14 +119,16 @@ const TITLES: Record<ViewId, { title: string; subtitle?: string }> = {
     title: "Quản lý thanh toán",
     subtitle: "Theo dõi Payment Requests, biên lai & tiến độ chuyển khoản của khách",
   },
-  tab2: { title: "Quản lý mã QR", subtitle: "Theo dõi tiền về, biên lai, CRM" },
-  payos: { title: "Lịch sử PayOS", subtitle: "Giao dịch ngân hàng đã đối soát" },
+  reconciliation: {
+    title: "Đối soát giao dịch",
+    subtitle: "B2 — Kế toán xác nhận / từ chối từng lần thanh toán theo sao kê",
+  },
   profile: { title: "Thông tin cá nhân" },
   module3: {
     title: "Kích hoạt khóa học",
-    subtitle: "M3 — Gắn CRM Order & kích hoạt sau khi tiền về",
+    subtitle: "B3 — Active Request, Course Code & Order ID CRM",
   },
-  module4: { title: "Xuất hóa đơn thuế", subtitle: "M4 — Cấp mã M.../PF... và tải file ZIP 3 Excel" },
+  module4: { title: "Xuất hóa đơn", subtitle: "B4 — Phát hành INV theo Course Code đã có Order ID" },
   revenueLedger: {
     title: "Sổ doanh thu",
     subtitle: "Pay Time · GMV RMB = VND÷3700 — M3 tự động + điền tay + Sync sheet",
@@ -139,64 +143,36 @@ const TITLES: Record<ViewId, { title: string; subtitle?: string }> = {
 };
 
 export default function MainPage() {
+  const [flowNavHandler, setFlowNavHandler] = useState<
+    ((view: PaymentFlowView) => void) | null
+  >(null);
+
+  return (
+    <PaymentFlowProvider
+      onViewChange={(view) => {
+        flowNavHandler?.(view);
+      }}
+    >
+      <MainPageInner onRegisterFlowNav={setFlowNavHandler} />
+    </PaymentFlowProvider>
+  );
+}
+
+function MainPageInner({
+  onRegisterFlowNav,
+}: {
+  onRegisterFlowNav: (fn: (view: PaymentFlowView) => void) => void;
+}) {
   const { user, signOut, isDevMode } = useAuth();
   const { profile } = useMe();
   const [activeView, setActiveView] = useState<ViewId>("paymentRequests");
-  const [createModalOpen, setCreateModalOpen] = useState(false);
-  const [orders, setOrders] = useState<Order[]>([]);
-  const [dbExcel, setDbExcel] = useState<{ uid: string; diaChi: string }[]>([]);
-  const [dbFileName, setDbFileName] = useState("");
-  const [loadingOrders, setLoadingOrders] = useState(false);
 
-  const refreshOrders = useCallback(async () => {
-    setLoadingOrders(true);
-    try {
-      const res = await endpoints.orders.list();
-      setOrders(res.data.orders);
-    } catch {
-      console.warn("Không tải được danh sách đơn — backend đang chạy?");
-    } finally {
-      setLoadingOrders(false);
-    }
-  }, []);
+  const { badgeCounts } = usePaymentFlow();
 
   useEffect(() => {
-    refreshOrders();
-  }, [refreshOrders]);
+    onRegisterFlowNav((view) => setActiveView(FLOW_VIEW_MAP[view]));
+  }, [onRegisterFlowNav]);
 
-  useEffect(() => {
-    if (activeView !== "tab2") return;
-    const id = window.setInterval(() => refreshOrders(), 15000);
-    return () => window.clearInterval(id);
-  }, [activeView, refreshOrders]);
-
-  useEffect(() => {
-    const onFocus = () => {
-      if (activeView === "tab2") refreshOrders();
-    };
-    window.addEventListener("focus", onFocus);
-    return () => window.removeEventListener("focus", onFocus);
-  }, [activeView, refreshOrders]);
-
-  function handleOrderCreated(order: Order) {
-    setOrders((prev) => {
-      const exists = prev.some((o) => o.id === order.id);
-      return exists ? prev.map((o) => (o.id === order.id ? order : o)) : [...prev, order];
-    });
-    refreshOrders();
-    setCreateModalOpen(false);
-  }
-
-  function handleOrderUpdated(order: Order) {
-    setOrders((prev) => prev.map((o) => (o.id === order.id ? order : o)));
-  }
-
-  function handleDbLoaded(db: { uid: string; diaChi: string }[], fileName: string) {
-    setDbExcel(db);
-    setDbFileName(`Đã tải: ${fileName} (Chứa ${db.length} dữ liệu UID & Địa chỉ)`);
-  }
-
-  const opsPayment = profile?.canConfirmPayment ?? (isDevMode ? true : false);
   const showInvoice = profile?.canConfirmPayment ?? isDevMode;
   const showStaffCrm = profile?.canAccessAdmin ?? isDevMode;
   const showAuthAccounts = profile?.canManageStaff ?? isDevMode;
@@ -210,26 +186,33 @@ export default function MainPage() {
         section: "Khách hàng & Đơn hàng",
       },
       {
-        id: "tab2",
-        label: "Quản lý mã QR",
-        icon: I.list,
-        badge:
-          orders.length > 0 ? (
-            <Badge tone="primary">{loadingOrders ? "…" : orders.length}</Badge>
-          ) : null,
-      },
-      {
-        id: "payos",
-        label: "Lịch sử PayOS",
+        id: "reconciliation",
+        label: "Đối soát giao dịch",
         icon: I.history,
         section: "Đối soát & Hóa đơn",
+        badge:
+          badgeCounts.reconciliation > 0 ? (
+            <Badge tone="warn">{badgeCounts.reconciliation}</Badge>
+          ) : null,
       },
     ];
 
     if (showInvoice) {
       list.push(
-        { id: "module3", label: "Kích hoạt khóa học", icon: I.check },
-        { id: "module4", label: "Xuất hóa đơn", icon: I.invoice }
+        {
+          id: "module3",
+          label: "Kích hoạt khóa học",
+          icon: I.check,
+          badge:
+            badgeCounts.activation > 0 ? <Badge tone="warn">{badgeCounts.activation}</Badge> : null,
+        },
+        {
+          id: "module4",
+          label: "Xuất hóa đơn",
+          icon: I.invoice,
+          badge:
+            badgeCounts.invoice > 0 ? <Badge tone="warn">{badgeCounts.invoice}</Badge> : null,
+        }
       );
     }
 
@@ -292,21 +275,24 @@ export default function MainPage() {
     }
 
     return list;
-  }, [orders.length, loadingOrders, showInvoice, showStaffCrm, showAuthAccounts]);
+  }, [badgeCounts, showInvoice, showStaffCrm, showAuthAccounts]);
 
-  const head = TITLES[activeView as keyof typeof TITLES] ?? TITLES.tab2;
+  const head = TITLES[activeView as keyof typeof TITLES] ?? TITLES.paymentRequests;
   const wideContent =
-    activeView === "paymentRequests" || activeView === "bc01" || activeView === "bc02" || activeView === "bc03";
+    activeView === "paymentRequests" ||
+    activeView === "reconciliation" ||
+    activeView === "module3" ||
+    activeView === "module4" ||
+    activeView === "bc01" ||
+    activeView === "bc02" ||
+    activeView === "bc03";
 
   return (
     <AppShell
       items={items}
       activeId={activeView}
       wideContent={wideContent}
-      onSelect={(id) => {
-        setActiveView(id as ViewId);
-        if (id === "tab2") refreshOrders();
-      }}
+      onSelect={(id) => setActiveView(id as ViewId)}
       title={head.title}
       subtitle={head.subtitle}
       userEmail={user?.email || undefined}
@@ -314,37 +300,27 @@ export default function MainPage() {
       isDevMode={isDevMode}
       onSignOut={signOut}
     >
-      <Suspense fallback={<p className="text-sm text-gmv-muted">Đang tải Payment Request...</p>}>
+      <Suspense fallback={<p className="text-sm text-gmv-muted">Đang tải…</p>}>
         <div style={{ display: activeView === "paymentRequests" ? "block" : "none" }}>
           <PaymentRequestsTab />
         </div>
+        <div style={{ display: activeView === "reconciliation" ? "block" : "none" }}>
+          <ReconciliationTab />
+        </div>
+        {showInvoice && (
+          <>
+            <div style={{ display: activeView === "module3" ? "block" : "none" }}>
+              <ActivationTab />
+            </div>
+            <div style={{ display: activeView === "module4" ? "block" : "none" }}>
+              <InvoiceRequestTab />
+            </div>
+          </>
+        )}
       </Suspense>
-      <div style={{ display: activeView === "tab2" ? "block" : "none" }}>
-        <Tab2Table
-          orders={orders}
-          onDbLoaded={handleDbLoaded}
-          dbFileName={dbFileName}
-          canConfirmPayment={opsPayment}
-          onOrderUpdated={handleOrderUpdated}
-          onOpenCreateOrder={() => setCreateModalOpen(true)}
-        />
-      </div>
-      <div style={{ display: activeView === "payos" ? "block" : "none" }}>
-        <PayosHistoryTab />
-      </div>
       <div style={{ display: activeView === "profile" ? "block" : "none" }}>
         <ProfilePage />
       </div>
-      {showInvoice && (
-        <div style={{ display: activeView === "module3" ? "block" : "none" }}>
-          <Module3Tab />
-        </div>
-      )}
-      {showInvoice && (
-        <div style={{ display: activeView === "module4" ? "block" : "none" }}>
-          <Module4Tab />
-        </div>
-      )}
       {showInvoice && (
         <div style={{ display: activeView === "revenueLedger" ? "block" : "none" }}>
           <SoDoanhThuTab />
@@ -384,15 +360,6 @@ export default function MainPage() {
         </div>
       )}
 
-      <Modal
-        open={createModalOpen}
-        onClose={() => setCreateModalOpen(false)}
-        title="Tạo mã QR mới"
-        wide
-        className="max-w-4xl"
-      >
-        <Tab1Form onOrderCreated={handleOrderCreated} dbExcel={dbExcel} createdBy={user?.email} />
-      </Modal>
     </AppShell>
   );
 }

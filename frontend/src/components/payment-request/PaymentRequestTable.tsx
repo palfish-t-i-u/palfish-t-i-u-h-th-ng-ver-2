@@ -1,110 +1,231 @@
-import { cn } from "../../lib/cn";
-import type { PaymentRequest } from "../../types/paymentRequest";
-import { Table, TableWrap, Td, Th, Tr } from "../ui";
+import type { ActiveRequest, PaymentRequest, PaymentRequestStatus } from "../../types/paymentRequest";
+import { findCountry } from "./CountryCombo";
+import { Icons } from "./Icons";
 import PaymentRequestProgress from "./PaymentRequestProgress";
 import PaymentRequestStatusBadge from "./PaymentRequestStatusBadge";
-import { createdAtDate, hasCreatedPackage, vnd } from "./paymentRequestUtils";
+import {
+  type RequestBucket,
+  createdAtDate,
+  ddmmyyyy,
+  fmtPhone,
+  relativeFrom,
+  vnd,
+} from "./paymentRequestUtils";
 
-function DeltaCell({ request }: { request: PaymentRequest }) {
-  if (request.delta === 0) return <span className="font-bold text-gmv-ok">Đã đủ</span>;
+function DeltaCell({ state, delta }: { state: PaymentRequestStatus; delta: number }) {
+  if (state === "done") return <span className="delta is-done">Đã đủ</span>;
+  if (state === "pending" || state === "cancelled")
+    return <span style={{ color: "var(--text-3)" }}>—</span>;
+  const abs = Math.abs(delta);
   return (
-    <span className={cn("font-bold", request.delta > 0 ? "text-gmv-warn" : "text-gmv-danger")}>
-      {request.delta > 0 ? "+" : ""}
-      {vnd(request.delta)}
+    <span className={`delta ${state === "over" ? "is-over" : "is-short"}`}>
+      {state === "over" ? "+" : "−"}
+      {vnd(abs)}
     </span>
   );
 }
 
+function QrCountCell({ done, total }: { done: number; total: number }) {
+  return (
+    <span className="qr-count">
+      <span className="num-done">{done}</span>
+      <span className="slash">/</span>
+      <span className="num-total">{total || 1}</span>
+      <span style={{ color: "var(--text-3)", fontWeight: 500, fontSize: 11.5, marginLeft: 4 }}>lần</span>
+    </span>
+  );
+}
+
+interface TabConfig {
+  key: RequestBucket;
+  label: string;
+  icon: keyof typeof Icons;
+  count: number;
+}
+
 export default function PaymentRequestTable({
   requests,
+  totalForBucket,
   selectedId,
+  tab,
+  onTabChange,
+  tabs,
   onSelect,
-  onCancel,
+  onCancelClick,
+  onRestoreClick,
+  arByPrId,
 }: {
   requests: PaymentRequest[];
+  totalForBucket: number;
   selectedId: string | null;
+  tab: RequestBucket;
+  onTabChange: (next: RequestBucket) => void;
+  tabs: TabConfig[];
   onSelect: (request: PaymentRequest) => void;
-  onCancel: (request: PaymentRequest) => void;
+  onCancelClick: (request: PaymentRequest) => void;
+  onRestoreClick: (request: PaymentRequest) => void;
+  arByPrId: Record<string, ActiveRequest>;
 }) {
   return (
-    <TableWrap className="rounded-none border-0 shadow-none">
-      <Table className="min-w-[1320px]">
-        <thead>
-          <tr>
-            <Th className="text-left">TẠO LÚC</Th>
-            <Th className="text-left">PR-ID</Th>
-            <Th className="text-left">TÊN KHÁCH HÀNG</Th>
-            <Th className="text-left">UID / SĐT</Th>
-            <Th>SỐ LẦN TT</Th>
-            <Th className="text-left">TIẾN TRÌNH THANH TOÁN</Th>
-            <Th>TRẠNG THÁI</Th>
-            <Th>CHÊNH LỆCH</Th>
-            <Th>TT GÓI HỌC</Th>
-            <Th>HỦY</Th>
-          </tr>
-        </thead>
-        <tbody>
-          {requests.map((request) => {
-            const created = createdAtDate(request.createdAt);
-            const phone = request.phone.trim().startsWith("+") ? request.phone : `+84 ${request.phone}`;
+    <div className="table-card has-tabs">
+      <div className="table-head with-tabs">
+        <div className="tabs">
+          {tabs.map((t) => {
+            const IconComp = Icons[t.icon];
             return (
-              <Tr
-                key={request.id}
-                onClick={() => onSelect(request)}
-                className={cn("cursor-pointer", selectedId === request.id && "[&>td]:bg-gmv-primary-soft")}
+              <div
+                key={t.key}
+                className={`tab ${tab === t.key ? "active" : ""}`}
+                onClick={() => onTabChange(t.key)}
               >
-                <Td className="text-left">
-                  <div>{created.date}</div>
-                  <div className="text-sm text-gmv-text-strong">{created.time}</div>
-                </Td>
-                <Td className="text-left font-mono text-sm font-bold text-gmv-text-strong">{request.id.replace("PR-2026-", "PR-2026-\n")}</Td>
-                <Td className="text-left">
-                  <div className="font-bold text-gmv-text-strong">{request.name}</div>
-                  <div className="mt-1 text-xs text-gmv-muted">{request.address || "—"}</div>
-                </Td>
-                <Td className="text-left font-mono text-xs text-gmv-secondary">
-                  <div>{request.uid}</div>
-                  <div className="mt-1">{request.country} {phone}</div>
-                </Td>
-                <Td>
-                  <span className="font-bold text-gmv-primary">{request.doneCount}</span>
-                  <span className="text-gmv-muted"> / {request.totalCount || 1}</span>
-                  <span className="ml-1 text-gmv-muted">lần</span>
-                </Td>
-                <Td className="text-left"><PaymentRequestProgress request={request} /></Td>
-                <Td><PaymentRequestStatusBadge state={request.state} /></Td>
-                <Td><DeltaCell request={request} /></Td>
-                <Td>
-                  {hasCreatedPackage(request) ? (
-                    <span className="inline-flex items-center rounded-full bg-gmv-ok-soft px-3 py-1 text-xs font-bold text-gmv-ok">✓ Đã tạo</span>
-                  ) : (
-                    <span className="inline-flex items-center rounded-full bg-gmv-bg px-3 py-1 text-xs font-bold text-gmv-muted">— Chưa tạo</span>
-                  )}
-                </Td>
-                <Td>
-                  <button
-                    type="button"
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      onCancel(request);
-                    }}
-                    disabled={request.state === "cancelled"}
-                    className="grid size-6 place-items-center rounded-full border border-gmv-border text-gmv-muted transition hover:border-gmv-danger hover:text-gmv-danger disabled:opacity-40"
-                    aria-label="Huỷ PR"
-                  >
-                    ×
-                  </button>
-                </Td>
-              </Tr>
+                <IconComp size={15} />
+                {t.label}
+                <span className="tab-count">{t.count}</span>
+              </div>
             );
           })}
-          {requests.length === 0 && (
+        </div>
+        <span className="right-meta">{requests.length} kết quả</span>
+      </div>
+      <div className="tbl-wrap">
+        <table className="tbl">
+          <thead>
             <tr>
-              <Td colSpan={10} className="py-10 text-gmv-muted">Không có Payment Request phù hợp.</Td>
+              <th style={{ width: 130 }}>Tạo lúc</th>
+              <th style={{ width: 120 }}>PR-ID</th>
+              <th style={{ minWidth: 180 }}>Tên khách hàng</th>
+              <th style={{ width: 200 }}>UID / SĐT</th>
+              <th style={{ textAlign: "center", width: 90 }}>Số lần TT</th>
+              <th style={{ width: 200 }}>Tiến trình thanh toán</th>
+              <th style={{ width: 130 }}>Trạng thái</th>
+              <th style={{ width: 140 }}>Chênh lệch</th>
+              <th style={{ width: 130, textAlign: "center" }}>TT Gói học</th>
+              <th style={{ width: 70, textAlign: "center" }}>
+                {tab === "cancelled" ? "Khôi phục" : "Huỷ"}
+              </th>
             </tr>
-          )}
-        </tbody>
-      </Table>
-    </TableWrap>
+          </thead>
+          <tbody>
+            {requests.map((p) => {
+              const canCancel = p.state !== "cancelled" && p.doneCount === 0;
+              const country = findCountry(p.country);
+              const created = createdAtDate(p.createdAt);
+              const addrSub = [p.ward, p.province].filter(Boolean).join(", ");
+              return (
+                <tr
+                  key={p.id}
+                  className={`${selectedId === p.id ? "selected" : ""} ${p.state === "cancelled" ? "is-cancelled" : ""}`}
+                  onClick={() => onSelect(p)}
+                >
+                  <td>
+                    <div className="cell-time">{ddmmyyyy(p.createdAt)}</div>
+                    <div className="cell-time" style={{ marginTop: 2 }}>
+                      <span className="time-relative" title={relativeFrom(p.createdAt)}>
+                        {created.time}
+                      </span>
+                    </div>
+                  </td>
+                  <td>
+                    <span className="cell-pr">
+                      {p.id}
+                      <Icons.Copy className="copy" size={13} />
+                    </span>
+                  </td>
+                  <td>
+                    <div className="cell-name">{p.name}</div>
+                    <div className="cell-sub" title={`${p.address}, ${p.ward || ""}, ${p.province || ""}`}>
+                      {addrSub.slice(0, 38) || "—"}
+                    </div>
+                  </td>
+                  <td>
+                    <div className="uid-phone">
+                      <div className="uid-line">{p.uid}</div>
+                      <div className="phone-line">
+                        <span style={{ fontSize: 12 }}>{country.flag}</span>
+                        {country.dial} {fmtPhone(p.phone)}
+                      </div>
+                    </div>
+                  </td>
+                  <td style={{ textAlign: "center" }}>
+                    <QrCountCell done={p.doneCount} total={p.totalCount} />
+                  </td>
+                  <td>
+                    {p.state === "cancelled" ? (
+                      <span style={{ color: "var(--text-3)", fontSize: 12 }}>
+                        Huỷ {p.cancelledAt?.split(" ")[0] || ""}
+                      </span>
+                    ) : (
+                      <PaymentRequestProgress request={p} />
+                    )}
+                  </td>
+                  <td>
+                    <PaymentRequestStatusBadge state={p.state} />
+                  </td>
+                  <td>
+                    <DeltaCell state={p.state} delta={p.delta} />
+                  </td>
+                  <td style={{ textAlign: "center" }}>
+                    {arByPrId[p.id] ? (
+                      <span className="badge is-done" title={`Active Request: ${arByPrId[p.id].id}`}>
+                        <Icons.Check size={11} strokeWidth={2.5} /> Đã tạo
+                      </span>
+                    ) : (
+                      <span className="badge is-pending">— Chưa tạo</span>
+                    )}
+                  </td>
+                  <td style={{ textAlign: "center" }} onClick={(e) => e.stopPropagation()}>
+                    {tab === "cancelled" ? (
+                      <button
+                        className="btn-cancel-row"
+                        title="Khôi phục"
+                        style={{ color: "var(--success)" }}
+                        onClick={() => onRestoreClick(p)}
+                      >
+                        <Icons.CheckCircle size={16} />
+                      </button>
+                    ) : (
+                      <button
+                        className="btn-cancel-row"
+                        disabled={!canCancel}
+                        title={canCancel ? "Huỷ Payment Request" : "Đã có lần TT thành công — không thể huỷ"}
+                        onClick={() => canCancel && onCancelClick(p)}
+                      >
+                        <Icons.XCircle size={16} />
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+            {requests.length === 0 && (
+              <tr>
+                <td colSpan={10}>
+                  <div className="empty">
+                    <Icons.Search size={20} />
+                    <div>Không có Payment Request nào khớp với điều kiện lọc.</div>
+                  </div>
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+      <div className="pagi">
+        <span>
+          Hiển thị 1–{requests.length} trong {totalForBucket} kết quả
+        </span>
+        <div className="pagi-btns">
+          <button className="pagi-btn">
+            <Icons.ChevronLeft size={13} />
+          </button>
+          <button className="pagi-btn active">1</button>
+          <button className="pagi-btn">2</button>
+          <button className="pagi-btn">3</button>
+          <button className="pagi-btn">
+            <Icons.ChevronRight size={13} />
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }

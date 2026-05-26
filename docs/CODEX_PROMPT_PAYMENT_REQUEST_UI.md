@@ -152,6 +152,56 @@ Acknowledge role, confirm you read prototype HTML structure, then implement Phas
 
 ---
 
+## ACCEPTANCE CHECKLIST — Phase 1 (pixel-match prototype `PalFish CRM.html`)
+
+**CSS strategy**: port `styles.css` của prototype vào `frontend/src/styles/prototype-payments.css`, scope tất cả selectors dưới `.gmv-prototype` (page) và `.gmv-prototype-modal-scrim` (modal portal). Token (`--primary: #6f5cf3`, `--money: #ec7211`, ...) chỉ live trong 2 scope đó — không vỡ Module3/4 hay AppShell.
+
+**Files mới**:
+- `styles/prototype-payments.css` — port từ prototype
+- `payment-request/Icons.tsx` — ~25 SVG icons (Wallet, Sparkle, XCircle, Plus, Check, ...)
+- `payment-request/CountryCombo.tsx` — searchable combobox 49 quốc gia (flag + dial)
+- `payment-request/DateRangeFilter.tsx` — popup với 5 preset + custom date inputs
+- `payment-request/CancelPrModal.tsx` — modal "gõ DELETE để xác nhận"
+
+**Files rewrite**:
+- `PaymentRequestsTab.tsx` — port `app.jsx` payments section, wrap `.gmv-prototype > .page`
+- `PaymentRequestKpiCards.tsx` — `.kpi-row > .kpi` với `.kpi-icon` góc phải 30px
+- `PaymentRequestToolbar.tsx` — `.toolbar` với search + chips (dot khi inactive) + DateRangeFilter
+- `PaymentRequestTable.tsx` — `.table-card.has-tabs` (tabs trong header + bảng + pagination)
+- `PaymentRequestDetailDrawer.tsx` — slide-over 880px với 4 panel (Summary/B1 info edit/Payments + AddPaymentForm inline/Timeline B1→B4)
+- `CreatePaymentRequestModal.tsx` — `.modal-scrim > .modal` với CountryCombo + 2 input plain Tỉnh/Phường
+- `mockPaymentRequests.ts` — 13 rows port từ `mock-data.jsx`
+- `paymentRequestUtils.ts` — restore strings + thêm `progressFillClass`, `fmtPhone`, `relativeFrom`, `ddmmyyyy`, `nextPaymentCode`, `nowStamp`
+- `PaymentRequestStatusBadge.tsx` + `PaymentRequestProgress.tsx` — class-based (`.badge.is-*`, `.prog-fill.is-*`)
+
+**Files deleted**:
+- `PaymentRequestSubTabs.tsx` — gộp tabs vào Table header
+- `AddPaymentAttemptModal.tsx` — form inline trong Drawer
+
+**Type changes**: `PaymentAttempt` bổ sung `cancelled?: boolean` và `cancelledAt?: string | null` (cho QR row "Đã huỷ").
+
+### Checklist
+
+- [x] CSS prototype port vào `frontend/src/styles/prototype-payments.css`, scope `.gmv-prototype` + `.gmv-prototype-modal-scrim`
+- [x] Sub-tabs nằm trong header bảng (`.table-card.has-tabs > .table-head.with-tabs > .tabs`)
+- [x] Drawer slide-over 880px với scrim mờ, transition transformX 260ms
+- [x] Drawer body 4 panel: Summary row, B1 info (read + edit), Các lần thanh toán + AddPaymentForm inline, Timeline B1→B4
+- [x] KPI: icon 30px góc phải, sub-text giữ đúng prototype ("đã đủ tiền · đang thiếu", "PR cần đôn khách", "chờ chuyển B3")
+- [x] Status badge hiện "Chưa thanh toán" (không bị rút gọn)
+- [x] Filter chip: dot chỉ hiện khi `status !== c.id`, active có bg `--primary-50` và count pill nền trắng
+- [x] DateRangeFilter: popup với 5 preset (Hôm nay/7d/30d/Tháng này/Toàn bộ) + custom date inputs, hiển thị "dd/MM → dd/MM"
+- [x] CancelPrModal: gõ "DELETE" mới enable nút Huỷ; có field lý do tuỳ chọn
+- [x] CreatePrModal: CountryCombo (flag + dial searchable), 2 input plain Tỉnh/Phường + 1 input số nhà, banner info
+- [x] UID/SĐT cell: flag emoji + dial + phone format `dddd ddd ddd`
+- [x] PR-ID cell: mono + icon Copy hiện on hover
+- [x] Progress bar dùng class `.is-low/is-mid/is-done/is-over` (gradient CSS prototype)
+- [x] Mock data ≥12 rows port từ `mock-data.jsx`, đủ trạng thái done/short/over/pending/cancelled
+- [x] Pagination footer 1/2/3 + chevron prev/next
+- [x] `cd frontend && npm run build` pass zero TS errors
+- [ ] Deploy Vercel preview match prototype (so screenshot — chờ Minh verify)
+
+---
+
 ## Ghi chú cho Minh (không paste vào Codex)
 
 | Mục | Gợi ý |

@@ -1,5 +1,6 @@
 # Bỏ qua thư mục chứa file mẫu
 references/
+_prototype_ref/
 
 # Brief nội bộ (PDF + script tạo PDF — không commit)
 docs/Brief_Module3_Module4_xuat_hoa_don.pdf
@@ -10,6 +11,7 @@ frontend/node_modules/
 frontend/dist/
 frontend/.env
 frontend/.env.local
+frontend/.env.development.local
 frontend/coverage/
 
 # Backend
@@ -31,6 +33,7 @@ Thumbs.db
 
 # Local AI skills — chỉ chạy trên máy cá nhân (RTK, caveman, cavemem)
 .agents/
+.claude/
 skills-lock.json
 .cursor/rules/caveman.mdc
 .clinerules/
