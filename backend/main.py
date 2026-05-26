@@ -11,6 +11,7 @@ from fastapi import FastAPI, File, Header, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
+from activation_routes import register_activation_routes
 from admin_routes import register_admin_routes
 from crm_routes import register_crm_routes
 from dashboard_routes import register_dashboard_routes
@@ -1209,6 +1210,7 @@ def bank_simulate(body: BankSimulateBody):
 register_admin_routes(app, _supabase)
 register_invoice_routes(app, _supabase)
 register_revenue_routes(app, _supabase)
+register_activation_routes(app, _supabase)
 register_crm_routes(app, _supabase)
 register_dashboard_routes(app, _supabase)
 register_report_routes(app, _supabase)
