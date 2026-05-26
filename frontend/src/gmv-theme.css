@@ -5,6 +5,10 @@
   color-scheme: light;
   background-color: var(--gmv-bg);
   color: var(--gmv-text);
+  --gmv-bc01-grand-month-bg: #fde68a;
+  --gmv-bc01-grand-month-fg: #1f2330;
+  --gmv-bc01-grand-sum-bg: #5246d6;
+  --gmv-bc01-grand-sum-fg: #ffffff;
 }
 
 .gmv-light-ui input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { endpoints } from "../lib/api";
 import { isValidSaleName } from "../lib/metrics";
+import { cn } from "../lib/cn";
 import type { Bc03DailyRevenue, Bc03Report, Bc03StaffOption, DashboardLiveSummary } from "../types/order";
 
 type CurrencyMode = "VND" | "RMB";
@@ -54,6 +55,10 @@ function fmtMoney(n: number, mode: CurrencyMode) {
 function fmtCompact(n: number) {
   if (n === 0) return "—";
   return new Intl.NumberFormat("vi-VN", { notation: "compact", maximumFractionDigits: 1 }).format(n);
+}
+
+function fmtInt(n: number) {
+  return new Intl.NumberFormat("vi-VN").format(n);
 }
 
 function fmtSavedAt(iso: string | null) {
@@ -145,8 +150,67 @@ function isElementVisible(el: HTMLElement | null) {
 
 const NAV_KEYS = new Set(["ArrowLeft", "ArrowRight", "Home", "End"]);
 
-const STICKY =
-  "sticky left-0 z-10 bg-slate-900 shadow-[2px_0_6px_-2px_rgba(0,0,0,0.4)] min-w-[9rem] max-w-[11rem]";
+/** Pixel widths — chỉ freeze Team + Nhân sự; các cột KPI/ngày scroll ngang. */
+const REV_COL_W = [112, 144, 40, 104, 128, 104, 80];
+const TRI_COL_W = [112, 144, 80];
+const BC03_FREEZE_COLS = 2;
+
+function bc03StickyCol(
+  index: number,
+  widths: number[],
+  bg: string,
+  z = 20
+): { className: string; style: React.CSSProperties } {
+  const left = widths.slice(0, index).reduce((sum, w) => sum + w, 0);
+  const w = widths[index] ?? 80;
+  const lastFrozen = index === BC03_FREEZE_COLS - 1;
+  return {
+    className: cn(
+      "sticky",
+      bg,
+      lastFrozen && "shadow-[2px_0_6px_-2px_rgba(0,0,0,0.12)]"
+    ),
+    style: { left, minWidth: w, zIndex: z },
+  };
+}
+
+function bc03StickyCell(
+  index: number,
+  widths: number[],
+  bg: string,
+  extraClass?: string,
+  z = 20
+) {
+  if (index >= BC03_FREEZE_COLS) {
+    return { className: cn(extraClass), style: {} };
+  }
+  const sticky = bc03StickyCol(index, widths, bg, z);
+  return {
+    className: cn(sticky.className, extraClass),
+    style: sticky.style,
+  };
+}
+
+/** Header cells: freeze row khi scroll dọc + freeze Team/Nhân sự khi scroll ngang. */
+function bc03StickyHeadCell(
+  index: number,
+  widths: number[],
+  bg: string,
+  extraClass?: string
+) {
+  const topZ = index < BC03_FREEZE_COLS ? 34 - index : 30;
+  if (index < BC03_FREEZE_COLS) {
+    const h = bc03StickyCol(index, widths, bg, topZ);
+    return {
+      className: cn("sticky top-0", h.className, extraClass),
+      style: { ...h.style, zIndex: topZ },
+    };
+  }
+  return {
+    className: cn("sticky top-0", bg, extraClass),
+    style: { zIndex: topZ },
+  };
+}
 
 const AUTO_TABS: { key: AutoTab; label: string }[] = [
   { key: "revenue", label: "Doanh thu & Order" },
@@ -154,18 +218,279 @@ const AUTO_TABS: { key: AutoTab; label: string }[] = [
   { key: "referral", label: "Referral (L1.2)" },
 ];
 
+const BC03_TEAM_ORDER = [
+  "Inhouse 1",
+  "Inhouse 2",
+  "HCM (Online)",
+  "Linh Dam (Store)",
+  "Offline",
+  "An Binh (Store)",
+  "Khác",
+] as const;
+
+const TEAM_FILTERS = [
+  { value: "", label: "Toàn công ty" },
+  { value: "Inhouse 1", label: "Inhouse 1" },
+  { value: "Inhouse 2", label: "Inhouse 2" },
+  { value: "HCM (Online)", label: "HCM (Online)" },
+  { value: "Linh Dam (Store)", label: "Linh Dam (Store)" },
+  { value: "Offline", label: "Offline" },
+  { value: "An Binh (Store)", label: "An Binh (Store)" },
+  { value: "Khác", label: "Khác" },
+] as const;
+
+function normalizeTeam(team: string | undefined): string {
+  const t = (team || "").trim() || "Khác";
+  return (BC03_TEAM_ORDER as readonly string[]).includes(t) ? t : "Khác";
+}
+
+function emptyDailyBucket(): Bc03DailyRevenue {
+  return {
+    gmv_rmb_crm: 0,
+    gmv_rmb_ledger: 0,
+    collected_vnd: 0,
+    collected_vnd_m2: 0,
+    orders_crm: 0,
+    orders_ledger: 0,
+    orders_m2: 0,
+    gmv_rmb: 0,
+    orders: 0,
+  };
+}
+
+function sumRevRows(rows: RevRow[], team: string, dates: string[]): RevRow {
+  const daily: Record<string, Bc03DailyRevenue> = {};
+  for (const d of dates) {
+    daily[d] = emptyDailyBucket();
+    for (const r of rows) {
+      const b = r.daily?.[d];
+      if (!b) continue;
+      const t = daily[d];
+      t.gmv_rmb_crm += b.gmv_rmb_crm || 0;
+      t.gmv_rmb_ledger += b.gmv_rmb_ledger || 0;
+      t.collected_vnd += b.collected_vnd || 0;
+      t.collected_vnd_m2 += b.collected_vnd_m2 || 0;
+      t.orders_crm += b.orders_crm || 0;
+      t.orders_ledger += b.orders_ledger || 0;
+      t.orders_m2 += b.orders_m2 || 0;
+      t.gmv_rmb += b.gmv_rmb || 0;
+      t.orders += b.orders || 0;
+    }
+  }
+  const base = rows.reduce(
+    (acc, r) => ({
+      gmv_rmb: acc.gmv_rmb + (r.gmv_rmb || 0),
+      gmv_rmb_crm: acc.gmv_rmb_crm + (r.gmv_rmb_crm || 0),
+      gmv_rmb_ledger: acc.gmv_rmb_ledger + (r.gmv_rmb_ledger || 0),
+      collected_vnd: acc.collected_vnd + (r.collected_vnd || 0),
+      collected_vnd_m2: acc.collected_vnd_m2 + (r.collected_vnd_m2 || 0),
+      orders: acc.orders + (r.orders || 0),
+      orders_crm: acc.orders_crm + (r.orders_crm || 0),
+      orders_ledger: acc.orders_ledger + (r.orders_ledger || 0),
+      orders_m2: acc.orders_m2 + (r.orders_m2 || 0),
+    }),
+    {
+      gmv_rmb: 0,
+      gmv_rmb_crm: 0,
+      gmv_rmb_ledger: 0,
+      collected_vnd: 0,
+      collected_vnd_m2: 0,
+      orders: 0,
+      orders_crm: 0,
+      orders_ledger: 0,
+      orders_m2: 0,
+    }
+  );
+  return {
+    sale_name: "__team_total__",
+    team,
+    ...base,
+    daily,
+  };
+}
+
+function sumKpiForSales(saleNames: string[], kpiDraft: Record<string, KpiDraft>): KpiDraft {
+  return saleNames.reduce(
+    (acc, name) => {
+      const k = kpiDraft[name] ?? { b2Orders: 0, b4Gmv: 0 };
+      return { b2Orders: acc.b2Orders + k.b2Orders, b4Gmv: acc.b4Gmv + k.b4Gmv };
+    },
+    { b2Orders: 0, b4Gmv: 0 }
+  );
+}
+
+type RevenueDisplayRow =
+  | { kind: "team-total"; team: string; row: RevRow; kpi: KpiDraft }
+  | { kind: "staff"; row: RevRow };
+
+function buildRevenueDisplayRows(
+  rows: RevRow[],
+  dates: string[],
+  kpiDraft: Record<string, KpiDraft>,
+  teamFilter: string
+): RevenueDisplayRow[] {
+  const filtered = teamFilter
+    ? rows.filter((r) => normalizeTeam(r.team) === teamFilter)
+    : rows;
+
+  const byTeam = new Map<string, RevRow[]>();
+  for (const r of filtered) {
+    const t = normalizeTeam(r.team);
+    const list = byTeam.get(t) ?? [];
+    list.push(r);
+    byTeam.set(t, list);
+  }
+
+  const teamKeys = teamFilter
+    ? [teamFilter]
+    : [
+        ...BC03_TEAM_ORDER.filter((t) => byTeam.has(t)),
+        ...[...byTeam.keys()].filter((t) => !(BC03_TEAM_ORDER as readonly string[]).includes(t)).sort(),
+      ];
+
+  const out: RevenueDisplayRow[] = [];
+  for (const team of teamKeys) {
+    const members = byTeam.get(team) ?? [];
+    if (members.length === 0) continue;
+    members.sort((a, b) => (b.collected_vnd || 0) - (a.collected_vnd || 0));
+    const names = members.map((m) => m.sale_name);
+    out.push({
+      kind: "team-total",
+      team,
+      row: sumRevRows(members, team, dates),
+      kpi: sumKpiForSales(names, kpiDraft),
+    });
+    for (const row of members) {
+      out.push({ kind: "staff", row });
+    }
+  }
+  return out;
+}
+
+type TrialRow = Bc03Report["trial"][number];
+
+type TrialDisplayRow =
+  | { kind: "team-total"; team: string; row: TrialRow }
+  | { kind: "staff"; row: TrialRow };
+
+function sumTrialRows(rows: TrialRow[], team: string, dates: string[]): TrialRow {
+  const daily: Record<string, number> = {};
+  for (const d of dates) {
+    daily[d] = rows.reduce((s, r) => s + (r.daily?.[d] ?? 0), 0);
+  }
+  return {
+    sale_name: "__team_total__",
+    team,
+    completed_classes: Object.values(daily).reduce((a, b) => a + b, 0),
+    daily,
+  };
+}
+
+function buildTrialDisplayRows(
+  rows: TrialRow[],
+  dates: string[],
+  teamFilter: string
+): TrialDisplayRow[] {
+  const filtered = teamFilter
+    ? rows.filter((r) => normalizeTeam(r.team) === teamFilter)
+    : rows;
+
+  const byTeam = new Map<string, TrialRow[]>();
+  for (const r of filtered) {
+    const t = normalizeTeam(r.team);
+    const list = byTeam.get(t) ?? [];
+    list.push(r);
+    byTeam.set(t, list);
+  }
+
+  const teamKeys = teamFilter
+    ? [teamFilter]
+    : [
+        ...BC03_TEAM_ORDER.filter((t) => byTeam.has(t)),
+        ...[...byTeam.keys()].filter((t) => !(BC03_TEAM_ORDER as readonly string[]).includes(t)).sort(),
+      ];
+
+  const out: TrialDisplayRow[] = [];
+  for (const team of teamKeys) {
+    const members = byTeam.get(team) ?? [];
+    if (members.length === 0) continue;
+    members.sort((a, b) => (b.completed_classes || 0) - (a.completed_classes || 0));
+    out.push({ kind: "team-total", team, row: sumTrialRows(members, team, dates) });
+    for (const row of members) {
+      out.push({ kind: "staff", row });
+    }
+  }
+  return out;
+}
+
+type ReferralRow = Bc03Report["referral"][number];
+
+type ReferralDisplayRow =
+  | { kind: "team-total"; team: string; row: ReferralRow }
+  | { kind: "staff"; row: ReferralRow };
+
+function sumReferralRows(rows: ReferralRow[], team: string, dates: string[]): ReferralRow {
+  const daily: Record<string, number> = {};
+  for (const d of dates) {
+    daily[d] = rows.reduce((s, r) => s + (r.daily?.[d] ?? 0), 0);
+  }
+  return {
+    sale_name: "__team_total__",
+    team,
+    referral_leads: Object.values(daily).reduce((a, b) => a + b, 0),
+    daily,
+  };
+}
+
+function buildReferralDisplayRows(
+  rows: ReferralRow[],
+  dates: string[],
+  teamFilter: string
+): ReferralDisplayRow[] {
+  const filtered = teamFilter
+    ? rows.filter((r) => normalizeTeam(r.team) === teamFilter)
+    : rows;
+
+  const byTeam = new Map<string, ReferralRow[]>();
+  for (const r of filtered) {
+    const t = normalizeTeam(r.team);
+    const list = byTeam.get(t) ?? [];
+    list.push(r);
+    byTeam.set(t, list);
+  }
+
+  const teamKeys = teamFilter
+    ? [teamFilter]
+    : [
+        ...BC03_TEAM_ORDER.filter((t) => byTeam.has(t)),
+        ...[...byTeam.keys()].filter((t) => !(BC03_TEAM_ORDER as readonly string[]).includes(t)).sort(),
+      ];
+
+  const out: ReferralDisplayRow[] = [];
+  for (const team of teamKeys) {
+    const members = byTeam.get(team) ?? [];
+    if (members.length === 0) continue;
+    members.sort((a, b) => (b.referral_leads || 0) - (a.referral_leads || 0));
+    out.push({ kind: "team-total", team, row: sumReferralRows(members, team, dates) });
+    for (const row of members) {
+      out.push({ kind: "staff", row });
+    }
+  }
+  return out;
+}
+
 function KpiProgressBar({ actual, target, label }: { actual: number; target: number; label: string }) {
   const pct = pctProgress(actual, target);
   const fill = pct === null ? 0 : Math.min(100, Math.max(0, pct));
-  const barColor = pct === null ? "bg-slate-500" : pct < 50 ? "bg-red-500" : "bg-green-500";
+  const barColor = pct === null ? "bg-gmv-muted" : pct < 50 ? "bg-red-500" : "bg-green-500";
 
   return (
     <div className="min-w-[7.5rem]" title={label}>
       <div className="flex items-center gap-1.5">
-        <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-gray-200/20">
+        <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-gmv-border">
           <div className={`h-full rounded-full transition-all ${barColor}`} style={{ width: `${fill}%` }} />
         </div>
-        <span className="w-9 shrink-0 text-right text-[10px] tabular-nums text-slate-300">
+        <span className="w-9 shrink-0 text-right text-[10px] tabular-nums text-gmv-text">
           {pct === null ? "—" : `${pct}%`}
         </span>
       </div>
@@ -189,7 +514,7 @@ function InlineKpiInput({
       value={value || ""}
       placeholder="0"
       onChange={(e) => onChange(Math.max(0, Number(e.target.value) || 0))}
-      className={`${className} rounded border border-slate-600/80 bg-slate-800/80 px-1.5 py-1 text-right text-xs tabular-nums text-slate-100 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500/40`}
+      className={`${className} rounded border border-gmv-border/80 bg-gmv-bg/80 px-1.5 py-1 text-right text-xs tabular-nums text-gmv-text-strong focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500/40`}
     />
   );
 }
@@ -202,6 +527,7 @@ export default function ReportBC03Tab() {
   const [customEnd, setCustomEnd] = useState(initialMonth.end);
   const [exchangeRate, setExchangeRate] = useState(3700);
   const [currency, setCurrency] = useState<CurrencyMode>("VND");
+  const [teamFilter, setTeamFilter] = useState("");
   const [autoTab, setAutoTab] = useState<AutoTab>("revenue");
   const [report, setReport] = useState<Bc03Report | null>(null);
   const [liveSummary, setLiveSummary] = useState<DashboardLiveSummary | null>(null);
@@ -328,6 +654,7 @@ export default function ReportBC03Tab() {
           range_key: "custom",
           start: rangeStart,
           end: rangeEnd,
+          team: teamFilter || undefined,
         }),
         endpoints.dashboard.liveSummary(liveParams).finally(() => setKpiLoading(false)),
       ]);
@@ -342,7 +669,7 @@ export default function ReportBC03Tab() {
     } finally {
       setLoading(false);
     }
-  }, [rangeStart, rangeEnd]);
+  }, [rangeStart, rangeEnd, teamFilter]);
 
   const loadMonthly = useCallback(async () => {
     setLoadingMonthly(true);
@@ -394,6 +721,7 @@ export default function ReportBC03Tab() {
     const map = new Map<string, RevRow>();
     for (const r of report?.revenue ?? []) {
       if (!excludedStaff.has(r.sale_name) && isValidSaleName(r.sale_name)) {
+        if (teamFilter && normalizeTeam(r.team) !== teamFilter) continue;
         map.set(r.sale_name, r);
       }
     }
@@ -410,7 +738,24 @@ export default function ReportBC03Tab() {
       if (bv !== av) return bv - av;
       return a.sale_name.localeCompare(b.sale_name, "vi");
     });
-  }, [report, excludedStaff, kpiDraft, staffTeamMap, dates, exchangeRate]);
+  }, [report, excludedStaff, kpiDraft, staffTeamMap, dates, exchangeRate, teamFilter]);
+
+  const revenueDisplayRows = useMemo(
+    () => buildRevenueDisplayRows(mergedRevenueRows, dates, kpiDraft, teamFilter),
+    [mergedRevenueRows, dates, kpiDraft, teamFilter]
+  );
+
+  const trialRowsFiltered = useMemo(() => {
+    const rows = report?.trial ?? [];
+    if (!teamFilter) return rows;
+    return rows.filter((r) => normalizeTeam(r.team) === teamFilter);
+  }, [report?.trial, teamFilter]);
+
+  const referralRowsFiltered = useMemo(() => {
+    const rows = report?.referral ?? [];
+    if (!teamFilter) return rows;
+    return rows.filter((r) => normalizeTeam(r.team) === teamFilter);
+  }, [report?.referral, teamFilter]);
 
   const visibleSaleNames = useMemo(
     () => new Set(mergedRevenueRows.map((r) => r.sale_name)),
@@ -420,6 +765,7 @@ export default function ReportBC03Tab() {
   const pickableStaff = useMemo(() => {
     const q = staffSearch.trim().toLowerCase();
     return staffOptions.filter((s) => {
+      if (teamFilter && normalizeTeam(s.team) !== teamFilter) return false;
       if (visibleSaleNames.has(s.crm_name)) return false;
       if (!q) return true;
       return (
@@ -428,7 +774,7 @@ export default function ReportBC03Tab() {
         s.team.toLowerCase().includes(q)
       );
     });
-  }, [staffOptions, staffSearch, visibleSaleNames]);
+  }, [staffOptions, staffSearch, visibleSaleNames, teamFilter]);
 
   function addSelectedStaff() {
     if (pickSelection.length === 0) return;
@@ -496,8 +842,14 @@ export default function ReportBC03Tab() {
     }
   }
 
-  const trialRows = report?.trial ?? [];
-  const referralRows = report?.referral ?? [];
+  const trialDisplayRows = useMemo(
+    () => buildTrialDisplayRows(trialRowsFiltered, dates, teamFilter),
+    [trialRowsFiltered, dates, teamFilter]
+  );
+  const referralDisplayRows = useMemo(
+    () => buildReferralDisplayRows(referralRowsFiltered, dates, teamFilter),
+    [referralRowsFiltered, dates, teamFilter]
+  );
 
   const monthLabel = useMemo(() => {
     const [y, m] = monthKey.split("-");
@@ -525,68 +877,68 @@ export default function ReportBC03Tab() {
   }
 
   return (
-    <div className="space-y-4 p-4 md:p-6">
+    <div className="bc03-report space-y-4 p-4 md:p-6 text-gmv-text-strong">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="text-xl font-bold text-slate-100">BC03 — Báo cáo tổng bộ</h2>
-          <p className="mt-1 text-sm text-slate-400">
+          <h2 className="text-xl font-bold text-gmv-text-strong">BC03 — Báo cáo tổng bộ</h2>
+          <p className="mt-1 text-sm text-gmv-muted">
             Mặc định cả tháng · Có thể lọc theo khoảng ngày · KPI sửa trực tiếp trên bảng
           </p>
         </div>
         {report && (
-          <p className="text-xs text-slate-500">
+          <p className="text-xs text-gmv-muted">
             Kỳ: {report.period.start} → {report.period.end}
           </p>
         )}
       </div>
 
       {report?.meta?.missing_dates && report.meta.missing_dates.length > 0 && (
-        <div className="rounded-lg bg-amber-950/60 px-4 py-3 text-sm text-amber-200 ring-1 ring-amber-800">
+        <div className="rounded-lg bg-amber-100/60 px-4 py-3 text-sm text-amber-800 ring-1 ring-amber-800">
           <strong>Thiếu dữ liệu daily trong DB:</strong>{" "}
           {report.meta.synced_days ?? 0}/{report.meta.expected_days ?? "?"} ngày đã sync.
           {" "}Các ngày chưa có:{" "}
           {report.meta.missing_dates.slice(0, 12).map((d) => d.slice(8, 10) + "/" + d.slice(5, 7)).join(", ")}
           {(report.meta.missing_dates.length > 12) ? ` … (+${report.meta.missing_dates.length - 12} ngày)` : ""}.
           {" "}Vào tab <strong>Đồng bộ CRM</strong> → backfill từng ngày hoặc gọi{" "}
-          <code className="text-amber-100">POST /crm/sync/backfill</code>.
+          <code className="text-amber-900">POST /crm/sync/backfill</code>.
         </div>
       )}
 
       {/* PalFish live KPI — khớp 100% với CRM gốc */}
-      <div className="relative rounded-xl bg-slate-800/60 p-4 ring-1 ring-slate-700">
+      <div className="relative rounded-xl bg-gmv-bg p-4 ring-1 ring-gmv-border">
         {kpiLoading && (
-          <div className="absolute inset-0 z-10 flex items-center justify-center rounded-xl bg-slate-900/70">
-            <span className="flex items-center gap-2 text-sm text-slate-300">
+          <div className="absolute inset-0 z-10 flex items-center justify-center rounded-xl bg-gmv-canvas/70">
+            <span className="flex items-center gap-2 text-sm text-gmv-text">
               <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-blue-500 border-t-transparent" />
               Đang lấy tổng CRM từ PalFish…
             </span>
           </div>
         )}
-        <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-500">
+        <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-gmv-muted">
           Tổng kỳ (PalFish live — không lưu DB)
         </p>
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           <div>
-            <p className="text-[10px] text-slate-500">L1</p>
-            <p className="text-lg font-bold tabular-nums text-slate-100">
+            <p className="text-[10px] text-gmv-muted">L1</p>
+            <p className="text-lg font-bold tabular-nums text-gmv-text-strong">
               {new Intl.NumberFormat("vi-VN").format(liveSummary?.kpi?.l1 ?? 0)}
             </p>
           </div>
           <div>
-            <p className="text-[10px] text-slate-500">L8 (đơn CRM)</p>
-            <p className="text-lg font-bold tabular-nums text-slate-100">
+            <p className="text-[10px] text-gmv-muted">L8 (đơn CRM)</p>
+            <p className="text-lg font-bold tabular-nums text-gmv-text-strong">
               {new Intl.NumberFormat("vi-VN").format(liveSummary?.kpi?.l8 ?? 0)}
             </p>
           </div>
           <div>
-            <p className="text-[10px] text-slate-500">GMV CRM (RMB)</p>
-            <p className="text-lg font-bold tabular-nums text-slate-100">
+            <p className="text-[10px] text-gmv-muted">GMV CRM (RMB)</p>
+            <p className="text-lg font-bold tabular-nums text-gmv-text-strong">
               {new Intl.NumberFormat("vi-VN").format(liveSummary?.kpi?.total_gmv_rmb ?? 0)}
             </p>
           </div>
           <div>
-            <p className="text-[10px] text-slate-500">Đã thu (VND)</p>
-            <p className="text-lg font-bold tabular-nums text-emerald-300">
+            <p className="text-[10px] text-gmv-muted">Đã thu (VND)</p>
+            <p className="text-lg font-bold tabular-nums text-emerald-700">
               {new Intl.NumberFormat("vi-VN").format(liveSummary?.kpi?.total_collected_vnd ?? 0)} ₫
             </p>
           </div>
@@ -594,25 +946,25 @@ export default function ReportBC03Tab() {
       </div>
 
       {/* Toolbar — không còn form KPI riêng */}
-      <div className="flex flex-wrap items-end gap-3 rounded-xl bg-slate-800/60 p-4 ring-1 ring-slate-700">
+      <div className="flex flex-wrap items-end gap-3 rounded-xl bg-gmv-bg p-4 ring-1 ring-gmv-border">
         <label className="block">
-          <span className="mb-1 block text-xs font-medium text-slate-400">Tháng KPI &amp; tỷ giá</span>
+          <span className="mb-1 block text-xs font-medium text-gmv-muted">Tháng KPI &amp; tỷ giá</span>
           <input
             type="month"
             value={monthKey}
             onChange={(e) => handleMonthChange(e.target.value)}
-            className="rounded-lg border border-slate-600 bg-slate-900 px-3 py-2 text-sm text-slate-100 focus:border-blue-500 focus:outline-none"
+            className="rounded-lg border border-gmv-border bg-gmv-canvas px-3 py-2 text-sm text-gmv-text-strong focus:border-blue-500 focus:outline-none"
           />
         </label>
 
         <div>
-          <span className="mb-1 block text-xs font-medium text-slate-400">Kỳ xem báo cáo</span>
-          <div className="flex overflow-hidden rounded-lg ring-1 ring-slate-600">
+          <span className="mb-1 block text-xs font-medium text-gmv-muted">Kỳ xem báo cáo</span>
+          <div className="flex overflow-hidden rounded-lg ring-1 ring-gmv-border">
             <button
               type="button"
               onClick={() => switchFilterMode("month")}
               className={`px-3 py-2 text-xs font-semibold transition ${
-                filterMode === "month" ? "bg-blue-600 text-white" : "bg-slate-800 text-slate-300 hover:bg-slate-700"
+                filterMode === "month" ? "bg-blue-600 text-white" : "bg-gmv-bg text-gmv-text hover:bg-gmv-border"
               }`}
             >
               Cả tháng
@@ -621,7 +973,7 @@ export default function ReportBC03Tab() {
               type="button"
               onClick={() => switchFilterMode("custom")}
               className={`px-3 py-2 text-xs font-semibold transition ${
-                filterMode === "custom" ? "bg-blue-600 text-white" : "bg-slate-800 text-slate-300 hover:bg-slate-700"
+                filterMode === "custom" ? "bg-blue-600 text-white" : "bg-gmv-bg text-gmv-text hover:bg-gmv-border"
               }`}
             >
               Theo ngày
@@ -630,59 +982,74 @@ export default function ReportBC03Tab() {
         </div>
 
         {filterMode === "month" ? (
-          <div className="rounded-lg border border-slate-600/60 bg-slate-900/50 px-3 py-2">
-            <span className="block text-[10px] uppercase tracking-wide text-slate-500">Đang xem</span>
-            <span className="text-sm font-medium text-emerald-400">{monthLabel}</span>
+          <div className="rounded-lg border border-gmv-border/60 bg-gmv-canvas/50 px-3 py-2">
+            <span className="block text-[10px] uppercase tracking-wide text-gmv-muted">Đang xem</span>
+            <span className="text-sm font-medium text-emerald-700">{monthLabel}</span>
           </div>
         ) : (
           <>
             <label className="block">
-              <span className="mb-1 block text-xs font-medium text-slate-400">Từ ngày</span>
+              <span className="mb-1 block text-xs font-medium text-gmv-muted">Từ ngày</span>
               <input
                 type="date"
                 value={customStart}
                 min={bounds.min}
                 max={customEnd}
                 onChange={(e) => setCustomStart(clampDate(e.target.value, bounds.min, bounds.max))}
-                className="rounded-lg border border-slate-600 bg-slate-900 px-2 py-2 text-xs text-slate-100 focus:border-blue-500 focus:outline-none"
+                className="rounded-lg border border-gmv-border bg-gmv-canvas px-2 py-2 text-xs text-gmv-text-strong focus:border-blue-500 focus:outline-none"
               />
             </label>
             <label className="block">
-              <span className="mb-1 block text-xs font-medium text-slate-400">Đến ngày</span>
+              <span className="mb-1 block text-xs font-medium text-gmv-muted">Đến ngày</span>
               <input
                 type="date"
                 value={customEnd}
                 min={customStart}
                 max={bounds.max}
                 onChange={(e) => setCustomEnd(clampDate(e.target.value, bounds.min, bounds.max))}
-                className="rounded-lg border border-slate-600 bg-slate-900 px-2 py-2 text-xs text-slate-100 focus:border-blue-500 focus:outline-none"
+                className="rounded-lg border border-gmv-border bg-gmv-canvas px-2 py-2 text-xs text-gmv-text-strong focus:border-blue-500 focus:outline-none"
               />
             </label>
           </>
         )}
 
         <label className="block">
-          <span className="mb-1 block text-xs font-medium text-slate-400">Tỷ giá ¥ → ₫</span>
+          <span className="mb-1 block text-xs font-medium text-gmv-muted">Team</span>
+          <select
+            value={teamFilter}
+            onChange={(e) => setTeamFilter(e.target.value)}
+            className="min-w-[10rem] rounded-lg border border-gmv-border bg-gmv-canvas px-3 py-2 text-sm text-gmv-text-strong focus:border-blue-500 focus:outline-none"
+          >
+            {TEAM_FILTERS.map((t) => (
+              <option key={t.value || "all"} value={t.value}>
+                {t.label}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label className="block">
+          <span className="mb-1 block text-xs font-medium text-gmv-muted">Tỷ giá ¥ → ₫</span>
           <input
             type="number"
             min={1}
             value={exchangeRate}
             onChange={(e) => setExchangeRate(Number(e.target.value) || 0)}
             disabled={loadingMonthly}
-            className="w-32 rounded-lg border border-slate-600 bg-slate-900 px-3 py-2 text-sm text-slate-100 focus:border-blue-500 focus:outline-none disabled:opacity-50"
+            className="w-32 rounded-lg border border-gmv-border bg-gmv-canvas px-3 py-2 text-sm text-gmv-text-strong focus:border-blue-500 focus:outline-none disabled:opacity-50"
           />
         </label>
 
         <div>
-          <span className="mb-1 block text-xs font-medium text-slate-400">Tiền tệ</span>
-          <div className="flex overflow-hidden rounded-lg ring-1 ring-slate-600">
+          <span className="mb-1 block text-xs font-medium text-gmv-muted">Tiền tệ</span>
+          <div className="flex overflow-hidden rounded-lg ring-1 ring-gmv-border">
             {(["VND", "RMB"] as CurrencyMode[]).map((c) => (
               <button
                 key={c}
                 type="button"
                 onClick={() => setCurrency(c)}
                 className={`px-3 py-2 text-xs font-semibold transition ${
-                  currency === c ? "bg-blue-600 text-white" : "bg-slate-800 text-slate-300 hover:bg-slate-700"
+                  currency === c ? "bg-blue-600 text-white" : "bg-gmv-bg text-gmv-text hover:bg-gmv-border"
                 }`}
               >
                 {c}
@@ -703,13 +1070,13 @@ export default function ReportBC03Tab() {
           type="button"
           onClick={loadReport}
           disabled={loading}
-          className="rounded-lg border border-slate-600 px-3 py-2 text-xs text-slate-300 hover:bg-slate-700 disabled:opacity-50"
+          className="rounded-lg border border-gmv-border px-3 py-2 text-xs text-gmv-text hover:bg-gmv-border disabled:opacity-50"
         >
           {loading ? "⟳" : "Làm mới"}
         </button>
 
         {savedMeta.at && !loadingMonthly && (
-          <p className="w-full text-xs text-slate-500">
+          <p className="w-full text-xs text-gmv-muted">
             Lưu lần cuối: {fmtSavedAt(savedMeta.at)}
             {savedMeta.by ? ` · ${savedMeta.by}` : ""}
           </p>
@@ -720,7 +1087,7 @@ export default function ReportBC03Tab() {
         <div className="rounded-lg bg-red-950/60 px-4 py-3 text-sm text-red-300 ring-1 ring-red-800">{monthlyError}</div>
       )}
       {saveMsg && (
-        <div className="rounded-lg bg-emerald-950/60 px-4 py-3 text-sm text-emerald-300 ring-1 ring-emerald-800">{saveMsg}</div>
+        <div className="rounded-lg bg-emerald-950/60 px-4 py-3 text-sm text-emerald-700 ring-1 ring-emerald-800">{saveMsg}</div>
       )}
       {error && (
         <div className="rounded-lg bg-red-950/60 px-4 py-3 text-sm text-red-300 ring-1 ring-red-800">{error}</div>
@@ -728,10 +1095,10 @@ export default function ReportBC03Tab() {
 
       <section
         ref={sectionRef}
-        className="overflow-hidden rounded-xl bg-slate-800/60 ring-1 ring-slate-700"
+        className="overflow-hidden rounded-xl bg-gmv-bg ring-1 ring-gmv-border"
         onPointerDownCapture={(e) => activateTableNav(e.target)}
       >
-        <div className="flex border-b border-slate-700 px-4">
+        <div className="flex border-b border-gmv-border px-4">
           {AUTO_TABS.map(({ key, label }) => (
             <button
               key={key}
@@ -739,8 +1106,8 @@ export default function ReportBC03Tab() {
               onClick={() => setAutoTab(key)}
               className={`border-b-2 px-4 py-3 text-xs font-medium transition -mb-px ${
                 autoTab === key
-                  ? "border-blue-500 text-blue-300"
-                  : "border-transparent text-slate-400 hover:text-slate-200"
+                  ? "border-blue-500 text-blue-700"
+                  : "border-transparent text-gmv-muted hover:text-gmv-text-strong"
               }`}
             >
               {label}
@@ -749,10 +1116,10 @@ export default function ReportBC03Tab() {
         </div>
 
         {autoTab === "revenue" && (
-          <div className="border-b border-slate-700 bg-slate-900/40 px-4 py-3">
+          <div className="border-b border-gmv-border bg-gmv-bg px-4 py-3">
             <div className="flex flex-wrap items-end gap-3">
               <div className="min-w-[12rem] flex-1">
-                <span className="mb-1 block text-xs font-medium text-slate-400">
+                <span className="mb-1 block text-xs font-medium text-gmv-muted">
                   Thêm nhân sự (chọn nhiều — Ctrl/⌘ + click)
                 </span>
                 <input
@@ -760,7 +1127,7 @@ export default function ReportBC03Tab() {
                   placeholder="Lọc tên / team…"
                   value={staffSearch}
                   onChange={(e) => setStaffSearch(e.target.value)}
-                  className="mb-1.5 w-full rounded-lg border border-slate-600 bg-slate-900 px-2 py-1.5 text-xs text-slate-100 focus:border-blue-500 focus:outline-none"
+                  className="mb-1.5 w-full rounded-lg border border-gmv-border bg-gmv-canvas px-2 py-1.5 text-xs text-gmv-text-strong focus:border-blue-500 focus:outline-none"
                 />
                 <select
                   multiple
@@ -770,7 +1137,7 @@ export default function ReportBC03Tab() {
                     setPickSelection(Array.from(e.target.selectedOptions, (o) => o.value))
                   }
                   disabled={staffLoading || pickableStaff.length === 0}
-                  className="w-full min-w-[14rem] rounded-lg border border-slate-600 bg-slate-900 px-2 py-1 text-xs text-slate-100 focus:border-blue-500 focus:outline-none disabled:opacity-50"
+                  className="w-full min-w-[14rem] rounded-lg border border-gmv-border bg-gmv-canvas px-2 py-1 text-xs text-gmv-text-strong focus:border-blue-500 focus:outline-none disabled:opacity-50"
                 >
                   {pickableStaff.map((s) => (
                     <option key={s.crm_name} value={s.crm_name}>
@@ -778,9 +1145,9 @@ export default function ReportBC03Tab() {
                     </option>
                   ))}
                 </select>
-                {staffLoading && <p className="mt-1 text-[10px] text-slate-500">Đang tải nhân sự…</p>}
+                {staffLoading && <p className="mt-1 text-[10px] text-gmv-muted">Đang tải nhân sự…</p>}
                 {!staffLoading && pickableStaff.length === 0 && (
-                  <p className="mt-1 text-[10px] text-slate-500">Không còn sale để thêm (hoặc đã có trên bảng).</p>
+                  <p className="mt-1 text-[10px] text-gmv-muted">Không còn sale để thêm (hoặc đã có trên bảng).</p>
                 )}
               </div>
               <button
@@ -799,7 +1166,7 @@ export default function ReportBC03Tab() {
           ref={tableScrollRef}
           tabIndex={0}
           role="region"
-          aria-label="Bảng BC03 — phím mũi tên trái phải cuộn ngang theo ngày"
+          aria-label="Bảng BC03 — cuộn dọc trong vùng bảng; phím mũi tên trái phải cuộn ngang theo ngày"
           onBlur={(e) => {
             const scroll = tableScrollRef.current;
             if (!scroll) return;
@@ -811,87 +1178,164 @@ export default function ReportBC03Tab() {
               }, 0);
             }
           }}
-          className="overflow-x-auto outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40 focus-visible:ring-inset"
+          className={cn(
+            "gmv-table-scroll max-h-[min(60vh,calc(100svh-22rem))] overflow-auto outline-none",
+            "focus-visible:ring-2 focus-visible:ring-blue-500/40 focus-visible:ring-inset"
+          )}
         >
           {loading && !report ? (
-            <p className="py-12 text-center text-sm text-slate-500">Đang tải dữ liệu…</p>
+            <p className="py-12 text-center text-sm text-gmv-muted">Đang tải dữ liệu…</p>
           ) : autoTab === "revenue" ? (
             <table className="min-w-max w-full border-collapse text-xs">
               <thead>
-                <tr className="border-b border-slate-700 bg-slate-900/80 text-slate-400">
-                  <th className={`${STICKY} px-3 py-2.5 text-left font-medium`}>Tên Sale</th>
-                  <th className="px-2 py-2.5 text-center font-medium w-10" title="Xóa dòng">
+                <tr className="border-b border-gmv-border bg-gmv-table-head text-gmv-muted">
+                  <th {...bc03StickyHeadCell(0, REV_COL_W, "bg-gmv-table-head", "px-3 py-2.5 text-left font-medium")}>
+                    Team
+                  </th>
+                  <th {...bc03StickyHeadCell(1, REV_COL_W, "bg-gmv-table-head", "px-3 py-2.5 text-left font-medium")}>
+                    Nhân sự
+                  </th>
+                  <th
+                    {...bc03StickyHeadCell(2, REV_COL_W, "bg-gmv-table-head", "px-2 py-2.5 text-center font-medium w-10")}
+                    title="Xóa dòng KPI"
+                  >
                     ×
                   </th>
-                  <th className="px-2 py-2.5 text-left font-medium whitespace-nowrap">Team</th>
-                  <th className="px-2 py-2.5 text-center font-medium whitespace-nowrap">GMV KPI (₫)</th>
-                  <th className="px-2 py-2.5 text-left font-medium whitespace-nowrap">% GMV</th>
-                  <th className="px-2 py-2.5 text-right font-medium whitespace-nowrap">Tổng ĐT</th>
-                  <th className="px-2 py-2.5 text-right font-medium whitespace-nowrap">Tổng đơn</th>
+                  <th {...bc03StickyHeadCell(3, REV_COL_W, "bg-gmv-table-head", "px-2 py-2.5 text-center font-medium whitespace-nowrap")}>
+                    GMV PKI
+                  </th>
+                  <th {...bc03StickyHeadCell(4, REV_COL_W, "bg-gmv-table-head", "px-2 py-2.5 text-left font-medium whitespace-nowrap")}>
+                    % GMV
+                  </th>
+                  <th {...bc03StickyHeadCell(5, REV_COL_W, "bg-gmv-table-head", "px-2 py-2.5 text-right font-medium whitespace-nowrap")}>
+                    Tổng ĐT
+                  </th>
+                  <th {...bc03StickyHeadCell(6, REV_COL_W, "bg-gmv-table-head", "px-2 py-2.5 text-right font-medium whitespace-nowrap")}>
+                    Tổng đơn
+                  </th>
                   {dates.map((d) => (
-                    <th key={d} className="px-2 py-2.5 text-right font-medium whitespace-nowrap min-w-[4.5rem]">
+                    <th
+                      key={d}
+                      className="sticky top-0 z-30 bg-gmv-table-head px-2 py-2.5 text-right font-medium whitespace-nowrap min-w-[4.5rem]"
+                    >
                       {fmtDayHeader(d)}
                     </th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {mergedRevenueRows.length === 0 ? (
+                {revenueDisplayRows.length === 0 ? (
                   <tr>
-                    <td colSpan={7 + dates.length} className="py-10 text-center text-slate-500">
-                      Chưa có dòng — thêm nhân sự ở trên hoặc nhập Sổ / M2 / đồng bộ CRM.
+                    <td colSpan={7 + dates.length} className="py-10 text-center text-gmv-muted">
+                      Chưa có dòng — đổi Team / kỳ ngày hoặc thêm nhân sự KPI.
                     </td>
                   </tr>
                 ) : (
-                  mergedRevenueRows.map((r) => {
-                    const kpi = getKpi(r.sale_name);
+                  revenueDisplayRows.map((item) => {
+                    const isTotal = item.kind === "team-total";
+                    const r = item.row;
+                    const kpi = isTotal ? item.kpi : getKpi(r.sale_name);
                     const { vndTotal } = revTotals(r, exchangeRate);
                     const gmvPct = pctProgress(vndTotal, kpi.b4Gmv);
                     const primaryTotal = currency === "VND" ? vndTotal : revTotals(r, exchangeRate).rmbTotal;
                     const isKpiOnly =
-                      r.orders === 0 && r.collected_vnd === 0 && r.gmv_rmb === 0 && r.gmv_rmb_crm === 0;
+                      !isTotal &&
+                      r.orders === 0 &&
+                      r.collected_vnd === 0 &&
+                      r.gmv_rmb === 0 &&
+                      r.gmv_rmb_crm === 0;
+                    const rowKey = isTotal ? `total-${item.team}` : r.sale_name;
+                    const stickyBg = isTotal ? "bg-amber-100" : "bg-gmv-canvas";
 
                     return (
-                      <tr key={r.sale_name} className="border-b border-slate-700/40 hover:bg-slate-700/15">
-                        <td className={`${STICKY} px-3 py-2 font-medium text-slate-100`}>
-                          {r.sale_name}
+                      <tr
+                        key={rowKey}
+                        className={cn(
+                          "border-b border-gmv-border/40",
+                          isTotal
+                            ? "bg-amber-50 font-semibold text-amber-900"
+                            : "hover:bg-gmv-row-hover"
+                        )}
+                      >
+                        <td
+                          {...bc03StickyCell(
+                            0,
+                            REV_COL_W,
+                            stickyBg,
+                            cn("px-3 py-2 whitespace-nowrap", isTotal ? "text-amber-900" : "text-gmv-muted")
+                          )}
+                        >
+                          {isTotal ? item.team : ""}
+                        </td>
+                        <td
+                          {...bc03StickyCell(
+                            1,
+                            REV_COL_W,
+                            stickyBg,
+                            cn("px-3 py-2 font-medium", isTotal ? "text-amber-950" : "text-gmv-text-strong")
+                          )}
+                        >
+                          {isTotal ? "Total" : r.sale_name}
                           {isKpiOnly && (
-                            <span className="ml-1 rounded bg-slate-700 px-1 py-0.5 text-[9px] text-slate-400">KPI</span>
+                            <span className="ml-1 rounded bg-gmv-border px-1 py-0.5 text-[9px] text-gmv-muted">
+                              KPI
+                            </span>
                           )}
                         </td>
-                        <td className="px-2 py-2 text-center">
-                          <button
-                            type="button"
-                            onClick={() => removeStaffRow(r.sale_name)}
-                            className="rounded p-1 text-slate-500 hover:bg-red-950/50 hover:text-red-400"
-                            title="Xóa dòng khỏi bảng KPI"
-                          >
-                            ×
-                          </button>
+                        <td {...bc03StickyCell(2, REV_COL_W, stickyBg, "px-2 py-2 text-center")}>
+                          {!isTotal && (
+                            <button
+                              type="button"
+                              onClick={() => removeStaffRow(r.sale_name)}
+                              className="rounded p-1 text-gmv-muted hover:bg-red-950/50 hover:text-red-400"
+                              title="Xóa dòng khỏi bảng KPI"
+                            >
+                              ×
+                            </button>
+                          )}
                         </td>
-                        <td className="px-2 py-2 text-slate-400 whitespace-nowrap">{r.team}</td>
-                        <td className="px-2 py-2 text-center">
-                          <InlineKpiInput
-                            value={kpi.b4Gmv}
-                            onChange={(n) => patchKpi(r.sale_name, { b4Gmv: n })}
-                            className="w-24"
-                          />
+                        <td {...bc03StickyCell(3, REV_COL_W, stickyBg, "px-2 py-2 text-center tabular-nums")}>
+                          {isTotal ? (
+                            <span className="text-amber-800">{fmtInt(kpi.b4Gmv)}</span>
+                          ) : (
+                            <InlineKpiInput
+                              value={kpi.b4Gmv}
+                              onChange={(n) => patchKpi(r.sale_name, { b4Gmv: n })}
+                              className="w-24"
+                            />
+                          )}
                         </td>
-                        <td className="px-2 py-2">
+                        <td {...bc03StickyCell(4, REV_COL_W, stickyBg, "px-2 py-2")}>
                           <KpiProgressBar actual={vndTotal} target={kpi.b4Gmv} label="Tiến độ GMV VND" />
                         </td>
-                        <td className="px-2 py-2 text-right tabular-nums whitespace-nowrap">
-                          <span className="font-medium text-emerald-400">{fmtMoney(primaryTotal, currency)}</span>
+                        <td
+                          {...bc03StickyCell(5, REV_COL_W, stickyBg, "px-2 py-2 text-right tabular-nums whitespace-nowrap")}
+                        >
+                          <span className={isTotal ? "text-amber-950" : "font-medium text-emerald-700"}>
+                            {fmtMoney(primaryTotal, currency)}
+                          </span>
                           {gmvPct !== null && (
-                            <div className="text-[10px] text-slate-500">{gmvPct}% GMV</div>
+                            <div className="text-[10px] text-gmv-muted">{gmvPct}% GMV</div>
                           )}
                         </td>
-                        <td className="px-2 py-2 text-right tabular-nums text-slate-200">{r.orders}</td>
+                        <td
+                          {...bc03StickyCell(
+                            6,
+                            REV_COL_W,
+                            stickyBg,
+                            cn("px-2 py-2 text-right tabular-nums", isTotal ? "text-amber-950" : "text-gmv-text-strong")
+                          )}
+                        >
+                          {r.orders}
+                        </td>
                         {dates.map((d) => {
                           const bucket = r.daily?.[d];
                           if (!bucket) {
                             return (
-                              <td key={d} className="px-2 py-2 text-right text-slate-600">
+                              <td
+                                key={d}
+                                className={cn("px-2 py-2 text-right text-gmv-muted", isTotal && "bg-amber-50")}
+                              >
                                 —
                               </td>
                             );
@@ -901,12 +1345,18 @@ export default function ReportBC03Tab() {
                               ? revVndFromBucket(bucket, exchangeRate)
                               : revRmbFromBucket(bucket, exchangeRate);
                           return (
-                            <td key={d} className="px-2 py-2 text-right tabular-nums whitespace-nowrap">
-                              <div className={dayVal > 0 ? "text-slate-200" : "text-slate-600"}>
+                            <td
+                              key={d}
+                              className={cn(
+                                "px-2 py-2 text-right tabular-nums whitespace-nowrap",
+                                isTotal && "bg-amber-50"
+                              )}
+                            >
+                              <div className={dayVal > 0 ? (isTotal ? "text-amber-950" : "text-gmv-text-strong") : "text-gmv-muted"}>
                                 {dayVal > 0 ? fmtCompact(dayVal) : "—"}
                               </div>
                               {bucket.orders > 0 && (
-                                <div className="text-[10px] text-slate-500">{bucket.orders} đơn</div>
+                                <div className="text-[10px] text-gmv-muted">{bucket.orders} đơn</div>
                               )}
                             </td>
                           );
@@ -920,84 +1370,202 @@ export default function ReportBC03Tab() {
           ) : autoTab === "trial" ? (
             <table className="min-w-max w-full border-collapse text-xs">
               <thead>
-                <tr className="border-b border-slate-700 bg-slate-900/80 text-slate-400">
-                  <th className={`${STICKY} px-3 py-2.5 text-left font-medium`}>Tên Sale</th>
-                  <th className="px-2 py-2.5 text-left font-medium">Team</th>
-                  <th className="px-2 py-2.5 text-right font-medium whitespace-nowrap">Tổng L4</th>
+                <tr className="border-b border-gmv-border bg-gmv-table-head text-gmv-muted">
+                  <th {...bc03StickyHeadCell(0, TRI_COL_W, "bg-gmv-table-head", "px-3 py-2.5 text-left font-medium")}>
+                    Team
+                  </th>
+                  <th {...bc03StickyHeadCell(1, TRI_COL_W, "bg-gmv-table-head", "px-3 py-2.5 text-left font-medium")}>
+                    Tên Sale
+                  </th>
+                  <th {...bc03StickyHeadCell(2, TRI_COL_W, "bg-gmv-table-head", "px-2 py-2.5 text-right font-medium whitespace-nowrap")}>
+                    Tổng L4
+                  </th>
                   {dates.map((d) => (
-                    <th key={d} className="px-2 py-2.5 text-right font-medium whitespace-nowrap min-w-[4rem]">
+                    <th
+                      key={d}
+                      className="sticky top-0 z-30 bg-gmv-table-head px-2 py-2.5 text-right font-medium whitespace-nowrap min-w-[4rem]"
+                    >
                       {fmtDayHeader(d)}
                     </th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {trialRows.length === 0 ? (
+                {trialDisplayRows.length === 0 ? (
                   <tr>
-                    <td colSpan={3 + dates.length} className="py-10 text-center text-slate-500">
+                    <td colSpan={3 + dates.length} className="py-10 text-center text-gmv-muted">
                       Chưa có dữ liệu trial.
                     </td>
                   </tr>
                 ) : (
-                  trialRows.map((r) => (
-                    <tr key={r.sale_name} className="border-b border-slate-700/40 hover:bg-slate-700/15">
-                      <td className={`${STICKY} px-3 py-2 font-medium text-slate-100`}>{r.sale_name}</td>
-                      <td className="px-2 py-2 text-slate-400">{r.team}</td>
-                      <td className="px-2 py-2 text-right tabular-nums font-medium text-blue-300">
-                        {new Intl.NumberFormat("vi-VN").format(r.completed_classes)}
-                      </td>
-                      {dates.map((d) => {
-                        const v = r.daily?.[d] ?? 0;
-                        return (
-                          <td key={d} className={`px-2 py-2 text-right tabular-nums ${v ? "text-slate-200" : "text-slate-600"}`}>
-                            {v > 0 ? v : "—"}
-                          </td>
-                        );
-                      })}
-                    </tr>
-                  ))
+                  trialDisplayRows.map((item) => {
+                    const isTotal = item.kind === "team-total";
+                    const r = item.row;
+                    const stickyBg = isTotal ? "bg-amber-100" : "bg-gmv-canvas";
+                    const rowKey = isTotal ? `trial-total-${item.team}` : r.sale_name;
+
+                    return (
+                      <tr
+                        key={rowKey}
+                        className={cn(
+                          "border-b border-gmv-border/40",
+                          isTotal
+                            ? "bg-amber-50 font-semibold text-amber-900"
+                            : "hover:bg-gmv-row-hover"
+                        )}
+                      >
+                        <td
+                          {...bc03StickyCell(
+                            0,
+                            TRI_COL_W,
+                            stickyBg,
+                            cn("px-3 py-2 whitespace-nowrap", isTotal ? "text-amber-900" : "text-gmv-muted")
+                          )}
+                        >
+                          {isTotal ? item.team : ""}
+                        </td>
+                        <td
+                          {...bc03StickyCell(
+                            1,
+                            TRI_COL_W,
+                            stickyBg,
+                            cn("px-3 py-2 font-medium", isTotal ? "text-amber-950" : "text-gmv-text-strong")
+                          )}
+                        >
+                          {isTotal ? "Total" : r.sale_name}
+                        </td>
+                        <td
+                          {...bc03StickyCell(
+                            2,
+                            TRI_COL_W,
+                            stickyBg,
+                            cn(
+                              "px-2 py-2 text-right tabular-nums font-medium",
+                              isTotal ? "text-amber-950" : "text-blue-700"
+                            )
+                          )}
+                        >
+                          {new Intl.NumberFormat("vi-VN").format(r.completed_classes)}
+                        </td>
+                        {dates.map((d) => {
+                          const v = r.daily?.[d] ?? 0;
+                          return (
+                            <td
+                              key={d}
+                              className={cn(
+                                "px-2 py-2 text-right tabular-nums",
+                                isTotal && "bg-amber-50",
+                                v ? (isTotal ? "text-amber-950" : "text-gmv-text-strong") : "text-gmv-muted"
+                              )}
+                            >
+                              {v > 0 ? v : "—"}
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    );
+                  })
                 )}
               </tbody>
             </table>
           ) : (
             <table className="min-w-max w-full border-collapse text-xs">
               <thead>
-                <tr className="border-b border-slate-700 bg-slate-900/80 text-slate-400">
-                  <th className={`${STICKY} px-3 py-2.5 text-left font-medium`}>Tên Sale</th>
-                  <th className="px-2 py-2.5 text-left font-medium">Team</th>
-                  <th className="px-2 py-2.5 text-right font-medium whitespace-nowrap">Tổng L1.2</th>
+                <tr className="border-b border-gmv-border bg-gmv-table-head text-gmv-muted">
+                  <th {...bc03StickyHeadCell(0, TRI_COL_W, "bg-gmv-table-head", "px-3 py-2.5 text-left font-medium")}>
+                    Team
+                  </th>
+                  <th {...bc03StickyHeadCell(1, TRI_COL_W, "bg-gmv-table-head", "px-3 py-2.5 text-left font-medium")}>
+                    Tên Sale
+                  </th>
+                  <th {...bc03StickyHeadCell(2, TRI_COL_W, "bg-gmv-table-head", "px-2 py-2.5 text-right font-medium whitespace-nowrap")}>
+                    Tổng L1.2
+                  </th>
                   {dates.map((d) => (
-                    <th key={d} className="px-2 py-2.5 text-right font-medium whitespace-nowrap min-w-[4rem]">
+                    <th
+                      key={d}
+                      className="sticky top-0 z-30 bg-gmv-table-head px-2 py-2.5 text-right font-medium whitespace-nowrap min-w-[4rem]"
+                    >
                       {fmtDayHeader(d)}
                     </th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {referralRows.length === 0 ? (
+                {referralDisplayRows.length === 0 ? (
                   <tr>
-                    <td colSpan={3 + dates.length} className="py-10 text-center text-slate-500">
+                    <td colSpan={3 + dates.length} className="py-10 text-center text-gmv-muted">
                       Chưa có dữ liệu referral.
                     </td>
                   </tr>
                 ) : (
-                  referralRows.map((r) => (
-                    <tr key={r.sale_name} className="border-b border-slate-700/40 hover:bg-slate-700/15">
-                      <td className={`${STICKY} px-3 py-2 font-medium text-slate-100`}>{r.sale_name}</td>
-                      <td className="px-2 py-2 text-slate-400">{r.team}</td>
-                      <td className="px-2 py-2 text-right tabular-nums font-medium text-violet-300">
-                        {new Intl.NumberFormat("vi-VN").format(r.referral_leads)}
-                      </td>
-                      {dates.map((d) => {
-                        const v = r.daily?.[d] ?? 0;
-                        return (
-                          <td key={d} className={`px-2 py-2 text-right tabular-nums ${v ? "text-slate-200" : "text-slate-600"}`}>
-                            {v > 0 ? v : "—"}
-                          </td>
-                        );
-                      })}
-                    </tr>
-                  ))
+                  referralDisplayRows.map((item) => {
+                    const isTotal = item.kind === "team-total";
+                    const r = item.row;
+                    const stickyBg = isTotal ? "bg-amber-100" : "bg-gmv-canvas";
+                    const rowKey = isTotal ? `referral-total-${item.team}` : r.sale_name;
+
+                    return (
+                      <tr
+                        key={rowKey}
+                        className={cn(
+                          "border-b border-gmv-border/40",
+                          isTotal
+                            ? "bg-amber-50 font-semibold text-amber-900"
+                            : "hover:bg-gmv-row-hover"
+                        )}
+                      >
+                        <td
+                          {...bc03StickyCell(
+                            0,
+                            TRI_COL_W,
+                            stickyBg,
+                            cn("px-3 py-2 whitespace-nowrap", isTotal ? "text-amber-900" : "text-gmv-muted")
+                          )}
+                        >
+                          {isTotal ? item.team : ""}
+                        </td>
+                        <td
+                          {...bc03StickyCell(
+                            1,
+                            TRI_COL_W,
+                            stickyBg,
+                            cn("px-3 py-2 font-medium", isTotal ? "text-amber-950" : "text-gmv-text-strong")
+                          )}
+                        >
+                          {isTotal ? "Total" : r.sale_name}
+                        </td>
+                        <td
+                          {...bc03StickyCell(
+                            2,
+                            TRI_COL_W,
+                            stickyBg,
+                            cn(
+                              "px-2 py-2 text-right tabular-nums font-medium",
+                              isTotal ? "text-amber-950" : "text-violet-700"
+                            )
+                          )}
+                        >
+                          {new Intl.NumberFormat("vi-VN").format(r.referral_leads)}
+                        </td>
+                        {dates.map((d) => {
+                          const v = r.daily?.[d] ?? 0;
+                          return (
+                            <td
+                              key={d}
+                              className={cn(
+                                "px-2 py-2 text-right tabular-nums",
+                                isTotal && "bg-amber-50",
+                                v ? (isTotal ? "text-amber-950" : "text-gmv-text-strong") : "text-gmv-muted"
+                              )}
+                            >
+                              {v > 0 ? v : "—"}
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    );
+                  })
                 )}
               </tbody>
             </table>
@@ -1006,19 +1574,19 @@ export default function ReportBC03Tab() {
       </section>
 
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-[11px] text-slate-500">
+        <p className="text-[11px] text-gmv-muted">
           {filterMode === "month"
             ? "Đang xem cả tháng — chuyển sang Theo ngày để lọc khoảng ngày trong tháng."
             : `Lọc theo ngày trong ${monthLabel} — KPI vẫn theo cả tháng.`}{" "}
           Tab Doanh thu: thêm sale + × xóa dòng · Click bảng rồi dùng{" "}
-          <strong className="text-slate-400">← → Home End</strong> cuộn ngang · Bấm{" "}
-          <strong className="text-slate-400">Lưu tỷ giá &amp; KPI</strong> để ghi thay đổi.
+          <strong className="text-gmv-muted">← → Home End</strong> cuộn ngang · Bấm{" "}
+          <strong className="text-gmv-muted">Lưu tỷ giá &amp; KPI</strong> để ghi thay đổi.
         </p>
         <div className="flex items-center gap-1">
           <button
             type="button"
             onClick={() => scrollTableHorizontal(-DAY_COL_SCROLL_PX * 3)}
-            className="rounded border border-slate-600 px-2 py-1 text-xs text-slate-400 hover:bg-slate-700 hover:text-slate-200"
+            className="rounded border border-gmv-border px-2 py-1 text-xs text-gmv-muted hover:bg-gmv-border hover:text-gmv-text-strong"
             title="Cuộn trái (←)"
           >
             ←
@@ -1026,7 +1594,7 @@ export default function ReportBC03Tab() {
           <button
             type="button"
             onClick={focusTableScroll}
-            className="rounded border border-slate-600 px-2 py-1 text-[10px] text-slate-500 hover:bg-slate-700"
+            className="rounded border border-gmv-border px-2 py-1 text-[10px] text-gmv-muted hover:bg-gmv-border"
             title="Focus bảng để dùng phím ← → Home End"
           >
             ⌨ ← →
@@ -1034,7 +1602,7 @@ export default function ReportBC03Tab() {
           <button
             type="button"
             onClick={() => scrollTableHorizontal(DAY_COL_SCROLL_PX * 3)}
-            className="rounded border border-slate-600 px-2 py-1 text-xs text-slate-400 hover:bg-slate-700 hover:text-slate-200"
+            className="rounded border border-gmv-border px-2 py-1 text-xs text-gmv-muted hover:bg-gmv-border hover:text-gmv-text-strong"
             title="Cuộn phải (→)"
           >
             →

@@ -9,10 +9,8 @@ import {
   Td,
   Th,
   Tr,
-  stickyTableHead,
-  stickyTableHeadCorner,
   stickyTableHeadSecondRow,
-  stickyTableHeadTop,
+  stickyThead,
 } from "../ui/Table";
 import { cn } from "../../lib/cn";
 
@@ -36,12 +34,9 @@ function monthStartIso() {
 }
 
 const stickyDateHead = cn(
-  stickyTableHead,
-  stickyTableHeadTop,
-  stickyTableHeadCorner,
-  "left-0 min-w-[6.5rem] text-left"
+  "sticky left-0 z-40 bg-gmv-table-head min-w-[6.5rem] text-left shadow-[2px_0_4px_-2px_rgba(0,0,0,0.08)]"
 );
-const stickyDateCell = "sticky left-0 z-20 bg-gmv-canvas text-left font-medium";
+const stickyDateCell = "sticky left-0 z-20 bg-gmv-canvas text-left font-medium shadow-[2px_0_4px_-2px_rgba(0,0,0,0.06)]";
 
 const TEAM_FILTERS = [
   { value: "", label: "Toàn công ty" },
@@ -90,6 +85,7 @@ export default function BC02KeyDataReport() {
     <div className="min-w-0 space-y-4 overflow-x-hidden">
       <p className="text-sm text-gmv-muted">
         BC02 — GMV theo ngày và loại nguồn (tab GMV sheet Hiếu).
+        Team lọc theo cột <strong>TEAM</strong> trên SM Hanoi (cột AH) — khớp COUNTIFS tab GMV, không theo roster sale hiện tại.
         {data?.scopeLabel && (
           <>
             {" "}
@@ -136,22 +132,22 @@ export default function BC02KeyDataReport() {
 
       <TableScrollWrap className="max-h-[min(70vh,calc(100svh-16rem))]">
         <Table className="min-w-[1200px]">
-          <thead>
+          <thead className={stickyThead}>
             <Tr>
               <Th rowSpan={2} className={stickyDateHead}>
                 Ngày
               </Th>
-              <Th rowSpan={2} className={cn(stickyTableHead, stickyTableHeadTop, "min-w-[4rem] text-right")}>
+              <Th rowSpan={2} className="min-w-[4rem] bg-gmv-table-head text-right">
                 Tổng đơn
               </Th>
-              <Th rowSpan={2} className={cn(stickyTableHead, stickyTableHeadTop, "min-w-[6rem] text-right")}>
+              <Th rowSpan={2} className="min-w-[6rem] bg-gmv-table-head text-right">
                 Tổng GMV (¥)
               </Th>
               {groups.map((g) => (
                 <Th
                   key={g.key}
                   colSpan={2}
-                  className={cn(stickyTableHead, stickyTableHeadTop, "border-l border-gmv-border text-center")}
+                  className="border-l border-gmv-border bg-gmv-table-head text-center"
                 >
                   {g.label}
                 </Th>
@@ -163,7 +159,7 @@ export default function BC02KeyDataReport() {
                   <Th
                     className={cn(
                       stickyTableHeadSecondRow,
-                      "min-w-[4rem] border-l border-gmv-border text-right text-[10px]"
+                      "min-w-[4rem] border-l border-gmv-border py-1.5 text-right text-[10px] normal-case"
                     )}
                   >
                     {g.countLabel}
@@ -171,7 +167,7 @@ export default function BC02KeyDataReport() {
                   <Th
                     className={cn(
                       stickyTableHeadSecondRow,
-                      "min-w-[5rem] text-right text-[10px]"
+                      "min-w-[5rem] py-1.5 text-right text-[10px] normal-case"
                     )}
                   >
                     {g.gmvLabel}

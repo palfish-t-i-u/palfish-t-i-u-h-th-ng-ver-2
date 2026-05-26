@@ -164,10 +164,9 @@ export default function Module3Tab() {
       {/* Header */}
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="text-base font-semibold text-gmv-text-strong">Xác nhận CRM</h2>
+          <h2 className="text-base font-semibold text-gmv-text-strong">Kích hoạt khóa học</h2>
           <p className="mt-0.5 text-xs text-gmv-muted">
-            Các đơn hàng chỉ xuất hiện tại tab này khi được xác nhận đã thanh toán thành công
-            (TT tiền về được confirm).
+            Đơn đã xác nhận tiền về — điền mã CRM Order để kích hoạt khóa học trên PalFish.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">

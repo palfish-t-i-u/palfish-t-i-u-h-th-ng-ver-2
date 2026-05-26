@@ -29,6 +29,7 @@ from crm_metrics import (
     team_label,
 )
 from crm_routes import MAX_DAYS, fetch_live_crm_rows
+from report_routes import _load_ledger_revenue, _sale_key
 
 DEFAULT_EXCHANGE_RATE = 3700
 
@@ -71,66 +72,114 @@ def _load_exchange_rate(sb, d_end: str) -> int:
     return DEFAULT_EXCHANGE_RATE
 
 
-def _load_collected_maps(
+def _ledger_collected_maps(
     sb,
     d_start: str,
     d_end: str,
     *,
+    team: str | None = None,
     sale: str | None = None,
 ) -> tuple[int, dict[str, int], dict[str, int], int]:
-    """Tiền về VND từ don_hang (ngày = updated_at khi tick tiền về)."""
+    """Doanh thu thực thu + L8 — Sổ doanh thu theo ngay_tien_ve (BC03 logic)."""
     total = 0
     by_date: dict[str, int] = {}
     by_sale: dict[str, int] = {}
     order_count = 0
     try:
-        q = (
-            sb.table("don_hang")
-            .select("sale_crm_name, so_tien_can_thu, updated_at")
-            .eq("tien_ve", True)
-            .gte("updated_at", f"{d_start}T00:00:00")
-            .lte("updated_at", f"{d_end}T23:59:59")
-        )
-        for r in q.execute().data or []:
-            sname = (r.get("sale_crm_name") or "").strip() or "(Chưa gán sale)"
+        rev_map, _ = _load_ledger_revenue(sb, d_start, d_end, team)
+        for sname, entry in rev_map.items():
             if sale and sname != sale:
                 continue
-            order_count += 1
+            vnd = int(entry.get("collected_vnd") or 0)
+            cnt = int(entry.get("orders_ledger") or 0)
+            total += vnd
+            order_count += cnt
+            if vnd:
+                by_sale[sname] = by_sale.get(sname, 0) + vnd
+            for day, bucket in (entry.get("daily") or {}).items():
+                dv = int(bucket.get("collected_vnd") or 0)
+                if dv:
+                    by_date[day] = by_date.get(day, 0) + dv
+    except Exception as exc:
+        print(f"[Dashboard] so_doanh_thu collected query failed: {exc}")
+    return total, by_date, by_sale, order_count
+
+
+def _load_qr_created_maps(
+    sb,
+    d_start: str,
+    d_end: str,
+    *,
+    team: str | None = None,
+    sale: str | None = None,
+) -> tuple[int, int]:
+    """Module 2 — doanh thu tạo mã QR: don_hang.created_at trong kỳ (không cần tien_ve)."""
+    total = 0
+    count = 0
+    try:
+        q = (
+            sb.table("don_hang")
+            .select("sale_crm_name, so_tien_can_thu, created_at, trang_thai")
+            .gte("created_at", f"{d_start}T00:00:00")
+            .lte("created_at", f"{d_end}T23:59:59")
+        )
+        for r in q.execute().data or []:
+            if str(r.get("trang_thai") or "").strip().lower() == "huy":
+                continue
+            sname = _sale_key(r.get("sale_crm_name"))
+            if sale and sname != sale:
+                continue
+            if team and sname != "(Chưa gán sale)":
+                sale_team = "—"
+                try:
+                    ns = (
+                        sb.table("nhan_su_sale")
+                        .select("team")
+                        .eq("crm_name", sname)
+                        .limit(1)
+                        .execute()
+                    )
+                    if ns.data:
+                        sale_team = str(ns.data[0].get("team") or "—")
+                except Exception:
+                    pass
+                if sale_team != team:
+                    continue
             vnd = parse_metric(r.get("so_tien_can_thu"))
             if vnd <= 0:
                 continue
-            day = str(r.get("updated_at") or "")[:10]
+            count += 1
             total += vnd
-            by_sale[sname] = by_sale.get(sname, 0) + vnd
-            if day:
-                by_date[day] = by_date.get(day, 0) + vnd
     except Exception as exc:
-        print(f"[Dashboard] don_hang collected query failed: {exc}")
-    return total, by_date, by_sale, order_count
+        print(f"[Dashboard] don_hang QR-created query failed: {exc}")
+    return total, count
 
 
 def _kpi_payload(
     tot: dict[str, int | float],
-    crm_l8: int,
+    ledger_l8: int,
     tot_collected_vnd: int,
     collected_order_count: int,
+    qr_created_vnd: int,
+    qr_created_count: int,
     exchange_rate: int,
 ) -> dict[str, Any]:
     gmv_rmb = int(tot.get("b3_gmv") or 0)
+    crm_l8 = int(tot.get("l8") or 0)
     aov_vnd = (
         int(safe_divide(tot_collected_vnd, collected_order_count))
         if collected_order_count
         else 0
     )
     return {
-        "total_orders": crm_l8,
+        "total_orders": ledger_l8,
         "collected_order_count": collected_order_count,
         "total_gmv_rmb": gmv_rmb,
         "total_collected_vnd": tot_collected_vnd,
         "gmv_vnd_est": gmv_rmb * exchange_rate,
         "exchange_rate": exchange_rate,
-        # aliases — CRM GMV là RMB, không phải VND
-        "total_amount_qr": gmv_rmb,
+        "revenue_qr_created_vnd": qr_created_vnd,
+        "qr_created_count": qr_created_count,
         "total_collected": tot_collected_vnd,
         "aov": aov_vnd,
         "b1_qr_count": int(tot.get("b1_qr") or 0),
@@ -138,7 +187,8 @@ def _kpi_payload(
         "l1": int(tot.get("l1") or 0),
         "l3": int(tot.get("l3") or 0),
         "l4": int(tot.get("l4") or 0),
-        "l8": int(tot.get("l8") or 0),
+        "l8": ledger_l8,
+        "crm_l8": crm_l8,
         "l1_0": int(tot.get("l1_0") or 0),
         "l1_1": int(tot.get("l1_1") or 0),
         "l1_2": int(tot.get("l1_2") or 0),
@@ -314,7 +364,9 @@ def register_dashboard_routes(app, supabase_factory):
         except Exception as exc:
             raise HTTPException(500, f"Query crm_sales_data thất bại: {exc}") from exc
 
-        _, collected_by_date, _, _ = _load_collected_maps(sb, d_start, d_end, sale=sale)
+        _, collected_by_date, _, _ = _ledger_collected_maps(
+            sb, d_start, d_end, team=team_filter, sale=sale
+        )
         revenue_by_date = aggregate_daily_by_date(rows, d_start, d_end)
         for bucket in revenue_by_date:
             d = str(bucket["date"])
@@ -333,6 +385,7 @@ def register_dashboard_routes(app, supabase_factory):
                 "sync_days": len(sync_dates),
                 "crm_gmv_currency": "RMB",
                 "collected_currency": "VND",
+                "collected_source": "so_doanh_thu",
                 **{k: coverage[k] for k in ("synced_days", "expected_days", "missing_dates")},
             },
         }
@@ -370,7 +423,15 @@ def register_dashboard_routes(app, supabase_factory):
             live_rows = [r for r in live_rows if (r.get("sale_name") or "").strip() == sale]
         live_rows = _apply_team_filter(live_rows, team_filter)
 
-        empty_kpi = _kpi_payload(empty_metrics(), 0, 0, 0, exchange_rate)
+        tot_collected_vnd, collected_by_date, collected_by_sale, collected_order_count = _ledger_collected_maps(
+            sb, d_start, d_end, team=team_filter, sale=sale,
+        )
+        qr_created_vnd, qr_created_count = _load_qr_created_maps(
+            sb, d_start, d_end, team=team_filter, sale=sale,
+        )
+        focus_day = today_str if d_start <= today_str <= d_end else d_end
+        focus_collected = collected_by_date.get(focus_day, 0)
+
         if not live_rows:
             return {
                 "period": {"start": d_start, "end": d_end},
@@ -378,19 +439,30 @@ def register_dashboard_routes(app, supabase_factory):
                 "meta": {
                     "crm_gmv_currency": "RMB",
                     "collected_currency": "VND",
+                    "collected_source": "so_doanh_thu",
+                    "l8_source": "so_doanh_thu",
+                    "qr_created_source": "don_hang",
                     "exchange_rate": exchange_rate,
                     "kpi_source": "palfish_live",
                     **live_meta,
                 },
-                "kpi": empty_kpi,
+                "kpi": _kpi_payload(
+                    empty_metrics(),
+                    collected_order_count,
+                    tot_collected_vnd,
+                    collected_order_count,
+                    qr_created_vnd,
+                    qr_created_count,
+                    exchange_rate,
+                ),
                 "top_sales": [],
                 "conversion": conversion_rates(0, 0, 0, 0),
                 "today": {
-                    "date": today_str,
-                    "is_calendar_today": True,
+                    "date": focus_day,
+                    "is_calendar_today": focus_day == today_str,
                     "orders": 0,
                     "gmv_rmb": 0,
-                    "collected_vnd": 0,
+                    "collected_vnd": focus_collected,
                 },
             }
 
@@ -398,15 +470,9 @@ def register_dashboard_routes(app, supabase_factory):
         tot = sum_metrics(kpi_rows)
         crm_l8 = int(tot["l8"])
 
-        tot_collected_vnd, collected_by_date, collected_by_sale, collected_order_count = _load_collected_maps(
-            sb, d_start, d_end, sale=sale,
-        )
         top_sales = _build_top_sales(kpi_rows, collected_by_sale)
 
-        focus_day = today_str if d_start <= today_str <= d_end else d_end
-        focus_collected = collected_by_date.get(focus_day, 0)
-
-        l1, l3, l4, l8 = int(tot["l1"]), int(tot["l3"]), int(tot["l4"]), int(tot["l8"])
+        l1, l3, l4 = int(tot["l1"]), int(tot["l3"]), int(tot["l4"])
 
         return {
             "period": {"start": d_start, "end": d_end},
@@ -414,13 +480,24 @@ def register_dashboard_routes(app, supabase_factory):
             "meta": {
                 "crm_gmv_currency": "RMB",
                 "collected_currency": "VND",
+                "collected_source": "so_doanh_thu",
+                "l8_source": "so_doanh_thu",
+                "qr_created_source": "don_hang",
                 "exchange_rate": exchange_rate,
                 "kpi_source": "palfish_live",
                 **live_meta,
             },
-            "kpi": _kpi_payload(tot, crm_l8, tot_collected_vnd, collected_order_count, exchange_rate),
+            "kpi": _kpi_payload(
+                tot,
+                collected_order_count,
+                tot_collected_vnd,
+                collected_order_count,
+                qr_created_vnd,
+                qr_created_count,
+                exchange_rate,
+            ),
             "top_sales": top_sales,
-            "conversion": conversion_rates(l1, l3, l4, l8),
+            "conversion": conversion_rates(l1, l3, l4, crm_l8),
             "today": {
                 "date": focus_day,
                 "is_calendar_today": focus_day == today_str,
@@ -480,7 +557,7 @@ def register_dashboard_routes(app, supabase_factory):
         # Biểu đồ: CHỈ daily (group theo report_date)
         chart_rows = daily_rows if daily_rows else legacy_rows
 
-        empty_kpi = _kpi_payload(empty_metrics(), 0, 0, 0, exchange_rate)
+        empty_kpi = _kpi_payload(empty_metrics(), 0, 0, 0, 0, 0, exchange_rate)
         if not kpi_rows and not chart_rows:
             return {
                 "period": {"start": d_start, "end": d_end},
@@ -508,8 +585,11 @@ def register_dashboard_routes(app, supabase_factory):
         tot = sum_metrics(kpi_rows) if kpi_rows else empty_metrics()
         crm_l8 = int(tot["l8"]) if kpi_rows else 0
 
-        tot_collected_vnd, collected_by_date, collected_by_sale, collected_order_count = _load_collected_maps(
-            sb, d_start, d_end, sale=sale,
+        tot_collected_vnd, collected_by_date, collected_by_sale, collected_order_count = _ledger_collected_maps(
+            sb, d_start, d_end, team=team_filter, sale=sale,
+        )
+        qr_created_vnd, qr_created_count = _load_qr_created_maps(
+            sb, d_start, d_end, team=team_filter, sale=sale,
         )
 
         revenue_by_date = daily_mtd_snapshot_rows(chart_rows, d_start, d_end) if chart_rows else []
@@ -544,7 +624,7 @@ def register_dashboard_routes(app, supabase_factory):
         focus_row = next((b for b in revenue_by_date if b.get("date") == focus_day), None)
         focus_gmv_delta = int((focus_row or {}).get("gmv_rmb_delta") or 0)
 
-        l1, l3, l4, l8 = int(tot["l1"]), int(tot["l3"]), int(tot["l4"]), int(tot["l8"])
+        l1, l3, l4 = int(tot["l1"]), int(tot["l3"]), int(tot["l4"])
 
         return {
             "period": {"start": d_start, "end": d_end},
@@ -553,15 +633,26 @@ def register_dashboard_routes(app, supabase_factory):
             "meta": {
                 "crm_gmv_currency": "RMB",
                 "collected_currency": "VND",
+                "collected_source": "so_doanh_thu",
+                "l8_source": "so_doanh_thu",
+                "qr_created_source": "don_hang",
                 "exchange_rate": exchange_rate,
                 "kpi_source": kpi_source_type,
                 "summary_rows": len(summary_rows),
                 "daily_rows": len(daily_rows),
             },
-            "kpi": _kpi_payload(tot, crm_l8, tot_collected_vnd, collected_order_count, exchange_rate),
+            "kpi": _kpi_payload(
+                tot,
+                collected_order_count,
+                tot_collected_vnd,
+                collected_order_count,
+                qr_created_vnd,
+                qr_created_count,
+                exchange_rate,
+            ),
             "revenue_by_date": revenue_by_date,
             "top_sales": top_sales,
-            "conversion": conversion_rates(l1, l3, l4, l8),
+            "conversion": conversion_rates(l1, l3, l4, crm_l8),
             "today": {
                 "date": focus_day,
                 "is_calendar_today": focus_day == today_str,

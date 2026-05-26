@@ -2,23 +2,11 @@
 /**
  * Supabase Edge Function: payos-webhook
  *
- * URL sau khi deploy:
- *   https://<project-ref>.supabase.co/functions/v1/payos-webhook
- *
- * Đây là endpoint LUÔN SỐNG (không ngủ như Render free tier).
- * Đăng ký URL này trong PayOS Dashboard → Webhook URL.
- *
- * Env vars cần set (supabase secrets):
- *   SUPABASE_URL              — tự inject bởi Supabase
- *   SUPABASE_SERVICE_ROLE_KEY — tự inject bởi Supabase
- *   PAYOS_CHECKSUM_KEY        — key bí mật để verify signature
+ * URL: https://<project-ref>.supabase.co/functions/v1/payos-webhook
+ * Env: PAYOS_CHECKSUM_KEY (supabase secrets)
  */
 
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
+import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 function parseAmount(value: unknown): number {
   if (typeof value === "number") return Math.floor(value);
@@ -33,24 +21,42 @@ function extractMaDon(description: string): string | null {
   return null;
 }
 
-/** Verify HMAC-SHA256 signature từ PayOS */
-async function verifySignature(
+/** PayOS createSignatureFromObj — khớp payos-lib-golang SortObjByKey */
+function payosValueToString(value: unknown): string {
+  if (value === null || value === undefined) return "";
+  if (typeof value === "boolean") return value ? "true" : "false";
+  if (typeof value === "number") {
+    if (Number.isInteger(value)) return String(value);
+    return String(value);
+  }
+  return String(value);
+}
+
+function buildPayosSignString(data: Record<string, unknown>): string {
+  const keys = Object.keys(data).sort();
+  return keys
+    .map((k) => {
+      const v = data[k];
+      if (v === null || v === undefined) return `${k}=`;
+      return `${k}=${payosValueToString(v)}`;
+    })
+    .join("&");
+}
+
+async function verifyPayosSignature(
   data: Record<string, unknown>,
   signature: string,
   checksumKey: string
 ): Promise<boolean> {
   try {
-    // PayOS sort keys alphabetically rồi join "key=value&..."
-    const sortedStr = Object.keys(data)
-      .sort()
-      .map((k) => `${k}=${data[k]}`)
-      .join("&");
-
+    const sortedStr = buildPayosSignString(data);
     const enc = new TextEncoder();
     const keyMat = await crypto.subtle.importKey(
-      "raw", enc.encode(checksumKey),
+      "raw",
+      enc.encode(checksumKey),
       { name: "HMAC", hash: "SHA-256" },
-      false, ["sign"]
+      false,
+      ["sign"]
     );
     const sigBuf = await crypto.subtle.sign("HMAC", keyMat, enc.encode(sortedStr));
     const computed = Array.from(new Uint8Array(sigBuf))
@@ -62,12 +68,51 @@ async function verifySignature(
   }
 }
 
-// ---------------------------------------------------------------------------
-// Main handler
-// ---------------------------------------------------------------------------
+async function findDonHang(
+  sb: SupabaseClient,
+  description: string
+): Promise<Record<string, unknown> | null> {
+  const maDon = extractMaDon(description);
+  if (maDon) {
+    const byCode = await sb
+      .from("don_hang")
+      .select("*")
+      .ilike("info_code", `%${maDon}%`)
+      .neq("trang_thai", "da_huy")
+      .order("created_at", { ascending: false })
+      .limit(1);
+    if (byCode.error) throw byCode.error;
+    if (byCode.data?.[0]) return byCode.data[0];
+
+    const byMa = await sb
+      .from("don_hang")
+      .select("*")
+      .eq("ma_don_hang", maDon)
+      .neq("trang_thai", "da_huy")
+      .order("created_at", { ascending: false })
+      .limit(1);
+    if (byMa.error) throw byMa.error;
+    if (byMa.data?.[0]) return byMa.data[0];
+    return null;
+  }
+
+  const exact = await sb
+    .from("don_hang")
+    .select("*")
+    .eq("info_code", description)
+    .neq("trang_thai", "da_huy")
+    .limit(1);
+  if (exact.error) throw exact.error;
+  return exact.data?.[0] ?? null;
+}
+
+function isPaymentSuccess(payload: Record<string, unknown>): boolean {
+  if (payload.success === false) return false;
+  const code = String(payload.code ?? "00");
+  return code === "00";
+}
 
 Deno.serve(async (req: Request) => {
-  // Health check
   if (req.method === "GET") {
     return new Response(JSON.stringify({ ok: true, service: "payos-webhook" }), {
       headers: { "Content-Type": "application/json" },
@@ -83,52 +128,56 @@ Deno.serve(async (req: Request) => {
     payload = await req.json();
   } catch {
     return new Response(JSON.stringify({ error: 1, message: "Invalid JSON" }), {
-      status: 400, headers: { "Content-Type": "application/json" },
+      status: 400,
+      headers: { "Content-Type": "application/json" },
     });
   }
 
-  // Verify signature nếu có PAYOS_CHECKSUM_KEY
+  if (!isPaymentSuccess(payload)) {
+    return new Response(
+      JSON.stringify({ error: 0, message: "Ignored non-success event" }),
+      { status: 200, headers: { "Content-Type": "application/json" } }
+    );
+  }
+
   const checksumKey = Deno.env.get("PAYOS_CHECKSUM_KEY") ?? "";
-  if (checksumKey && payload.signature) {
-    const data = (payload.data ?? {}) as Record<string, unknown>;
-    const valid = await verifySignature(data, String(payload.signature), checksumKey);
+  const sig = payload.signature ? String(payload.signature) : "";
+  const webhookData = (payload.data ?? {}) as Record<string, unknown>;
+
+  if (checksumKey && sig) {
+    const valid = await verifyPayosSignature(webhookData, sig, checksumKey);
     if (!valid) {
-      console.warn("[payos-webhook] Invalid signature");
+      console.warn("[payos-webhook] Invalid signature — check PAYOS_CHECKSUM_KEY");
       return new Response(JSON.stringify({ error: 1, message: "Invalid signature" }), {
-        status: 401, headers: { "Content-Type": "application/json" },
+        status: 401,
+        headers: { "Content-Type": "application/json" },
       });
     }
   }
 
-  // Khởi tạo Supabase client
   const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-  const serviceKey  = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
   const sb = createClient(supabaseUrl, serviceKey);
 
-  // Parse payload
-  const data = (payload.data ?? payload) as Record<string, unknown>;
-  const description = String(data.description ?? data.content ?? "").trim();
-  const amount      = parseAmount(data.amount ?? data.transferAmount ?? 0);
-  const orderCode   = String(data.orderCode ?? data.reference ?? "");
-  const bankTxId    = orderCode || `PAYOS-${description.slice(0, 20)}`;
+  const description = String(
+    webhookData.description ?? webhookData.content ?? ""
+  ).trim();
+  const amount = parseAmount(webhookData.amount ?? webhookData.transferAmount ?? 0);
+  const orderCode = String(webhookData.orderCode ?? webhookData.reference ?? "");
+  const bankTxId = orderCode || `PAYOS-${description.slice(0, 20)}`;
 
   if (!description) {
     return new Response(JSON.stringify({ error: 1, message: "Thiếu nội dung chuyển khoản" }), {
-      status: 400, headers: { "Content-Type": "application/json" },
+      status: 400,
+      headers: { "Content-Type": "application/json" },
     });
   }
 
   console.log(`[payos-webhook] description="${description}" amount=${amount} txId=${bankTxId}`);
 
-  // Tìm đơn hàng
   let don: Record<string, unknown> | null = null;
   try {
-    const maDon = extractMaDon(description);
-    const query = maDon
-      ? sb.table("don_hang").select("*").ilike("info_code", `%${maDon}%`).limit(1)
-      : sb.table("don_hang").select("*").eq("info_code", description).limit(1);
-    const { data: rows } = await query.execute();
-    don = rows?.[0] ?? null;
+    don = await findDonHang(sb, description);
   } catch (e) {
     console.error("[payos-webhook] find order error:", e);
   }
@@ -144,33 +193,34 @@ Deno.serve(async (req: Request) => {
     trangThaiDoiSoat = amountOk ? "khop" : "sai_tien";
 
     if (amountOk) {
-      try {
-        await sb.table("don_hang").update({
+      const upd = await sb
+        .from("don_hang")
+        .update({
           tien_ve: true,
           trang_thai: "da_thanh_toan",
           trang_thai_thu_tuc: "CHO_XAC_NHAN",
-        }).eq("id", donHangId).execute();
+        })
+        .eq("id", donHangId);
+      if (upd.error) {
+        console.error("[payos-webhook] update don_hang error:", upd.error);
+      } else {
         console.log(`[payos-webhook] ✓ Updated don_hang id=${donHangId} tien_ve=true`);
-      } catch (e) {
-        console.error("[payos-webhook] update don_hang error:", e);
       }
     }
   }
 
-  // Ghi log giao_dich
-  try {
-    const maDon = extractMaDon(description);
-    await sb.table("giao_dich").insert({
-      ma_giao_dich_bank: bankTxId,
-      so_tien_nhan: amount,
-      noi_dung_chuyen_khoan: description,
-      info_code_thuc_te: maDon ? `Thanh toan ${maDon}` : description,
-      thoi_gian_giao_dich: new Date().toISOString(),
-      trang_thai_doi_soat: trangThaiDoiSoat,
-      don_hang_id: donHangId,
-    }).execute();
-  } catch (e) {
-    console.error("[payos-webhook] insert giao_dich error:", e);
+  const maDon = extractMaDon(description);
+  const ins = await sb.from("giao_dich").insert({
+    ma_giao_dich_bank: bankTxId,
+    so_tien_nhan: amount,
+    noi_dung_chuyen_khoan: description,
+    info_code_thuc_te: maDon ? `Thanh toan ${maDon}` : description,
+    thoi_gian_giao_dich: new Date().toISOString(),
+    trang_thai_doi_soat: trangThaiDoiSoat,
+    don_hang_id: donHangId,
+  });
+  if (ins.error) {
+    console.error("[payos-webhook] insert giao_dich error:", ins.error);
   }
 
   return new Response(

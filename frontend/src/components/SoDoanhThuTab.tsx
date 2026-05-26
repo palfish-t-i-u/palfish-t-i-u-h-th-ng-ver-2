@@ -3,7 +3,13 @@ import { endpoints } from "../lib/api";
 import { formatApiError } from "../lib/apiErrors";
 import { cn } from "../lib/cn";
 import { formatVndNumber } from "../lib/vndFormat";
-import { typeFixxFromRow, typeFixxLabel } from "../lib/typeFixx";
+import {
+  ledgerPillBase,
+  paymentMethodCellClass,
+  typeCellClass,
+  typeDisplayLabel,
+} from "../lib/ledgerCellStyle";
+import { LEDGER_VND_RMB_RATE } from "../lib/loaiLabel";
 import type { LedgerPatchPayload, LedgerSummaryResponse, RevenueLedgerRow } from "../types/revenue";
 import LedgerFormModal, {
   emptyLedgerForm,
@@ -25,6 +31,16 @@ import {
 } from "./ui/Table";
 
 const PAGE_SIZE = 60;
+
+const LEDGER_TEAM_OPTIONS = [
+  { value: "", label: "Tất cả teams" },
+  { value: "Inhouse 1", label: "Inhouse 1 (GMV In-house)" },
+  { value: "Inhouse 2", label: "Inhouse 2" },
+  { value: "HCM (Online)", label: "HCM (Online)" },
+  { value: "Linh Dam (Store)", label: "Linh Dam (Store)" },
+  { value: "An Binh (Store)", label: "An Binh (Store)" },
+  { value: "Offline", label: "Offline" },
+] as const;
 
 const GSHEET_SYNC_TOOLTIP = (
   <>
@@ -84,11 +100,12 @@ function orderIdDisplay(row: RevenueLedgerRow) {
   return row.crmOrderId || row.maDonHang || "—";
 }
 
-function filterParams(from: string, to: string, loaiFilter: string) {
+function filterParams(from: string, to: string, loaiFilter: string, teamFilter: string) {
   return {
     from: from || undefined,
     to: to || undefined,
     loai_nhap: loaiFilter || undefined,
+    team: teamFilter || undefined,
   };
 }
 
@@ -107,6 +124,8 @@ export default function SoDoanhThuTab() {
   const [appliedTo, setAppliedTo] = useState(() => todayIso());
   const [draftLoai, setDraftLoai] = useState("");
   const [appliedLoai, setAppliedLoai] = useState("");
+  const [draftTeam, setDraftTeam] = useState("");
+  const [appliedTeam, setAppliedTeam] = useState("");
 
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
@@ -126,7 +145,7 @@ export default function SoDoanhThuTab() {
   const fetchPage = useCallback(
     async (offset: number, replace: boolean) => {
       const params = {
-        ...filterParams(appliedFrom, appliedTo, appliedLoai),
+        ...filterParams(appliedFrom, appliedTo, appliedLoai, appliedTeam),
         limit: PAGE_SIZE,
         offset,
       };
@@ -136,14 +155,14 @@ export default function SoDoanhThuTab() {
       setRows((prev) => (replace ? res.data.rows : [...prev, ...res.data.rows]));
       return res.data;
     },
-    [appliedFrom, appliedTo, appliedLoai]
+    [appliedFrom, appliedTo, appliedLoai, appliedTeam]
   );
 
   const reloadAll = useCallback(async () => {
     setLoading(true);
     setError("");
     try {
-      const summaryParams = filterParams(appliedFrom, appliedTo, appliedLoai);
+      const summaryParams = filterParams(appliedFrom, appliedTo, appliedLoai, appliedTeam);
       const [summaryRes] = await Promise.all([
         endpoints.revenue.ledgerSummary(summaryParams),
         fetchPage(0, true),
@@ -156,7 +175,7 @@ export default function SoDoanhThuTab() {
     } finally {
       setLoading(false);
     }
-  }, [appliedFrom, appliedTo, appliedLoai, fetchPage]);
+  }, [appliedFrom, appliedTo, appliedLoai, appliedTeam, fetchPage]);
 
   useEffect(() => {
     reloadAll();
@@ -192,10 +211,14 @@ export default function SoDoanhThuTab() {
 
   function applyFilters() {
     const unchanged =
-      draftFrom === appliedFrom && draftTo === appliedTo && draftLoai === appliedLoai;
+      draftFrom === appliedFrom &&
+      draftTo === appliedTo &&
+      draftLoai === appliedLoai &&
+      draftTeam === appliedTeam;
     setAppliedFrom(draftFrom);
     setAppliedTo(draftTo);
     setAppliedLoai(draftLoai);
+    setAppliedTeam(draftTeam);
     if (unchanged) reloadAll();
   }
 
@@ -203,9 +226,11 @@ export default function SoDoanhThuTab() {
     setDraftFrom("");
     setDraftTo("");
     setDraftLoai("");
+    setDraftTeam("");
     setAppliedFrom("");
     setAppliedTo("");
     setAppliedLoai("");
+    setAppliedTeam("");
   }
 
   function setTodayFilter() {
@@ -216,9 +241,12 @@ export default function SoDoanhThuTab() {
     setAppliedTo(t);
   }
 
-  const hasActiveFilter = Boolean(appliedFrom || appliedTo || appliedLoai);
+  const hasActiveFilter = Boolean(appliedFrom || appliedTo || appliedLoai || appliedTeam);
   const draftDirty =
-    draftFrom !== appliedFrom || draftTo !== appliedTo || draftLoai !== appliedLoai;
+    draftFrom !== appliedFrom ||
+    draftTo !== appliedTo ||
+    draftLoai !== appliedLoai ||
+    draftTeam !== appliedTeam;
 
   function openCreate() {
     setModalMode("create");
@@ -321,6 +349,14 @@ export default function SoDoanhThuTab() {
 
   return (
     <div className="min-w-0 space-y-4 overflow-x-hidden">
+      <p className="text-xs text-gmv-muted">
+        Sổ doanh thu: lọc theo <span className="font-medium text-gmv-text">Pay Time</span> (ngày tiền về).
+        Quy đổi RMB mặc định:{" "}
+        <span className="font-medium text-gmv-text">
+          GMV (RMB) = VND ÷ {LEDGER_VND_RMB_RATE.toLocaleString("vi-VN")}
+        </span>
+        .
+      </p>
       <div className="flex flex-wrap items-end gap-3">
         <label className="text-sm text-gmv-muted">
           Từ ngày
@@ -350,6 +386,20 @@ export default function SoDoanhThuTab() {
             <option value="">Tất cả</option>
             <option value="tu_dong">Tự động (M3)</option>
             <option value="tay">Điền tay</option>
+          </select>
+        </label>
+        <label className="text-sm text-gmv-muted">
+          Team
+          <select
+            className="mt-1 block min-h-10 rounded-gmv-md border border-gmv-border px-3 text-sm"
+            value={draftTeam}
+            onChange={(e) => setDraftTeam(e.target.value)}
+          >
+            {LEDGER_TEAM_OPTIONS.map(({ value, label }) => (
+              <option key={value || "all"} value={value}>
+                {label}
+              </option>
+            ))}
           </select>
         </label>
         <Button variant="secondary" onClick={applyFilters} disabled={loading}>
@@ -395,6 +445,7 @@ export default function SoDoanhThuTab() {
         summary={summary}
         from={appliedFrom}
         to={appliedTo}
+        team={appliedTeam}
         loading={loading}
       />
 
@@ -413,7 +464,7 @@ export default function SoDoanhThuTab() {
               <Th className={cn(stickyTableHead, stickyTableHeadTop)}>Phone</Th>
               <Th className={cn(stickyTableHead, stickyTableHeadTop)}>UID</Th>
               <Th className={cn(stickyTableHead, stickyTableHeadTop)}>Pay Time</Th>
-              <Th className={cn(stickyTableHead, stickyTableHeadTop, "min-w-[8rem]")}>Real Pay (VND)</Th>
+              <Th className={cn(stickyTableHead, stickyTableHeadTop, "min-w-[9.5rem]")}>Real Pay (VND)</Th>
               <Th className={cn(stickyTableHead, stickyTableHeadTop, "min-w-[10rem]")}>Nội dung CK</Th>
               <Th className={cn(stickyTableHead, stickyTableHeadTop, "min-w-[7rem]")}>ID đơn hàng</Th>
               <Th className={cn(stickyTableHead, stickyTableHeadTop)}>Payment method</Th>
@@ -444,14 +495,36 @@ export default function SoDoanhThuTab() {
                 <Td className="text-left text-sm">{row.sdt || "—"}</Td>
                 <Td className="text-left text-sm">{row.uid || "—"}</Td>
                 <Td className="whitespace-nowrap text-sm">{fmtPayTime(row.payTime || row.ngayTienVe)}</Td>
-                <Td className="text-right font-medium tabular-nums">
-                  {formatVndNumber(row.soTienVnd) || "—"}
+                <Td className="min-w-[9.5rem] px-3 text-right text-sm font-medium tabular-nums">
+                  <span className="inline-block max-w-full break-all leading-snug">
+                    {formatVndNumber(row.soTienVnd) || "—"}
+                  </span>
                 </Td>
                 <Td className="text-left text-xs font-mono">{row.infoCode || "—"}</Td>
                 <Td className="text-left text-sm font-mono">{orderIdDisplay(row)}</Td>
-                <Td className="text-left text-sm">{row.paymentMethod || "—"}</Td>
-                <Td className="text-left text-sm">
-                  {typeFixxLabel(typeFixxFromRow(row.loai, row.loai2))}
+                <Td className="text-center">
+                  {row.paymentMethod ? (
+                    <span
+                      className={cn(ledgerPillBase, paymentMethodCellClass(row.paymentMethod))}
+                      title={row.paymentMethod}
+                    >
+                      {row.paymentMethod}
+                    </span>
+                  ) : (
+                    "—"
+                  )}
+                </Td>
+                <Td className="text-center">
+                  {typeDisplayLabel(row.loai, row.loai2) !== "—" ? (
+                    <span
+                      className={cn(ledgerPillBase, typeCellClass(row.loai, row.loai2))}
+                      title={typeDisplayLabel(row.loai, row.loai2)}
+                    >
+                      {typeDisplayLabel(row.loai, row.loai2)}
+                    </span>
+                  ) : (
+                    "—"
+                  )}
                 </Td>
                 <Td className="text-left text-sm">{row.saleCrmName || "—"}</Td>
                 <Td className="text-left text-sm">{row.team || "—"}</Td>

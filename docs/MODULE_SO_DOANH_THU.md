@@ -45,7 +45,7 @@ Một tab, một bảng `so_doanh_thu`. M3 auto + điền tay chung — **Sales 
 | Bảng chính | **Read-only** — chỉ cột chính (map cột Excel HNxHCM GMV) |
 | **+ Thêm dòng** | Mở modal — điền + **Thêm dòng** |
 | **Chỉnh sửa** (mỗi dòng) | Cùng modal — **Lưu** (M3 lẫn tay đều sửa được) |
-| **Xóa** | Chỉ dòng **TAY** |
+| **Xóa** | Chỉ dòng **TAY** — dòng **M3** (`tu_dong`) phải xóa qua SQL (xem `M5_OPERATIONS.md` §3.1) |
 | Scroll | Dọc trong khung bảng (`TableScrollWrap`) |
 
 **Cột hiển thị bảng (chính):**
@@ -55,7 +55,7 @@ Một tab, một bảng `so_doanh_thu`. M3 auto + điền tay chung — **Sales 
 | User Name | `ten_khach` |
 | Phone | `sdt` |
 | UID | `uid` |
-| Pay Time | `ngay_tien_ve` |
+| Pay Time | `pay_time` |
 | Real Pay (VND) | `so_tien_vnd` — separator `12.875.000` |
 | Nội dung CK | `info_code` (join `don_hang` hoặc suy từ `ma_don_hang`) |
 | ID đơn hàng | `crm_order_id` ưu tiên, fallback `ma_don_hang` |
@@ -85,6 +85,8 @@ Thẻ và bảng cùng dataset đã lọc. Thẻ `0 đơn` hiển thị mờ.
 **Lưu ý API:** Supabase/PostgREST giới hạn **1000 dòng/request**. Backend `/revenue/ledger` paginate hết kết quả trong khoảng lọc (`revenue_routes._fetch_so_doanh_thu`). Không lọc ngày trên DB lớn → vẫn tải đủ sau paginate (chậm hơn).
 
 **Lọc ngày:** Sổ + BC01/BC02 lọc theo **`pay_time`** (Pay Time sheet Hiếu), không dùng `ngay_tien_ve`. Thẻ tổng hợp gọi `/revenue/ledger/summary` — cùng logic Type fixx với bảng.
+
+**Lọc team:** Thẻ và bảng dùng chung filter Team. Tab **GMV** trên All File Thu Hiền chỉ đếm **Inhouse 1** (ô B1) — so thẻ Sổ phải chọn **Inhouse 1**, không **Tất cả teams**. Xem `docs/M5_DOI_CHIEU.md`.
 
 ### 2.5 Type fixx → pivot Type (sheet Hiếu — Trang tính5)
 
@@ -148,6 +150,16 @@ Code: `BC01SalesPerformance.tsx`, `BC02KeyDataReport.tsx`, `bc02TypeMap.ts`, `re
 
 Nhóm quyền = tick tiền về Tab 2 (`OPS_EMAILS` / role `system`).
 
+### 2.8 Đối chiếu thẻ tổng hợp (2026-05-25)
+
+| So sánh | Kết quả |
+|---------|---------|
+| Sổ (pay_time 25/05, tay) vs SM Hanoi live | **24 = 24** — fingerprint khớp |
+| Sổ vs tab GMV (21 đơn) | Khớp khi Sổ filter **Inhouse 1** (21); lệch +3 nếu **Tất cả teams** (Inhouse 2) |
+| Sổ vs import All File vs DingTalk gốc | All File mất phần lẻ GMV — re-seed khuyến nghị từ xlsx DingTalk |
+
+Script: `scripts/audit_day_20260525.py`. Chi tiết: **`docs/M5_DOI_CHIEU.md`**.
+
 ---
 
 ## 3. Quy tắc đã chốt
@@ -209,11 +221,14 @@ Layout: Team | Sale | các tháng | Tổng GMV. Lọc từ/tháng. Xuất Excel 
 | M5-08 | UI Hiếu: cột chính, modal, scroll, VND sep | done |
 | M5-10 | Thẻ tổng hợp + Type fixx + lọc mặc định hôm nay | done |
 | M5-11 | Type fixx: `广告` + `loai_2` rollup + lọc `pay_time` + BC02 | done |
+| M5-12 | Doc đối chiếu GMV tab / DingTalk (`M5_DOI_CHIEU.md`) | done |
+| M5-13 | Re-seed DingTalk xlsx (purge gsheet) | pending |
+| M5-14 | Xóa dòng M3 test qua UI/API | pending |
 | M5-05 | Xuất Excel Sổ + pivot | pending |
 | M5-06 | Import `HNxHCM GMV.xlsx` (script sẵn) | pending |
 | M5-07 | Tỷ giá theo thời điểm | pending |
 
-**MVP:** M5-01 → M5-04 + M5-08. Seed/cleanup: `scripts/seed_so_doanh_thu.py`, `scripts/cleanup_so_doanh_thu.py`.
+**MVP:** M5-01 → M5-04 + M5-08. Seed/cleanup: `scripts/seed_so_doanh_thu.py`, `scripts/cleanup_so_doanh_thu.py`. Re-seed DingTalk: `scripts/seed_dingtalk_ledger.py` — `M5_OPERATIONS.md` §2.3.
 
 ---
 
@@ -229,5 +244,6 @@ Layout: Team | Sale | các tháng | Tổng GMV. Lọc từ/tháng. Xuất Excel 
 
 - Task: `docs/TODO.md`
 - Vận hành: `docs/M5_OPERATIONS.md`
+- Đối chiếu GMV tab / DingTalk: `docs/M5_DOI_CHIEU.md`
 - File mẫu: `e:\PalFish\DA\HNxHCM GMV.xlsx`
 - Hook M3: `backend/invoice_routes.py`, `backend/revenue_routes.py`
