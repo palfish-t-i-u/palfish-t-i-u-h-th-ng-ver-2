@@ -6,6 +6,7 @@ import type { ActiveRequestStatus } from "../types/paymentRequest";
 import {
   AR_STATUS_META,
   enrichActiveRequest,
+  findInvoiceRowKey,
   flatCourses,
   nextCourseCode,
   vnd,
@@ -967,7 +968,7 @@ export default function ActivationTab() {
                   <div key={tc.id} className={`tab ${tab === tc.id ? "active" : ""}`} onClick={() => setTab(tc.id)}>
                     <Ico size={14} /> {tc.label}
                     <span
-                      className={`tab-count ${tc.attention && tc.count > 0 && tab !== tc.id ? "is-attention" : ""}`}
+                      className={`tab-count ${"attention" in tc && tc.attention && tc.count > 0 && tab !== tc.id ? "is-attention" : ""}`}
                     >
                       {tc.count}
                     </span>
