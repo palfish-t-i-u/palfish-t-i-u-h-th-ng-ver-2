@@ -92,6 +92,13 @@ export function PaymentFlowProvider({
   const loadData = useCallback(async (options?: LoadDataOptions) => {
     if (!options?.silent) setLoading(true);
     const notes: string[] = [];
+
+    try {
+      await endpoints.paymentRequests.syncPendingPayos();
+    } catch {
+      /* PayOS poll fallback — webhook có thể chưa tới */
+    }
+
     let nextRequests: PaymentRequest[] = [];
     let prOk = false;
     try {

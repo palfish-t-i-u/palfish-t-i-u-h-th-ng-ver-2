@@ -10,7 +10,7 @@ import pandas as pd
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
-from payos_qr import create_payos_payment_link
+from payos_qr import create_payos_payment_link, fetch_payos_payment, payos_payment_is_paid
 
 router = APIRouter(prefix="/api/v1", tags=["payment-requests"])
 
@@ -373,13 +373,120 @@ def _find_payment_line_by_payos_code(sb, order_code: str) -> dict[str, Any] | No
     return None
 
 
+def _find_payment_line_by_payment_link_id(sb, payment_link_id: str) -> dict[str, Any] | None:
+    link_id = _clean_text(payment_link_id)
+    if not link_id:
+        return None
+    try:
+        line_res = (
+            sb.table("payment_lines")
+            .select("*")
+            .eq("checkout_url", f"https://pay.payos.vn/web/{link_id}")
+            .limit(1)
+            .execute()
+        )
+        if line_res.data:
+            return line_res.data[0]
+    except Exception as exc:
+        print(f"[payment_requests] payment_link_id lookup skipped: {exc}")
+    return None
+
+
+async def sync_payment_line_from_payos(sb, line: dict[str, Any]) -> dict[str, Any] | None:
+    """Poll PayOS — nếu PAID thì cập nhật payment_line (fallback khi webhook không tới)."""
+    if _clean_text(line.get("status")).lower() == "paid":
+        return None
+    order_code = _clean_text(line.get("payos_order_code"))
+    if not order_code:
+        return None
+    try:
+        payos_data = await fetch_payos_payment(order_code)
+    except Exception as exc:
+        print(f"[payment_requests] payos fetch skipped: {exc}")
+        return {"line_id": line.get("id"), "error": str(exc)}
+    if not payos_data or not payos_payment_is_paid(payos_data):
+        return None
+    line_id = str(line.get("id") or "")
+    if not line_id:
+        return None
+    try:
+        result = _mark_line_paid(sb, line_id)
+    except Exception as exc:
+        return {"line_id": line_id, "error": str(exc)}
+    return {
+        "line_id": line_id,
+        "payos_order_code": order_code,
+        "payos_status": payos_data.get("status"),
+        **result,
+    }
+
+
+async def sync_all_pending_payos_lines(sb) -> dict[str, Any]:
+    try:
+        line_res = (
+            sb.table("payment_lines")
+            .select("*")
+            .eq("method", "qr")
+            .eq("status", "pending")
+            .execute()
+        )
+    except Exception as exc:
+        raise HTTPException(500, f"Khong doc payment_lines: {exc}") from exc
+
+    synced: list[dict[str, Any]] = []
+    errors: list[dict[str, Any]] = []
+    for line in line_res.data or []:
+        if not _clean_text(line.get("payos_order_code")):
+            continue
+        outcome = await sync_payment_line_from_payos(sb, line)
+        if not outcome:
+            continue
+        if outcome.get("error"):
+            errors.append(outcome)
+        else:
+            synced.append(
+                {
+                    "line_id": outcome.get("line_id"),
+                    "payment_request_id": outcome.get("payment_request_id"),
+                    "payos_order_code": outcome.get("payos_order_code"),
+                }
+            )
+    return {"synced": synced, "synced_count": len(synced), "errors": errors}
+
+
 def reconcile_payment_line_webhook(sb, payload: dict[str, Any]) -> dict[str, Any]:
     """Match PayOS webhook to payment_lines; fallback to don_hang when unmatched."""
     order_code, amount, description = _extract_payos_data(payload)
-    if not sb or not order_code:
+    data = payload.get("data", payload) or {}
+    payment_link_id = _clean_text(data.get("paymentLinkId") or data.get("payment_link_id"))
+
+    if not sb:
         return {"matched": False}
 
-    line = _find_payment_line_by_payos_code(sb, order_code)
+    line = None
+    if order_code:
+        line = _find_payment_line_by_payos_code(sb, order_code)
+    if not line and payment_link_id:
+        line = _find_payment_line_by_payment_link_id(sb, payment_link_id)
+    if not line and description:
+        # Fallback: khớp transfer_code trong nội dung CK (PayOS description)
+        desc = description.upper()
+        try:
+            candidates = (
+                sb.table("payment_lines")
+                .select("*")
+                .eq("method", "qr")
+                .eq("status", "pending")
+                .execute()
+            )
+            for candidate in candidates.data or []:
+                code = _clean_text(candidate.get("transfer_code")).upper()
+                if code and code in desc:
+                    line = candidate
+                    break
+        except Exception as exc:
+            print(f"[payment_requests] description lookup skipped: {exc}")
+
     if not line:
         return {"matched": False}
 
@@ -526,6 +633,25 @@ def register_payment_request_routes(app, get_supabase) -> None:
             )
         }
 
+    @router.post("/payment-requests/sync-pending-payos")
+    async def sync_pending_payos_payments():
+        """Poll PayOS cho mọi QR pending — dùng khi webhook chưa tới (local/prod)."""
+        sb = _sb_or_503(get_supabase)
+        return await sync_all_pending_payos_lines(sb)
+
+    @router.post("/payment-lines/{line_id}/sync-payos")
+    async def sync_payment_line_payos(line_id: str):
+        sb = _sb_or_503(get_supabase)
+        line_res = sb.table("payment_lines").select("*").eq("id", line_id).limit(1).execute()
+        if not line_res.data:
+            raise HTTPException(404, "Khong tim thay payment_line")
+        outcome = await sync_payment_line_from_payos(sb, line_res.data[0])
+        if not outcome:
+            return {"synced": False, "line_id": line_id}
+        if outcome.get("error"):
+            raise HTTPException(502, f"PayOS sync loi: {outcome['error']}")
+        return {"synced": True, **outcome}
+
     @router.post("/payment-requests")
     def create_payment_request(body: PaymentRequestCreate):
         sb = _sb_or_503(get_supabase)
@@ -582,6 +708,9 @@ def register_payment_request_routes(app, get_supabase) -> None:
             "status": "pending",
             "transfer_code": transfer_code,
         }
+        if method in {"cash", "card"}:
+            insert_row["status"] = "paid"
+            insert_row["paid_at"] = _iso_now()
 
         if method == "qr":
             try:

@@ -1222,3 +1222,22 @@ register_activation_routes(app, _supabase)
 register_crm_routes(app, _supabase)
 register_dashboard_routes(app, _supabase)
 register_report_routes(app, _supabase)
+
+
+@app.on_event("startup")
+async def _register_payos_webhook_on_startup() -> None:
+    """Đăng ký webhook URL với PayOS khi deploy (Render / prod)."""
+    from payos_qr import confirm_payos_webhook_url
+
+    webhook_url = os.getenv("PAYOS_WEBHOOK_URL", "").strip()
+    if not webhook_url:
+        render_url = os.getenv("RENDER_EXTERNAL_URL", "").strip()
+        if render_url:
+            webhook_url = f"{render_url.rstrip('/')}/webhook/payos"
+    if not webhook_url:
+        return
+    try:
+        result = await confirm_payos_webhook_url(webhook_url)
+        print(f"[payos] confirm-webhook {webhook_url} -> {result.get('code')} {result.get('desc')}")
+    except Exception as exc:
+        print(f"[payos] confirm-webhook skipped: {exc}")
