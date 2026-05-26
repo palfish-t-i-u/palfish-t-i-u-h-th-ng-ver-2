@@ -11,10 +11,15 @@ from fastapi import FastAPI, File, Header, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
+from activation_routes import register_activation_routes
 from admin_routes import register_admin_routes
 from crm_routes import register_crm_routes
 from dashboard_routes import register_dashboard_routes
 from invoice_routes import register_invoice_routes
+from payment_request_routes import (
+    reconcile_payment_line_webhook,
+    register_payment_request_routes,
+)
 from report_routes import register_report_routes
 from revenue_routes import register_revenue_routes
 from rbac import can_confirm_payment, resolve_actor, visible_creator_emails
@@ -1015,9 +1020,12 @@ async def payos_create_link(body: dict):
 
 @app.post("/webhook/payos")
 async def payos_webhook(payload: dict):
-    """PayOS → logic api_pipe (giao_dich + đối soát don_hang trên Supabase)."""
+    """PayOS webhook: payment_lines first, then deprecated don_hang fallback."""
     sb = _supabase()
     if sb:
+        line_result = reconcile_payment_line_webhook(sb, payload)
+        if line_result.get("matched"):
+            return line_result
         return handle_payos_webhook(sb, payload)
 
     try:
@@ -1208,7 +1216,9 @@ def bank_simulate(body: BankSimulateBody):
 
 register_admin_routes(app, _supabase)
 register_invoice_routes(app, _supabase)
+register_payment_request_routes(app, _supabase)
 register_revenue_routes(app, _supabase)
+register_activation_routes(app, _supabase)
 register_crm_routes(app, _supabase)
 register_dashboard_routes(app, _supabase)
 register_report_routes(app, _supabase)
