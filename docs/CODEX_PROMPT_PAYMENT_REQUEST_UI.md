@@ -1,7 +1,7 @@
 # Prompt Codex — Redo UI Quản lý thanh toán (pixel-match prototype Hiếu)
 
 > **Cách dùng:** Copy toàn bộ khối **PROMPT** bên dưới vào Codex.  
-> **Branch:** `ui/ux-anh-minh` · **Không** commit vào `main`.  
+> **Branch:** `ui/ux` · **Không** commit vào `main` trừ khi đã review.  
 > **Đính kèm:** screenshot prototype Hiếu (ảnh list PR đầy đủ) + mở `c:\Users\silly\Downloads\PalFish CRM.html` trong browser để so side-by-side.
 
 ---

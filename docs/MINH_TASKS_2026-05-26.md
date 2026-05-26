@@ -145,7 +145,30 @@ Làm **trước** wireframe Payment Request — go-live phụ thuộc số liệ
 | Doc | Nội dung |
 |-----|----------|
 | `docs/PROTOTYPE_PAYMENT_FLOW.md` | Sơ đồ B1–B4 + màn prototype HTML |
+| `docs/PAYMENT_REQUEST_FRONTEND_MAPPING.md` | Map tab → component TSX |
+| `docs/FE_HANDOFF_BE_PROMPTS.md` | Việc còn lại cho Giang/Đức |
 | `docs/M5_DOI_CHIEU.md` | Đối chiếu Sổ / GMV tab / DingTalk |
 | `docs/M5_OPERATIONS.md` | Re-seed, xóa M3 test |
-| `docs/TODO.md` | Task ID `F2605-*` |
-| `E:\PalFish\DA\Report\ke-hoach-cai-thien-feedback-thu-hien.md` | Feedback Ops Thu Hiền (catalog HĐ, Sổ, BC02) |
+| `docs/TODO.md` | Task ID `F2605-*`, `UX-*` |
+| `E:\PalFish\DA\Report\ke-hoach-cai-thien-feedback-thu-hien.md` | Feedback Ops Thu Hiền |
+
+---
+
+## 9. Trạng thái implement FE (26/05 cuối ngày)
+
+Branch **`ui/ux`** — commit `5d515aa` (B1–B4 UX) + fix TS Vercel + fix UTF-8 mojibake (local).
+
+| Mục | Trạng thái | File chính |
+|-----|------------|------------|
+| B1 PR list/detail/KPI | ✅ | `PaymentRequestsTab`, drawer, modals |
+| B1 bill upload API | ✅ FE / ⚠️ BE+SQL | `BillUploadZone`, `payment_request_routes` |
+| B1 email KH | ✅ FE / ⚠️ SQL | `CreatePaymentRequestModal` |
+| B2 đối soát drawer | ✅ | `ReconciliationTab` |
+| B3 AR 4 tab + tạo AR | ✅ | `ActivationTab`, `ARCreateModal` |
+| B4 xuất HĐ + ZIP XLSX | ✅ FE tạm | `InvoiceRequestTab`, `taxInvoiceXlsxExport.ts` |
+| Cross-tab navigation | ✅ | `PaymentFlowContext` |
+| Text tiếng Việt | ✅ đã fix | 3 TSX + Inter font — push pending |
+
+**Chưa FE:** chọn tài khoản HN/HCM (MINH-08), catalog TTS (MINH-09), UX Sổ auto-duyệt (MINH-06), BC02 label (MINH-07).
+
+**Cần BE trước UAT:** xem §7 + `FE_HANDOFF_BE_PROMPTS.md`.

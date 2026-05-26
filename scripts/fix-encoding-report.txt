@@ -1,0 +1,4 @@
+frontend\src\components\PaymentRequestsTab.tsx: box=99->4
+  L119: { id: "all" as StatusFilter, label: "Tất cả", count: trackingRequests.length },
+frontend\src\components\payment-request\PaymentRequestDetailDrawer.tsx: box=314->9
+frontend\src\components\payment-request\QrViewModal.tsx: box=22->2
