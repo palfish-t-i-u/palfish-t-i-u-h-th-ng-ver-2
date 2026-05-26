@@ -344,28 +344,45 @@ def _mark_line_paid(sb, line_id: str) -> dict[str, Any]:
     }
 
 
+def _find_payment_line_by_payos_code(sb, order_code: str) -> dict[str, Any] | None:
+    """Lookup payment_line — PayOS gửi orderCode number, DB lưu text."""
+    keys: list[str] = []
+    cleaned = _clean_text(order_code)
+    if cleaned:
+        keys.append(cleaned)
+    if cleaned.isdigit():
+        keys.append(str(int(cleaned)))
+    seen: set[str] = set()
+    for key in keys:
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        try:
+            line_res = (
+                sb.table("payment_lines")
+                .select("*")
+                .eq("payos_order_code", key)
+                .limit(1)
+                .execute()
+            )
+        except Exception as exc:
+            print(f"[payment_requests] webhook lookup skipped: {exc}")
+            return None
+        if line_res.data:
+            return line_res.data[0]
+    return None
+
+
 def reconcile_payment_line_webhook(sb, payload: dict[str, Any]) -> dict[str, Any]:
     """Match PayOS webhook to payment_lines; fallback to don_hang when unmatched."""
     order_code, amount, description = _extract_payos_data(payload)
     if not sb or not order_code:
         return {"matched": False}
 
-    try:
-        line_res = (
-            sb.table("payment_lines")
-            .select("*")
-            .eq("payos_order_code", order_code)
-            .limit(1)
-            .execute()
-        )
-    except Exception as exc:
-        print(f"[payment_requests] webhook lookup skipped: {exc}")
+    line = _find_payment_line_by_payos_code(sb, order_code)
+    if not line:
         return {"matched": False}
 
-    if not line_res.data:
-        return {"matched": False}
-
-    line = line_res.data[0]
     line_id = str(line.get("id") or "")
     if not line_id:
         return {"matched": False}

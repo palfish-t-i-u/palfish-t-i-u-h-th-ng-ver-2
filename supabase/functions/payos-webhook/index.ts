@@ -4,6 +4,8 @@
  *
  * URL: https://<project-ref>.supabase.co/functions/v1/payos-webhook
  * Env: PAYOS_CHECKSUM_KEY (supabase secrets)
+ *
+ * B2 payment_lines first, then legacy don_hang fallback (M1).
  */
 
 import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -21,7 +23,6 @@ function extractMaDon(description: string): string | null {
   return null;
 }
 
-/** PayOS createSignatureFromObj — khớp payos-lib-golang SortObjByKey */
 function payosValueToString(value: unknown): string {
   if (value === null || value === undefined) return "";
   if (typeof value === "boolean") return value ? "true" : "false";
@@ -68,6 +69,110 @@ async function verifyPayosSignature(
   }
 }
 
+function isPaymentSuccess(payload: Record<string, unknown>): boolean {
+  if (payload.success === false) return false;
+  const code = String(payload.code ?? "00");
+  return code === "00";
+}
+
+function payosOrderCodeKeys(raw: unknown): string[] {
+  const cleaned = String(raw ?? "").trim();
+  const keys: string[] = [];
+  if (cleaned) keys.push(cleaned);
+  if (/^\d+$/.test(cleaned)) keys.push(String(parseInt(cleaned, 10)));
+  return [...new Set(keys)];
+}
+
+async function findPaymentLineByPayosCode(
+  sb: SupabaseClient,
+  orderCodeRaw: unknown
+): Promise<Record<string, unknown> | null> {
+  for (const key of payosOrderCodeKeys(orderCodeRaw)) {
+    const res = await sb
+      .from("payment_lines")
+      .select("*")
+      .eq("payos_order_code", key)
+      .limit(1);
+    if (res.error) {
+      console.warn("[payos-webhook] payment_lines lookup:", res.error.message);
+      return null;
+    }
+    if (res.data?.[0]) return res.data[0];
+  }
+  return null;
+}
+
+async function recomputePaymentRequest(
+  sb: SupabaseClient,
+  paymentRequestId: string
+): Promise<void> {
+  const prRes = await sb
+    .from("payment_requests")
+    .select("target, state")
+    .eq("id", paymentRequestId)
+    .limit(1)
+    .single();
+  if (prRes.error || !prRes.data) return;
+  if (String(prRes.data.state) === "cancelled") return;
+
+  const linesRes = await sb
+    .from("payment_lines")
+    .select("amount, status")
+    .eq("payment_request_id", paymentRequestId);
+  if (linesRes.error) return;
+
+  const received = (linesRes.data ?? [])
+    .filter((line) => String(line.status).toLowerCase() === "paid")
+    .reduce((sum, line) => sum + parseAmount(line.amount), 0);
+  const target = parseAmount(prRes.data.target);
+  let state = "pending";
+  if (received <= 0) state = "pending";
+  else if (received < target) state = "short";
+  else if (received === target) state = "done";
+  else state = "over";
+
+  await sb
+    .from("payment_requests")
+    .update({ received, state, updated_at: new Date().toISOString() })
+    .eq("id", paymentRequestId);
+}
+
+async function reconcilePaymentLineWebhook(
+  sb: SupabaseClient,
+  webhookData: Record<string, unknown>
+): Promise<Record<string, unknown> | null> {
+  const orderCodeRaw = webhookData.orderCode ?? webhookData.reference ?? "";
+  const line = await findPaymentLineByPayosCode(sb, orderCodeRaw);
+  if (!line) return null;
+
+  if (String(line.status).toLowerCase() === "paid") {
+    return { matched: true, already_paid: true, payment_line_id: line.id };
+  }
+
+  const nowIso = new Date().toISOString();
+  const upd = await sb
+    .from("payment_lines")
+    .update({ status: "paid", paid_at: nowIso, reject_reason: null })
+    .eq("id", line.id);
+  if (upd.error) {
+    console.error("[payos-webhook] update payment_line error:", upd.error);
+    return { matched: true, error: 1, message: upd.error.message };
+  }
+
+  const prId = String(line.payment_request_id ?? "");
+  if (prId) await recomputePaymentRequest(sb, prId);
+
+  console.log(`[payos-webhook] ✓ payment_line id=${line.id} → paid (PR ${prId})`);
+  return {
+    matched: true,
+    error: 0,
+    message: "Xu ly payment_line thanh cong",
+    payos_order_code: String(orderCodeRaw),
+    payment_line_id: line.id,
+    payment_request_id: prId,
+  };
+}
+
 async function findDonHang(
   sb: SupabaseClient,
   description: string
@@ -104,12 +209,6 @@ async function findDonHang(
     .limit(1);
   if (exact.error) throw exact.error;
   return exact.data?.[0] ?? null;
-}
-
-function isPaymentSuccess(payload: Record<string, unknown>): boolean {
-  if (payload.success === false) return false;
-  const code = String(payload.code ?? "00");
-  return code === "00";
 }
 
 Deno.serve(async (req: Request) => {
@@ -159,6 +258,20 @@ Deno.serve(async (req: Request) => {
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
   const sb = createClient(supabaseUrl, serviceKey);
 
+  // B2 — payment_lines (PR flow)
+  try {
+    const lineResult = await reconcilePaymentLineWebhook(sb, webhookData);
+    if (lineResult) {
+      return new Response(JSON.stringify(lineResult), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+  } catch (e) {
+    console.error("[payos-webhook] payment_lines reconcile error:", e);
+  }
+
+  // M1 legacy — don_hang + giao_dich
   const description = String(
     webhookData.description ?? webhookData.content ?? ""
   ).trim();
@@ -166,20 +279,22 @@ Deno.serve(async (req: Request) => {
   const orderCode = String(webhookData.orderCode ?? webhookData.reference ?? "");
   const bankTxId = orderCode || `PAYOS-${description.slice(0, 20)}`;
 
-  if (!description) {
-    return new Response(JSON.stringify({ error: 1, message: "Thiếu nội dung chuyển khoản" }), {
+  if (!description && !orderCode) {
+    return new Response(JSON.stringify({ error: 1, message: "Thiếu orderCode / nội dung CK" }), {
       status: 400,
       headers: { "Content-Type": "application/json" },
     });
   }
 
-  console.log(`[payos-webhook] description="${description}" amount=${amount} txId=${bankTxId}`);
+  console.log(`[payos-webhook] legacy description="${description}" amount=${amount} txId=${bankTxId}`);
 
   let don: Record<string, unknown> | null = null;
-  try {
-    don = await findDonHang(sb, description);
-  } catch (e) {
-    console.error("[payos-webhook] find order error:", e);
+  if (description) {
+    try {
+      don = await findDonHang(sb, description);
+    } catch (e) {
+      console.error("[payos-webhook] find order error:", e);
+    }
   }
 
   let trangThaiDoiSoat = "chua_xu_ly";
@@ -213,8 +328,8 @@ Deno.serve(async (req: Request) => {
   const ins = await sb.from("giao_dich").insert({
     ma_giao_dich_bank: bankTxId,
     so_tien_nhan: amount,
-    noi_dung_chuyen_khoan: description,
-    info_code_thuc_te: maDon ? `Thanh toan ${maDon}` : description,
+    noi_dung_chuyen_khoan: description || `PayOS ${orderCode}`,
+    info_code_thuc_te: maDon ? `Thanh toan ${maDon}` : description || orderCode,
     thoi_gian_giao_dich: new Date().toISOString(),
     trang_thai_doi_soat: trangThaiDoiSoat,
     don_hang_id: donHangId,

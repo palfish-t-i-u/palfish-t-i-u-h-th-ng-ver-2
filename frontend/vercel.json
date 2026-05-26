@@ -8,7 +8,7 @@
   "rewrites": [
     {
       "source": "/webhook/payos",
-      "destination": "https://jozcvbbypwvzaefteoxn.supabase.co/functions/v1/payos-webhook"
+      "destination": "https://palfish-gmv-api.onrender.com/webhook/payos"
     },
     {
       "source": "/api/:path*",

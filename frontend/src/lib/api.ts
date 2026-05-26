@@ -125,6 +125,13 @@ export const endpoints = {
         `/api/v1/active-requests/${arId}/courses/${encodeURIComponent(courseCode)}`,
         body
       ),
+    issueInvoice: (arId: string, courseCode: string) =>
+      api.post<{
+        active_request: ActiveRequestApiRow;
+        course_code: string;
+        invoice_id: string;
+        invoiced_at: string;
+      }>(`/api/v1/active-requests/${arId}/courses/${encodeURIComponent(courseCode)}/issue-invoice`),
   },
   transactions: {
     patchStatus: (id: string, status: string) =>
