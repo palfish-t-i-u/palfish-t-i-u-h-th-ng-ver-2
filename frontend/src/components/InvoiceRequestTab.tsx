@@ -1,7 +1,8 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { usePaymentFlow } from "../contexts/PaymentFlowContext";
 import {
   deriveInvoiceRows,
+  downloadInvoiceDocument,
   formatAddress,
   type InvoiceRow,
   vnd,
@@ -57,12 +58,14 @@ function InvoiceDetailDrawer({
   onClose,
   onIssue,
   onOpenAr,
+  onDownload,
 }: {
   row: InvoiceRow | null;
   open: boolean;
   onClose: () => void;
   onIssue: () => void;
   onOpenAr: (arId: string) => void;
+  onDownload: () => void;
 }) {
   if (!row) {
     return (
@@ -95,7 +98,14 @@ function InvoiceDetailDrawer({
             <div>
               <div style={{ fontWeight: 700, fontSize: 16 }}>{d.name || row.ar.customerName}</div>
               <div style={{ fontSize: 12, color: "var(--text-3)", marginTop: 2 }}>
-                Order ID <strong style={{ color: "var(--text-2)" }}>{row.course.orderId}</strong> · {row.ar.id}
+                {isIssued ? (
+                  <>
+                    Đã xuất lúc <strong style={{ color: "var(--success-text)" }}>{row.course.invoicedAt || "—"}</strong>
+                  </>
+                ) : (
+                  <>Chờ xuất · Order ID {row.course.orderId?.trim() ? <strong style={{ color: "var(--text-2)" }}>{row.course.orderId}</strong> : <span style={{ color: "var(--text-3)" }}>(điền sau)</span>}</>
+                )}{" "}
+                · {row.ar.id}
               </div>
             </div>
           </div>
@@ -164,9 +174,16 @@ function InvoiceDetailDrawer({
         </div>
 
         <div className="drawer-foot">
-          <button type="button" className="btn btn-outline" onClick={() => onOpenAr(row.ar.id)}>
-            Mở Active Request
-          </button>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button type="button" className="btn btn-outline btn-sm" onClick={() => onOpenAr(row.ar.id)}>
+              Mở Active Request
+            </button>
+            {isIssued && (
+              <button type="button" className="btn btn-outline btn-sm" onClick={onDownload}>
+                <Icons.Download size={13} /> Tải hóa đơn
+              </button>
+            )}
+          </div>
           {!isIssued && (
             <button type="button" className="btn btn-primary" onClick={onIssue} disabled={!isRowComplete(row)}>
               <Icons.Doc size={14} /> Xuất hoá đơn
@@ -179,12 +196,25 @@ function InvoiceDetailDrawer({
 }
 
 export default function InvoiceRequestTab() {
-  const { activeRequests, requests, issueInvoiceForCourse, navigate, apiNote } = usePaymentFlow();
+  const { activeRequests, requests, issueInvoiceForCourse, navigate, nav, setNav, apiNote } = usePaymentFlow();
   const [tab, setTab] = useState<"pending" | "issued">("pending");
   const [search, setSearch] = useState("");
   const [dateRange, setDateRange] = useState<DateRange>(EMPTY_RANGE);
   const [openKey, setOpenKey] = useState<string | null>(null);
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (nav.invoiceTab) {
+      setTab(nav.invoiceTab);
+    }
+    if (nav.openInvoiceKey) {
+      setTab("pending");
+      setOpenKey(nav.openInvoiceKey);
+    }
+    if (nav.invoiceTab || nav.openInvoiceKey) {
+      setNav({});
+    }
+  }, [nav.invoiceTab, nav.openInvoiceKey, setNav]);
 
   const rows = useMemo(() => deriveInvoiceRows(activeRequests, requests), [activeRequests, requests]);
   const pending = useMemo(() => rows.filter((r) => !r.course.invoiced), [rows]);
@@ -217,8 +247,8 @@ export default function InvoiceRequestTab() {
     <div className="gmv-prototype">
       <div className="page">
         <div style={{ fontSize: 12.5, color: "var(--text-3)", maxWidth: 720, lineHeight: 1.55, marginBottom: 4 }}>
-          Mỗi <strong style={{ color: "var(--text-2)" }}>Course Code</strong> có Order ID → một hoá đơn (INV). Dữ liệu
-          khách lấy từ PR + AR; BE B4 sẽ thay mock phát hành sau.
+          Mỗi <strong style={{ color: "var(--text-2)" }}>Course Code</strong> → một hoá đơn (INV). Order ID có thể điền
+          sau tại tab Kích hoạt; dữ liệu khách lấy từ PR + AR.
         </div>
 
         {apiNote && (
@@ -438,7 +468,20 @@ export default function InvoiceRequestTab() {
                         <CustomerTypeBadge type={d.customerType} />
                       </td>
                       <td>
-                        <span className="row-action">
+                        <span className="row-action" style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>
+                          {r.course.invoiced && (
+                            <button
+                              type="button"
+                              className="btn btn-outline btn-sm"
+                              title="Tải hóa đơn"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                downloadInvoiceDocument(r);
+                              }}
+                            >
+                              <Icons.Download size={13} />
+                            </button>
+                          )}
                           <Icons.ChevronRight size={15} />
                         </span>
                       </td>
@@ -457,11 +500,13 @@ export default function InvoiceRequestTab() {
         onClose={() => setOpenKey(null)}
         onIssue={() => {
           if (openRow) {
-            issueInvoiceForCourse(openRow.ar.id, openRow.course.courseCode);
-            setOpenKey(null);
+            void issueInvoiceForCourse(openRow.ar.id, openRow.course.courseCode);
           }
         }}
         onOpenAr={(arId) => navigate("module3", { openArId: arId })}
+        onDownload={() => {
+          if (openRow) downloadInvoiceDocument(openRow);
+        }}
       />
     </div>
   );

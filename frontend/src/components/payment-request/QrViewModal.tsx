@@ -1,4 +1,5 @@
 import type { PaymentAttempt, PaymentRequest } from "../../types/paymentRequest";
+import BillUploadZone from "./BillUploadZone";
 import { findCountry } from "./CountryCombo";
 import { Icons } from "./Icons";
 import { fmtPhone, payosQrImageUrl, vnd } from "./paymentRequestUtils";
@@ -26,12 +27,16 @@ export default function QrViewModal({
   qr,
   request,
   onClose,
-  onUploadBill,
+  onBillFile,
+  onBillView,
+  uploadingBill,
 }: {
   qr: PaymentAttempt | null;
   request: PaymentRequest | null;
   onClose: () => void;
-  onUploadBill?: (qr: PaymentAttempt) => void;
+  onBillFile?: (file: File) => void;
+  onBillView?: () => void;
+  uploadingBill?: boolean;
 }) {
   if (!qr || !request) return null;
 
@@ -116,16 +121,21 @@ export default function QrViewModal({
               </button>
             )}
           </div>
+          {onBillFile && (
+            <div style={{ display: "flex", justifyContent: "center" }}>
+              <BillUploadZone
+                hasBill={!!qr.billImage}
+                uploading={uploadingBill}
+                onView={onBillView}
+                onFile={onBillFile}
+              />
+            </div>
+          )}
         </div>
         <div className="modal-foot">
           <button className="btn btn-outline" onClick={onClose}>
             Đóng
           </button>
-          {onUploadBill && (
-            <button className="btn btn-primary" onClick={() => onUploadBill(qr)}>
-              <Icons.Upload size={14} /> Up biên lai
-            </button>
-          )}
         </div>
       </div>
     </div>

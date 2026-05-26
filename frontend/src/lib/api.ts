@@ -11,6 +11,7 @@ import type {
   CreateActiveRequestPayload,
   CreatePaymentRequestPayload,
   CreatePrResponse,
+  PaymentLineApiRow,
   PaymentRequestsListResponse,
 } from "../types/paymentRequest";
 import type {
@@ -117,6 +118,15 @@ export const endpoints = {
     addPayment: (id: string, body: AddPaymentAttemptPayload) =>
       api.post<AddPaymentLineResponse>(`/api/v1/payment-requests/${id}/payment-lines`, body),
     cancel: (id: string) => api.post(`/api/v1/payment-requests/${id}/cancel`),
+    uploadPaymentLineBill: (lineId: string, file: Blob, filename: string) => {
+      const fd = new FormData();
+      fd.append("file", file, filename);
+      return api.post<{ billImage: string; payment_line: PaymentLineApiRow }>(
+        `/api/v1/payment-lines/${lineId}/bill`,
+        fd,
+        { timeout: 60000 }
+      );
+    },
     // B3: create active request nested under PR
     createActiveRequest: (prId: string, body: CreateActiveRequestPayload) =>
       api.post<ActiveRequestApiRow>(`/api/v1/payment-requests/${prId}/active-requests`, body),

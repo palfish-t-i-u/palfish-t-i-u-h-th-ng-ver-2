@@ -63,7 +63,7 @@ export function txnDisplayStatus(qr: PaymentAttempt): TxnDisplayStatus {
   if (qr.status === "rejected") return "rejected";
   // QR đã tạo link PayOS → chờ tiền về / webhook (tab "Chờ xác nhận"), không gom vào "Chờ chuyển khoản"
   if (qr.method === "qr" && qr.status === "pending") return "awaiting";
-  if (!qr.bill && qr.method === "qr") return "unsent";
+  if (!qr.billImage && !qr.bill && qr.method === "qr") return "unsent";
   return "awaiting";
 }
 
@@ -100,12 +100,22 @@ export function nextCourseCode(ar: ActiveRequest): string {
 export function deriveArStatus(ar: ActiveRequest): ActiveRequestStatus {
   const all = flatCourses(ar);
   if (all.length === 0) return "pending_order";
+  if (all.every((c) => c.invoiced)) return "invoiced";
   const ordered = all.filter((c) => c.orderId?.trim()).length;
-  if (ordered === 0) return "pending_order";
-  if (ordered === all.length) {
-    return all.every((c) => c.invoiced) ? "invoiced" : "ready_invoice";
+  if (ordered > 0 && ordered < all.length) return "partial_order";
+  return "ready_invoice";
+}
+
+export function findInvoiceRowKey(ar: ActiveRequest, courseCode: string): string | null {
+  for (let uidIdx = 0; uidIdx < ar.uids.length; uidIdx++) {
+    const courses = ar.uids[uidIdx].courses;
+    for (let courseIdx = 0; courseIdx < courses.length; courseIdx++) {
+      if (courses[courseIdx].courseCode === courseCode) {
+        return `${ar.id}::${uidIdx}::${courseIdx}`;
+      }
+    }
   }
-  return "partial_order";
+  return null;
 }
 
 export function deriveInvoiceRows(ars: ActiveRequest[], prs: PaymentRequest[]): InvoiceRow[] {
@@ -114,7 +124,6 @@ export function deriveInvoiceRows(ars: ActiveRequest[], prs: PaymentRequest[]): 
     const pr = ar.prId ? prs.find((p) => p.id === ar.prId) ?? null : null;
     ar.uids.forEach((uidObj, uidIdx) => {
       uidObj.courses.forEach((course, courseIdx) => {
-        if (!course.orderId?.trim()) return;
         rows.push({ key: `${ar.id}::${uidIdx}::${courseIdx}`, ar, pr, uidObj, uidIdx, courseIdx, course });
       });
     });
@@ -150,7 +159,7 @@ export function countPendingInvoice(ars: ActiveRequest[]) {
   for (const ar of ars) {
     for (const u of ar.uids) {
       for (const c of u.courses) {
-        if (c.orderId?.trim() && !c.invoiced) n++;
+        if (!c.invoiced) n++;
       }
     }
   }
@@ -184,3 +193,64 @@ export function formatAddress(pr: PaymentRequest | null, row?: InvoiceRow) {
 }
 
 export { fmtPhone, nowStamp, vnd };
+
+function downloadBlob(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+export function downloadInvoiceDocument(row: InvoiceRow) {
+  const course = row.course;
+  const pr = row.pr;
+  const name = course.name ?? row.ar.customerName;
+  const phone = course.phone ?? row.uidObj.phone ?? pr?.phone ?? "";
+  const address = [course.address ?? pr?.address, course.ward ?? pr?.ward, course.province ?? pr?.province]
+    .filter(Boolean)
+    .join(", ");
+  const html = `<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8" />
+  <title>Hóa đơn ${course.invoiceId || course.courseCode}</title>
+  <style>
+    body { font-family: Arial, sans-serif; max-width: 720px; margin: 40px auto; color: #111; }
+    h1 { font-size: 22px; margin-bottom: 4px; }
+    .meta { color: #555; font-size: 13px; margin-bottom: 24px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 16px; }
+    th, td { border: 1px solid #ddd; padding: 10px 12px; text-align: left; }
+    th { background: #f7f7f7; }
+    .money { text-align: right; font-weight: 700; }
+  </style>
+</head>
+<body>
+  <h1>HÓA ĐƠN ${course.invoiceId || "NHÁP"}</h1>
+  <div class="meta">
+    PalFish Vietnam · Course ${course.courseCode}
+    ${course.orderId ? ` · Order ID ${course.orderId}` : ""}
+    ${course.invoicedAt ? ` · Xuất lúc ${course.invoicedAt}` : ""}
+  </div>
+  <p><strong>Khách hàng:</strong> ${name}<br />
+  <strong>SĐT:</strong> ${phone}<br />
+  <strong>Địa chỉ:</strong> ${address || "—"}<br />
+  <strong>UID:</strong> ${row.uidObj.uid}</p>
+  <table>
+    <thead><tr><th>Gói học</th><th>Mã</th><th class="money">Số tiền</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>${course.packageName || "—"}</td>
+        <td>${course.courseCode}</td>
+        <td class="money">${Math.round(course.amount).toLocaleString("vi-VN")} đ</td>
+      </tr>
+    </tbody>
+  </table>
+</body>
+</html>`;
+  const filename = `${course.invoiceId || course.courseCode}.html`;
+  downloadBlob(new Blob([html], { type: "text/html;charset=utf-8" }), filename);
+}

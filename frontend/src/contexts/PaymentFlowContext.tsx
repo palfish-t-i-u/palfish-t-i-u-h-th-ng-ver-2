@@ -4,6 +4,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -37,6 +38,8 @@ export type PaymentFlowView = "paymentRequests" | "reconciliation" | "module3" |
 type NavState = {
   openArId?: string | null;
   openPrId?: string | null;
+  invoiceTab?: "pending" | "issued";
+  openInvoiceKey?: string | null;
 };
 
 type LoadDataOptions = {
@@ -88,6 +91,8 @@ export function PaymentFlowProvider({
   const [loading, setLoading] = useState(false);
   const [apiNote, setApiNote] = useState("");
   const [nav, setNav] = useState<NavState>({});
+  const onViewChangeRef = useRef(onViewChange);
+  onViewChangeRef.current = onViewChange;
 
   const loadData = useCallback(async (options?: LoadDataOptions) => {
     if (!options?.silent) setLoading(true);
@@ -174,7 +179,7 @@ export function PaymentFlowProvider({
         createdAt: nowStamp(),
         paidAt: payload.method === "cash" || payload.method === "card" ? nowStamp() : null,
         code: nextPaymentCode(requestId, nextIdx),
-        bill: payload.method !== "qr",
+        bill: false,
         method: payload.method,
         bank: payload.bank,
         cardLast4: payload.cardLast4,
@@ -194,7 +199,8 @@ export function PaymentFlowProvider({
           checkoutUrl: res.payment_line.checkout_url || res.payos?.checkout_url || null,
           paymentLinkId: res.payos?.payment_link_id || null,
           transferContent: res.payos?.transfer_content || res.payment_line.transfer_code || localPayment.code,
-          bill: res.payment_line.status === "paid" ? true : payload.method !== "qr",
+          billImage: res.payment_line.bill_image ?? null,
+          bill: !!(res.payment_line.bill_image),
         };
         updateRequest(requestId, (r) => {
           const updatedPayments = r.payments.map((p) => (p.id === localPayment.id ? confirmed : p));
@@ -220,7 +226,13 @@ export function PaymentFlowProvider({
             const line = res.data.payment_line;
             const updatedPayments = r.payments.map((p) =>
               p.id === paymentId
-                ? { ...p, status: "paid" as const, paidAt: line.paid_at || flowNow(), bill: true }
+                ? {
+                    ...p,
+                    status: "paid" as const,
+                    paidAt: line.paid_at || flowNow(),
+                    bill: !!(line.bill_image ?? p.billImage),
+                    billImage: line.bill_image ?? p.billImage ?? null,
+                  }
                 : p
             );
             const prFromBe = fromApiPaymentRequest(res.data.payment_request);
@@ -234,7 +246,7 @@ export function PaymentFlowProvider({
       updateRequest(prId, (r) => ({
         ...r,
         payments: r.payments.map((p) =>
-          p.id === paymentId ? { ...p, status: "paid", paidAt: flowNow(), bill: true } : p
+          p.id === paymentId ? { ...p, status: "paid", paidAt: flowNow() } : p
         ),
       }));
     },
@@ -313,7 +325,7 @@ export function PaymentFlowProvider({
         setActiveRequests((prev) => prev.map((x) => (x.id === arId ? ar : x)));
         setApiNote("");
       } catch {
-        setApiNote("Xuất hoá đơn thất bại — kiểm tra Order ID và thông tin KH trên PR.");
+        setApiNote("Xuất hoá đơn thất bại — kiểm tra thông tin KH trên PR.");
       }
     },
     []
@@ -328,13 +340,10 @@ export function PaymentFlowProvider({
     [requests, activeRequests]
   );
 
-  const navigate = useCallback(
-    (view: PaymentFlowView, extra?: NavState) => {
-      setNav(extra ?? {});
-      onViewChange?.(view, extra);
-    },
-    [onViewChange]
-  );
+  const navigate = useCallback((view: PaymentFlowView, extra?: NavState) => {
+    setNav(extra ?? {});
+    onViewChangeRef.current?.(view, extra);
+  }, []);
 
   const value = useMemo(
     () => ({

@@ -48,7 +48,8 @@ export function fromApiAttempt(raw: any, idx = 0): PaymentAttempt {
     paidAt: raw.paid_at ?? raw.paidAt ?? null,
     // BE uses transfer_code; fallback to code / payment_code for camelCase sources
     code: raw.transfer_code ?? raw.code ?? raw.payment_code ?? "",
-    bill: raw.bill ?? status === "paid",
+    billImage: raw.bill_image ?? raw.billImage ?? null,
+    bill: !!(raw.bill_image ?? raw.billImage),
     method: (raw.method ?? "qr") as PaymentAttempt["method"],
     bank: raw.bank,
     cardLast4: raw.card_last4 ?? raw.cardLast4 ?? null,
@@ -109,7 +110,7 @@ export function normalizeRequest(req: PaymentRequest): PaymentRequest {
 export function paymentAttemptLabel(payment: PaymentAttempt) {
   if (payment.cancelled) return "Đã huỷ";
   if (payment.status === "paid") return "Đã xác nhận";
-  if (payment.bill) return "Chờ xác nhận";
+  if (payment.billImage || payment.bill) return "Chờ xác nhận";
   return "Chờ chuyển";
 }
 
