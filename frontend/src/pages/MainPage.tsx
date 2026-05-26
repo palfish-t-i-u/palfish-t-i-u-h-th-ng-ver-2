@@ -10,6 +10,7 @@ import SoDoanhThuTab from "../components/SoDoanhThuTab";
 const BC01SalesPerformance = lazy(() => import("../components/reports/BC01SalesPerformance"));
 const BC02KeyDataReport = lazy(() => import("../components/reports/BC02KeyDataReport"));
 const ReportBC03Tab = lazy(() => import("../components/ReportBC03Tab"));
+const PaymentRequestsTab = lazy(() => import("../components/PaymentRequestsTab"));
 import Module5Tab from "../components/Module5Tab";
 import Module6Tab from "../components/Module6Tab";
 import { useAuth } from "../hooks/useAuth";
@@ -22,6 +23,7 @@ import Modal from "../components/ui/Modal";
 import type { Order } from "../types/order";
 
 type ViewId =
+  | "paymentRequests"
   | "tab2"
   | "payos"
   | "profile"
@@ -111,6 +113,10 @@ const I = {
 };
 
 const TITLES: Record<ViewId, { title: string; subtitle?: string }> = {
+  paymentRequests: {
+    title: "Quản lý thanh toán",
+    subtitle: "Payment Request · đối soát · Course Code · xuất hóa đơn",
+  },
   tab2: { title: "Quản lý mã QR", subtitle: "Theo dõi tiền về, biên lai, CRM" },
   payos: { title: "Lịch sử PayOS", subtitle: "Giao dịch ngân hàng đã đối soát" },
   profile: { title: "Thông tin cá nhân" },
@@ -135,7 +141,7 @@ const TITLES: Record<ViewId, { title: string; subtitle?: string }> = {
 export default function MainPage() {
   const { user, signOut, isDevMode } = useAuth();
   const { profile } = useMe();
-  const [activeView, setActiveView] = useState<ViewId>("tab2");
+  const [activeView, setActiveView] = useState<ViewId>("paymentRequests");
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [orders, setOrders] = useState<Order[]>([]);
   const [dbExcel, setDbExcel] = useState<{ uid: string; diaChi: string }[]>([]);
@@ -198,10 +204,15 @@ export default function MainPage() {
   const items: NavItem[] = useMemo(() => {
     const list: NavItem[] = [
       {
+        id: "paymentRequests",
+        label: "Quản lý thanh toán",
+        icon: I.invoice,
+        section: "Khách hàng & Đơn hàng",
+      },
+      {
         id: "tab2",
         label: "Quản lý mã QR",
         icon: I.list,
-        section: "Khách hàng & Đơn hàng",
         badge:
           orders.length > 0 ? (
             <Badge tone="primary">{loadingOrders ? "…" : orders.length}</Badge>
@@ -284,7 +295,8 @@ export default function MainPage() {
   }, [orders.length, loadingOrders, showInvoice, showStaffCrm, showAuthAccounts]);
 
   const head = TITLES[activeView as keyof typeof TITLES] ?? TITLES.tab2;
-  const wideContent = activeView === "bc01" || activeView === "bc02" || activeView === "bc03";
+  const wideContent =
+    activeView === "paymentRequests" || activeView === "bc01" || activeView === "bc02" || activeView === "bc03";
 
   return (
     <AppShell
@@ -302,6 +314,11 @@ export default function MainPage() {
       isDevMode={isDevMode}
       onSignOut={signOut}
     >
+      <Suspense fallback={<p className="text-sm text-gmv-muted">Đang tải Payment Request...</p>}>
+        <div style={{ display: activeView === "paymentRequests" ? "block" : "none" }}>
+          <PaymentRequestsTab />
+        </div>
+      </Suspense>
       <div style={{ display: activeView === "tab2" ? "block" : "none" }}>
         <Tab2Table
           orders={orders}
