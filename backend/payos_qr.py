@@ -129,3 +129,59 @@ async def create_payos_payment_link(amount: int, description_hint: str) -> dict[
         "transfer_content": transfer_content,
         "payment_link_id": link_data.get("paymentLinkId", ""),
     }
+
+
+def _payos_headers() -> dict[str, str]:
+    client_id = os.getenv("PAYOS_CLIENT_ID", "").strip()
+    api_key = os.getenv("PAYOS_API_KEY", "").strip()
+    if not client_id or not api_key:
+        raise ValueError("PayOS chua duoc cau hinh")
+    return {
+        "x-client-id": client_id,
+        "x-api-key": api_key,
+        "Content-Type": "application/json",
+    }
+
+
+def payos_payment_is_paid(data: dict[str, Any]) -> bool:
+    """True khi PayOS GET /v2/payment-requests/{id} báo đã thu tiền."""
+    status = str(data.get("status") or "").upper()
+    if status in {"PAID", "COMPLETED", "SUCCESS", "SUCCEEDED"}:
+        return True
+    try:
+        amount_paid = int(data.get("amountPaid") or 0)
+        amount_remaining = int(data.get("amountRemaining") if data.get("amountRemaining") is not None else -1)
+    except (TypeError, ValueError):
+        return False
+    return amount_paid > 0 and amount_remaining == 0
+
+
+async def fetch_payos_payment(order_code: str) -> dict[str, Any] | None:
+    """GET /v2/payment-requests/{orderCode} — trạng thái link PayOS."""
+    code = str(order_code or "").strip()
+    if not code:
+        return None
+    async with httpx.AsyncClient(timeout=12.0) as client:
+        resp = await client.get(
+            f"https://api-merchant.payos.vn/v2/payment-requests/{code}",
+            headers=_payos_headers(),
+        )
+        payload = resp.json()
+    if payload.get("code") != "00":
+        return None
+    data = payload.get("data")
+    return data if isinstance(data, dict) else None
+
+
+async def confirm_payos_webhook_url(webhook_url: str) -> dict[str, Any]:
+    """Đăng ký webhook URL với PayOS (POST /confirm-webhook)."""
+    url = str(webhook_url or "").strip()
+    if not url:
+        raise ValueError("webhook_url trong")
+    async with httpx.AsyncClient(timeout=15.0) as client:
+        resp = await client.post(
+            "https://api-merchant.payos.vn/confirm-webhook",
+            json={"webhookUrl": url},
+            headers=_payos_headers(),
+        )
+        return resp.json()

@@ -107,6 +107,10 @@ export const endpoints = {
   paymentRequests: {
     // GET not yet available on backend — Tab uses mock fallback on error
     list: () => api.get<PaymentRequestsListResponse>("/api/v1/payment-requests"),
+    syncPendingPayos: () =>
+      api.post<{ synced_count: number; synced: { line_id: string; payment_request_id: string }[] }>(
+        "/api/v1/payment-requests/sync-pending-payos"
+      ),
     create: (body: CreatePaymentRequestPayload) =>
       api.post<CreatePrResponse>("/api/v1/payment-requests", body),
     // B2: add payment line (QR / cash / card / installment)
