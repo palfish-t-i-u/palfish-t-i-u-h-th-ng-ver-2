@@ -100,6 +100,32 @@ python scripts/seed_so_doanh_thu.py --backfill-m3
 
 Seed **không** cần Vercel deploy — ghi thẳng Supabase. Reload tab Sổ sau khi chạy.
 
+### 2.3 Re-seed từ file gốc DingTalk (khuyến nghị thay All File)
+
+Audit 25/05/2026: All File **SM Hanoi** thiếu ~461 RMB GMV (mất phần thập phân khi copy từ DingTalk). Seed lịch sử nên lấy **file gốc**, không tab All File.
+
+| Tab | File gốc | Sheet | Dòng | Tag mới |
+|-----|----------|-------|------|---------|
+| SM Hanoi | `SM HANOI daily report.xlsx` | **INCOME** | 2 → 13.943 | `import:dingtalk:SM Hanoi` |
+| HCM REV | `HCM Revenue statement.xlsx` | **REVENUE** | 2 → 798 | `import:dingtalk:HCM REV` |
+
+Script: **`scripts/seed_dingtalk_ledger.py`** — mapper `backend/xlsx_ledger_import.py` (`map_sm_income_row` cho INCOME, layout +2 cột so với All File).
+
+```powershell
+# Xem trước — không ghi DB
+python scripts/seed_dingtalk_ledger.py --dry-run --confirm
+
+# Production: xóa import cũ (import:gsheet:*) + seed — CẦN backup Supabase trước
+python scripts/seed_dingtalk_ledger.py --purge-gsheet --confirm
+```
+
+**Giữ lại khi purge:** `loai_nhap=tu_dong` (M3), dòng tay Ops nhập sau go-live.  
+**Xóa:** mọi dòng `created_by_email` like `import:gsheet:%`.
+
+Dry-run mẫu: **14.644** dòng, SUM GMV ≈ **42,46M** RMB. Báo cáo audit: `E:\PalFish\DA\Report\ket-luan-doi-chieu-sm-hanoi-so-doanh-thu.md`, `ket-luan-doi-chieu-hcm-rev-so-doanh-thu.md`. Quy trình: `E:\PalFish\DA\Report\quy-trinh-seed-so-dingtalk.md`.
+
+**Chưa chạy trên prod** — cần approve Ops sau backup.
+
 ---
 
 ## 3. Dọn data test (trước import Excel thật)
@@ -122,9 +148,28 @@ Phân loại test vs thật theo `created_by_email`:
 |-------|-------------------|
 | Excel lịch sử (HNxHCM) | `import:HN`, `import:HCM` |
 | Google Sheet All File | `import:gsheet:SM Hanoi`, `import:gsheet:HCM REV` |
+| DingTalk xlsx (re-seed) | `import:dingtalk:SM Hanoi`, `import:dingtalk:HCM REV` |
 | M3 backfill | `backfill@m3` |
 | M3 approve live | email user lúc approve |
 | Điền tay app | email Hiền / System |
+
+### 3.1 Xóa dòng M3 test khỏi Sổ
+
+Dòng **`loai_nhap = tu_dong`** (tag **M3** trên UI) **không** có nút Xóa và API trả **403** (`DELETE /revenue/ledger/{id}` chỉ cho `tay`).
+
+**Cách hiện tại (Ops, Supabase SQL Editor):** xác nhận đúng dòng test rồi xóa:
+
+```sql
+-- Ví dụ: 2 đơn test 25/05/2026 — chỉnh WHERE nếu cần
+DELETE FROM so_doanh_thu
+WHERE loai_nhap = 'tu_dong'
+  AND so_tien_vnd = 2000
+  AND pay_time >= '2026-05-25T00:00:00'
+  AND pay_time <= '2026-05-25T23:59:59'
+  AND ten_khach IN ('abc', 'dfafasfa');
+```
+
+Reload tab Sổ. Đơn trên tab M3 (Kích hoạt khóa học) vẫn có thể còn — chỉ gỡ dòng Sổ. Backlog: cho Ops xóa `tu_dong` qua UI (`TODO.md` M5-14).
 
 ---
 
@@ -149,5 +194,6 @@ Phân loại test vs thật theo `created_by_email`:
 
 - Spec nghiệp vụ + UI Hiếu: `docs/MODULE_SO_DOANH_THU.md`
 - Import All File Thu Hiền (Google Sheet): `docs/M5_GSHEET_IMPORT.md`
+- Đối chiếu GMV tab / DingTalk / thẻ tổng hợp: `docs/M5_DOI_CHIEU.md`
 - Workflow branch UI: `docs/WORKFLOW_UI_UX.md`
 - Deploy tổng: `docs/DEPLOY.md`

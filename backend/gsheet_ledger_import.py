@@ -249,6 +249,8 @@ def _to_float_gmv(value: Any) -> float | None:
 def _normalize_uid(value: Any) -> str | None:
     if value is None or value == "":
         return None
+    if isinstance(value, float) and value != value:
+        return None
     if isinstance(value, (int, float)):
         return str(int(value))
     s = str(value).strip()

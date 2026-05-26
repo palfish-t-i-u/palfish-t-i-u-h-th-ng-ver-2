@@ -285,6 +285,7 @@ def _row_to_order(row: dict[str, Any], kh: dict[str, Any] | None = None) -> dict
         "donCRM": bool(row.get("don_crm") if "don_crm" in row else row.get("donCRM")),
         "billImage": row.get("bill_image") or row.get("billImage"),
         "trangThai": row.get("trang_thai") or row.get("trangThai") or "",
+        "trangThaiThuTuc": row.get("trang_thai_thu_tuc") or row.get("trangThaiThuTuc") or "",
         "createdBy": row.get("created_by") or row.get("createdBy"),
         "createdAt": row.get("created_at") or row.get("createdAt"),
     }
