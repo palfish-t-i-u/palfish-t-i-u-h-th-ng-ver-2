@@ -15,7 +15,7 @@ Thứ tự khuyến nghị: **Backend (Render) trước** → lấy URL API → 
 ## 0. Điều kiện trước khi deploy
 
 - [x] Code push GitHub `palfish-t-i-u/palfish-gmv-manager` (BE Render — lịch sử)
-- [x] FE Vercel: repo **`palfish-t-i-u/palfish-t-i-u-h-th-ng-ver-2`**, branch UI/UX: **`ui/ux-anh-minh`** — xem **`docs/WORKFLOW_UI_UX.md`**
+- [x] FE Vercel: repo **`palfish-t-i-u/palfish-t-i-u-h-th-ng-ver-2`**, branch UI: **`ui/ux`** — xem **`docs/WORKFLOW_UI_UX.md`**
 - [x] PR #2 merge `ui/ux-anh-minh` → `main` (2026-05-23) — **Done**
 - [x] Chạy `supabase_schema_patch.sql` + `v2` + **`v3`** + **`v4`** + **`v7`** (Module 5 Sổ — `supabase_schema_patch_v7_so_doanh_thu.sql`; prod: v3 bắt buộc nếu chỉ có v2; sau ALTER → `NOTIFY pgrst, 'reload schema'`)
 - [x] Seed `nhan_su_sale` (`scripts/seed_nhan_su_sale.py`) hoặc **Sync Metabase now** (System)
@@ -28,7 +28,7 @@ Thứ tự khuyến nghị: **Backend (Render) trước** → lấy URL API → 
 |---------|-----|
 | Frontend | `https://palfish-gmv-manager.vercel.app` |
 | Backend | `https://palfish-gmv-api.onrender.com` (tên service có thể khác) |
-| GitHub FE (UI/UX) | `https://github.com/palfish-t-i-u/palfish-t-i-u-h-th-ng-ver-2` — branch `ui/ux-anh-minh` |
+| GitHub FE (UI/UX) | `https://github.com/palfish-t-i-u/palfish-t-i-u-h-th-ng-ver-2` — branch `ui/ux` |
 | GitHub BE (Render) | `https://github.com/palfish-t-i-u/palfish-gmv-manager` |
 
 ---
@@ -104,7 +104,7 @@ Thiếu route → tab Sổ báo "Không tải được" (404), dù FE đã Promo
 ### 2.0 Repo trên Vercel (ver-2 + branch UI)
 
 - **Repo FE:** `palfish-t-i-u/palfish-t-i-u-h-th-ng-ver-2` (GitHub App org `palfish-t-i-u` phải grant repo này).
-- **Branch làm việc UI:** `ui/ux-anh-minh` — chi tiết **`docs/WORKFLOW_UI_UX.md`**.
+- **Branch làm việc UI:** `ui/ux` — chi tiết **`docs/WORKFLOW_UI_UX.md`**, handoff **`docs/FE_HANDOFF_BE_PROMPTS.md`**.
 - **Prod URL cập nhật:** push branch → build preview → **Promote to Production** (WORKFLOW §2.1). Một số gói Vercel không có mục Production Branch — Promote là bắt buộc.
 - Repo cũ `palfish-gmv-manager` vẫn dùng cho **Render** (backend) nếu chưa đổi repo Render sang ver-2.
 

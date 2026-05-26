@@ -1,4 +1,4 @@
-﻿// UI spec: PalFish CRM.html ΓÇö Payment Request list (Hiß║┐u prototype)
+// UI spec: PalFish CRM.html — Payment Request list (Hiếu prototype)
 import { useEffect, useMemo, useState } from "react";
 import "../styles/prototype-payments.css";
 import { usePaymentFlow } from "../contexts/PaymentFlowContext";
@@ -116,28 +116,28 @@ export default function PaymentRequestsTab() {
 
   const chips = useMemo(
     () => [
-      { id: "all" as StatusFilter, label: "Tß║Ñt cß║ú", count: trackingRequests.length },
+      { id: "all" as StatusFilter, label: "Tất cả", count: trackingRequests.length },
       {
         id: "pending" as StatusFilter,
-        label: "Ch╞░a TT",
+        label: "Chưa TT",
         count: trackingRequests.filter((r) => r.state === "pending").length,
         color: "var(--text-2)",
       },
       {
         id: "short" as StatusFilter,
-        label: "Thiß║┐u",
+        label: "Thiếu",
         count: trackingRequests.filter((r) => r.state === "short").length,
         color: "var(--danger)",
       },
       {
         id: "done" as StatusFilter,
-        label: "─Éß╗º",
+        label: "Đủ",
         count: trackingRequests.filter((r) => r.state === "done").length,
         color: "var(--success)",
       },
       {
         id: "over" as StatusFilter,
-        label: "Thß╗½a",
+        label: "Thừa",
         count: trackingRequests.filter((r) => r.state === "over").length,
         color: "var(--warning)",
       },
@@ -149,19 +149,19 @@ export default function PaymentRequestsTab() {
     () => [
       {
         key: "tracking" as RequestBucket,
-        label: "─Éang theo d├╡i",
+        label: "Đang theo dõi",
         icon: "Wallet" as const,
         count: trackingRequests.length,
       },
       {
         key: "created" as RequestBucket,
-        label: "G├│i hß╗ìc ─æ├ú tß║ío",
+        label: "Gói học đã tạo",
         icon: "Sparkle" as const,
         count: createdRequests.length,
       },
       {
         key: "cancelled" as RequestBucket,
-        label: "─É├ú huß╗╖",
+        label: "Đã huỷ",
         icon: "XCircle" as const,
         count: cancelledRequests.length,
       },
@@ -197,7 +197,7 @@ export default function PaymentRequestsTab() {
 
   const handleCancelPayment = (qr: PaymentAttempt) => {
     if (!selected) return;
-    if (!window.confirm(`Huß╗╖ lß║ºn giao dß╗ïch #${qr.idx}?`)) return;
+    if (!window.confirm(`Huỷ lần giao dịch #${qr.idx}?`)) return;
     updateRequest(selected.id, (r) => ({
       ...r,
       payments: r.payments.map((p: PaymentAttempt) =>
@@ -242,11 +242,11 @@ export default function PaymentRequestsTab() {
   const handleBillFile = async (qr: PaymentAttempt, file: File) => {
     if (!selected) return;
     if (!file.type.startsWith("image/")) {
-      alert("Vui l├▓ng chß╗ìn ─æß╗ïnh dß║íng ß║únh!");
+      alert("Vui lòng chọn định dạng ảnh!");
       return;
     }
     if (!isBackendLineId(qr.id)) {
-      alert("Giao dß╗ïch ch╞░a l╞░u tr├¬n server ΓÇö kh├┤ng upload ─æ╞░ß╗úc ß║únh bill.");
+      alert("Giao dịch chưa lưu trên server — không upload được ảnh bill.");
       return;
     }
     setUploadingBillId(qr.id);
@@ -262,8 +262,8 @@ export default function PaymentRequestsTab() {
       }));
     } catch (e) {
       const err = e as { response?: { data?: { detail?: string } }; message?: string };
-      const msg = err?.response?.data?.detail || err?.message || "Lß╗ùi kh├┤ng x├íc ─æß╗ïnh";
-      alert(`Kh├┤ng l╞░u ─æ╞░ß╗úc ß║únh bi├¬n lai: ${msg}`);
+      const msg = err?.response?.data?.detail || err?.message || "Lỗi không xác định";
+      alert(`Không lưu được ảnh biên lai: ${msg}`);
     } finally {
       setUploadingBillId(null);
     }
@@ -309,11 +309,11 @@ export default function PaymentRequestsTab() {
       <div className="page">
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
           <div style={{ fontSize: 12.5, color: "var(--text-3)", maxWidth: 640, lineHeight: 1.55 }}>
-            Mß╗ùi <strong style={{ color: "var(--text-2)" }}>Payment Request</strong> ─æß║íi diß╗çn cho mß╗Öt th╞░╞íng vß╗Ñ. Mß╗Öt PR c├│ thß╗â gß╗ôm{" "}
-            <strong style={{ color: "var(--text-2)" }}>nhiß╗üu lß║ºn thanh to├ín</strong> (chuyß╗ân khoß║ún nhiß╗üu lß║ºn hoß║╖c 1 lß║ºn CK cho nhiß╗üu ─æ╞ín). Khi ─æß╗º 100% sß║╜ chuyß╗ân sang b╞░ß╗¢c Active Request.
+            Mỗi <strong style={{ color: "var(--text-2)" }}>Payment Request</strong> đại diện cho một thương vụ. Một PR có thể gồm{" "}
+            <strong style={{ color: "var(--text-2)" }}>nhiều lần thanh toán</strong> (chuyển khoản nhiều lần hoặc 1 lần CK cho nhiều đơn). Khi đủ 100% sẽ chuyển sang bước Active Request.
           </div>
           <button className="btn btn-primary" onClick={() => setCreateOpen(true)}>
-            <Icons.Plus size={15} strokeWidth={2.3} /> Tß║ío Payment Request
+            <Icons.Plus size={15} strokeWidth={2.3} /> Tạo Payment Request
           </button>
         </div>
 
@@ -360,7 +360,7 @@ export default function PaymentRequestsTab() {
 
         <div style={{ display: "flex", justifyContent: "flex-end" }}>
           <button className="btn btn-outline btn-sm" onClick={() => void loadData()} disabled={loading}>
-            {loading ? "─Éang tß║úi..." : "Tß║úi lß║íi dß╗» liß╗çu"}
+            {loading ? "Đang tải..." : "Tải lại dữ liệu"}
           </button>
         </div>
       </div>
@@ -397,13 +397,13 @@ export default function PaymentRequestsTab() {
       <Modal
         open={billModal.open}
         onClose={() => setBillModal((m) => ({ ...m, open: false }))}
-        title={`Bi├¬n lai: ${billModal.code}`}
+        title={`Biên lai: ${billModal.code}`}
         wide
         className="text-center"
       >
         <img
           src={billModal.src}
-          alt="Bi├¬n lai"
+          alt="Biên lai"
           className="mx-auto mt-2 max-h-[70vh] max-w-full rounded-gmv-md"
         />
       </Modal>

@@ -1,7 +1,8 @@
 # Bàn giao dự án — PalFish GMV Manager
 
 > **Đối tượng:** Codex / Gemini / agent AI tiếp quản bảo trì và phát triển.  
-> **Cập nhật:** 2026-05-26 · production `main` · **WIP:** `feature-duc` (B3) + `feature-kem` (B1/B2)  
+> **Cập nhật:** 2026-05-26 · production `main` · **WIP UI:** branch **`ui/ux`** (B1–B4 payment flow)  
+> **Handoff BE:** `docs/FE_HANDOFF_BE_PROMPTS.md`  
 > **Ngôn ngữ UI:** Tiếng Việt · **Timezone vận hành:** UTC+7 (HCM)
 
 **⚠️ Đọc file này thay vì suy luật từ `docs/PROJECT.md` / commit cũ.**  
@@ -35,9 +36,9 @@ Không phải SaaS công khai — chỉ user có tài khoản Supabase Auth (Goo
 
 **Deploy tự động:** push `main` → Vercel (FE) + Render (BE, plan free có thể sleep).
 
-**Nguồn code production (2026-05-27):** chỉ **`main`**. Branch `ui/ux-anh-minh` đã merge xong — **không** deploy/promote từ branch đó nữa trừ khi team tách lại workflow.
+**Nguồn code production (2026-05-27):** **`main`** (shell + M5/M6). Luồng **Payment Request B1–B4** đang trên branch **`ui/ux`** — Promote Vercel sau review (`docs/WORKFLOW_UI_UX.md`). Branch cũ `ui/ux-anh-minh` đã merge PR #2; tên mới `ui/ux` tiếp tục UX payment flow.
 
-**Lưu ý docs cũ:** `docs/PROJECT.md`, `docs/DEPLOY.md`, `docs/WORKFLOW_UI_UX.md` vẫn nhắc repo cũ hoặc “Promote từ preview branch” — **ưu tiên file bàn giao này + code trên `main`**.
+**Lưu ý docs:** Ưu tiên **`FE_HANDOFF_BE_PROMPTS.md`**, **`WORKFLOW_UI_UX.md`**, file bàn giao này. `PROJECT.md` / `DEPLOY.md` đã cập nhật branch `ui/ux`.
 
 ---
 

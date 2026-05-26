@@ -7,16 +7,16 @@
 
 ## 1. Deploy FE + BE (xem UI mới trên production)
 
-Code Module 5 nằm branch **`ui/ux-anh-minh`**. Production Vercel **không** tự cập nhật khi chỉ push preview — phải **Promote**.
+Code Module 5 nằm branch **`ui/ux`**. Production Vercel **không** tự cập nhật khi chỉ push preview — phải **Promote**.
 
 ### Bước A — Push code
 
 ```powershell
 cd e:\PalFish\DA\pf-gmv-reconciliation\palfish-t-i-u-h-th-ng-ver-2
-git checkout ui/ux-anh-minh
+git checkout ui/ux
 git add frontend/src/components/SoDoanhThuTab.tsx frontend/src/components/LedgerFormModal.tsx
 git commit -m "feat(revenue): modal add/edit + read-only ledger table"
-git push origin ui/ux-anh-minh
+git push origin ui/ux
 ```
 
 Chỉ commit file FE cần thiết. **Không** commit `backend/.env`, `frontend/.env.local`, `tmp-*.html`.
@@ -24,7 +24,7 @@ Chỉ commit file FE cần thiết. **Không** commit `backend/.env`, `frontend/
 ### Bước B — Vercel Promote (bắt buộc)
 
 1. Vào [Vercel Dashboard](https://vercel.com) → project **`palfish-gmv-manager`** → **Deployments**.
-2. Tìm deployment mới nhất: branch **`ui/ux-anh-minh`**, commit message đúng.
+2. Tìm deployment mới nhất: branch **`ui/ux`**, commit message đúng.
 3. Bấm **`⋯`** → **Promote to Production**.
 4. Đợi badge **Current** chuyển sang deployment đó.
 5. Mở `https://palfish-gmv-manager.vercel.app` → **Ctrl+Shift+R** (hard refresh).

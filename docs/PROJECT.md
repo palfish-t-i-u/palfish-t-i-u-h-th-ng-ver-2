@@ -144,7 +144,8 @@ Chi tiết: `docs/WIREFRAMES.md`.
 | Module 1 E2E | Tạo đơn, QR, Tab 2, bill, PayOS tab, hủy đơn — prod + local |
 | UI sidebar | `AppShell`, flatten Quản lý quyền |
 | UI design system | `gmv-tokens`, `components/ui`, brand tím — `docs/DESIGN.md` |
-| UI/UX merge `main` | PR #2 `ui/ux-anh-minh` → `main` — **Done** |
+| UI/UX merge `main` | PR #2 → `main` — **Done** (2026-05-23) |
+| Luồng B1–B4 | Branch **`ui/ux`** — FE done; BE handoff `FE_HANDOFF_BE_PROMPTS.md` |
 | Tab 2 sticky table | Freeze 3 trái + 2 phải, scroll + scrollbar — **Done** |
 | VietQR defaults | MB Bank `970422` / `1680011668899` — override `VITE_BANK_*` |
 | Production deploy | Vercel + Render, Docker context `.`, `python-multipart` |
@@ -234,7 +235,7 @@ Local: `http://localhost:5173` (hoặc 5174/5175 nếu port bận). Cần `SYSTE
 
 ## Liên kết
 
-- GitHub FE (ver-2, UI/UX): https://github.com/palfish-t-i-u/palfish-t-i-u-h-th-ng-ver-2 — branch `ui/ux-anh-minh`
+- GitHub FE (ver-2, UI/UX): https://github.com/palfish-t-i-u/palfish-t-i-u-h-th-ng-ver-2 — branch **`ui/ux`**
 - GitHub BE (Render): https://github.com/palfish-t-i-u/palfish-gmv-manager
 - Workflow UI/UX + đổi máy: `docs/WORKFLOW_UI_UX.md`
 - Supabase ref: `jozcvbbypwvzaefteoxn`

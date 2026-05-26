@@ -114,19 +114,23 @@
 
 ---
 
-## UI/UX — branch `ui/ux-anh-minh` (repo ver-2)
+## UI/UX — branch `ui/ux` (repo ver-2)
 
-> Workflow: **`docs/WORKFLOW_UI_UX.md`**. Repo: `palfish-t-i-u/palfish-t-i-u-h-th-ng-ver-2`. Live: `palfish-gmv-manager.vercel.app`.
+> Workflow: **`docs/WORKFLOW_UI_UX.md`**. Handoff BE: **`docs/FE_HANDOFF_BE_PROMPTS.md`**. Live: `palfish-gmv-manager.vercel.app`.
 
 | ID | Task | Status | created_at | completed_at | Ghi chú |
 |----|------|--------|------------|--------------|---------|
-| UX-01 | Vercel: repo ver-2 + Root `frontend` + Production Branch `ui/ux-anh-minh` | done | 2026-05-23 | 2026-05-23 | Xem WORKFLOW §2 |
+| UX-01 | Vercel: repo ver-2 + Root `frontend` | done | 2026-05-23 | 2026-05-23 | Promote deployment `ui/ux` — WORKFLOW §2 |
 | UX-02 | Ghi doc workflow + checklist đổi máy | done | 2026-05-23 | 2026-05-23 | `WORKFLOW_UI_UX.md` |
-| UX-03 | Giang/Đức: review PR `ui/ux-anh-minh` → `main` | done | 2026-05-23 | 2026-05-23 | PR #2 merge commit; no conflict |
-| UX-04 | UI refresh theo `WIREFRAMES.md` / `DESIGN.md` (từng tab) | in_progress | 2026-05-23 | | Tab2 Done (UX-07); Tab1/sidebar/… còn lại |
-| UX-05 | Đồng bộ doc `docs/` từ máy cũ → ver-2 (commit trên `ui/ux-anh-minh`) | done | 2026-05-23 | 2026-05-23 | Done — docs trên ver-2 + branch UI |
-| UX-06 | (Sau merge UI) Render: có cần gắn BE ver-2? | pending | 2026-05-23 | | Chỉ khi Giang/Đức đổi API |
-| UX-07 | Tab2: freeze 3 cột trái + 2 phải, scroll ngang + scrollbar | done | 2026-05-23 | 2026-05-23 | `Tab2Table.tsx`, `Table.tsx`, `gmv-theme.css`; merged `main` |
+| UX-03 | Giang/Đức: review PR UI → `main` | done | 2026-05-23 | 2026-05-23 | PR #2 (shell cũ); B1–B4 tiếp trên `ui/ux` |
+| UX-04 | UI refresh theo `WIREFRAMES.md` / `DESIGN.md` (tab legacy) | in_progress | 2026-05-23 | | Tab2 Done; Tab1/sidebar còn lại |
+| UX-05 | Đồng bộ doc `docs/` ver-2 | done | 2026-05-23 | 2026-05-26 | Cập nhật B1–B4 + encoding |
+| UX-06 | Render: deploy BE payment-request routes prod | pending | 2026-05-23 | | Giang/Đức — xem FE_HANDOFF |
+| UX-07 | Tab2: freeze cột + scroll | done | 2026-05-23 | 2026-05-23 | merged `main` |
+| UX-08 | Port prototype B1–B4 (Payment flow UX feedback) | done | 2026-05-26 | 2026-05-26 | Commit `5d515aa`; branch `ui/ux` |
+| UX-09 | Fix UTF-8 mojibake tab Quản lý thanh toán | done | 2026-05-26 | 2026-05-26 | 3 TSX + Inter font; CHANGELOG |
+| UX-10 | Fix Vercel build `ActivationTab` TS | done | 2026-05-26 | 2026-05-26 | Push `ui/ux` |
+| UX-11 | Promote Vercel + smoke B1–B4 prod | pending | 2026-05-26 | | Sau push encoding fix |
 
 ---
 
@@ -218,11 +222,11 @@
 
 | ID | Task | Status | created_at | Ghi chú |
 |----|------|--------|------------|---------|
-| F2605-MINH-01 | Sơ đồ UX PR → mã thanh toán → Course code → Order ID | pending | 2026-05-26 | `PROTOTYPE_PAYMENT_FLOW.md` + sơ đồ B1–B4 |
-| F2605-MINH-02 | Wireframe Payment Request list/detail | pending | 2026-05-26 | |
-| F2605-MINH-03 | Wireframe modal thêm lần thanh toán | pending | 2026-05-26 | QR / cash / thẻ / CK tay |
-| F2605-MINH-04 | Wireframe UI đối soát tiền | pending | 2026-05-26 | |
-| F2605-MINH-05 | Wireframe Activate Code — xuất HĐ không cần CRM Order ID | pending | 2026-05-26 | |
+| F2605-MINH-01 | Sơ đồ UX PR → mã thanh toán → Course code → Order ID | done | 2026-05-26 | `PROTOTYPE_PAYMENT_FLOW.md` |
+| F2605-MINH-02 | Wireframe Payment Request list/detail | done | 2026-05-26 | `PaymentRequestsTab` + drawer |
+| F2605-MINH-03 | Wireframe modal thêm lần thanh toán | done | 2026-05-26 | QR / cash / thẻ / CK |
+| F2605-MINH-04 | Wireframe UI đối soát tiền | done | 2026-05-26 | `ReconciliationTab` |
+| F2605-MINH-05 | Wireframe Activate Code — xuất HĐ không cần CRM Order ID | done | 2026-05-26 | `ActivationTab` + `InvoiceRequestTab` |
 | F2605-MINH-06 | UX Sổ — auto dòng khi tiền về + Ops duyệt | pending | 2026-05-26 | + feedback Thu Hiền |
 | F2605-MINH-07 | Đổi nhãn BC02 — không gọi Key Data đầy đủ | pending | 2026-05-26 | |
 | F2605-MINH-08 | UX chọn tài khoản HN / HCM | pending | 2026-05-26 | |

@@ -1,8 +1,9 @@
-# Workflow UI/UX — branch `ui/ux-anh-minh`
+# Workflow UI/UX — branch `ui/ux`
 
 > **Mục đích:** Anh Minh code giao diện trên branch riêng; **Giang** và **Đức** review trên GitHub / URL live trước khi merge vào `main`.  
 > **Repo làm việc:** https://github.com/palfish-t-i-u/palfish-t-i-u-h-th-ng-ver-2  
-> **Branch:** https://github.com/palfish-t-i-u/palfish-t-i-u-h-th-ng-ver-2/tree/ui/ux-anh-minh
+> **Branch:** https://github.com/palfish-t-i-u/palfish-t-i-u-h-th-ng-ver-2/tree/ui/ux  
+> **Handoff BE:** `docs/FE_HANDOFF_BE_PROMPTS.md`
 
 ---
 
@@ -38,19 +39,19 @@ Không bắt buộc set `VITE_API_BASE_URL` trên Vercel: build dùng `/api` (pr
 
 ### 2.1 Đưa UI lên production (quan trọng)
 
-Push branch **`ui/ux-anh-minh`** chỉ tạo **Preview deployment** — prod URL **không** tự đổi nếu chưa Promote.
+Push branch **`ui/ux`** chỉ tạo **Preview deployment** — prod URL **không** tự đổi nếu chưa Promote.
 
 **Cách A — Promote (khuyến nghị, mọi gói Vercel):**
 
 1. Vercel → project **`palfish-gmv-manager`** → **Deployments**.
-2. Tìm deployment mới nhất: branch **`ui/ux-anh-minh`**, commit đúng.
+2. Tìm deployment mới nhất: branch **`ui/ux`**, commit đúng.
 3. Bấm **`⋯`** → **Promote to Production**.
 4. Đợi badge **Current** chuyển sang deployment đó.
 5. Mở `https://palfish-gmv-manager.vercel.app` → **Ctrl+Shift+R** (hard refresh).
 
 **Cách B — Production Branch (nếu Settings → Git có mục này):**
 
-- Set **Production Branch** = **`ui/ux-anh-minh`** → mỗi push branch đó có thể auto lên prod (tùy cấu hình team).
+- Set **Production Branch** = **`ui/ux`** → mỗi push branch đó có thể auto lên prod (tùy cấu hình team).
 
 **Lưu ý:** Preview URL dài — login Google có thể redirect về **prod URL** (Supabase Site URL = prod). Đừng dùng preview để kết luận UI prod — luôn kiểm tra sau Promote.
 
@@ -74,8 +75,8 @@ cd <thư-mục-làm-việc>
 git clone https://github.com/palfish-t-i-u/palfish-t-i-u-h-th-ng-ver-2.git
 cd palfish-t-i-u-h-th-ng-ver-2
 git fetch origin
-git checkout ui/ux-anh-minh
-git pull origin ui/ux-anh-minh
+git checkout ui/ux
+git pull origin ui/ux
 ```
 
 ### 3.3 Frontend local
@@ -130,12 +131,12 @@ pip install -r requirements.txt
 ## 4. Quy trình hàng ngày (Anh Minh)
 
 ```text
-git checkout ui/ux-anh-minh
-git pull origin ui/ux-anh-minh
+git checkout ui/ux
+git pull origin ui/ux
 # ... sửa code trong frontend/src, frontend/src/gmv-*.css ...
 git add .
 git commit -m "ui: mô tả ngắn thay đổi"
-git push origin ui/ux-anh-minh
+git push origin ui/ux
 ```
 
 1. Vercel tự build preview (1–3 phút).
@@ -155,27 +156,31 @@ git push origin ui/ux-anh-minh
 - Đổi `vercel.json` destination Render (trừ khi cố ý đổi API)
 - Xóa/sửa logic PayOS, webhook, RBAC backend
 
+**Encoding tiếng Việt:** File `.tsx` UTF-8. Trước push: grep `ΓÇ|ß║|╞░|─É|┬` trong `frontend/src` → 0 match. Xem `FE_HANDOFF_BE_PROMPTS.md` §9.
+
 ---
 
 ## 5. Review cho Giang & Đức
 
 ### Cách xem code
 
-1. GitHub → repo **ver-2** → branch **`ui/ux-anh-minh`** → tab **Commits** / **Compare** với `main`.
-2. Hoặc mở PR: `ui/ux-anh-minh` → `main` (khuyến nghị để comment từng file).
+1. GitHub → repo **ver-2** → branch **`ui/ux`** → tab **Commits** / **Compare** với `main`.
+2. Hoặc mở PR: `ui/ux` → `main` (khuyến nghị để comment từng file).
 
 ### Cách xem chạy thật
 
 - URL: https://palfish-gmv-manager.vercel.app (sau **Promote** deployment mới nhất — §2.1).
 - Đăng nhập tài khoản Google đã có quyền (sale / system).
 
-### Checklist review (Giang / Đức)
+### Checklist review (Giang / Đức) — luồng B1–B4
 
-- [ ] Tab **Tạo đơn** — layout, mobile
-- [x] Tab **Quản lý đơn** — freeze cột + scroll ngang + scrollbar — **Done** (PR #2)
-- [x] Không vỡ API: Network `/api/me`, `/api/orders` → 200 — **Done** (smoke merge)
-- [x] PayOS / tick tiền về / CRM — hành vi giữ như trước — **Done** (không đổi spec UI lần này)
-- [ ] Sidebar, Hóa đơn thuế (nếu có thay đổi ở vùng đó)
+- [ ] Tab **Quản lý thanh toán** (B1) — list, drawer, upload bill, KPI
+- [ ] Tab **Đối soát giao dịch** (B2) — confirm/reject, bill thumb
+- [ ] Tab **Kích hoạt khóa học** (B3) — 4 sub-tab, tạo AR
+- [ ] Tab **Xuất hóa đơn** (B4) — bulk issue, ZIP 3 XLSX (không PDF)
+- [ ] Text tiếng Việt hiển thị đúng (không ký tự `|`, `—` lạ)
+- [x] Tab **Quản lý đơn** (legacy) — freeze cột — **Done** (PR #2)
+- [x] Network `/api/me`, `/api/payment-requests` → không 500 hàng loạt
 
 **Comment xong →** approve PR hoặc nhắn Minh merge.
 
@@ -185,11 +190,11 @@ git push origin ui/ux-anh-minh
 
 | Branch | Ai | Mục đích |
 |--------|-----|----------|
-| `ui/ux-anh-minh` | Minh | UI/UX — deploy Vercel chính |
-| `main` | Sau review | Ổn định, merge từ `ui/ux-anh-minh` |
+| `ui/ux` | Minh | UI/UX B1–B4 — deploy Vercel preview/prod |
+| `main` | Sau review | Ổn định, merge từ `ui/ux` |
 | `giang-đức'back-and-fr` (hoặc tương tự) | Giang, Đức | Backend / tính năng — **không** merge thẳng vào UI branch |
 
-**Sau khi merge `ui/ux-anh-minh` → `main`:** Done — PR #2 (2026-05-23). UI tiếp tục phát triển trên branch **`ui/ux-anh-minh`** — prod cập nhật qua **Promote** (§2.1), không chỉ merge.
+**Sau khi merge `ui/ux` → `main`:** PR #2 (2026-05-23) đã merge UI shell cũ. Luồng PR mới tiếp tục trên **`ui/ux`** — prod cập nhật qua **Promote** (§2.1).
 
 **Backend ver-2:** Module 5 API (`/revenue/*`) nằm repo ver-2. Render hiện deploy từ `palfish-gmv-manager` — cần **Manual Deploy** hoặc sync repo khi thêm route mới. Xem `docs/DEPLOY.md` §1.4, `docs/M5_OPERATIONS.md` §1C.
 
@@ -211,7 +216,7 @@ Lỗi thường gặp: xem `docs/DEPLOY.md` §3.1 Troubleshooting.
 
 ## 8. Task theo dõi
 
-Cập nhật trạng thái trong **`docs/TODO.md`** — mục **UI/UX branch `ui/ux-anh-minh`**.
+Cập nhật trạng thái trong **`docs/TODO.md`** — mục **UI/UX branch `ui/ux`**.
 
 ---
 
@@ -220,7 +225,7 @@ Cập nhật trạng thái trong **`docs/TODO.md`** — mục **UI/UX branch `ui
 | | URL |
 |---|-----|
 | Repo ver-2 | https://github.com/palfish-t-i-u/palfish-t-i-u-h-th-ng-ver-2 |
-| Branch UI | https://github.com/palfish-t-i-u/palfish-t-i-u-h-th-ng-ver-2/tree/ui/ux-anh-minh |
+| Branch UI | https://github.com/palfish-t-i-u/palfish-t-i-u-h-th-ng-ver-2/tree/ui/ux |
 | App live | https://palfish-gmv-manager.vercel.app |
 | Vercel project | https://vercel.com → `palfish-gmv-manager` |
 | Supabase | https://supabase.com/dashboard/project/jozcvbbypwvzaefteoxn |

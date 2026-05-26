@@ -387,3 +387,48 @@
 **Prototype:** `c:\Users\silly\Downloads\PalFish CRM.html` — title *Quản lý thanh toán · PalFish GMV*; màn PR drawer, đối soát, Active Request, Sổ, payment method picker.
 
 **Script:** `scripts/decode_crm_prototype.py` — tái trích xuất CSS modules.
+
+---
+
+## 2026-05-26 — Luồng B1–B4 UX feedback (branch `ui/ux`)
+
+**Frontend**
+- `PaymentRequestsTab` — bill upload API, email PR, format datetime, KPI/toolbar/table theo prototype
+- `ReconciliationTab` — drawer rebuild; confirm/reject; bill thumb từ API
+- `ActivationTab` — 4 sub-tab + KPI; `ARCreateModal`; navigate B4; tax ZIP export
+- `InvoiceRequestTab` — bulk issue; tax ZIP; email từ PR
+- `taxInvoiceXlsxExport.ts` — client-side 3 XLSX trong ZIP (adapt `invoice_routes.py`)
+- `BillUploadZone`, `paymentRequestUtils.formatPaymentDateTime`, cross-tab nav `PaymentFlowContext`
+
+**Backend (partial, cùng branch)**
+- `payment_request_routes.py` — email field; bill upload endpoint
+- SQL patches: `payment_lines_bill`, `payment_requests_email`, `active_requests`, `invoice_courses`
+
+**Docs**
+- `FE_HANDOFF_BE_PROMPTS.md` — handoff Giang/Đức
+- `TODO.md` — cập nhật `F2605-MINH-*`
+
+**Branch:** `ui/ux` (đổi tên từ `ui/ux-anh-minh`); merge `main` `dffdf2c` (bill upload B1)
+
+---
+
+## 2026-05-26 — Fix Vercel build ActivationTab
+
+**Frontend**
+- `ActivationTab.tsx` — guard `"attention" in tc`; import `findInvoiceRowKey` từ `paymentFlowUtils`
+
+**Lý do:** `tsc -b` fail trên Vercel preview branch `ui/ux`.
+
+---
+
+## 2026-05-26 — Fix UTF-8 mojibake tab Quản lý thanh toán
+
+**Nguyên nhân:** Chuỗi tiếng Việt hardcode trong 3 file TSX bị lưu sai encoding (commit `5d515aa`) → UI hiện ký tự `|`, `—`, box drawing; dữ liệu API không ảnh hưởng.
+
+**Frontend**
+- Sửa UTF-8: `PaymentRequestsTab.tsx`, `PaymentRequestDetailDrawer.tsx`, `QrViewModal.tsx`
+- `frontend/index.html` — load Google Fonts Inter; `lang="vi"`
+- `prototype-payments.css` — bỏ `font-feature-settings: "cv11", "ss01"` (tránh glyph lỗi khi fallback font)
+
+**Docs**
+- `FE_HANDOFF_BE_PROMPTS.md` §9 — quy tắc encoding cho dev UI
