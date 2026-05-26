@@ -115,7 +115,7 @@ const I = {
 const TITLES: Record<ViewId, { title: string; subtitle?: string }> = {
   paymentRequests: {
     title: "Quản lý thanh toán",
-    subtitle: "Payment Request · đối soát · Course Code · xuất hóa đơn",
+    subtitle: "Theo dõi Payment Requests, biên lai & tiến độ chuyển khoản của khách",
   },
   tab2: { title: "Quản lý mã QR", subtitle: "Theo dõi tiền về, biên lai, CRM" },
   payos: { title: "Lịch sử PayOS", subtitle: "Giao dịch ngân hàng đã đối soát" },

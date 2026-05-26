@@ -6,7 +6,9 @@ import type {
   ActiveRequest,
   AddPaymentAttemptPayload,
   CreateActiveRequestPayload,
+  CreatePaymentRequestPayload,
   PaymentAttempt,
+  PaymentRequest,
   PaymentRequestsListResponse,
 } from "../types/paymentRequest";
 import type {
@@ -102,6 +104,8 @@ export const endpoints = {
   },
   paymentRequests: {
     list: () => api.get<PaymentRequestsListResponse>("/payment-requests"),
+    create: (body: CreatePaymentRequestPayload) =>
+      api.post<PaymentRequest>("/payment-requests", body),
     addPayment: (id: string, body: AddPaymentAttemptPayload) =>
       api.post<PaymentAttempt>(`/payment-requests/${id}/payments`, body),
     confirmPayment: (id: string, paymentId: string) =>

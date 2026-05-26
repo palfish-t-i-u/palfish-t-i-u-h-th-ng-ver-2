@@ -84,6 +84,18 @@ export type AddPaymentAttemptPayload = {
   cashier?: string;
 };
 
+export type CreatePaymentRequestPayload = {
+  uid: string;
+  name: string;
+  country: string;
+  phone: string;
+  address: string;
+  ward?: string;
+  province?: string;
+  target: number;
+  note?: string;
+};
+
 export type CreateActiveRequestPayload = {
   prId: string;
   customerName: string;
