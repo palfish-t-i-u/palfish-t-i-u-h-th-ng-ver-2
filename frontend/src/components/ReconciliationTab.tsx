@@ -36,6 +36,14 @@ export default function ReconciliationTab() {
   const [drawerTxn, setDrawerTxn] = useState<FlatTransaction | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
 
+  const openLinkedPaymentRequest = () => {
+    if (!drawerTxn?.prId) return;
+    const prId = drawerTxn.prId;
+    setDrawerOpen(false);
+    setDrawerTxn(null);
+    navigate("paymentRequests", { openPrId: prId });
+  };
+
   const transactions = useMemo(() => flattenTransactions(requests), [requests]);
 
   const counts = useMemo(() => {
@@ -379,10 +387,10 @@ export default function ReconciliationTab() {
                       </td>
                       <td style={{ textAlign: "center" }}>
                         <span
-                          className={`txn-bill-preview ${t.bill ? "has" : ""}`}
-                          title={t.bill ? "Có biên lai" : "Chưa có biên lai"}
+                          className={`txn-bill-preview ${t.billImage || t.bill ? "has" : ""}`}
+                          title={t.billImage || t.bill ? "Có biên lai" : "Chưa có biên lai"}
                         >
-                          {t.bill ? <Icons.Receipt /> : <Icons.Image />}
+                          {t.billImage || t.bill ? <Icons.Receipt /> : <Icons.Image />}
                         </span>
                       </td>
                       <td>
@@ -463,7 +471,7 @@ export default function ReconciliationTab() {
                   </div>
                   <div>
                     <div className="info-label">Biên lai</div>
-                    <div className="info-value">{drawerTxn.bill ? "Đã có" : "Chưa có"}</div>
+                    <div className="info-value">{drawerTxn.billImage || drawerTxn.bill ? "Đã có" : "Chưa có"}</div>
                   </div>
                 </div>
               </div>
@@ -472,7 +480,7 @@ export default function ReconciliationTab() {
               <button
                 type="button"
                 className="btn btn-outline"
-                onClick={() => navigate("paymentRequests", { openPrId: drawerTxn.prId })}
+                onClick={openLinkedPaymentRequest}
               >
                 Mở Payment Request
               </button>

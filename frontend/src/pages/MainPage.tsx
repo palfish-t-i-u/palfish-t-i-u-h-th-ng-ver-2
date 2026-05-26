@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import StaffCRMTab from "../components/StaffCRMTab";
 import AuthAccountsTab from "../components/AuthAccountsTab";
 import SoDoanhThuTab from "../components/SoDoanhThuTab";
@@ -128,7 +128,7 @@ const TITLES: Record<ViewId, { title: string; subtitle?: string }> = {
     title: "Kích hoạt khóa học",
     subtitle: "B3 — Active Request, Course Code & Order ID CRM",
   },
-  module4: { title: "Xuất hóa đơn", subtitle: "B4 — Phát hành INV theo Course Code đã có Order ID" },
+  module4: { title: "Xuất hóa đơn", subtitle: "B4 — Phát hành INV theo Course Code (Order ID điền sau được)" },
   revenueLedger: {
     title: "Sổ doanh thu",
     subtitle: "Pay Time · GMV RMB = VND÷3700 — M3 tự động + điền tay + Sync sheet",
@@ -143,25 +143,19 @@ const TITLES: Record<ViewId, { title: string; subtitle?: string }> = {
 };
 
 export default function MainPage() {
-  const [flowNavHandler, setFlowNavHandler] = useState<
-    ((view: PaymentFlowView) => void) | null
-  >(null);
+  const flowNavRef = useRef<(view: PaymentFlowView) => void>(() => {});
 
   return (
-    <PaymentFlowProvider
-      onViewChange={(view) => {
-        flowNavHandler?.(view);
-      }}
-    >
-      <MainPageInner onRegisterFlowNav={setFlowNavHandler} />
+    <PaymentFlowProvider onViewChange={(view) => flowNavRef.current(view)}>
+      <MainPageInner flowNavRef={flowNavRef} />
     </PaymentFlowProvider>
   );
 }
 
 function MainPageInner({
-  onRegisterFlowNav,
+  flowNavRef,
 }: {
-  onRegisterFlowNav: (fn: (view: PaymentFlowView) => void) => void;
+  flowNavRef: React.MutableRefObject<(view: PaymentFlowView) => void>;
 }) {
   const { user, signOut, isDevMode } = useAuth();
   const { profile } = useMe();
@@ -170,8 +164,8 @@ function MainPageInner({
   const { badgeCounts } = usePaymentFlow();
 
   useEffect(() => {
-    onRegisterFlowNav((view) => setActiveView(FLOW_VIEW_MAP[view]));
-  }, [onRegisterFlowNav]);
+    flowNavRef.current = (view) => setActiveView(FLOW_VIEW_MAP[view]);
+  }, [flowNavRef]);
 
   const showInvoice = profile?.canConfirmPayment ?? isDevMode;
   const showStaffCrm = profile?.canAccessAdmin ?? isDevMode;

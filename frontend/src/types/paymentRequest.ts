@@ -12,6 +12,7 @@ export interface PaymentAttempt {
   paidAt?: string | null;
   code: string;
   bill: boolean;
+  billImage?: string | null;
   method: PaymentMethod;
   bank?: string;
   cardLast4?: string | null;
@@ -37,6 +38,7 @@ export interface PaymentLineApiRow {
   checkout_url?: string;
   paid_at?: string;
   reject_reason?: string;
+  bill_image?: string | null;
   created_at?: string;
   updated_at?: string;
 }

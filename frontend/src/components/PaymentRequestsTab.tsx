@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import "../styles/prototype-payments.css";
 import { usePaymentFlow } from "../contexts/PaymentFlowContext";
 import { endpoints } from "../lib/api";
+import { compressImageFile } from "../lib/imageCompress";
 import type {
   AddPaymentAttemptPayload,
   CreatePaymentRequestPayload,
@@ -18,15 +19,17 @@ import PaymentRequestKpiCards from "./payment-request/PaymentRequestKpiCards";
 import PaymentRequestTable from "./payment-request/PaymentRequestTable";
 import PaymentRequestToolbar from "./payment-request/PaymentRequestToolbar";
 import QrViewModal from "./payment-request/QrViewModal";
+import Modal from "./ui/Modal";
 import {
   type RequestBucket,
   type StatusFilter,
   buildArByPrId,
+  fromApiAttempt,
+  fromApiPaymentRequest,
   isBackendLineId,
   normalizeRequest,
   nowStamp,
 } from "./payment-request/paymentRequestUtils";
-import { fromApiPaymentRequest } from "./payment-request/paymentRequestUtils";
 
 export default function PaymentRequestsTab() {
   const {
@@ -53,16 +56,23 @@ export default function PaymentRequestsTab() {
   const [createOpen, setCreateOpen] = useState(false);
   const [cancelTarget, setCancelTarget] = useState<PaymentRequest | null>(null);
   const [qrView, setQrView] = useState<{ qr: PaymentAttempt; request: PaymentRequest } | null>(null);
+  const [uploadingBillId, setUploadingBillId] = useState<string | null>(null);
+  const [billModal, setBillModal] = useState<{ open: boolean; code: string; src: string }>({
+    open: false,
+    code: "",
+    src: "",
+  });
 
   const arByPrId = useMemo(() => buildArByPrId(activeRequests), [activeRequests]);
 
   useEffect(() => {
-    if (nav.openPrId) {
-      setSelectedId(nav.openPrId);
-      setDrawerOpen(true);
-      setNav({});
-    }
-  }, [nav.openPrId, setNav]);
+    if (!nav.openPrId) return;
+    const pr = requests.find((r) => r.id === nav.openPrId);
+    if (!pr) return;
+    setSelectedId(nav.openPrId);
+    setDrawerOpen(true);
+    setNav({});
+  }, [nav.openPrId, requests, setNav]);
 
   const selected = useMemo(
     () => requests.find((r) => r.id === selectedId) || null,
@@ -201,7 +211,7 @@ export default function PaymentRequestsTab() {
     updateRequest(selected.id, (r) => ({
       ...r,
       payments: r.payments.map((p: PaymentAttempt) =>
-        p.id === qr.id ? { ...p, status: "paid", paidAt: nowStamp(), bill: true } : p
+        p.id === qr.id ? { ...p, status: "paid", paidAt: nowStamp() } : p
       ),
     }));
     if (isBackendLineId(qr.id)) {
@@ -211,7 +221,7 @@ export default function PaymentRequestsTab() {
         updateRequest(selected.id, (r) => {
           const updatedPayments = r.payments.map((p: PaymentAttempt) =>
             p.id === qr.id
-              ? { ...p, status: "paid" as const, paidAt: line.paid_at || nowStamp(), bill: true }
+              ? { ...p, status: "paid" as const, paidAt: line.paid_at || nowStamp(), bill: !!(line.bill_image ?? p.billImage), billImage: line.bill_image ?? p.billImage ?? null }
               : p
           );
           const prFromBe = fromApiPaymentRequest(res.data.payment_request);
@@ -223,12 +233,40 @@ export default function PaymentRequestsTab() {
     }
   };
 
-  const handleUploadBill = (qr: PaymentAttempt) => {
+  const handleBillView = (qr: PaymentAttempt) => {
+    if (qr.billImage) {
+      setBillModal({ open: true, code: qr.code, src: qr.billImage });
+    }
+  };
+
+  const handleBillFile = async (qr: PaymentAttempt, file: File) => {
     if (!selected) return;
-    updateRequest(selected.id, (r) => ({
-      ...r,
-      payments: r.payments.map((p: PaymentAttempt) => (p.id === qr.id ? { ...p, bill: !p.bill } : p)),
-    }));
+    if (!file.type.startsWith("image/")) {
+      alert("Vui lòng chọn định dạng ảnh!");
+      return;
+    }
+    if (!isBackendLineId(qr.id)) {
+      alert("Giao dịch chưa lưu trên server — không upload được ảnh bill.");
+      return;
+    }
+    setUploadingBillId(qr.id);
+    try {
+      const compressed = await compressImageFile(file);
+      const blob = await (await fetch(compressed)).blob();
+      const up = await endpoints.paymentRequests.uploadPaymentLineBill(qr.id, blob, `${qr.id}.jpg`);
+      const line = up.data.payment_line;
+      const mapped = fromApiAttempt(line, qr.idx);
+      updateRequest(selected.id, (r) => ({
+        ...r,
+        payments: r.payments.map((p: PaymentAttempt) => (p.id === qr.id ? { ...p, ...mapped } : p)),
+      }));
+    } catch (e) {
+      const err = e as { response?: { data?: { detail?: string } }; message?: string };
+      const msg = err?.response?.data?.detail || err?.message || "Lỗi không xác định";
+      alert(`Không lưu được ảnh biên lai: ${msg}`);
+    } finally {
+      setUploadingBillId(null);
+    }
   };
 
   const handleConfirmCancel = async ({ reason }: { reason: string }) => {
@@ -335,7 +373,9 @@ export default function PaymentRequestsTab() {
         onAddPayment={handleAddPayment}
         onCancelPayment={handleCancelPayment}
         onMarkPaid={handleMarkPaid}
-        onUploadBill={handleUploadBill}
+        onBillFile={handleBillFile}
+        onBillView={handleBillView}
+        uploadingBillId={uploadingBillId}
         onCreateActiveRequest={onCreateActiveRequest}
         onCancelRequest={() => selected && setCancelTarget(selected)}
         activeRequestId={selected ? arByPrId[selected.id]?.id ?? null : null}
@@ -349,11 +389,24 @@ export default function PaymentRequestsTab() {
         qr={qrView?.qr ?? null}
         request={qrView?.request ?? null}
         onClose={() => setQrView(null)}
-        onUploadBill={(qr) => {
-          handleUploadBill(qr);
-          setQrView(null);
-        }}
+        onBillFile={qrView?.qr ? (file) => handleBillFile(qrView.qr, file) : undefined}
+        onBillView={qrView?.qr ? () => handleBillView(qrView.qr) : undefined}
+        uploadingBill={uploadingBillId === qrView?.qr?.id}
       />
+
+      <Modal
+        open={billModal.open}
+        onClose={() => setBillModal((m) => ({ ...m, open: false }))}
+        title={`Biên lai: ${billModal.code}`}
+        wide
+        className="text-center"
+      >
+        <img
+          src={billModal.src}
+          alt="Biên lai"
+          className="mx-auto mt-2 max-h-[70vh] max-w-full rounded-gmv-md"
+        />
+      </Modal>
     </div>
   );
 }

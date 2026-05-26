@@ -7,6 +7,7 @@ import type {
 } from "../../types/paymentRequest";
 import CountryCombo, { findCountry } from "./CountryCombo";
 import { Icons, type IconKey } from "./Icons";
+import BillUploadZone from "./BillUploadZone";
 import VietnamAddressFields from "./VietnamAddressFields";
 import PaymentRequestStatusBadge from "./PaymentRequestStatusBadge";
 import {
@@ -56,15 +57,19 @@ function QrThumb({ paid, method }: { paid: boolean; method: PaymentMethod }) {
 function QrRow({
   qr,
   onCancelQr,
-  onUploadBill,
+  onBillFile,
+  onBillView,
   onMarkPaid,
   onShowQr,
+  uploadingBillId,
 }: {
   qr: PaymentAttempt;
   onCancelQr: (qr: PaymentAttempt) => void;
-  onUploadBill: (qr: PaymentAttempt) => void;
+  onBillFile: (qr: PaymentAttempt, file: File) => void;
+  onBillView: (qr: PaymentAttempt) => void;
   onMarkPaid: (qr: PaymentAttempt) => void;
   onShowQr: (qr: PaymentAttempt) => void;
+  uploadingBillId?: string | null;
 }) {
   const isQr = qr.method === "qr";
   const isCancelled = !!qr.cancelled;
@@ -123,7 +128,7 @@ function QrRow({
           <code>{qr.code}</code>
           <span className="sep" />
           <span>{qr.status === "paid" ? `Xác nhận lúc ${qr.paidAt || ""}` : `Tạo ${qr.createdAt}`}</span>
-          {qr.status !== "paid" && qr.bill && (
+          {qr.status !== "paid" && (qr.billImage || qr.bill) && (
             <>
               <span className="sep" />
               <span
@@ -148,24 +153,12 @@ function QrRow({
         </div>
       </div>
       <div>
-        <span
-          className={`bill-upload ${qr.bill ? "has-bill" : ""}`}
-          onClick={(e) => {
-            e.stopPropagation();
-            onUploadBill(qr);
-          }}
-          title={qr.bill ? "Đã có ảnh biên lai — nhấn để xem/thay" : "Tải ảnh bill chuyển khoản / phiếu thu"}
-        >
-          {qr.bill ? (
-            <>
-              <Icons.Receipt size={13} /> Đã có biên lai
-            </>
-          ) : (
-            <>
-              <Icons.Upload size={13} /> Up ảnh bill
-            </>
-          )}
-        </span>
+        <BillUploadZone
+          hasBill={!!qr.billImage}
+          uploading={uploadingBillId === qr.id}
+          onView={() => onBillView(qr)}
+          onFile={(file) => onBillFile(qr, file)}
+        />
       </div>
       <div className="qr-actions">
         {isQr && !isCancelled && (
@@ -357,11 +350,13 @@ export default function PaymentRequestDetailDrawer({
   onAddPayment,
   onCancelPayment,
   onMarkPaid,
-  onUploadBill,
+  onBillFile,
+  onBillView,
   onCreateActiveRequest,
   onCancelRequest,
   activeRequestId,
   onShowQr,
+  uploadingBillId,
 }: {
   request: PaymentRequest | null;
   open: boolean;
@@ -370,11 +365,13 @@ export default function PaymentRequestDetailDrawer({
   onAddPayment: (payload: AddPaymentAttemptPayload) => void;
   onCancelPayment: (qr: PaymentAttempt) => void;
   onMarkPaid: (qr: PaymentAttempt) => void;
-  onUploadBill: (qr: PaymentAttempt) => void;
+  onBillFile: (qr: PaymentAttempt, file: File) => void;
+  onBillView: (qr: PaymentAttempt) => void;
   onCreateActiveRequest: () => void;
   onCancelRequest: () => void;
   activeRequestId?: string | null;
   onShowQr: (qr: PaymentAttempt) => void;
+  uploadingBillId?: string | null;
 }) {
   const [showAdd, setShowAdd] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -724,9 +721,11 @@ export default function PaymentRequestDetailDrawer({
                   key={qr.id}
                   qr={qr}
                   onCancelQr={onCancelPayment}
-                  onUploadBill={onUploadBill}
+                  onBillFile={onBillFile}
+                  onBillView={onBillView}
                   onMarkPaid={onMarkPaid}
                   onShowQr={onShowQr}
+                  uploadingBillId={uploadingBillId}
                 />
               ))}
             </div>

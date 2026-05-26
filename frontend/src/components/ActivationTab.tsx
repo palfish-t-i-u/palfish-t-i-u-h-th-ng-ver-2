@@ -6,6 +6,7 @@ import type { ActiveRequestStatus } from "../types/paymentRequest";
 import {
   AR_STATUS_META,
   enrichActiveRequest,
+  findInvoiceRowKey,
   flatCourses,
   nextCourseCode,
   vnd,
@@ -449,8 +450,7 @@ function ActivationDetailDrawer({
                       <button
                         type="button"
                         className="btn-invoice"
-                        disabled={!course.orderId?.trim()}
-                        title={course.orderId ? "Xuất hóa đơn cho khoá này" : "Cần điền Order ID trước"}
+                        title="Chuyển sang tab Xuất hóa đơn (Chờ xuất) để phát hành"
                         onClick={() => onIssueInvoice(course.courseCode)}
                       >
                         <Icons.Doc size={12} /> Xuất HĐ
@@ -524,7 +524,6 @@ export default function ActivationTab() {
     setNav,
     apiNote,
     updateActiveRequest,
-    issueInvoiceForCourse,
   } = usePaymentFlow();
   const [openArId, setOpenArId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
@@ -751,14 +750,17 @@ export default function ActivationTab() {
         onSaveOrderId={(courseCode, orderId) => {
           if (openAr) void patchCourseOrderId(openAr.id, courseCode, orderId);
         }}
-        onNavigateInvoice={() => navigate("module4")}
+        onNavigateInvoice={() => navigate("module4", { invoiceTab: "pending" })}
         onOpenPr={
           openAr?.prId
             ? () => navigate("paymentRequests", { openPrId: openAr.prId })
             : undefined
         }
         onIssueInvoice={(courseCode) => {
-          if (openAr) issueInvoiceForCourse(openAr.id, courseCode);
+          if (!openAr) return;
+          const key = findInvoiceRowKey(openAr, courseCode);
+          setOpenArId(null);
+          navigate("module4", { invoiceTab: "pending", openInvoiceKey: key ?? undefined });
         }}
       />
     </div>

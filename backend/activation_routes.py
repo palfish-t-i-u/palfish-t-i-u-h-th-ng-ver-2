@@ -432,8 +432,6 @@ def _issue_course_invoice_python(
     uids_data = list(row.get("uids_data") or [])
     course = _find_course(uids_data, course_code)
 
-    if not _clean_text(course.get("order_id")):
-        raise HTTPException(400, "Course chưa có Order ID — không thể xuất hoá đơn")
     if course.get("invoiced"):
         raise HTTPException(400, f"Course {course_code} đã xuất hoá đơn {course.get('invoice_id')}")
 
