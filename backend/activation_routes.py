@@ -38,6 +38,29 @@ class PatchCourseOrderBody(BaseModel):
     order_id: str = Field(..., min_length=1)
 
 
+class IssueCourseInvoiceBody(BaseModel):
+    customer_type: str | None = "individual"
+    name: str | None = None
+    email: str | None = None
+    country: str | None = None
+    phone: str | None = None
+    address: str | None = None
+    ward: str | None = None
+    province: str | None = None
+    tax_code: str | None = None
+    company_name: str | None = None
+    note: str | None = None
+
+
+class BulkIssueCourseItem(BaseModel):
+    ar_id: str = Field(..., min_length=1)
+    course_code: str = Field(..., min_length=1)
+
+
+class BulkIssueCourseBody(BaseModel):
+    items: list[BulkIssueCourseItem] = Field(..., min_length=1)
+
+
 def _pr_digits(pr_id: str) -> str:
     """Token segment for CC codes — PR-2026-0042 → 0042; UUID → 4 ký tự từ segment cuối."""
     raw = str(pr_id or "").strip()
@@ -124,6 +147,7 @@ def _assign_course_codes(uids_in: list[Any], pr_id: str) -> list[dict[str, Any]]
                     "name": _course_name(c),
                     "amount": _course_amount(c),
                     "order_id": str(order_raw or "").strip(),
+                    "invoiced": False,
                 }
             )
         block["courses"] = norm_courses
@@ -139,9 +163,12 @@ def _derive_status(uids_data: list[dict[str, Any]]) -> str:
     ordered = sum(1 for c in courses if str(c.get("order_id") or "").strip())
     if ordered == 0:
         return "pending_order"
-    if ordered == len(courses):
-        return "ready_invoice"
-    return "partial_order"
+    if ordered < len(courses):
+        return "partial_order"
+    invoiced = sum(1 for c in courses if c.get("invoiced"))
+    if invoiced == len(courses):
+        return "invoiced"
+    return "ready_invoice"
 
 
 def _serialize_ar(row: dict[str, Any], pr: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -295,6 +322,173 @@ def _patch_course_python(
     if not found:
         raise HTTPException(404, f"Không tìm thấy course code {course_code}")
     return uids_data
+
+
+def _clean_text(value: Any) -> str:
+    return str(value or "").strip()
+
+
+def _find_course(uids_data: list[dict[str, Any]], course_code: str) -> dict[str, Any]:
+    for uid_block in uids_data:
+        for course in uid_block.get("courses") or []:
+            if course.get("code") == course_code:
+                return course
+    raise HTTPException(404, f"Không tìm thấy course code {course_code}")
+
+
+def _format_invoiced_at() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M")
+
+
+def _allocate_invoice_id(sb, year: int | None = None) -> str:
+    """INV-2026-1042 — khớp prototype invoice-page.jsx."""
+    year_key = str(year or datetime.now(timezone.utc).year)
+    try:
+        res = (
+            sb.table("invoice_sequences")
+            .select("current_val")
+            .eq("year_key", year_key)
+            .limit(1)
+            .execute()
+        )
+        if res.data:
+            seq = int(res.data[0].get("current_val") or 0) + 1
+            sb.table("invoice_sequences").update({"current_val": seq}).eq("year_key", year_key).execute()
+        else:
+            seq = 1
+            sb.table("invoice_sequences").insert({"year_key": year_key, "current_val": seq}).execute()
+    except Exception as exc:
+        raise HTTPException(
+            503,
+            "Thiếu bảng invoice_sequences. Chạy docs/supabase_schema_patch_invoice_courses.sql",
+        ) from exc
+    return f"INV-{year_key}-1{seq:03d}"
+
+
+def _merge_invoice_customer_fields(
+    course: dict[str, Any],
+    pr: dict[str, Any] | None,
+    body: IssueCourseInvoiceBody | None,
+) -> dict[str, Any]:
+    patch: dict[str, Any] = {}
+    if body:
+        for key, val in (
+            ("customer_type", body.customer_type),
+            ("name", body.name),
+            ("email", body.email),
+            ("country", body.country),
+            ("phone", body.phone),
+            ("address", body.address),
+            ("ward", body.ward),
+            ("province", body.province),
+            ("tax_code", body.tax_code),
+            ("company_name", body.company_name),
+            ("note", body.note),
+        ):
+            cleaned = _clean_text(val)
+            if cleaned:
+                patch[key] = cleaned
+
+    if not patch.get("name") and pr:
+        patch.setdefault("name", _clean_text(pr.get("name")))
+    if not patch.get("phone") and pr:
+        patch.setdefault("phone", _clean_text(pr.get("phone")))
+    if not patch.get("country") and pr:
+        patch.setdefault("country", _clean_text(pr.get("country")) or "VN")
+    if not patch.get("address") and pr:
+        patch.setdefault("address", _clean_text(pr.get("address")))
+    if not patch.get("ward") and pr:
+        patch.setdefault("ward", _clean_text(pr.get("ward")))
+    if not patch.get("province") and pr:
+        patch.setdefault("province", _clean_text(pr.get("province")))
+    patch.setdefault("customer_type", _clean_text(course.get("customer_type")) or "individual")
+
+    name = _clean_text(patch.get("name") or course.get("name"))
+    phone = _clean_text(patch.get("phone") or course.get("phone"))
+    address = _clean_text(patch.get("address") or course.get("address"))
+    ward = _clean_text(patch.get("ward") or course.get("ward"))
+    province = _clean_text(patch.get("province") or course.get("province"))
+    if not name or not phone or not (address or ward or province):
+        raise HTTPException(
+            400,
+            "Thiếu thông tin xuất hoá đơn — cần tên, SĐT và ít nhất một trường địa chỉ",
+        )
+
+    course.update({k: v for k, v in patch.items() if v not in (None, "")})
+    return course
+
+
+def _issue_course_invoice_python(
+    sb,
+    ar_id: str,
+    course_code: str,
+    body: IssueCourseInvoiceBody | None = None,
+) -> dict[str, Any]:
+    res = sb.table("active_requests").select("*").eq("id", ar_id).limit(1).execute()
+    if not res.data:
+        raise HTTPException(404, f"Active Request {ar_id} không tồn tại")
+
+    row = res.data[0]
+    uids_data = list(row.get("uids_data") or [])
+    course = _find_course(uids_data, course_code)
+
+    if not _clean_text(course.get("order_id")):
+        raise HTTPException(400, "Course chưa có Order ID — không thể xuất hoá đơn")
+    if course.get("invoiced"):
+        raise HTTPException(400, f"Course {course_code} đã xuất hoá đơn {course.get('invoice_id')}")
+
+    pr = _fetch_payment_request(sb, str(row.get("pr_id") or "")) if row.get("pr_id") else None
+    _merge_invoice_customer_fields(course, pr, body)
+
+    invoice_id = _allocate_invoice_id(sb)
+    invoiced_at = _format_invoiced_at()
+    course["invoiced"] = True
+    course["invoice_id"] = invoice_id
+    course["invoiced_at"] = invoiced_at
+
+    status = _derive_status(uids_data)
+    upd = (
+        sb.table("active_requests")
+        .update({"uids_data": uids_data, "status": status})
+        .eq("id", ar_id)
+        .execute()
+    )
+    saved = (upd.data or [{**row, "uids_data": uids_data, "status": status}])[0]
+    merged = {**row, **saved, "uids_data": uids_data, "status": status}
+    return {
+        "active_request": _serialize_ar(merged, pr),
+        "course_code": course_code,
+        "invoice_id": invoice_id,
+        "invoiced_at": invoiced_at,
+    }
+
+
+def _revoke_course_invoice_python(sb, ar_id: str, course_code: str) -> dict[str, Any]:
+    res = sb.table("active_requests").select("*").eq("id", ar_id).limit(1).execute()
+    if not res.data:
+        raise HTTPException(404, f"Active Request {ar_id} không tồn tại")
+
+    row = res.data[0]
+    uids_data = list(row.get("uids_data") or [])
+    course = _find_course(uids_data, course_code)
+    if not course.get("invoiced"):
+        raise HTTPException(400, f"Course {course_code} chưa xuất hoá đơn")
+
+    course["invoiced"] = False
+    course["invoice_id"] = ""
+    course["invoiced_at"] = ""
+
+    status = _derive_status(uids_data)
+    upd = (
+        sb.table("active_requests")
+        .update({"uids_data": uids_data, "status": status})
+        .eq("id", ar_id)
+        .execute()
+    )
+    saved = (upd.data or [{**row, "uids_data": uids_data, "status": status}])[0]
+    merged = {**row, **saved, "uids_data": uids_data, "status": status}
+    pr = _fetch_payment_request(sb, str(row.get("pr_id") or "")) if row.get("pr_id") else None
+    return {"active_request": _serialize_ar(merged, pr), "course_code": course_code}
 
 
 def register_activation_routes(app, supabase_factory):
@@ -454,3 +648,66 @@ def register_activation_routes(app, supabase_factory):
         merged = {**row, **saved, "uids_data": uids_data, "status": status}
         pr_map = _fetch_prs_by_ids(sb, [str(merged.get("pr_id") or "")])
         return _serialize_ar(merged, pr_map.get(str(merged.get("pr_id") or "")))
+
+    @app.post(
+        "/api/v1/active-requests/{ar_id}/courses/{course_code}/issue-invoice",
+        tags=["Activation"],
+    )
+    def issue_active_request_course_invoice(
+        ar_id: str,
+        course_code: str,
+        body: IssueCourseInvoiceBody | None = None,
+    ):
+        """B4 — phát hành INV cho một Course Code đã có Order ID."""
+        sb = supabase_factory()
+        if not sb:
+            raise HTTPException(503, "Supabase chưa cấu hình")
+        return _issue_course_invoice_python(sb, ar_id, course_code, body)
+
+    @app.post(
+        "/api/v1/active-requests/{ar_id}/courses/{course_code}/revoke-invoice",
+        tags=["Activation"],
+    )
+    def revoke_active_request_course_invoice(ar_id: str, course_code: str):
+        """B4 — thu hồi INV (demo / sửa sai)."""
+        sb = supabase_factory()
+        if not sb:
+            raise HTTPException(503, "Supabase chưa cấu hình")
+        return _revoke_course_invoice_python(sb, ar_id, course_code)
+
+    @app.post("/api/v1/invoice-courses/bulk-issue", tags=["Activation"])
+    def bulk_issue_course_invoices(body: BulkIssueCourseBody):
+        """B4 — xuất nhiều INV trong một request."""
+        sb = supabase_factory()
+        if not sb:
+            raise HTTPException(503, "Supabase chưa cấu hình")
+
+        issued: list[dict[str, Any]] = []
+        errors: list[dict[str, Any]] = []
+        for item in body.items:
+            try:
+                result = _issue_course_invoice_python(sb, item.ar_id, item.course_code)
+                issued.append(
+                    {
+                        "ar_id": item.ar_id,
+                        "course_code": item.course_code,
+                        "invoice_id": result["invoice_id"],
+                        "invoiced_at": result["invoiced_at"],
+                    }
+                )
+            except HTTPException as exc:
+                errors.append(
+                    {
+                        "ar_id": item.ar_id,
+                        "course_code": item.course_code,
+                        "status_code": exc.status_code,
+                        "detail": exc.detail,
+                    }
+                )
+
+        return {
+            "issued": issued,
+            "issued_count": len(issued),
+            "error_count": len(errors),
+            "errors": errors,
+        }
