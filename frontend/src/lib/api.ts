@@ -3,6 +3,13 @@ import { resolveApiBaseUrl } from "./apiBaseUrl";
 import { supabase } from "./supabase";
 import type { Bc03Report, Bc03MonthlySettings, Bc03StaffOption, CreateOrderPayload, DashboardDailyTrends, DashboardLiveSummary, DashboardSummary, InvoiceOrder, Order } from "../types/order";
 import type {
+  ActiveRequest,
+  AddPaymentAttemptPayload,
+  CreateActiveRequestPayload,
+  PaymentAttempt,
+  PaymentRequestsListResponse,
+} from "../types/paymentRequest";
+import type {
   LedgerCreatePayload,
   LedgerPatchPayload,
   LedgerSummaryResponse,
@@ -92,6 +99,22 @@ export const endpoints = {
   },
   webhook: {
     recentEvents: () => api.get("/webhook/events?limit=50"),
+  },
+  paymentRequests: {
+    list: () => api.get<PaymentRequestsListResponse>("/payment-requests"),
+    addPayment: (id: string, body: AddPaymentAttemptPayload) =>
+      api.post<PaymentAttempt>(`/payment-requests/${id}/payments`, body),
+    confirmPayment: (id: string, paymentId: string) =>
+      api.post<PaymentAttempt>(`/payment-requests/${id}/payments/${paymentId}/confirm`),
+    attachBill: (id: string, paymentId: string) =>
+      api.post<PaymentAttempt>(`/payment-requests/${id}/payments/${paymentId}/bill`),
+    cancel: (id: string) => api.post(`/payment-requests/${id}/cancel`),
+    createActiveRequest: (body: CreateActiveRequestPayload) =>
+      api.post<ActiveRequest>("/active-requests", body),
+    updateActiveRequest: (id: string, body: ActiveRequest) =>
+      api.patch<ActiveRequest>(`/active-requests/${id}`, body),
+    invoiceCourses: (id: string, courseCodes: string[]) =>
+      api.post<ActiveRequest>(`/active-requests/${id}/courses/invoice`, { courseCodes }),
   },
   crm: {
     activate: (infoCode: string) => api.post("/crm/activate", { infoCode }),
