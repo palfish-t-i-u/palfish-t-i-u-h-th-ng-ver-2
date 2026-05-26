@@ -14,7 +14,7 @@ import {
   formatPaymentDateTime,
   fromApiActiveRequest,
 } from "./payment-request/paymentRequestUtils";
-import { downloadTaxInvoiceZip } from "../utils/taxInvoiceXlsxExport";
+import { downloadApiTaxZip, downloadTaxInvoiceZip } from "../utils/taxInvoiceXlsxExport";
 import { endpoints } from "../lib/api";
 import "../styles/prototype-payments.css";
 
@@ -297,7 +297,14 @@ export default function InvoiceRequestTab() {
     }
 
     if (issuedForExport.length > 0) {
-      await downloadTaxInvoiceZip(issuedForExport);
+      try {
+        const res = await endpoints.activeRequests.exportTaxBatch(
+          issuedForExport.map((r) => ({ ar_id: r.ar.id, course_code: r.course.courseCode }))
+        );
+        downloadApiTaxZip(res.data);
+      } catch {
+        await downloadTaxInvoiceZip(issuedForExport);
+      }
       await loadData({ silent: true });
       setTab("issued");
     }
@@ -313,6 +320,12 @@ export default function InvoiceRequestTab() {
     if (toDownload.length === 0) return;
     setBulkExporting(true);
     try {
+      const res = await endpoints.activeRequests.exportTaxBatch(
+        toDownload.map((r) => ({ ar_id: r.ar.id, course_code: r.course.courseCode }))
+      );
+      downloadApiTaxZip(res.data);
+      await loadData({ silent: true });
+    } catch {
       await downloadTaxInvoiceZip(toDownload);
     } finally {
       setBulkExporting(false);

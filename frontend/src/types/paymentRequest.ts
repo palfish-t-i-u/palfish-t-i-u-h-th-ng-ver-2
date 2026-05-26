@@ -176,6 +176,7 @@ export type CreateActiveRequestPayload = {
 export type ActiveRequestApiRow = {
   id?: string;
   pr_id?: string | null;
+  customer_name?: string;
   uids_data?: Array<{
     uid?: string;
     phone?: string;
@@ -188,11 +189,19 @@ export type ActiveRequestApiRow = {
       invoiced?: boolean;
       invoice_id?: string;
       invoiced_at?: string;
+      tax_invoice_code?: string;
+      tax_product_code?: string;
     }>;
   }>;
   status?: string;
   created_at?: string;
-  payment_request?: { name?: string };
+  payment_request?: { name?: string; email?: string };
+};
+
+export type CreateStandaloneActiveRequestPayload = {
+  customer_name?: string;
+  pr_id?: string | null;
+  uids: CreateActiveRequestUidPayload[];
 };
 
 export type AttachCoursePayload = {

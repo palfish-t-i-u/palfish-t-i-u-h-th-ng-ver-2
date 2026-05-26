@@ -800,9 +800,6 @@ def register_payment_request_routes(app, get_supabase) -> None:
             "status": "pending",
             "transfer_code": transfer_code,
         }
-        if method in {"cash", "card"}:
-            insert_row["status"] = "paid"
-            insert_row["paid_at"] = _iso_now()
 
         if method == "qr":
             try:

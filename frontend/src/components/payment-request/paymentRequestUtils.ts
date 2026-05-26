@@ -134,7 +134,7 @@ export function fromApiActiveRequest(raw: ActiveRequestApiRow): ActiveRequest {
   return {
     id: raw.id ?? "",
     prId: raw.pr_id ?? null,
-    customerName: prSnippet?.name ?? "",
+    customerName: raw.customer_name || prSnippet?.name || "",
     createdAt: raw.created_at ?? "",
     createdBy: "",
     uids: (raw.uids_data ?? []).map((u) => ({
@@ -149,6 +149,8 @@ export function fromApiActiveRequest(raw: ActiveRequestApiRow): ActiveRequest {
         invoiced: !!c.invoiced,
         invoiceId: c.invoice_id,
         invoicedAt: c.invoiced_at ?? null,
+        taxInvoiceCode: c.tax_invoice_code,
+        taxProductCode: c.tax_product_code,
       })),
     })),
   };
