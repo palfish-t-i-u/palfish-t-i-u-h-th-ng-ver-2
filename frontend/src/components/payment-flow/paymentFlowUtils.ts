@@ -61,6 +61,8 @@ export function txnDisplayStatus(qr: PaymentAttempt): TxnDisplayStatus {
   if (qr.cancelled) return "cancelled";
   if (qr.status === "paid") return "confirmed";
   if (qr.status === "rejected") return "rejected";
+  // QR đã tạo link PayOS → chờ tiền về / webhook (tab "Chờ xác nhận"), không gom vào "Chờ chuyển khoản"
+  if (qr.method === "qr" && qr.status === "pending") return "awaiting";
   if (!qr.bill && qr.method === "qr") return "unsent";
   return "awaiting";
 }

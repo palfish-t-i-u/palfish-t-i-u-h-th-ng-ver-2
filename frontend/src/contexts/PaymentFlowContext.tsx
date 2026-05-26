@@ -15,8 +15,6 @@ import type {
   PaymentAttempt,
   PaymentRequest,
 } from "../types/paymentRequest";
-import { MOCK_ACTIVE_REQUESTS } from "../components/payment-request/mockActiveRequests";
-import { MOCK_PAYMENT_REQUESTS } from "../components/payment-request/mockPaymentRequests";
 import {
   buildCreateActiveRequestPayload,
   createLocalActiveRequest,
@@ -41,13 +39,17 @@ type NavState = {
   openPrId?: string | null;
 };
 
+type LoadDataOptions = {
+  silent?: boolean;
+};
+
 type PaymentFlowContextValue = {
   requests: PaymentRequest[];
   activeRequests: ActiveRequest[];
   loading: boolean;
   apiNote: string;
   setApiNote: (note: string) => void;
-  loadData: () => Promise<void>;
+  loadData: (options?: LoadDataOptions) => Promise<void>;
   updateRequest: (id: string, updater: (r: PaymentRequest) => PaymentRequest) => void;
   updateActiveRequest: (id: string, updater: (ar: ActiveRequest) => ActiveRequest) => void;
   handleCreate: (payload: CreatePaymentRequestPayload) => Promise<PaymentRequest>;
@@ -56,7 +58,7 @@ type PaymentFlowContextValue = {
   rejectTransaction: (prId: string, paymentId: string) => Promise<void>;
   handleCreateActiveRequest: (pr: PaymentRequest) => Promise<ActiveRequest>;
   patchCourseOrderId: (arId: string, courseCode: string, orderId: string) => Promise<void>;
-  issueInvoiceForCourse: (arId: string, courseCode: string) => void;
+  issueInvoiceForCourse: (arId: string, courseCode: string) => Promise<void>;
   badgeCounts: { reconciliation: number; activation: number; invoice: number };
   nav: NavState;
   setNav: (next: NavState) => void;
@@ -65,12 +67,13 @@ type PaymentFlowContextValue = {
 
 const PaymentFlowContext = createContext<PaymentFlowContextValue | null>(null);
 
-function nextPrId(requests: PaymentRequest[]) {
-  const max = requests.reduce((best, request) => {
-    const n = Number(request.id.match(/(\d+)$/)?.[1] || 0);
-    return Math.max(best, n);
-  }, 0);
-  return `PR-2026-${String(max + 1).padStart(4, "0")}`;
+const POLL_MS = 12_000;
+
+function hasPendingQrPayments(requests: PaymentRequest[]) {
+  return requests.some((pr) =>
+    pr.state !== "cancelled" &&
+    pr.payments.some((p) => !p.cancelled && p.method === "qr" && p.status === "pending")
+  );
 }
 
 export function PaymentFlowProvider({
@@ -80,45 +83,57 @@ export function PaymentFlowProvider({
   children: ReactNode;
   onViewChange?: (view: PaymentFlowView, nav?: NavState) => void;
 }) {
-  const [requests, setRequests] = useState<PaymentRequest[]>(MOCK_PAYMENT_REQUESTS);
-  const [activeRequests, setActiveRequests] = useState<ActiveRequest[]>(MOCK_ACTIVE_REQUESTS);
+  const [requests, setRequests] = useState<PaymentRequest[]>([]);
+  const [activeRequests, setActiveRequests] = useState<ActiveRequest[]>([]);
   const [loading, setLoading] = useState(false);
   const [apiNote, setApiNote] = useState("");
   const [nav, setNav] = useState<NavState>({});
 
-  const loadData = useCallback(async () => {
-    setLoading(true);
+  const loadData = useCallback(async (options?: LoadDataOptions) => {
+    if (!options?.silent) setLoading(true);
     const notes: string[] = [];
-    let nextRequests = MOCK_PAYMENT_REQUESTS;
+    let nextRequests: PaymentRequest[] = [];
+    let prOk = false;
     try {
       const response = await endpoints.paymentRequests.list();
-      const fromApi = (response.data.requests ?? []).map((r) =>
+      nextRequests = (response.data.requests ?? []).map((r) =>
         normalizeRequest(fromApiPaymentRequest(r))
       );
-      if (fromApi.length > 0) nextRequests = fromApi;
-      else notes.push("Danh sách PR từ máy chủ trống — dùng dữ liệu mẫu Hiếu.");
+      prOk = true;
     } catch {
-      notes.push("GET /payment-requests chưa sẵn sàng — dùng dữ liệu mẫu Hiếu.");
+      notes.push("GET /payment-requests chưa sẵn sàng.");
     }
 
-    let nextArs = MOCK_ACTIVE_REQUESTS;
+    let nextArs: ActiveRequest[] = [];
+    let arOk = false;
     try {
       const arRes = await endpoints.activeRequests.list();
       const rows = Array.isArray(arRes.data) ? arRes.data : [];
-      if (rows.length > 0) nextArs = rows.map(fromApiActiveRequest);
+      nextArs = rows.map(fromApiActiveRequest);
+      arOk = true;
     } catch {
-      notes.push("GET /active-requests chưa sẵn sàng — dùng mock Active Request.");
+      notes.push("GET /active-requests chưa sẵn sàng.");
     }
 
-    setRequests(nextRequests);
-    setActiveRequests(nextArs);
+    if (prOk) setRequests(nextRequests);
+    if (arOk) setActiveRequests(nextArs);
     setApiNote(notes.join(" "));
-    setLoading(false);
+    if (!options?.silent) setLoading(false);
   }, []);
 
   useEffect(() => {
-    loadData();
+    void loadData();
   }, [loadData]);
+
+  const pendingQr = useMemo(() => hasPendingQrPayments(requests), [requests]);
+
+  useEffect(() => {
+    if (!pendingQr) return;
+    const timer = window.setInterval(() => {
+      void loadData({ silent: true });
+    }, POLL_MS);
+    return () => window.clearInterval(timer);
+  }, [pendingQr, loadData]);
 
   const updateRequest = useCallback((id: string, updater: (r: PaymentRequest) => PaymentRequest) => {
     setRequests((prev) => prev.map((r) => (r.id === id ? normalizeRequest(updater(r)) : r)));
@@ -130,39 +145,13 @@ export function PaymentFlowProvider({
 
   const handleCreate = useCallback(
     async (payload: CreatePaymentRequestPayload) => {
-      const fallback = normalizeRequest({
-        id: nextPrId(requests),
-        name: payload.name,
-        uid: payload.uid,
-        phone: payload.phone,
-        country: payload.country,
-        address: payload.address,
-        ward: payload.ward,
-        province: payload.province,
-        note: payload.note,
-        target: payload.target,
-        source: "Bán mới",
-        createdAt: nowStamp(),
-        received: 0,
-        doneCount: 0,
-        totalCount: 0,
-        delta: 0,
-        state: "pending",
-        payments: [],
-      });
-      setRequests((prev) => [fallback, ...prev]);
-      try {
-        const response = await endpoints.paymentRequests.create(payload);
-        const saved = normalizeRequest(fromApiPaymentRequest(response.data.payment_request));
-        setRequests((prev) => prev.map((r) => (r.id === fallback.id ? saved : r)));
-        setApiNote("");
-        return saved;
-      } catch {
-        setApiNote("Máy chủ tạo Payment Request chưa sẵn sàng; giao diện dùng bản tạm.");
-        return fallback;
-      }
+      const response = await endpoints.paymentRequests.create(payload);
+      const saved = normalizeRequest(fromApiPaymentRequest(response.data.payment_request));
+      setRequests((prev) => [saved, ...prev]);
+      setApiNote("");
+      return saved;
     },
-    [requests]
+    []
   );
 
   const handleAddPayment = useCallback(
@@ -217,12 +206,6 @@ export function PaymentFlowProvider({
 
   const confirmTransaction = useCallback(
     async (prId: string, paymentId: string) => {
-      updateRequest(prId, (r) => ({
-        ...r,
-        payments: r.payments.map((p) =>
-          p.id === paymentId ? { ...p, status: "paid", paidAt: flowNow(), bill: true } : p
-        ),
-      }));
       if (isBackendLineId(paymentId)) {
         try {
           const res = await endpoints.transactions.patchStatus(paymentId, "paid");
@@ -236,31 +219,40 @@ export function PaymentFlowProvider({
             const prFromBe = fromApiPaymentRequest(res.data.payment_request);
             return normalizeRequest({ ...r, ...prFromBe, payments: updatedPayments });
           });
+          return;
         } catch {
-          /* optimistic */
+          /* fall through optimistic */
         }
       }
+      updateRequest(prId, (r) => ({
+        ...r,
+        payments: r.payments.map((p) =>
+          p.id === paymentId ? { ...p, status: "paid", paidAt: flowNow(), bill: true } : p
+        ),
+      }));
     },
     [updateRequest]
   );
 
   const rejectTransaction = useCallback(
     async (prId: string, paymentId: string) => {
+      if (isBackendLineId(paymentId)) {
+        try {
+          await endpoints.transactions.patchStatus(paymentId, "rejected");
+          await loadData({ silent: true });
+          return;
+        } catch {
+          /* optimistic */
+        }
+      }
       updateRequest(prId, (r) => ({
         ...r,
         payments: r.payments.map((p) =>
           p.id === paymentId ? { ...p, status: "rejected" as const, bill: false, paidAt: null } : p
         ),
       }));
-      if (isBackendLineId(paymentId)) {
-        try {
-          await endpoints.transactions.patchStatus(paymentId, "rejected");
-        } catch {
-          /* optimistic */
-        }
-      }
     },
-    [updateRequest]
+    [updateRequest, loadData]
   );
 
   const handleCreateActiveRequest = useCallback(
@@ -285,38 +277,40 @@ export function PaymentFlowProvider({
 
   const patchCourseOrderId = useCallback(
     async (arId: string, courseCode: string, orderId: string) => {
+      const trimmed = orderId.trim();
       updateActiveRequest(arId, (ar) => ({
         ...ar,
         uids: ar.uids.map((u) => ({
           ...u,
           courses: u.courses.map((c) =>
-            c.courseCode === courseCode ? { ...c, orderId: orderId.trim() } : c
+            c.courseCode === courseCode ? { ...c, orderId: trimmed } : c
           ),
         })),
       }));
       try {
-        await endpoints.activeRequests.attachCourse(arId, courseCode, { order_id: orderId.trim() });
+        const res = await endpoints.activeRequests.attachCourse(arId, courseCode, { order_id: trimmed });
+        const ar = fromApiActiveRequest(res.data as Parameters<typeof fromApiActiveRequest>[0]);
+        setActiveRequests((prev) => prev.map((x) => (x.id === arId ? ar : x)));
       } catch {
-        /* local ok for demo */
+        setApiNote("Không lưu được Order ID lên máy chủ.");
       }
     },
     [updateActiveRequest]
   );
 
-  const issueInvoiceForCourse = useCallback((arId: string, courseCode: string) => {
-    const invId = `INV-2026-${String(Math.floor(Math.random() * 900) + 100)}`;
-    updateActiveRequest(arId, (ar) => ({
-      ...ar,
-      uids: ar.uids.map((u) => ({
-        ...u,
-        courses: u.courses.map((c) =>
-          c.courseCode === courseCode
-            ? { ...c, invoiced: true, invoiceId: invId, invoicedAt: flowNow() }
-            : c
-        ),
-      })),
-    }));
-  }, [updateActiveRequest]);
+  const issueInvoiceForCourse = useCallback(
+    async (arId: string, courseCode: string) => {
+      try {
+        const res = await endpoints.activeRequests.issueInvoice(arId, courseCode);
+        const ar = fromApiActiveRequest(res.data.active_request);
+        setActiveRequests((prev) => prev.map((x) => (x.id === arId ? ar : x)));
+        setApiNote("");
+      } catch {
+        setApiNote("Xuất hoá đơn thất bại — kiểm tra Order ID và thông tin KH trên PR.");
+      }
+    },
+    []
+  );
 
   const badgeCounts = useMemo(
     () => ({
