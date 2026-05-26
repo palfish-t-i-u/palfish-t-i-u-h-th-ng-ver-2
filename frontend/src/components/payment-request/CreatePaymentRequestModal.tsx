@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import type { CreatePaymentRequestPayload } from "../../types/paymentRequest";
 import CountryCombo from "./CountryCombo";
 import { Icons } from "./Icons";
+import VietnamAddressFields from "./VietnamAddressFields";
 
 interface FormState {
   uid: string;
@@ -127,22 +128,13 @@ export default function CreatePaymentRequestModal({
 
           <div className="field">
             <label>Địa chỉ khách hàng</label>
-            <div className="addr-row" style={{ marginBottom: 8 }}>
-              <input
-                placeholder="Tỉnh / Thành phố"
-                value={form.province}
-                onChange={(e) => set("province", e.target.value)}
-              />
-              <input
-                placeholder="Phường / Xã"
-                value={form.ward}
-                onChange={(e) => set("ward", e.target.value)}
-              />
-            </div>
-            <input
-              placeholder="Số nhà, đường (VD: 119 Phúc Xá)"
-              value={form.address}
-              onChange={(e) => set("address", e.target.value)}
+            <VietnamAddressFields
+              province={form.province}
+              ward={form.ward}
+              address={form.address}
+              onProvinceChange={(v) => set("province", v)}
+              onWardChange={(v) => set("ward", v)}
+              onAddressChange={(v) => set("address", v)}
             />
           </div>
 

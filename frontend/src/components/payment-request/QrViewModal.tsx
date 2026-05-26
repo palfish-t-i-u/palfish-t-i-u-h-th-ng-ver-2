@@ -1,7 +1,7 @@
 import type { PaymentAttempt, PaymentRequest } from "../../types/paymentRequest";
 import { findCountry } from "./CountryCombo";
 import { Icons } from "./Icons";
-import { fmtPhone, vnd } from "./paymentRequestUtils";
+import { fmtPhone, payosQrImageUrl, vnd } from "./paymentRequestUtils";
 
 function QrPlaceholder() {
   return (
@@ -38,6 +38,7 @@ export default function QrViewModal({
   const country = findCountry(request.country);
   const transferCode = qr.transferContent || qr.code;
   const bank = qr.bank || "MB Bank";
+  const qrImageUrl = payosQrImageUrl(qr.qrCode, 240);
 
   const copyTransfer = () => {
     if (transferCode) navigator.clipboard?.writeText(transferCode).catch(() => {});
@@ -59,8 +60,8 @@ export default function QrViewModal({
         <div className="modal-body" style={{ gap: 18 }}>
           <div className="qr-detail-card">
             <div className="qr-big">
-              {qr.qrCode ? (
-                <img src={qr.qrCode} alt="Mã QR PayOS" style={{ width: 170, height: 170, objectFit: "contain" }} />
+              {qrImageUrl ? (
+                <img src={qrImageUrl} alt="Mã QR PayOS" style={{ width: 170, height: 170, objectFit: "contain" }} />
               ) : (
                 <QrPlaceholder />
               )}
