@@ -1,69 +1,71 @@
-import { Input, Select } from "../ui";
-import type { DateFilter, StatusFilter } from "./paymentRequestUtils";
+import DateRangeFilter, { type DateRange } from "./DateRangeFilter";
+import { Icons } from "./Icons";
+import type { StatusFilter } from "./paymentRequestUtils";
 
-const statusPills: { key: StatusFilter; label: string; dot?: string }[] = [
-  { key: "all", label: "Tất cả" },
-  { key: "pending", label: "Chưa TT", dot: "bg-gmv-muted" },
-  { key: "short", label: "Thiếu", dot: "bg-gmv-danger" },
-  { key: "done", label: "Đủ", dot: "bg-gmv-ok" },
-  { key: "over", label: "Thừa", dot: "bg-gmv-warn" },
-];
+interface FilterChip {
+  id: StatusFilter;
+  label: string;
+  count: number;
+  color?: string;
+}
 
 export default function PaymentRequestToolbar({
   search,
   status,
-  dateFilter,
-  counts,
+  dateRange,
+  chips,
+  showChips,
   onSearch,
   onStatus,
-  onDateFilter,
+  onDateRange,
 }: {
   search: string;
   status: StatusFilter;
-  dateFilter: DateFilter;
-  counts: Record<StatusFilter, number>;
+  dateRange: DateRange;
+  chips: FilterChip[];
+  showChips: boolean;
   onSearch: (value: string) => void;
   onStatus: (value: StatusFilter) => void;
-  onDateFilter: (value: DateFilter) => void;
+  onDateRange: (value: DateRange) => void;
 }) {
   return (
-    <div className="rounded-gmv-lg border border-gmv-border bg-gmv-canvas p-3 shadow-gmv-1">
-      <div className="flex flex-wrap items-center gap-2">
-        <div className="relative min-w-[280px] flex-1">
-          <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gmv-muted">⌕</span>
-          <Input
-            value={search}
-            onChange={(event) => onSearch(event.target.value)}
-            placeholder="Tìm theo PR-ID, tên khách, UID hoặc số điện thoại..."
-            className="h-9 pl-9 text-sm"
-          />
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          {statusPills.map((pill) => (
-            <button
-              key={pill.key}
-              type="button"
-              onClick={() => onStatus(pill.key)}
-              className={`inline-flex min-h-[34px] items-center gap-2 rounded-gmv-md border px-3 text-sm font-medium transition ${
-                status === pill.key
-                  ? "border-gmv-primary bg-gmv-primary-soft text-gmv-primary"
-                  : "border-gmv-border bg-gmv-canvas text-gmv-text hover:bg-gmv-bg"
-              }`}
+    <div className="toolbar">
+      <div className="search">
+        <Icons.Search size={15} stroke="var(--text-3)" />
+        <input
+          placeholder="Tìm theo PR-ID, tên khách, UID hoặc số điện thoại…"
+          value={search}
+          onChange={(e) => onSearch(e.target.value)}
+        />
+      </div>
+      {showChips &&
+        chips.map((c) => (
+          <button
+            key={c.id}
+            type="button"
+            className={`filter-chip ${status === c.id ? "active" : ""}`}
+            onClick={() => onStatus(c.id)}
+          >
+            {c.color && status !== c.id && <span className="dot" style={{ background: c.color }} />}
+            {c.label}
+            <span
+              style={{
+                fontWeight: 600,
+                color: status === c.id ? "var(--primary-700)" : "var(--text-3)",
+                background: status === c.id ? "white" : "var(--surface-3)",
+                padding: "1px 7px",
+                borderRadius: 999,
+                fontSize: 11.5,
+                marginLeft: 2,
+              }}
             >
-              {pill.dot && <span className={`size-2 rounded-full ${pill.dot}`} />}
-              <span>{pill.label}</span>
-              <span className="rounded-full bg-gmv-bg px-2 py-0.5 text-xs text-gmv-muted">{counts[pill.key]}</span>
-            </button>
-          ))}
-        </div>
-        <Select value={dateFilter} onChange={(event) => onDateFilter(event.target.value as DateFilter)} className="h-9 w-[180px]">
-          <option value="all">Khoảng thời gian</option>
-          <option value="today">Hôm nay</option>
-          <option value="7d">7 ngày gần đây</option>
-          <option value="30d">30 ngày gần đây</option>
-        </Select>
+              {c.count}
+            </span>
+          </button>
+        ))}
+      <div style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
+        <DateRangeFilter value={dateRange} onChange={onDateRange} />
       </div>
     </div>
   );
 }
-

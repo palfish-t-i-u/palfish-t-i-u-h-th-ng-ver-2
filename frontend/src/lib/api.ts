@@ -4,11 +4,13 @@ import { supabase } from "./supabase";
 import type { Bc03Report, Bc03MonthlySettings, Bc03StaffOption, CreateOrderPayload, DashboardDailyTrends, DashboardLiveSummary, DashboardSummary, InvoiceOrder, Order } from "../types/order";
 import type {
   ActiveRequest,
+  ActiveRequestApiRow,
   AddPaymentAttemptPayload,
+  AddPaymentLineResponse,
+  AttachCoursePayload,
   CreateActiveRequestPayload,
   CreatePaymentRequestPayload,
-  PaymentAttempt,
-  PaymentRequest,
+  CreatePrResponse,
   PaymentRequestsListResponse,
 } from "../types/paymentRequest";
 import type {
@@ -103,22 +105,30 @@ export const endpoints = {
     recentEvents: () => api.get("/webhook/events?limit=50"),
   },
   paymentRequests: {
-    list: () => api.get<PaymentRequestsListResponse>("/payment-requests"),
+    // GET not yet available on backend — Tab uses mock fallback on error
+    list: () => api.get<PaymentRequestsListResponse>("/api/v1/payment-requests"),
     create: (body: CreatePaymentRequestPayload) =>
-      api.post<PaymentRequest>("/payment-requests", body),
+      api.post<CreatePrResponse>("/api/v1/payment-requests", body),
+    // B2: add payment line (QR / cash / card / installment)
     addPayment: (id: string, body: AddPaymentAttemptPayload) =>
-      api.post<PaymentAttempt>(`/payment-requests/${id}/payments`, body),
-    confirmPayment: (id: string, paymentId: string) =>
-      api.post<PaymentAttempt>(`/payment-requests/${id}/payments/${paymentId}/confirm`),
-    attachBill: (id: string, paymentId: string) =>
-      api.post<PaymentAttempt>(`/payment-requests/${id}/payments/${paymentId}/bill`),
-    cancel: (id: string) => api.post(`/payment-requests/${id}/cancel`),
-    createActiveRequest: (body: CreateActiveRequestPayload) =>
-      api.post<ActiveRequest>("/active-requests", body),
-    updateActiveRequest: (id: string, body: ActiveRequest) =>
-      api.patch<ActiveRequest>(`/active-requests/${id}`, body),
-    invoiceCourses: (id: string, courseCodes: string[]) =>
-      api.post<ActiveRequest>(`/active-requests/${id}/courses/invoice`, { courseCodes }),
+      api.post<AddPaymentLineResponse>(`/api/v1/payment-requests/${id}/payment-lines`, body),
+    cancel: (id: string) => api.post(`/api/v1/payment-requests/${id}/cancel`),
+    // B3: create active request nested under PR
+    createActiveRequest: (prId: string, body: CreateActiveRequestPayload) =>
+      api.post<ActiveRequestApiRow>(`/api/v1/payment-requests/${prId}/active-requests`, body),
+  },
+  activeRequests: {
+    list: (params?: { status?: string }) =>
+      api.get<ActiveRequestApiRow[]>("/api/v1/active-requests", { params }),
+    attachCourse: (arId: string, courseCode: string, body: AttachCoursePayload) =>
+      api.patch<ActiveRequest>(
+        `/api/v1/active-requests/${arId}/courses/${encodeURIComponent(courseCode)}`,
+        body
+      ),
+  },
+  transactions: {
+    patchStatus: (id: string, status: string) =>
+      api.patch(`/api/v1/transactions/${id}/status`, { status }),
   },
   crm: {
     activate: (infoCode: string) => api.post("/crm/activate", { infoCode }),

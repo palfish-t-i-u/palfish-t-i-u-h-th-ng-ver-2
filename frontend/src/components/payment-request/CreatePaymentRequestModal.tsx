@@ -1,16 +1,29 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { CreatePaymentRequestPayload } from "../../types/paymentRequest";
-import { Button, Input, Modal, Select, Textarea } from "../ui";
+import CountryCombo from "./CountryCombo";
+import { Icons } from "./Icons";
 
-const initialForm: CreatePaymentRequestPayload = {
+interface FormState {
+  uid: string;
+  name: string;
+  country: string;
+  phone: string;
+  address: string;
+  ward: string;
+  province: string;
+  target: string;
+  note: string;
+}
+
+const INITIAL: FormState = {
   uid: "",
   name: "",
-  country: "vn",
+  country: "VN",
   phone: "",
   address: "",
   ward: "",
   province: "",
-  target: 0,
+  target: "",
   note: "",
 };
 
@@ -23,75 +36,156 @@ export default function CreatePaymentRequestModal({
   onClose: () => void;
   onSubmit: (payload: CreatePaymentRequestPayload) => void;
 }) {
-  const [form, setForm] = useState<CreatePaymentRequestPayload>(initialForm);
+  const [form, setForm] = useState<FormState>(INITIAL);
 
-  const set = (key: keyof CreatePaymentRequestPayload, value: string | number) => {
-    setForm((prev) => ({ ...prev, [key]: value }));
+  useEffect(() => {
+    if (open) setForm(INITIAL);
+  }, [open]);
+
+  if (!open) return null;
+
+  const set = <K extends keyof FormState>(k: K, v: FormState[K]) =>
+    setForm((f) => ({ ...f, [k]: v }));
+
+  const targetNum = parseInt(String(form.target).replace(/\D/g, ""), 10) || 0;
+  const canSubmit = !!(form.uid && form.name && form.phone && targetNum > 0);
+
+  const handleSubmit = () => {
+    if (!canSubmit) return;
+    onSubmit({
+      uid: form.uid,
+      name: form.name,
+      country: form.country,
+      phone: form.phone,
+      address: form.address,
+      ward: form.ward,
+      province: form.province,
+      target: targetNum,
+      note: form.note,
+    });
   };
 
-  const canSubmit = form.uid.trim() && form.name.trim() && form.phone.trim() && form.target > 0;
-
   return (
-    <Modal open={open} onClose={onClose} title="Tạo Payment Request" wide className="max-w-4xl">
-      <div className="flex flex-col gap-4">
-        <div className="grid gap-3 md:grid-cols-2">
-          <label className="flex flex-col gap-1">
-            <span className="text-xs font-medium text-gmv-muted">UID CRM</span>
-            <Input value={form.uid} onChange={(event) => set("uid", event.target.value)} />
-          </label>
-          <label className="flex flex-col gap-1">
-            <span className="text-xs font-medium text-gmv-muted">Tên khách hàng</span>
-            <Input value={form.name} onChange={(event) => set("name", event.target.value)} />
-          </label>
-          <label className="flex flex-col gap-1">
-            <span className="text-xs font-medium text-gmv-muted">Quốc gia</span>
-            <Select value={form.country} onChange={(event) => set("country", event.target.value)}>
-              <option value="vn">vn +84</option>
-              <option value="ph">ph +63</option>
-              <option value="id">id +62</option>
-              <option value="th">th +66</option>
-            </Select>
-          </label>
-          <label className="flex flex-col gap-1">
-            <span className="text-xs font-medium text-gmv-muted">Số điện thoại</span>
-            <Input value={form.phone} onChange={(event) => set("phone", event.target.value)} />
-          </label>
-          <label className="flex flex-col gap-1">
-            <span className="text-xs font-medium text-gmv-muted">Phường/Xã</span>
-            <Input value={form.ward} onChange={(event) => set("ward", event.target.value)} />
-          </label>
-          <label className="flex flex-col gap-1">
-            <span className="text-xs font-medium text-gmv-muted">Tỉnh/Thành phố</span>
-            <Input value={form.province} onChange={(event) => set("province", event.target.value)} />
-          </label>
-          <label className="flex flex-col gap-1 md:col-span-2">
-            <span className="text-xs font-medium text-gmv-muted">Địa chỉ</span>
-            <Input value={form.address} onChange={(event) => set("address", event.target.value)} />
-          </label>
-          <label className="flex flex-col gap-1">
-            <span className="text-xs font-medium text-gmv-muted">Tổng tiền</span>
-            <Input value={form.target || ""} onChange={(event) => set("target", Number(event.target.value.replace(/\D/g, "")))} inputMode="numeric" />
-          </label>
-          <label className="flex flex-col gap-1 md:col-span-2">
-            <span className="text-xs font-medium text-gmv-muted">Ghi chú</span>
-            <Textarea value={form.note} onChange={(event) => set("note", event.target.value)} rows={3} />
-          </label>
+    <div className="gmv-prototype-modal-scrim" onClick={onClose}>
+      <div className="modal" style={{ width: "min(680px, 100%)" }} onClick={(e) => e.stopPropagation()}>
+        <div className="modal-head">
+          <div>
+            <h3>Tạo Payment Request mới</h3>
+            <div style={{ fontSize: 12, color: "var(--text-3)", marginTop: 2 }}>
+              Bước 1 · Điền thông tin khách &amp; tổng tiền dự kiến → hệ thống xuất PR-ID
+            </div>
+          </div>
+          <button className="drawer-close" onClick={onClose}>
+            <Icons.Close size={16} />
+          </button>
         </div>
+        <div className="modal-body">
+          <div className="field-row">
+            <div className="field">
+              <label>
+                UID CRM <span style={{ color: "var(--danger)" }}>*</span>
+              </label>
+              <input placeholder="VD: 3213123123" value={form.uid} onChange={(e) => set("uid", e.target.value)} />
+            </div>
+            <div className="field">
+              <label>
+                Tên khách hàng <span style={{ color: "var(--danger)" }}>*</span>
+              </label>
+              <input placeholder="Họ và tên" value={form.name} onChange={(e) => set("name", e.target.value)} />
+            </div>
+          </div>
 
-        <div className="flex justify-end gap-2">
-          <Button variant="secondary" onClick={onClose}>Huỷ</Button>
-          <Button
-            disabled={!canSubmit}
-            onClick={() => {
-              onSubmit(form);
-              setForm(initialForm);
+          <div className="field-row">
+            <div className="field">
+              <label>
+                Số điện thoại <span style={{ color: "var(--danger)" }}>*</span>
+              </label>
+              <div className="phone-row">
+                <CountryCombo value={form.country} onChange={(v) => set("country", v)} />
+                <input
+                  className="phone-input"
+                  placeholder="9xx xxx xxx"
+                  value={form.phone}
+                  onChange={(e) => set("phone", e.target.value.replace(/[^\d]/g, ""))}
+                />
+              </div>
+            </div>
+            <div className="field">
+              <label>
+                Tổng tiền dự kiến <span style={{ color: "var(--danger)" }}>*</span>
+              </label>
+              <input
+                placeholder="VD: 12.000.000"
+                value={form.target}
+                onChange={(e) => {
+                  const v = e.target.value.replace(/[^\d]/g, "");
+                  set("target", v ? Number(v).toLocaleString("vi-VN") : "");
+                }}
+              />
+            </div>
+          </div>
+
+          <div className="field">
+            <label>Địa chỉ khách hàng</label>
+            <div className="addr-row" style={{ marginBottom: 8 }}>
+              <input
+                placeholder="Tỉnh / Thành phố"
+                value={form.province}
+                onChange={(e) => set("province", e.target.value)}
+              />
+              <input
+                placeholder="Phường / Xã"
+                value={form.ward}
+                onChange={(e) => set("ward", e.target.value)}
+              />
+            </div>
+            <input
+              placeholder="Số nhà, đường (VD: 119 Phúc Xá)"
+              value={form.address}
+              onChange={(e) => set("address", e.target.value)}
+            />
+          </div>
+
+          <div className="field">
+            <label>Ghi chú</label>
+            <textarea
+              placeholder="Ghi chú nội bộ về thoả thuận với khách (số đợt, deadline, ...)"
+              value={form.note}
+              onChange={(e) => set("note", e.target.value)}
+            />
+          </div>
+
+          <div
+            style={{
+              background: "var(--primary-50)",
+              border: "1px solid var(--primary-100)",
+              borderRadius: 10,
+              padding: "10px 12px",
+              display: "flex",
+              gap: 10,
+              alignItems: "flex-start",
             }}
           >
-            + Tạo Payment Request
-          </Button>
+            <Icons.AlertCircle size={16} stroke="var(--primary-700)" />
+            <div style={{ fontSize: 12, color: "var(--primary-700)", lineHeight: 1.5 }}>
+              Sau khi tạo, hệ thống sẽ sinh <strong>PR-ID</strong> và mở thẳng trang chi tiết để bạn tạo lần thanh toán đầu tiên (chuyển khoản QR, tiền mặt, quẹt thẻ hoặc trả góp).
+            </div>
+          </div>
+        </div>
+        <div className="modal-foot">
+          <button className="btn btn-outline" onClick={onClose}>
+            Huỷ
+          </button>
+          <button
+            className="btn btn-primary"
+            disabled={!canSubmit}
+            style={!canSubmit ? { opacity: 0.4, cursor: "not-allowed" } : undefined}
+            onClick={handleSubmit}
+          >
+            <Icons.Plus size={14} /> Tạo PR-ID &amp; mở chi tiết
+          </button>
         </div>
       </div>
-    </Modal>
+    </div>
   );
 }
-
