@@ -1,7 +1,7 @@
 # Bàn giao dự án — PalFish GMV Manager
 
-> **Đối tượng:** Codex / agent AI tiếp quản bảo trì và phát triển.  
-> **Cập nhật:** 2026-05-27 · branch `main` · commit production: `891a623`  
+> **Đối tượng:** Codex / Gemini / agent AI tiếp quản bảo trì và phát triển.  
+> **Cập nhật:** 2026-05-26 · production `main` · **WIP:** `feature-duc` (B3) + `feature-kem` (B1/B2)  
 > **Ngôn ngữ UI:** Tiếng Việt · **Timezone vận hành:** UTC+7 (HCM)
 
 **⚠️ Đọc file này thay vì suy luật từ `docs/PROJECT.md` / commit cũ.**  
@@ -77,6 +77,7 @@ palfish-gmv-manager/
 │   ├── report_routes.py      # BC03
 │   ├── revenue_routes.py     # Sổ doanh thu, pivot BC01/BC02, GSheet sync
 │   ├── invoice_routes.py     # M3/M4 hóa đơn
+│   ├── activation_routes.py  # ★ B3 Active Request (feature-duc, chưa merge main)
 │   ├── rbac.py               # Sale / Leader / Manager / System
 │   ├── run.ps1               # Chạy local Windows
 │   └── Dockerfile            # Context = repo root (cần api_pipe/)
@@ -164,6 +165,39 @@ Tab2 poll GET /orders mỗi 15s → tienVe + trangThaiThuTuc
 Logic đối soát **chuẩn:** `api_pipe/payos_webhook.py`. Edge Function là bản TypeScript song song — **đồng bộ khi sửa reconcile**.
 
 Spec luồng thanh toán dài hạn (PR/Order): `docs/PROTOTYPE_PAYMENT_FLOW.md`.
+
+### 6.1b Luồng mới B1–B4 (đang build — **chưa trên production `main`**)
+
+Team đang rework Module 1–4 theo prototype Hiếu (`CRM Palfish (1)/`, `docs/PROTOTYPE_PAYMENT_FLOW.md`).  
+**Hai luồng song song:** app production vẫn chạy `don_hang` (M1/M2 cũ); luồng PR mới test trên branch tích hợp.
+
+| Bước | Nội dung | Owner branch | Trạng thái (2026-05-26) |
+|------|----------|--------------|-------------------------|
+| **B1** | Tạo Payment Request → `PR-2026-XXXX` | `feature-kem` (Kem/Giang) | Schema + API trên Supabase; FE prototype |
+| **B2** | QR / lần thanh toán trong PR, đối soát | `feature-kem` | Đang làm |
+| **B3** | Active Request, Course code, khớp Order ID CRM | `feature-duc` (Đức) | **Backend POST/PATCH test OK** — chưa merge, chưa FE |
+| **B4** | Xuất hóa đơn từ PR + AR | Chưa assign xong | **Chưa code** |
+
+**Quy trình test local (thống nhất team):**
+
+```
+feature-kem  ──┐
+               ├── merge → main ──→ chạy local (run.ps1 + npm run dev)
+feature-duc  ──┘
+```
+
+Remote đã có: `origin/feature-kem`, `origin/feature-duc`. **Chưa push production** — merge vào `main` chỉ để dev/UAT local.
+
+**B3 API (đã implement trên `feature-duc`, file `backend/activation_routes.py`):**
+
+| Method | Path | Mô tả |
+|--------|------|--------|
+| POST | `/api/v1/payment-requests/{pr_id}/active-requests` | PR `state` ∈ {done, over} hoặc `received >= target` → tạo AR, sinh `CC-[PR_SEQ]-[001…]` |
+| PATCH | `/api/v1/active-requests/{ar_id}/courses/{course_code}` | Body `{ order_id }` → JSONB atomic (RPC `patch_active_request_course_order`) |
+
+**Test thật đã pass (Supabase dev):** `AR-2026-0002` · `PR-2026-9999` · `ready_invoice` · `ORD-CRM-88901` trên `CC-9999-001`.
+
+**Chưa có:** `GET /active-requests`, B4 invoice API, FE Tab Active Request, commit git, deploy.
 
 ### 6.2 CRM hybrid (M5 + M6 + BC03)
 
@@ -274,6 +308,29 @@ Chi tiết: `docs/DEPLOY.md`, `docs/M5_OPERATIONS.md` (Promote Vercel nếu prev
 | `crm_tokens` | Cookie PalFish CRM |
 | `so_doanh_thu` | Sổ doanh thu Module 5.1 |
 | `bc03_monthly_settings` | KPI thủ công BC03 |
+| `payment_requests` | **B1/B2 mới** — PR (Kem schema trên Supabase dev) |
+| `active_requests` | **B3** — AR + `uids_data` JSONB (patch Đức) |
+
+**Schema `payment_requests` thực tế trên Supabase dev** (2026-05-26 — **không** dùng bản Giang uuid/`trang_thai` cũ):
+
+| Cột | Kiểu | Ghi chú |
+|-----|------|---------|
+| `id` | text | `PR-2026-XXXX` |
+| `name`, `uid`, `phone`, `country`, `address`, `ward`, `province`, `note` | text | B1 |
+| `target`, `received` | bigint | Số tiền |
+| `state` | text | `pending` / `short` / `done` / `over` / `cancelled` |
+
+**Schema `active_requests`:**
+
+| Cột | Kiểu | Ghi chú |
+|-----|------|---------|
+| `id` | text | `AR-2026-XXXX` |
+| `pr_id` | text FK → `payment_requests.id` | **Phải text** — patch cũ nhầm uuid đã fix bằng `supabase_schema_patch_active_requests_pr_id_text.sql` |
+| `uids_data` | jsonb | Mảng `[{ uid, courses: [{ code, name, amount, order_id }] }]` — snake_case |
+| `status` | text | `pending_order` → `partial_order` → `ready_invoice` → `invoiced` |
+
+SQL patches B3: `docs/supabase_schema_patch_active_requests.sql` (+ `_pr_id_text.sql` nếu đã chạy patch uuid).  
+**Legacy bỏ qua:** `docs/supabase_schema_patch_activate_codes.sql` (bảng `activate_codes` từng thiết kế Codex — **không** dùng; thay bằng JSONB `active_requests`).
 
 ### Thứ tự patch (SQL Editor → `NOTIFY pgrst, 'reload schema'`)
 
@@ -283,8 +340,9 @@ Chi tiết: `docs/DEPLOY.md`, `docs/M5_OPERATIONS.md` (Promote Vercel nếu prev
 4. `supabase_schema_patch_crm_*.sql` (CRM tokens, record_type, hybrid unique key)
 5. `supabase_schema_patch_bc03_monthly.sql`
 6. **Chưa commit:** `supabase_schema_patch_revenue_ledger_link.sql` — hỏi team trước khi chạy prod
+7. **Luồng PR (dev):** `supabase_schema_patch_active_requests.sql` — sau khi `payment_requests` Kem đã có
 
-Diagnostic: `docs/supabase_diagnose.sql`.
+Diagnostic: `docs/supabase_diagnose.sql` (mục 4–5: `payment_requests` + `active_requests`).
 
 ---
 
@@ -301,6 +359,7 @@ Diagnostic: `docs/supabase_diagnose.sql`.
 | BC03 | `GET /reports/bc03`, `PUT /reports/bc03/monthly` |
 | Revenue | `GET/POST/PATCH/DELETE /revenue/ledger`, `POST /revenue/ledger/sync-gsheet` |
 | Admin | `GET/PATCH /me`, `/admin/sales`, `/admin/auth-users` |
+| **Activation B3** *(feature-duc)* | `POST /api/v1/payment-requests/{pr_id}/active-requests`, `PATCH /api/v1/active-requests/{ar_id}/courses/{course_code}` |
 
 **Supabase pagination:** CRM/dashboard query có page 1000 rows — logic paginate trong `crm_metrics.fetch_crm_sales_rows`.
 
@@ -339,6 +398,10 @@ Diagnostic: `docs/supabase_diagnose.sql`.
 | Metabase packages | Fallback hardcoded nếu thiếu env Metabase |
 | Audit log Tab2 | Bảng `don_hang_audit` có schema, app chưa ghi |
 | Push nhầm bản cũ | Đã fix 2026-05-27 — luôn verify `main` = `891a623+` trước khi deploy |
+| Luồng PR vs `don_hang` | Production vẫn M1/M2 cũ; PR/AR chỉ trên branch tích hợp — đừng nhầm API |
+| `activate_codes` vs `active_requests` | Doc/task cũ nhắc `activate_codes` — implementation hiện tại dùng JSONB `active_requests` |
+| Swagger `/docs` 500 | Đã fix: `GsheetSyncBody` nested class → module level trong `revenue_routes.py` |
+| `feature-duc` chưa commit | `activation_routes.py`, SQL patches, sửa `main.py` register — commit trước merge |
 
 ---
 
@@ -384,7 +447,48 @@ CHANGELOG chi tiết: `docs/CHANGELOG.md` (chỉ append, không sửa entry cũ)
 
 ---
 
-## 17. Checklist tiếp quản cho Codex
+## 17. Snapshot WIP — `feature-duc` (2026-05-26)
+
+> **Mục đích:** Gemini / agent tiếp tục B3→B4 hoặc merge — đọc mục này trước khi code.
+
+### File thay đổi (chưa commit trên `feature-duc`)
+
+| File | Thay đổi |
+|------|----------|
+| `backend/activation_routes.py` | **Mới** — B3 POST/PATCH |
+| `backend/main.py` | `register_activation_routes(app, _supabase)` |
+| `backend/revenue_routes.py` | Fix OpenAPI: `GsheetSyncBody` module-level |
+| `docs/supabase_schema_patch_active_requests.sql` | Bảng `active_requests` + RPC |
+| `docs/supabase_schema_patch_active_requests_pr_id_text.sql` | Fix `pr_id` text FK |
+| `docs/supabase_diagnose.sql` | Query cột PR + AR + enum |
+
+### Việc tiếp theo (ưu tiên)
+
+1. **Commit** B3 trên `feature-duc`
+2. **GET** `/api/v1/active-requests` (+ filter `status`, join PR cho FE)
+3. **B4** — invoice request từ AR `ready_invoice`; set `invoiced`
+4. **Merge** `origin/feature-kem` + `feature-duc` → `main` → test B1→B2→B3 local
+5. **FE** — nối prototype `CRM Palfish (1)/active-request.jsx` → API (Hiếu layout)
+
+### Đối chiếu định hướng (`PROTOTYPE_PAYMENT_FLOW.md` / `MINH_TASKS_2026-05-26.md`)
+
+| Yêu cầu thiết kế | Thực tế code | Lệch? |
+|------------------|--------------|-------|
+| B3 nested `uids` + courses trong JSONB | `active_requests.uids_data` | ✅ Khớp |
+| Course code `CC-…-001` khi tạo AR | Sinh từ PR id (`PR-2026-9999` → `CC-9999-001`) | ✅ Khớp |
+| snake_case API/DB | `order_id`, `uids_data`, … | ✅ Khớp |
+| PATCH Order ID → status AR | `pending_order` / `partial_order` / `ready_invoice` | ✅ Đã test |
+| B3 chỉ khi PR đủ tiền | Check `state` done/over + `received >= target` | ✅ Khớp |
+| B4 xuất HĐ từ B1+B3 | Chưa implement | ⏳ Đúng roadmap, chưa làm |
+| B1/B2 full API + FE | Kem — `feature-kem` | ⏳ Song song, merge sau |
+| Thay `activate_codes` table | Dùng JSONB — bỏ patch `activate_codes.sql` | ⚠️ Doc TODO cũ chưa cập nhật |
+| Production deploy B3 | Chưa — chỉ dev Supabase + local | ✅ Đúng — chưa go-live PR flow |
+
+**Kết luận:** Backend B3 **đúng hướng prototype**, không lệch nghiệp vụ. Gap chính: **thiếu GET/B4/FE**, **chưa merge Kem**, **chưa commit**. M3/M4 cũ vẫn chạy độc lập — cần plan cutover sau UAT.
+
+---
+
+## 18. Checklist tiếp quản cho Codex / Gemini
 
 - [ ] Clone repo, chạy local theo mục 8
 - [ ] Có quyền Supabase dashboard (đọc schema, không cần service_role trong chat)
@@ -397,9 +501,9 @@ CHANGELOG chi tiết: `docs/CHANGELOG.md` (chỉ append, không sửa entry cũ)
 
 ---
 
-## 18. Liên hệ / domain (tham khảo)
+## 19. Liên hệ / domain (tham khảo)
 
-- Team PalFish nội bộ — phân công lịch sử: Minh (FE/BE/deploy), Giang (PayOS/STK), Thu Hiền (SOP sync CRM hàng ngày).
+- Team PalFish nội bộ — phân công lịch sử: Minh (FE/BE/deploy), Giang/Kem (PayOS/STK + B1/B2 PR), Đức (B3 activation), Thu Hiền (SOP sync CRM + khớp Order ID).
 - PalFish CRM: cookie-based, không public API doc — logic reverse-engineer trong `crm_routes.py`.
 
 ---

@@ -866,6 +866,13 @@ class LedgerPatchBody(BaseModel):
     note2: str | None = None
 
 
+class GsheetSyncBody(BaseModel):
+    dryRun: bool = False
+    limit: int = 0
+    spreadsheetId: str | None = None
+    tabs: list[str] | None = None
+
+
 LEDGER_PATCH_MAP = {
     "ngayTienVe": "ngay_tien_ve",
     "tenKhach": "ten_khach",
@@ -1234,12 +1241,6 @@ def register_revenue_routes(app, get_supabase) -> None:
             raise
         except Exception as exc:
             raise HTTPException(500, f"Lỗi pivot Doanh thu Sale: {exc}") from exc
-
-    class GsheetSyncBody(BaseModel):
-        dryRun: bool = False
-        limit: int = 0
-        spreadsheetId: str | None = None
-        tabs: list[str] | None = None
 
     @app.post("/revenue/ledger/sync-gsheet")
     def sync_ledger_from_gsheet(body: GsheetSyncBody, authorization: str | None = Header(None)):
