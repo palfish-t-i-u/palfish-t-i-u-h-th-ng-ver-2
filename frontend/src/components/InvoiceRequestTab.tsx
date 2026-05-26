@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from "react";
 import { usePaymentFlow } from "../contexts/PaymentFlowContext";
 import {
   deriveInvoiceRows,
-  downloadInvoiceDocument,
   formatAddress,
   type InvoiceRow,
   vnd,
@@ -10,7 +9,13 @@ import {
 import DateRangeFilter, { EMPTY_RANGE, type DateRange, inDateRange } from "./payment-request/DateRangeFilter";
 import { findCountry } from "./payment-request/CountryCombo";
 import { Icons } from "./payment-request/Icons";
-import { fmtPhone } from "./payment-request/paymentRequestUtils";
+import {
+  fmtPhone,
+  formatPaymentDateTime,
+  fromApiActiveRequest,
+} from "./payment-request/paymentRequestUtils";
+import { downloadTaxInvoiceZip } from "../utils/taxInvoiceXlsxExport";
+import { endpoints } from "../lib/api";
 import "../styles/prototype-payments.css";
 
 const CUSTOMER_TYPE_META = {
@@ -24,7 +29,7 @@ function defaultsFor(row: InvoiceRow | null) {
   return {
     customerType: (c.customerType as "individual" | "business") || "individual",
     name: c.name ?? ar.customerName,
-    email: c.email || "",
+    email: c.email || row.pr?.email || "",
     country: c.country || u.country || pr?.country || "VN",
     phone: c.phone ?? (u.phone || pr?.phone || ""),
     address: c.address ?? (pr?.address || ""),
@@ -58,14 +63,12 @@ function InvoiceDetailDrawer({
   onClose,
   onIssue,
   onOpenAr,
-  onDownload,
 }: {
   row: InvoiceRow | null;
   open: boolean;
   onClose: () => void;
   onIssue: () => void;
   onOpenAr: (arId: string) => void;
-  onDownload: () => void;
 }) {
   if (!row) {
     return (
@@ -98,14 +101,7 @@ function InvoiceDetailDrawer({
             <div>
               <div style={{ fontWeight: 700, fontSize: 16 }}>{d.name || row.ar.customerName}</div>
               <div style={{ fontSize: 12, color: "var(--text-3)", marginTop: 2 }}>
-                {isIssued ? (
-                  <>
-                    Đã xuất lúc <strong style={{ color: "var(--success-text)" }}>{row.course.invoicedAt || "—"}</strong>
-                  </>
-                ) : (
-                  <>Chờ xuất · Order ID {row.course.orderId?.trim() ? <strong style={{ color: "var(--text-2)" }}>{row.course.orderId}</strong> : <span style={{ color: "var(--text-3)" }}>(điền sau)</span>}</>
-                )}{" "}
-                · {row.ar.id}
+                Order ID <strong style={{ color: "var(--text-2)" }}>{row.course.orderId}</strong> · {row.ar.id}
               </div>
             </div>
           </div>
@@ -153,6 +149,10 @@ function InvoiceDetailDrawer({
                   {country.flag} {country.dial} {fmtPhone(d.phone)}
                 </div>
               </div>
+              <div>
+                <div className="info-label">Email</div>
+                <div className="info-value">{d.email || "—"}</div>
+              </div>
               <div style={{ gridColumn: "1 / -1" }}>
                 <div className="info-label">Địa chỉ</div>
                 <div className="info-value">{formatAddress(row.pr, row)}</div>
@@ -179,16 +179,23 @@ function InvoiceDetailDrawer({
               Mở Active Request
             </button>
             {isIssued && (
-              <button type="button" className="btn btn-outline btn-sm" onClick={onDownload}>
-                <Icons.Download size={13} /> Tải hóa đơn
+              <button
+                type="button"
+                className="btn btn-outline btn-sm"
+                title="Tải ZIP 3 file Excel kê khai thuế (don_hang, khach_hang, san_pham)"
+                onClick={() => void downloadTaxInvoiceZip([row])}
+              >
+                <Icons.Download size={13} /> Tải file thuế
               </button>
             )}
           </div>
-          {!isIssued && (
-            <button type="button" className="btn btn-primary" onClick={onIssue} disabled={!isRowComplete(row)}>
-              <Icons.Doc size={14} /> Xuất hoá đơn
-            </button>
-          )}
+          <div style={{ display: "flex", gap: 8 }}>
+            {!isIssued && (
+              <button type="button" className="btn btn-primary" onClick={onIssue} disabled={!isRowComplete(row)}>
+                <Icons.Doc size={14} /> Xuất hoá đơn
+              </button>
+            )}
+          </div>
         </div>
       </aside>
     </>
@@ -196,25 +203,39 @@ function InvoiceDetailDrawer({
 }
 
 export default function InvoiceRequestTab() {
-  const { activeRequests, requests, issueInvoiceForCourse, navigate, nav, setNav, apiNote } = usePaymentFlow();
+  const { activeRequests, requests, issueInvoiceForCourse, navigate, nav, setNav, apiNote, loadData } =
+    usePaymentFlow();
   const [tab, setTab] = useState<"pending" | "issued">("pending");
   const [search, setSearch] = useState("");
   const [dateRange, setDateRange] = useState<DateRange>(EMPTY_RANGE);
   const [openKey, setOpenKey] = useState<string | null>(null);
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
+  const [bulkExporting, setBulkExporting] = useState(false);
+  const [confirmBulkIssue, setConfirmBulkIssue] = useState(false);
+  const [bulkError, setBulkError] = useState("");
 
   useEffect(() => {
-    if (nav.invoiceTab) {
-      setTab(nav.invoiceTab);
-    }
+    const tabHint = nav.openInvoiceTab ?? nav.invoiceTab;
+    if (tabHint) setTab(tabHint);
     if (nav.openInvoiceKey) {
-      setTab("pending");
       setOpenKey(nav.openInvoiceKey);
+    } else if (nav.openInvoiceCourseCode) {
+      const code = nav.openInvoiceCourseCode;
+      const match = deriveInvoiceRows(activeRequests, requests).find((r) => r.course.courseCode === code);
+      if (match) setOpenKey(match.key);
     }
-    if (nav.invoiceTab || nav.openInvoiceKey) {
+    if (tabHint || nav.openInvoiceKey || nav.openInvoiceCourseCode) {
       setNav({});
     }
-  }, [nav.invoiceTab, nav.openInvoiceKey, setNav]);
+  }, [
+    nav.openInvoiceTab,
+    nav.invoiceTab,
+    nav.openInvoiceKey,
+    nav.openInvoiceCourseCode,
+    activeRequests,
+    requests,
+    setNav,
+  ]);
 
   const rows = useMemo(() => deriveInvoiceRows(activeRequests, requests), [activeRequests, requests]);
   const pending = useMemo(() => rows.filter((r) => !r.course.invoiced), [rows]);
@@ -243,12 +264,67 @@ export default function InvoiceRequestTab() {
   const sumPending = pending.reduce((s, r) => s + r.course.amount, 0);
   const sumIssued = issued.reduce((s, r) => s + r.course.amount, 0);
 
+  const selectedRows = useMemo(
+    () => rows.filter((r) => selectedKeys.has(r.key)),
+    [rows, selectedKeys]
+  );
+  const selectedPendingSum = selectedRows.reduce((s, r) => s + r.course.amount, 0);
+
+  const handleBulkIssueAndExport = async () => {
+    setConfirmBulkIssue(false);
+    setBulkExporting(true);
+    setBulkError("");
+    const toIssue = selectedRows.filter((r) => !r.course.invoiced && isRowComplete(r));
+    const issuedForExport: InvoiceRow[] = [];
+    let failCount = 0;
+
+    for (const row of toIssue) {
+      try {
+        const res = await endpoints.activeRequests.issueInvoice(row.ar.id, row.course.courseCode);
+        const ar = fromApiActiveRequest(res.data.active_request);
+        let updatedCourse = row.course;
+        for (const u of ar.uids) {
+          const c = u.courses.find((x) => x.courseCode === row.course.courseCode);
+          if (c) {
+            updatedCourse = c;
+            break;
+          }
+        }
+        issuedForExport.push({ ...row, ar, course: updatedCourse });
+      } catch {
+        failCount += 1;
+      }
+    }
+
+    if (issuedForExport.length > 0) {
+      await downloadTaxInvoiceZip(issuedForExport);
+      await loadData({ silent: true });
+      setTab("issued");
+    }
+    if (failCount > 0) {
+      setBulkError(`${failCount}/${toIssue.length} hóa đơn xuất thất bại — kiểm tra Order ID và thông tin KH.`);
+    }
+    setSelectedKeys(new Set());
+    setBulkExporting(false);
+  };
+
+  const handleBulkDownloadTax = async () => {
+    const toDownload = selectedRows.filter((r) => r.course.invoiced);
+    if (toDownload.length === 0) return;
+    setBulkExporting(true);
+    try {
+      await downloadTaxInvoiceZip(toDownload);
+    } finally {
+      setBulkExporting(false);
+    }
+  };
+
   return (
     <div className="gmv-prototype">
       <div className="page">
         <div style={{ fontSize: 12.5, color: "var(--text-3)", maxWidth: 720, lineHeight: 1.55, marginBottom: 4 }}>
-          Mỗi <strong style={{ color: "var(--text-2)" }}>Course Code</strong> → một hoá đơn (INV). Order ID có thể điền
-          sau tại tab Kích hoạt; dữ liệu khách lấy từ PR + AR.
+          Mỗi <strong style={{ color: "var(--text-2)" }}>Course Code</strong> có Order ID → một hoá đơn (INV). Sau xuất, tải{" "}
+          <strong style={{ color: "var(--text-2)" }}>ZIP 3 file Excel</strong> kê khai thuế (don_hang, khach_hang, san_pham).
         </div>
 
         {apiNote && (
@@ -264,6 +340,50 @@ export default function InvoiceRequestTab() {
             }}
           >
             {apiNote}
+          </div>
+        )}
+
+        {bulkError && (
+          <div
+            style={{
+              padding: "10px 14px",
+              borderRadius: 10,
+              border: "1px solid var(--danger-border, #f5c2c7)",
+              background: "var(--danger-bg, #fff5f5)",
+              color: "var(--danger-text, #c0392b)",
+              fontSize: 12.5,
+              marginBottom: 8,
+            }}
+          >
+            {bulkError}
+          </div>
+        )}
+
+        {confirmBulkIssue && (
+          <div
+            className="panel"
+            style={{
+              marginBottom: 12,
+              borderColor: "var(--primary-200)",
+              background: "var(--primary-50)",
+            }}
+          >
+            <p style={{ fontWeight: 700, fontSize: 14, marginBottom: 6 }}>
+              Xác nhận xuất {selectedKeys.size} hóa đơn?
+            </p>
+            <p style={{ fontSize: 12.5, color: "var(--text-3)", marginBottom: 10, lineHeight: 1.5 }}>
+              Hệ thống sẽ phát hành INV cho <strong>{selectedKeys.size}</strong> course, tổng{" "}
+              <strong>{vnd(selectedPendingSum)}</strong>, rồi tải ZIP <strong>3 file Excel</strong> kê khai thuế
+              (don_hang, khach_hang, san_pham).
+            </p>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button type="button" className="btn btn-success btn-sm" onClick={() => void handleBulkIssueAndExport()}>
+                Xác nhận — Xuất &amp; tải file thuế
+              </button>
+              <button type="button" className="btn btn-outline btn-sm" onClick={() => setConfirmBulkIssue(false)}>
+                Hủy
+              </button>
+            </div>
           </div>
         )}
 
@@ -302,7 +422,18 @@ export default function InvoiceRequestTab() {
               onChange={(e) => setSearch(e.target.value)}
             />
           </div>
-          <div style={{ marginLeft: "auto" }}>
+          {tab === "issued" && issued.length > 0 && (
+            <button
+              type="button"
+              className="btn btn-primary btn-sm"
+              disabled={bulkExporting}
+              onClick={() => void downloadTaxInvoiceZip(filtered.filter((r) => r.course.invoiced))}
+              title="Tải ZIP 3 file Excel cho tất cả hóa đơn đang lọc"
+            >
+              <Icons.Download size={14} /> Tải file thuế ({filtered.length})
+            </button>
+          )}
+          <div style={{ marginLeft: tab === "issued" && issued.length > 0 ? 8 : "auto" }}>
             <DateRangeFilter value={dateRange} onChange={setDateRange} />
           </div>
         </div>
@@ -328,7 +459,7 @@ export default function InvoiceRequestTab() {
             <div className="bulk-bar">
               <Icons.CheckCircle size={16} />
               <span>
-                <span className="count">{selectedKeys.size}</span> hoá đơn đã chọn
+                <span className="count">{selectedKeys.size}</span> hoá đơn đã chọn · Tổng {vnd(selectedPendingSum)}
               </span>
               <div className="spacer" />
               <div className="bulk-actions">
@@ -338,15 +469,33 @@ export default function InvoiceRequestTab() {
                 <button
                   type="button"
                   className="btn btn-success btn-sm"
-                  onClick={() => {
-                    selectedKeys.forEach((key) => {
-                      const row = rows.find((r) => r.key === key);
-                      if (row && isRowComplete(row)) issueInvoiceForCourse(row.ar.id, row.course.courseCode);
-                    });
-                    setSelectedKeys(new Set());
-                  }}
+                  disabled={bulkExporting}
+                  onClick={() => setConfirmBulkIssue(true)}
                 >
-                  <Icons.Doc size={13} /> Xuất hàng loạt
+                  <Icons.Doc size={13} /> {bulkExporting ? "Đang xuất…" : "Xuất hóa đơn hàng loạt"}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {tab === "issued" && selectedKeys.size > 0 && (
+            <div className="bulk-bar">
+              <Icons.CheckCircle size={16} />
+              <span>
+                <span className="count">{selectedKeys.size}</span> hóa đơn đã chọn
+              </span>
+              <div className="spacer" />
+              <div className="bulk-actions">
+                <button type="button" className="btn btn-outline btn-sm" onClick={() => setSelectedKeys(new Set())}>
+                  Bỏ chọn
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-success btn-sm"
+                  disabled={bulkExporting}
+                  onClick={() => void handleBulkDownloadTax()}
+                >
+                  <Icons.Download size={13} /> {bulkExporting ? "Đang tải…" : "Tải file thuế hàng loạt"}
                 </button>
               </div>
             </div>
@@ -356,16 +505,20 @@ export default function InvoiceRequestTab() {
             <table className="tbl">
               <thead>
                 <tr>
-                  {tab === "pending" && (
+                  {(tab === "pending" || tab === "issued") && (
                     <th className="check-col" onClick={(e) => e.stopPropagation()}>
                       <input
                         type="checkbox"
                         checked={
-                          filtered.filter(isRowComplete).length > 0 &&
-                          filtered.filter(isRowComplete).every((r) => selectedKeys.has(r.key))
+                          filtered.length > 0 &&
+                          filtered
+                            .filter((r) => tab === "pending" ? isRowComplete(r) : r.course.invoiced)
+                            .every((r) => selectedKeys.has(r.key))
                         }
                         onChange={() => {
-                          const sel = filtered.filter(isRowComplete);
+                          const sel = filtered.filter((r) =>
+                            tab === "pending" ? isRowComplete(r) : r.course.invoiced
+                          );
                           const all = sel.length > 0 && sel.every((r) => selectedKeys.has(r.key));
                           setSelectedKeys(all ? new Set() : new Set(sel.map((r) => r.key)));
                         }}
@@ -386,7 +539,7 @@ export default function InvoiceRequestTab() {
               <tbody>
                 {filtered.length === 0 && (
                   <tr>
-                    <td colSpan={tab === "pending" ? 10 : 9}>
+                    <td colSpan={tab === "pending" || tab === "issued" ? 10 : 9}>
                       <div className="empty">
                         <Icons.Doc size={20} />
                         <div>
@@ -413,6 +566,22 @@ export default function InvoiceRequestTab() {
                           <input
                             type="checkbox"
                             disabled={!complete}
+                            checked={selectedKeys.has(r.key)}
+                            onChange={() => {
+                              setSelectedKeys((prev) => {
+                                const next = new Set(prev);
+                                if (next.has(r.key)) next.delete(r.key);
+                                else next.add(r.key);
+                                return next;
+                              });
+                            }}
+                          />
+                        </td>
+                      )}
+                      {tab === "issued" && (
+                        <td className="check-col" onClick={(e) => e.stopPropagation()}>
+                          <input
+                            type="checkbox"
                             checked={selectedKeys.has(r.key)}
                             onChange={() => {
                               setSelectedKeys((prev) => {
@@ -456,32 +625,23 @@ export default function InvoiceRequestTab() {
                         )}
                       </td>
                       <td>
-                        <div className="cell-time">
-                          {(r.course.invoiced ? r.course.invoicedAt : r.ar.createdAt)
-                            ?.split(" ")[0]
-                            .split("-")
-                            .reverse()
-                            .join("/")}
-                        </div>
+                        {(() => {
+                          const ts = formatPaymentDateTime(
+                            r.course.invoiced ? r.course.invoicedAt || "" : r.ar.createdAt
+                          );
+                          return (
+                            <>
+                              <div className="cell-time">{ts.date}</div>
+                              {ts.time ? <div className="time-relative">{ts.time}</div> : null}
+                            </>
+                          );
+                        })()}
                       </td>
                       <td style={{ textAlign: "center" }}>
                         <CustomerTypeBadge type={d.customerType} />
                       </td>
                       <td>
-                        <span className="row-action" style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>
-                          {r.course.invoiced && (
-                            <button
-                              type="button"
-                              className="btn btn-outline btn-sm"
-                              title="Tải hóa đơn"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                downloadInvoiceDocument(r);
-                              }}
-                            >
-                              <Icons.Download size={13} />
-                            </button>
-                          )}
+                        <span className="row-action">
                           <Icons.ChevronRight size={15} />
                         </span>
                       </td>
@@ -500,13 +660,11 @@ export default function InvoiceRequestTab() {
         onClose={() => setOpenKey(null)}
         onIssue={() => {
           if (openRow) {
-            void issueInvoiceForCourse(openRow.ar.id, openRow.course.courseCode);
+            issueInvoiceForCourse(openRow.ar.id, openRow.course.courseCode);
+            setOpenKey(null);
           }
         }}
         onOpenAr={(arId) => navigate("module3", { openArId: arId })}
-        onDownload={() => {
-          if (openRow) downloadInvoiceDocument(openRow);
-        }}
       />
     </div>
   );

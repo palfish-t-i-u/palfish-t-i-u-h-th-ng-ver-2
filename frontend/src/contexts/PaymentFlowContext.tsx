@@ -13,12 +13,14 @@ import type {
   ActiveRequest,
   AddPaymentAttemptPayload,
   CreatePaymentRequestPayload,
+  CreateActiveRequestPayload,
   PaymentAttempt,
   PaymentRequest,
 } from "../types/paymentRequest";
 import {
   buildCreateActiveRequestPayload,
   createLocalActiveRequest,
+  createLocalActiveRequestFromForm,
   fromApiActiveRequest,
   fromApiPaymentRequest,
   isBackendLineId,
@@ -39,7 +41,9 @@ type NavState = {
   openArId?: string | null;
   openPrId?: string | null;
   invoiceTab?: "pending" | "issued";
+  openInvoiceTab?: "pending" | "issued";
   openInvoiceKey?: string | null;
+  openInvoiceCourseCode?: string | null;
 };
 
 type LoadDataOptions = {
@@ -60,6 +64,15 @@ type PaymentFlowContextValue = {
   confirmTransaction: (prId: string, paymentId: string) => Promise<void>;
   rejectTransaction: (prId: string, paymentId: string) => Promise<void>;
   handleCreateActiveRequest: (pr: PaymentRequest) => Promise<ActiveRequest>;
+  handleCreateActiveRequestFromForm: (data: {
+    prId: string | null;
+    customerName: string;
+    uid: string;
+    phone?: string;
+    country?: string;
+    packageName: string;
+    amount: number;
+  }) => Promise<ActiveRequest>;
   patchCourseOrderId: (arId: string, courseCode: string, orderId: string) => Promise<void>;
   issueInvoiceForCourse: (arId: string, courseCode: string) => Promise<void>;
   badgeCounts: { reconciliation: number; activation: number; invoice: number };
@@ -175,9 +188,9 @@ export function PaymentFlowProvider({
         id: `${requestId}-${Date.now()}`,
         idx: nextIdx,
         amount: payload.amount,
-        status: payload.method === "cash" || payload.method === "card" ? "paid" : "pending",
+        status: "pending",
         createdAt: nowStamp(),
-        paidAt: payload.method === "cash" || payload.method === "card" ? nowStamp() : null,
+        paidAt: null,
         code: nextPaymentCode(requestId, nextIdx),
         bill: false,
         method: payload.method,
@@ -294,6 +307,45 @@ export function PaymentFlowProvider({
     [activeRequests]
   );
 
+  const handleCreateActiveRequestFromForm = useCallback(
+    async (data: {
+      prId: string | null;
+      customerName: string;
+      uid: string;
+      phone?: string;
+      country?: string;
+      packageName: string;
+      amount: number;
+    }) => {
+      const payload: CreateActiveRequestPayload = {
+        uids: [
+          {
+            uid: data.uid,
+            phone: data.phone,
+            country: data.country || "VN",
+            courses: [{ name: data.packageName, amount: data.amount }],
+          },
+        ],
+      };
+      if (data.prId) {
+        try {
+          const res = await endpoints.paymentRequests.createActiveRequest(data.prId, payload);
+          const ar = fromApiActiveRequest(res.data);
+          if (!ar.customerName) ar.customerName = data.customerName;
+          setActiveRequests((prev) => [ar, ...prev.filter((x) => x.id !== ar.id)]);
+          setApiNote("");
+          return ar;
+        } catch {
+          setApiNote("Tạo AR trên máy chủ thất bại — lưu tạm trên giao diện.");
+        }
+      }
+      const ar = createLocalActiveRequestFromForm(data, activeRequests);
+      setActiveRequests((prev) => [ar, ...prev]);
+      return ar;
+    },
+    [activeRequests]
+  );
+
   const patchCourseOrderId = useCallback(
     async (arId: string, courseCode: string, orderId: string) => {
       const trimmed = orderId.trim();
@@ -360,6 +412,7 @@ export function PaymentFlowProvider({
       confirmTransaction,
       rejectTransaction,
       handleCreateActiveRequest,
+      handleCreateActiveRequestFromForm,
       patchCourseOrderId,
       issueInvoiceForCourse,
       badgeCounts,
@@ -380,6 +433,7 @@ export function PaymentFlowProvider({
       confirmTransaction,
       rejectTransaction,
       handleCreateActiveRequest,
+      handleCreateActiveRequestFromForm,
       patchCourseOrderId,
       issueInvoiceForCourse,
       badgeCounts,

@@ -59,11 +59,12 @@ export const AR_STATUS_META: Record<
 
 export function txnDisplayStatus(qr: PaymentAttempt): TxnDisplayStatus {
   if (qr.cancelled) return "cancelled";
-  if (qr.status === "paid") return "confirmed";
   if (qr.status === "rejected") return "rejected";
-  // QR đã tạo link PayOS → chờ tiền về / webhook (tab "Chờ xác nhận"), không gom vào "Chờ chuyển khoản"
+  if (qr.status === "paid") return "confirmed";
+  // QR đã tạo link PayOS → chờ tiền về / webhook (tab "Chờ xác nhận")
   if (qr.method === "qr" && qr.status === "pending") return "awaiting";
   if (!qr.billImage && !qr.bill && qr.method === "qr") return "unsent";
+  if (qr.status === "pending") return "awaiting";
   return "awaiting";
 }
 

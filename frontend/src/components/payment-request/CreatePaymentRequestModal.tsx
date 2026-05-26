@@ -9,6 +9,7 @@ interface FormState {
   name: string;
   country: string;
   phone: string;
+  email: string;
   address: string;
   ward: string;
   province: string;
@@ -21,6 +22,7 @@ const INITIAL: FormState = {
   name: "",
   country: "VN",
   phone: "",
+  email: "",
   address: "",
   ward: "",
   province: "",
@@ -63,6 +65,7 @@ export default function CreatePaymentRequestModal({
       province: form.province,
       target: targetNum,
       note: form.note,
+      email: form.email.trim() || undefined,
     });
   };
 
@@ -123,6 +126,19 @@ export default function CreatePaymentRequestModal({
                   set("target", v ? Number(v).toLocaleString("vi-VN") : "");
                 }}
               />
+            </div>
+          </div>
+
+          <div className="field">
+            <label>Email khách hàng</label>
+            <input
+              type="email"
+              placeholder="VD: khach@email.com"
+              value={form.email}
+              onChange={(e) => set("email", e.target.value)}
+            />
+            <div style={{ fontSize: 11.5, color: "var(--text-3)", lineHeight: 1.45, marginTop: 4 }}>
+              Email khách hàng — TH khách cần hóa đơn → Thông tin này sẽ được tổng hợp vào mục &quot;Thông tin xuất hóa đơn&quot; trong tab &quot;Xuất hóa đơn&quot;
             </div>
           </div>
 

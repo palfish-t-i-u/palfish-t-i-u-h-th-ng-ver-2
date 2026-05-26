@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+﻿import { useEffect, useRef, useState } from "react";
 import type {
   AddPaymentAttemptPayload,
   PaymentAttempt,
@@ -19,10 +19,10 @@ import {
 } from "./paymentRequestUtils";
 
 const METHOD_META: Record<PaymentMethod, { cls: string; label: string; icon: IconKey; sub: string }> = {
-  qr: { cls: "method-qr", label: "Chuyển khoản", icon: "QrCode", sub: "QR / chuyển khoản" },
-  cash: { cls: "method-cash", label: "Tiền mặt", icon: "Cash", sub: "Thu trực tiếp" },
-  card: { cls: "method-card", label: "Quẹt thẻ", icon: "Bank", sub: "POS / thẻ tín dụng" },
-  installment: { cls: "method-installment", label: "Trả góp", icon: "Sigma", sub: "Trả nhiều kỳ" },
+  qr: { cls: "method-qr", label: "Chuyß╗ân khoß║ún", icon: "QrCode", sub: "QR / chuyß╗ân khoß║ún" },
+  cash: { cls: "method-cash", label: "Tiß╗ün mß║╖t", icon: "Cash", sub: "Thu trß╗▒c tiß║┐p" },
+  card: { cls: "method-card", label: "Quß║╣t thß║╗", icon: "Bank", sub: "POS / thß║╗ t├¡n dß╗Ñng" },
+  installment: { cls: "method-installment", label: "Trß║ú g├│p", icon: "Sigma", sub: "Trß║ú nhiß╗üu kß╗│" },
 };
 
 const METHOD_ORDER: PaymentMethod[] = ["qr", "cash", "card", "installment"];
@@ -78,13 +78,13 @@ function QrRow({
   if (isCancelled) {
     pill = (
       <span className="badge is-cancelled">
-        <Icons.XCircle size={11} /> Đã huỷ
+        <Icons.XCircle size={11} /> ─É├ú huß╗╖
       </span>
     );
   } else if (qr.status === "paid") {
     pill = (
       <span className="badge is-done">
-        <Icons.Check size={11} strokeWidth={2.5} /> Đã xác nhận
+        <Icons.Check size={11} strokeWidth={2.5} /> ─É├ú x├íc nhß║¡n
       </span>
     );
   } else {
@@ -100,9 +100,9 @@ function QrRow({
     : qr.method === "cash"
     ? qr.cashier || ""
     : qr.method === "card"
-    ? qr.bank || (qr.cardLast4 ? `•••• ${qr.cardLast4}` : "")
+    ? qr.bank || (qr.cardLast4 ? `ΓÇóΓÇóΓÇóΓÇó ${qr.cardLast4}` : "")
     : qr.method === "installment"
-    ? `${qr.installmentMonths || ""} kỳ`
+    ? `${qr.installmentMonths || ""} kß╗│`
     : "";
 
   return (
@@ -111,7 +111,7 @@ function QrRow({
       <div style={{ minWidth: 0 }}>
         <div className="qr-info-line1">
           <span style={{ fontWeight: 600, color: "var(--text-3)", fontSize: 11.5, textTransform: "uppercase", letterSpacing: "0.05em", whiteSpace: "nowrap" }}>
-            Lần #{qr.idx}
+            Lß║ºn #{qr.idx}
           </span>
           <span className="amt">{vnd(qr.amount)}</span>
           {pill}
@@ -127,7 +127,7 @@ function QrRow({
           <span className="sep" />
           <code>{qr.code}</code>
           <span className="sep" />
-          <span>{qr.status === "paid" ? `Xác nhận lúc ${qr.paidAt || ""}` : `Tạo ${qr.createdAt}`}</span>
+          <span>{qr.status === "paid" ? `X├íc nhß║¡n l├║c ${qr.paidAt || ""}` : `Tß║ío ${qr.createdAt}`}</span>
           {qr.status !== "paid" && (qr.billImage || qr.bill) && (
             <>
               <span className="sep" />
@@ -136,7 +136,7 @@ function QrRow({
                   e.stopPropagation();
                   onMarkPaid(qr);
                 }}
-                title="Demo — thường do module Đối soát của kế toán thực hiện"
+                title="Demo ΓÇö th╞░ß╗¥ng do module ─Éß╗æi so├ít cß╗ºa kß║┐ to├ín thß╗▒c hiß╗çn"
                 style={{
                   color: "var(--primary-700)",
                   cursor: "pointer",
@@ -146,7 +146,7 @@ function QrRow({
                   whiteSpace: "nowrap",
                 }}
               >
-                Mô phỏng kế toán xác nhận →
+                M├┤ phß╗Ång kß║┐ to├ín x├íc nhß║¡n ΓåÆ
               </span>
             </>
           )}
@@ -170,13 +170,13 @@ function QrRow({
           <button
             className="btn btn-outline btn-sm"
             style={{ color: "var(--danger)" }}
-            title="Huỷ lần giao dịch này"
+            title="Huß╗╖ lß║ºn giao dß╗ïch n├áy"
             onClick={() => onCancelQr(qr)}
           >
-            <Icons.XCircle size={13} /> Huỷ
+            <Icons.XCircle size={13} /> Huß╗╖
           </button>
         )}
-        {isCancelled && <span style={{ color: "var(--text-3)", fontSize: 11.5 }}>—</span>}
+        {isCancelled && <span style={{ color: "var(--text-3)", fontSize: 11.5 }}>ΓÇö</span>}
       </div>
     </div>
   );
@@ -229,7 +229,7 @@ function AddPaymentForm({
     >
       <div>
         <div className="info-label" style={{ marginBottom: 8 }}>
-          Phương thức thanh toán
+          Ph╞░╞íng thß╗⌐c thanh to├ín
         </div>
         <div className="method-grid">
           {METHOD_ORDER.map((k) => {
@@ -255,10 +255,10 @@ function AddPaymentForm({
 
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
         <div className="field" style={{ flex: 1, minWidth: 180 }}>
-          <label>Số tiền lần này</label>
+          <label>Sß╗æ tiß╗ün lß║ºn n├áy</label>
           <input
             type="text"
-            placeholder={`Còn thiếu: ${vnd(remaining)}`}
+            placeholder={`C├▓n thiß║┐u: ${vnd(remaining)}`}
             value={amount}
             onChange={(e) => {
               const v = e.target.value.replace(/[^\d]/g, "");
@@ -269,7 +269,7 @@ function AddPaymentForm({
 
         {method === "qr" && (
           <div className="field" style={{ flex: 1, minWidth: 180 }}>
-            <label>Ngân hàng nhận</label>
+            <label>Ng├ón h├áng nhß║¡n</label>
             <select value={bank} onChange={(e) => setBank(e.target.value)}>
               <option>MB Bank</option>
               <option>Vietcombank</option>
@@ -281,34 +281,34 @@ function AddPaymentForm({
         )}
         {method === "card" && (
           <div className="field" style={{ flex: 1, minWidth: 180 }}>
-            <label>4 số cuối thẻ</label>
+            <label>4 sß╗æ cuß╗æi thß║╗</label>
             <input
               value={cardLast4}
               onChange={(e) => setCardLast4(e.target.value.replace(/\D/g, "").slice(0, 4))}
-              placeholder="•••• 4242"
+              placeholder="ΓÇóΓÇóΓÇóΓÇó 4242"
             />
           </div>
         )}
         {method === "installment" && (
           <div className="field" style={{ flex: 1, minWidth: 180 }}>
-            <label>Số kỳ trả góp</label>
+            <label>Sß╗æ kß╗│ trß║ú g├│p</label>
             <select value={installmentMonths} onChange={(e) => setInstallmentMonths(e.target.value)}>
-              <option value="3">3 tháng</option>
-              <option value="6">6 tháng</option>
-              <option value="9">9 tháng</option>
-              <option value="12">12 tháng</option>
+              <option value="3">3 th├íng</option>
+              <option value="6">6 th├íng</option>
+              <option value="9">9 th├íng</option>
+              <option value="12">12 th├íng</option>
             </select>
           </div>
         )}
         {method === "cash" && (
           <div className="field" style={{ flex: 1, minWidth: 180 }}>
-            <label>Người thu</label>
-            <input value={cashier} onChange={(e) => setCashier(e.target.value)} placeholder="VD: Thu Hiền" />
+            <label>Ng╞░ß╗¥i thu</label>
+            <input value={cashier} onChange={(e) => setCashier(e.target.value)} placeholder="VD: Thu Hiß╗ün" />
           </div>
         )}
 
         <div className="field" style={{ flex: 1.4, minWidth: 220 }}>
-          <label>{method === "qr" ? "Nội dung CK gợi ý" : "Mã đối soát nội bộ"}</label>
+          <label>{method === "qr" ? "Nß╗Öi dung CK gß╗úi ├╜" : "M├ú ─æß╗æi so├ít nß╗Öi bß╗Ö"}</label>
           <input
             type="text"
             value={code}
@@ -320,10 +320,10 @@ function AddPaymentForm({
 
       <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
         <button className="btn btn-outline" onClick={onCancel}>
-          Huỷ
+          Huß╗╖
         </button>
         <button className="btn btn-primary" onClick={submit}>
-          <Icons.Sparkle size={14} /> {method === "qr" ? "Tạo QR & mã CK" : "Ghi nhận lần thanh toán"}
+          <Icons.Sparkle size={14} /> {method === "qr" ? "Tß║ío QR & m├ú CK" : "Ghi nhß║¡n lß║ºn thanh to├ín"}
         </button>
       </div>
     </div>
@@ -422,7 +422,7 @@ export default function PaymentRequestDetailDrawer({
             <div>
               <div style={{ fontWeight: 700, fontSize: 16 }}>{request.name}</div>
               <div style={{ fontSize: 12, color: "var(--text-3)", marginTop: 2 }}>
-                Tạo bởi <strong style={{ color: "var(--text-2)" }}>hieuhn.mplanner</strong> · {request.createdAt}
+                Tß║ío bß╗ƒi <strong style={{ color: "var(--text-2)" }}>hieuhn.mplanner</strong> ┬╖ {request.createdAt}
               </div>
             </div>
           </div>
@@ -438,27 +438,27 @@ export default function PaymentRequestDetailDrawer({
           {/* Summary */}
           <div className="summary-row">
             <div className="summary is-target">
-              <div className="summary-label">Tổng dự kiến</div>
+              <div className="summary-label">Tß╗òng dß╗▒ kiß║┐n</div>
               <div className="summary-value">{vnd(request.target)}</div>
             </div>
             <div className="summary is-received">
-              <div className="summary-label">Đã nhận</div>
+              <div className="summary-label">─É├ú nhß║¡n</div>
               <div className="summary-value">{vnd(request.received)}</div>
             </div>
             <div className={`summary is-delta-${request.state}`}>
               <div className="summary-label">
-                {request.state === "over" ? "Thừa" : request.state === "done" ? "Chênh lệch" : "Còn thiếu"}
+                {request.state === "over" ? "Thß╗½a" : request.state === "done" ? "Ch├¬nh lß╗çch" : "C├▓n thiß║┐u"}
               </div>
               <div className="summary-value">
                 {request.state === "done"
-                  ? "0 đ"
+                  ? "0 ─æ"
                   : request.state === "over"
                   ? "+" + vnd(Math.abs(request.delta))
                   : vnd(remaining)}
               </div>
             </div>
             <div className="summary">
-              <div className="summary-label">Số lần thanh toán</div>
+              <div className="summary-label">Sß╗æ lß║ºn thanh to├ín</div>
               <div className="summary-value">
                 <span style={{ color: "var(--primary-700)" }}>{request.doneCount}</span>
                 <span style={{ color: "var(--text-muted)" }}>/</span>
@@ -471,7 +471,7 @@ export default function PaymentRequestDetailDrawer({
           <div className="panel">
             <div className="panel-head">
               <h4>
-                <Icons.User size={15} /> Thông tin khách hàng (B1)
+                <Icons.User size={15} /> Th├┤ng tin kh├ích h├áng (B1)
               </h4>
               {!editing ? (
                 <button
@@ -491,7 +491,7 @@ export default function PaymentRequestDetailDrawer({
                     setEditing(true);
                   }}
                 >
-                  <Icons.Pencil size={13} /> Sửa
+                  <Icons.Pencil size={13} /> Sß╗¡a
                 </button>
               ) : (
                 <div style={{ display: "flex", gap: 6 }}>
@@ -502,7 +502,7 @@ export default function PaymentRequestDetailDrawer({
                       setDraft(null);
                     }}
                   >
-                    Huỷ
+                    Huß╗╖
                   </button>
                   <button
                     className="btn btn-primary btn-sm"
@@ -526,7 +526,7 @@ export default function PaymentRequestDetailDrawer({
                       setDraft(null);
                     }}
                   >
-                    <Icons.Check size={13} strokeWidth={2.5} /> Lưu thay đổi
+                    <Icons.Check size={13} strokeWidth={2.5} /> L╞░u thay ─æß╗òi
                   </button>
                 </div>
               )}
@@ -539,42 +539,42 @@ export default function PaymentRequestDetailDrawer({
                   <div className="info-value mono">{request.uid}</div>
                 </div>
                 <div className="info-cell">
-                  <div className="info-label">Tên khách hàng</div>
+                  <div className="info-label">T├¬n kh├ích h├áng</div>
                   <div className="info-value">{request.name}</div>
                 </div>
                 <div className="info-cell">
-                  <div className="info-label">Số điện thoại</div>
+                  <div className="info-label">Sß╗æ ─æiß╗çn thoß║íi</div>
                   <div className="info-value mono">
                     <span style={{ marginRight: 4 }}>{country.flag}</span>
                     {country.dial} {fmtPhone(request.phone)}
                   </div>
                 </div>
                 <div className="info-cell">
-                  <div className="info-label">Tỉnh / Thành phố</div>
-                  <div className="info-value">{request.province || "—"}</div>
+                  <div className="info-label">Tß╗ënh / Th├ánh phß╗æ</div>
+                  <div className="info-value">{request.province || "ΓÇö"}</div>
                 </div>
                 <div className="info-cell">
-                  <div className="info-label">Phường / Xã</div>
-                  <div className="info-value">{request.ward || "—"}</div>
+                  <div className="info-label">Ph╞░ß╗¥ng / X├ú</div>
+                  <div className="info-value">{request.ward || "ΓÇö"}</div>
                 </div>
                 <div className="info-cell">
-                  <div className="info-label">Số nhà, đường</div>
-                  <div className="info-value">{request.address || "—"}</div>
+                  <div className="info-label">Sß╗æ nh├á, ─æ╞░ß╗¥ng</div>
+                  <div className="info-value">{request.address || "ΓÇö"}</div>
                 </div>
                 <div className="info-cell">
-                  <div className="info-label">Tổng tiền dự kiến</div>
+                  <div className="info-label">Tß╗òng tiß╗ün dß╗▒ kiß║┐n</div>
                   <div className="info-value money">{vnd(request.target)}</div>
                 </div>
                 {request.note && (
                   <div className="info-cell full" style={{ gridColumn: "1 / -1" }}>
-                    <div className="info-label">Ghi chú</div>
+                    <div className="info-label">Ghi ch├║</div>
                     <div className="info-value">{request.note}</div>
                   </div>
                 )}
                 {request.state === "cancelled" && (
                   <div className="info-cell full" style={{ gridColumn: "1 / -1" }}>
                     <div className="info-label" style={{ color: "var(--danger-text)" }}>
-                      Đã huỷ
+                      ─É├ú huß╗╖
                     </div>
                     <div
                       className="info-value"
@@ -584,8 +584,8 @@ export default function PaymentRequestDetailDrawer({
                         color: "var(--danger-text)",
                       }}
                     >
-                      Huỷ lúc <strong>{request.cancelledAt}</strong>
-                      {request.cancelledReason ? ` · Lý do: ${request.cancelledReason}` : ""}
+                      Huß╗╖ l├║c <strong>{request.cancelledAt}</strong>
+                      {request.cancelledReason ? ` ┬╖ L├╜ do: ${request.cancelledReason}` : ""}
                     </div>
                   </div>
                 )}
@@ -608,7 +608,7 @@ export default function PaymentRequestDetailDrawer({
                   />
                 </div>
                 <div className="info-cell">
-                  <div className="info-label">Tên khách hàng</div>
+                  <div className="info-label">T├¬n kh├ích h├áng</div>
                   <input
                     value={draft.name}
                     onChange={(e) => setDraft({ ...draft, name: e.target.value })}
@@ -622,7 +622,7 @@ export default function PaymentRequestDetailDrawer({
                   />
                 </div>
                 <div className="info-cell">
-                  <div className="info-label">Số điện thoại</div>
+                  <div className="info-label">Sß╗æ ─æiß╗çn thoß║íi</div>
                   <div style={{ display: "flex", gap: 8 }}>
                     <CountryCombo value={draft.country} onChange={(v) => setDraft({ ...draft, country: v })} />
                     <input
@@ -640,7 +640,7 @@ export default function PaymentRequestDetailDrawer({
                   </div>
                 </div>
                 <div className="info-cell full">
-                  <div className="info-label">Địa chỉ khách hàng</div>
+                  <div className="info-label">─Éß╗ïa chß╗ë kh├ích h├áng</div>
                   <VietnamAddressFields
                     province={draft.province}
                     ward={draft.ward}
@@ -651,7 +651,7 @@ export default function PaymentRequestDetailDrawer({
                   />
                 </div>
                 <div className="info-cell">
-                  <div className="info-label">Tổng tiền dự kiến</div>
+                  <div className="info-label">Tß╗òng tiß╗ün dß╗▒ kiß║┐n</div>
                   <input
                     value={draft.target}
                     onChange={(e) => {
@@ -670,11 +670,11 @@ export default function PaymentRequestDetailDrawer({
                   />
                 </div>
                 <div className="info-cell full" style={{ gridColumn: "1 / -1" }}>
-                  <div className="info-label">Ghi chú</div>
+                  <div className="info-label">Ghi ch├║</div>
                   <textarea
                     value={draft.note}
                     onChange={(e) => setDraft({ ...draft, note: e.target.value })}
-                    placeholder="Ghi chú nội bộ"
+                    placeholder="Ghi ch├║ nß╗Öi bß╗Ö"
                     style={{
                       border: "1px solid var(--border)",
                       borderRadius: 8,
@@ -694,12 +694,12 @@ export default function PaymentRequestDetailDrawer({
           <div className="panel">
             <div className="panel-head">
               <h4>
-                <Icons.Wallet size={15} /> Các lần thanh toán
+                <Icons.Wallet size={15} /> C├íc lß║ºn thanh to├ín
                 <span className="num-pill">{request.payments.length}</span>
               </h4>
               {!showAdd && request.state !== "cancelled" && (
                 <button className="btn btn-secondary btn-sm" onClick={() => setShowAdd(true)}>
-                  <Icons.Plus size={13} /> Tạo lần thanh toán
+                  <Icons.Plus size={13} /> Tß║ío lß║ºn thanh to├ín
                 </button>
               )}
             </div>
@@ -708,10 +708,10 @@ export default function PaymentRequestDetailDrawer({
               {request.payments.length === 0 && !showAdd && (
                 <div className="empty" style={{ padding: "28px 12px" }}>
                   <Icons.Wallet size={22} />
-                  <div>Chưa có lần thanh toán nào.</div>
+                  <div>Ch╞░a c├│ lß║ºn thanh to├ín n├áo.</div>
                   {request.state !== "cancelled" && (
                     <button className="btn btn-primary btn-sm" onClick={() => setShowAdd(true)}>
-                      <Icons.Plus size={13} /> Tạo lần thanh toán đầu tiên
+                      <Icons.Plus size={13} /> Tß║ío lß║ºn thanh to├ín ─æß║ºu ti├¬n
                     </button>
                   )}
                 </div>
@@ -748,44 +748,44 @@ export default function PaymentRequestDetailDrawer({
           <div className="panel">
             <div className="panel-head">
               <h4>
-                <Icons.Sigma size={15} /> Tiến độ quy trình
+                <Icons.Sigma size={15} /> Tiß║┐n ─æß╗Ö quy tr├¼nh
               </h4>
             </div>
             <div className="timeline">
               <div className="tl-item">
                 <div className="tl-dot done" />
                 <div className="tl-content">
-                  <div className="tl-title">B1 · Tạo Payment Request</div>
-                  <div className="tl-meta">PR-ID đã được tạo · {request.createdAt}</div>
+                  <div className="tl-title">B1 ┬╖ Tß║ío Payment Request</div>
+                  <div className="tl-meta">PR-ID ─æ├ú ─æ╞░ß╗úc tß║ío ┬╖ {request.createdAt}</div>
                 </div>
               </div>
               <div className="tl-item">
                 <div className={`tl-dot ${ready ? "done" : request.state === "cancelled" ? "pending" : "active"}`} />
                 <div className="tl-content">
-                  <div className="tl-title">B2 · Tạo lần thanh toán &amp; thu tiền</div>
+                  <div className="tl-title">B2 ┬╖ Tß║ío lß║ºn thanh to├ín &amp; thu tiß╗ün</div>
                   <div className="tl-meta">
-                    Đã nhận {vnd(request.received)} / {vnd(request.target)} · {request.doneCount}/{request.totalCount} lần
+                    ─É├ú nhß║¡n {vnd(request.received)} / {vnd(request.target)} ┬╖ {request.doneCount}/{request.totalCount} lß║ºn
                   </div>
                 </div>
               </div>
               <div className="tl-item">
                 <div className={`tl-dot ${ready ? "active" : "pending"}`} />
                 <div className="tl-content">
-                  <div className="tl-title">B3 · Active Request (Tạo khoá học)</div>
+                  <div className="tl-title">B3 ┬╖ Active Request (Tß║ío kho├í hß╗ìc)</div>
                   <div className="tl-meta">
                     {hasActiveRequest
-                      ? `Active Request ${activeRequestId} đã tạo — chuyển sang Kích hoạt khóa học để điền Order ID`
+                      ? `Active Request ${activeRequestId} ─æ├ú tß║ío ΓÇö chuyß╗ân sang K├¡ch hoß║ít kh├│a hß╗ìc ─æß╗â ─æiß╗ün Order ID`
                       : ready
-                      ? 'Sẵn sàng kích hoạt — bấm "Tạo Active Request" để mở khoá học'
-                      : "Sẽ mở khoá khi đủ 100% tiền"}
+                      ? 'Sß║╡n s├áng k├¡ch hoß║ít ΓÇö bß║Ñm "Tß║ío Active Request" ─æß╗â mß╗ƒ kho├í hß╗ìc'
+                      : "Sß║╜ mß╗ƒ kho├í khi ─æß╗º 100% tiß╗ün"}
                   </div>
                 </div>
               </div>
               <div className="tl-item">
                 <div className="tl-dot pending" />
                 <div className="tl-content">
-                  <div className="tl-title">B4 · Yêu cầu xuất hoá đơn</div>
-                  <div className="tl-meta">Sẽ xuất sau khi đủ tiền &amp; có Active code</div>
+                  <div className="tl-title">B4 ┬╖ Y├¬u cß║ºu xuß║Ñt ho├í ─æ╞ín</div>
+                  <div className="tl-meta">Sß║╜ xuß║Ñt sau khi ─æß╗º tiß╗ün &amp; c├│ Active code</div>
                 </div>
               </div>
             </div>
@@ -802,14 +802,14 @@ export default function PaymentRequestDetailDrawer({
             </button>
             {canCancel && (
               <button className="btn btn-outline btn-sm" style={{ color: "var(--danger)" }} onClick={onCancelRequest}>
-                <Icons.XCircle size={13} /> Huỷ Payment Request
+                <Icons.XCircle size={13} /> Huß╗╖ Payment Request
               </button>
             )}
           </div>
           <div className="quick-create">
             {request.state !== "cancelled" && (
               <button className="btn btn-primary" onClick={() => setShowAdd(true)} disabled={showAdd}>
-                <Icons.Plus size={14} /> Tạo lần thanh toán
+                <Icons.Plus size={14} /> Tß║ío lß║ºn thanh to├ín
               </button>
             )}
             <button
@@ -817,7 +817,7 @@ export default function PaymentRequestDetailDrawer({
               disabled={!ready || hasActiveRequest}
               onClick={onCreateActiveRequest}
             >
-              <Icons.CheckSquare size={14} /> {hasActiveRequest ? "Đã tạo Active Request" : "Tạo Active Request (B3)"}
+              <Icons.CheckSquare size={14} /> {hasActiveRequest ? "─É├ú tß║ío Active Request" : "Tß║ío Active Request (B3)"}
             </button>
           </div>
         </div>
