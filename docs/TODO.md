@@ -147,6 +147,9 @@
 | M5-06 | Import lịch sử `HNxHCM GMV.xlsx` | pending | 2026-05-23 | | Script sẵn: `scripts/seed_so_doanh_thu.py --xlsx` — xem M5_OPERATIONS §2.2 |
 | M5-07 | Cấu hình tỷ giá theo thời điểm (System) | pending | 2026-05-23 | | Phase 2 |
 | M5-09 | Promote Vercel sau push UI M5 (không chỉ preview) | pending | 2026-05-23 | | WORKFLOW §2.1, M5_OPERATIONS §1 |
+| M5-12 | Doc đối chiếu GMV tab / DingTalk / thẻ Sổ | done | 2026-05-25 | 2026-05-25 | `docs/M5_DOI_CHIEU.md`; audit 25/05 |
+| M5-13 | Re-seed Sổ từ DingTalk xlsx (purge gsheet) | pending | 2026-05-25 | | = `F2605-P0-03`; backup + approve |
+| M5-14 | Xóa dòng M3 test (`tu_dong`) qua UI/API | pending | 2026-05-25 | | Hiện chỉ SQL — `M5_OPERATIONS.md` §3.1 |
 
 ---
 
@@ -164,3 +167,64 @@
 | B-08 | Re-seed nhân sự VN (`seed_nhan_su_sale.py`) sau v3 | pending | 2026-05-21 22:00 | | Tùy chọn — API đã lọc VN; vài tên Trung/Josh còn hiện |
 | B-09 | Deploy: Docker context + `python-multipart` | done | 2026-05-21 21:00 | 2026-05-21 21:30 | `render.yaml` dockerContext `.`; `requirements.txt` |
 | B-10 | Local: Supabase redirect localhost + `SYSTEM_ADMIN_EMAILS` | done | 2026-05-21 21:00 | 2026-05-21 21:45 | `AUTH_SETUP.md`; `backend/.env` |
+
+---
+
+## Kế hoạch 26/05 — go-live tuần này (PDF feedback 25/05)
+
+> Nguồn: `E:\PalFish\DA\Report\Feedback công việc 25_05 và kế hoạch làm việc 26_05.pdf`  
+> Chi tiết Minh: `docs/MINH_TASKS_2026-05-26.md`  
+> **Họp 26/05 8:30** — rework Module 1–2–3–4 (Payment Request many-to-many)
+
+### P0 — Làm ngay (bôi vàng PDF)
+
+| ID | Task | Status | Owner | Ghi chú |
+|----|------|--------|-------|---------|
+| F2605-P0-01 | Sửa lỗi dữ liệu **tất cả báo cáo** (~5% lệch thập phân/ngày) | pending | Minh | Re-seed DingTalk; `M5_DOI_CHIEU.md` |
+| F2605-P0-02 | Xóa dòng M3 test khỏi Sổ prod | pending | Minh/Ops | SQL — `M5_OPERATIONS.md` §3.1 |
+| F2605-P0-03 | Re-seed Sổ từ DingTalk xlsx (backup trước) | pending | Minh/Ops | `M5-13`; approve QL |
+| F2605-P0-04 | Rà chênh lệch báo cáo **tháng 1–2–3** | pending | Minh | PDF yêu cầu kiểm soát quá khứ |
+
+### Module đối chiếu bank (Giang / Đức)
+
+| ID | Task | Status | Owner | Ghi chú |
+|----|------|--------|-------|---------|
+| F2605-BANK-01 | Module bank — kết nối biến động số dư | pending | Giang/Đức | Deadline PDF: 26/05 |
+| F2605-BANK-02 | Logic so sánh tiền thật vs Sổ doanh thu | pending | Giang/Đức | |
+| F2605-BANK-03 | CK tay ngoài QR — thu qua email/parse số dư (dự kiến QL) | pending | Giang/Đức | PDF: QL tự cấu hình |
+
+### Go-live tuần đầu
+
+| ID | Task | Status | Owner | Ghi chú |
+|----|------|--------|-------|---------|
+| F2605-GOLIVE-01 | Hướng dẫn sử dụng cơ bản cho sale | pending | Hiếu | |
+| F2605-GOLIVE-02 | Thu feedback đội sale sau go-live | pending | Hiếu | |
+
+### Luồng thanh toán mới — backend (Giang / Đức)
+
+| ID | Task | Status | Owner | Ghi chú |
+|----|------|--------|-------|---------|
+| F2605-BE-01 | Schema + API **Payment Request** (PR ID) | pending | Giang/Đức | Thay `1 QR = 1 đơn` |
+| F2605-BE-02 | Mã thanh toán lẻ / Info Code (vd. TTPR…) gắn PR | pending | Giang/Đức | N lần thanh toán / 1 PR |
+| F2605-BE-03 | **Course code** (B3) — mở khi PR thu đủ 100%; link xuất HĐ | pending | Giang/Đức | 1 Course code = 1 Order ID |
+| F2605-BE-04 | Module xác nhận **tiền mặt** | pending | Giang/Đức | |
+| F2605-BE-05 | Tích hợp **thẻ tín dụng / trả góp** | pending | Giang/Đức | |
+| F2605-BE-06 | PayOS **PalFish Saigon** — chỉ team HCM tạo QR HCM | pending | Giang/Đức | Pháp nhân HCM riêng |
+| F2605-BE-07 | Khớp **Order ID CRM** với Activate Code (matching) | pending | Giang/Đức | Bước cuối — Thu Hiền |
+
+### UX / QA — Minh (sau P0)
+
+> Map 1:1 với `MINH-01`…`MINH-10` trong `docs/MINH_TASKS_2026-05-26.md`
+
+| ID | Task | Status | created_at | Ghi chú |
+|----|------|--------|------------|---------|
+| F2605-MINH-01 | Sơ đồ UX PR → mã thanh toán → Course code → Order ID | pending | 2026-05-26 | `PROTOTYPE_PAYMENT_FLOW.md` + sơ đồ B1–B4 |
+| F2605-MINH-02 | Wireframe Payment Request list/detail | pending | 2026-05-26 | |
+| F2605-MINH-03 | Wireframe modal thêm lần thanh toán | pending | 2026-05-26 | QR / cash / thẻ / CK tay |
+| F2605-MINH-04 | Wireframe UI đối soát tiền | pending | 2026-05-26 | |
+| F2605-MINH-05 | Wireframe Activate Code — xuất HĐ không cần CRM Order ID | pending | 2026-05-26 | |
+| F2605-MINH-06 | UX Sổ — auto dòng khi tiền về + Ops duyệt | pending | 2026-05-26 | + feedback Thu Hiền |
+| F2605-MINH-07 | Đổi nhãn BC02 — không gọi Key Data đầy đủ | pending | 2026-05-26 | |
+| F2605-MINH-08 | UX chọn tài khoản HN / HCM | pending | 2026-05-26 | |
+| F2605-MINH-09 | Catalog tên sản phẩm HĐ (dropdown TTS) | pending | 2026-05-26 | `ke-hoach-cai-thien-feedback-thu-hien.md` |
+| F2605-MINH-10 | Checklist UAT go-live với Giang & Đức | pending | 2026-05-26 | |
