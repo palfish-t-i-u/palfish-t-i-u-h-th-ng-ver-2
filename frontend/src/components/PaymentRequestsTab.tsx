@@ -12,7 +12,7 @@ import type {
   PaymentRequest,
   PaymentRequestStatus,
 } from "../types/paymentRequest";
-import { Badge, Button, Card, CardBody, Input, Modal, Select, Table, TableWrap, Td, Textarea, Th, Tr } from "./ui";
+import { Badge, Button, Card, CardBody, Input, Modal, Select, Table, TableWrap, Td, Th, Tr } from "./ui";
 
 type WorkTab = "requests" | "reconcile" | "activate" | "invoice";
 
@@ -1234,7 +1234,11 @@ export default function PaymentRequestsTab() {
               </div>
               <div className="rounded-gmv-md border border-gmv-border bg-gmv-bg p-3">
                 {selectedActive ? (
-                  <ActiveRequestEditor activeRequest={selectedActive} onChange={saveActiveRequest} onInvoiceOne={invoiceCourses} />
+                  <ActiveRequestEditor
+                    activeRequest={selectedActive}
+                    onChange={saveActiveRequest}
+                    onInvoiceOne={(arId, courseCode) => invoiceCourses(arId, [courseCode])}
+                  />
                 ) : (
                   <div className="py-8 text-center text-sm text-gmv-muted">Chưa có Active Request.</div>
                 )}
