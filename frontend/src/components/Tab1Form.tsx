@@ -60,17 +60,21 @@ function InlinePaymentCard({
   const [payosQrUrl, setPayosQrUrl] = useState<string>("");
   const [payosCheckoutUrl, setPayosCheckoutUrl] = useState<string>("");
   const [payosError, setPayosError] = useState<string>("");
+  const [transferContent, setTransferContent] = useState("");
+
+  const displayTransferContent = payosQrUrl && transferContent ? transferContent : infoCode;
 
   useEffect(() => {
     let cancelled = false;
     setPayosLoading(true);
     setPayosError("");
+    setTransferContent("");
     endpoints.payos
       .createLink({ amount: tongTien, infoCode, maDonHang })
       .then((res) => {
         if (cancelled) return;
-        const { qrCode, checkoutUrl } = res.data;
-        // Render EMV QR string thành ảnh qua qrserver.com
+        const { qrCode, checkoutUrl, transferContent: tc } = res.data;
+        setTransferContent(tc || infoCode);
         setPayosQrUrl(
           `https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=${encodeURIComponent(qrCode)}`
         );
@@ -132,7 +136,7 @@ function InlinePaymentCard({
       ctx.fillStyle = "#d97706";
       ctx.font = "bold 18px monospace";
       ctx.textAlign = "center";
-      ctx.fillText(infoCode, canvas.width / 2, qrH + pad + 55);
+      ctx.fillText(displayTransferContent, canvas.width / 2, qrH + pad + 55);
 
       return await new Promise<Blob | null>((resolve) =>
         canvas.toBlob((b) => resolve(b), "image/png")
@@ -198,12 +202,17 @@ function InlinePaymentCard({
             <InfoLine label="Số tiền" value={`${amountLabel} VNĐ`} />
             <div className="pt-2">
               <div className="mb-1 text-gmv-text">Nội dung chuyển khoản:</div>
-              <span className="inline-block rounded-gmv-sm border border-dashed border-gmv-warn bg-gmv-warn-soft px-2.5 py-1 text-base font-bold text-gmv-warn">
-                {infoCode}
+              <span className="inline-block break-all rounded-gmv-sm border border-dashed border-gmv-warn bg-gmv-warn-soft px-2.5 py-1 text-base font-bold text-gmv-warn">
+                {displayTransferContent}
               </span>
               <p className="mt-1 text-xs italic text-gmv-danger">
-                ⚠️ Khách PHẢI ghi đúng nội dung này khi chuyển khoản
+                ⚠️ Khách PHẢI ghi đúng nội dung này khi chuyển khoản (khớp QR PayOS)
               </p>
+              {transferContent && transferContent !== infoCode && (
+                <p className="mt-1 text-xs text-gmv-muted">
+                  Mã đơn hệ thống: <strong>{infoCode}</strong>
+                </p>
+              )}
             </div>
             {payosCheckoutUrl && (
               <div className="pt-1">
@@ -246,8 +255,8 @@ function InlinePaymentCard({
                 <p className="mt-2 text-center text-xs font-semibold text-gmv-primary">
                   Quét bằng App Ngân Hàng bất kỳ
                 </p>
-                <p className="mt-0.5 text-center text-xs italic text-gmv-muted">
-                  Nội dung CK: <strong>{infoCode}</strong>
+                <p className="mt-0.5 text-center text-xs italic text-gmv-muted break-all">
+                  Nội dung CK: <strong>{displayTransferContent}</strong>
                 </p>
                 <div className="mt-3 flex flex-col items-center gap-2">
                   <Button type="button" variant="primary" size="sm" onClick={handleCopyQr}>

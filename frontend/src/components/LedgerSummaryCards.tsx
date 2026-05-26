@@ -9,24 +9,31 @@ function StatCard({
   sub,
   className,
   muted,
+  title,
 }: {
   label: string;
   value: string;
   sub?: string;
   className?: string;
   muted?: boolean;
+  title?: string;
 }) {
   return (
     <div
       className={cn(
-        "rounded-gmv-lg border border-gmv-border bg-gmv-canvas px-4 py-3 shadow-gmv-1",
+        "min-w-0 rounded-gmv-lg border border-gmv-border bg-gmv-canvas px-3 py-3 shadow-gmv-1 sm:px-4",
         muted && "opacity-60",
         className
       )}
     >
-      <p className="text-xs font-medium uppercase tracking-wide text-gmv-muted">{label}</p>
-      <p className="mt-1 text-xl font-semibold tabular-nums text-gmv-text-strong">{value}</p>
-      {sub && <p className="mt-0.5 text-xs text-gmv-muted">{sub}</p>}
+      <p className="truncate text-xs font-medium uppercase tracking-wide text-gmv-muted">{label}</p>
+      <p
+        className="mt-1 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-sm font-semibold leading-snug tabular-nums text-gmv-text-strong sm:text-base lg:text-lg"
+        title={title ?? value}
+      >
+        {value}
+      </p>
+      {sub && <p className="mt-0.5 truncate text-xs text-gmv-muted">{sub}</p>}
     </div>
   );
 }
@@ -40,45 +47,61 @@ function filterLabel(from: string, to: string): string {
   return "Tất cả ngày";
 }
 
+function vndDisplay(n: number): { short: string; full: string } {
+  const num = formatVndNumber(n) || "0";
+  const full = `${num}\u00A0₫`;
+  return { short: full, full };
+}
+
 export default function LedgerSummaryCards({
   summary,
   from,
   to,
+  team,
   loading,
 }: {
   summary: LedgerSummaryResponse | null;
   from: string;
   to: string;
+  team?: string;
   loading: boolean;
 }) {
   const period = filterLabel(from, to);
+  const total = vndDisplay(summary?.totalGmvVnd ?? 0);
+  const teamLabel = team?.trim() || "Tất cả teams";
 
   return (
-    <div className="space-y-3">
+    <div className="min-w-0 space-y-3">
       <p className="text-xs text-gmv-muted">
         Tổng hợp theo bộ lọc: <span className="font-medium text-gmv-text">{period}</span>
+        {" · "}
+        Team: <span className="font-medium text-gmv-text">{teamLabel}</span>
+        {team === "Inhouse 1" && (
+          <span> — khớp tab GMV «In-house» trên All File Thu Hiền</span>
+        )}
         {loading && " · đang tải…"}
       </p>
 
-      <div className="grid gap-3 sm:grid-cols-2">
-        <StatCard
-          label="Tổng GMV"
-          value={`${formatVndNumber(summary?.totalGmvVnd ?? 0) || "0"} ₫`}
-        />
-        <StatCard label="Số đơn" value={String(summary?.orderCount ?? 0)} />
+      <div className="grid min-w-0 gap-3 sm:grid-cols-2">
+        <StatCard label="Tổng GMV" value={total.short} title={total.full} />
+        <StatCard label="Số đơn" value={(summary?.orderCount ?? 0).toLocaleString("vi-VN")} />
       </div>
 
-      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8">
-        {(summary?.bySource ?? []).map(({ source, gmvVnd, count }) => (
-          <StatCard
-            key={source}
-            label={formatSourceLabel(source)}
-            value={`${formatVndNumber(gmvVnd) || "0"} ₫`}
-            sub={`${count} đơn`}
-            className="py-2.5"
-            muted={count === 0}
-          />
-        ))}
+      <div className="grid min-w-0 gap-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
+        {(summary?.bySource ?? []).map(({ source, gmvVnd, count }) => {
+          const vnd = vndDisplay(gmvVnd);
+          return (
+            <StatCard
+              key={source}
+              label={formatSourceLabel(source)}
+              value={vnd.short}
+              title={vnd.full}
+              sub={`${count.toLocaleString("vi-VN")} đơn`}
+              className="py-2.5"
+              muted={count === 0}
+            />
+          );
+        })}
       </div>
     </div>
   );

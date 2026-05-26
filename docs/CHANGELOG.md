@@ -347,3 +347,43 @@
 **Docs**
 - `M5_GSHEET_IMPORT.md` — one-time import, row/column collapse, đối chiếu số, verify commands.
 - `M5_OPERATIONS.md` — tag `import:gsheet:*`, link M5_GSHEET_IMPORT.
+
+---
+
+## 2026-05-25 — Đối chiếu GMV tab, DingTalk re-seed, M3 test
+
+**Docs**
+- Thêm `docs/M5_DOI_CHIEU.md` — ma trận nguồn đối chiếu; case 25/05 (21 vs 24 đơn); audit SM Hanoi / HCM REV; script list.
+- `M5_GSHEET_IMPORT.md` — thẻ Sổ vs tab GMV; link re-seed DingTalk.
+- `M5_OPERATIONS.md` — §2.3 re-seed DingTalk (`seed_dingtalk_ledger.py`); §3.1 xóa M3 test (SQL); tag `import:dingtalk:*`.
+- `MODULE_SO_DOANH_THU.md` — sửa cột Pay Time = `pay_time`; §2.8 đối chiếu; lọc team vs GMV tab; xóa `tu_dong`.
+- `BC01_DOI_CHIEU_THU_HIEN.md` — §8 tab GMV daily vs thẻ Sổ.
+- `TODO.md` — M5-12 done; M5-13 re-seed pending; M5-14 xóa M3 UI pending.
+
+**Scripts**
+- `scripts/audit_day_20260525.py` — đối chiếu 1 ngày GMV tab / SM Hanoi / Sổ prod.
+
+**Kết quả audit prod (25/05):** Sổ tay 24 = SM Hanoi 24; GMV tab 21 = Inhouse 1 only; 2 dòng M3 test 2k ₫.
+
+---
+
+## 2026-05-26 — Sửa doc kế hoạch 26/05 (đọc lại PDF)
+
+**Docs**
+- `MINH_TASKS_2026-05-26.md` — viết lại theo PDF: P0 sửa báo cáo trước UX; luồng PR→Activate→Order ID; phân công Minh/Hiếu/Giang; họp 8:30.
+- `TODO.md` — block **Kế hoạch 26/05**: `F2605-P0-*`, `F2605-BANK-*`, `F2605-GOLIVE-*`, `F2605-BE-*`, `F2605-MINH-*` (sửa thứ tự + owner).
+
+**Lỗi Codex trước đó:** gom hết vào UX Payment Request; thiếu P0 data fix, module bank, task Hiếu, backend Giang/Đức, ngữ cảnh go-live tuần này.
+
+---
+
+## 2026-05-26 — Prototype PalFish CRM.html + sơ đồ B1–B4
+
+**Docs**
+- Thêm `docs/PROTOTYPE_PAYMENT_FLOW.md` — Logic kết nối (many-to-many, B1–B4, Course code, map app cũ); UI modules từ HTML bundle.
+- Cập nhật `MINH_TASKS_2026-05-26.md` §2 theo sơ đồ + prototype; thuật ngữ **Course code** (B3).
+- `TODO.md` — `F2605-MINH-01`, `F2605-BE-03` dùng Course code.
+
+**Prototype:** `c:\Users\silly\Downloads\PalFish CRM.html` — title *Quản lý thanh toán · PalFish GMV*; màn PR drawer, đối soát, Active Request, Sổ, payment method picker.
+
+**Script:** `scripts/decode_crm_prototype.py` — tái trích xuất CSS modules.

@@ -2,6 +2,7 @@ import { Fragment, useCallback, useEffect, useState } from "react";
 import { endpoints } from "../../lib/api";
 import type { RevenuePivotResponse } from "../../types/revenue";
 import Button from "../ui/Button";
+import { GmvDataBarCell } from "../ui/DataBar";
 import { Input } from "../ui/Input";
 import {
   Table,
@@ -9,9 +10,11 @@ import {
   Td,
   Th,
   Tr,
+  stickyTableCellRight,
   stickyTableHead,
   stickyTableHeadCorner,
-  stickyTableHeadTop,
+  stickyTableHeadRight,
+  stickyThead,
 } from "../ui/Table";
 import { cn } from "../../lib/cn";
 
@@ -35,14 +38,44 @@ const TEAM_FILTERS = [
   { value: "Khác", label: "Khác" },
 ] as const;
 
-const stickyLeftTeam = cn(stickyTableHead, stickyTableHeadTop, stickyTableHeadCorner, "left-0 min-w-[7rem]");
-const stickyLeftSale = cn(
+const grandTotalMonthBg = "bg-gmv-bc01-grand-month text-gmv-bc01-grand-month-fg";
+const grandTotalSumBg =
+  "bg-gmv-bc01-grand-sum text-gmv-bc01-grand-sum-fg shadow-[-2px_0_4px_-2px_rgba(0,0,0,0.12)]";
+const teamTotalBg = "bg-sky-100";
+
+const stickyLeftTeam = cn(stickyTableHead, stickyTableHeadCorner, "left-0 min-w-[7rem]");
+const stickyLeftSale = cn(stickyTableHead, "left-[7rem] min-w-[10rem] z-[35]");
+const stickyRightTotalHead = cn(stickyTableHeadRight, "right-0 min-w-[5.5rem] z-[35]");
+
+const stickyGrandTeam = cn(
   stickyTableHead,
-  stickyTableHeadTop,
-  "left-[7rem] min-w-[10rem] z-[35]"
+  stickyTableHeadCorner,
+  "left-0 min-w-[7rem] z-[40]",
+  grandTotalMonthBg,
+  "normal-case"
 );
-const stickyCellTeam = "sticky left-0 z-20 bg-gmv-canvas";
-const stickyCellSale = "sticky left-[7rem] z-20 min-w-[10rem] bg-gmv-canvas";
+const stickyGrandSale = cn(
+  stickyTableHead,
+  "left-[7rem] min-w-[10rem] z-[40]",
+  grandTotalMonthBg,
+  "normal-case"
+);
+const stickyGrandTotalHead = cn(
+  stickyTableHeadRight,
+  "right-0 min-w-[5.5rem] z-[40]",
+  grandTotalSumBg,
+  "text-right normal-case"
+);
+const monthTh = "min-w-[5.5rem] p-0 text-right normal-case font-semibold";
+
+const stickyCellTeam = "sticky left-0 z-20 bg-gmv-canvas shadow-[2px_0_4px_-2px_rgba(0,0,0,0.06)]";
+const stickyCellSale = cn(
+  stickyCellTeam,
+  "left-[7rem] min-w-[10rem] z-[20]"
+);
+const stickyRightTotalCell = cn(stickyTableCellRight, "right-0 min-w-[5.5rem] font-medium");
+
+const monthTd = "p-0 align-middle";
 
 export default function BC01SalesPerformance() {
   const [data, setData] = useState<RevenuePivotResponse | null>(null);
@@ -75,13 +108,15 @@ export default function BC01SalesPerformance() {
 
   const months = data?.months ?? [];
   const colSpan = months.length + 3;
+  const showTeamSubtotals = (data?.teams.length ?? 0) > 1;
+  const showGrandTotalHeader = !loading && !!data && months.length > 0;
 
   return (
     <div className="min-w-0 space-y-4 overflow-x-hidden">
       <p className="text-sm text-gmv-muted">
         BC01 — GMV (RMB) theo team × sale × tháng (cột tháng = ngày tiền về). Lọc khoảng ngày
-        theo Pay Time; nguồn <strong>Sổ doanh thu</strong> (= HNxHCM GMV). Tab pivot All File
-        Thu Hiền có thể cũ hơn Sổ.
+        theo Pay Time; nguồn <strong>Sổ doanh thu</strong> (= HNxHCM GMV). Thanh xanh dưới số =
+        % GMV của sale so với tổng team trong cùng tháng.
       </p>
 
       <div className="flex flex-wrap items-end gap-3">
@@ -122,8 +157,13 @@ export default function BC01SalesPerformance() {
 
       <TableScrollWrap className="max-h-[min(70vh,calc(100svh-16rem))]">
         <Table className="min-w-[900px]">
-          <thead>
-            <Tr>
+          <thead className={stickyThead}>
+            <Tr
+              className={cn(
+                "bg-gmv-table-head",
+                showGrandTotalHeader && "[&>th]:border-b-0"
+              )}
+            >
               <Th className={stickyLeftTeam}>Team</Th>
               <Th className={stickyLeftSale}>Sale</Th>
               {months.map((m) => (
@@ -131,8 +171,34 @@ export default function BC01SalesPerformance() {
                   {m}
                 </Th>
               ))}
-              <Th className="min-w-[5.5rem] text-right">Tổng GMV</Th>
+              <Th className={cn(stickyRightTotalHead, "text-right")}>Tổng GMV</Th>
             </Tr>
+            {showGrandTotalHeader && (
+              <Tr className={cn(grandTotalMonthBg, "[&>th]:border-t-0")}>
+                <Th className={cn(stickyGrandTeam, "border-t-0")}>Tổng cộng</Th>
+                <Th className={cn(stickyGrandSale, "border-t-0")}>—</Th>
+                {months.map((m) => (
+                  <Th key={m} className={cn(monthTh, grandTotalMonthBg, "border-t-0")}>
+                    <GmvDataBarCell
+                      value={data.grandTotalRow[m] ?? 0}
+                      columnMax={0}
+                      format={fmtRmb}
+                      showBar={false}
+                      className={grandTotalMonthBg}
+                    />
+                  </Th>
+                ))}
+                <Th
+                  className={cn(
+                    stickyGrandTotalHead,
+                    grandTotalSumBg,
+                    "border-t-0 text-base tabular-nums font-bold"
+                  )}
+                >
+                  {fmtRmb(data.grandTotal)}
+                </Th>
+              </Tr>
+            )}
           </thead>
           <tbody>
             {loading && !data && (
@@ -140,18 +206,6 @@ export default function BC01SalesPerformance() {
                 <Td colSpan={colSpan} className="text-center text-gmv-muted">
                   Đang tải…
                 </Td>
-              </Tr>
-            )}
-            {!loading && data && months.length > 0 && (
-              <Tr className="bg-amber-100 font-semibold">
-                <Td className={cn(stickyCellTeam, "bg-amber-100")}>Tổng cộng</Td>
-                <Td className={cn(stickyCellSale, "bg-amber-100")}>—</Td>
-                {months.map((m) => (
-                  <Td key={m} className="text-right">
-                    {fmtRmb(data.grandTotalRow[m] ?? 0)}
-                  </Td>
-                ))}
-                <Td className="text-right">{fmtRmb(data.grandTotal)}</Td>
               </Tr>
             )}
             {!data?.teams.length && !loading && (
@@ -163,26 +217,42 @@ export default function BC01SalesPerformance() {
             )}
             {data?.teams.map((teamBlock) => (
               <Fragment key={teamBlock.teamLabel}>
-                <Tr className="bg-gmv-primary-soft/40 font-semibold">
-                  <Td className={cn(stickyCellTeam, "bg-gmv-primary-soft/90")}>{teamBlock.teamLabel}</Td>
-                  <Td className={cn(stickyCellSale, "bg-gmv-primary-soft/90")}>Tổng</Td>
-                  {months.map((m) => (
-                    <Td key={m} className="text-right">
-                      {fmtRmb(teamBlock.totalRow[m] ?? 0)}
+                {showTeamSubtotals && (
+                  <Tr className={cn(teamTotalBg, "font-semibold")}>
+                    <Td className={cn(stickyCellTeam, teamTotalBg)}>{teamBlock.teamLabel}</Td>
+                    <Td className={cn(stickyCellSale, teamTotalBg)}>Tổng</Td>
+                    {months.map((m) => (
+                      <Td key={m} className={cn(monthTd, teamTotalBg)}>
+                        <GmvDataBarCell
+                          value={teamBlock.totalRow[m] ?? 0}
+                          columnMax={0}
+                          format={fmtRmb}
+                          showBar={false}
+                          className={teamTotalBg}
+                        />
+                      </Td>
+                    ))}
+                    <Td className={cn(stickyRightTotalCell, teamTotalBg, "text-right tabular-nums")}>
+                      {fmtRmb(teamBlock.totalRowSum)}
                     </Td>
-                  ))}
-                  <Td className="text-right">{fmtRmb(teamBlock.totalRowSum)}</Td>
-                </Tr>
+                  </Tr>
+                )}
                 {teamBlock.sales.map((sale) => (
                   <Tr key={`${teamBlock.teamLabel}-${sale.sale}`}>
                     <Td className={stickyCellTeam}>{teamBlock.teamLabel}</Td>
                     <Td className={cn(stickyCellSale, "text-left")}>{sale.sale}</Td>
                     {months.map((m) => (
-                      <Td key={m} className="text-right tabular-nums">
-                        {fmtRmb(sale.cells[m] ?? 0)}
+                      <Td key={m} className={monthTd}>
+                        <GmvDataBarCell
+                          value={sale.cells[m] ?? 0}
+                          columnMax={teamBlock.totalRow[m] ?? 0}
+                          format={fmtRmb}
+                        />
                       </Td>
                     ))}
-                    <Td className="text-right font-medium tabular-nums">{fmtRmb(sale.total)}</Td>
+                    <Td className={cn(stickyRightTotalCell, "text-right tabular-nums")}>
+                      {fmtRmb(sale.total)}
+                    </Td>
                   </Tr>
                 ))}
               </Fragment>

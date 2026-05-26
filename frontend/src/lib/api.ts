@@ -57,10 +57,14 @@ export const endpoints = {
   },
   payos: {
     createLink: (data: { amount: number; infoCode: string; maDonHang: string }) =>
-      api.post<{ checkoutUrl: string; qrCode: string; orderCode: number; description: string }>(
-        "/payos/create-link",
-        data
-      ),
+      api.post<{
+        checkoutUrl: string;
+        qrCode: string;
+        orderCode: number;
+        description: string;
+        transferContent: string;
+        paymentLinkId?: string;
+      }>("/payos/create-link", data),
     transactions: (params?: {
       limit?: number;
       from?: string;
@@ -119,10 +123,11 @@ export const endpoints = {
       from?: string;
       to?: string;
       loai_nhap?: string;
+      team?: string;
       limit?: number;
       offset?: number;
     }) => api.get<RevenueLedgerListResponse>("/revenue/ledger", { params }),
-    ledgerSummary: (params?: { from?: string; to?: string; loai_nhap?: string }) =>
+    ledgerSummary: (params?: { from?: string; to?: string; loai_nhap?: string; team?: string }) =>
       api.get<LedgerSummaryResponse>("/revenue/ledger/summary", { params }),
     createLedger: (body: LedgerCreatePayload) =>
       api.post<RevenueLedgerRow>("/revenue/ledger", body),

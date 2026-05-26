@@ -1,0 +1,10 @@
+﻿python :   File "<string>", line 50
+At E:\Temp\ps-script-5dc7c520-f272-4141-b865-86e8d8a2390c.ps1:87 char:32
++ $env:PYTHONIOENCODING='utf-8'; python -c "
++                                ~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (  File "<string>", line 50:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+    print(f'BC02 Inhouse1: orders={pivot[" grandTotal\][\totalOrders\]},
+                                         ^
+SyntaxError: unterminated string literal (detected at line 50)

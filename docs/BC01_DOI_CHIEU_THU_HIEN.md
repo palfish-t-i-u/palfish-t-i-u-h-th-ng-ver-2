@@ -159,4 +159,19 @@ python scripts/audit_missing_sales.py
 | 2 | Nếu thiếu 3 sale → tab `HN Inhouse 1` trên All File Thu Hiền tính thiếu, số liệu ở Sổ hoặc HNxHCM đã đúng
 | 3 | Không cần sửa logic BC01 nếu Sổ đã đúng
 
+---
+
+## 8. Tab GMV (số đơn theo ngày) vs thẻ Sổ
+
+Pivot **HN Inhouse 1** (§4) khác tab **GMV** (daily COUNTIFS):
+
+| Tab sheet | Granularity | Team | So với thẻ Sổ |
+|-----------|-------------|------|----------------|
+| **GMV** | Ngày (cột A/B/C) | **Inhouse 1** (ô B1) | Khớp khi Sổ filter **Team = Inhouse 1** + cùng `pay_time` |
+| **HN Inhouse 1** | Tháng × sale | Inhouse 1 | Có thể thiếu sale — không dùng đếm đơn/ngày |
+
+**Case 25/05/2026:** GMV tab **21** đơn; Sổ **Tất cả teams** **24** tay (+ 2 M3 test) — chênh **3 đơn Inhouse 2**, không lỗi sync. Sổ filter Inhouse 1 → **21**.
+
+Chi tiết + script: **`docs/M5_DOI_CHIEU.md`**.
+
 

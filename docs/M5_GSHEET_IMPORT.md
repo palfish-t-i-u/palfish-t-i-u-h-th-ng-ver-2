@@ -154,7 +154,7 @@ Chỉ role **OPS** (Thu Hiền / System) gọi được.
 | gmv_rmb | GMV (K) | GMV (L) |
 | loai | Type (M) | Type (O) |
 | sale_crm_name | Sales (N) | Sales (V) |
-| team | lookup sale / default HCM | lookup sale / default Inhouse 1 |
+| team | cột **AH (TEAM)** trên SM Hanoi | lookup sale / default HCM |
 
 Code: `backend/gsheet_ledger_import.py` — `_parse_sheet_number()` xử lý format số từ API.
 
@@ -188,6 +188,18 @@ python scripts/import_gsheet_so_doanh_thu.py --tab "HCM REV"
 |----------|--------|----------|
 | Thẻ Sổ doanh thu | VND (`so_tien_vnd`) | `pay_time` |
 | BC01 / BC02 | RMB (`gmv_rmb`) | Lọc `pay_time`; BC01 **cột tháng** = `ngay_tien_ve` |
+
+**Thẻ Sổ vs tab GMV (All File):**
+
+| Màn hình | Phạm vi team | Lọc ngày |
+|----------|--------------|----------|
+| Tab **GMV** (cột B) | **Inhouse 1** (ô B1 — COUNTIFS cột AH SM Hanoi) | Pay Time |
+| Thẻ Sổ — filter **Inhouse 1** | Inhouse 1 | `pay_time` |
+| Thẻ Sổ — **Tất cả teams** | SM Hanoi + HCM (+ M3) | `pay_time` |
+
+→ So GMV tab với Sổ **Tất cả teams** sẽ lệch số đơn Inhouse 2 / HCM. Chi tiết + case 25/05/2026: **`docs/M5_DOI_CHIEU.md`**.
+
+**Audit file gốc vs All File (2026-05-25):** All File mất phần lẻ GMV (SM −460 RMB / 13,9k dòng). Khuyến nghị re-seed từ DingTalk xlsx — `docs/M5_OPERATIONS.md` §2.3, `scripts/seed_dingtalk_ledger.py`.
 
 ---
 

@@ -18,6 +18,7 @@ from invoice_routes import register_invoice_routes
 from report_routes import register_report_routes
 from revenue_routes import register_revenue_routes
 from rbac import can_confirm_payment, resolve_actor, visible_creator_emails
+from payos_qr import parse_transfer_content_from_qr
 
 CANCEL_ANY_ROLES = {"manager", "system", "ops"}
 
@@ -284,6 +285,7 @@ def _row_to_order(row: dict[str, Any], kh: dict[str, Any] | None = None) -> dict
         "donCRM": bool(row.get("don_crm") if "don_crm" in row else row.get("donCRM")),
         "billImage": row.get("bill_image") or row.get("billImage"),
         "trangThai": row.get("trang_thai") or row.get("trangThai") or "",
+        "trangThaiThuTuc": row.get("trang_thai_thu_tuc") or row.get("trangThaiThuTuc") or "",
         "createdBy": row.get("created_by") or row.get("createdBy"),
         "createdAt": row.get("created_at") or row.get("createdAt"),
     }
@@ -999,11 +1001,15 @@ async def payos_create_link(body: dict):
         raise HTTPException(400, f"PayOS lỗi: {data.get('desc') or data}")
 
     link_data = data.get("data", {})
+    qr_code = str(link_data.get("qrCode") or "")
+    transfer_content = parse_transfer_content_from_qr(qr_code) or description
     return {
         "checkoutUrl": link_data.get("checkoutUrl", ""),
-        "qrCode": link_data.get("qrCode", ""),
+        "qrCode": qr_code,
         "orderCode": order_code,
         "description": description,
+        "transferContent": transfer_content,
+        "paymentLinkId": link_data.get("paymentLinkId", ""),
     }
 
 

@@ -1,3 +1,5 @@
+import { formatPivotTypeLabel, formatTypeFixxLabel } from "./loaiLabel";
+
 /**
  * Type fixx — sheet Hiếu Trang tính5 (cột C → D).
  * Chuẩn hoá giá trị Type gốc trước khi pivot.
@@ -66,17 +68,6 @@ export const TYPE_FIXX_ORDER = [
 
 export type TypeFixxKey = (typeof TYPE_FIXX_ORDER)[number];
 
-const FIXX_LABEL: Record<string, string> = {
-  Lives: "Lives",
-  Offline: "Offline",
-  Other: "Other",
-  公海: "Kho chung - 公海",
-  广告: "Quảng cáo - 广告",
-  续费: "Gia hạn - 续费",
-  转介绍: "Giới thiệu - 转介绍",
-  KOC: "KOC",
-};
-
 export function applyTypeFixx(typeGoc: string): string {
   const key = (typeGoc || "").trim();
   if (!key) return "Other";
@@ -112,8 +103,7 @@ export function typeFixxFromRow(loai: string, loai2: string): TypeFixxKey {
 }
 
 export function typeFixxLabel(fixx: string): string {
-  const key = (fixx || "").trim();
-  return FIXX_LABEL[key] ?? key ?? "—";
+  return formatTypeFixxLabel(fixx);
 }
 
 export function pivotTypeFromRow(loai: string, loai2: string): string {
@@ -123,12 +113,5 @@ export function pivotTypeFromRow(loai: string, loai2: string): string {
 }
 
 export function pivotTypeLabel(pivot: string): string {
-  const labels: Record<string, string> = {
-    Other: "Other",
-    广告: "Ads - 广告",
-    转介绍: "Refer - 转介绍",
-    续费: "Renew - 续费",
-    公海: "Kho chung - 公海",
-  };
-  return labels[pivot] ?? pivot;
+  return formatPivotTypeLabel(pivot);
 }

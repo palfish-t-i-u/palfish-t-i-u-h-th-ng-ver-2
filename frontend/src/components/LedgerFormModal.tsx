@@ -1,11 +1,22 @@
 import { useEffect, useState, type ReactNode } from "react";
+import { endpoints } from "../lib/api";
 import { cn } from "../lib/cn";
+import {
+  formatLoaiLabel,
+  LEDGER_LOAI2_OPTIONS,
+  ledgerLoaiSelectOptions,
+  ledgerPaymentSelectOptions,
+  LEDGER_VND_RMB_RATE,
+} from "../lib/loaiLabel";
 import { digitsOnly, formatVndInput, parseVndInput } from "../lib/vndFormat";
 import type { LedgerCreatePayload, LoaiNhap } from "../types/revenue";
 import Badge from "./ui/Badge";
 import Button from "./ui/Button";
+import Combobox from "./ui/Combobox";
 import { Input } from "./ui/Input";
 import Modal from "./ui/Modal";
+
+const PACKAGES_DATALIST_ID = "ledger-packages-datalist";
 
 const TEAM_OPTIONS = ["Inhouse 1", "Inhouse 2", "HCM (Online)", "Khác"];
 
@@ -114,6 +125,10 @@ export default function LedgerFormModal({
 }: Props) {
   const [form, setForm] = useState<LedgerFormState>(initial);
   const [rmbText, setRmbText] = useState("");
+  const [packages, setPackages] = useState<string[]>([]);
+
+  const loaiOptions = ledgerLoaiSelectOptions();
+  const paymentOptions = ledgerPaymentSelectOptions();
 
   useEffect(() => {
     if (open) {
@@ -121,6 +136,14 @@ export default function LedgerFormModal({
       setRmbText(initial.gmvRmb != null && initial.gmvRmb > 0 ? String(initial.gmvRmb) : "");
     }
   }, [open, initial]);
+
+  useEffect(() => {
+    if (!open) return;
+    endpoints.packages
+      .list()
+      .then((res) => setPackages(res.data.packages))
+      .catch(() => setPackages([]));
+  }, [open]);
 
   function patch<K extends keyof LedgerFormState>(key: K, value: LedgerFormState[K]) {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -192,18 +215,35 @@ export default function LedgerFormModal({
               placeholder="VD: 12.875.000"
             />
           </Field>
-          <Field label="Payment method">
-            <Input
+          <Field label="Lần thanh toán">
+            <Combobox
               value={form.paymentMethod ?? ""}
-              onChange={(e) => patch("paymentMethod", e.target.value)}
-              placeholder="1st, tiền mặt, CK…"
+              onChange={(v) => patch("paymentMethod", v)}
+              options={
+                form.paymentMethod &&
+                !paymentOptions.some((o) => o.value === form.paymentMethod)
+                  ? [
+                      { value: form.paymentMethod, label: form.paymentMethod },
+                      ...paymentOptions,
+                    ]
+                  : paymentOptions
+              }
+              placeholder="Gõ 11 → 11th, hoặc chọn 1st…20th"
+              emptyLabel="— Chọn —"
+              matchDigitsToOrdinal
             />
           </Field>
-          <Field label="Type">
-            <Input
+          <Field label="Loại / Type">
+            <Combobox
               value={form.loai ?? ""}
-              onChange={(e) => patch("loai", e.target.value)}
-              placeholder="KOC, Refer…"
+              onChange={(v) => patch("loai", v)}
+              options={
+                form.loai && !loaiOptions.some((o) => o.value === form.loai)
+                  ? [{ value: form.loai, label: formatLoaiLabel(form.loai) }, ...loaiOptions]
+                  : loaiOptions
+              }
+              placeholder="Chọn loại (mỗi nhãn một lần)"
+              emptyLabel="— Chọn loại —"
             />
           </Field>
           <Field label="Sales">
@@ -233,10 +273,16 @@ export default function LedgerFormModal({
         <div className="grid gap-3 sm:grid-cols-2">
           <Field label="Package (gói học)">
             <Input
+              list={PACKAGES_DATALIST_ID}
               value={form.goiHoc ?? ""}
               onChange={(e) => patch("goiHoc", e.target.value)}
-              placeholder="Gói học"
+              placeholder="Gõ để tìm gói học (cùng danh sách Tab QR)…"
             />
+            <datalist id={PACKAGES_DATALIST_ID}>
+              {packages.map((p) => (
+                <option key={p} value={p} />
+              ))}
+            </datalist>
           </Field>
           <Field label="GMV (RMB)">
             <Input
@@ -247,11 +293,23 @@ export default function LedgerFormModal({
               placeholder="Tự tính VND ÷ 3700 nếu để trống"
             />
           </Field>
-          <Field label="Type 2">
-            <Input
+          <Field label="Loại 2 (kênh con)">
+            <select
+              className="gmv-field w-full min-h-10 rounded-gmv-md border border-gmv-border px-3 text-sm"
               value={form.loai2 ?? ""}
               onChange={(e) => patch("loai2", e.target.value)}
-            />
+            >
+              <option value="">— Không / trống —</option>
+              {LEDGER_LOAI2_OPTIONS.map((v) => (
+                <option key={v} value={v}>
+                  {formatLoaiLabel(v)}
+                </option>
+              ))}
+              {form.loai2 &&
+                !(LEDGER_LOAI2_OPTIONS as readonly string[]).includes(form.loai2) && (
+                  <option value={form.loai2}>{formatLoaiLabel(form.loai2)}</option>
+                )}
+            </select>
           </Field>
           <Field label="Ghi chú">
             <Input
@@ -268,7 +326,13 @@ export default function LedgerFormModal({
           </Field>
         </div>
 
-        <p className="text-xs text-gmv-muted">RMB mặc định = VND ÷ 3700 khi không nhập GMV (RMB).</p>
+        <p className="rounded-gmv-md border border-gmv-border bg-gmv-canvas px-3 py-2 text-xs text-gmv-muted">
+          Tỷ giá mặc định: 1 RMB = {LEDGER_VND_RMB_RATE.toLocaleString("vi-VN")} VND —{" "}
+          <span className="font-medium text-gmv-text">
+            GMV (RMB) = Real Pay (VND) ÷ {LEDGER_VND_RMB_RATE}
+          </span>{" "}
+          khi không nhập GMV (RMB) trong form.
+        </p>
 
         {error && <p className="text-sm text-red-600">{error}</p>}
 
