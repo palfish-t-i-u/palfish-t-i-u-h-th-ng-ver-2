@@ -369,14 +369,52 @@ function ActiveRequestMiniCard({
   onCoursePackageChange,
 }: {
   ar: ActiveRequest;
-  onCoursePackageChange: (arId: string, courseCode: string, packageName: string) => void;
+  onCoursePackageChange: (arId: string, courseCode: string, packageName: string) => Promise<void>;
 }) {
+  const [draftPackages, setDraftPackages] = useState<Record<string, string>>({});
+  const [saving, setSaving] = useState(false);
   const courseCount = ar.uids.reduce((sum, u) => sum + u.courses.length, 0);
   const filledOrderIds = ar.uids.reduce(
     (sum, u) => sum + u.courses.filter((c) => !!c.orderId).length,
     0
   );
   const allFilled = courseCount > 0 && filledOrderIds === courseCount;
+  const courseKey = (uidIdx: number, courseCode: string, courseIdx: number) =>
+    `${uidIdx}::${courseCode || courseIdx}`;
+
+  useEffect(() => {
+    const next: Record<string, string> = {};
+    ar.uids.forEach((u, uidIdx) => {
+      u.courses.forEach((c, courseIdx) => {
+        next[courseKey(uidIdx, c.courseCode, courseIdx)] = c.packageName || c.name || "";
+      });
+    });
+    setDraftPackages(next);
+  }, [ar]);
+
+  const dirtyCourses = ar.uids.flatMap((u, uidIdx) =>
+    u.courses
+      .map((c, courseIdx) => {
+        const key = courseKey(uidIdx, c.courseCode, courseIdx);
+        const savedValue = c.packageName || c.name || "";
+        const draftValue = draftPackages[key] ?? savedValue;
+        return draftValue !== savedValue ? { courseCode: c.courseCode, packageName: draftValue } : null;
+      })
+      .filter((item): item is { courseCode: string; packageName: string } => !!item)
+  );
+  const hasDraftChanges = dirtyCourses.length > 0;
+
+  const savePackages = async () => {
+    if (!hasDraftChanges || saving) return;
+    setSaving(true);
+    try {
+      for (const item of dirtyCourses) {
+        await onCoursePackageChange(ar.id, item.courseCode, item.packageName);
+      }
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
     <div className="panel">
@@ -385,13 +423,24 @@ function ActiveRequestMiniCard({
           <Icons.CheckSquare size={15} /> Kích hoạt khoá học
           <span className="num-pill">{ar.id}</span>
         </h4>
-        <span
-          className={`badge ${allFilled ? "is-done" : "is-over"}`}
-          title={allFilled ? "Tất cả course đã có Order ID" : "Đang chờ điền Order ID"}
-        >
-          {allFilled ? <Icons.Check size={11} strokeWidth={2.5} /> : <Icons.Clock size={11} />}{" "}
-          {filledOrderIds}/{courseCount} Order ID
-        </span>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <span
+            className={`badge ${allFilled ? "is-done" : "is-over"}`}
+            title={allFilled ? "Tất cả course đã có Order ID" : "Đang chờ điền Order ID"}
+          >
+            {allFilled ? <Icons.Check size={11} strokeWidth={2.5} /> : <Icons.Clock size={11} />}{" "}
+            {filledOrderIds}/{courseCount} Order ID
+          </span>
+          <button
+            type="button"
+            className={`btn btn-sm ${hasDraftChanges ? "btn-primary" : "btn-outline"}`}
+            disabled={!hasDraftChanges || saving}
+            onClick={() => void savePackages()}
+            title={hasDraftChanges ? "Lưu gói học vào Active Request" : "Chưa có thay đổi gói học"}
+          >
+            <Icons.Check size={13} strokeWidth={2.5} /> {saving ? "Đang lưu..." : "Lưu"}
+          </button>
+        </div>
       </div>
       <div style={{ padding: "8px 0", display: "flex", flexDirection: "column", gap: 10 }}>
         {ar.uids.map((u, uIdx) => (
@@ -433,8 +482,18 @@ function ActiveRequestMiniCard({
                   >
                     <div style={{ minWidth: 0 }}>
                       <Combobox
-                        value={c.packageName || c.name || ""}
-                        onChange={(value) => onCoursePackageChange(ar.id, c.courseCode, value)}
+                        value={
+                          draftPackages[courseKey(uIdx, c.courseCode, cIdx)] ??
+                          c.packageName ??
+                          c.name ??
+                          ""
+                        }
+                        onChange={(value) =>
+                          setDraftPackages((prev) => ({
+                            ...prev,
+                            [courseKey(uIdx, c.courseCode, cIdx)]: value,
+                          }))
+                        }
                         options={COURSE_PACKAGE_OPTIONS}
                         placeholder="Chọn hoặc gõ tên gói học..."
                         emptyLabel="Chưa chọn gói"
@@ -501,7 +560,7 @@ export default function PaymentRequestDetailDrawer({
   onCancelRequest: () => void;
   activeRequestId?: string | null;
   activeRequest?: ActiveRequest | null;
-  onCoursePackageChange: (arId: string, courseCode: string, packageName: string) => void;
+  onCoursePackageChange: (arId: string, courseCode: string, packageName: string) => Promise<void>;
   onShowQr: (qr: PaymentAttempt) => void;
   uploadingBillId?: string | null;
 }) {

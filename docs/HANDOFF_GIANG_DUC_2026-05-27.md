@@ -191,7 +191,7 @@ Runtime hiện tại: Sales chọn/gõ được gói học, nhưng reload/thoát
 Đã đổi gói tạm trên giao diện; máy chủ chưa lưu được thay đổi gói học.
 ```
 
-Kết luận: FE đã có UI + request shape, nhưng BE chưa lưu được `uids_data` qua endpoint PATCH AR nên DB chưa ghi nhận. Sau khi BE lưu được, Minh sẽ chỉnh UX thành flow có nút **Lưu** trong mini-window: Sales chọn gói trước, bấm **Lưu** mới gọi PATCH.
+Kết luận cập nhật sau commit Đức `8a853d8`: BE đã có `PATCH /api/v1/active-requests/{ar_id}` để lưu `uids_data`. Minh đã chỉnh FE thành flow có nút **Lưu** trong mini-window: Sales chọn gói trước, bấm **Lưu** mới gọi PATCH.
 
 #### Request shape FE đang gửi cho Đức verify
 

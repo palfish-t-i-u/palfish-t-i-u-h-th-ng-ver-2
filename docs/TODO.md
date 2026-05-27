@@ -319,4 +319,4 @@
 |----|------|--------|-------|---------|
 | F2705-T2-01 | PR drawer mini-window: cho Sales chọn/gõ tìm gói học trong Active Request | done | Minh | FE-only; gọi thử `PATCH /api/v1/active-requests/{id}`; `npm test` + `npm run build` pass |
 | F2705-T2-02 | BE lưu gói học từ PR drawer vào `active_requests.uids_data` | pending | Đức | Blocker: FE báo "Đã đổi gói tạm..." vì PATCH AR chưa lưu DB; request shape xem `HANDOFF_GIANG_DUC_2026-05-27.md` |
-| F2705-T2-03 | Thêm nút "Lưu" trong mini-window sau khi BE PATCH AR ổn định | pending | Minh | Chọn gói chỉ đổi draft; bấm "Lưu" mới gọi PATCH; tab Kích hoạt khóa học chính phải thấy dữ liệu mới |
+| F2705-T2-03 | Thêm nút "Lưu" trong mini-window sau khi BE PATCH AR ổn định | done | Minh | Chọn gói chỉ đổi draft; bấm "Lưu" mới gọi PATCH; verified `npm test` + `npm run build` 2026-05-27 |
