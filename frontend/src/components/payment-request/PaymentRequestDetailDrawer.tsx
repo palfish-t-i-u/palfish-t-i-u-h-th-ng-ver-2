@@ -211,6 +211,7 @@ function AddPaymentForm({
 }) {
   const [method, setMethod] = useState<PaymentMethod>("qr");
   const [amount, setAmount] = useState("");
+  const [isAmountFocused, setIsAmountFocused] = useState(false);
   const [bank, setBank] = useState(BANK_ACCOUNTS[0].alias);
   const [cardLast4, setCardLast4] = useState("");
   const [installmentMonths, setInstallmentMonths] = useState("6");
@@ -277,10 +278,14 @@ function AddPaymentForm({
           <input
             type="text"
             placeholder={`Còn thiếu: ${vnd(remaining)}`}
-            value={amount}
+            value={isAmountFocused ? amount : amount ? Number(amount).toLocaleString("vi-VN") : ""}
+            inputMode="numeric"
+            pattern="[0-9]*"
+            onFocus={() => setIsAmountFocused(true)}
+            onBlur={() => setIsAmountFocused(false)}
             onChange={(e) => {
               const v = e.target.value.replace(/[^\d]/g, "");
-              setAmount(v ? Number(v).toLocaleString("vi-VN") : "");
+              setAmount(v);
             }}
           />
         </div>

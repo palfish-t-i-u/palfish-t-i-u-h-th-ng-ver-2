@@ -39,6 +39,9 @@ export function payosQrImageUrl(qrCode: string | null | undefined, size = 240): 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function fromApiAttempt(raw: any, idx = 0): PaymentAttempt {
   const status = (raw.status ?? "pending") as PaymentAttempt["status"];
+  const rejectReason = raw.reject_reason ?? raw.rejectReason ?? null;
+  const cancelledFromReason =
+    status === "rejected" && /hu(y|ỷ|ỷ)/i.test(String(rejectReason || ""));
   return {
     id: raw.id ?? "",
     idx: raw.idx ?? idx,
@@ -59,9 +62,9 @@ export function fromApiAttempt(raw: any, idx = 0): PaymentAttempt {
     transferContent: raw.transfer_content ?? raw.transferContent ?? null,
     qrCode: raw.qr_code ?? raw.qrCode ?? null,
     checkoutUrl: raw.checkout_url ?? raw.checkoutUrl ?? null,
-    cancelled: raw.cancelled ?? false,
+    cancelled: raw.cancelled ?? cancelledFromReason,
     cancelledAt: raw.cancelled_at ?? raw.cancelledAt ?? null,
-    rejectReason: raw.reject_reason ?? raw.rejectReason ?? null,
+    rejectReason,
   };
 }
 
