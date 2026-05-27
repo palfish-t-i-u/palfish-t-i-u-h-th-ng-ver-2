@@ -190,10 +190,16 @@ export const endpoints = {
       api.post<{ approved: number; ids: string[] }>("/invoice/m3-approve-bulk"),
     getM4Queue: () =>
       api.get<{ orders: InvoiceOrder[]; count: number }>("/invoice/m4-queue"),
+    getM4Issued: () =>
+      api.get<{ orders: InvoiceOrder[]; count: number }>("/invoice/m4-issued"),
     cancelM4Queue: (id: string) =>
       api.post<{ ok: boolean; id: string }>("/invoice/m4-cancel", { id }),
-    exportBatch: () =>
-      api.post<Blob>("/invoice/export-batch", {}, { responseType: "blob" }),
+    exportBatch: (orderIds?: string[]) =>
+      api.post<Blob>(
+        "/invoice/export-batch",
+        { order_ids: orderIds ?? [] },
+        { responseType: "blob" }
+      ),
   },
   revenue: {
     listLedger: (params?: {
