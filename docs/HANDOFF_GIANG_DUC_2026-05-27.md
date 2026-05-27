@@ -16,6 +16,7 @@
 | **B-01 (BE)** | PATCH `/api/v1/payment-requests/{id}` — lưu edit PR vào DB | ✅ **Đức đã làm xong** `877dbce` |
 | **B-02 (BE)** | PATCH AR + `info_confirmed_at` | 🔴 **Tối nay — Đức làm tiếp** (xem chi tiết bên dưới) |
 | **Task 2 (FE)** | Mini-window "Kích hoạt khoá học" inline trong PR drawer | 🟡 Code xong, chờ commit |
+| **B-06/B-07 (BE)** | Xoá/cancel Active Request + trạng thái chờ xuất HĐ sau khi Ops bấm Xuất HĐ | 🟡 Cần Giang/Đức xử lý theo prompt cập nhật 28/05 |
 
 ---
 
@@ -226,6 +227,115 @@ Acceptance cho Đức:
 
 ---
 
+## Cập nhật 28/05 — Feedback test Mini-window Active Request trong Payment Request
+
+### Plan triển khai theo block liên quan và thứ tự ưu tiên
+
+#### P0 — Block Payment Request drawer / Mini-window "Kích hoạt khóa học" (Minh FE, có 1 blocker BE)
+
+**Trạng thái FE 28/05:** Minh đã triển khai trong `frontend/src/`. Test code thuần đã chạy: `npm test -- paymentRequestUtils.test.ts paymentFlowUtils.test.ts` pass 7 tests; `npm run build` pass.
+
+Mục tiêu: Sales nhìn đúng trạng thái và thao tác được nhiều UID / nhiều gói ngay trong Payment Request, không cần thoát tab để hiểu dữ liệu.
+
+1. Hiển thị đủ thông tin từng khóa trong mini-window:
+   - UID.
+   - Số điện thoại đúng format đầu số quốc gia + đuôi số, ví dụ `+84 9323 232 333`.
+   - Tên gói học.
+   - Số tiền của gói học.
+2. Đổi wording trạng thái trong Payment Request:
+   - Sau khi Sales bấm "Kích hoạt khóa học" và AR mới được tạo, nút không được hiện "Đã kích hoạt khóa học" nữa.
+   - Khi AR đã tạo nhưng chưa đủ Order ID: hiện "Chờ kích hoạt khóa học".
+   - Khi mọi course đã có Order ID do Ops lưu: hiện "Đã kích hoạt khóa học".
+   - Badge course trong mini-window đổi từ "Chờ Order ID" sang "Chờ kích hoạt"; khi có Order ID thì hiện "Đã kích hoạt" màu xanh, không cần show Order ID cho Sales.
+3. Thêm flow nhiều UID / nhiều gói:
+   - Cho Sales chọn UID đã có trong AR.
+   - Cho Sales thêm gói học mới cho UID đã chọn.
+   - Cho Sales thêm UID mới nếu 1 PR mua gói cho nhiều học viên.
+   - Khi lưu, FE gửi lại `uids_data` snake_case qua `PATCH /api/v1/active-requests/{ar_id}`.
+4. Sửa cụm action gói học cho gọn:
+   - Icon bút = bật sửa thông tin gói học.
+   - Icon tick xanh vuông = lưu thông tin.
+   - Icon X đỏ vuông = xoá Active Request.
+   - Icon X đỏ tròn nằm trong ô chọn gói = xoá tên gói học đang chọn.
+5. BE blocker trong block này:
+   - FE đã có PATCH để lưu `uids_data` và đã gửi thêm nhiều UID / nhiều gói bằng shape JSONB hiện tại.
+   - FE đã gắn nút xoá AR bằng optimistic `DELETE /api/v1/active-requests/{ar_id}`.
+   - Cần BE thêm endpoint xoá/cancel Active Request để nút "Xoá active request" persist thật.
+
+#### P1 — Block tab "Kích hoạt khóa học" / Active Request drawer (Minh FE + Giang/Đức BE)
+
+**Trạng thái FE 28/05:** Minh đã triển khai nút **Lưu Order ID**, bỏ save-on-blur, và đổi FE derive status để AR mới không vào `ready_invoice`. FE dùng field per-course `invoice_requested_at` khi Ops bấm "Xuất HĐ" để đẩy sang B4.
+
+Mục tiêu: Ops thấy đúng backlog "Chờ tạo đơn", lưu Order ID rõ ràng, và chỉ đẩy sang xuất hóa đơn khi Ops bấm nút Xuất HĐ.
+
+1. Sửa trạng thái tab:
+   - AR mới tạo phải nằm ở tab "Chờ tạo đơn".
+   - Không tự nhảy sang "Sẵn sàng xuất HĐ" chỉ vì AR có course nhưng chưa có Order ID.
+2. Thêm nút "Lưu" rõ ràng cho Ops khi điền Order ID:
+   - Hiện tại FE lưu bằng `onBlur`, dễ gây hiểu nhầm.
+   - Đổi sang draft Order ID, bấm "Lưu" mới gọi PATCH.
+3. Tách trạng thái "đã kích hoạt" và "sẵn sàng xuất HĐ":
+   - Khi Ops nhập Order ID và bấm Lưu: Payment Request được coi là "Đã kích hoạt khóa học"; course badge chuyển "Đã kích hoạt".
+   - Chỉ khi Ops bấm nút "Xuất HĐ" màu tím trong Active Request thì course/AR mới được tính vào tab "Sẵn sàng xuất HĐ".
+4. BE blocker trong block này:
+   - Cần BE chấp nhận/persist `invoice_requested_at` trong `uids_data.courses[]` khi FE PATCH AR.
+   - Không nên dùng `order_id` làm điều kiện duy nhất cho `ready_invoice`, vì Order ID chỉ chứng minh đã kích hoạt khóa học, chưa chứng minh Ops đã yêu cầu xuất hóa đơn.
+
+#### P2 — Cleanup / nghiệm thu
+
+1. FE chạy `cd frontend && npm test`.
+2. FE chạy `cd frontend && npm run build`.
+3. Test tay 3 flow:
+   - PR đủ tiền → tạo AR → Payment Request hiển thị "Chờ kích hoạt khóa học".
+   - Sales thêm/sửa/xóa tên gói trong mini-window → reload vẫn giữ dữ liệu.
+   - Ops nhập Order ID + bấm Lưu → Payment Request hiển thị "Đã kích hoạt khóa học"; chỉ sau khi bấm "Xuất HĐ" mới vào "Sẵn sàng xuất HĐ".
+
+### Prompt handoff cho Giang/Đức
+
+```text
+Context:
+- Minh chỉ làm FE trong `frontend/src/`, không sửa backend.
+- Feedback sau test Mini-window Active Request trong Payment Request cho thấy FE cần 2 khả năng BE mới/ổn định:
+  1. Xoá hoặc cancel Active Request.
+  2. Tách trạng thái "đã kích hoạt khóa học" khỏi "sẵn sàng xuất HĐ".
+- BE hiện đã có `PATCH /api/v1/active-requests/{ar_id}` nhận `uids_data` và serialize Active Request giống `GET /active-requests`.
+
+Việc cần Giang/Đức làm:
+
+1. Thêm endpoint xoá/cancel Active Request
+- Đề xuất API:
+  - Ưu tiên: `DELETE /api/v1/active-requests/{ar_id}` nếu xoá cứng được nghiệp vụ chấp nhận.
+  - Nếu cần giữ audit: `POST /api/v1/active-requests/{ar_id}/cancel` hoặc `PATCH /api/v1/active-requests/{ar_id}` với `{ "status": "cancelled" }`.
+- Response trả về `{ "ok": true, "id": "AR-..." }` hoặc Active Request đã cập nhật.
+- Điều kiện an toàn đề xuất:
+  - Không cho xoá/cancel nếu có course đã `invoiced = true`.
+  - Nếu đã có `order_id`, nên trả 409 hoặc yêu cầu confirm nghiệp vụ trước.
+
+2. Tách trạng thái invoice-ready khỏi trạng thái đã có Order ID
+- Vấn đề hiện tại: AR có course nhưng chưa có Order ID đang có thể bị FE/BE derive thành `ready_invoice`; yêu cầu mới là AR mới phải ở `pending_order`.
+- Khi Ops điền Order ID và bấm Lưu:
+  - Course được coi là đã kích hoạt.
+  - Không tự đưa vào tab "Sẵn sàng xuất HĐ".
+- Khi Ops bấm nút "Xuất HĐ" màu tím trong Active Request:
+  - Mới set course/AR vào trạng thái đủ điều kiện B4.
+- Đề xuất schema nhẹ:
+  - Thêm field per-course trong `uids_data.courses[]`: `invoice_requested_at?: string | null`.
+  - Hoặc thêm field tương đương nếu Đức muốn quản lý ở table riêng.
+- Đề xuất status derive:
+  - Không có Order ID nào: `pending_order`.
+  - Có một phần Order ID: `partial_order`.
+  - Tất cả course có Order ID nhưng chưa bấm Xuất HĐ: vẫn không vào tab "Sẵn sàng xuất HĐ" của B4.
+  - Course/AR chỉ vào `ready_invoice` khi đã có `invoice_requested_at` hoặc flag tương đương.
+  - Tất cả course đã `invoiced = true`: `invoiced`.
+
+Acceptance:
+1. FE gọi xoá/cancel AR xong, reload `GET /api/v1/active-requests` không còn hiện AR đó, hoặc hiện trạng thái cancelled nếu backend chọn soft-delete.
+2. PR vừa tạo AR mới luôn nằm ở tab "Chờ tạo đơn".
+3. Ops nhập Order ID + lưu xong, Payment Request có thể hiển thị "Đã kích hoạt khóa học", nhưng tab B4 chưa nhận course.
+4. Ops bấm "Xuất HĐ" trong Active Request xong, course/AR mới xuất hiện ở "Sẵn sàng xuất HĐ".
+5. Các response vẫn dùng snake_case và giữ shape serialize hiện tại để FE không phải đổi mapper lớn.
+```
+
 ## Việc còn lại sau tối nay
 
 | ID | Việc | Người làm | Trạng thái |
@@ -234,6 +344,8 @@ Acceptance cho Đức:
 | B-04 | Confirm account HCM cho dropdown bank | Hiếu | Đợi input |
 | B-05 | `payment_lines.downloaded_at` track file thuế đã tải | Giang | P2 backlog |
 | BUG-02 | Nút "Xác nhận thông tin" cho Thu Hiền | Minh | Sẽ làm sau khi B-02 xong |
+| B-06 | Xoá/cancel Active Request | Giang/Đức | Cần BE endpoint để FE gắn nút X đỏ vuông |
+| B-07 | Tách `order_id` khỏi trạng thái `ready_invoice` | Giang/Đức | Cần flag/schema cho hành động Ops bấm "Xuất HĐ" |
 
 ---
 

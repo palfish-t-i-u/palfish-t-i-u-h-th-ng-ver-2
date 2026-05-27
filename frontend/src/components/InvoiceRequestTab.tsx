@@ -238,7 +238,7 @@ export default function InvoiceRequestTab() {
   ]);
 
   const rows = useMemo(() => deriveInvoiceRows(activeRequests, requests), [activeRequests, requests]);
-  const pending = useMemo(() => rows.filter((r) => !r.course.invoiced), [rows]);
+  const pending = useMemo(() => rows.filter((r) => r.course.invoiceRequestedAt && !r.course.invoiced), [rows]);
   const issued = useMemo(() => rows.filter((r) => r.course.invoiced), [rows]);
   const list = tab === "pending" ? pending : issued;
 

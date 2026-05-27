@@ -313,7 +313,6 @@ function ActivationDetailDrawer({
   onClose,
   onUpdate,
   onSaveOrderId,
-  onNavigateInvoice,
   onOpenPr,
   onGoToInvoice,
 }: {
@@ -322,12 +321,12 @@ function ActivationDetailDrawer({
   open: boolean;
   onClose: () => void;
   onUpdate: (next: ActiveRequest) => void;
-  onSaveOrderId: (courseCode: string, orderId: string) => void;
-  onNavigateInvoice: () => void;
+  onSaveOrderId: (courseCode: string, orderId: string) => Promise<void>;
   onOpenPr?: () => void;
-  onGoToInvoice: (courseCode: string) => void;
+  onGoToInvoice: (courseCode: string) => Promise<void>;
 }) {
   const [drafts, setDrafts] = useState<Record<string, string>>({});
+  const [savingOrderIds, setSavingOrderIds] = useState(false);
 
   useEffect(() => {
     if (!ar) return;
@@ -353,6 +352,25 @@ function ActivationDetailDrawer({
   const invoicedCount = courses.filter((c) => c.invoiced).length;
   const total = enriched.total;
   const receivedGap = pr ? total - pr.received : 0;
+  const dirtyOrderIds = courses
+    .map((course) => ({
+      courseCode: course.courseCode,
+      orderId: (drafts[course.courseCode] ?? "").trim(),
+      savedOrderId: course.orderId || "",
+    }))
+    .filter((item) => item.orderId !== item.savedOrderId);
+
+  const saveOrderIds = async () => {
+    if (dirtyOrderIds.length === 0 || savingOrderIds) return;
+    setSavingOrderIds(true);
+    try {
+      for (const item of dirtyOrderIds) {
+        await onSaveOrderId(item.courseCode, item.orderId);
+      }
+    } finally {
+      setSavingOrderIds(false);
+    }
+  };
 
   const updateCourse = (uidIdx: number, courseIdx: number, patch: Partial<ActiveCourse>) => {
     const nextUids = ar.uids.map((u, i) => {
@@ -709,13 +727,6 @@ function ActivationDetailDrawer({
                     onChange={(e) =>
                       setDrafts((prev) => ({ ...prev, [course.courseCode]: e.target.value }))
                     }
-                    onBlur={() => {
-                      const val = (drafts[course.courseCode] ?? "").trim();
-                      if (val !== (course.orderId || "")) {
-                        updateCourse(uidIdx, courseIdx, { orderId: val });
-                        onSaveOrderId(course.courseCode, val);
-                      }
-                    }}
                   />
                   <div className="invoice-cell">
                     {course.invoiced ? (
@@ -751,9 +762,15 @@ function ActivationDetailDrawer({
                       <button
                         type="button"
                         className="btn-invoice"
-                        disabled={!course.orderId?.trim()}
-                        title={course.orderId ? "Chuyển sang B4 xuất hoá đơn" : "Cần điền Order ID trước"}
-                        onClick={() => onGoToInvoice(course.courseCode)}
+                        disabled={!course.orderId?.trim() || !!dirtyOrderIds.length}
+                        title={
+                          !course.orderId?.trim()
+                            ? "Cần điền Order ID trước"
+                            : dirtyOrderIds.length
+                              ? "Cần lưu Order ID trước khi xuất HĐ"
+                              : "Chuyển sang B4 xuất hoá đơn"
+                        }
+                        onClick={() => void onGoToInvoice(course.courseCode)}
                       >
                         <Icons.Doc size={12} /> Xuất HĐ
                       </button>
@@ -804,9 +821,17 @@ function ActivationDetailDrawer({
             <button type="button" className="btn btn-outline" onClick={onClose}>
               Đóng
             </button>
+            <button
+              type="button"
+              className={`btn ${dirtyOrderIds.length ? "btn-primary" : "btn-outline"}`}
+              disabled={dirtyOrderIds.length === 0 || savingOrderIds}
+              onClick={() => void saveOrderIds()}
+            >
+              <Icons.Check size={14} strokeWidth={2.5} /> {savingOrderIds ? "Đang lưu..." : "Lưu Order ID"}
+            </button>
             {enriched.status === "ready_invoice" && (
-              <button type="button" className="btn btn-success" onClick={onNavigateInvoice}>
-                <Icons.Doc size={14} /> Yêu cầu xuất hoá đơn (B4)
+              <button type="button" className="btn btn-success" onClick={() => void onGoToInvoice(courses[0]?.courseCode || "")}>
+                <Icons.Doc size={14} /> Mở B4 xuất hoá đơn
               </button>
             )}
           </div>
@@ -821,6 +846,7 @@ export default function ActivationTab() {
     activeRequests,
     requests,
     patchCourseOrderId,
+    requestInvoiceForCourse,
     navigate,
     nav,
     setNav,
@@ -1082,17 +1108,17 @@ export default function ActivationTab() {
         open={!!openArId}
         onClose={() => setOpenArId(null)}
         onUpdate={(next) => updateActiveRequest(next.id, () => next)}
-        onSaveOrderId={(courseCode, orderId) => {
-          if (openAr) void patchCourseOrderId(openAr.id, courseCode, orderId);
+        onSaveOrderId={async (courseCode, orderId) => {
+          if (openAr) await patchCourseOrderId(openAr.id, courseCode, orderId);
         }}
-        onNavigateInvoice={() => navigate("module4", { invoiceTab: "pending" })}
         onOpenPr={
           openAr?.prId
             ? () => navigate("paymentRequests", { openPrId: openAr.prId })
             : undefined
         }
-        onGoToInvoice={(courseCode) => {
+        onGoToInvoice={async (courseCode) => {
           if (!openAr) return;
+          await requestInvoiceForCourse(openAr.id, courseCode);
           const key = findInvoiceRowKey(openAr, courseCode);
           setOpenArId(null);
           navigate("module4", { invoiceTab: "pending", openInvoiceKey: key ?? undefined });

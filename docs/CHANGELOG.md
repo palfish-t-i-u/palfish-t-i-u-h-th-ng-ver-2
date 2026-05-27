@@ -489,3 +489,25 @@
 **Verification**
 - `npm test` pass 2 files / 6 tests.
 - `npm run build` pass.
+
+---
+
+## 2026-05-28 — P0/P1 FE: mini-window Active Request + trạng thái kích hoạt
+
+**Frontend**
+- `PaymentRequestDetailDrawer.tsx` — mini-window hiển thị UID, SĐT format đầu số quốc gia, gói học, số tiền; đổi badge Sales thành "Chờ kích hoạt" / "Đã kích hoạt"; thêm icon Sửa, Lưu, Xoá AR, Xoá tên gói; thêm gói cho UID hiện có và thêm UID mới.
+- `ActivationTab.tsx` — Order ID chuyển sang draft, Ops bấm **Lưu Order ID** mới PATCH; nút "Xuất HĐ" set cờ `invoiceRequestedAt` rồi mới mở B4.
+- `paymentFlowUtils.ts` / `InvoiceRequestTab.tsx` — AR mới giữ ở `pending_order`; có Order ID nhưng chưa bấm Xuất HĐ không vào `ready_invoice`; tab B4 chỉ nhận course có `invoiceRequestedAt`.
+- `PaymentFlowContext.tsx` / `api.ts` / types — thêm save full AR, optimistic delete AR, và field `invoice_requested_at` trong `uids_data.courses[]`.
+
+**Docs**
+- `TODO.md` — thêm block F2805-P0/P1.
+- `HANDOFF_GIANG_DUC_2026-05-27.md` — cập nhật FE đã làm và BE còn cần persist delete/cancel AR + `invoice_requested_at`.
+
+**Verification**
+- `npm test -- paymentRequestUtils.test.ts paymentFlowUtils.test.ts` pass 2 files / 7 tests.
+- `npm run build` pass.
+
+**Known blocker**
+- Xoá Active Request đang gọi optimistic `DELETE /api/v1/active-requests/{ar_id}`; cần Giang/Đức mở endpoint thật hoặc thống nhất soft-cancel.
+- `invoice_requested_at` đang nằm trong JSONB `uids_data`; cần BE giữ field này khi PATCH để B4 không bị mất trạng thái sau reload.
