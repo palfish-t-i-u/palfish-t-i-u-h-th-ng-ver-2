@@ -43,7 +43,6 @@ export default function PaymentRequestsTab() {
     handleCreate: ctxCreate,
     handleAddPayment: ctxAddPayment,
     handleCreateActiveRequest,
-    navigate,
     nav,
     setNav,
   } = usePaymentFlow();
