@@ -3,11 +3,9 @@ import { resolveApiBaseUrl } from "./apiBaseUrl";
 import { supabase } from "./supabase";
 import type { Bc03Report, Bc03MonthlySettings, Bc03StaffOption, CreateOrderPayload, DashboardDailyTrends, DashboardLiveSummary, DashboardSummary, InvoiceOrder, Order } from "../types/order";
 import type {
-  ActiveRequest,
   ActiveRequestApiRow,
   AddPaymentAttemptPayload,
   AddPaymentLineResponse,
-  AttachCoursePayload,
   CreateActiveRequestPayload,
   CreateStandaloneActiveRequestPayload,
   CreatePaymentRequestPayload,
@@ -143,11 +141,6 @@ export const endpoints = {
       api.post<ActiveRequestApiRow>("/api/v1/active-requests", body),
     update: (arId: string, body: PatchActiveRequestPayload) =>
       api.patch<ActiveRequestApiRow>(`/api/v1/active-requests/${arId}`, body),
-    attachCourse: (arId: string, courseCode: string, body: AttachCoursePayload) =>
-      api.patch<ActiveRequest>(
-        `/api/v1/active-requests/${arId}/courses/${encodeURIComponent(courseCode)}`,
-        body
-      ),
     issueInvoice: (arId: string, courseCode: string) =>
       api.post<{
         active_request: ActiveRequestApiRow;

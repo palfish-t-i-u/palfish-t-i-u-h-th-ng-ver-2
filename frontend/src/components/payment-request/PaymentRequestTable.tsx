@@ -86,7 +86,7 @@ export default function PaymentRequestTable({
       }
     };
 
-    let ok = false;
+    let ok: boolean;
     try {
       if (navigator.clipboard?.writeText) {
         await navigator.clipboard.writeText(id);
