@@ -72,11 +72,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Fallback in-memory khi chưa cấu hình Supabase
-_orders_mem: dict[str, dict[str, Any]] = {}
-_order_seq = 0
-_giao_dich_mem: list[dict[str, Any]] = []
-
 FALLBACK_PACKAGES = [
     "2/W- NEW 24 PHI+2 HN 河内",
     "2/W- NEW 48 PHI+5 HN 河内",
@@ -223,26 +218,30 @@ def _supabase():
         return None
 
 
-def _next_ma_don(sb=None) -> str:
-    global _order_seq
-    if sb:
-        try:
-            res = (
-                sb.table("don_hang")
-                .select("ma_don_hang")
-                .order("created_at", desc=True)
-                .limit(1)
-                .execute()
-            )
-            if res.data:
-                last = res.data[0].get("ma_don_hang") or ""
-                m = re.match(r"KH(\d+)", last, re.I)
-                if m:
-                    return f"KH{int(m.group(1)) + 1:03d}"
-        except Exception as exc:
-            print(f"ma_don sequence from Supabase failed: {exc}")
-    _order_seq += 1
-    return f"KH{str(_order_seq).zfill(3)}"
+def _sb_or_503():
+    sb = _supabase()
+    if not sb:
+        raise HTTPException(503, "Supabase chua duoc cau hinh")
+    return sb
+
+
+def _next_ma_don(sb) -> str:
+    try:
+        res = (
+            sb.table("don_hang")
+            .select("ma_don_hang")
+            .order("created_at", desc=True)
+            .limit(1)
+            .execute()
+        )
+        if res.data:
+            last = res.data[0].get("ma_don_hang") or ""
+            m = re.match(r"KH(\d+)", last, re.I)
+            if m:
+                return f"KH{int(m.group(1)) + 1:03d}"
+    except Exception as exc:
+        raise HTTPException(500, f"Khong lay duoc ma don hang: {exc}") from exc
+    return "KH001"
 
 
 def _info_code(ma_don: str) -> str:
@@ -341,37 +340,6 @@ class BankSimulateBody(BaseModel):
 def _require_ops(role: str | None) -> None:
     if (role or "").lower() not in OPS_ROLES:
         raise HTTPException(403, "Chỉ bộ phận hệ thống được xác nhận tiền về thủ công")
-
-
-def _create_order_mem(body: CreateOrderBody) -> dict[str, Any]:
-    global _order_seq
-    ma_don = _next_ma_don()
-    order_id = str(uuid.uuid4())
-    amount = _parse_amount(body.tongTien)
-    row = {
-        "id": order_id,
-        "maDonHang": ma_don,
-        "uid": body.uid.strip(),
-        "uidPhu": [u.strip() for u in (body.uidPhu or []) if u and u.strip()],
-        "tenKhach": (body.tenKhach or "Chưa cập nhật").strip(),
-        "diaChi": body.diaChi.strip(),
-        "sdt": body.sdt.strip(),
-        "goiHoc": body.goiHoc.strip(),
-        "tongTien": amount,
-        "nguon": body.nguon.strip(),
-        "leadKenh": (body.leadKenh or "").strip(),
-        "datCoc": bool(body.datCoc),
-        "ghiChu": body.ghiChu.strip(),
-        "infoCode": _info_code(ma_don),
-        "tienVe": False,
-        "donCRM": False,
-        "billImage": None,
-        "trangThai": "cho_thanh_toan",
-        "createdBy": body.createdBy,
-        "createdAt": datetime.now(timezone.utc).isoformat(),
-    }
-    _orders_mem[order_id] = row
-    return row
 
 
 def _normalize_sdt(ma_vung: str, sdt: str) -> str:
@@ -649,9 +617,9 @@ async def list_packages():
 
 @app.get("/orders")
 def list_orders(authorization: str | None = Header(None)):
-    sb = _supabase()
+    sb = _sb_or_503()
     allowed: list[str] | None = None
-    if sb and authorization:
+    if authorization:
         try:
             actor = resolve_actor(sb, authorization)
             allowed = visible_creator_emails(sb, actor)
@@ -660,49 +628,36 @@ def list_orders(authorization: str | None = Header(None)):
         except Exception as exc:
             print(f"orders RBAC: {exc}")
 
-    if sb:
-        try:
-            return {"orders": _list_orders_supabase(sb, allowed)}
-        except Exception as exc:
-            print(f"Supabase list_orders: {exc}")
-            raise HTTPException(500, f"Lỗi đọc đơn hàng: {exc}") from exc
-    items = sorted(_orders_mem.values(), key=lambda x: x.get("createdAt", ""), reverse=True)
-    if allowed is not None:
-        allowed_set = set(allowed)
-        items = [
-            o
-            for o in items
-            if (o.get("createdBy") or "").lower() in allowed_set
-            or not o.get("createdBy")
-        ]
-    return {"orders": items}
+    try:
+        return {"orders": _list_orders_supabase(sb, allowed)}
+    except Exception as exc:
+        print(f"Supabase list_orders: {exc}")
+        raise HTTPException(500, f"Lỗi đọc đơn hàng: {exc}") from exc
 
 
 @app.post("/orders", status_code=201)
 def create_order(body: CreateOrderBody):
     if not body.uid.strip():
         raise HTTPException(400, "UID CRM là bắt buộc — mọi đơn phải gắn với khách đã có trên CRM.")
-    sb = _supabase()
-    if sb:
-        try:
-            return _create_order_supabase(sb, body)
-        except Exception as exc:
-            err = str(exc)
-            low = err.lower()
-            if "schema cache" in low or "pgrst204" in low:
-                raise HTTPException(
-                    500,
-                    f"PostgREST schema cache stale. Chạy `NOTIFY pgrst, 'reload schema';` "
-                    f"trên Supabase SQL Editor rồi thử lại. (raw: {err})",
-                ) from exc
-            if "column" in low or "does not exist" in low:
-                raise HTTPException(
-                    500,
-                    f"Schema Supabase chưa đủ cột. Chạy docs/supabase_schema_patch_v5.sql "
-                    f"(và v4/v3 nếu chưa). (raw: {err})",
-                ) from exc
-            raise HTTPException(500, f"Lỗi tạo đơn: {err}") from exc
-    return _create_order_mem(body)
+    sb = _sb_or_503()
+    try:
+        return _create_order_supabase(sb, body)
+    except Exception as exc:
+        err = str(exc)
+        low = err.lower()
+        if "schema cache" in low or "pgrst204" in low:
+            raise HTTPException(
+                500,
+                f"PostgREST schema cache stale. Chạy `NOTIFY pgrst, 'reload schema';` "
+                f"trên Supabase SQL Editor rồi thử lại. (raw: {err})",
+            ) from exc
+        if "column" in low or "does not exist" in low:
+            raise HTTPException(
+                500,
+                f"Schema Supabase chưa đủ cột. Chạy docs/supabase_schema_patch_v5.sql "
+                f"(và v4/v3 nếu chưa). (raw: {err})",
+            ) from exc
+        raise HTTPException(500, f"Lỗi tạo đơn: {err}") from exc
 
 
 @app.patch("/orders/{order_id}")
@@ -713,8 +668,8 @@ def patch_order(
     authorization: str | None = Header(None),
 ):
     if body.tienVe is not None:
-        sb_check = _supabase()
-        if sb_check and authorization:
+        sb_check = _sb_or_503()
+        if authorization:
             try:
                 actor = resolve_actor(sb_check, authorization)
                 if not can_confirm_payment(actor):
@@ -724,50 +679,38 @@ def patch_order(
         else:
             _require_ops(x_operator_role)
 
-    sb = _supabase()
-    if sb:
-        try:
-            patch: dict[str, Any] = {}
-            if body.tienVe is not None:
-                patch["tien_ve"] = body.tienVe
-                if body.tienVe:
-                    patch["trang_thai"] = "da_thanh_toan"
-                    # Kích hoạt luồng hóa đơn thuế (Module 3)
-                    patch["trang_thai_thu_tuc"] = "CHO_XAC_NHAN"
-            if body.donCRM is not None:
-                patch["don_crm"] = body.donCRM
-            if body.billImage is not None:
-                patch["bill_image"] = body.billImage
-            if not patch:
-                raise HTTPException(400, "Nothing to update")
-            res = sb.table("don_hang").update(patch).eq("id", order_id).execute()
-            if not res.data:
-                raise HTTPException(404, "Order not found")
-            row = res.data[0]
-            kh_res = (
-                sb.table("khach_hang")
-                .select("*")
-                .eq("id", row["khach_hang_id"])
-                .limit(1)
-                .execute()
-            )
-            kh = kh_res.data[0] if kh_res.data else None
-            return _row_to_order(row, kh)
-        except HTTPException:
-            raise
-        except Exception as exc:
-            raise HTTPException(500, str(exc)) from exc
-
-    row = _orders_mem.get(order_id)
-    if not row:
-        raise HTTPException(404, "Order not found")
-    if body.tienVe is not None:
-        row["tienVe"] = body.tienVe
-    if body.donCRM is not None:
-        row["donCRM"] = body.donCRM
-    if body.billImage is not None:
-        row["billImage"] = body.billImage
-    return row
+    sb = _sb_or_503()
+    try:
+        patch: dict[str, Any] = {}
+        if body.tienVe is not None:
+            patch["tien_ve"] = body.tienVe
+            if body.tienVe:
+                patch["trang_thai"] = "da_thanh_toan"
+                # Kích hoạt luồng hóa đơn thuế (Module 3)
+                patch["trang_thai_thu_tuc"] = "CHO_XAC_NHAN"
+        if body.donCRM is not None:
+            patch["don_crm"] = body.donCRM
+        if body.billImage is not None:
+            patch["bill_image"] = body.billImage
+        if not patch:
+            raise HTTPException(400, "Nothing to update")
+        res = sb.table("don_hang").update(patch).eq("id", order_id).execute()
+        if not res.data:
+            raise HTTPException(404, "Order not found")
+        row = res.data[0]
+        kh_res = (
+            sb.table("khach_hang")
+            .select("*")
+            .eq("id", row["khach_hang_id"])
+            .limit(1)
+            .execute()
+        )
+        kh = kh_res.data[0] if kh_res.data else None
+        return _row_to_order(row, kh)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(500, str(exc)) from exc
 
 
 @app.post("/orders/{order_id}/cancel")
@@ -778,16 +721,7 @@ def cancel_order(
 ):
     """Cancel order (trang_thai='huy'). RBAC: sale/leader own only, manager/system/ops any.
     Blocked if tien_ve=true (force manual refund flow)."""
-    sb = _supabase()
-    if not sb:
-        row = _orders_mem.get(order_id)
-        if not row:
-            raise HTTPException(404, "Order not found")
-        if row.get("tienVe"):
-            raise HTTPException(409, "Đơn đã ghi nhận tiền về — không thể huỷ tự động. Liên hệ ops xử lý hoàn tiền.")
-        row["trangThai"] = "huy"
-        return row
-
+    sb = _sb_or_503()
     actor_role = (x_operator_role or "").lower()
     actor_email: str | None = None
     if authorization:
@@ -860,71 +794,50 @@ def create_info_code(body: InfoCodeBody):
 
 @app.get("/info-code/{code}/status")
 def info_code_status(code: str):
-    sb = _supabase()
-    if sb:
-        found = _find_don_by_info(sb, code)
-        if found:
-            paid = bool(found["don"].get("tien_ve"))
-            return {"infoCode": code, "status": "MATCHED" if paid else "PENDING"}
-    for row in _orders_mem.values():
-        if row["infoCode"] == code or row["maDonHang"] in code:
-            return {"infoCode": row["infoCode"], "status": "MATCHED" if row["tienVe"] else "PENDING"}
+    sb = _sb_or_503()
+    found = _find_don_by_info(sb, code)
+    if found:
+        paid = bool(found["don"].get("tien_ve"))
+        return {"infoCode": code, "status": "MATCHED" if paid else "PENDING"}
     return {"infoCode": code, "status": "PENDING"}
 
 
 @app.get("/webhook/events")
 def webhook_events(limit: int = 50):
-    sb = _supabase()
-    if sb:
-        try:
-            res = (
-                sb.table("giao_dich")
-                .select("id, so_tien_nhan, info_code_thuc_te, thoi_gian_giao_dich, trang_thai_doi_soat")
-                .order("created_at", desc=True)
-                .limit(limit)
-                .execute()
-            )
-            events = [
-                {
-                    "id": r["id"],
-                    "type": "BANK_CREDIT",
-                    "amount": r.get("so_tien_nhan"),
-                    "infoCode": r.get("info_code_thuc_te"),
-                    "ts": r.get("thoi_gian_giao_dich"),
-                }
-                for r in (res.data or [])
-            ]
-            return {"events": events}
-        except Exception as exc:
-            print(f"giao_dich list: {exc}")
-    matched = [o for o in _orders_mem.values() if o.get("tienVe")]
-    events = [
-        {
-            "id": o["id"],
-            "type": "BANK_CREDIT",
-            "amount": o["tongTien"],
-            "infoCode": o["infoCode"],
-            "ts": o.get("createdAt"),
-        }
-        for o in matched[-limit:]
-    ]
-    return {"events": events}
+    sb = _sb_or_503()
+    try:
+        res = (
+            sb.table("giao_dich")
+            .select("id, so_tien_nhan, info_code_thuc_te, thoi_gian_giao_dich, trang_thai_doi_soat")
+            .order("created_at", desc=True)
+            .limit(limit)
+            .execute()
+        )
+        events = [
+            {
+                "id": r["id"],
+                "type": "BANK_CREDIT",
+                "amount": r.get("so_tien_nhan"),
+                "infoCode": r.get("info_code_thuc_te"),
+                "ts": r.get("thoi_gian_giao_dich"),
+            }
+            for r in (res.data or [])
+        ]
+        return {"events": events}
+    except Exception as exc:
+        print(f"giao_dich list: {exc}")
+        raise HTTPException(500, f"Loi doc giao dich: {exc}") from exc
 
 
 @app.post("/crm/activate")
 def crm_activate(body: CrmBody):
-    sb = _supabase()
-    if sb:
-        found = _find_don_by_info(sb, body.infoCode)
-        if found:
-            sb.table("don_hang").update({"don_crm": True, "trang_thai": "da_tao_crm"}).eq(
-                "id", found["don"]["id"]
-            ).execute()
-            return {"infoCode": body.infoCode, "activated": True}
-    for row in _orders_mem.values():
-        if row["infoCode"] == body.infoCode:
-            row["donCRM"] = True
-            return {"infoCode": body.infoCode, "activated": True}
+    sb = _sb_or_503()
+    found = _find_don_by_info(sb, body.infoCode)
+    if found:
+        sb.table("don_hang").update({"don_crm": True, "trang_thai": "da_tao_crm"}).eq(
+            "id", found["don"]["id"]
+        ).execute()
+        return {"infoCode": body.infoCode, "activated": True}
     return {"infoCode": body.infoCode, "activated": False}
 
 
@@ -1020,22 +933,11 @@ async def payos_create_link(body: dict):
 @app.post("/webhook/payos")
 async def payos_webhook(payload: dict):
     """PayOS webhook: payment_lines first, then deprecated don_hang fallback."""
-    sb = _supabase()
-    if sb:
-        line_result = reconcile_payment_line_webhook(sb, payload)
-        if line_result.get("matched"):
-            return line_result
-        return handle_payos_webhook(sb, payload)
-
-    try:
-        data = payload.get("data", payload) or {}
-        description = str(data.get("description") or data.get("content") or "")
-        for row in _orders_mem.values():
-            if row["infoCode"] in description or row["maDonHang"] in description:
-                row["tienVe"] = True
-        return {"error": 0, "message": "Webhook nhận (bộ nhớ — chưa cấu hình Supabase)", "matched": True}
-    except Exception as exc:
-        return {"error": 1, "message": str(exc)}
+    sb = _sb_or_503()
+    line_result = reconcile_payment_line_webhook(sb, payload)
+    if line_result.get("matched"):
+        return line_result
+    return handle_payos_webhook(sb, payload)
 
 
 @app.get("/payos/transactions")
@@ -1048,9 +950,7 @@ def list_payos_transactions(
     q: str | None = None,
 ):
     """List giao_dich joined với don_hang. RBAC: sale → own, leader/manager → team, system → all."""
-    sb = _supabase()
-    if not sb:
-        return {"transactions": []}
+    sb = _sb_or_503()
 
     allowed: list[str] | None = None
     if authorization:
@@ -1119,9 +1019,7 @@ async def upload_order_bill(
     authorization: str | None = Header(None),
 ):
     """Upload bill multipart → Supabase Storage bucket 'bills' → set don_hang.bill_image = public URL."""
-    sb = _supabase()
-    if not sb:
-        raise HTTPException(503, "Supabase chưa cấu hình — không upload được Storage")
+    sb = _sb_or_503()
 
     # Auth optional but resolved for audit purposes (no RBAC gate for own bill upload yet)
     if authorization:
@@ -1185,32 +1083,19 @@ def bank_simulate(body: BankSimulateBody):
     Test luồng tiền về khi chưa có PayOS:
     tạo bản ghi giao_dich + bật tien_ve trên don_hang (theo mô hình Giang).
     """
-    sb = _supabase()
+    sb = _sb_or_503()
     content = body.noiDung or body.infoCode
     tx_id = body.maGiaoDichBank or f"SIM-{uuid.uuid4().hex[:8]}"
-    if sb:
-        result = _record_bank_payment(sb, body.infoCode, body.amount or 0, content, tx_id)
-        if not result.get("matched"):
-            raise HTTPException(404, "Không tìm thấy đơn theo Info Code / nội dung CK")
-        if not result.get("amount_ok"):
-            raise HTTPException(
-                422,
-                f"Số tiền không khớp: nhận {result.get('received_amount')}, "
-                f"cần {result.get('expected_amount')}",
-            )
-        return {"matched": True, "amountOk": True, "infoCode": body.infoCode, **result}
-    for row in _orders_mem.values():
-        if row["infoCode"] == body.infoCode or body.infoCode in row["infoCode"]:
-            row["tienVe"] = True
-            _giao_dich_mem.append(
-                {
-                    "info_code": body.infoCode,
-                    "amount": body.amount or row["tongTien"],
-                    "tx_id": tx_id,
-                }
-            )
-            return {"matched": True, "infoCode": body.infoCode}
-    raise HTTPException(404, "Order not found")
+    result = _record_bank_payment(sb, body.infoCode, body.amount or 0, content, tx_id)
+    if not result.get("matched"):
+        raise HTTPException(404, "Không tìm thấy đơn theo Info Code / nội dung CK")
+    if not result.get("amount_ok"):
+        raise HTTPException(
+            422,
+            f"Số tiền không khớp: nhận {result.get('received_amount')}, "
+            f"cần {result.get('expected_amount')}",
+        )
+    return {"matched": True, "amountOk": True, "infoCode": body.infoCode, **result}
 
 
 register_admin_routes(app, _supabase)

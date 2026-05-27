@@ -63,6 +63,26 @@ class TransactionStatusPatch(BaseModel):
     reject_reason: str | None = None
 
 
+<<<<<<< Updated upstream
+=======
+class PaymentRequestUpdate(BaseModel):
+    uid: str | None = None
+    name: str | None = None
+    phone: str | None = None
+    country: str | None = None
+    address: str | None = None
+    ward: str | None = None
+    province: str | None = None
+    note: str | None = None
+    email: str | None = None
+    target: int | str | None = None
+
+
+class PaymentRequestCancelBody(BaseModel):
+    reason: str | None = None
+
+
+>>>>>>> Stashed changes
 def _sb_or_503(get_supabase: Callable[[], Any]):
     sb = get_supabase()
     if not sb:
@@ -72,6 +92,11 @@ def _sb_or_503(get_supabase: Callable[[], Any]):
 
 def _clean_text(value: Any) -> str:
     return str(value or "").strip()
+
+
+def _optional_text_fields() -> frozenset[str]:
+    """Fields that accept empty string to clear the DB column."""
+    return frozenset({"country", "address", "ward", "province", "note", "email"})
 
 
 def _parse_amount(value: Any) -> int:
@@ -341,6 +366,249 @@ def reconcile_payment_line_webhook(sb, payload: dict[str, Any]) -> dict[str, Any
 
 
 def register_payment_request_routes(app, get_supabase) -> None:
+<<<<<<< Updated upstream
+=======
+    @router.get("/payment-requests")
+    def list_payment_requests(
+        state: str | None = Query(None),
+        uid: str | None = Query(None),
+        limit: int = Query(100, ge=1, le=500),
+        offset: int = Query(0, ge=0),
+    ):
+        sb = _sb_or_503(get_supabase)
+        query = sb.table("payment_requests").select("*")
+        state_filter = _clean_text(state).lower()
+        if state_filter:
+            if state_filter not in PR_STATES:
+                allowed = ", ".join(sorted(PR_STATES))
+                raise HTTPException(400, f"state khong hop le. Gia tri hop le: {allowed}")
+            query = query.eq("state", state_filter)
+        uid_filter = _clean_text(uid)
+        if uid_filter:
+            query = query.eq("uid", uid_filter)
+
+        try:
+            pr_res = (
+                query.order("created_at", desc=True)
+                .range(offset, offset + limit - 1)
+                .execute()
+            )
+        except Exception as exc:
+            raise HTTPException(500, f"Khong doc duoc payment_requests: {exc}") from exc
+
+        pr_rows = pr_res.data or []
+        if not pr_rows:
+            return {"requests": []}
+
+        pr_ids = [str(row.get("id") or "") for row in pr_rows if row.get("id")]
+        lines_by_pr: dict[str, list[dict[str, Any]]] = {pr_id: [] for pr_id in pr_ids}
+        if pr_ids:
+            try:
+                line_res = (
+                    sb.table("payment_lines")
+                    .select("*")
+                    .in_("payment_request_id", pr_ids)
+                    .execute()
+                )
+                lines_by_pr = _group_lines_by_request(line_res.data or [])
+            except Exception as exc:
+                raise HTTPException(500, f"Khong doc duoc payment_lines: {exc}") from exc
+
+        all_line_ids = [
+            str(line.get("id") or "")
+            for lines in lines_by_pr.values()
+            for line in lines
+            if line.get("id")
+        ]
+        bill_urls = _fetch_bill_urls_from_storage(sb, all_line_ids)
+
+        requests = [
+            _serialize_payment_request_list_item(
+                row, lines_by_pr.get(str(row.get("id") or ""), []), bill_urls
+            )
+            for row in pr_rows
+        ]
+        return {"requests": requests}
+
+    @router.patch("/payment-requests/{payment_request_id}")
+    def update_payment_request(payment_request_id: str, body: PaymentRequestUpdate):
+        sb = _sb_or_503(get_supabase)
+        request_res = (
+            sb.table("payment_requests")
+            .select("*")
+            .eq("id", payment_request_id)
+            .limit(1)
+            .execute()
+        )
+        if not request_res.data:
+            raise HTTPException(404, "Khong tim thay payment_request")
+
+        pr_row = request_res.data[0]
+        if _clean_text(pr_row.get("state")).lower() == "cancelled":
+            raise HTTPException(400, "Khong the sua payment request da bi huy")
+
+        fields = body.model_dump(exclude_unset=True)
+        if not fields:
+            raise HTTPException(400, "Khong co truong nao de cap nhat")
+
+        patch: dict[str, Any] = {"updated_at": _iso_now()}
+        if "uid" in fields:
+            uid = _clean_text(fields["uid"])
+            if not uid:
+                raise HTTPException(400, "uid khong hop le")
+            patch["uid"] = uid
+        if "name" in fields:
+            name = _clean_text(fields["name"])
+            if not name:
+                raise HTTPException(400, "name khong hop le")
+            patch["name"] = name
+        if "phone" in fields:
+            phone = _clean_text(fields["phone"])
+            if not phone:
+                raise HTTPException(400, "phone khong hop le")
+            patch["phone"] = phone
+        if "target" in fields:
+            target = _parse_amount(fields["target"])
+            if target <= 0:
+                raise HTTPException(400, "target phai lon hon 0")
+            patch["target"] = target
+        for key in _optional_text_fields():
+            if key in fields:
+                # Explicit "" clears nullable text columns (note, ward, etc.)
+                patch[key] = _clean_text(fields[key])
+
+        try:
+            updated_res = (
+                sb.table("payment_requests")
+                .update(patch)
+                .eq("id", payment_request_id)
+                .execute()
+            )
+        except Exception as exc:
+            raise HTTPException(500, f"Khong cap nhat duoc payment_request: {exc}") from exc
+
+        if not updated_res.data:
+            raise HTTPException(500, "Khong cap nhat duoc payment_request")
+
+        recompute_payment_request_totals(sb, payment_request_id)
+
+        refreshed = (
+            sb.table("payment_requests")
+            .select("*")
+            .eq("id", payment_request_id)
+            .limit(1)
+            .execute()
+        )
+        updated_row = refreshed.data[0] if refreshed.data else updated_res.data[0]
+
+        line_res = (
+            sb.table("payment_lines")
+            .select("*")
+            .eq("payment_request_id", payment_request_id)
+            .execute()
+        )
+        line_ids = [
+            str(line.get("id") or "")
+            for line in (line_res.data or [])
+            if line.get("id")
+        ]
+        bill_urls = _fetch_bill_urls_from_storage(sb, line_ids)
+
+        return {
+            "payment_request": _serialize_payment_request_list_item(
+                updated_row, line_res.data or [], bill_urls
+            )
+        }
+
+    @router.post("/payment-requests/{payment_request_id}/cancel")
+    def cancel_payment_request(
+        payment_request_id: str,
+        body: PaymentRequestCancelBody | None = None,
+    ):
+        sb = _sb_or_503(get_supabase)
+        request_res = (
+            sb.table("payment_requests")
+            .select("*")
+            .eq("id", payment_request_id)
+            .limit(1)
+            .execute()
+        )
+        if not request_res.data:
+            raise HTTPException(404, "Khong tim thay payment_request")
+
+        pr_row = request_res.data[0]
+        current_state = _clean_text(pr_row.get("state")).lower()
+        if current_state == "cancelled":
+            raise HTTPException(400, "Payment request da bi huy")
+        if _parse_amount(pr_row.get("received")) > 0:
+            raise HTTPException(400, "Khong the huy payment request da nhan tien")
+
+        line_res = (
+            sb.table("payment_lines")
+            .select("status")
+            .eq("payment_request_id", payment_request_id)
+            .execute()
+        )
+        if any(_clean_text(line.get("status")).lower() == "paid" for line in (line_res.data or [])):
+            raise HTTPException(400, "Khong the huy payment request da co lan thanh toan thanh cong")
+
+        now_iso = _iso_now()
+        reason = _clean_text(body.reason if body else None) or None
+        patch: dict[str, Any] = {
+            "state": "cancelled",
+            "cancelled_at": now_iso,
+            "cancelled_reason": reason,
+        }
+        try:
+            updated_res = (
+                sb.table("payment_requests")
+                .update(patch)
+                .eq("id", payment_request_id)
+                .execute()
+            )
+        except Exception as exc:
+            msg = str(exc)
+            if "cancelled_at" in msg or "cancelled_reason" in msg:
+                raise HTTPException(
+                    503,
+                    "Thieu cot cancelled_at/cancelled_reason tren payment_requests. "
+                    "Chay docs/supabase_schema_patch_payment_requests_cancel.sql",
+                ) from exc
+            raise HTTPException(500, f"Khong huy duoc payment_request: {exc}") from exc
+
+        updated = updated_res.data[0] if updated_res.data else {**pr_row, **patch}
+        line_res_full = (
+            sb.table("payment_lines")
+            .select("*")
+            .eq("payment_request_id", payment_request_id)
+            .execute()
+        )
+        return {
+            "payment_request": _serialize_payment_request_list_item(
+                updated, line_res_full.data or []
+            )
+        }
+
+    @router.post("/payment-requests/sync-pending-payos")
+    async def sync_pending_payos_payments():
+        """Poll PayOS cho mọi QR pending — dùng khi webhook chưa tới (local/prod)."""
+        sb = _sb_or_503(get_supabase)
+        return await sync_all_pending_payos_lines(sb)
+
+    @router.post("/payment-lines/{line_id}/sync-payos")
+    async def sync_payment_line_payos(line_id: str):
+        sb = _sb_or_503(get_supabase)
+        line_res = sb.table("payment_lines").select("*").eq("id", line_id).limit(1).execute()
+        if not line_res.data:
+            raise HTTPException(404, "Khong tim thay payment_line")
+        outcome = await sync_payment_line_from_payos(sb, line_res.data[0])
+        if not outcome:
+            return {"synced": False, "line_id": line_id}
+        if outcome.get("error"):
+            raise HTTPException(502, f"PayOS sync loi: {outcome['error']}")
+        return {"synced": True, **outcome}
+
+>>>>>>> Stashed changes
     @router.post("/payment-requests")
     def create_payment_request(body: PaymentRequestCreate):
         sb = _sb_or_503(get_supabase)

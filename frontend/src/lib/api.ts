@@ -3,6 +3,23 @@ import { resolveApiBaseUrl } from "./apiBaseUrl";
 import { supabase } from "./supabase";
 import type { Bc03Report, Bc03MonthlySettings, Bc03StaffOption, CreateOrderPayload, DashboardDailyTrends, DashboardLiveSummary, DashboardSummary, InvoiceOrder, Order } from "../types/order";
 import type {
+<<<<<<< Updated upstream
+=======
+  ActiveRequest,
+  ActiveRequestApiRow,
+  AddPaymentAttemptPayload,
+  AddPaymentLineResponse,
+  AttachCoursePayload,
+  CreateActiveRequestPayload,
+  CreateStandaloneActiveRequestPayload,
+  CreatePaymentRequestPayload,
+  CreatePrResponse,
+  UpdatePaymentRequestPayload,
+  PaymentLineApiRow,
+  PaymentRequestsListResponse,
+} from "../types/paymentRequest";
+import type {
+>>>>>>> Stashed changes
   LedgerCreatePayload,
   LedgerPatchPayload,
   LedgerSummaryResponse,
@@ -93,6 +110,72 @@ export const endpoints = {
   webhook: {
     recentEvents: () => api.get("/webhook/events?limit=50"),
   },
+<<<<<<< Updated upstream
+=======
+  paymentRequests: {
+    // GET not yet available on backend — Tab uses mock fallback on error
+    list: () => api.get<PaymentRequestsListResponse>("/api/v1/payment-requests"),
+    syncPendingPayos: () =>
+      api.post<{ synced_count: number; synced: { line_id: string; payment_request_id: string }[] }>(
+        "/api/v1/payment-requests/sync-pending-payos"
+      ),
+    create: (body: CreatePaymentRequestPayload) =>
+      api.post<CreatePrResponse>("/api/v1/payment-requests", body),
+    update: (id: string, body: UpdatePaymentRequestPayload) =>
+      api.patch<CreatePrResponse>(`/api/v1/payment-requests/${id}`, body),
+    // B2: add payment line (QR / cash / card / installment)
+    addPayment: (id: string, body: AddPaymentAttemptPayload) =>
+      api.post<AddPaymentLineResponse>(`/api/v1/payment-requests/${id}/payment-lines`, body),
+    cancel: (id: string) => api.post(`/api/v1/payment-requests/${id}/cancel`),
+    uploadPaymentLineBill: (lineId: string, file: Blob, filename: string) => {
+      const fd = new FormData();
+      fd.append("file", file, filename);
+      return api.post<{ billImage: string; payment_line: PaymentLineApiRow }>(
+        `/api/v1/payment-lines/${lineId}/bill`,
+        fd,
+        { timeout: 60000 }
+      );
+    },
+    // B3: create active request nested under PR
+    createActiveRequest: (prId: string, body: CreateActiveRequestPayload) =>
+      api.post<ActiveRequestApiRow>(`/api/v1/payment-requests/${prId}/active-requests`, body),
+  },
+  activeRequests: {
+    list: (params?: { status?: string }) =>
+      api.get<ActiveRequestApiRow[]>("/api/v1/active-requests", { params }),
+    create: (body: CreateStandaloneActiveRequestPayload) =>
+      api.post<ActiveRequestApiRow>("/api/v1/active-requests", body),
+    attachCourse: (arId: string, courseCode: string, body: AttachCoursePayload) =>
+      api.patch<ActiveRequest>(
+        `/api/v1/active-requests/${arId}/courses/${encodeURIComponent(courseCode)}`,
+        body
+      ),
+    issueInvoice: (arId: string, courseCode: string) =>
+      api.post<{
+        active_request: ActiveRequestApiRow;
+        course_code: string;
+        invoice_id: string;
+        invoiced_at: string;
+      }>(`/api/v1/active-requests/${arId}/courses/${encodeURIComponent(courseCode)}/issue-invoice`),
+    bulkIssueInvoices: (items: { ar_id: string; course_code: string }[]) =>
+      api.post<{
+        issued: { ar_id: string; course_code: string; invoice_id: string; invoiced_at: string }[];
+        issued_count: number;
+        error_count: number;
+        errors: { ar_id: string; course_code: string; detail: string }[];
+      }>("/api/v1/invoice-courses/bulk-issue", { items }),
+    exportTaxBatch: (items?: { ar_id: string; course_code: string }[]) =>
+      api.post<Blob>(
+        "/api/v1/invoice-courses/export-batch",
+        items?.length ? { items } : {},
+        { responseType: "blob" }
+      ),
+  },
+  transactions: {
+    patchStatus: (id: string, status: string) =>
+      api.patch(`/api/v1/transactions/${id}/status`, { status }),
+  },
+>>>>>>> Stashed changes
   crm: {
     activate: (infoCode: string) => api.post("/crm/activate", { infoCode }),
     searchCustomers: (q: string, limit = 20) =>
