@@ -46,7 +46,7 @@ export interface PaymentLineApiRow {
 
 export interface AddPaymentLineResponse {
   payment_line: PaymentLineApiRow;
-  payment_request: Record<string, unknown>;
+  payment_request: Record<string, unknown> & { payments?: PaymentLineApiRow[] };
   received: number;
   target: number;
   state: string;
@@ -154,6 +154,21 @@ export type CreatePaymentRequestPayload = {
   note?: string;
   email?: string;
 };
+
+/** PATCH /api/v1/payment-requests/{id} — snake_case body */
+export type UpdatePaymentRequestPayload = {
+  uid: string;
+  name: string;
+  phone: string;
+  country: string;
+  address: string;
+  ward: string;
+  province: string;
+  note: string;
+  target: number;
+};
+
+
 
 export type CreateActiveRequestCoursePayload = {
   name?: string;

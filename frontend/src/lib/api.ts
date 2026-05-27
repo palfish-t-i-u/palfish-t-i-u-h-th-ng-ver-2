@@ -11,6 +11,7 @@ import type {
   CreateActiveRequestPayload,
   CreateStandaloneActiveRequestPayload,
   CreatePaymentRequestPayload,
+  UpdatePaymentRequestPayload,
   CreatePrResponse,
   PaymentLineApiRow,
   PaymentRequestsListResponse,
@@ -115,6 +116,8 @@ export const endpoints = {
       ),
     create: (body: CreatePaymentRequestPayload) =>
       api.post<CreatePrResponse>("/api/v1/payment-requests", body),
+    update: (id: string, body: UpdatePaymentRequestPayload) =>
+      api.patch<{ payment_request: Record<string, unknown> }>(`/api/v1/payment-requests/${id}`, body),
     // B2: add payment line (QR / cash / card / installment)
     addPayment: (id: string, body: AddPaymentAttemptPayload) =>
       api.post<AddPaymentLineResponse>(`/api/v1/payment-requests/${id}/payment-lines`, body),

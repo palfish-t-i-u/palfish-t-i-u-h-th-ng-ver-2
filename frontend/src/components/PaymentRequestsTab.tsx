@@ -9,12 +9,15 @@ import type {
   CreatePaymentRequestPayload,
   PaymentAttempt,
   PaymentRequest,
+  UpdatePaymentRequestPayload,
 } from "../types/paymentRequest";
 import CancelPrModal from "./payment-request/CancelPrModal";
 import CreatePaymentRequestModal from "./payment-request/CreatePaymentRequestModal";
 import { type DateRange, EMPTY_RANGE, inDateRange } from "./payment-request/DateRangeFilter";
 import { Icons } from "./payment-request/Icons";
-import PaymentRequestDetailDrawer from "./payment-request/PaymentRequestDetailDrawer";
+import PaymentRequestDetailDrawer, {
+  type PaymentRequestDraft,
+} from "./payment-request/PaymentRequestDetailDrawer";
 import PaymentRequestKpiCards from "./payment-request/PaymentRequestKpiCards";
 import PaymentRequestTable from "./payment-request/PaymentRequestTable";
 import PaymentRequestToolbar from "./payment-request/PaymentRequestToolbar";
@@ -40,6 +43,7 @@ export default function PaymentRequestsTab() {
     loadData,
     updateRequest,
     handleCreate: ctxCreate,
+    handleUpdatePr: ctxUpdatePr,
     handleAddPayment: ctxAddPayment,
     handleCreateActiveRequest,
     navigate,
@@ -57,6 +61,9 @@ export default function PaymentRequestsTab() {
   const [cancelTarget, setCancelTarget] = useState<PaymentRequest | null>(null);
   const [qrView, setQrView] = useState<{ qr: PaymentAttempt; request: PaymentRequest } | null>(null);
   const [uploadingBillId, setUploadingBillId] = useState<string | null>(null);
+  const [savingPr, setSavingPr] = useState(false);
+  const [savePrError, setSavePrError] = useState<string | null>(null);
+  const [addingPayment, setAddingPayment] = useState(false);
   const [billModal, setBillModal] = useState<{ open: boolean; code: string; src: string }>({
     open: false,
     code: "",
@@ -73,6 +80,10 @@ export default function PaymentRequestsTab() {
     setDrawerOpen(true);
     setNav({});
   }, [nav.openPrId, requests, setNav]);
+
+  useEffect(() => {
+    setSavePrError(null);
+  }, [selectedId]);
 
   const selected = useMemo(
     () => requests.find((r) => r.id === selectedId) || null,
@@ -174,8 +185,33 @@ export default function PaymentRequestsTab() {
     setDrawerOpen(true);
   };
 
-  const handleUpdatePr = (next: PaymentRequest) => {
-    updateRequest(next.id, () => next);
+  const handleUpdatePr = async (draft: PaymentRequestDraft) => {
+    if (!selected) return;
+    setSavingPr(true);
+    setSavePrError(null);
+    const targetNum = Number(String(draft.target).replace(/\D/g, "")) || selected.target;
+    const payload: UpdatePaymentRequestPayload = {
+      uid: draft.uid.trim(),
+      name: draft.name.trim(),
+      phone: draft.phone.trim(),
+      country: draft.country || "VN",
+      address: draft.address.trim(),
+      ward: draft.ward.trim(),
+      province: draft.province.trim(),
+      note: draft.note.trim(),
+      target: targetNum,
+    };
+    try {
+      await ctxUpdatePr(selected.id, payload);
+    } catch (err) {
+      const msg =
+        (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ||
+        "Không lưu được thay đổi lên máy chủ.";
+      setSavePrError(String(msg));
+      throw err;
+    } finally {
+      setSavingPr(false);
+    }
   };
 
   const handleCreate = async (payload: CreatePaymentRequestPayload) => {
@@ -188,10 +224,14 @@ export default function PaymentRequestsTab() {
 
   const handleAddPayment = async (payload: AddPaymentAttemptPayload) => {
     if (!selected) return;
-    const confirmed = await ctxAddPayment(selected.id, payload);
-    if (payload.method === "qr" && confirmed && confirmed.status !== "paid") {
-      const fresh = requests.find((r) => r.id === selected.id) || selected;
-      setQrView({ qr: confirmed, request: fresh });
+    setAddingPayment(true);
+    try {
+      const result = await ctxAddPayment(selected.id, payload);
+      if (payload.method === "qr" && result && result.payment.status !== "paid") {
+        setQrView({ qr: result.payment, request: result.request });
+      }
+    } finally {
+      setAddingPayment(false);
     }
   };
 
@@ -376,6 +416,9 @@ export default function PaymentRequestsTab() {
         onBillFile={handleBillFile}
         onBillView={handleBillView}
         uploadingBillId={uploadingBillId}
+        savingPr={savingPr}
+        addingPayment={addingPayment}
+        savePrError={savePrError}
         onCreateActiveRequest={onCreateActiveRequest}
         onCancelRequest={() => selected && setCancelTarget(selected)}
         activeRequestId={selected ? arByPrId[selected.id]?.id ?? null : null}
