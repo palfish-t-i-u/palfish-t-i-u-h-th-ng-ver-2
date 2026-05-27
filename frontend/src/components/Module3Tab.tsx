@@ -47,6 +47,7 @@ export default function Module3Tab() {
   const [exporting, setExporting] = useState<Record<string, boolean>>({});
   const [saveOk, setSaveOk] = useState<Record<string, boolean>>({});
   const [exportingBatch, setExportingBatch] = useState(false);
+  const [batchConfirming, setBatchConfirming] = useState<Record<string, boolean>>({});
   const [confirmBatchExport, setConfirmBatchExport] = useState(false);
   const [savingBulk, setSavingBulk] = useState(false);
   const [confirmBulkSave, setConfirmBulkSave] = useState(false);
@@ -115,13 +116,59 @@ export default function Module3Tab() {
     setConfirmBatchExport(false);
     setExportingBatch(true);
     setError("");
+    const targets = orders.filter((o) => !STATUS_APPROVED.includes(o.trangThaiThuTuc));
+    if (targets.length === 0) {
+      setExportingBatch(false);
+      return;
+    }
+    const targetIds = new Set(targets.map((o) => o.id));
+    const prevStatusById = new Map(targets.map((o) => [o.id, o.trangThaiThuTuc]));
+    setBatchConfirming((prev) => {
+      const next = { ...prev };
+      for (const o of targets) next[o.id] = true;
+      return next;
+    });
+    setOrders((prev) =>
+      prev.map((o) =>
+        targetIds.has(o.id) ? { ...o, trangThaiThuTuc: STATUS_APPROVED[0] } : o
+      )
+    );
     try {
-      await endpoints.invoice.approveBulk();
+      const results = await Promise.all(
+        targets.map(async (o) => {
+          try {
+            const taxProductName = o.goiHoc || o.maDonHang;
+            const crmOrderId = crmEdits[o.id] ?? o.crmOrderId ?? "";
+            const updated = await endpoints.invoice.approveM3Order(o.id, taxProductName, crmOrderId);
+            return { id: o.id, ok: true as const, data: updated.data };
+          } catch {
+            return { id: o.id, ok: false as const };
+          }
+        })
+      );
+      const failedIds = results.filter((r) => !r.ok).map((r) => r.id);
+      if (failedIds.length > 0) {
+        const failedSet = new Set(failedIds);
+        setOrders((prev) =>
+          prev.map((o) =>
+            failedSet.has(o.id)
+              ? { ...o, trangThaiThuTuc: prevStatusById.get(o.id) ?? o.trangThaiThuTuc }
+              : o
+          )
+        );
+        const failedOrders = targets.filter((o) => failedSet.has(o.id)).map((o) => o.maDonHang);
+        setError(`Xuat that bai: ${failedOrders.join(", ")}`);
+      }
       await load();
     } catch (e: unknown) {
       const msg = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
       setError(msg || "Xuất hàng loạt thất bại. Vui lòng thử lại.");
     } finally {
+      setBatchConfirming((prev) => {
+        const next = { ...prev };
+        for (const o of targets) delete next[o.id];
+        return next;
+      });
       setExportingBatch(false);
     }
   }
@@ -317,6 +364,8 @@ export default function Module3Tab() {
                 const isApproved = STATUS_APPROVED.includes(o.trangThaiThuTuc);
                 const isSaving = saving[o.id] ?? false;
                 const isExporting = exporting[o.id] ?? false;
+                const isBatchConfirming = batchConfirming[o.id] ?? false;
+                const isBusy = isSaving || isExporting || isBatchConfirming || exportingBatch;
                 const didSave = saveOk[o.id] ?? false;
                 const crmVal = crmEdits[o.id] ?? o.crmOrderId ?? "";
                 const isDirty = crmVal !== (o.crmOrderId || "");
@@ -337,7 +386,7 @@ export default function Module3Tab() {
                           }}
                           placeholder="Điền ID từ CRM"
                           className="w-full min-w-[140px] rounded-gmv-md border border-gmv-border bg-gmv-bg px-2 py-1.5 text-xs text-gmv-text-strong placeholder:text-gmv-muted/60 focus:border-gmv-primary focus:outline-none"
-                          disabled={isSaving || isExporting}
+                          disabled={isBusy}
                         />
                       )}
                     </Td>
@@ -371,7 +420,7 @@ export default function Module3Tab() {
                         <Button
                           size="sm"
                           variant={didSave ? "secondary" : isDirty ? "primary" : "secondary"}
-                          disabled={isSaving || isExporting}
+                          disabled={isBusy}
                           onClick={() => handleSaveCrm(o)}
                           className="whitespace-nowrap"
                         >
@@ -383,11 +432,14 @@ export default function Module3Tab() {
                     {/* Xuất hóa đơn (từng dòng) */}
                     <Td className="text-center">
                       {isApproved ? (
-                        <StatusBadge status={o.trangThaiThuTuc} />
+                        <span className="inline-flex items-center gap-1.5">
+                          {isBatchConfirming ? <span className="animate-spin text-xs text-gmv-muted">âŸ³</span> : null}
+                          <StatusBadge status={o.trangThaiThuTuc} />
+                        </span>
                       ) : (
                         <button
                           onClick={() => handleExport(o)}
-                          disabled={isExporting || isSaving}
+                          disabled={isBusy}
                           className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500 px-3 py-1 text-xs font-semibold text-white shadow-sm transition hover:bg-emerald-600 disabled:opacity-50"
                         >
                           {isExporting ? (
