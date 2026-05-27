@@ -1,6 +1,6 @@
 # Payment Request frontend mapping
 
-> **Cập nhật:** 2026-05-26 · Branch `ui/ux`  
+> **Cập nhật:** 2026-05-26 · Branch `ui/ux` @ `2f936840`  
 > Source UI: prototype `PalFish CRM.html` (Hiếu). CSS: `frontend/src/styles/prototype-payments.css` (scope `.gmv-prototype`).
 
 ## Tab sidebar → component
@@ -20,12 +20,12 @@ Shared: `PaymentFlowContext.tsx`, `paymentFlowUtils.ts`, `paymentRequestUtils.ts
 |----------------|----------|-----|---------|
 | Payment Request list | `PaymentRequestsTab` + `PaymentRequestTable` | `GET /payment-requests` | KPI, filter chips, tabs tracking/created/cancelled |
 | Payment Request detail | `PaymentRequestDetailDrawer` | same payload | Timeline B1→B4, sửa KH, lần TT |
-| Add payment attempt | `AddPaymentAttemptModal` | `POST .../payments` | QR / cash / card / installment |
+| Add payment attempt | `AddPaymentForm` (trong drawer) | `POST .../payment-lines` | QR / cash / card / installment — cash/card BE trả `pending` |
 | Upload bill | `BillUploadZone` | `POST .../payments/{lineId}/bill` | Không localStorage |
 | Cancel PR | `CancelPrModal` | `POST .../cancel` | |
 | Reconciliation | `ReconciliationTab` | `PATCH` line status | `billImage` từ API |
-| Active Request | `ActivationTab` + `ARCreateModal` | `GET/POST/PATCH /active-requests` | 4 tab: chờ tạo / Order ID / sẵn HĐ / tất cả |
-| Invoice queue | `InvoiceRequestTab` | `POST .../issue-invoice` | Bulk + `downloadTaxInvoiceZip()` (FE tạm) |
+| Active Request | `ActivationTab` + `ARCreateModal` | `GET /active-requests`; `POST /active-requests` (standalone); `POST .../payment-requests/{prId}/active-requests` | 4 tab; standalone cần SQL `nullable_pr` |
+| Invoice queue | `InvoiceRequestTab` | `POST .../issue-invoice`; `POST /invoice-courses/export-batch` | Bulk issue; ZIP: `exportTaxBatch` → `downloadApiTaxZip`, fallback `downloadTaxInvoiceZip` |
 
 ## Trạng thái UI
 
@@ -47,8 +47,9 @@ Shared: `PaymentFlowContext.tsx`, `paymentFlowUtils.ts`, `paymentRequestUtils.ts
 
 ## Fallback mock
 
-- `PaymentFlowContext` gọi API trước; mock/local chỉ khi API lỗi hoặc standalone AR không PR.
-- Production: cần BE + SQL patches — **`docs/FE_HANDOFF_BE_PROMPTS.md`**.
+- `PaymentFlowContext` gọi API trước; `createLocalActiveRequest*` chỉ khi API lỗi.
+- Standalone AR (`prId` null): FE gọi `POST /api/v1/active-requests` — nếu DB chưa patch `nullable_pr` → 503, sau đó có thể fallback local (mất khi refresh).
+- Production: BE @ `2f93684` + SQL patches — **`docs/FE_HANDOFF_BE_PROMPTS.md` §8**.
 
 ## Encoding
 

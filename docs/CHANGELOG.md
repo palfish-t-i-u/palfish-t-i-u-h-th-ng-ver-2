@@ -432,3 +432,25 @@
 
 **Docs**
 - `FE_HANDOFF_BE_PROMPTS.md` §9 — quy tắc encoding cho dev UI
+
+---
+
+## 2026-05-26 — BE handoff merge vào `ui/ux` (commit `2f93684`)
+
+**Nguồn:** `main` @ `2f936840d2421594db396a1b50863f4397f19e69` — fast-forward `ui/ux` từ `2db4745`.
+
+**Backend**
+- `activation_routes.py` — `POST /api/v1/active-requests` (standalone AR, `pr_id` nullable); `POST /api/v1/invoice-courses/export-batch` (ZIP 3 XLSX, persist mã M/PF); siết tạo AR gắn PR (PR phải paid).
+- `payment_request_routes.py` — cash/card **không** auto `status=paid` khi tạo payment line (chờ kế toán confirm B2).
+
+**Frontend**
+- `PaymentFlowContext` — gọi `POST /active-requests` khi tạo AR không gắn PR.
+- `api.ts` — `activeRequests.create`, `exportTaxBatch`.
+- `paymentRequestUtils` / types — `customer_name`, `tax_invoice_code`, `tax_product_code`.
+- `taxInvoiceXlsxExport.ts` — `downloadApiTaxZip()` (ZIP từ BE).
+- `InvoiceRequestTab` — ưu tiên export batch BE, fallback client ZIP.
+
+**Docs / SQL**
+- `supabase_schema_patch_active_requests_nullable_pr.sql` — `pr_id` NULL + `customer_name` (bắt buộc chạy Supabase trước standalone AR).
+
+**Ghi chú:** Tạo PR (B1) `POST /api/v1/payment-requests` **không** đổi trong commit này. Vercel prod đã deploy `2f93684` có thể hết lỗi B1 do deploy/backend khác — không chứng minh fix B1 từ diff này.
