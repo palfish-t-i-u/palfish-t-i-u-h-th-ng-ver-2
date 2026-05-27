@@ -329,10 +329,9 @@ export default function PaymentRequestsTab() {
 
   const onCreateActiveRequest = async () => {
     if (!selected || arByPrId[selected.id]) return;
-    const ar = await handleCreateActiveRequest(selected);
-    setDrawerOpen(false);
-    setTab("created");
-    navigate("module3", { openArId: ar.id });
+    // Inline AR mini-window: tạo xong → giữ drawer mở, không navigate sang tab Kích hoạt khoá học
+    // Context state cập nhật → drawer tự re-render với AR card mới
+    await handleCreateActiveRequest(selected);
   };
 
   return (
@@ -410,6 +409,7 @@ export default function PaymentRequestsTab() {
         onCreateActiveRequest={onCreateActiveRequest}
         onCancelRequest={() => selected && setCancelTarget(selected)}
         activeRequestId={selected ? arByPrId[selected.id]?.id ?? null : null}
+        activeRequest={selected ? arByPrId[selected.id] ?? null : null}
         onShowQr={(qr) => selected && setQrView({ qr, request: selected })}
       />
 
