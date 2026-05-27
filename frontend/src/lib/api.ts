@@ -164,8 +164,11 @@ export const endpoints = {
       ),
   },
   transactions: {
-    patchStatus: (id: string, status: string) =>
-      api.patch(`/api/v1/transactions/${id}/status`, { status }),
+    patchStatus: (id: string, status: string, rejectReason?: string) =>
+      api.patch(`/api/v1/transactions/${id}/status`, {
+        status,
+        ...(rejectReason ? { reject_reason: rejectReason } : {}),
+      }),
   },
   crm: {
     activate: (infoCode: string) => api.post("/crm/activate", { infoCode }),
