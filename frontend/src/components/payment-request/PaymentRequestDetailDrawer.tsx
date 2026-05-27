@@ -15,13 +15,17 @@ import PaymentRequestStatusBadge from "./PaymentRequestStatusBadge";
 import { BANK_ACCOUNTS } from "../../constants/bank";
 import Combobox from "../ui/Combobox";
 import {
+  activationSummary,
   fmtPhone,
+  formatCoursePhone,
   formatPaymentDateFull,
   nextPaymentCode,
   nowStamp,
   paymentAttemptLabel,
+  toActiveRequestPatchUidsData,
   vnd,
 } from "./paymentRequestUtils";
+import { nextCourseCode } from "../payment-flow/paymentFlowUtils";
 
 const METHOD_META: Record<PaymentMethod, { cls: string; label: string; icon: IconKey; sub: string }> = {
   qr: { cls: "method-qr", label: "Chuyển khoản", icon: "QrCode", sub: "QR / chuyển khoản" },
@@ -366,51 +370,84 @@ interface DraftPr {
  */
 function ActiveRequestMiniCard({
   ar,
-  onCoursePackageChange,
+  onActiveRequestSave,
+  onActiveRequestDelete,
 }: {
   ar: ActiveRequest;
-  onCoursePackageChange: (arId: string, courseCode: string, packageName: string) => Promise<void>;
+  onActiveRequestSave: (next: ActiveRequest) => Promise<void>;
+  onActiveRequestDelete: (arId: string) => Promise<void>;
 }) {
-  const [draftPackages, setDraftPackages] = useState<Record<string, string>>({});
+  const [draftAr, setDraftAr] = useState<ActiveRequest>(ar);
+  const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
-  const courseCount = ar.uids.reduce((sum, u) => sum + u.courses.length, 0);
-  const filledOrderIds = ar.uids.reduce(
-    (sum, u) => sum + u.courses.filter((c) => !!c.orderId).length,
-    0
-  );
-  const allFilled = courseCount > 0 && filledOrderIds === courseCount;
-  const courseKey = (uidIdx: number, courseCode: string, courseIdx: number) =>
-    `${uidIdx}::${courseCode || courseIdx}`;
 
   useEffect(() => {
-    const next: Record<string, string> = {};
-    ar.uids.forEach((u, uidIdx) => {
-      u.courses.forEach((c, courseIdx) => {
-        next[courseKey(uidIdx, c.courseCode, courseIdx)] = c.packageName || c.name || "";
-      });
-    });
-    setDraftPackages(next);
+    setDraftAr(ar);
+    setEditing(false);
   }, [ar]);
 
-  const dirtyCourses = ar.uids.flatMap((u, uidIdx) =>
-    u.courses
-      .map((c, courseIdx) => {
-        const key = courseKey(uidIdx, c.courseCode, courseIdx);
-        const savedValue = c.packageName || c.name || "";
-        const draftValue = draftPackages[key] ?? savedValue;
-        return draftValue !== savedValue ? { courseCode: c.courseCode, packageName: draftValue } : null;
-      })
-      .filter((item): item is { courseCode: string; packageName: string } => !!item)
-  );
-  const hasDraftChanges = dirtyCourses.length > 0;
+  const summary = activationSummary(draftAr);
+  const hasDraftChanges = JSON.stringify(toActiveRequestPatchUidsData(draftAr)) !== JSON.stringify(toActiveRequestPatchUidsData(ar));
 
-  const savePackages = async () => {
+  const updateCourse = (uidIdx: number, courseIdx: number, patch: Partial<ActiveRequest["uids"][0]["courses"][0]>) => {
+    setDraftAr((prev) => ({
+      ...prev,
+      uids: prev.uids.map((u, i) =>
+        i === uidIdx
+          ? { ...u, courses: u.courses.map((c, j) => (j === courseIdx ? { ...c, ...patch } : c)) }
+          : u
+      ),
+    }));
+  };
+
+  const addCourse = (uidIdx: number) => {
+    setEditing(true);
+    setDraftAr((prev) => {
+      const code = nextCourseCode(prev);
+      return {
+        ...prev,
+        uids: prev.uids.map((u, i) =>
+          i === uidIdx
+            ? {
+                ...u,
+                courses: [...u.courses, { courseCode: code, packageName: "", amount: 0, orderId: "", invoiced: false }],
+              }
+            : u
+        ),
+      };
+    });
+  };
+
+  const addUid = () => {
+    setEditing(true);
+    setDraftAr((prev) => ({
+      ...prev,
+      uids: [
+        ...prev.uids,
+        {
+          uid: "",
+          phone: "",
+          country: "VN",
+          courses: [
+            {
+              courseCode: nextCourseCode(prev),
+              packageName: "",
+              amount: 0,
+              orderId: "",
+              invoiced: false,
+            },
+          ],
+        },
+      ],
+    }));
+  };
+
+  const saveActiveRequest = async () => {
     if (!hasDraftChanges || saving) return;
     setSaving(true);
     try {
-      for (const item of dirtyCourses) {
-        await onCoursePackageChange(ar.id, item.courseCode, item.packageName);
-      }
+      await onActiveRequestSave(draftAr);
+      setEditing(false);
     } finally {
       setSaving(false);
     }
@@ -425,25 +462,47 @@ function ActiveRequestMiniCard({
         </h4>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <span
-            className={`badge ${allFilled ? "is-done" : "is-over"}`}
-            title={allFilled ? "Tất cả course đã có Order ID" : "Đang chờ điền Order ID"}
+            className={`badge ${summary.allActivated ? "is-done" : "is-over"}`}
+            title={summary.allActivated ? "Tất cả khóa học đã được kích hoạt" : "Đang chờ Ops kích hoạt khóa học"}
           >
-            {allFilled ? <Icons.Check size={11} strokeWidth={2.5} /> : <Icons.Clock size={11} />}{" "}
-            {filledOrderIds}/{courseCount} Order ID
+            {summary.allActivated ? <Icons.Check size={11} strokeWidth={2.5} /> : <Icons.Clock size={11} />}{" "}
+            {summary.activatedCount}/{summary.courseCount} đã kích hoạt
           </span>
+          <button
+            type="button"
+            className="btn btn-outline btn-sm"
+            onClick={() => setEditing((v) => !v)}
+            title="Sửa thông tin gói học"
+            aria-label="Sửa thông tin gói học"
+          >
+            <Icons.Pencil size={13} />
+          </button>
           <button
             type="button"
             className={`btn btn-sm ${hasDraftChanges ? "btn-primary" : "btn-outline"}`}
             disabled={!hasDraftChanges || saving}
-            onClick={() => void savePackages()}
-            title={hasDraftChanges ? "Lưu gói học vào Active Request" : "Chưa có thay đổi gói học"}
+            onClick={() => void saveActiveRequest()}
+            title={hasDraftChanges ? "Lưu thông tin Active Request" : "Chưa có thay đổi"}
+            aria-label="Lưu thông tin Active Request"
           >
-            <Icons.Check size={13} strokeWidth={2.5} /> {saving ? "Đang lưu..." : "Lưu"}
+            <Icons.Check size={13} strokeWidth={2.5} /> {saving ? "Đang lưu..." : ""}
+          </button>
+          <button
+            type="button"
+            className="btn btn-outline btn-sm"
+            style={{ color: "var(--danger)" }}
+            onClick={() => {
+              if (window.confirm(`Xoá Active Request ${ar.id}?`)) void onActiveRequestDelete(ar.id);
+            }}
+            title="Xoá Active Request"
+            aria-label="Xoá Active Request"
+          >
+            <Icons.Close size={13} />
           </button>
         </div>
       </div>
       <div style={{ padding: "8px 0", display: "flex", flexDirection: "column", gap: 10 }}>
-        {ar.uids.map((u, uIdx) => (
+        {draftAr.uids.map((u, uIdx) => (
           <div
             key={`${u.uid}-${uIdx}`}
             style={{
@@ -453,11 +512,29 @@ function ActiveRequestMiniCard({
               background: "var(--surface-2)",
             }}
           >
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
-              <span style={{ fontWeight: 600, fontSize: 13 }}>UID {u.uid || "—"}</span>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6, flexWrap: "wrap" }}>
+              {editing ? (
+                <input
+                  value={u.uid}
+                  onChange={(e) =>
+                    setDraftAr((prev) => ({
+                      ...prev,
+                      uids: prev.uids.map((uidObj, i) => (i === uIdx ? { ...uidObj, uid: e.target.value } : uidObj)),
+                    }))
+                  }
+                  placeholder="UID"
+                  style={{ width: 150, border: "1px solid var(--border)", borderRadius: 7, padding: "6px 8px", font: "inherit", fontSize: 12.5 }}
+                />
+              ) : (
+                <span style={{ fontWeight: 600, fontSize: 13 }}>UID {u.uid || "—"}</span>
+              )}
               <span style={{ fontSize: 12, color: "var(--text-3)" }}>
-                {u.country} · {u.phone}
+                {formatCoursePhone(u.country, u.phone)}
               </span>
+              <span className="spacer" />
+              <button type="button" className="btn btn-outline btn-sm" onClick={() => addCourse(uIdx)} title="Thêm gói học cho UID này">
+                <Icons.Plus size={12} /> Thêm gói
+              </button>
             </div>
             {u.courses.length === 0 ? (
               <div style={{ fontSize: 12, color: "var(--text-3)", fontStyle: "italic" }}>
@@ -470,7 +547,7 @@ function ActiveRequestMiniCard({
                     key={cIdx}
                     style={{
                       display: "grid",
-                      gridTemplateColumns: "1fr auto",
+                      gridTemplateColumns: "minmax(0, 1fr) minmax(120px, auto) auto",
                       gap: 10,
                       alignItems: "center",
                       padding: "6px 8px",
@@ -481,37 +558,83 @@ function ActiveRequestMiniCard({
                     }}
                   >
                     <div style={{ minWidth: 0 }}>
-                      <Combobox
-                        value={
-                          draftPackages[courseKey(uIdx, c.courseCode, cIdx)] ??
-                          c.packageName ??
-                          c.name ??
-                          ""
-                        }
-                        onChange={(value) =>
-                          setDraftPackages((prev) => ({
-                            ...prev,
-                            [courseKey(uIdx, c.courseCode, cIdx)]: value,
-                          }))
-                        }
-                        options={COURSE_PACKAGE_OPTIONS}
-                        placeholder="Chọn hoặc gõ tên gói học..."
-                        emptyLabel="Chưa chọn gói"
-                      />
+                      {editing ? (
+                        <div style={{ position: "relative" }}>
+                          <Combobox
+                            value={c.packageName || c.name || ""}
+                            onChange={(value) => updateCourse(uIdx, cIdx, { packageName: value })}
+                            options={COURSE_PACKAGE_OPTIONS}
+                            placeholder="Chọn hoặc gõ tên gói học..."
+                            emptyLabel="Chưa chọn gói"
+                          />
+                          {(c.packageName || c.name) && (
+                            <button
+                              type="button"
+                              onClick={() => updateCourse(uIdx, cIdx, { packageName: "" })}
+                              title="Xoá tên gói học"
+                              aria-label="Xoá tên gói học"
+                              style={{
+                                position: "absolute",
+                                right: 7,
+                                top: "50%",
+                                transform: "translateY(-50%)",
+                                width: 22,
+                                height: 22,
+                                borderRadius: "50%",
+                                border: "1px solid var(--danger)",
+                                color: "var(--danger)",
+                                background: "white",
+                                display: "grid",
+                                placeItems: "center",
+                                cursor: "pointer",
+                              }}
+                            >
+                              <Icons.Close size={12} />
+                            </button>
+                          )}
+                        </div>
+                      ) : (
+                        <div style={{ fontWeight: 600, color: c.packageName ? "var(--text)" : "var(--text-3)" }}>
+                          {c.packageName || c.name || "Chưa chọn gói"}
+                        </div>
+                      )}
                       {c.courseCode && (
                         <div style={{ fontSize: 11, color: "var(--text-3)", marginTop: 2 }}>
                           Course code: <code>{c.courseCode}</code>
                         </div>
                       )}
                     </div>
+                    {editing ? (
+                      <input
+                        value={c.amount ? Number(c.amount).toLocaleString("vi-VN") : ""}
+                        onChange={(e) => {
+                          const v = e.target.value.replace(/[^\d]/g, "");
+                          updateCourse(uIdx, cIdx, { amount: v ? Number(v) : 0 });
+                        }}
+                        placeholder="Số tiền"
+                        style={{
+                          width: "100%",
+                          border: "1px solid var(--border)",
+                          borderRadius: 7,
+                          padding: "7px 8px",
+                          font: "inherit",
+                          fontSize: 12.5,
+                          textAlign: "right",
+                          color: "var(--money)",
+                          fontWeight: 600,
+                        }}
+                      />
+                    ) : (
+                      <span style={{ fontWeight: 700, color: "var(--money)", textAlign: "right" }}>{vnd(c.amount || 0)}</span>
+                    )}
                     <div style={{ textAlign: "right" }}>
                       {c.orderId ? (
-                        <span className="badge is-done" title="Order ID đã được điền">
-                          <Icons.Check size={10} strokeWidth={2.5} /> {c.orderId}
+                        <span className="badge is-done" title="Ops đã điền Order ID">
+                          <Icons.Check size={10} strokeWidth={2.5} /> Đã kích hoạt
                         </span>
                       ) : (
-                        <span className="badge is-over" title="Chờ điền Order ID">
-                          <Icons.Clock size={10} /> Chờ Order ID
+                        <span className="badge is-over" title="Chờ Ops kích hoạt khóa học">
+                          <Icons.Clock size={10} /> Chờ kích hoạt
                         </span>
                       )}
                     </div>
@@ -521,6 +644,9 @@ function ActiveRequestMiniCard({
             )}
           </div>
         ))}
+        <button type="button" className="btn btn-outline btn-sm" onClick={addUid} style={{ alignSelf: "flex-start" }}>
+          <Icons.Plus size={13} /> Thêm UID khác
+        </button>
       </div>
       <div style={{ fontSize: 11.5, color: "var(--text-3)", paddingTop: 6, lineHeight: 1.5 }}>
         Sales bấm "Kích hoạt khoá học" sẽ tự động dùng thông tin KH từ PR. Bộ phận quản trị (chị Thu Hiền) sẽ điền Order ID trong tab <strong>Kích hoạt khoá học</strong>.
@@ -543,7 +669,8 @@ export default function PaymentRequestDetailDrawer({
   onCancelRequest,
   activeRequestId,
   activeRequest,
-  onCoursePackageChange,
+  onActiveRequestSave,
+  onActiveRequestDelete,
   onShowQr,
   uploadingBillId,
 }: {
@@ -560,7 +687,8 @@ export default function PaymentRequestDetailDrawer({
   onCancelRequest: () => void;
   activeRequestId?: string | null;
   activeRequest?: ActiveRequest | null;
-  onCoursePackageChange: (arId: string, courseCode: string, packageName: string) => Promise<void>;
+  onActiveRequestSave: (next: ActiveRequest) => Promise<void>;
+  onActiveRequestDelete: (arId: string) => Promise<void>;
   onShowQr: (qr: PaymentAttempt) => void;
   uploadingBillId?: string | null;
 }) {
@@ -606,6 +734,7 @@ export default function PaymentRequestDetailDrawer({
   const canCancel = request.state !== "cancelled" && request.doneCount === 0 && !activeRequestId;
   const ready = request.state === "done" || request.state === "over";
   const hasActiveRequest = !!activeRequestId;
+  const activeSummary = activationSummary(activeRequest);
 
   return (
     <>
@@ -964,7 +1093,11 @@ export default function PaymentRequestDetailDrawer({
 
           {/* AR mini-window — chỉ Sales view, gọn nhẹ. Tab Kích hoạt khoá học (Thu Hiền) vẫn riêng */}
           {hasActiveRequest && activeRequest && (
-            <ActiveRequestMiniCard ar={activeRequest} onCoursePackageChange={onCoursePackageChange} />
+            <ActiveRequestMiniCard
+              ar={activeRequest}
+              onActiveRequestSave={onActiveRequestSave}
+              onActiveRequestDelete={onActiveRequestDelete}
+            />
           )}
 
           {/* Timeline */}
@@ -997,7 +1130,9 @@ export default function PaymentRequestDetailDrawer({
                   <div className="tl-title">B3 · Active Request (Tạo khoá học)</div>
                   <div className="tl-meta">
                     {hasActiveRequest
-                      ? `Active Request ${activeRequestId} đã tạo — chọn gói khoá học bên dưới`
+                      ? activeSummary.allActivated
+                        ? `Active Request ${activeRequestId} đã kích hoạt đủ khóa học`
+                        : `Active Request ${activeRequestId} đã tạo — chờ Ops kích hoạt khóa học`
                       : ready
                       ? 'Sẵn sàng kích hoạt — bấm "Kích hoạt khoá học" để mở gói'
                       : "Sẽ mở khoá khi đủ 100% tiền"}
@@ -1038,10 +1173,10 @@ export default function PaymentRequestDetailDrawer({
             <button
               className={`btn ${ready && !hasActiveRequest ? "btn-success" : "btn-outline"}`}
               disabled={!ready || hasActiveRequest}
-              title={!ready ? "Cần thu đủ 100% số tiền trước khi kích hoạt" : hasActiveRequest ? "Khoá học đã được kích hoạt" : "Tạo Active Request và chọn gói khoá học"}
+              title={!ready ? "Cần thu đủ 100% số tiền trước khi kích hoạt" : hasActiveRequest ? activeSummary.buttonLabel : "Tạo Active Request và chọn gói khoá học"}
               onClick={onCreateActiveRequest}
             >
-              <Icons.CheckSquare size={14} /> {hasActiveRequest ? "Đã kích hoạt khoá học" : "Kích hoạt khoá học"}
+              <Icons.CheckSquare size={14} /> {hasActiveRequest ? activeSummary.buttonLabel : "Kích hoạt khoá học"}
             </button>
           </div>
         </div>

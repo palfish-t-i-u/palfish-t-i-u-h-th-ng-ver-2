@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 import type { ActiveRequest } from "../../types/paymentRequest";
-import { updateActiveCoursePackage, toActiveRequestPatchUidsData } from "./paymentRequestUtils";
+import {
+  activationSummary,
+  formatCoursePhone,
+  toActiveRequestPatchUidsData,
+  updateActiveCoursePackage,
+} from "./paymentRequestUtils";
 
 describe("active request course package updates", () => {
   const ar: ActiveRequest = {
@@ -51,11 +56,35 @@ describe("active request course package updates", () => {
             invoiced: false,
             invoice_id: undefined,
             invoiced_at: undefined,
+            invoice_requested_at: undefined,
             tax_invoice_code: undefined,
             tax_product_code: undefined,
           },
         ],
       },
     ]);
+  });
+
+  it("labels a created active request as waiting until all courses have order ids", () => {
+    expect(activationSummary(null).buttonLabel).toBe("Kích hoạt khóa học");
+    expect(activationSummary(ar).buttonLabel).toBe("Chờ kích hoạt khóa học");
+
+    const activated: ActiveRequest = {
+      ...ar,
+      uids: [
+        {
+          ...ar.uids[0],
+          courses: [{ ...ar.uids[0].courses[0], orderId: "ORD-CRM-88901" }],
+        },
+      ],
+    };
+
+    expect(activationSummary(activated).buttonLabel).toBe("Đã kích hoạt khóa học");
+    expect(activationSummary(activated).courseBadgeLabel).toBe("Đã kích hoạt");
+  });
+
+  it("formats active request phones with country dial prefix", () => {
+    expect(formatCoursePhone("VN", "9323232333")).toBe("+84 9323 232 333");
+    expect(formatCoursePhone("US", "(415) 555-0131")).toBe("+1 4155 550 131");
   });
 });

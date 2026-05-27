@@ -28,6 +28,20 @@ export const STATUS_CLASS: Record<PaymentRequestStatus, string> = {
 
 export const vnd = (value: number) => `${Math.round(value).toLocaleString("vi-VN")} đ`;
 
+const COUNTRY_DIALS: Record<string, string> = {
+  VN: "+84",
+  US: "+1",
+  GB: "+44",
+  CN: "+86",
+  JP: "+81",
+  KR: "+82",
+  TH: "+66",
+  SG: "+65",
+  MY: "+60",
+  ID: "+62",
+  PH: "+63",
+};
+
 /** PayOS returns EMV payload in qrCode — render via QR image API (same as Tab1Form). */
 export function payosQrImageUrl(qrCode: string | null | undefined, size = 240): string | null {
   const raw = (qrCode || "").trim();
@@ -150,6 +164,7 @@ export function fromApiActiveRequest(raw: ActiveRequestApiRow): ActiveRequest {
         invoiced: !!c.invoiced,
         invoiceId: c.invoice_id,
         invoicedAt: c.invoiced_at ?? null,
+        invoiceRequestedAt: c.invoice_requested_at ?? null,
         taxInvoiceCode: c.tax_invoice_code,
         taxProductCode: c.tax_product_code,
       })),
@@ -207,6 +222,7 @@ export function toActiveRequestPatchUidsData(ar: ActiveRequest): ActiveRequestPa
       invoiced: c.invoiced,
       invoice_id: c.invoiceId,
       invoiced_at: c.invoicedAt ?? undefined,
+      invoice_requested_at: c.invoiceRequestedAt ?? undefined,
       tax_invoice_code: c.taxInvoiceCode,
       tax_product_code: c.taxProductCode,
     })),
@@ -335,6 +351,37 @@ export function fmtPhone(raw: string): string {
   const digits = raw.replace(/[^\d]/g, "");
   if (digits.length < 7) return raw;
   return digits.replace(/(\d{4})(\d{3})(\d+)/, "$1 $2 $3");
+}
+
+export function formatCoursePhone(countryCode: string | undefined | null, raw: string | undefined | null): string {
+  const digits = (raw || "").replace(/[^\d]/g, "");
+  if (!digits) return "";
+  const dial = COUNTRY_DIALS[countryCode || "VN"] || COUNTRY_DIALS.VN;
+  return `${dial} ${fmtPhone(digits)}`.trim();
+}
+
+export function activationSummary(ar: ActiveRequest | null | undefined) {
+  if (!ar) {
+    return {
+      allActivated: false,
+      activatedCount: 0,
+      courseCount: 0,
+      buttonLabel: "Kích hoạt khóa học",
+      courseBadgeLabel: "Chờ kích hoạt",
+      courseBadgeClass: "is-over",
+    };
+  }
+  const courses = ar.uids.flatMap((u) => u.courses);
+  const activatedCount = courses.filter((c) => !!c.orderId?.trim()).length;
+  const allActivated = courses.length > 0 && activatedCount === courses.length;
+  return {
+    allActivated,
+    activatedCount,
+    courseCount: courses.length,
+    buttonLabel: allActivated ? "Đã kích hoạt khóa học" : "Chờ kích hoạt khóa học",
+    courseBadgeLabel: allActivated ? "Đã kích hoạt" : "Chờ kích hoạt",
+    courseBadgeClass: allActivated ? "is-done" : "is-over",
+  };
 }
 
 export function createdAtDate(createdAt: string) {

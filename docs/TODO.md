@@ -320,3 +320,15 @@
 | F2705-T2-01 | PR drawer mini-window: cho Sales chọn/gõ tìm gói học trong Active Request | done | Minh | FE-only; gọi thử `PATCH /api/v1/active-requests/{id}`; `npm test` + `npm run build` pass |
 | F2705-T2-02 | BE lưu gói học từ PR drawer vào `active_requests.uids_data` | pending | Đức | Blocker: FE báo "Đã đổi gói tạm..." vì PATCH AR chưa lưu DB; request shape xem `HANDOFF_GIANG_DUC_2026-05-27.md` |
 | F2705-T2-03 | Thêm nút "Lưu" trong mini-window sau khi BE PATCH AR ổn định | done | Minh | Chọn gói chỉ đổi draft; bấm "Lưu" mới gọi PATCH; verified `npm test` + `npm run build` 2026-05-27 |
+
+### Cập nhật Mini-window Active Request sau feedback test (2026-05-28)
+
+| ID | Task | Status | Owner | Ghi chú |
+|----|------|--------|-------|---------|
+| F2805-P0-01 | Payment Request drawer: mini-window hiện đủ UID, SĐT format quốc gia, gói học, số tiền | done | Minh | FE-only; helper `formatCoursePhone`; verified `npm test -- paymentRequestUtils.test.ts paymentFlowUtils.test.ts` + `npm run build` |
+| F2805-P0-02 | Payment Request drawer: đổi trạng thái "Chờ kích hoạt khóa học" / "Đã kích hoạt khóa học" | done | Minh | FE-only; không show Order ID cho Sales, badge course chuyển "Chờ kích hoạt" / "Đã kích hoạt" |
+| F2805-P0-03 | Payment Request drawer: thêm nhiều gói / nhiều UID trong mini-window | done | Minh | FE gọi `PATCH /api/v1/active-requests/{ar_id}` với `uids_data`; phụ thuộc BE persist JSONB ổn định |
+| F2805-P0-04 | Payment Request drawer: icon Sửa / Lưu / Xoá AR / Xoá tên gói | partial | Minh + Giang/Đức | FE đã có UI và optimistic delete; xoá AR cần BE `DELETE` hoặc cancel endpoint thật |
+| F2805-P1-01 | Tab Kích hoạt khóa học: AR mới không tự nhảy "Sẵn sàng xuất HĐ" | done | Minh | FE derive status: chưa Order ID = `pending_order`; có Order ID nhưng chưa bấm Xuất HĐ = `partial_order` |
+| F2805-P1-02 | Active Request drawer: thêm nút Lưu Order ID cho Ops | done | Minh | Bỏ save-on-blur; Ops nhập draft rồi bấm Lưu mới PATCH |
+| F2805-P1-03 | Tách "Đã kích hoạt" khỏi "Sẵn sàng xuất HĐ" | partial | Minh + Giang/Đức | FE dùng `invoiceRequestedAt` trong JSONB; cần BE chấp nhận/persist `invoice_requested_at` |

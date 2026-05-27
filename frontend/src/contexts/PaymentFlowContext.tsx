@@ -77,7 +77,10 @@ type PaymentFlowContextValue = {
     amount: number;
   }) => Promise<ActiveRequest>;
   updateActiveRequestCoursePackage: (arId: string, courseCode: string, packageName: string) => Promise<void>;
+  saveActiveRequest: (next: ActiveRequest) => Promise<void>;
+  deleteActiveRequest: (arId: string) => Promise<void>;
   patchCourseOrderId: (arId: string, courseCode: string, orderId: string) => Promise<void>;
+  requestInvoiceForCourse: (arId: string, courseCode: string) => Promise<void>;
   issueInvoiceForCourse: (arId: string, courseCode: string) => Promise<void>;
   badgeCounts: { reconciliation: number; activation: number; invoice: number };
   nav: NavState;
@@ -395,6 +398,34 @@ export function PaymentFlowProvider({
     [updateActiveRequest]
   );
 
+  const saveActiveRequest = useCallback(async (next: ActiveRequest) => {
+    const previous = activeRequests.find((ar) => ar.id === next.id) ?? null;
+    setActiveRequests((prev) => prev.map((ar) => (ar.id === next.id ? next : ar)));
+    try {
+      const res = await endpoints.activeRequests.update(next.id, {
+        uids_data: toActiveRequestPatchUidsData(next),
+      });
+      const ar = fromApiActiveRequest(res.data);
+      setActiveRequests((prev) => prev.map((x) => (x.id === next.id ? ar : x)));
+      setApiNote("");
+    } catch {
+      if (previous) setActiveRequests((prev) => prev.map((ar) => (ar.id === previous.id ? previous : ar)));
+      setApiNote("Không lưu được Active Request lên máy chủ.");
+    }
+  }, [activeRequests]);
+
+  const deleteActiveRequest = useCallback(async (arId: string) => {
+    const previous = activeRequests;
+    setActiveRequests((prev) => prev.filter((ar) => ar.id !== arId));
+    try {
+      await endpoints.activeRequests.delete(arId);
+      setApiNote("");
+    } catch {
+      setActiveRequests(previous);
+      setApiNote("Chưa xoá được Active Request trên máy chủ; cần Giang/Đức mở endpoint xoá/cancel AR.");
+    }
+  }, [activeRequests]);
+
   const patchCourseOrderId = useCallback(
     async (arId: string, courseCode: string, orderId: string) => {
       const trimmed = orderId.trim();
@@ -425,6 +456,25 @@ export function PaymentFlowProvider({
       }
     },
     [updateActiveRequest]
+  );
+
+  const requestInvoiceForCourse = useCallback(
+    async (arId: string, courseCode: string) => {
+      const current = activeRequests.find((ar) => ar.id === arId);
+      if (!current) return;
+      const requestedAt = new Date().toISOString();
+      const next: ActiveRequest = {
+        ...current,
+        uids: current.uids.map((u) => ({
+          ...u,
+          courses: u.courses.map((c) =>
+            c.courseCode === courseCode ? { ...c, invoiceRequestedAt: requestedAt } : c
+          ),
+        })),
+      };
+      await saveActiveRequest(next);
+    },
+    [activeRequests, saveActiveRequest]
   );
 
   const issueInvoiceForCourse = useCallback(
@@ -472,7 +522,10 @@ export function PaymentFlowProvider({
       handleCreateActiveRequest,
       handleCreateActiveRequestFromForm,
       updateActiveRequestCoursePackage,
+      saveActiveRequest,
+      deleteActiveRequest,
       patchCourseOrderId,
+      requestInvoiceForCourse,
       issueInvoiceForCourse,
       badgeCounts,
       nav,
@@ -494,7 +547,10 @@ export function PaymentFlowProvider({
       handleCreateActiveRequest,
       handleCreateActiveRequestFromForm,
       updateActiveRequestCoursePackage,
+      saveActiveRequest,
+      deleteActiveRequest,
       patchCourseOrderId,
+      requestInvoiceForCourse,
       issueInvoiceForCourse,
       badgeCounts,
       nav,
