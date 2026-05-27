@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components */
 import {
   createContext,
   useCallback,
@@ -108,7 +109,10 @@ export function PaymentFlowProvider({
   const [apiNote, setApiNote] = useState("");
   const [nav, setNav] = useState<NavState>({});
   const onViewChangeRef = useRef(onViewChange);
-  onViewChangeRef.current = onViewChange;
+
+  useEffect(() => {
+    onViewChangeRef.current = onViewChange;
+  }, [onViewChange]);
 
   const loadData = useCallback(async (options?: LoadDataOptions) => {
     if (!options?.silent) setLoading(true);
@@ -149,7 +153,9 @@ export function PaymentFlowProvider({
     if (!options?.silent) setLoading(false);
   }, []);
 
+  // Initial data load on mount.
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void loadData();
   }, [loadData]);
 

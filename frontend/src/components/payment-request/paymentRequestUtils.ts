@@ -100,7 +100,7 @@ export function normalizeRequest(req: PaymentRequest): PaymentRequest {
   const doneCount = live.filter((p) => p.status === "paid").length;
   const totalCount = live.length;
   const delta = received - req.target;
-  let state: PaymentRequestStatus = "pending";
+  let state: PaymentRequestStatus;
   if (req.cancelledAt || req.state === "cancelled") state = "cancelled";
   else if (received === 0) state = "pending";
   else if (delta === 0) state = "done";
