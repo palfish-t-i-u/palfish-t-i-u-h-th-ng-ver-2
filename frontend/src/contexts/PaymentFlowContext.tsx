@@ -398,19 +398,28 @@ export function PaymentFlowProvider({
   const patchCourseOrderId = useCallback(
     async (arId: string, courseCode: string, orderId: string) => {
       const trimmed = orderId.trim();
+      let optimistic: ActiveRequest | null = null;
       updateActiveRequest(arId, (ar) => ({
-        ...ar,
-        uids: ar.uids.map((u) => ({
-          ...u,
-          courses: u.courses.map((c) =>
-            c.courseCode === courseCode ? { ...c, orderId: trimmed } : c
-          ),
-        })),
+        ...(optimistic = {
+          ...ar,
+          uids: ar.uids.map((u) => ({
+            ...u,
+            courses: u.courses.map((c) =>
+              c.courseCode === courseCode ? { ...c, orderId: trimmed } : c
+            ),
+          })),
+        }),
       }));
+
+      if (!optimistic) return;
+
       try {
-        const res = await endpoints.activeRequests.attachCourse(arId, courseCode, { order_id: trimmed });
-        const ar = fromApiActiveRequest(res.data as Parameters<typeof fromApiActiveRequest>[0]);
+        const res = await endpoints.activeRequests.update(arId, {
+          uids_data: toActiveRequestPatchUidsData(optimistic),
+        });
+        const ar = fromApiActiveRequest(res.data);
         setActiveRequests((prev) => prev.map((x) => (x.id === arId ? ar : x)));
+        setApiNote("");
       } catch {
         setApiNote("Không lưu được Order ID lên máy chủ.");
       }
