@@ -476,3 +476,16 @@
 **Known blocker**
 - FE đã chọn/gõ được gói, nhưng DB chưa lưu vì BE `PATCH /api/v1/active-requests/{ar_id}` chưa persist `uids_data`; UI báo "Đã đổi gói tạm trên giao diện; máy chủ chưa lưu được thay đổi gói học."
 - Docs handoff cho Đức đã cập nhật request shape và acceptance trong `docs/HANDOFF_GIANG_DUC_2026-05-27.md`.
+
+---
+
+## 2026-05-27 — Task 2 FE: thêm nút Lưu cho mini-window Active Request
+
+**Frontend**
+- `PaymentRequestDetailDrawer.tsx` — chọn gói học trong mini-window chỉ cập nhật draft tại UI.
+- Thêm nút **Lưu** ở header mini-window; nút chỉ bật khi có thay đổi và bấm nút mới gọi PATCH lưu Active Request.
+- Giữ tách nghiệp vụ: Sales không nhập Order ID, không có nút "Xác nhận thông tin" của tab Kích hoạt khóa học.
+
+**Verification**
+- `npm test` pass 2 files / 6 tests.
+- `npm run build` pass.
