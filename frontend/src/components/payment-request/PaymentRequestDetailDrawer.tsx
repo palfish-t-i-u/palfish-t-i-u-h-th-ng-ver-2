@@ -361,7 +361,7 @@ export default function PaymentRequestDetailDrawer({
   request: PaymentRequest | null;
   open: boolean;
   onClose: () => void;
-  onUpdatePr: (next: PaymentRequest) => void;
+  onUpdatePr: (next: PaymentRequest) => Promise<boolean>;
   onAddPayment: (payload: AddPaymentAttemptPayload) => void;
   onCancelPayment: (qr: PaymentAttempt) => void;
   onMarkPaid: (qr: PaymentAttempt) => void;
@@ -375,6 +375,7 @@ export default function PaymentRequestDetailDrawer({
 }) {
   const [showAdd, setShowAdd] = useState(false);
   const [editing, setEditing] = useState(false);
+  const [savingEdit, setSavingEdit] = useState(false);
   const [draft, setDraft] = useState<DraftPr | null>(null);
   const drawerBodyRef = useRef<HTMLDivElement | null>(null);
   const addFormRef = useRef<HTMLDivElement | null>(null);
@@ -382,6 +383,7 @@ export default function PaymentRequestDetailDrawer({
   useEffect(() => {
     setShowAdd(false);
     setEditing(false);
+    setSavingEdit(false);
     setDraft(null);
   }, [request?.id]);
 
@@ -497,7 +499,9 @@ export default function PaymentRequestDetailDrawer({
                 <div style={{ display: "flex", gap: 6 }}>
                   <button
                     className="btn btn-outline btn-sm"
+                    disabled={savingEdit}
                     onClick={() => {
+                      if (savingEdit) return;
                       setEditing(false);
                       setDraft(null);
                     }}
@@ -506,11 +510,14 @@ export default function PaymentRequestDetailDrawer({
                   </button>
                   <button
                     className="btn btn-primary btn-sm"
-                    onClick={() => {
+                    disabled={savingEdit}
+                    onClick={async () => {
+                      if (savingEdit) return;
                       if (!draft) return;
                       const targetNum =
                         Number(String(draft.target).replace(/\D/g, "")) || request.target;
-                      onUpdatePr({
+                      setSavingEdit(true);
+                      const ok = await onUpdatePr({
                         ...request,
                         uid: draft.uid,
                         name: draft.name,
@@ -522,11 +529,13 @@ export default function PaymentRequestDetailDrawer({
                         target: targetNum,
                         note: draft.note,
                       });
+                      setSavingEdit(false);
+                      if (!ok) return;
                       setEditing(false);
                       setDraft(null);
                     }}
                   >
-                    <Icons.Check size={13} strokeWidth={2.5} /> Lưu thay đổi
+                    <Icons.Check size={13} strokeWidth={2.5} /> {savingEdit ? "Đang lưu..." : "Lưu thay đổi"}
                   </button>
                 </div>
               )}
