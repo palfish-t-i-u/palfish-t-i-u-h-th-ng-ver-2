@@ -228,7 +228,3 @@ export type CreateStandaloneActiveRequestPayload = {
   pr_id?: string | null;
   uids: CreateActiveRequestUidPayload[];
 };
-
-export type AttachCoursePayload = {
-  order_id: string;
-};

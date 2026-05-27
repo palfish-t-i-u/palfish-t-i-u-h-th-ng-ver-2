@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components */
 import {
   createContext,
   useCallback,
@@ -108,7 +109,10 @@ export function PaymentFlowProvider({
   const [apiNote, setApiNote] = useState("");
   const [nav, setNav] = useState<NavState>({});
   const onViewChangeRef = useRef(onViewChange);
-  onViewChangeRef.current = onViewChange;
+
+  useEffect(() => {
+    onViewChangeRef.current = onViewChange;
+  }, [onViewChange]);
 
   const loadData = useCallback(async (options?: LoadDataOptions) => {
     if (!options?.silent) setLoading(true);
@@ -149,7 +153,9 @@ export function PaymentFlowProvider({
     if (!options?.silent) setLoading(false);
   }, []);
 
+  // Initial data load on mount.
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void loadData();
   }, [loadData]);
 
@@ -392,19 +398,28 @@ export function PaymentFlowProvider({
   const patchCourseOrderId = useCallback(
     async (arId: string, courseCode: string, orderId: string) => {
       const trimmed = orderId.trim();
+      let optimistic: ActiveRequest | null = null;
       updateActiveRequest(arId, (ar) => ({
-        ...ar,
-        uids: ar.uids.map((u) => ({
-          ...u,
-          courses: u.courses.map((c) =>
-            c.courseCode === courseCode ? { ...c, orderId: trimmed } : c
-          ),
-        })),
+        ...(optimistic = {
+          ...ar,
+          uids: ar.uids.map((u) => ({
+            ...u,
+            courses: u.courses.map((c) =>
+              c.courseCode === courseCode ? { ...c, orderId: trimmed } : c
+            ),
+          })),
+        }),
       }));
+
+      if (!optimistic) return;
+
       try {
-        const res = await endpoints.activeRequests.attachCourse(arId, courseCode, { order_id: trimmed });
-        const ar = fromApiActiveRequest(res.data as Parameters<typeof fromApiActiveRequest>[0]);
+        const res = await endpoints.activeRequests.update(arId, {
+          uids_data: toActiveRequestPatchUidsData(optimistic),
+        });
+        const ar = fromApiActiveRequest(res.data);
         setActiveRequests((prev) => prev.map((x) => (x.id === arId ? ar : x)));
+        setApiNote("");
       } catch {
         setApiNote("Không lưu được Order ID lên máy chủ.");
       }
