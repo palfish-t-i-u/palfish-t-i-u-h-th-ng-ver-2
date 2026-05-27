@@ -1,16 +1,19 @@
 import { useEffect, useRef, useState } from "react";
 import type {
+  ActiveRequest,
   AddPaymentAttemptPayload,
   PaymentAttempt,
   PaymentMethod,
   PaymentRequest,
 } from "../../types/paymentRequest";
+import { COURSE_PACKAGES } from "../../constants/coursePackages";
 import CountryCombo, { findCountry } from "./CountryCombo";
 import { Icons, type IconKey } from "./Icons";
 import BillUploadZone from "./BillUploadZone";
 import VietnamAddressFields from "./VietnamAddressFields";
 import PaymentRequestStatusBadge from "./PaymentRequestStatusBadge";
 import { BANK_ACCOUNTS } from "../../constants/bank";
+import Combobox from "../ui/Combobox";
 import {
   fmtPhone,
   formatPaymentDateFull,
@@ -28,6 +31,7 @@ const METHOD_META: Record<PaymentMethod, { cls: string; label: string; icon: Ico
 };
 
 const METHOD_ORDER: PaymentMethod[] = ["qr", "cash", "card", "installment"];
+const COURSE_PACKAGE_OPTIONS = COURSE_PACKAGES.map((name) => ({ value: name, label: name }));
 
 function MethodBadge({ method }: { method: PaymentMethod }) {
   const meta = METHOD_META[method];
@@ -356,11 +360,17 @@ interface DraftPr {
 
 /**
  * AR mini-window cho Sales view — gọn nhẹ, hiện ngay trong drawer PR.
- * Sales chỉ cần thấy: AR đã được tạo, danh sách UID + course, Order ID (read-only sau khi BE điền).
+ * Sales chỉ cần thấy: AR đã được tạo, danh sách UID + course, chọn gói học, Order ID (read-only sau khi BE điền).
  * KHÔNG có nút "Xác nhận thông tin" của Thu Hiền (đó là nghiệp vụ riêng ở tab Kích hoạt khoá học).
- * Khi B-02 (PATCH AR) sẵn sàng → Sales mới được edit course/Order ID inline ở đây.
+ * Sales không nhập Order ID ở đây để giữ tách bạch nghiệp vụ với tab Kích hoạt khoá học.
  */
-function ActiveRequestMiniCard({ ar }: { ar: import("../../types/paymentRequest").ActiveRequest }) {
+function ActiveRequestMiniCard({
+  ar,
+  onCoursePackageChange,
+}: {
+  ar: ActiveRequest;
+  onCoursePackageChange: (arId: string, courseCode: string, packageName: string) => void;
+}) {
   const courseCount = ar.uids.reduce((sum, u) => sum + u.courses.length, 0);
   const filledOrderIds = ar.uids.reduce(
     (sum, u) => sum + u.courses.filter((c) => !!c.orderId).length,
@@ -421,10 +431,14 @@ function ActiveRequestMiniCard({ ar }: { ar: import("../../types/paymentRequest"
                       fontSize: 12.5,
                     }}
                   >
-                    <div>
-                      <div style={{ fontWeight: 600 }}>
-                        {c.packageName || c.name || "(Chưa chọn gói)"}
-                      </div>
+                    <div style={{ minWidth: 0 }}>
+                      <Combobox
+                        value={c.packageName || c.name || ""}
+                        onChange={(value) => onCoursePackageChange(ar.id, c.courseCode, value)}
+                        options={COURSE_PACKAGE_OPTIONS}
+                        placeholder="Chọn hoặc gõ tên gói học..."
+                        emptyLabel="Chưa chọn gói"
+                      />
                       {c.courseCode && (
                         <div style={{ fontSize: 11, color: "var(--text-3)", marginTop: 2 }}>
                           Course code: <code>{c.courseCode}</code>
@@ -470,6 +484,7 @@ export default function PaymentRequestDetailDrawer({
   onCancelRequest,
   activeRequestId,
   activeRequest,
+  onCoursePackageChange,
   onShowQr,
   uploadingBillId,
 }: {
@@ -485,7 +500,8 @@ export default function PaymentRequestDetailDrawer({
   onCreateActiveRequest: () => void;
   onCancelRequest: () => void;
   activeRequestId?: string | null;
-  activeRequest?: import("../../types/paymentRequest").ActiveRequest | null;
+  activeRequest?: ActiveRequest | null;
+  onCoursePackageChange: (arId: string, courseCode: string, packageName: string) => void;
   onShowQr: (qr: PaymentAttempt) => void;
   uploadingBillId?: string | null;
 }) {
@@ -889,7 +905,7 @@ export default function PaymentRequestDetailDrawer({
 
           {/* AR mini-window — chỉ Sales view, gọn nhẹ. Tab Kích hoạt khoá học (Thu Hiền) vẫn riêng */}
           {hasActiveRequest && activeRequest && (
-            <ActiveRequestMiniCard ar={activeRequest} />
+            <ActiveRequestMiniCard ar={activeRequest} onCoursePackageChange={onCoursePackageChange} />
           )}
 
           {/* Timeline */}

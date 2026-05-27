@@ -454,3 +454,25 @@
 - `supabase_schema_patch_active_requests_nullable_pr.sql` — `pr_id` NULL + `customer_name` (bắt buộc chạy Supabase trước standalone AR).
 
 **Ghi chú:** Tạo PR (B1) `POST /api/v1/payment-requests` **không** đổi trong commit này. Vercel prod đã deploy `2f93684` có thể hết lỗi B1 do deploy/backend khác — không chứng minh fix B1 từ diff này.
+
+---
+
+## 2026-05-27 — Task 2 FE: chọn gói học trong PR drawer mini-window
+
+**Nguồn:** feedback Hiếu tối 27/05, branch `ui/ux` sau khi fast-forward `origin/main` commit `6376820`.
+
+**Frontend**
+- `PaymentRequestDetailDrawer.tsx` — mini-window "Kích hoạt khoá học" trong Payment Request drawer dùng `Combobox` để Sales chọn/gõ tìm gói học.
+- `PaymentRequestsTab.tsx` / `PaymentFlowContext.tsx` — nối callback đổi gói từ drawer vào context.
+- `lib/api.ts` / `types/paymentRequest.ts` — thêm client type/method cho `PATCH /api/v1/active-requests/{ar_id}`.
+- `paymentRequestUtils.ts` — thêm helper update course package + build payload `uids_data` snake_case.
+- `paymentRequestUtils.test.ts` — test helper đổi gói và payload snake_case.
+
+**Verification**
+- `npm run test -- src/components/payment-request/paymentRequestUtils.test.ts` pass.
+- `npm test` pass 2 files / 6 tests.
+- `npm run build` pass.
+
+**Known blocker**
+- FE đã chọn/gõ được gói, nhưng DB chưa lưu vì BE `PATCH /api/v1/active-requests/{ar_id}` chưa persist `uids_data`; UI báo "Đã đổi gói tạm trên giao diện; máy chủ chưa lưu được thay đổi gói học."
+- Docs handoff cho Đức đã cập nhật request shape và acceptance trong `docs/HANDOFF_GIANG_DUC_2026-05-27.md`.

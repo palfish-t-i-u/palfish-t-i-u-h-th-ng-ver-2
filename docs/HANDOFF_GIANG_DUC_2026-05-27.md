@@ -176,6 +176,54 @@ Mini-window "Kích hoạt khoá học" inline trong PR drawer. Không cần BE m
 
 **Phụ thuộc:** sau khi Đức xong B-02 trên, Minh thêm phần cho phép Sales chọn lại gói nếu chọn nhầm (gọi PATCH AR mới).
 
+### Cập nhật Minh 2026-05-27 tối — FE đã nối chọn gói, BE đang là blocker lưu DB
+
+Minh đã pull `main` commit `6376820` vào `ui/ux`, sau đó thêm FE cho Sales chọn/gõ tìm gói học ngay trong mini-window Active Request ở drawer Payment Request:
+
+- File FE đã sửa: `PaymentRequestDetailDrawer.tsx`, `PaymentRequestsTab.tsx`, `PaymentFlowContext.tsx`, `paymentRequestUtils.ts`, `lib/api.ts`, `types/paymentRequest.ts`
+- Test thêm: `frontend/src/components/payment-request/paymentRequestUtils.test.ts`
+- FE hiện gọi `PATCH /api/v1/active-requests/{ar_id}` với body `uids_data` snake_case khi đổi gói.
+- Đã verify FE: `npm test` pass 2 files / 6 tests; `npm run build` pass.
+
+Runtime hiện tại: Sales chọn/gõ được gói học, nhưng reload/thoát tab vào lại thì gói biến mất. FE hiện thông báo:
+
+```text
+Đã đổi gói tạm trên giao diện; máy chủ chưa lưu được thay đổi gói học.
+```
+
+Kết luận: FE đã có UI + request shape, nhưng BE chưa lưu được `uids_data` qua endpoint PATCH AR nên DB chưa ghi nhận. Sau khi BE lưu được, Minh sẽ chỉnh UX thành flow có nút **Lưu** trong mini-window: Sales chọn gói trước, bấm **Lưu** mới gọi PATCH.
+
+#### Request shape FE đang gửi cho Đức verify
+
+```json
+{
+  "uids_data": [
+    {
+      "uid": "test738",
+      "phone": "764131233",
+      "country": "VN",
+      "courses": [
+        {
+          "code": "CC-0047-001",
+          "name": "2/W- NEW 48 US-UK+2 HN",
+          "amount": 10000,
+          "order_id": "",
+          "invoiced": false
+        }
+      ]
+    }
+  ]
+}
+```
+
+Acceptance cho Đức:
+
+1. `PATCH /api/v1/active-requests/{ar_id}` nhận `uids_data`.
+2. Update `active_requests.uids_data` trong DB.
+3. Trả về Active Request đã serialize giống `GET /active-requests`.
+4. Reload tab Payment Request vẫn thấy gói đã chọn.
+5. Tab "Kích hoạt khóa học" chính cũng thấy cùng gói đó trong AR tương ứng.
+
 ---
 
 ## Việc còn lại sau tối nay

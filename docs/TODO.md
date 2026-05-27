@@ -312,3 +312,11 @@
 |----|------|--------|-------|---------|
 | F2705-BUG-01 | Email KH không hiển thị trong PR detail drawer | done | Minh | verified end-to-end 2026-05-27 |
 | F2705-BUG-02 | AR drawer: nút "Xác nhận thông tin" Thu Hiền + B4 disable trước confirm | pending | Minh + Giang/Đức | BE: `info_confirmed_at` gộp vào F2705-B-02 |
+
+### Cập nhật Task 2 mini-window PR drawer (2026-05-27 tối)
+
+| ID | Task | Status | Owner | Ghi chú |
+|----|------|--------|-------|---------|
+| F2705-T2-01 | PR drawer mini-window: cho Sales chọn/gõ tìm gói học trong Active Request | done | Minh | FE-only; gọi thử `PATCH /api/v1/active-requests/{id}`; `npm test` + `npm run build` pass |
+| F2705-T2-02 | BE lưu gói học từ PR drawer vào `active_requests.uids_data` | pending | Đức | Blocker: FE báo "Đã đổi gói tạm..." vì PATCH AR chưa lưu DB; request shape xem `HANDOFF_GIANG_DUC_2026-05-27.md` |
+| F2705-T2-03 | Thêm nút "Lưu" trong mini-window sau khi BE PATCH AR ổn định | pending | Minh | Chọn gói chỉ đổi draft; bấm "Lưu" mới gọi PATCH; tab Kích hoạt khóa học chính phải thấy dữ liệu mới |

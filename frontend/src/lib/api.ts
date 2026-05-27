@@ -12,6 +12,7 @@ import type {
   CreateStandaloneActiveRequestPayload,
   CreatePaymentRequestPayload,
   PatchPaymentRequestPayload,
+  PatchActiveRequestPayload,
   CreatePrResponse,
   PaymentLineApiRow,
   PaymentRequestsListResponse,
@@ -140,6 +141,8 @@ export const endpoints = {
       api.get<ActiveRequestApiRow[]>("/api/v1/active-requests", { params }),
     create: (body: CreateStandaloneActiveRequestPayload) =>
       api.post<ActiveRequestApiRow>("/api/v1/active-requests", body),
+    update: (arId: string, body: PatchActiveRequestPayload) =>
+      api.patch<ActiveRequestApiRow>(`/api/v1/active-requests/${arId}`, body),
     attachCourse: (arId: string, courseCode: string, body: AttachCoursePayload) =>
       api.patch<ActiveRequest>(
         `/api/v1/active-requests/${arId}/courses/${encodeURIComponent(courseCode)}`,
