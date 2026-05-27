@@ -36,7 +36,7 @@ Không phải SaaS công khai — chỉ user có tài khoản Supabase Auth (Goo
 
 **Deploy tự động:** push `main` → Vercel (FE) + Render (BE, plan free có thể sleep).
 
-**Nguồn code production (2026-05-27):** **`main`** (shell + M5/M6). Luồng **Payment Request B1–B4** đang trên branch **`ui/ux`** — Promote Vercel sau review (`docs/WORKFLOW_UI_UX.md`). Branch cũ `ui/ux-anh-minh` đã merge PR #2; tên mới `ui/ux` tiếp tục UX payment flow.
+**Nguồn code (2026-05-26):** **`main`** @ `2f936840` = BE handoff B3/B4 + cash pending. Branch **`ui/ux`** fast-forward cùng commit (local); **`origin/ui/ux`** có thể chưa push — graph tím/xanh lệch = chưa `git push`. Promote Vercel: `docs/WORKFLOW_UI_UX.md` §2.1.
 
 **Lưu ý docs:** Ưu tiên **`FE_HANDOFF_BE_PROMPTS.md`**, **`WORKFLOW_UI_UX.md`**, file bàn giao này. `PROJECT.md` / `DEPLOY.md` đã cập nhật branch `ui/ux`.
 
@@ -78,7 +78,7 @@ palfish-gmv-manager/
 │   ├── report_routes.py      # BC03
 │   ├── revenue_routes.py     # Sổ doanh thu, pivot BC01/BC02, GSheet sync
 │   ├── invoice_routes.py     # M3/M4 hóa đơn
-│   ├── activation_routes.py  # ★ B3 Active Request (feature-duc, chưa merge main)
+│   ├── activation_routes.py  # ★ B3 Active Request + export-batch B4 (`ui/ux` / `main` @ 2f93684)
 │   ├── rbac.py               # Sale / Leader / Manager / System
 │   ├── run.ps1               # Chạy local Windows
 │   └── Dockerfile            # Context = repo root (cần api_pipe/)
@@ -326,11 +326,12 @@ Chi tiết: `docs/DEPLOY.md`, `docs/M5_OPERATIONS.md` (Promote Vercel nếu prev
 | Cột | Kiểu | Ghi chú |
 |-----|------|---------|
 | `id` | text | `AR-2026-XXXX` |
-| `pr_id` | text FK → `payment_requests.id` | **Phải text** — patch cũ nhầm uuid đã fix bằng `supabase_schema_patch_active_requests_pr_id_text.sql` |
-| `uids_data` | jsonb | Mảng `[{ uid, courses: [{ code, name, amount, order_id }] }]` — snake_case |
+| `pr_id` | text FK → `payment_requests.id`, **nullable** | Text — `_pr_id_text.sql`; standalone AR — `_nullable_pr.sql` |
+| `customer_name` | text | Tên KH khi không có PR (`_nullable_pr.sql`) |
+| `uids_data` | jsonb | Mảng `[{ uid, courses: [{ code, name, amount, order_id, tax_invoice_code?, tax_product_code? }] }]` |
 | `status` | text | `pending_order` → `partial_order` → `ready_invoice` → `invoiced` |
 
-SQL patches B3: `docs/supabase_schema_patch_active_requests.sql` (+ `_pr_id_text.sql` nếu đã chạy patch uuid).  
+SQL patches B3 (thứ tự): `supabase_schema_patch_active_requests.sql` → `_pr_id_text.sql` (nếu cần) → **`supabase_schema_patch_active_requests_nullable_pr.sql`** (standalone AR).  
 **Legacy bỏ qua:** `docs/supabase_schema_patch_activate_codes.sql` (bảng `activate_codes` từng thiết kế Codex — **không** dùng; thay bằng JSONB `active_requests`).
 
 ### Thứ tự patch (SQL Editor → `NOTIFY pgrst, 'reload schema'`)
@@ -341,7 +342,8 @@ SQL patches B3: `docs/supabase_schema_patch_active_requests.sql` (+ `_pr_id_text
 4. `supabase_schema_patch_crm_*.sql` (CRM tokens, record_type, hybrid unique key)
 5. `supabase_schema_patch_bc03_monthly.sql`
 6. **Chưa commit:** `supabase_schema_patch_revenue_ledger_link.sql` — hỏi team trước khi chạy prod
-7. **Luồng PR (dev):** `supabase_schema_patch_active_requests.sql` — sau khi `payment_requests` Kem đã có
+7. **Luồng PR:** `supabase_schema_patch_active_requests.sql` — sau `payment_requests`
+8. **Standalone AR:** `supabase_schema_patch_active_requests_nullable_pr.sql` — sau bước 7
 
 Diagnostic: `docs/supabase_diagnose.sql` (mục 4–5: `payment_requests` + `active_requests`).
 
@@ -360,7 +362,8 @@ Diagnostic: `docs/supabase_diagnose.sql` (mục 4–5: `payment_requests` + `act
 | BC03 | `GET /reports/bc03`, `PUT /reports/bc03/monthly` |
 | Revenue | `GET/POST/PATCH/DELETE /revenue/ledger`, `POST /revenue/ledger/sync-gsheet` |
 | Admin | `GET/PATCH /me`, `/admin/sales`, `/admin/auth-users` |
-| **Activation B3** *(feature-duc)* | `POST /api/v1/payment-requests/{pr_id}/active-requests`, `PATCH /api/v1/active-requests/{ar_id}/courses/{course_code}` |
+| **Activation B3/B4** | `POST /api/v1/active-requests` (standalone); `POST /api/v1/payment-requests/{pr_id}/active-requests`; `PATCH .../courses/{course_code}`; `POST /api/v1/invoice-courses/export-batch` |
+| **Payment PR B1/B2** | `POST/GET /api/v1/payment-requests`; `POST .../payment-lines`; `PATCH /api/v1/transactions/{id}/status` |
 
 **Supabase pagination:** CRM/dashboard query có page 1000 rows — logic paginate trong `crm_metrics.fetch_crm_sales_rows`.
 

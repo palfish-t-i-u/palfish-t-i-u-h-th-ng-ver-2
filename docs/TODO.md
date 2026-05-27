@@ -131,6 +131,10 @@
 | UX-09 | Fix UTF-8 mojibake tab Quản lý thanh toán | done | 2026-05-26 | 2026-05-26 | 3 TSX + Inter font; CHANGELOG |
 | UX-10 | Fix Vercel build `ActivationTab` TS | done | 2026-05-26 | 2026-05-26 | Push `ui/ux` |
 | UX-11 | Promote Vercel + smoke B1–B4 prod | pending | 2026-05-26 | | Sau push encoding fix |
+| UX-12 | Merge `main` @ `2f936840` (BE handoff) vào `ui/ux` local | done | 2026-05-26 21:30 | 2026-05-26 21:45 | Fast-forward `2db4745`→`2f93684`; CHANGELOG |
+| UX-13 | `git push origin ui/ux` — đồng bộ remote + graph Git | pending | 2026-05-26 21:45 | | `ahead 1` sau merge |
+| UX-14 | Supabase: chạy `active_requests_nullable_pr.sql` (dev + prod nếu standalone AR) | pending | 2026-05-26 21:45 | | FE_HANDOFF §3, §8 |
+| UX-15 | Smoke: standalone AR + export-batch B4 + cash pending B2 | pending | 2026-05-26 21:45 | | Sau UX-13/14 |
 
 ---
 
@@ -208,10 +212,10 @@
 
 | ID | Task | Status | Owner | Ghi chú |
 |----|------|--------|-------|---------|
-| F2605-BE-01 | Schema + API **Payment Request** (PR ID) | pending | Giang/Đức | Thay `1 QR = 1 đơn` |
-| F2605-BE-02 | Mã thanh toán lẻ / Info Code (vd. TTPR…) gắn PR | pending | Giang/Đức | N lần thanh toán / 1 PR |
-| F2605-BE-03 | **Course code** (B3) — mở khi PR thu đủ 100%; link xuất HĐ | pending | Giang/Đức | 1 Course code = 1 Order ID |
-| F2605-BE-04 | Module xác nhận **tiền mặt** | pending | Giang/Đức | |
+| F2605-BE-01 | Schema + API **Payment Request** (PR ID) | in_progress | Giang/Đức | `ui/ux` @ `2f93684`; smoke prod |
+| F2605-BE-02 | Mã thanh toán lẻ / Info Code (vd. TTPR…) gắn PR | done | Giang/Đức | `payment-lines` + PayOS |
+| F2605-BE-03 | **Course code** (B3) — mở khi PR thu đủ 100%; link xuất HĐ | in_progress | Giang/Đức | AR routes + export-batch |
+| F2605-BE-04 | Module xác nhận **tiền mặt** | done | Giang/Đức | Cash/card `pending` @ `2f93684` |
 | F2605-BE-05 | Tích hợp **thẻ tín dụng / trả góp** | pending | Giang/Đức | |
 | F2605-BE-06 | PayOS **PalFish Saigon** — chỉ team HCM tạo QR HCM | pending | Giang/Đức | Pháp nhân HCM riêng |
 | F2605-BE-07 | Khớp **Order ID CRM** với Activate Code (matching) | pending | Giang/Đức | Bước cuối — Thu Hiền |

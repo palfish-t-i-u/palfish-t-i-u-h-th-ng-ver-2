@@ -3,7 +3,8 @@
 > **Mục đích:** Anh Minh code giao diện trên branch riêng; **Giang** và **Đức** review trên GitHub / URL live trước khi merge vào `main`.  
 > **Repo làm việc:** https://github.com/palfish-t-i-u/palfish-t-i-u-h-th-ng-ver-2  
 > **Branch:** https://github.com/palfish-t-i-u/palfish-t-i-u-h-th-ng-ver-2/tree/ui/ux  
-> **Handoff BE:** `docs/FE_HANDOFF_BE_PROMPTS.md`
+> **Handoff BE:** `docs/FE_HANDOFF_BE_PROMPTS.md`  
+> **HEAD `ui/ux` (local):** `2f936840` — đã merge BE handoff từ `main` (fast-forward). **`origin/ui/ux`** cập nhật sau `git push origin ui/ux`.
 
 ---
 
