@@ -62,7 +62,7 @@ type PaymentFlowContextValue = {
   handleCreate: (payload: CreatePaymentRequestPayload) => Promise<PaymentRequest>;
   handleAddPayment: (requestId: string, payload: AddPaymentAttemptPayload) => Promise<PaymentAttempt | null>;
   confirmTransaction: (prId: string, paymentId: string) => Promise<void>;
-  rejectTransaction: (prId: string, paymentId: string) => Promise<void>;
+  rejectTransaction: (prId: string, paymentId: string, rejectReason?: string) => Promise<void>;
   handleCreateActiveRequest: (pr: PaymentRequest) => Promise<ActiveRequest>;
   handleCreateActiveRequestFromForm: (data: {
     prId: string | null;
@@ -268,24 +268,25 @@ export function PaymentFlowProvider({
   );
 
   const rejectTransaction = useCallback(
-    async (prId: string, paymentId: string) => {
-      if (isBackendLineId(paymentId)) {
-        try {
-          await endpoints.transactions.patchStatus(paymentId, "rejected");
-          await loadData({ silent: true });
-          return;
-        } catch {
-          /* optimistic */
-        }
-      }
+    async (prId: string, paymentId: string, rejectReason?: string) => {
+      // Optimistic update immediately — no full reload
       updateRequest(prId, (r) => ({
         ...r,
         payments: r.payments.map((p) =>
-          p.id === paymentId ? { ...p, status: "rejected" as const, bill: false, paidAt: null } : p
+          p.id === paymentId
+            ? { ...p, status: "rejected" as const, bill: false, paidAt: null, rejectReason: rejectReason ?? null }
+            : p
         ),
       }));
+      if (isBackendLineId(paymentId)) {
+        try {
+          await endpoints.transactions.patchStatus(paymentId, "rejected", rejectReason);
+        } catch {
+          /* silently ignore — optimistic update already applied */
+        }
+      }
     },
-    [updateRequest, loadData]
+    [updateRequest]
   );
 
   const handleCreateActiveRequest = useCallback(

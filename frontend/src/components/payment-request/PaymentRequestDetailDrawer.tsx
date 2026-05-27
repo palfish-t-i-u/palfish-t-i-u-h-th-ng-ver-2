@@ -10,6 +10,7 @@ import { Icons, type IconKey } from "./Icons";
 import BillUploadZone from "./BillUploadZone";
 import VietnamAddressFields from "./VietnamAddressFields";
 import PaymentRequestStatusBadge from "./PaymentRequestStatusBadge";
+import { BANK_ACCOUNTS } from "../../constants/bank";
 import {
   fmtPhone,
   formatPaymentDateFull,
@@ -88,6 +89,12 @@ function QrRow({
         <Icons.Check size={11} strokeWidth={2.5} /> Đã xác nhận
       </span>
     );
+  } else if (qr.status === "rejected") {
+    pill = (
+      <span className="badge is-cancelled">
+        <Icons.XCircle size={11} /> Bị từ chối
+      </span>
+    );
   } else {
     pill = (
       <span className="badge is-over">
@@ -128,7 +135,13 @@ function QrRow({
           <span className="sep" />
           <code>{qr.code}</code>
           <span className="sep" />
-          <span>{qr.status === "paid" ? `Xác nhận lúc ${qr.paidAt ? formatPaymentDateFull(qr.paidAt) : ""}` : `Tạo ${qr.createdAt}`}</span>
+          <span>{qr.status === "paid" ? `Xác nhận lúc ${qr.paidAt ? formatPaymentDateFull(qr.paidAt) : ""}` : `Tạo ${qr.createdAt ? formatPaymentDateFull(qr.createdAt) : ""}`}</span>
+          {qr.status === "rejected" && qr.rejectReason && (
+            <>
+              <span className="sep" />
+              <span style={{ color: "var(--danger)", fontStyle: "italic" }}>Lý do: {qr.rejectReason}</span>
+            </>
+          )}
           {import.meta.env.DEV && qr.status !== "paid" && (qr.billImage || qr.bill) && (
             <>
               <span className="sep" />
@@ -194,7 +207,7 @@ function AddPaymentForm({
 }) {
   const [method, setMethod] = useState<PaymentMethod>("qr");
   const [amount, setAmount] = useState("");
-  const [bank, setBank] = useState("MB Bank");
+  const [bank, setBank] = useState(BANK_ACCOUNTS[0].alias);
   const [cardLast4, setCardLast4] = useState("");
   const [installmentMonths, setInstallmentMonths] = useState("6");
   const [cashier, setCashier] = useState("");
@@ -272,11 +285,9 @@ function AddPaymentForm({
           <div className="field" style={{ flex: 1, minWidth: 180 }}>
             <label>Ngân hàng nhận</label>
             <select value={bank} onChange={(e) => setBank(e.target.value)}>
-              <option>MB Bank</option>
-              <option>Vietcombank</option>
-              <option>Techcombank</option>
-              <option>BIDV</option>
-              <option>VPBank</option>
+              {BANK_ACCOUNTS.map((b) => (
+                <option key={b.alias} value={b.alias}>{b.alias}</option>
+              ))}
             </select>
           </div>
         )}

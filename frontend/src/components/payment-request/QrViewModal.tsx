@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { BANK_INFO } from "../../constants/bank";
 import type { PaymentAttempt, PaymentRequest } from "../../types/paymentRequest";
 import BillUploadZone from "./BillUploadZone";
@@ -5,10 +6,34 @@ import { findCountry } from "./CountryCombo";
 import { Icons } from "./Icons";
 import { fmtPhone, vnd } from "./paymentRequestUtils";
 
-function buildQrPrintUrl(amount: number, content: string): string {
+/** compact2 = QR + logo Napas + logo bank, không có whitespace thừa như print */
+function buildQrUrl(amount: number, content: string): string {
   const { bin, accountNo, accountName } = BANK_INFO;
   const params = new URLSearchParams({ amount: String(amount), addInfo: content, accountName });
-  return `https://img.vietqr.io/image/${bin}-${accountNo}-print.png?${params.toString()}`;
+  return `https://img.vietqr.io/image/${bin}-${accountNo}-compact2.png?${params.toString()}`;
+}
+
+function buildFullBankText(amount: number, transferCode: string): string {
+  return [
+    `Ngân hàng: ${BANK_INFO.displayName}`,
+    `Chủ tài khoản: ${BANK_INFO.accountName}`,
+    `Số tài khoản: ${BANK_INFO.accountNo}`,
+    `Số tiền: ${amount.toLocaleString("vi-VN")} VND`,
+    `Nội dung chuyển khoản: ${transferCode}`,
+  ].join("\n");
+}
+
+async function copyImageToClipboard(url: string): Promise<boolean> {
+  try {
+    const resp = await fetch(url);
+    const blob = await resp.blob();
+    // Ensure PNG mime type for ClipboardItem
+    const pngBlob = blob.type === "image/png" ? blob : new Blob([await blob.arrayBuffer()], { type: "image/png" });
+    await navigator.clipboard.write([new ClipboardItem({ "image/png": pngBlob })]);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function BankInfoRow({ label, value, onCopy }: { label: string; value: string; onCopy?: () => void }) {
@@ -47,17 +72,35 @@ export default function QrViewModal({
   onBillView?: () => void;
   uploadingBill?: boolean;
 }) {
+  const [copyQrState, setCopyQrState] = useState<"idle" | "copying" | "done" | "error">("idle");
+
   if (!qr || !request) return null;
 
   const country = findCountry(request.country);
   const transferCode = qr.transferContent || qr.code;
-  const qrImageUrl = buildQrPrintUrl(qr.amount, transferCode);
+  const qrImageUrl = buildQrUrl(qr.amount, transferCode);
+  const fullBankText = buildFullBankText(qr.amount, transferCode);
 
   const copy = (text: string) => navigator.clipboard?.writeText(text).catch(() => {});
+
+  const handleCopyQr = async () => {
+    setCopyQrState("copying");
+    const ok = await copyImageToClipboard(qrImageUrl);
+    setCopyQrState(ok ? "done" : "error");
+    setTimeout(() => setCopyQrState("idle"), 2500);
+  };
 
   const openCheckout = () => {
     if (qr.checkoutUrl) window.open(qr.checkoutUrl, "_blank", "noopener,noreferrer");
   };
+
+  const copyQrLabel = copyQrState === "copying"
+    ? "Đang copy…"
+    : copyQrState === "done"
+    ? "Đã copy ảnh QR!"
+    : copyQrState === "error"
+    ? "Không hỗ trợ — tải về"
+    : "Copy mã QR";
 
   return (
     <div className="gmv-prototype gmv-prototype-modal-scrim" onClick={onClose}>
@@ -77,7 +120,7 @@ export default function QrViewModal({
         <div className="modal-body" style={{ gap: 18 }}>
           {/* QR + bank details side by side */}
           <div className="qr-detail-card" style={{ alignItems: "flex-start", gap: 20 }}>
-            {/* QR image với logo VietQR PRO + Napas + MB */}
+            {/* QR image — compact2 template: QR chiếm toàn bộ, logo Napas+bank nhỏ ở góc */}
             <div
               style={{
                 flexShrink: 0,
@@ -85,12 +128,14 @@ export default function QrViewModal({
                 borderRadius: 10,
                 overflow: "hidden",
                 background: "#fff",
+                width: 200,
+                height: 200,
               }}
             >
               <img
                 src={qrImageUrl}
                 alt="VietQR"
-                style={{ width: 200, height: 200, display: "block", objectFit: "contain" }}
+                style={{ width: 200, height: 200, display: "block", objectFit: "cover" }}
               />
             </div>
 
@@ -124,18 +169,30 @@ export default function QrViewModal({
           </div>
 
           {/* Action buttons */}
-          <div style={{ display: "flex", gap: 8 }}>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            {/* F2c: Copy ảnh QR */}
             <button
               className="btn btn-outline"
-              style={{ flex: 1, justifyContent: "center" }}
-              onClick={() => copy(transferCode)}
+              style={{ flex: 1, justifyContent: "center", minWidth: 140 }}
+              onClick={copyQrState === "error" ? () => window.open(qrImageUrl, "_blank") : handleCopyQr}
+              disabled={copyQrState === "copying"}
+            >
+              <Icons.QrCode size={14} /> {copyQrLabel}
+            </button>
+
+            {/* F2b: Copy đầy đủ thông tin CK */}
+            <button
+              className="btn btn-outline"
+              style={{ flex: 1, justifyContent: "center", minWidth: 140 }}
+              onClick={() => copy(fullBankText)}
             >
               <Icons.Copy size={14} /> Copy nội dung CK
             </button>
+
             {qr.checkoutUrl ? (
               <button
                 className="btn btn-outline"
-                style={{ flex: 1, justifyContent: "center" }}
+                style={{ flex: 1, justifyContent: "center", minWidth: 140 }}
                 onClick={openCheckout}
               >
                 <Icons.Download size={14} /> Mở link PayOS

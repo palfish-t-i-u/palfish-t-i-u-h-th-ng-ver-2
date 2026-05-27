@@ -37,7 +37,7 @@ export default function BillUploadZone({
           <>Đang tải...</>
         ) : (
           <>
-            <Icons.Receipt size={13} /> Đã có biên lai
+            <Icons.Receipt size={13} /> Đã có ảnh bill
           </>
         )}
       </span>
@@ -76,7 +76,7 @@ export default function BillUploadZone({
       ) : (
         <>
           <Icons.Upload size={13} />
-          <span>Kéo thả / chọn ảnh</span>
+          <span>Up bill</span>
         </>
       )}
       <input

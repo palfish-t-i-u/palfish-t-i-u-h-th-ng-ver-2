@@ -178,6 +178,67 @@ function BillLightbox({ bill, onClose }: { bill: BillImage; onClose: () => void 
   );
 }
 
+const REJECT_REASON_SUGGESTIONS = [
+  "Tiền chưa về ngân hàng",
+  "Sai số tiền (khác sao kê)",
+  "Sai nội dung chuyển khoản",
+  "Bill không rõ / không khớp",
+  "Khác",
+];
+
+function RejectReasonModal({
+  txnLabel,
+  onConfirm,
+  onCancel,
+}: {
+  txnLabel: string;
+  onConfirm: (reason: string) => void;
+  onCancel: () => void;
+}) {
+  const [reason, setReason] = useState("");
+  return (
+    <div className="gmv-prototype gmv-prototype-modal-scrim" onClick={onCancel}>
+      <div className="modal" style={{ width: "min(460px, 100%)" }} onClick={(e) => e.stopPropagation()}>
+        <div className="modal-head">
+          <div>
+            <h3>Lý do từ chối</h3>
+            <div style={{ fontSize: 12, color: "var(--text-3)", marginTop: 2 }}>{txnLabel}</div>
+          </div>
+          <button className="drawer-close" onClick={onCancel}>
+            <Icons.Close size={16} />
+          </button>
+        </div>
+        <div className="modal-body" style={{ gap: 12 }}>
+          <div className="field">
+            <label>Lý do <span style={{ color: "var(--text-3)", fontWeight: 400 }}>(bắt buộc)</span></label>
+            <input
+              list="reject-reasons"
+              value={reason}
+              autoFocus
+              placeholder="Nhập hoặc chọn lý do…"
+              onChange={(e) => setReason(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter" && reason.trim()) { e.preventDefault(); onConfirm(reason.trim()); } }}
+            />
+            <datalist id="reject-reasons">
+              {REJECT_REASON_SUGGESTIONS.map((s) => <option key={s} value={s} />)}
+            </datalist>
+          </div>
+        </div>
+        <div className="modal-foot">
+          <button className="btn btn-outline" onClick={onCancel}>Huỷ bỏ</button>
+          <button
+            className="btn btn-danger"
+            disabled={!reason.trim()}
+            onClick={() => onConfirm(reason.trim())}
+          >
+            <Icons.XCircle size={14} /> Xác nhận từ chối
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function TxnStatusBadge({ status }: { status: TxnDisplayStatus }) {
   const meta = TXN_STATUS_META[status] || TXN_STATUS_META.unsent;
   return (
@@ -199,6 +260,7 @@ export default function ReconciliationTab() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [lightboxBill, setLightboxBill] = useState<BillImage | null>(null);
   const [isBulkConfirming, setIsBulkConfirming] = useState(false);
+  const [pendingReject, setPendingReject] = useState<{ txns: FlatTransaction[]; label: string } | null>(null);
 
   const transactions = useMemo(() => flattenTransactions(requests), [requests]);
 
@@ -253,8 +315,21 @@ export default function ReconciliationTab() {
     await confirmTransaction(t.prId, t.id);
   };
 
-  const handleReject = async (t: FlatTransaction) => {
-    await rejectTransaction(t.prId, t.id);
+  // Opens the reject-reason modal for one or more transactions
+  const handleReject = (t: FlatTransaction, label?: string) => {
+    setPendingReject({ txns: [t], label: label ?? `${t.code} · ${t.prName}` });
+  };
+
+  const handleBulkReject = (txns: FlatTransaction[]) => {
+    if (txns.length === 0) return;
+    const label = txns.length === 1 ? `${txns[0].code} · ${txns[0].prName}` : `${txns.length} giao dịch đã chọn`;
+    setPendingReject({ txns, label });
+  };
+
+  const confirmReject = async (reason: string) => {
+    if (!pendingReject) return;
+    setPendingReject(null);
+    await Promise.all(pendingReject.txns.map((t) => rejectTransaction(t.prId, t.id, reason)));
   };
 
   const tabConfig = [
@@ -401,11 +476,11 @@ export default function ReconciliationTab() {
                   className="btn btn-outline btn-sm"
                   style={{ color: "var(--danger)" }}
                   onClick={() => {
-                    selectedIds.forEach((key) => {
-                      const t = transactions.find((x) => x.key === key);
-                      if (t) void handleReject(t);
-                    });
+                    const txns = [...selectedIds]
+                      .map((key) => transactions.find((x) => x.key === key))
+                      .filter((t): t is FlatTransaction => !!t);
                     setSelectedIds(new Set());
+                    handleBulkReject(txns);
                   }}
                 >
                   <Icons.XCircle size={13} /> Từ chối đã chọn
@@ -589,7 +664,7 @@ export default function ReconciliationTab() {
                               type="button"
                               className="btn-icon-danger"
                               title="Từ chối"
-                              onClick={() => void handleReject(t)}
+                              onClick={() => handleReject(t)}
                             >
                               <Icons.Close size={14} strokeWidth={2.2} />
                             </button>
@@ -835,7 +910,7 @@ export default function ReconciliationTab() {
                         type="button"
                         className="btn btn-outline"
                         style={{ color: "var(--danger)" }}
-                        onClick={() => void handleReject(drawerTxn)}
+                        onClick={() => handleReject(drawerTxn, "Từ chối")}
                       >
                         <Icons.XCircle size={14} /> Từ chối
                       </button>
@@ -854,7 +929,7 @@ export default function ReconciliationTab() {
                       type="button"
                       className="btn btn-outline"
                       style={{ color: "var(--danger)" }}
-                      onClick={() => void handleReject(drawerTxn)}
+                      onClick={() => handleReject(drawerTxn, "Hoàn tác xác nhận")}
                     >
                       <Icons.XCircle size={14} /> Hoàn tác xác nhận
                     </button>
@@ -877,6 +952,13 @@ export default function ReconciliationTab() {
       </aside>
 
       {lightboxBill && <BillLightbox bill={lightboxBill} onClose={() => setLightboxBill(null)} />}
+      {pendingReject && (
+        <RejectReasonModal
+          txnLabel={pendingReject.label}
+          onConfirm={confirmReject}
+          onCancel={() => setPendingReject(null)}
+        />
+      )}
     </div>
   );
 }

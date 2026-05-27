@@ -112,6 +112,7 @@ export function normalizeRequest(req: PaymentRequest): PaymentRequest {
 export function paymentAttemptLabel(payment: PaymentAttempt) {
   if (payment.cancelled) return "Đã huỷ";
   if (payment.status === "paid") return "Đã xác nhận";
+  if (payment.status === "rejected") return "Bị từ chối";
   if (payment.billImage || payment.bill) return "Chờ xác nhận";
   return "Chờ chuyển";
 }

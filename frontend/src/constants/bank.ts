@@ -13,6 +13,42 @@ export const BANK_INFO = {
   branch: import.meta.env.VITE_BANK_BRANCH || "Hoàn Kiếm",
 };
 
+/**
+ * Danh sách tài khoản ngân hàng nhận tiền của PalFish.
+ * Khi thêm tài khoản mới (VD: PalFish HCM), chỉ cần thêm 1 phần tử vào đây.
+ * Dropdown "Ngân hàng nhận" trong AddPaymentForm sẽ tự cập nhật.
+ */
+export interface BankAccount {
+  alias: string;      // Hiển thị trong dropdown, VD: "PalFish Hà Nội - MB Bank"
+  bin: string;        // Napas BIN, dùng để build VietQR URL
+  accountNo: string;  // Số tài khoản
+  accountName: string; // Tên chủ tài khoản (dùng cho VietQR)
+  displayName: string; // Tên ngân hàng đầy đủ
+}
+
+export const BANK_ACCOUNTS: BankAccount[] = [
+  {
+    alias: "PalFish Hà Nội - MB Bank",
+    bin: "970422",
+    accountNo: "1680011668899",
+    accountName: "CONG TY TNHH TRUONG QUOC TE PALFISH SINGAPORE - VIETNAM",
+    displayName: "Ngân hàng TMCP Quân Đội (MB Bank)",
+  },
+  // PalFish HCM — thêm vào đây khi có thông tin từ Hiếu
+  // {
+  //   alias: "PalFish HCM - MB Bank",
+  //   bin: "970422",
+  //   accountNo: "TODO",
+  //   accountName: "CONG TY TNHH TRUONG QUOC TE PALFISH SINGAPORE - VIETNAM",
+  //   displayName: "Ngân hàng TMCP Quân Đội (MB Bank)",
+  // },
+];
+
+/** Tìm tài khoản theo alias, fallback về tài khoản đầu tiên */
+export function findBankAccount(alias: string): BankAccount {
+  return BANK_ACCOUNTS.find((b) => b.alias === alias) ?? BANK_ACCOUNTS[0];
+}
+
 export function buildVietQrUrl(amount: number, infoCode: string): string {
   const { bin, accountNo, accountName } = BANK_INFO;
   const params = new URLSearchParams({
