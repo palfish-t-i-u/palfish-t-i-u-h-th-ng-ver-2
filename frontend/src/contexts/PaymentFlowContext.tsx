@@ -221,13 +221,14 @@ export function PaymentFlowProvider({
           return normalizeRequest({ ...r, ...prFromBe, payments: updatedPayments });
         });
         setApiNote("");
+        void loadData({ silent: true });
         return confirmed;
       } catch {
         setApiNote("Máy chủ thêm lần thanh toán chưa sẵn sàng; giao diện cập nhật tạm.");
         return localPayment;
       }
     },
-    [requests, updateRequest]
+    [requests, updateRequest, loadData]
   );
 
   const confirmTransaction = useCallback(

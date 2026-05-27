@@ -167,9 +167,15 @@ export default function PaymentRequestTable({
                   </td>
                   <td style={{ textAlign: "center" }}>
                     {arByPrId[p.id] ? (
-                      <span className="badge is-done" title={`Active Request: ${arByPrId[p.id].id}`}>
-                        <Icons.Check size={11} strokeWidth={2.5} /> Đã tạo
-                      </span>
+                      arByPrId[p.id].uids.some((u) => u.courses.some((c) => !!c.orderId)) ? (
+                        <span className="badge is-done" title={`Active Request: ${arByPrId[p.id].id}`}>
+                          <Icons.Check size={11} strokeWidth={2.5} /> Đã tạo
+                        </span>
+                      ) : (
+                        <span className="badge is-over" title={`Active Request: ${arByPrId[p.id].id} — chờ Order ID`}>
+                          <Icons.Clock size={11} /> Đang tạo
+                        </span>
+                      )
                     ) : (
                       <span className="badge is-pending">— Chưa tạo</span>
                     )}

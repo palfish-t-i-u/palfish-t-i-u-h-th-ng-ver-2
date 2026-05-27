@@ -130,6 +130,18 @@ export default function CreatePaymentRequestModal({
           </div>
 
           <div className="field">
+            <label>Địa chỉ khách hàng</label>
+            <VietnamAddressFields
+              province={form.province}
+              ward={form.ward}
+              address={form.address}
+              onProvinceChange={(v) => set("province", v)}
+              onWardChange={(v) => set("ward", v)}
+              onAddressChange={(v) => set("address", v)}
+            />
+          </div>
+
+          <div className="field">
             <label>Email khách hàng</label>
             <input
               type="email"
@@ -140,18 +152,6 @@ export default function CreatePaymentRequestModal({
             <div style={{ fontSize: 11.5, color: "var(--text-3)", lineHeight: 1.45, marginTop: 4 }}>
               Email khách hàng — TH khách cần hóa đơn → Thông tin này sẽ được tổng hợp vào mục &quot;Thông tin xuất hóa đơn&quot; trong tab &quot;Xuất hóa đơn&quot;
             </div>
-          </div>
-
-          <div className="field">
-            <label>Địa chỉ khách hàng</label>
-            <VietnamAddressFields
-              province={form.province}
-              ward={form.ward}
-              address={form.address}
-              onProvinceChange={(v) => set("province", v)}
-              onWardChange={(v) => set("ward", v)}
-              onAddressChange={(v) => set("address", v)}
-            />
           </div>
 
           <div className="field">

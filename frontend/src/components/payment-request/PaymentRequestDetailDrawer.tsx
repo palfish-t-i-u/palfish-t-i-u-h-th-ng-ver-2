@@ -12,6 +12,7 @@ import VietnamAddressFields from "./VietnamAddressFields";
 import PaymentRequestStatusBadge from "./PaymentRequestStatusBadge";
 import {
   fmtPhone,
+  formatPaymentDateFull,
   nextPaymentCode,
   nowStamp,
   paymentAttemptLabel,
@@ -127,8 +128,8 @@ function QrRow({
           <span className="sep" />
           <code>{qr.code}</code>
           <span className="sep" />
-          <span>{qr.status === "paid" ? `Xác nhận lúc ${qr.paidAt || ""}` : `Tạo ${qr.createdAt}`}</span>
-          {qr.status !== "paid" && (qr.billImage || qr.bill) && (
+          <span>{qr.status === "paid" ? `Xác nhận lúc ${qr.paidAt ? formatPaymentDateFull(qr.paidAt) : ""}` : `Tạo ${qr.createdAt}`}</span>
+          {import.meta.env.DEV && qr.status !== "paid" && (qr.billImage || qr.bill) && (
             <>
               <span className="sep" />
               <span
@@ -408,7 +409,7 @@ export default function PaymentRequestDetailDrawer({
 
   const country = findCountry(request.country);
   const remaining = Math.max(0, request.target - request.received);
-  const canCancel = request.state !== "cancelled" && request.doneCount === 0;
+  const canCancel = request.state !== "cancelled" && request.doneCount === 0 && !activeRequestId;
   const ready = request.state === "done" || request.state === "over";
   const hasActiveRequest = !!activeRequestId;
 
@@ -561,6 +562,12 @@ export default function PaymentRequestDetailDrawer({
                   <div className="info-label">Số nhà, đường</div>
                   <div className="info-value">{request.address || "—"}</div>
                 </div>
+                {request.email && (
+                  <div className="info-cell">
+                    <div className="info-label">Email</div>
+                    <div className="info-value">{request.email}</div>
+                  </div>
+                )}
                 <div className="info-cell">
                   <div className="info-label">Tổng tiền dự kiến</div>
                   <div className="info-value money">{vnd(request.target)}</div>
