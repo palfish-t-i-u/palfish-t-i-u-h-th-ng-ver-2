@@ -48,6 +48,31 @@ class PatchCourseOrderBody(BaseModel):
     order_id: str = Field(..., min_length=1)
 
 
+class ActiveRequestPatchCoursePayload(BaseModel):
+    code: str = Field(..., min_length=1)
+    name: str = ""
+    amount: float | int = 0
+    order_id: str | None = ""
+    invoiced: bool | None = False
+    invoice_id: str | None = ""
+    invoiced_at: str | None = ""
+    tax_invoice_code: str | None = ""
+    tax_product_code: str | None = ""
+
+
+class ActiveRequestPatchUidPayload(BaseModel):
+    uid: str = Field(..., min_length=1)
+    phone: str | None = ""
+    country: str | None = "VN"
+    courses: list[ActiveRequestPatchCoursePayload] = Field(default_factory=list)
+
+
+class ActiveRequestPatchBody(BaseModel):
+    customer_name: str | None = None
+    info_confirmed: bool | None = None
+    uids_data: list[ActiveRequestPatchUidPayload] | None = None
+
+
 class IssueCourseInvoiceBody(BaseModel):
     customer_type: str | None = "individual"
     name: str | None = None
@@ -202,6 +227,7 @@ def _serialize_ar(row: dict[str, Any], pr: dict[str, Any] | None = None) -> dict
         "customer_name": row.get("customer_name") or "",
         "uids_data": uids_data,
         "status": row.get("status") or "pending_order",
+        "info_confirmed_at": row.get("info_confirmed_at"),
         "created_at": row.get("created_at"),
         "updated_at": row.get("updated_at"),
         "total_amount": total_amount,
@@ -787,6 +813,62 @@ def register_activation_routes(app, supabase_factory):
         row = res.data[0]
         pr = _fetch_payment_request(sb, str(row.get("pr_id") or "")) if row.get("pr_id") else None
         return _serialize_ar(row, pr)
+
+    @app.patch("/api/v1/active-requests/{ar_id}", tags=["Activation"])
+    def patch_active_request(ar_id: str, body: ActiveRequestPatchBody):
+        """
+        Patch Active Request at AR-level.
+        Supports:
+        - customer_name
+        - info_confirmed (writes info_confirmed_at timestamp / clear)
+        - uids_data (replace full JSONB block, recompute status)
+        """
+        sb = supabase_factory()
+        if not sb:
+            raise HTTPException(503, "Supabase chua cau hinh")
+
+        try:
+            res = sb.table("active_requests").select("*").eq("id", ar_id).limit(1).execute()
+        except Exception as exc:
+            raise HTTPException(500, f"Khong doc active_requests: {exc}") from exc
+        if not res.data:
+            raise HTTPException(404, f"Active Request {ar_id} khong ton tai")
+
+        current = res.data[0]
+        patch: dict[str, Any] = {}
+
+        if body.customer_name is not None:
+            customer_name = str(body.customer_name or "").strip()
+            if not customer_name:
+                raise HTTPException(400, "customer_name khong duoc rong")
+            patch["customer_name"] = customer_name
+
+        if body.uids_data is not None:
+            if not body.uids_data:
+                raise HTTPException(400, "uids_data phai co it nhat mot uid")
+            uids_data = [uid.model_dump() for uid in body.uids_data]
+            patch["uids_data"] = uids_data
+            patch["status"] = _derive_status(uids_data)
+
+        if body.info_confirmed is not None:
+            patch["info_confirmed_at"] = (
+                datetime.now(timezone.utc).isoformat() if body.info_confirmed else None
+            )
+
+        if not patch:
+            raise HTTPException(400, "Khong co du lieu de cap nhat")
+
+        patch["updated_at"] = datetime.now(timezone.utc).isoformat()
+
+        try:
+            upd = sb.table("active_requests").update(patch).eq("id", ar_id).execute()
+        except Exception as exc:
+            raise HTTPException(500, f"Khong cap nhat active_requests: {exc}") from exc
+
+        saved = (upd.data or [{**current, **patch}])[0]
+        merged = {**current, **saved, **patch}
+        pr_map = _fetch_prs_by_ids(sb, [str(merged.get("pr_id") or "")])
+        return _serialize_ar(merged, pr_map.get(str(merged.get("pr_id") or "")))
 
     @app.post("/api/v1/active-requests", tags=["Activation"])
     def create_standalone_active_request(payload: Any = Body(...)):
