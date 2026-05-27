@@ -1,241 +1,218 @@
 # Handoff Giang / Đức — Feedback Hiếu 27/05/2026
 
-> **Người viết:** Minh · **Ngày:** 2026-05-27  
-> **Branch:** `ui/ux` @ `2f936840` (repo `palfish-t-i-u-h-th-ng-ver-2`)  
-> **Backend repo:** `palfish-gmv-manager` (Render `palfish-gmv-api`)  
+> **Người viết:** Minh · **Cập nhật lần cuối:** 2026-05-27 (tối — sau khi pull `877dbce`)
+> **Branch FE:** `ui/ux` (đã merge `877dbce` từ main)
+> **Backend repo:** `palfish-gmv-manager` (Render `palfish-gmv-api`)
 > **Supabase ref:** `jozcvbbypwvzaefteoxn`
 
-Tài liệu này tóm gọn những việc **Giang/Đức cần làm** sau khi Hiếu review app ngày 27/05. Tất cả items FE đã có hoặc Minh sẽ làm — phần dưới chỉ là BE/DB.
+---
+
+## Tóm tắt trạng thái
+
+| Đợt | Việc | Status |
+|-----|------|--------|
+| **Phase A (FE)** | 8 quick wins + BUG-01 + B1-9 QR modal | ✅ Đã ship `a9c50b7` |
+| **Phase A2 (FE)** | 10 fix đợt 2 (F2/F3/F4/F6/F7) | ✅ Đã ship `042f936` |
+| **B-01 (BE)** | PATCH `/api/v1/payment-requests/{id}` — lưu edit PR vào DB | ✅ **Đức đã làm xong** `877dbce` |
+| **B-02 (BE)** | PATCH AR + `info_confirmed_at` | 🔴 **Tối nay — Đức làm tiếp** (xem chi tiết bên dưới) |
+| **Task 2 (FE)** | Mini-window "Kích hoạt khoá học" inline trong PR drawer | 🟡 Code xong, chờ commit |
 
 ---
 
-## Bối cảnh nhanh (đọc trong 2 phút)
+## B-01 đã làm xong — chi tiết để Minh kết nối FE (đã xong tự động)
 
-Hiếu test bản deploy `2f936840` và phát hiện **dữ liệu bị reset** sau khi sửa. Root cause đã được xác nhận qua code review:
+Đức đã thêm full stack:
+- BE `PATCH /api/v1/payment-requests/{pr_id}` accept partial body (cả tên field tiếng Anh và alias tiếng Việt)
+- FE `endpoints.paymentRequests.update()` 
+- FE `handleUpdatePr` đã optimistic update + rollback on error + spinner "Đang lưu..."
 
-> `updateRequest` và `updateActiveRequest` trong `PaymentFlowContext.tsx` **chỉ ghi local state**, không gọi API nào. Khi poll 12s fire hoặc user F5, dữ liệu về như cũ từ DB.
-
-Có **2 endpoint PATCH chưa tồn tại** — đây là việc quan trọng nhất cần làm ngay.
-
----
-
-## Việc cần làm — ưu tiên từ trên xuống
-
-### 🔴 P0 — Làm trước (data integrity)
-
-#### B-01 · `PATCH /api/v1/payment-requests/{id}`
-
-**Vấn đề:** Sales sửa số tiền / địa chỉ / tên KH → nhấn "Lưu thay đổi" → dữ liệu reset về cũ sau vài giây.
-
-**Root cause:** `updateRequest()` trong `PaymentFlowContext.tsx:163` chỉ làm:
-```python
-# Tương đương: không có API call nào. FE chỉ setState.
-```
-
-**Cần làm (BE):**
-```
-File: backend/payment_request_routes.py
-
-Thêm route:
-  PATCH /api/v1/payment-requests/{pr_id}
-  Body (partial update, tất cả optional):
-    {
-      "target_amount": float,
-      "customer_name": str,
-      "customer_phone": str,
-      "customer_address": str,
-      "email": str,
-      "notes": str
-    }
-  Auth: Bearer JWT (Sale chỉ sửa PR của mình; Manager+ sửa tất cả)
-  Response: serialized PaymentRequest object (dùng lại _serialize_payment_request)
-```
-
-**Schema:** Bảng `payment_requests` — các cột này đã có (xem `supabase_schema_patch_payment_requests.sql`). Không cần thêm cột mới.
-
-**FE kết nối:** Minh sẽ thêm `endpoints.paymentRequests.update(id, body)` vào `api.ts` và gọi từ `updateRequest()` sau khi Giang/Đức deploy.
+**Đã verify trên runtime**: PATCH request fired thành công khi sửa note PR và bấm "Lưu thay đổi" (request ID 5808.575).
 
 ---
 
-#### B-02 · `PATCH /api/v1/active-requests/{id}` + `info_confirmed_at`
+## 🔴 B-02 — Việc Đức cần làm tối nay
 
-**Vấn đề:** Khi Sales cập nhật UID list hoặc course trong bước B3 (Kích hoạt khóa học), thay đổi bị ghi đè bởi poll 12s vì không lưu DB.
+### Việc cần làm (đơn giản)
 
-**Root cause:** `updateActiveRequest()` trong `PaymentFlowContext.tsx:167` tương tự B-01.
+Sửa AR trong DB khi:
+1. **Thu Hiền bấm "Xác nhận thông tin"** trên một Active Request — phải lưu thời điểm xác nhận vào DB. Sau đó nút "Yêu cầu xuất HĐ B4" mới active.
+2. **Thu Hiền đổi tên khách hàng** trên AR (vì tên trên hoá đơn có thể khác tên trong PR — ví dụ KH đăng ký bằng tên gọi nhưng xuất HĐ bằng tên công ty).
+3. **Sales/Thu Hiền đổi gói khoá học** của một UID trong AR (ví dụ chọn nhầm gói lúc tạo, đổi sang gói khác).
 
-**Cần làm (BE):**
-```
-File: backend/activation_routes.py
+> Lưu ý: việc **Thu Hiền điền Order ID** từng course đã có sẵn endpoint rồi (`PATCH /active-requests/{ar_id}/courses/{course_code}`), không phải làm lại.
 
-Thêm route:
-  PATCH /api/v1/active-requests/{ar_id}
-  Body (partial):
-    {
-      "uids": list[str],             # danh sách UID học sinh
-      "course_code": str,
-      "customer_name": str,
-      "notes": str,
-      "info_confirmed": bool         # Thu Hiền xác nhận thông tin trước khi xuất HĐ
-    }
-  Auth: JWT — Sale chỉ sửa AR của mình; info_confirmed chỉ Ops/System
-  Response: serialized ActiveRequest object (thêm info_confirmed_at: timestamptz)
-```
+### Cách xử lý (chi tiết)
 
-**Schema — thêm cột:**
+#### Phần 1 — Schema migration
+
 ```sql
+-- File: docs/supabase_schema_patch_active_requests_info_confirmed.sql
 ALTER TABLE active_requests
   ADD COLUMN IF NOT EXISTS info_confirmed_at timestamptz;
 NOTIFY pgrst, 'reload schema';
 ```
 
-**Luồng nghiệp vụ:** Thu Hiền mở AR drawer → click "Mở PR" để xem thông tin KH → quay lại AR → click "Xác nhận thông tin" → FE gọi PATCH với `info_confirmed: true` → nút "Yêu cầu xuất HĐ B4" mới active.
+Chạy trên Supabase SQL Editor project `jozcvbbypwvzaefteoxn`.
 
-**Schema:** Bảng `active_requests` — xem `supabase_schema_patch_active_requests.sql`.
+#### Phần 2 — Endpoint mới `PATCH /api/v1/active-requests/{ar_id}`
 
----
+File: `backend/activation_routes.py`
 
-### 🟡 P1 — Làm trong sprint này
-
-#### B-03 · Multi-bill upload
-
-**Vấn đề:** Hiện chỉ upload được 1 ảnh biên lai. Các đơn tiền mặt / trả góp có nhiều biên lai.
-
-**Cần làm:**
-
-1. **Schema migration** — tạo file `docs/supabase_schema_patch_payment_lines_multi_bill.sql`:
-```sql
--- Thêm cột mảng; giữ bill_image cũ để không break
-ALTER TABLE payment_lines
-  ADD COLUMN IF NOT EXISTS bill_images text[] DEFAULT '{}';
-
--- Migrate dữ liệu cũ sang cột mới (optional, chạy 1 lần)
-UPDATE payment_lines
-  SET bill_images = ARRAY[bill_image]
-  WHERE bill_image IS NOT NULL AND bill_images = '{}';
-
-NOTIFY pgrst, 'reload schema';
-```
-
-2. **API** — cập nhật `upload_payment_line_bill` trong `payment_request_routes.py`:
 ```python
-# Thay vì SET bill_image = url, thay bằng:
-# array_append(bill_images, url)
-# Trả về updated row với bill_images list
+class ActiveRequestPatch(BaseModel):
+    # AR-level fields
+    customer_name: str | None = None
+    info_confirmed: bool | None = None  # True → set info_confirmed_at = now(); False → clear
+
+    # Course-level edits (alternative khi cần đổi gói khoá học)
+    # Nếu không truyền thì giữ nguyên uids_data
+    uids_data: list[dict] | None = None
+
+@app.patch("/api/v1/active-requests/{ar_id}", tags=["Activation"])
+def patch_active_request(ar_id: str, body: ActiveRequestPatch):
+    sb = supabase_factory()
+    if not sb:
+        raise HTTPException(503, "Supabase chưa cấu hình")
+
+    # Đọc row hiện tại
+    res = sb.table("active_requests").select("*").eq("id", ar_id).limit(1).execute()
+    if not res.data:
+        raise HTTPException(404, f"Active Request {ar_id} không tồn tại")
+    current = res.data[0]
+
+    patch: dict[str, Any] = {}
+
+    if body.customer_name is not None:
+        name = body.customer_name.strip()
+        if not name:
+            raise HTTPException(400, "customer_name không được rỗng")
+        patch["customer_name"] = name
+
+    if body.uids_data is not None:
+        if not isinstance(body.uids_data, list):
+            raise HTTPException(400, "uids_data phải là array")
+        patch["uids_data"] = body.uids_data
+        patch["status"] = _derive_status(body.uids_data)
+
+    if body.info_confirmed is not None:
+        patch["info_confirmed_at"] = _iso_now() if body.info_confirmed else None
+
+    if not patch:
+        raise HTTPException(400, "Không có dữ liệu để cập nhật")
+
+    patch["updated_at"] = _iso_now()
+
+    try:
+        upd = sb.table("active_requests").update(patch).eq("id", ar_id).execute()
+    except Exception as exc:
+        raise HTTPException(500, f"Không cập nhật được active_requests: {exc}") from exc
+
+    saved = (upd.data or [{**current, **patch}])[0]
+    merged = {**current, **saved}
+    pr_map = _fetch_prs_by_ids(sb, [str(merged.get("pr_id") or "")])
+    return _serialize_ar(merged, pr_map.get(str(merged.get("pr_id") or "")))
 ```
 
-3. **Serializer** — `_serialize_payment_line` trả thêm `bill_images: list[str]`.
+#### Phần 3 — Serializer trả thêm `info_confirmed_at`
 
-**FE:** Minh sẽ update `BillUploadZone` cho `<input multiple>` sau khi API sẵn.
-
----
-
-#### B-04 · Cập nhật danh sách ngân hàng
-
-**Vấn đề:** Bank list hiện là `["MB Bank","Vietcombank","Techcombank","BIDV","VPBank"]` — không phân biệt HN/HCM, gây nhầm lẫn cho Sales.
-
-**Cần làm:**
-- Giang/Đức confirm danh sách tên chính xác với Hiếu (F2705-H-01 trong TODO)
-- Sau khi có list, update hardcode trong `PaymentRequestDetailDrawer.tsx` hoặc expose qua endpoint `GET /api/v1/config/banks`
-
-**Tạm thời:** Đề xuất format: `"PalFish HN — MB Bank"`, `"PalFish HCM — MB Bank"`, v.v.
-
----
-
-### 🟢 P2 — Backlog (sau khi P0/P1 xong)
-
-#### B-05 · `payment_lines.downloaded_at`
-
-**Vấn đề:** Khi Kế toán tải file thuế B4, hệ thống không track đơn nào đã được tải.
-
-**Cần làm:**
-```sql
-ALTER TABLE payment_lines
-  ADD COLUMN IF NOT EXISTS downloaded_at timestamptz;
-```
-Endpoint: `POST /api/v1/invoice-courses/{courseCode}/mark-downloaded` (hoặc PATCH batch).
-
----
-
-#### Bug · Email KH không trả về từ API
-
-**Vấn đề:** Khi Sales tạo PR có nhập Email, nhưng PR detail drawer không hiển thị email. Form tạo gửi `email` lên BE nhưng serializer không trả về.
-
-**Cần làm:**
-1. Verify cột `payment_requests.email text` đã tồn tại trên prod (xem `supabase_schema_patch_payment_requests_email.sql`)
-2. Nếu chưa có → chạy SQL patch đó
-3. Đảm bảo `_serialize_payment_request` trả `"email": row.get("email")` trong response
-4. Verify `GET /api/v1/payment-requests` và `GET /api/v1/payment-requests/{id}` đều có field `email`
-
-**FE:** Minh sẽ add hiển thị `pr.email` trong drawer sau khi BE confirm trả đúng.
-
----
-
-## Checklist ops — SQL patches cần chạy trên prod
-
-Sau khi code xong, chạy theo thứ tự trên **Supabase SQL Editor** (project `jozcvbbypwvzaefteoxn`):
-
-| # | File | Mục đích | Ai chạy |
-|---|------|----------|---------|
-| 1 | `supabase_schema_patch_active_requests_nullable_pr.sql` | Standalone AR (chưa chạy prod) | Đức |
-| 2 | `supabase_schema_patch_payment_requests_email.sql` | Email field trên PR | Đức |
-| 3 | `supabase_schema_patch_payment_lines_multi_bill.sql` | Multi-bill (tạo mới) | Giang |
-| 4 | `supabase_schema_patch_payment_requests_email.sql` | Email field PR — verify đã chạy chưa | Đức |
-| 5 | SQL inline: `ALTER TABLE active_requests ADD COLUMN info_confirmed_at timestamptz` | Thu Hiền confirm AR trước xuất HĐ | Đức |
-
-> Sau mỗi patch: `NOTIFY pgrst, 'reload schema';`
-
----
-
-## Context kỹ thuật cần biết
-
-### Luồng B1–B4 (Payment Flow)
-
-```
-B1: Tạo Payment Request (PR)
-  └── Sales tạo PR với tổng tiền + thông tin KH
-
-B2: Reconciliation — thêm lần thanh toán (Payment Lines)
-  ├── QR (PayOS) — tự động confirm qua webhook
-  └── Cash/Card — pending đến khi Kế toán confirm tay
-
-B3: Activation — tạo Active Request (AR)
-  └── Gắn AR vào PR; nhập UID học sinh + course code
-
-B4: Invoice — xuất hóa đơn
-  └── Kế toán xuất 3 file Excel ZIP
+Trong `_serialize_ar()` (cùng file), thêm field vào dict trả về:
+```python
+"info_confirmed_at": row.get("info_confirmed_at"),
 ```
 
-### Files quan trọng (FE)
+#### Phần 4 — FE kết nối (Minh sẽ làm sau khi Đức merge)
 
-| File | Vai trò |
-|------|---------|
-| `frontend/src/contexts/PaymentFlowContext.tsx` | State trung tâm — `updateRequest`, `updateActiveRequest`, `handleAddPayment` |
-| `frontend/src/lib/api.ts` | Tất cả endpoint definitions — FE sẽ thêm `.update()` cho PR và AR |
-| `frontend/src/components/payment-request/PaymentRequestDetailDrawer.tsx` | UI B1/B2 — nơi Sales sửa thông tin |
-| `frontend/src/components/ActivationTab.tsx` | UI B3 — nơi Sales nhập UID/course |
+- `types/paymentRequest.ts`: thêm `info_confirmed_at?: string | null` vào `ActiveRequestApiRow` + `ActiveRequest`
+- `lib/api.ts`: thêm `endpoints.activeRequests.update(arId, body)` gọi PATCH
+- `PaymentFlowContext.tsx`: 
+  - `updateActiveRequest()` chuyển từ local-only → gọi API thật, optimistic + rollback giống `handleUpdatePr` mà Đức đã làm
+  - Thêm `confirmActiveRequestInfo(arId)` riêng cho Thu Hiền click "Xác nhận thông tin"
 
-### Files quan trọng (BE)
+### Cách Đức tự test (curl)
 
-| File | Vai trò |
-|------|---------|
-| `backend/payment_request_routes.py` | Routes B1/B2 — thêm PATCH PR ở đây |
-| `backend/activation_routes.py` | Routes B3 — thêm PATCH AR ở đây |
-| `backend/tax_export.py` | Export XLSX B4 |
+Sau khi deploy lên Render:
 
-### Auth / RBAC
+```bash
+# Test 1: Thu Hiền xác nhận info
+curl -X PATCH https://palfish-gmv-api.onrender.com/api/v1/active-requests/AR-2026-0014 \
+  -H "Content-Type: application/json" \
+  -d '{"info_confirmed": true}'
+# Response phải có "info_confirmed_at": "2026-05-27T..."
 
-- JWT từ Supabase; decode trong `rbac.py`
-- Sale chỉ thao tác trên dữ liệu của mình (`created_by = user_id`)
-- Manager+ có thể thao tác tất cả
-- `SYSTEM_ADMIN_EMAILS` trong Render env = role System
+# Test 2: Đổi tên KH
+curl -X PATCH https://palfish-gmv-api.onrender.com/api/v1/active-requests/AR-2026-0014 \
+  -H "Content-Type: application/json" \
+  -d '{"customer_name": "Tên mới abc"}'
+
+# Test 3: Đổi gói khoá học
+curl -X PATCH https://palfish-gmv-api.onrender.com/api/v1/active-requests/AR-2026-0014 \
+  -H "Content-Type: application/json" \
+  -d '{
+    "uids_data": [
+      {
+        "uid": "12312312",
+        "phone": "232131",
+        "country": "VN",
+        "courses": [
+          {"code": "CC-0034-001", "name": "2/W- NEW 96 US-UK+5 HN", "amount": 100000, "order_id": "12312312"}
+        ]
+      }
+    ]
+  }'
+```
+
+### Ping Minh khi xong
+
+Đức push lên main + Render auto deploy → ping Minh. Minh sẽ:
+1. Pull về, kết nối `endpoints.activeRequests.update()` + sửa `updateActiveRequest` trong context
+2. Thêm nút "Xác nhận thông tin" trong AR drawer (tab Kích hoạt khoá học của Thu Hiền) — nút B4 "Yêu cầu xuất HĐ" sẽ disable cho đến khi `info_confirmed_at` có giá trị
+3. Mở rộng Task 2 mini-window: cho phép Sales đổi gói khoá học inline trong PR drawer
 
 ---
 
-## Communication
+## 🟡 Task 2 — Việc Minh đang làm
 
-Khi xong B-01 + B-02, ping Minh để kết nối FE. FE sẽ test ngay trên `ui/ux` branch.
+Mini-window "Kích hoạt khoá học" inline trong PR drawer. Không cần BE mới — dùng `POST /api/v1/payment-requests/{pr_id}/active-requests` đã có sẵn.
 
-Nếu cần thêm context về schema hay luồng FE, đọc:
-- `docs/FE_HANDOFF_BE_PROMPTS.md` — handoff chi tiết từ sprint trước
-- `docs/MODULE_3_4.md` — spec B3/B4 đầy đủ
-- `docs/PROJECT.md` — tổng quan kiến trúc
+**Phụ thuộc:** sau khi Đức xong B-02 trên, Minh thêm phần cho phép Sales chọn lại gói nếu chọn nhầm (gọi PATCH AR mới).
+
+---
+
+## Việc còn lại sau tối nay
+
+| ID | Việc | Người làm | Trạng thái |
+|----|------|-----------|-----------|
+| B-03 | Multi-bill upload (schema `bill_images text[]` + endpoint upload N file) | Giang + Đức | ⏸ Hold đến sau preview với team |
+| B-04 | Confirm account HCM cho dropdown bank | Hiếu | Đợi input |
+| B-05 | `payment_lines.downloaded_at` track file thuế đã tải | Giang | P2 backlog |
+| BUG-02 | Nút "Xác nhận thông tin" cho Thu Hiền | Minh | Sẽ làm sau khi B-02 xong |
+
+---
+
+## SQL patches cần chạy prod tối nay
+
+| # | SQL | Ai chạy | Mục đích |
+|---|-----|---------|---------|
+| 1 | `ALTER TABLE active_requests ADD COLUMN IF NOT EXISTS info_confirmed_at timestamptz; NOTIFY pgrst, 'reload schema';` | Đức (kèm B-02) | Thu Hiền xác nhận thông tin |
+
+> Phải `NOTIFY pgrst, 'reload schema'` sau mỗi ALTER thì PostgREST mới thấy cột mới.
+
+---
+
+## Files quan trọng để Đức tham khảo khi làm B-02
+
+| File | Lý do |
+|------|-------|
+| `backend/activation_routes.py:834-901` | Tham khảo `patch_active_request_course` đã có sẵn — pattern dùng RPC + Python fallback |
+| `backend/activation_routes.py:522` | `_save_active_request` — helper insert/update, có thể dùng lại |
+| `backend/activation_routes.py` (`_derive_status`) | Hàm tính `status` từ uids_data — cần gọi lại khi update uids_data |
+| `backend/activation_routes.py` (`_serialize_ar`) | Serializer — thêm `info_confirmed_at` ở đây |
+| `backend/payment_request_routes.py:735-790` (commit `877dbce`) | Tham khảo pattern PATCH PR mà Đức vừa làm — có optimistic + recompute totals |
+
+---
+
+## Communication tối nay
+
+1. Đức xong B-02 → push lên `main` → ping Minh
+2. Minh pull về, kết nối FE (`updateActiveRequest` → API thật) → push lên `ui/ux`
+3. Demo cho Hiếu/Thu Hiền vào preview Vercel sau khi Vercel auto deploy

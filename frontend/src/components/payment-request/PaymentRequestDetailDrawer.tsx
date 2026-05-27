@@ -354,6 +354,108 @@ interface DraftPr {
   note: string;
 }
 
+/**
+ * AR mini-window cho Sales view — gọn nhẹ, hiện ngay trong drawer PR.
+ * Sales chỉ cần thấy: AR đã được tạo, danh sách UID + course, Order ID (read-only sau khi BE điền).
+ * KHÔNG có nút "Xác nhận thông tin" của Thu Hiền (đó là nghiệp vụ riêng ở tab Kích hoạt khoá học).
+ * Khi B-02 (PATCH AR) sẵn sàng → Sales mới được edit course/Order ID inline ở đây.
+ */
+function ActiveRequestMiniCard({ ar }: { ar: import("../../types/paymentRequest").ActiveRequest }) {
+  const courseCount = ar.uids.reduce((sum, u) => sum + u.courses.length, 0);
+  const filledOrderIds = ar.uids.reduce(
+    (sum, u) => sum + u.courses.filter((c) => !!c.orderId).length,
+    0
+  );
+  const allFilled = courseCount > 0 && filledOrderIds === courseCount;
+
+  return (
+    <div className="panel">
+      <div className="panel-head">
+        <h4>
+          <Icons.CheckSquare size={15} /> Kích hoạt khoá học
+          <span className="num-pill">{ar.id}</span>
+        </h4>
+        <span
+          className={`badge ${allFilled ? "is-done" : "is-over"}`}
+          title={allFilled ? "Tất cả course đã có Order ID" : "Đang chờ điền Order ID"}
+        >
+          {allFilled ? <Icons.Check size={11} strokeWidth={2.5} /> : <Icons.Clock size={11} />}{" "}
+          {filledOrderIds}/{courseCount} Order ID
+        </span>
+      </div>
+      <div style={{ padding: "8px 0", display: "flex", flexDirection: "column", gap: 10 }}>
+        {ar.uids.map((u, uIdx) => (
+          <div
+            key={`${u.uid}-${uIdx}`}
+            style={{
+              border: "1px solid var(--border)",
+              borderRadius: 8,
+              padding: 10,
+              background: "var(--surface-2)",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+              <span style={{ fontWeight: 600, fontSize: 13 }}>UID {u.uid || "—"}</span>
+              <span style={{ fontSize: 12, color: "var(--text-3)" }}>
+                {u.country} · {u.phone}
+              </span>
+            </div>
+            {u.courses.length === 0 ? (
+              <div style={{ fontSize: 12, color: "var(--text-3)", fontStyle: "italic" }}>
+                Chưa chọn gói khoá học
+              </div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                {u.courses.map((c, cIdx) => (
+                  <div
+                    key={cIdx}
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "1fr auto",
+                      gap: 10,
+                      alignItems: "center",
+                      padding: "6px 8px",
+                      background: "white",
+                      border: "1px solid var(--border)",
+                      borderRadius: 6,
+                      fontSize: 12.5,
+                    }}
+                  >
+                    <div>
+                      <div style={{ fontWeight: 600 }}>
+                        {c.packageName || c.name || "(Chưa chọn gói)"}
+                      </div>
+                      {c.courseCode && (
+                        <div style={{ fontSize: 11, color: "var(--text-3)", marginTop: 2 }}>
+                          Course code: <code>{c.courseCode}</code>
+                        </div>
+                      )}
+                    </div>
+                    <div style={{ textAlign: "right" }}>
+                      {c.orderId ? (
+                        <span className="badge is-done" title="Order ID đã được điền">
+                          <Icons.Check size={10} strokeWidth={2.5} /> {c.orderId}
+                        </span>
+                      ) : (
+                        <span className="badge is-over" title="Chờ điền Order ID">
+                          <Icons.Clock size={10} /> Chờ Order ID
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+      <div style={{ fontSize: 11.5, color: "var(--text-3)", paddingTop: 6, lineHeight: 1.5 }}>
+        Sales bấm "Kích hoạt khoá học" sẽ tự động dùng thông tin KH từ PR. Bộ phận quản trị (chị Thu Hiền) sẽ điền Order ID trong tab <strong>Kích hoạt khoá học</strong>.
+      </div>
+    </div>
+  );
+}
+
 export default function PaymentRequestDetailDrawer({
   request,
   open,
@@ -367,6 +469,7 @@ export default function PaymentRequestDetailDrawer({
   onCreateActiveRequest,
   onCancelRequest,
   activeRequestId,
+  activeRequest,
   onShowQr,
   uploadingBillId,
 }: {
@@ -382,6 +485,7 @@ export default function PaymentRequestDetailDrawer({
   onCreateActiveRequest: () => void;
   onCancelRequest: () => void;
   activeRequestId?: string | null;
+  activeRequest?: import("../../types/paymentRequest").ActiveRequest | null;
   onShowQr: (qr: PaymentAttempt) => void;
   uploadingBillId?: string | null;
 }) {
@@ -771,6 +875,11 @@ export default function PaymentRequestDetailDrawer({
             )}
           </div>
 
+          {/* AR mini-window — chỉ Sales view, gọn nhẹ. Tab Kích hoạt khoá học (Thu Hiền) vẫn riêng */}
+          {hasActiveRequest && activeRequest && (
+            <ActiveRequestMiniCard ar={activeRequest} />
+          )}
+
           {/* Timeline */}
           <div className="panel">
             <div className="panel-head">
@@ -801,9 +910,9 @@ export default function PaymentRequestDetailDrawer({
                   <div className="tl-title">B3 · Active Request (Tạo khoá học)</div>
                   <div className="tl-meta">
                     {hasActiveRequest
-                      ? `Active Request ${activeRequestId} đã tạo — chuyển sang Kích hoạt khóa học để điền Order ID`
+                      ? `Active Request ${activeRequestId} đã tạo — chọn gói khoá học bên dưới`
                       : ready
-                      ? 'Sẵn sàng kích hoạt — bấm "Tạo Active Request" để mở khoá học'
+                      ? 'Sẵn sàng kích hoạt — bấm "Kích hoạt khoá học" để mở gói'
                       : "Sẽ mở khoá khi đủ 100% tiền"}
                   </div>
                 </div>
@@ -842,9 +951,10 @@ export default function PaymentRequestDetailDrawer({
             <button
               className={`btn ${ready && !hasActiveRequest ? "btn-success" : "btn-outline"}`}
               disabled={!ready || hasActiveRequest}
+              title={!ready ? "Cần thu đủ 100% số tiền trước khi kích hoạt" : hasActiveRequest ? "Khoá học đã được kích hoạt" : "Tạo Active Request và chọn gói khoá học"}
               onClick={onCreateActiveRequest}
             >
-              <Icons.CheckSquare size={14} /> {hasActiveRequest ? "Đã tạo Active Request" : "Tạo Active Request (B3)"}
+              <Icons.CheckSquare size={14} /> {hasActiveRequest ? "Đã kích hoạt khoá học" : "Kích hoạt khoá học"}
             </button>
           </div>
         </div>
