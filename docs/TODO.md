@@ -236,3 +236,57 @@
 | F2605-MINH-08 | UX chọn tài khoản HN / HCM | pending | 2026-05-26 | |
 | F2605-MINH-09 | Catalog tên sản phẩm HĐ (dropdown TTS) | pending | 2026-05-26 | `ke-hoach-cai-thien-feedback-thu-hien.md` |
 | F2605-MINH-10 | Checklist UAT go-live với Giang & Đức | pending | 2026-05-26 | |
+
+---
+
+## Feedback Hiếu 27/05 — Fix plan
+
+> Nguồn: `E:\PalFish\DA\Report\FEEDBACK SÁNG 27-05-2026.md`  
+> Verify session: 2026-05-27. Root cause chính: **local state không đồng bộ DB** (confirmed code review).  
+> Handoff Giang/Đức: `docs/HANDOFF_GIANG_DUC_2026-05-27.md`
+
+### Phase A — FE quick wins (không cần BE, Minh / Claude làm được ngay)
+
+| ID | Task | Status | Owner | Ghi chú |
+|----|------|--------|-------|---------|
+| F2705-A-01 | Reorder fields CreatePaymentRequestModal: UID→Tên→SĐT→Tổng tiền→**Địa chỉ**→Email→Ghi chú | pending | Minh | Feedback B1 UI/UX 00:46–02:18 |
+| F2705-A-02 | Gate nút "Mô phỏng kế toán xác nhận" behind `import.meta.env.DEV` | pending | Minh | `PaymentRequestDetailDrawer.tsx:131–152`; không được xuất hiện production |
+| F2705-A-03 | Badge "Đang tạo" thay "Đã tạo" khi AR chưa có Order ID | pending | Minh | `PaymentRequestTable.tsx:169–175`; check `ar.courseCode` hoặc `ar.orderId` |
+| F2705-A-04 | `canCancel`: chặn hủy PR khi đã có Active Request gắn kèm | pending | Minh | `PaymentRequestDetailDrawer.tsx`; thêm `&& !activeRequestId` |
+| F2705-A-05 | Format `qr.paidAt` qua `formatPaymentDateTime` thay chuỗi raw | pending | Minh | `PaymentRequestDetailDrawer.tsx:130`; dùng `paymentRequestUtils.ts` |
+| F2705-A-06 | Bulk confirm reconciliation: `Promise.all` + spinner/disable trong khi confirm | pending | Minh | `ReconciliationTab.tsx:413–424`; tránh double-click khi load chậm |
+| F2705-A-07 | B4 InvoiceRequestTab: nút "Xuất HĐ" nhanh ngay trên row (không chỉ trong drawer) | pending | Minh | `InvoiceRequestTab.tsx`; tab Chờ xuất |
+| F2705-A-08 | Sau tạo payment line thành công → gọi lại `loadData` ngay (không chờ poll 12s) | pending | Minh | `PaymentFlowContext.tsx handleAddPayment`; cash/card không trigger poll hiện tại |
+
+### Phase B — Cần BE mới làm được (Giang/Đức + Minh kết nối FE)
+
+| ID | Task | Status | Owner | Ghi chú |
+|----|------|--------|-------|---------|
+| F2705-B-01 | `PATCH /api/v1/payment-requests/{id}` — lưu edit PR (target, address, name, phone) vào DB | pending | Giang/Đức | Hiện `updateRequest` chỉ local state; FE sẵn sàng gọi khi có endpoint |
+| F2705-B-02 | `PATCH /api/v1/active-requests/{id}` — lưu edit AR (uid list, course) vào DB | pending | Giang/Đức | Hiện `updateActiveRequest` chỉ local state; bị ghi đè khi poll 12s |
+| F2705-B-03 | Multi-bill upload: `payment_lines.bill_images text[]` + `POST .../bill` nhận array | pending | Giang/Đức | Schema + API; FE `BillUploadZone` hiện `<input>` single file |
+| F2705-B-04 | Cập nhật bank list cụ thể (PalFish HN MB Bank, PalFish HCM MB Bank, …) | pending | Giang/Đức | Hardcode trong `PaymentRequestDetailDrawer AddPaymentForm`; cần confirm list chính thức với Hiếu |
+| F2705-B-05 | `payment_lines.downloaded_at` — tracking "đã tải file thuế" B4 | pending | Giang/Đức | InvoiceRequestTab "Tải file thuế" chưa mark row nào đã download |
+
+### Phase C — Lớn, lên kế hoạch riêng
+
+| ID | Task | Status | Owner | Ghi chú |
+|----|------|--------|-------|---------|
+| F2705-C-01 | QR image export chuẩn hóa: Ngân hàng + Chủ TK + Số TK + Số tiền + Nội dung (VietQR Pro style) | pending | Minh+Giang | Feedback 06:40–08:45; cần thêm account info vào QrViewModal |
+| F2705-C-02 | Fix CSS QR payment row: tách flex, ellipsis, không bị overlap button/text | pending | Minh | Feedback 04:32–04:38; `PaymentRequestDetailDrawer` QR row |
+| F2705-C-03 | Inline AR create trong PR drawer (thay navigate ra tab riêng B3) | pending | Minh | Feedback 13:34–17:08; luồng Sales phải jump tab thủ công |
+
+### Cần Hiếu xác nhận thêm
+
+| ID | Task | Status | Owner | Ghi chú |
+|----|------|--------|-------|---------|
+| F2705-H-01 | Danh sách ngân hàng chính thức: tên đầy đủ từng tài khoản (HN/HCM + ngân hàng) | pending | Hiếu | Input cho F2705-B-04 |
+| F2705-H-02 | Spec QR image export: thông tin nào cần hiển thị, logo, format | pending | Hiếu | Input cho F2705-C-01 |
+| F2705-H-03 | ~~Confirm checklist B4 trước khi issue invoice~~ — **đã rõ:** Thu Hiền click "Mở PR" tự check, quay lại AR bấm "Xác nhận thông tin" | done | Minh | 2026-05-27 — không cần input thêm |
+
+### Bug bổ sung (phát hiện 27/05)
+
+| ID | Task | Status | Owner | Ghi chú |
+|----|------|--------|-------|---------|
+| F2705-BUG-01 | Email KH không hiển thị trong PR detail drawer dù đã nhập lúc tạo | pending | Minh + Giang/Đức | FE: render `pr.email` trong section "Thông tin KH"; BE: verify cột + serializer trả `email` (xem `FE_HANDOFF §4`) |
+| F2705-BUG-02 | AR drawer: thêm nút "Xác nhận thông tin" (Thu Hiền confirm trước khi xuất HĐ B4) + nút B4 chỉ active sau confirm | pending | Minh + Giang/Đức | FE: nút + disable logic; BE: field `info_confirmed_at` gộp vào F2705-B-02 |

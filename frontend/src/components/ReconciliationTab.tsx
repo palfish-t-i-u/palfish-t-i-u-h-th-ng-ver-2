@@ -198,6 +198,7 @@ export default function ReconciliationTab() {
   const [drawerTxn, setDrawerTxn] = useState<FlatTransaction | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [lightboxBill, setLightboxBill] = useState<BillImage | null>(null);
+  const [isBulkConfirming, setIsBulkConfirming] = useState(false);
 
   const transactions = useMemo(() => flattenTransactions(requests), [requests]);
 
@@ -412,15 +413,21 @@ export default function ReconciliationTab() {
                 <button
                   type="button"
                   className="btn btn-success btn-sm"
-                  onClick={() => {
-                    selectedIds.forEach((key) => {
-                      const t = transactions.find((x) => x.key === key);
-                      if (t) void handleConfirm(t);
-                    });
-                    setSelectedIds(new Set());
+                  disabled={isBulkConfirming}
+                  onClick={async () => {
+                    setIsBulkConfirming(true);
+                    try {
+                      const toConfirm = [...selectedIds]
+                        .map((key) => transactions.find((x) => x.key === key))
+                        .filter((t): t is FlatTransaction => !!t);
+                      await Promise.all(toConfirm.map((t) => handleConfirm(t)));
+                    } finally {
+                      setSelectedIds(new Set());
+                      setIsBulkConfirming(false);
+                    }
                   }}
                 >
-                  <Icons.Check size={13} strokeWidth={2.5} /> Xác nhận đã chọn
+                  <Icons.Check size={13} strokeWidth={2.5} /> {isBulkConfirming ? "Đang xác nhận…" : "Xác nhận đã chọn"}
                 </button>
               </div>
             </div>

@@ -653,10 +653,21 @@ export default function InvoiceRequestTab() {
                       <td style={{ textAlign: "center" }}>
                         <CustomerTypeBadge type={d.customerType} />
                       </td>
-                      <td>
-                        <span className="row-action">
-                          <Icons.ChevronRight size={15} />
-                        </span>
+                      <td onClick={(e) => e.stopPropagation()}>
+                        {tab === "pending" && complete ? (
+                          <button
+                            type="button"
+                            className="btn btn-primary btn-sm"
+                            title="Xuất hoá đơn"
+                            onClick={() => void issueInvoiceForCourse(r.ar.id, r.course.courseCode)}
+                          >
+                            <Icons.Doc size={13} /> Xuất HĐ
+                          </button>
+                        ) : (
+                          <span className="row-action">
+                            <Icons.ChevronRight size={15} />
+                          </span>
+                        )}
                       </td>
                     </tr>
                   );
