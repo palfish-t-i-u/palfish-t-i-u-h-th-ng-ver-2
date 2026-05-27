@@ -13,6 +13,7 @@ export interface PaymentAttempt {
   code: string;
   bill: boolean;
   billImage?: string | null;
+  billImages?: string[];
   method: PaymentMethod;
   bank?: string;
   cardLast4?: string | null;
@@ -40,6 +41,7 @@ export interface PaymentLineApiRow {
   paid_at?: string;
   reject_reason?: string;
   bill_image?: string | null;
+  bill_images?: string[];
   created_at?: string;
   updated_at?: string;
 }
@@ -188,6 +190,7 @@ export type ActiveRequestApiRow = {
       name?: string;
       amount?: number;
       order_id?: string;
+      orderId?: string;
       invoiced?: boolean;
       invoice_id?: string;
       invoiced_at?: string;

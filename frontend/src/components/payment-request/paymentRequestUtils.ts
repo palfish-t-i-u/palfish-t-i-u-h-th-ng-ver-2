@@ -42,6 +42,13 @@ export function fromApiAttempt(raw: any, idx = 0): PaymentAttempt {
   const rejectReason = raw.reject_reason ?? raw.rejectReason ?? null;
   const cancelledFromReason =
     status === "rejected" && /hu(y|ỷ|ỷ)/i.test(String(rejectReason || ""));
+  const billImages = Array.isArray(raw.bill_images)
+    ? raw.bill_images.filter((x: unknown) => typeof x === "string")
+    : Array.isArray(raw.billImages)
+    ? raw.billImages.filter((x: unknown) => typeof x === "string")
+    : (raw.bill_image ?? raw.billImage)
+    ? [raw.bill_image ?? raw.billImage]
+    : [];
   return {
     id: raw.id ?? "",
     idx: raw.idx ?? idx,
@@ -51,8 +58,9 @@ export function fromApiAttempt(raw: any, idx = 0): PaymentAttempt {
     paidAt: raw.paid_at ?? raw.paidAt ?? null,
     // BE uses transfer_code; fallback to code / payment_code for camelCase sources
     code: raw.transfer_code ?? raw.code ?? raw.payment_code ?? "",
-    billImage: raw.bill_image ?? raw.billImage ?? null,
-    bill: !!(raw.bill_image ?? raw.billImage),
+    billImage: raw.bill_image ?? raw.billImage ?? billImages[billImages.length - 1] ?? null,
+    billImages,
+    bill: !!(raw.bill_image ?? raw.billImage) || billImages.length > 0,
     method: (raw.method ?? "qr") as PaymentAttempt["method"],
     bank: raw.bank,
     cardLast4: raw.card_last4 ?? raw.cardLast4 ?? null,
@@ -149,7 +157,7 @@ export function fromApiActiveRequest(raw: ActiveRequestApiRow): ActiveRequest {
         courseCode: c.code ?? "",
         packageName: c.name ?? "",
         amount: c.amount ?? 0,
-        orderId: c.order_id ?? "",
+        orderId: c.order_id ?? c.orderId ?? "",
         invoiced: !!c.invoiced,
         invoiceId: c.invoice_id,
         invoicedAt: c.invoiced_at ?? null,

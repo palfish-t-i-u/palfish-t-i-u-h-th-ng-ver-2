@@ -101,9 +101,10 @@ export function nextCourseCode(ar: ActiveRequest): string {
 export function deriveArStatus(ar: ActiveRequest): ActiveRequestStatus {
   const all = flatCourses(ar);
   if (all.length === 0) return "pending_order";
-  if (all.every((c) => c.invoiced)) return "invoiced";
-  const ordered = all.filter((c) => c.orderId?.trim()).length;
+  const ordered = all.filter((c) => (c.orderId ?? "").trim().length > 0).length;
+  // Spec: if there is no non-empty order_id at all, AR must stay in pending_order.
   if (ordered === 0) return "pending_order";
+  if (all.every((c) => c.invoiced)) return "invoiced";
   if (ordered > 0 && ordered < all.length) return "partial_order";
   return "ready_invoice";
 }

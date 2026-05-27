@@ -22,6 +22,7 @@ import {
   paymentAttemptLabel,
   vnd,
 } from "./paymentRequestUtils";
+import { nextCourseCode } from "../payment-flow/paymentFlowUtils";
 
 const METHOD_META: Record<PaymentMethod, { cls: string; label: string; icon: IconKey; sub: string }> = {
   qr: { cls: "method-qr", label: "Chuyển khoản", icon: "QrCode", sub: "QR / chuyển khoản" },
@@ -68,6 +69,7 @@ function QrRow({
   onMarkPaid,
   onShowQr,
   uploadingBillId,
+  deletingBillId,
 }: {
   qr: PaymentAttempt;
   onCancelQr: (qr: PaymentAttempt) => void;
@@ -76,6 +78,7 @@ function QrRow({
   onMarkPaid: (qr: PaymentAttempt) => void;
   onShowQr: (qr: PaymentAttempt) => void;
   uploadingBillId?: string | null;
+  deletingBillId?: string | null;
 }) {
   const isQr = qr.method === "qr";
   const isCancelled = !!qr.cancelled;
@@ -174,6 +177,7 @@ function QrRow({
         <BillUploadZone
           hasBill={!!qr.billImage}
           uploading={uploadingBillId === qr.id}
+          deleting={deletingBillId === qr.id}
           onView={() => onBillView(qr)}
           onFile={(file) => onBillFile(qr, file)}
         />
@@ -369,7 +373,7 @@ interface DraftPr {
  * KHÔNG có nút "Xác nhận thông tin" của Thu Hiền (đó là nghiệp vụ riêng ở tab Kích hoạt khoá học).
  * Sales không nhập Order ID ở đây để giữ tách bạch nghiệp vụ với tab Kích hoạt khoá học.
  */
-function ActiveRequestMiniCard({
+function LegacyActiveRequestMiniCard({
   ar,
   onCoursePackageChange,
 }: {
@@ -475,6 +479,322 @@ function ActiveRequestMiniCard({
   );
 }
 
+void LegacyActiveRequestMiniCard;
+
+function ActiveRequestMiniCardV2({
+  ar,
+  onActiveRequestMutate,
+}: {
+  ar: ActiveRequest;
+  onActiveRequestMutate: (arId: string, updater: (ar: ActiveRequest) => ActiveRequest) => void;
+}) {
+  const [uidDrafts, setUidDrafts] = useState<Record<number, string>>({});
+  const [phoneDrafts, setPhoneDrafts] = useState<Record<number, string>>({});
+  const [amountDrafts, setAmountDrafts] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    const nextUidDrafts: Record<number, string> = {};
+    const nextPhoneDrafts: Record<number, string> = {};
+    const nextAmountDrafts: Record<string, string> = {};
+    ar.uids.forEach((u, uidIdx) => {
+      nextUidDrafts[uidIdx] = u.uid ?? "";
+      nextPhoneDrafts[uidIdx] = u.phone ?? "";
+      u.courses.forEach((c) => {
+        nextAmountDrafts[c.courseCode] = c.amount ? String(c.amount) : "";
+      });
+    });
+    setUidDrafts(nextUidDrafts);
+    setPhoneDrafts(nextPhoneDrafts);
+    setAmountDrafts(nextAmountDrafts);
+  }, [ar]);
+
+  const courseCount = ar.uids.reduce((sum, u) => sum + u.courses.length, 0);
+  const filledOrderIds = ar.uids.reduce(
+    (sum, u) => sum + u.courses.filter((c) => !!c.orderId?.trim()).length,
+    0
+  );
+  const allFilled = courseCount > 0 && filledOrderIds === courseCount;
+  const missingRequiredCount = ar.uids.reduce((sum, u) => {
+    const uidMissing = u.uid.trim() ? 0 : 1;
+    const phoneMissing = u.phone.trim() ? 0 : 1;
+    const courseMissing = u.courses.reduce((acc, c) => {
+      const hasPackage = !!(c.packageName || c.name || "").trim();
+      const hasAmount = (c.amount || 0) > 0;
+      return acc + (hasPackage ? 0 : 1) + (hasAmount ? 0 : 1);
+    }, 0);
+    return sum + uidMissing + phoneMissing + courseMissing;
+  }, 0);
+
+  const mutate = (updater: (next: ActiveRequest) => ActiveRequest) => {
+    onActiveRequestMutate(ar.id, updater);
+  };
+
+  const commitUid = (uidIdx: number) => {
+    const nextUid = (uidDrafts[uidIdx] ?? "").trim();
+    const current = ar.uids[uidIdx]?.uid ?? "";
+    if (nextUid === current) return;
+    mutate((next) => ({
+      ...next,
+      uids: next.uids.map((u, idx) => (idx === uidIdx ? { ...u, uid: nextUid } : u)),
+    }));
+  };
+
+  const commitPhone = (uidIdx: number) => {
+    const nextPhone = (phoneDrafts[uidIdx] ?? "").replace(/[^\d]/g, "");
+    const current = ar.uids[uidIdx]?.phone ?? "";
+    if (nextPhone === current) return;
+    mutate((next) => ({
+      ...next,
+      uids: next.uids.map((u, idx) => (idx === uidIdx ? { ...u, phone: nextPhone } : u)),
+    }));
+  };
+
+  const commitAmount = (uidIdx: number, courseCode: string) => {
+    const raw = (amountDrafts[courseCode] ?? "").replace(/[^\d]/g, "");
+    const nextAmount = raw ? Number(raw) : 0;
+    const current = ar.uids[uidIdx]?.courses.find((x) => x.courseCode === courseCode)?.amount ?? 0;
+    if (nextAmount === current) return;
+    mutate((next) => ({
+      ...next,
+      uids: next.uids.map((u, idx) =>
+        idx === uidIdx
+          ? {
+              ...u,
+              courses: u.courses.map((c) =>
+                c.courseCode === courseCode ? { ...c, amount: nextAmount } : c
+              ),
+            }
+          : u
+      ),
+    }));
+  };
+
+  const addCourseForUid = (uidIdx: number) => {
+    mutate((next) => {
+      const code = nextCourseCode(next);
+      return {
+        ...next,
+        uids: next.uids.map((u, idx) =>
+          idx === uidIdx
+            ? {
+                ...u,
+                courses: [
+                  ...u.courses,
+                  {
+                    courseCode: code,
+                    packageName: "",
+                    amount: 0,
+                    orderId: "",
+                    invoiced: false,
+                  },
+                ],
+              }
+            : u
+        ),
+      };
+    });
+  };
+
+  const addUidGroup = () => {
+    mutate((next) => {
+      const code = nextCourseCode(next);
+      return {
+        ...next,
+        uids: [
+          ...next.uids,
+          {
+            uid: "",
+            phone: "",
+            country: next.uids[0]?.country || "VN",
+            courses: [
+              {
+                courseCode: code,
+                packageName: "",
+                amount: 0,
+                orderId: "",
+                invoiced: false,
+              },
+            ],
+          },
+        ],
+      };
+    });
+  };
+
+  return (
+    <div className="panel">
+      <div className="panel-head">
+        <h4>
+          <Icons.CheckSquare size={15} /> Kích hoạt khoá học
+          <span className="num-pill">{ar.id}</span>
+        </h4>
+        <span
+          className={`badge ${allFilled ? "is-done" : "is-over"}`}
+          title={allFilled ? "Tất cả course đã có Order ID" : "Đang chờ điền Order ID"}
+        >
+          {allFilled ? <Icons.Check size={11} strokeWidth={2.5} /> : <Icons.Clock size={11} />}{" "}
+          {filledOrderIds}/{courseCount} Order ID
+        </span>
+      </div>
+      {missingRequiredCount > 0 && (
+        <div className="match-warning" style={{ marginBottom: 10 }}>
+          <Icons.AlertCircle size={14} />
+          <span>Thiếu {missingRequiredCount} trường bắt buộc (UID, SĐT, gói học, số tiền).</span>
+        </div>
+      )}
+      <div style={{ padding: "8px 0", display: "flex", flexDirection: "column", gap: 10 }}>
+        {ar.uids.map((u, uIdx) => (
+          <div
+            key={`${u.uid || "uid"}-${uIdx}`}
+            style={{
+              border: "1px solid var(--border)",
+              borderRadius: 8,
+              padding: 10,
+              background: "var(--surface-2)",
+            }}
+          >
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr auto", gap: 8, marginBottom: 8 }}>
+              <input
+                value={uidDrafts[uIdx] ?? u.uid ?? ""}
+                onChange={(e) => setUidDrafts((prev) => ({ ...prev, [uIdx]: e.target.value }))}
+                onBlur={() => commitUid(uIdx)}
+                placeholder="UID CRM"
+                style={{
+                  border: "1px solid var(--border)",
+                  borderRadius: 8,
+                  padding: "7px 9px",
+                  fontFamily: "JetBrains Mono, monospace",
+                  fontSize: 12,
+                  outline: "none",
+                  background: "white",
+                }}
+              />
+              <input
+                value={phoneDrafts[uIdx] ?? u.phone ?? ""}
+                onChange={(e) =>
+                  setPhoneDrafts((prev) => ({
+                    ...prev,
+                    [uIdx]: e.target.value.replace(/[^\d]/g, ""),
+                  }))
+                }
+                onBlur={() => commitPhone(uIdx)}
+                placeholder="Số điện thoại"
+                style={{
+                  border: "1px solid var(--border)",
+                  borderRadius: 8,
+                  padding: "7px 9px",
+                  fontFamily: "JetBrains Mono, monospace",
+                  fontSize: 12,
+                  outline: "none",
+                  background: "white",
+                }}
+              />
+              <button type="button" className="btn btn-outline btn-sm" onClick={() => addCourseForUid(uIdx)}>
+                <Icons.Plus size={12} /> Thêm gói
+              </button>
+            </div>
+            {u.courses.length === 0 ? (
+              <div style={{ fontSize: 12, color: "var(--text-3)", fontStyle: "italic" }}>
+                Chưa chọn gói khoá học
+              </div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                {u.courses.map((c, cIdx) => (
+                  <div
+                    key={`${c.courseCode}-${cIdx}`}
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "minmax(0, 1fr) 130px auto",
+                      gap: 10,
+                      alignItems: "center",
+                      padding: "6px 8px",
+                      background: "white",
+                      border: "1px solid var(--border)",
+                      borderRadius: 6,
+                      fontSize: 12.5,
+                    }}
+                  >
+                    <div style={{ minWidth: 0 }}>
+                      <Combobox
+                        value={c.packageName || c.name || ""}
+                        onChange={(value) =>
+                          mutate((next) => ({
+                            ...next,
+                            uids: next.uids.map((uu, idx) =>
+                              idx === uIdx
+                                ? {
+                                    ...uu,
+                                    courses: uu.courses.map((course) =>
+                                      course.courseCode === c.courseCode
+                                        ? { ...course, packageName: value }
+                                        : course
+                                    ),
+                                  }
+                                : uu
+                            ),
+                          }))
+                        }
+                        options={COURSE_PACKAGE_OPTIONS}
+                        placeholder="Chọn hoặc gõ tên gói học..."
+                        emptyLabel="Chưa chọn gói"
+                      />
+                      {c.courseCode && (
+                        <div style={{ fontSize: 11, color: "var(--text-3)", marginTop: 2 }}>
+                          Course code: <code>{c.courseCode}</code>
+                        </div>
+                      )}
+                    </div>
+                    <input
+                      value={amountDrafts[c.courseCode] ?? (c.amount ? String(c.amount) : "")}
+                      onChange={(e) => {
+                        const raw = e.target.value.replace(/[^\d]/g, "");
+                        setAmountDrafts((prev) => ({ ...prev, [c.courseCode]: raw }));
+                      }}
+                      onBlur={() => commitAmount(uIdx, c.courseCode)}
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      placeholder="Số tiền"
+                      style={{
+                        border: "1px solid var(--border)",
+                        borderRadius: 8,
+                        padding: "7px 9px",
+                        fontSize: 12,
+                        fontFamily: "JetBrains Mono, monospace",
+                        outline: "none",
+                        textAlign: "right",
+                        background: "white",
+                      }}
+                    />
+                    <div style={{ textAlign: "right" }}>
+                      {c.orderId ? (
+                        <span className="badge is-done" title="Order ID đã được điền">
+                          <Icons.Check size={10} strokeWidth={2.5} /> {c.orderId}
+                        </span>
+                      ) : (
+                        <span className="badge is-over" title="Chờ điền Order ID">
+                          <Icons.Clock size={10} /> Chờ Order ID
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+      <div style={{ display: "flex", justifyContent: "flex-end", paddingBottom: 4 }}>
+        <button type="button" className="btn btn-outline btn-sm" onClick={addUidGroup}>
+          <Icons.Plus size={12} /> Thêm UID
+        </button>
+      </div>
+      <div style={{ fontSize: 11.5, color: "var(--text-3)", paddingTop: 6, lineHeight: 1.5 }}>
+        Sales bấm "Kích hoạt khoá học" sẽ tự động dùng thông tin KH từ PR. Bộ phận quản trị (chị Thu Hiền) sẽ điền Order ID trong tab <strong>Kích hoạt khoá học</strong>.
+      </div>
+    </div>
+  );
+}
+
 export default function PaymentRequestDetailDrawer({
   request,
   open,
@@ -489,9 +809,10 @@ export default function PaymentRequestDetailDrawer({
   onCancelRequest,
   activeRequestId,
   activeRequest,
-  onCoursePackageChange,
+  onActiveRequestMutate,
   onShowQr,
   uploadingBillId,
+  deletingBillId,
 }: {
   request: PaymentRequest | null;
   open: boolean;
@@ -506,9 +827,10 @@ export default function PaymentRequestDetailDrawer({
   onCancelRequest: () => void;
   activeRequestId?: string | null;
   activeRequest?: ActiveRequest | null;
-  onCoursePackageChange: (arId: string, courseCode: string, packageName: string) => void;
+  onActiveRequestMutate: (arId: string, updater: (ar: ActiveRequest) => ActiveRequest) => void;
   onShowQr: (qr: PaymentAttempt) => void;
   uploadingBillId?: string | null;
+  deletingBillId?: string | null;
 }) {
   const [showAdd, setShowAdd] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -552,6 +874,41 @@ export default function PaymentRequestDetailDrawer({
   const canCancel = request.state !== "cancelled" && request.doneCount === 0 && !activeRequestId;
   const ready = request.state === "done" || request.state === "over";
   const hasActiveRequest = !!activeRequestId;
+  const copyPrId = async () => {
+    const id = request.id;
+    const fallbackCopy = () => {
+      try {
+        const ta = document.createElement("textarea");
+        ta.value = id;
+        ta.setAttribute("readonly", "");
+        ta.style.position = "fixed";
+        ta.style.left = "-9999px";
+        document.body.appendChild(ta);
+        ta.select();
+        const ok = document.execCommand("copy");
+        document.body.removeChild(ta);
+        return ok;
+      } catch {
+        return false;
+      }
+    };
+
+    let ok = false;
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(id);
+        ok = true;
+      } else {
+        ok = fallbackCopy();
+      }
+    } catch {
+      ok = fallbackCopy();
+    }
+
+    if (!ok) {
+      window.prompt("Không thể tự copy trong trình duyệt này. Copy PR-ID thủ công:", id);
+    }
+  };
 
   return (
     <>
@@ -890,6 +1247,7 @@ export default function PaymentRequestDetailDrawer({
                   onMarkPaid={onMarkPaid}
                   onShowQr={onShowQr}
                   uploadingBillId={uploadingBillId}
+                  deletingBillId={deletingBillId}
                 />
               ))}
             </div>
@@ -910,7 +1268,7 @@ export default function PaymentRequestDetailDrawer({
 
           {/* AR mini-window — chỉ Sales view, gọn nhẹ. Tab Kích hoạt khoá học (Thu Hiền) vẫn riêng */}
           {hasActiveRequest && activeRequest && (
-            <ActiveRequestMiniCard ar={activeRequest} onCoursePackageChange={onCoursePackageChange} />
+            <ActiveRequestMiniCardV2 ar={activeRequest} onActiveRequestMutate={onActiveRequestMutate} />
           )}
 
           {/* Timeline */}
@@ -965,7 +1323,7 @@ export default function PaymentRequestDetailDrawer({
           <div style={{ display: "flex", gap: 8 }}>
             <button
               className="btn btn-outline btn-sm"
-              onClick={() => navigator.clipboard?.writeText(request.id).catch(() => {})}
+              onClick={() => void copyPrId()}
             >
               <Icons.Copy size={13} /> Copy PR-ID
             </button>

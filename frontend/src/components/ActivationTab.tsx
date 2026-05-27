@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { COURSE_PACKAGES } from "../constants/coursePackages";
 import { usePaymentFlow } from "../contexts/PaymentFlowContext";
+import { endpoints } from "../lib/api";
 import type { ActiveRequest, ActiveCourse, ActiveUidGroup, PaymentRequest } from "../types/paymentRequest";
 import type { ActiveRequestStatus } from "../types/paymentRequest";
 import {
@@ -14,7 +15,7 @@ import {
 import CountryCombo from "./payment-request/CountryCombo";
 import DateRangeFilter, { EMPTY_RANGE, type DateRange, inDateRange } from "./payment-request/DateRangeFilter";
 import { Icons } from "./payment-request/Icons";
-import { formatPaymentDateTime } from "./payment-request/paymentRequestUtils";
+import { formatPaymentDateTime, fromApiActiveRequest, toActiveRequestPatchUidsData } from "./payment-request/paymentRequestUtils";
 import { downloadTaxInvoiceZip } from "../utils/taxInvoiceXlsxExport";
 import type { InvoiceRow } from "./payment-flow/paymentFlowUtils";
 import "../styles/prototype-payments.css";
@@ -315,34 +316,190 @@ function ARStatusBadge({ status }: { status: ActiveRequestStatus }) {
 function ActivationDetailDrawer({
   ar,
   pr,
+  requestsForAutofill,
   open,
   onClose,
   onUpdate,
-  onSaveOrderId,
+  onPersist,
   onNavigateInvoice,
   onOpenPr,
   onGoToInvoice,
 }: {
   ar: ActiveRequest | null;
   pr: ReturnType<typeof usePaymentFlow>["requests"][0] | null;
+  requestsForAutofill: PaymentRequest[];
   open: boolean;
   onClose: () => void;
   onUpdate: (next: ActiveRequest) => void;
-  onSaveOrderId: (courseCode: string, orderId: string) => void;
+  onPersist: (next: ActiveRequest) => Promise<{ ok: boolean; saved?: ActiveRequest; error?: string }>;
   onNavigateInvoice: () => void;
   onOpenPr?: () => void;
   onGoToInvoice: (courseCode: string) => void;
 }) {
-  const [drafts, setDrafts] = useState<Record<string, string>>({});
+  const [courseDrafts, setCourseDrafts] = useState<
+    Record<string, { packageName: string; amount: string; orderId: string }>
+  >({});
+  const [uidDrafts, setUidDrafts] = useState<Record<number, { uid: string; phone: string; country: string }>>({});
+  const [savingCourse, setSavingCourse] = useState<Record<string, boolean>>({});
+  const [courseSaveErrors, setCourseSaveErrors] = useState<Record<string, string>>({});
+  const [courseSavedAt, setCourseSavedAt] = useState<Record<string, number>>({});
+  const [savingStructureKey, setSavingStructureKey] = useState<string | null>(null);
+  const [structureError, setStructureError] = useState("");
+  const [addUidDialogOpen, setAddUidDialogOpen] = useState(false);
+  const [newUidValue, setNewUidValue] = useState("");
+  const [newUidError, setNewUidError] = useState("");
+  const arBodyScrollRef = useRef<HTMLDivElement | null>(null);
+  const [canScrollUp, setCanScrollUp] = useState(false);
+  const [canScrollDown, setCanScrollDown] = useState(false);
+  const [copiedArId, setCopiedArId] = useState(false);
+  const copyResetTimer = useRef<number | null>(null);
+  const uidTouchedRef = useRef<Record<number, { uid: boolean; phone: boolean; country: boolean }>>({});
+  const prByUid = useMemo(() => {
+    const map = new Map<string, PaymentRequest>();
+    for (const item of requestsForAutofill) {
+      if (item.state === "cancelled") continue;
+      const uid = String(item.uid || "").trim();
+      if (!uid || map.has(uid)) continue;
+      map.set(uid, item);
+    }
+    return map;
+  }, [requestsForAutofill]);
 
   useEffect(() => {
     if (!ar) return;
-    const next: Record<string, string> = {};
+    const next: Record<string, { packageName: string; amount: string; orderId: string }> = {};
     flatCourses(ar).forEach((c) => {
-      next[c.courseCode] = c.orderId || "";
+      next[c.courseCode] = {
+        packageName: c.packageName || "",
+        amount: c.amount ? String(c.amount) : "",
+        orderId: c.orderId || "",
+      };
     });
-    setDrafts(next);
+    // Keep unsaved draft while polling refreshes server payload.
+    setCourseDrafts((prev) => {
+      const merged: Record<string, { packageName: string; amount: string; orderId: string }> = { ...next };
+      Object.entries(prev).forEach(([code, draftVal]) => {
+        const serverVal = next[code];
+        if (!serverVal) return;
+        const packageDirty = draftVal.packageName !== serverVal.packageName;
+        const amountDirty =
+          (parseInt(draftVal.amount.replace(/[^\d]/g, ""), 10) || 0) !==
+          (parseInt(serverVal.amount.replace(/[^\d]/g, ""), 10) || 0);
+        const orderDirty = draftVal.orderId.trim() !== serverVal.orderId.trim();
+        if (packageDirty || amountDirty || orderDirty) {
+          merged[code] = draftVal;
+        }
+      });
+      return merged;
+    });
+    const courseCodes = new Set(Object.keys(next));
+    setSavingCourse((prev) =>
+      Object.fromEntries(Object.entries(prev).filter(([code]) => courseCodes.has(code)))
+    );
+    setCourseSaveErrors((prev) =>
+      Object.fromEntries(Object.entries(prev).filter(([code]) => courseCodes.has(code)))
+    );
+    setCourseSavedAt((prev) =>
+      Object.fromEntries(Object.entries(prev).filter(([code]) => courseCodes.has(code)))
+    );
+  }, [ar, open]);
+
+  useEffect(() => {
+    if (!ar) return;
+    const next: Record<number, { uid: string; phone: string; country: string }> = {};
+    ar.uids.forEach((u, idx) => {
+      next[idx] = {
+        uid: u.uid ?? "",
+        phone: u.phone ?? "",
+        country: u.country || "VN",
+      };
+    });
+    setUidDrafts((prev) => {
+      const merged: Record<number, { uid: string; phone: string; country: string }> = { ...next };
+      Object.entries(prev).forEach(([idxRaw, draft]) => {
+        const idx = Number(idxRaw);
+        const server = next[idx];
+        if (!server) return;
+        const touched = uidTouchedRef.current[idx] || { uid: false, phone: false, country: false };
+        merged[idx] = {
+          uid: touched.uid ? draft.uid : server.uid,
+          phone: touched.phone ? draft.phone : server.phone,
+          country: touched.country ? draft.country : server.country,
+        };
+      });
+      return merged;
+    });
+  }, [ar, open]);
+
+  useEffect(() => {
+    if (!open || !ar) return;
+    let changed = false;
+    const nextUids = ar.uids.map((u, idx) => {
+      const uid = String(u.uid || "").trim();
+      if (!uid) return u;
+      const sourcePr =
+        pr && (String(pr.uid || "").trim() === uid || idx === 0)
+          ? pr
+          : prByUid.get(uid);
+      if (!sourcePr) return u;
+
+      const sourcePhone = String(sourcePr.phone || "").replace(/\D/g, "").trim();
+      const sourceCountry = String(sourcePr.country || "VN").trim() || "VN";
+
+      // Auto-fill only missing values, never overwrite manual values.
+      const nextPhone = u.phone?.trim() ? u.phone : sourcePhone;
+      const nextCountry = u.country?.trim() ? u.country : sourceCountry;
+      if (u.phone === nextPhone && (u.country || "VN") === nextCountry) return u;
+      changed = true;
+      return { ...u, phone: nextPhone, country: nextCountry };
+    });
+
+    if (changed) {
+      // Keep first sync local to avoid full-payload races with autosave paths.
+      onUpdate({ ...ar, uids: nextUids });
+    }
+  }, [open, ar, pr, prByUid, onUpdate]);
+
+  useEffect(() => {
+    return () => {
+      if (copyResetTimer.current) {
+        window.clearTimeout(copyResetTimer.current);
+        copyResetTimer.current = null;
+      }
+    };
+  }, [ar?.id]);
+
+  useEffect(() => {
+    uidTouchedRef.current = {};
   }, [ar?.id, open]);
+
+  useEffect(() => {
+    setStructureError("");
+    setSavingStructureKey(null);
+    setAddUidDialogOpen(false);
+    setNewUidValue("");
+    setNewUidError("");
+  }, [ar?.id, open]);
+
+  useEffect(() => {
+    const el = arBodyScrollRef.current;
+    if (!open || !el) {
+      setCanScrollUp(false);
+      setCanScrollDown(false);
+      return;
+    }
+    const update = () => {
+      setCanScrollUp(el.scrollTop > 4);
+      setCanScrollDown(el.scrollTop + el.clientHeight < el.scrollHeight - 4);
+    };
+    update();
+    el.addEventListener("scroll", update);
+    window.addEventListener("resize", update);
+    return () => {
+      el.removeEventListener("scroll", update);
+      window.removeEventListener("resize", update);
+    };
+  }, [open, ar?.id, ar?.uids.length]);
 
   if (!ar) {
     return (
@@ -359,19 +516,62 @@ function ActivationDetailDrawer({
   const invoicedCount = courses.filter((c) => c.invoiced).length;
   const total = enriched.total;
   const receivedGap = pr ? total - pr.received : 0;
-
-  const updateCourse = (uidIdx: number, courseIdx: number, patch: Partial<ActiveCourse>) => {
-    const nextUids = ar.uids.map((u, i) => {
-      if (i !== uidIdx) return u;
-      return {
-        ...u,
-        courses: u.courses.map((c, j) => (j === courseIdx ? { ...c, ...patch } : c)),
-      };
+  const isStructureSaving = !!savingStructureKey;
+  const setUidDraftField = (
+    uidIdx: number,
+    field: "uid" | "phone" | "country",
+    value: string
+  ) => {
+    const currentTouched = uidTouchedRef.current[uidIdx] || { uid: false, phone: false, country: false };
+    uidTouchedRef.current[uidIdx] = { ...currentTouched, [field]: true };
+    setUidDrafts((prev) => ({
+      ...prev,
+      [uidIdx]: {
+        uid: prev[uidIdx]?.uid ?? ar.uids[uidIdx]?.uid ?? "",
+        phone: prev[uidIdx]?.phone ?? ar.uids[uidIdx]?.phone ?? "",
+        country: prev[uidIdx]?.country ?? ar.uids[uidIdx]?.country ?? "VN",
+        [field]: value,
+      },
+    }));
+  };
+  const saveUidHeader = async (uidIdx: number) => {
+    const base = ar.uids[uidIdx];
+    if (!base) return;
+    const draft = uidDrafts[uidIdx];
+    if (!draft) return;
+    const nextUid = draft.uid.trim();
+    const nextPhone = draft.phone.replace(/[^\d]/g, "");
+    const nextCountry = (draft.country || "VN").trim() || "VN";
+    if (
+      nextUid === base.uid &&
+      nextPhone === (base.phone || "") &&
+      nextCountry === (base.country || "VN")
+    ) {
+      return;
+    }
+    const result = await onPersist({
+      ...ar,
+      uids: ar.uids.map((u, i) =>
+        i === uidIdx ? { ...u, uid: nextUid, phone: nextPhone, country: nextCountry } : u
+      ),
     });
-    onUpdate({ ...ar, uids: nextUids });
+    if (!result.ok) return;
+    uidTouchedRef.current[uidIdx] = { uid: false, phone: false, country: false };
   };
 
-  const removeCourse = (uidIdx: number, courseIdx: number) => {
+  const persistStructure = async (actionKey: string, next: ActiveRequest) => {
+    setSavingStructureKey(actionKey);
+    setStructureError("");
+    const result = await onPersist(next);
+    setSavingStructureKey(null);
+    if (!result.ok) {
+      setStructureError(result.error || "Không lưu được thay đổi cấu trúc Active Request.");
+      return false;
+    }
+    return true;
+  };
+
+  const removeCourse = async (uidIdx: number, courseIdx: number) => {
     const u = ar.uids[uidIdx];
     if (u.courses.length === 1 && ar.uids.length === 1) return;
     const nextUid: ActiveUidGroup = { ...u, courses: u.courses.filter((_, j) => j !== courseIdx) };
@@ -379,10 +579,10 @@ function ActivationDetailDrawer({
       nextUid.courses.length === 0
         ? ar.uids.filter((_, i) => i !== uidIdx)
         : ar.uids.map((u2, i) => (i === uidIdx ? nextUid : u2));
-    onUpdate({ ...ar, uids: nextUids });
+    await persistStructure(`remove-course-${uidIdx}-${courseIdx}`, { ...ar, uids: nextUids });
   };
 
-  const addCourse = (uidIdx: number) => {
+  const addCourse = async (uidIdx: number) => {
     const newCode = nextCourseCode(ar);
     const u = ar.uids[uidIdx];
     const remaining = pr ? Math.max(0, pr.target - total) : 0;
@@ -393,18 +593,29 @@ function ActivationDetailDrawer({
         { courseCode: newCode, packageName: "", amount: remaining || 0, orderId: "", invoiced: false },
       ],
     };
-    onUpdate({ ...ar, uids: ar.uids.map((u2, i) => (i === uidIdx ? nextUid : u2)) });
+    await persistStructure(`add-course-${uidIdx}`, {
+      ...ar,
+      uids: ar.uids.map((u2, i) => (i === uidIdx ? nextUid : u2)),
+    });
   };
 
-  const addUid = () => {
+  const removeUid = async (uidIdx: number) => {
+    if (ar.uids.length <= 1) return;
+    await persistStructure(`remove-uid-${uidIdx}`, {
+      ...ar,
+      uids: ar.uids.filter((_, i) => i !== uidIdx),
+    });
+  };
+
+  const addUid = async (nextUidValue: string) => {
     const newCode = nextCourseCode(ar);
     const remaining = pr ? Math.max(0, pr.target - total) : 0;
-    onUpdate({
+    return await persistStructure("add-uid", {
       ...ar,
       uids: [
         ...ar.uids,
         {
-          uid: "",
+          uid: nextUidValue,
           phone: "",
           country: "VN",
           courses: [{ courseCode: newCode, packageName: "", amount: remaining || 0, orderId: "", invoiced: false }],
@@ -413,20 +624,165 @@ function ActivationDetailDrawer({
     });
   };
 
-  const updateUid = (uidIdx: number, patch: Partial<ActiveUidGroup>) => {
-    onUpdate({
-      ...ar,
-      uids: ar.uids.map((u, i) => (i === uidIdx ? { ...u, ...patch } : u)),
-    });
+  const openAddUidDialog = () => {
+    if (isStructureSaving) return;
+    setNewUidValue("");
+    setNewUidError("");
+    setAddUidDialogOpen(true);
   };
 
-  const copyArId = () => {
-    void navigator.clipboard?.writeText(ar.id);
+  const submitAddUid = async () => {
+    const uid = newUidValue.trim();
+    if (!uid) {
+      setNewUidError("UID không được để trống.");
+      return;
+    }
+    if (ar.uids.some((u) => String(u.uid || "").trim() === uid)) {
+      setNewUidError("UID này đã tồn tại trong Active Request.");
+      return;
+    }
+    const ok = await addUid(uid);
+    if (!ok) return;
+    setAddUidDialogOpen(false);
+    setNewUidValue("");
+    setNewUidError("");
+  };
+
+  const copyArId = async () => {
+    const text = ar.id;
+    let ok = false;
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+        ok = true;
+      }
+    } catch {
+      ok = false;
+    }
+    if (!ok) {
+      try {
+        const ta = document.createElement("textarea");
+        ta.value = text;
+        ta.setAttribute("readonly", "");
+        ta.style.position = "fixed";
+        ta.style.opacity = "0";
+        ta.style.pointerEvents = "none";
+        document.body.appendChild(ta);
+        ta.focus();
+        ta.select();
+        ok = document.execCommand("copy");
+        document.body.removeChild(ta);
+      } catch {
+        ok = false;
+      }
+    }
+    if (!ok) return;
+    setCopiedArId(true);
+    if (copyResetTimer.current) window.clearTimeout(copyResetTimer.current);
+    copyResetTimer.current = window.setTimeout(() => {
+      setCopiedArId(false);
+      copyResetTimer.current = null;
+    }, 1400);
+  };
+
+  const getCourseFromAr = (courseCode: string) => {
+    for (const uid of ar.uids) {
+      const found = uid.courses.find((c) => c.courseCode === courseCode);
+      if (found) return found;
+    }
+    return null;
+  };
+
+  const getCourseDraft = (course: ActiveCourse) => {
+    return courseDrafts[course.courseCode] ?? {
+      packageName: course.packageName || "",
+      amount: course.amount ? String(course.amount) : "",
+      orderId: course.orderId || "",
+    };
+  };
+
+  const isCourseDirty = (courseCode: string) => {
+    const source = getCourseFromAr(courseCode);
+    if (!source) return false;
+    const draft = getCourseDraft(source);
+    const draftAmount = parseInt(draft.amount.replace(/[^\d]/g, ""), 10) || 0;
+    return (
+      draft.packageName !== (source.packageName || "") ||
+      draftAmount !== (source.amount || 0) ||
+      draft.orderId.trim() !== (source.orderId || "").trim()
+    );
+  };
+
+  const hasUnsavedCourseDrafts = () => {
+    return flatCourses(ar).some((c) => isCourseDirty(c.courseCode));
+  };
+
+  const requestCloseDrawer = () => {
+    if (!hasUnsavedCourseDrafts()) {
+      onClose();
+      return;
+    }
+    const accepted = window.confirm("Bạn có thay đổi chưa lưu. Đóng sẽ mất các thay đổi này. Tiếp tục đóng?");
+    if (!accepted) return;
+    onClose();
+  };
+
+  const scrollDrawerBy = (delta: number) => {
+    const el = arBodyScrollRef.current;
+    if (!el) return;
+    el.scrollBy({ top: delta, behavior: "smooth" });
+  };
+
+  const saveCourseRow = async (uidIdx: number, courseIdx: number, courseCode: string) => {
+    const source = ar.uids[uidIdx]?.courses[courseIdx];
+    if (!source) return;
+    const draft = getCourseDraft(source);
+    const nextPackage = draft.packageName.trim();
+    const nextAmount = parseInt(draft.amount.replace(/[^\d]/g, ""), 10) || 0;
+    const nextOrderId = draft.orderId.trim();
+    if (
+      nextPackage === (source.packageName || "") &&
+      nextAmount === (source.amount || 0) &&
+      nextOrderId === (source.orderId || "")
+    ) {
+      setCourseSaveErrors((prev) => ({ ...prev, [courseCode]: "" }));
+      return;
+    }
+
+    setSavingCourse((prev) => ({ ...prev, [courseCode]: true }));
+    setCourseSaveErrors((prev) => ({ ...prev, [courseCode]: "" }));
+    const next: ActiveRequest = {
+      ...ar,
+      uids: ar.uids.map((u, i) => {
+        if (i !== uidIdx) return u;
+        return {
+          ...u,
+          courses: u.courses.map((c, j) =>
+            j === courseIdx
+              ? { ...c, packageName: nextPackage, amount: nextAmount, orderId: nextOrderId }
+              : c
+          ),
+        };
+      }),
+    };
+    const result = await onPersist(next);
+    setSavingCourse((prev) => ({ ...prev, [courseCode]: false }));
+
+    if (!result.ok) {
+      setCourseSaveErrors((prev) => ({
+        ...prev,
+        [courseCode]: result.error || "Không lưu được thay đổi lên máy chủ.",
+      }));
+      return;
+    }
+
+    setCourseSaveErrors((prev) => ({ ...prev, [courseCode]: "" }));
+    setCourseSavedAt((prev) => ({ ...prev, [courseCode]: Date.now() }));
   };
 
   return (
     <>
-      <div className={`scrim ${open ? "open" : ""}`} onClick={onClose} style={{ pointerEvents: open ? "auto" : "none" }} />
+      <div className={`scrim ${open ? "open" : ""}`} onClick={requestCloseDrawer} style={{ pointerEvents: open ? "auto" : "none" }} />
       <aside className={`drawer ${open ? "open" : ""}`} style={{ width: "min(1020px, 96vw)" }}>
         <div className="drawer-head">
           <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
@@ -447,13 +803,13 @@ function ActivationDetailDrawer({
           </div>
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
             <ARStatusBadge status={enriched.status} />
-            <button type="button" className="drawer-close" onClick={onClose}>
+            <button type="button" className="drawer-close" onClick={requestCloseDrawer}>
               <Icons.Close size={16} />
             </button>
           </div>
         </div>
 
-        <div className="drawer-body ar-drawer-body">
+        <div className="drawer-body ar-drawer-body" ref={arBodyScrollRef}>
           <div className="summary-row" style={{ gridTemplateColumns: pr ? "repeat(5, 1fr)" : "repeat(4, 1fr)" }}>
             <div className="summary">
               <div className="summary-label">Tổng giá trị courses</div>
@@ -606,8 +962,27 @@ function ActivationDetailDrawer({
             </div>
           )}
 
-          {ar.uids.map((uidObj, uidIdx) => (
-            <div key={uidIdx} className="uid-group">
+          <div
+            className="ar-uid-list"
+            onWheel={(e) => e.stopPropagation()}
+            onScroll={(e) => e.stopPropagation()}
+          >
+            {ar.uids.map((uidObj, uidIdx) => {
+              const uidKey = uidObj.uid.trim();
+              const isUidFromPr = !!uidKey && (
+                (!!pr && uidKey === String(pr.uid || "").trim()) || !!prByUid.get(uidKey)
+              );
+              const draftUid = uidDrafts[uidIdx] ?? {
+                uid: uidObj.uid ?? "",
+                phone: uidObj.phone ?? "",
+                country: uidObj.country || "VN",
+              };
+              const isUidDirty =
+                draftUid.uid.trim() !== uidObj.uid ||
+                draftUid.phone.replace(/[^\d]/g, "") !== (uidObj.phone || "") ||
+                (draftUid.country || "VN") !== (uidObj.country || "VN");
+              return (
+              <div key={uidIdx} className="uid-group">
               <div className="uid-group-head">
                 <div
                   style={{
@@ -622,8 +997,8 @@ function ActivationDetailDrawer({
                 </div>
                 <input
                   className="uid-mono"
-                  value={uidObj.uid}
-                  onChange={(e) => updateUid(uidIdx, { uid: e.target.value })}
+                  value={draftUid.uid}
+                  onChange={(e) => setUidDraftField(uidIdx, "uid", e.target.value)}
                   placeholder="Nhập UID học viên…"
                   style={{ width: 180 }}
                 />
@@ -640,12 +1015,12 @@ function ActivationDetailDrawer({
                   SĐT
                 </span>
                 <CountryCombo
-                  value={uidObj.country || "VN"}
-                  onChange={(v) => updateUid(uidIdx, { country: v })}
+                  value={draftUid.country || "VN"}
+                  onChange={(v) => setUidDraftField(uidIdx, "country", v)}
                 />
                 <input
-                  value={uidObj.phone || ""}
-                  onChange={(e) => updateUid(uidIdx, { phone: e.target.value.replace(/\D/g, "") })}
+                  value={draftUid.phone}
+                  onChange={(e) => setUidDraftField(uidIdx, "phone", e.target.value.replace(/\D/g, ""))}
                   placeholder="9xx xxx xxx"
                   style={{
                     width: 140,
@@ -658,11 +1033,20 @@ function ActivationDetailDrawer({
                     background: "white",
                   }}
                 />
-                {uidIdx === 0 && pr && uidObj.uid === pr.uid && (
+                {isUidFromPr && (
                   <span className="badge is-soft-primary" style={{ fontSize: 10 }}>
                     <Icons.Check size={10} strokeWidth={2.5} /> UID từ PR
                   </span>
                 )}
+                <button
+                  type="button"
+                  className="btn btn-outline btn-sm"
+                  onClick={() => void saveUidHeader(uidIdx)}
+                  disabled={!isUidDirty || isStructureSaving}
+                  title={isUidDirty ? "Lưu UID/SĐT/quốc gia lên Supabase" : "Chưa có thay đổi"}
+                >
+                  <Icons.Check size={12} strokeWidth={2.5} /> Lưu
+                </button>
                 <span className="spacer" />
                 <span className="num-pill">{uidObj.courses.length} khoá</span>
                 {ar.uids.length > 1 && (
@@ -670,7 +1054,8 @@ function ActivationDetailDrawer({
                     type="button"
                     className="btn btn-outline btn-sm"
                     style={{ color: "var(--danger)" }}
-                    onClick={() => onUpdate({ ...ar, uids: ar.uids.filter((_, i) => i !== uidIdx) })}
+                    disabled={isStructureSaving}
+                    onClick={() => void removeUid(uidIdx)}
                   >
                     <Icons.XCircle size={13} /> Xoá UID
                   </button>
@@ -682,6 +1067,7 @@ function ActivationDetailDrawer({
                 <span style={{ textAlign: "right" }}>Số tiền</span>
                 <span>Course Code</span>
                 <span>Order ID</span>
+                <span>Lưu</span>
                 <span>Xuất HĐ</span>
                 <span />
               </div>
@@ -691,19 +1077,40 @@ function ActivationDetailDrawer({
                   <div className="pkg-name">
                     <input
                       list={`packages-${ar.id}`}
-                      value={course.packageName}
-                      onChange={(e) => updateCourse(uidIdx, courseIdx, { packageName: e.target.value })}
+                      value={(courseDrafts[course.courseCode]?.packageName ?? course.packageName) || ""}
+                      onChange={(e) => {
+                        const nextVal = e.target.value;
+                        setCourseDrafts((prev) => ({
+                          ...prev,
+                          [course.courseCode]: {
+                            packageName: nextVal,
+                            amount: prev[course.courseCode]?.amount ?? (course.amount ? String(course.amount) : ""),
+                            orderId: prev[course.courseCode]?.orderId ?? (course.orderId || ""),
+                          },
+                        }));
+                        setCourseSaveErrors((prev) => ({ ...prev, [course.courseCode]: "" }));
+                        setCourseSavedAt((prev) => ({ ...prev, [course.courseCode]: 0 }));
+                      }}
                       placeholder="VD: 2/W- NEW 48 US-UK+2 HN"
                     />
                   </div>
                   <input
                     className="amt-input"
-                    value={course.amount ? String(course.amount) : ""}
+                    value={courseDrafts[course.courseCode]?.amount ?? (course.amount ? String(course.amount) : "")}
                     inputMode="numeric"
                     pattern="[0-9]*"
                     onChange={(e) => {
                       const v = e.target.value.replace(/[^\d]/g, "");
-                      updateCourse(uidIdx, courseIdx, { amount: v ? Number(v) : 0 });
+                      setCourseDrafts((prev) => ({
+                        ...prev,
+                        [course.courseCode]: {
+                          packageName: prev[course.courseCode]?.packageName ?? (course.packageName || ""),
+                          amount: v,
+                          orderId: prev[course.courseCode]?.orderId ?? (course.orderId || ""),
+                        },
+                      }));
+                      setCourseSaveErrors((prev) => ({ ...prev, [course.courseCode]: "" }));
+                      setCourseSavedAt((prev) => ({ ...prev, [course.courseCode]: 0 }));
                     }}
                     placeholder="0"
                   />
@@ -711,20 +1118,47 @@ function ActivationDetailDrawer({
                     <Icons.Sparkle size={11} /> {course.courseCode}
                   </span>
                   <input
-                    className={`order-input ${drafts[course.courseCode]?.trim() ? "has" : ""}`}
+                    className={`order-input ${(courseDrafts[course.courseCode]?.orderId ?? course.orderId ?? "").trim() ? "has" : ""}`}
                     placeholder="ORD-XXXX-XXXXX"
-                    value={drafts[course.courseCode] ?? ""}
-                    onChange={(e) =>
-                      setDrafts((prev) => ({ ...prev, [course.courseCode]: e.target.value }))
-                    }
-                    onBlur={() => {
-                      const val = (drafts[course.courseCode] ?? "").trim();
-                      if (val !== (course.orderId || "")) {
-                        updateCourse(uidIdx, courseIdx, { orderId: val });
-                        onSaveOrderId(course.courseCode, val);
-                      }
+                    value={courseDrafts[course.courseCode]?.orderId ?? course.orderId ?? ""}
+                    onChange={(e) => {
+                      const next = e.target.value;
+                      setCourseDrafts((prev) => ({
+                        ...prev,
+                        [course.courseCode]: {
+                          packageName: prev[course.courseCode]?.packageName ?? (course.packageName || ""),
+                          amount: prev[course.courseCode]?.amount ?? (course.amount ? String(course.amount) : ""),
+                          orderId: next,
+                        },
+                      }));
+                      setCourseSaveErrors((prev) => ({ ...prev, [course.courseCode]: "" }));
+                      setCourseSavedAt((prev) => ({ ...prev, [course.courseCode]: 0 }));
                     }}
                   />
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 136 }}>
+                    <button
+                      type="button"
+                      className="btn btn-outline btn-sm"
+                      disabled={isStructureSaving || !isCourseDirty(course.courseCode) || !!savingCourse[course.courseCode]}
+                      onClick={() => void saveCourseRow(uidIdx, courseIdx, course.courseCode)}
+                      title={
+                        isCourseDirty(course.courseCode)
+                          ? "Lưu gói học, số tiền và Order ID lên Supabase"
+                          : "Chưa có thay đổi"
+                      }
+                    >
+                      <Icons.Check size={11} strokeWidth={2.5} /> {savingCourse[course.courseCode] ? "Đang lưu..." : "Lưu"}
+                    </button>
+                    {courseSaveErrors[course.courseCode] ? (
+                      <span style={{ fontSize: 10.5, color: "var(--danger)", whiteSpace: "nowrap" }} title={courseSaveErrors[course.courseCode]}>
+                        Lỗi lưu
+                      </span>
+                    ) : isCourseDirty(course.courseCode) ? (
+                      <span style={{ fontSize: 10.5, color: "var(--warning-text)", whiteSpace: "nowrap" }}>Chưa lưu</span>
+                    ) : courseSavedAt[course.courseCode] ? (
+                      <span style={{ fontSize: 10.5, color: "var(--success-text)", whiteSpace: "nowrap" }}>Đã lưu</span>
+                    ) : null}
+                  </div>
                   <div className="invoice-cell">
                     {course.invoiced ? (
                       <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
@@ -770,8 +1204,8 @@ function ActivationDetailDrawer({
                   <button
                     type="button"
                     className="remove-btn"
-                    disabled={ar.uids.length === 1 && uidObj.courses.length === 1}
-                    onClick={() => removeCourse(uidIdx, courseIdx)}
+                    disabled={isStructureSaving || (ar.uids.length === 1 && uidObj.courses.length === 1)}
+                    onClick={() => void removeCourse(uidIdx, courseIdx)}
                     title={
                       ar.uids.length === 1 && uidObj.courses.length === 1
                         ? "Không thể xoá khoá học cuối cùng"
@@ -788,8 +1222,8 @@ function ActivationDetailDrawer({
                 ))}
               </datalist>
               <div className="uid-group-foot">
-                <button type="button" className="uid-add-link" onClick={() => addCourse(uidIdx)}>
-                  <Icons.Plus size={13} /> Thêm gói học cho UID này
+                <button type="button" className="uid-add-link" onClick={() => void addCourse(uidIdx)} disabled={isStructureSaving}>
+                  <Icons.Plus size={13} /> {isStructureSaving ? "Đang lưu..." : "Thêm gói học cho UID này"}
                 </button>
                 <span style={{ color: "var(--text-3)" }}>
                   Tổng UID này:{" "}
@@ -798,23 +1232,116 @@ function ActivationDetailDrawer({
                   </strong>
                 </span>
               </div>
-            </div>
-          ))}
+              </div>
+            )})}
+          </div>
 
-          <button type="button" className="add-uid-card" onClick={addUid}>
+          {structureError && (
+            <div style={{ color: "var(--danger)", fontSize: 12, marginTop: 6, marginBottom: 4 }}>
+              {structureError}
+            </div>
+          )}
+
+          <button type="button" className="add-uid-card" onClick={openAddUidDialog} disabled={isStructureSaving}>
             <Icons.Plus size={14} style={{ verticalAlign: "middle", marginRight: 6 }} />
-            Thêm UID khác (cho phép 1 PR mua nhiều khoá cho nhiều người)
+            {isStructureSaving ? "Đang lưu..." : "Thêm UID khác (cho phép 1 PR mua nhiều khoá cho nhiều người)"}
+          </button>
+
+          {addUidDialogOpen && (
+            <div className="gmv-prototype-modal-scrim" onClick={() => !isStructureSaving && setAddUidDialogOpen(false)}>
+              <div
+                className="modal"
+                style={{ width: "min(420px, 92vw)" }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="modal-head">
+                  <h3>Thêm UID mới</h3>
+                  <button
+                    type="button"
+                    className="drawer-close"
+                    onClick={() => !isStructureSaving && setAddUidDialogOpen(false)}
+                    disabled={isStructureSaving}
+                  >
+                    <Icons.Close size={16} />
+                  </button>
+                </div>
+                <div className="modal-body">
+                  <div className="field">
+                    <label>UID <span style={{ color: "var(--danger)" }}>*</span></label>
+                    <input
+                      autoFocus
+                      value={newUidValue}
+                      onChange={(e) => {
+                        setNewUidValue(e.target.value);
+                        if (newUidError) setNewUidError("");
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key !== "Enter") return;
+                        e.preventDefault();
+                        void submitAddUid();
+                      }}
+                      placeholder="Nhập UID học viên"
+                    />
+                    {newUidError ? (
+                      <div style={{ marginTop: 8, color: "var(--danger)", fontSize: 12 }}>{newUidError}</div>
+                    ) : null}
+                  </div>
+                </div>
+                <div className="modal-foot">
+                  <button
+                    type="button"
+                    className="btn btn-outline"
+                    onClick={() => setAddUidDialogOpen(false)}
+                    disabled={isStructureSaving}
+                  >
+                    Hủy
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    onClick={() => void submitAddUid()}
+                    disabled={isStructureSaving}
+                  >
+                    {isStructureSaving ? "Đang lưu..." : "Thêm UID"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="drawer-scroll-actions" aria-hidden={!open}>
+          <button
+            type="button"
+            className="btn btn-outline btn-icon"
+            onClick={() => scrollDrawerBy(-360)}
+            disabled={!canScrollUp}
+            title="Cuộn lên"
+          >
+            <span style={{ transform: "rotate(180deg)", display: "inline-flex" }}>
+              <Icons.ChevronDown size={15} />
+            </span>
+          </button>
+          <button
+            type="button"
+            className="btn btn-outline btn-icon"
+            onClick={() => scrollDrawerBy(360)}
+            disabled={!canScrollDown}
+            title="Cuộn xuống"
+          >
+            <Icons.ChevronDown size={15} />
           </button>
         </div>
 
         <div className="drawer-foot" style={{ justifyContent: "space-between" }}>
           <div style={{ display: "flex", gap: 8 }}>
             <button type="button" className="btn btn-outline btn-sm" onClick={copyArId}>
-              <Icons.Copy size={13} /> Copy AR-ID
+              {copiedArId ? <Icons.Check size={13} /> : <Icons.Copy size={13} />}
+              {copiedArId ? " Đã copy" : " Copy AR-ID"}
             </button>
           </div>
           <div style={{ display: "flex", gap: 8 }}>
-            <button type="button" className="btn btn-outline" onClick={onClose}>
+            <button type="button" className="btn btn-outline" onClick={requestCloseDrawer}>
               Đóng
             </button>
             {enriched.status === "ready_invoice" && (
@@ -833,11 +1360,11 @@ export default function ActivationTab() {
   const {
     activeRequests,
     requests,
-    patchCourseOrderId,
     navigate,
     nav,
     setNav,
     apiNote,
+    setApiNote,
     updateActiveRequest,
     handleCreateActiveRequestFromForm,
   } = usePaymentFlow();
@@ -885,6 +1412,21 @@ export default function ActivationTab() {
 
   const openAr = openArId ? activeRequests.find((a) => a.id === openArId) ?? null : null;
   const openPr = openAr?.prId ? requests.find((p) => p.id === openAr.prId) ?? null : null;
+  const persistActiveRequest = async (next: ActiveRequest) => {
+    try {
+      const res = await endpoints.activeRequests.update(next.id, {
+        uids_data: toActiveRequestPatchUidsData(next),
+      });
+      const saved = fromApiActiveRequest(res.data);
+      updateActiveRequest(next.id, () => saved);
+      setApiNote("");
+      return { ok: true as const, saved };
+    } catch {
+      const error = "Không lưu được thay đổi Active Request lên máy chủ.";
+      setApiNote(error);
+      return { ok: false as const, error };
+    }
+  };
 
   return (
     <div className="gmv-prototype">
@@ -1092,12 +1634,11 @@ export default function ActivationTab() {
       <ActivationDetailDrawer
         ar={openAr}
         pr={openPr}
+        requestsForAutofill={requests}
         open={!!openArId}
         onClose={() => setOpenArId(null)}
         onUpdate={(next) => updateActiveRequest(next.id, () => next)}
-        onSaveOrderId={(courseCode, orderId) => {
-          if (openAr) void patchCourseOrderId(openAr.id, courseCode, orderId);
-        }}
+        onPersist={persistActiveRequest}
         onNavigateInvoice={() => navigate("module4", { invoiceTab: "pending" })}
         onOpenPr={
           openAr?.prId

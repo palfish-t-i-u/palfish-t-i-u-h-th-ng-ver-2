@@ -8,10 +8,11 @@ interface Props {
   title?: string;
   children: ReactNode;
   className?: string;
+  overlayClassName?: string;
   wide?: boolean;
 }
 
-export default function Modal({ open, onClose, title, children, className, wide }: Props) {
+export default function Modal({ open, onClose, title, children, className, overlayClassName, wide }: Props) {
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
@@ -25,7 +26,7 @@ export default function Modal({ open, onClose, title, children, className, wide 
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+      className={cn("fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4", overlayClassName)}
       onClick={onClose}
       role="presentation"
     >
