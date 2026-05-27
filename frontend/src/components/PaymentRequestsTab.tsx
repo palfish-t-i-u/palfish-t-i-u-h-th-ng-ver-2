@@ -43,6 +43,7 @@ export default function PaymentRequestsTab() {
     handleCreate: ctxCreate,
     handleAddPayment: ctxAddPayment,
     handleCreateActiveRequest,
+    updateActiveRequestCoursePackage,
     nav,
     setNav,
   } = usePaymentFlow();
@@ -409,6 +410,7 @@ export default function PaymentRequestsTab() {
         onCancelRequest={() => selected && setCancelTarget(selected)}
         activeRequestId={selected ? arByPrId[selected.id]?.id ?? null : null}
         activeRequest={selected ? arByPrId[selected.id] ?? null : null}
+        onCoursePackageChange={updateActiveRequestCoursePackage}
         onShowQr={(qr) => selected && setQrView({ qr, request: selected })}
       />
 

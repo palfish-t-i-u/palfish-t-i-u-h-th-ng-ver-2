@@ -27,6 +27,8 @@ import {
   nextPaymentCode,
   normalizeRequest,
   nowStamp,
+  toActiveRequestPatchUidsData,
+  updateActiveCoursePackage,
 } from "../components/payment-request/paymentRequestUtils";
 import {
   countAwaitingTransactions,
@@ -73,6 +75,7 @@ type PaymentFlowContextValue = {
     packageName: string;
     amount: number;
   }) => Promise<ActiveRequest>;
+  updateActiveRequestCoursePackage: (arId: string, courseCode: string, packageName: string) => Promise<void>;
   patchCourseOrderId: (arId: string, courseCode: string, orderId: string) => Promise<void>;
   issueInvoiceForCourse: (arId: string, courseCode: string) => Promise<void>;
   badgeCounts: { reconciliation: number; activation: number; invoice: number };
@@ -362,6 +365,30 @@ export function PaymentFlowProvider({
     [activeRequests]
   );
 
+  const updateActiveRequestCoursePackage = useCallback(
+    async (arId: string, courseCode: string, packageName: string) => {
+      let optimistic: ActiveRequest | null = null;
+      updateActiveRequest(arId, (ar) => {
+        optimistic = updateActiveCoursePackage(ar, courseCode, packageName);
+        return optimistic;
+      });
+
+      if (!optimistic) return;
+
+      try {
+        const res = await endpoints.activeRequests.update(arId, {
+          uids_data: toActiveRequestPatchUidsData(optimistic),
+        });
+        const ar = fromApiActiveRequest(res.data);
+        setActiveRequests((prev) => prev.map((x) => (x.id === arId ? ar : x)));
+        setApiNote("");
+      } catch {
+        setApiNote("Đã đổi gói tạm trên giao diện; máy chủ chưa lưu được thay đổi gói học.");
+      }
+    },
+    [updateActiveRequest]
+  );
+
   const patchCourseOrderId = useCallback(
     async (arId: string, courseCode: string, orderId: string) => {
       const trimmed = orderId.trim();
@@ -429,6 +456,7 @@ export function PaymentFlowProvider({
       rejectTransaction,
       handleCreateActiveRequest,
       handleCreateActiveRequestFromForm,
+      updateActiveRequestCoursePackage,
       patchCourseOrderId,
       issueInvoiceForCourse,
       badgeCounts,
@@ -450,6 +478,7 @@ export function PaymentFlowProvider({
       rejectTransaction,
       handleCreateActiveRequest,
       handleCreateActiveRequestFromForm,
+      updateActiveRequestCoursePackage,
       patchCourseOrderId,
       issueInvoiceForCourse,
       badgeCounts,

@@ -200,6 +200,29 @@ export type ActiveRequestApiRow = {
   payment_request?: { name?: string; email?: string };
 };
 
+export type ActiveRequestPatchUidPayload = {
+  uid: string;
+  phone?: string;
+  country?: string;
+  courses: Array<{
+    code: string;
+    name: string;
+    amount: number;
+    order_id?: string;
+    invoiced?: boolean;
+    invoice_id?: string;
+    invoiced_at?: string;
+    tax_invoice_code?: string;
+    tax_product_code?: string;
+  }>;
+};
+
+export type PatchActiveRequestPayload = {
+  customer_name?: string;
+  info_confirmed?: boolean;
+  uids_data?: ActiveRequestPatchUidPayload[];
+};
+
 export type CreateStandaloneActiveRequestPayload = {
   customer_name?: string;
   pr_id?: string | null;

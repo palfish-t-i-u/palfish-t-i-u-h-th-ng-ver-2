@@ -1,4 +1,4 @@
-import type { ActiveRequest, ActiveRequestApiRow, CreateActiveRequestPayload, PaymentAttempt, PaymentMethod, PaymentRequest, PaymentRequestStatus } from "../../types/paymentRequest";
+import type { ActiveRequest, ActiveRequestApiRow, ActiveRequestPatchUidPayload, CreateActiveRequestPayload, PaymentAttempt, PaymentMethod, PaymentRequest, PaymentRequestStatus } from "../../types/paymentRequest";
 
 export type RequestBucket = "tracking" | "created" | "cancelled";
 export type StatusFilter = "all" | "pending" | "short" | "done" | "over";
@@ -176,6 +176,41 @@ export function buildCreateActiveRequestPayload(pr: PaymentRequest): CreateActiv
       },
     ],
   };
+}
+
+export function updateActiveCoursePackage(
+  ar: ActiveRequest,
+  courseCode: string,
+  packageName: string
+): ActiveRequest {
+  return {
+    ...ar,
+    uids: ar.uids.map((u) => ({
+      ...u,
+      courses: u.courses.map((c) =>
+        c.courseCode === courseCode ? { ...c, packageName } : c
+      ),
+    })),
+  };
+}
+
+export function toActiveRequestPatchUidsData(ar: ActiveRequest): ActiveRequestPatchUidPayload[] {
+  return ar.uids.map((u) => ({
+    uid: u.uid,
+    phone: u.phone,
+    country: u.country,
+    courses: u.courses.map((c) => ({
+      code: c.courseCode,
+      name: c.packageName,
+      amount: c.amount,
+      order_id: c.orderId,
+      invoiced: c.invoiced,
+      invoice_id: c.invoiceId,
+      invoiced_at: c.invoicedAt ?? undefined,
+      tax_invoice_code: c.taxInvoiceCode,
+      tax_product_code: c.taxProductCode,
+    })),
+  }));
 }
 
 export function createLocalActiveRequest(pr: PaymentRequest, existing: ActiveRequest[]): ActiveRequest {
