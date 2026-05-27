@@ -376,6 +376,7 @@ export default function PaymentRequestDetailDrawer({
   const [showAdd, setShowAdd] = useState(false);
   const [editing, setEditing] = useState(false);
   const [savingEdit, setSavingEdit] = useState(false);
+  const [isTargetFocused, setIsTargetFocused] = useState(false);
   const [draft, setDraft] = useState<DraftPr | null>(null);
   const drawerBodyRef = useRef<HTMLDivElement | null>(null);
   const addFormRef = useRef<HTMLDivElement | null>(null);
@@ -384,6 +385,7 @@ export default function PaymentRequestDetailDrawer({
     setShowAdd(false);
     setEditing(false);
     setSavingEdit(false);
+    setIsTargetFocused(false);
     setDraft(null);
   }, [request?.id]);
 
@@ -487,7 +489,7 @@ export default function PaymentRequestDetailDrawer({
                       province: request.province || "",
                       ward: request.ward || "",
                       address: request.address || "",
-                      target: String(request.target.toLocaleString("vi-VN")),
+                      target: String(request.target),
                       note: request.note || "",
                     });
                     setEditing(true);
@@ -662,10 +664,20 @@ export default function PaymentRequestDetailDrawer({
                 <div className="info-cell">
                   <div className="info-label">Tổng tiền dự kiến</div>
                   <input
-                    value={draft.target}
+                    value={
+                      isTargetFocused
+                        ? draft.target
+                        : draft.target
+                        ? Number(draft.target).toLocaleString("vi-VN")
+                        : ""
+                    }
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    onFocus={() => setIsTargetFocused(true)}
+                    onBlur={() => setIsTargetFocused(false)}
                     onChange={(e) => {
                       const v = e.target.value.replace(/[^\d]/g, "");
-                      setDraft({ ...draft, target: v ? Number(v).toLocaleString("vi-VN") : "" });
+                      setDraft({ ...draft, target: v });
                     }}
                     style={{
                       border: "1px solid var(--border)",
