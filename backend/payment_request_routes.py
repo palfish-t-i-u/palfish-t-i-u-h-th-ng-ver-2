@@ -52,6 +52,25 @@ class PaymentRequestCreate(BaseModel):
     tong_tien_phai_thu: int | str | None = None
 
 
+class PaymentRequestPatch(BaseModel):
+    uid: str | None = None
+    name: str | None = None
+    phone: str | None = None
+    country: str | None = None
+    address: str | None = None
+    ward: str | None = None
+    province: str | None = None
+    note: str | None = None
+    email: str | None = None
+    target: int | str | None = None
+
+    uid_khach_hang: str | None = None
+    ten_khach: str | None = None
+    sdt: str | None = None
+    dia_chi: str | None = None
+    tong_tien_phai_thu: int | str | None = None
+
+
 class PaymentLineCreate(BaseModel):
     amount: int | str | None = None
     method: str | None = None
@@ -328,6 +347,66 @@ def _payment_request_insert_row(body: PaymentRequestCreate) -> dict[str, Any]:
         "received": 0,
         "state": "pending",
     }
+
+
+def _payment_request_patch_row(body: PaymentRequestPatch, current_row: dict[str, Any]) -> dict[str, Any]:
+    patch: dict[str, Any] = {}
+
+    uid_val = body.uid if body.uid is not None else body.uid_khach_hang
+    if uid_val is not None:
+        uid = _clean_text(uid_val)
+        if not uid:
+            raise HTTPException(400, "uid khong duoc de trong")
+        patch["uid"] = uid
+
+    name_val = body.name if body.name is not None else body.ten_khach
+    if name_val is not None:
+        name = _clean_text(name_val)
+        if not name:
+            raise HTTPException(400, "name khong duoc de trong")
+        patch["name"] = name
+
+    phone_val = body.phone if body.phone is not None else body.sdt
+    if phone_val is not None:
+        phone = _clean_text(phone_val)
+        if not phone:
+            raise HTTPException(400, "phone khong duoc de trong")
+        patch["phone"] = phone
+
+    if body.country is not None:
+        patch["country"] = _clean_text(body.country) or "VN"
+
+    address_val = body.address if body.address is not None else body.dia_chi
+    if address_val is not None:
+        patch["address"] = _clean_text(address_val)
+
+    if body.ward is not None:
+        patch["ward"] = _clean_text(body.ward)
+    if body.province is not None:
+        patch["province"] = _clean_text(body.province)
+    if body.note is not None:
+        patch["note"] = _clean_text(body.note)
+    if body.email is not None:
+        patch["email"] = _clean_text(body.email)
+
+    target_val = body.target if body.target is not None else body.tong_tien_phai_thu
+    if target_val is not None:
+        target = _parse_amount(target_val)
+        if target <= 0:
+            raise HTTPException(400, "target khong hop le")
+        patch["target"] = target
+
+    if not patch:
+        return {}
+
+    next_uid = patch.get("uid", _clean_text(current_row.get("uid")))
+    next_name = patch.get("name", _clean_text(current_row.get("name")))
+    next_phone = patch.get("phone", _clean_text(current_row.get("phone")))
+    if not next_uid or not next_name or not next_phone:
+        raise HTTPException(400, "uid, name, phone la bat buoc")
+
+    patch["updated_at"] = _iso_now()
+    return patch
 
 
 def _allocate_pr_id(sb, year: int | None = None) -> str:
@@ -655,6 +734,62 @@ def register_payment_request_routes(app, get_supabase) -> None:
             for row in pr_rows
         ]
         return {"requests": requests}
+
+    @router.patch("/payment-requests/{payment_request_id}")
+    def patch_payment_request(payment_request_id: str, body: PaymentRequestPatch):
+        sb = _sb_or_503(get_supabase)
+        request_res = (
+            sb.table("payment_requests")
+            .select("*")
+            .eq("id", payment_request_id)
+            .limit(1)
+            .execute()
+        )
+        if not request_res.data:
+            raise HTTPException(404, "Khong tim thay payment_request")
+
+        current_row = request_res.data[0]
+        patch = _payment_request_patch_row(body, current_row)
+        if not patch:
+            raise HTTPException(400, "Khong co du lieu de cap nhat")
+
+        try:
+            updated_res = (
+                sb.table("payment_requests")
+                .update(patch)
+                .eq("id", payment_request_id)
+                .execute()
+            )
+        except Exception as exc:
+            raise HTTPException(500, f"Khong cap nhat duoc payment_request: {exc}") from exc
+
+        updated_row = updated_res.data[0] if updated_res.data else {**current_row, **patch}
+
+        # target thay doi co the anh huong state => recompute theo payment_lines.
+        if "target" in patch:
+            totals = recompute_payment_request_totals(sb, payment_request_id)
+            refreshed = totals.get("payment_request")
+            if isinstance(refreshed, dict):
+                updated_row = {**updated_row, **refreshed}
+
+        line_res = (
+            sb.table("payment_lines")
+            .select("*")
+            .eq("payment_request_id", payment_request_id)
+            .execute()
+        )
+        bill_urls = _fetch_bill_urls_from_storage(
+            sb,
+            [str(line.get("id") or "") for line in (line_res.data or []) if line.get("id")],
+        )
+
+        return {
+            "payment_request": _serialize_payment_request_list_item(
+                updated_row,
+                line_res.data or [],
+                bill_urls,
+            )
+        }
 
     @router.post("/payment-requests/{payment_request_id}/cancel")
     def cancel_payment_request(
