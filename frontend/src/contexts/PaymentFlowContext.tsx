@@ -14,6 +14,7 @@ import type {
   AddPaymentAttemptPayload,
   CreatePaymentRequestPayload,
   CreateActiveRequestPayload,
+  UpdatePaymentRequestPayload,
   PaymentAttempt,
   PaymentRequest,
 } from "../types/paymentRequest";
@@ -24,7 +25,7 @@ import {
   fromApiActiveRequest,
   fromApiPaymentRequest,
   isBackendLineId,
-  nextPaymentCode,
+  mergeAddPaymentLineResponse,
   normalizeRequest,
   nowStamp,
 } from "../components/payment-request/paymentRequestUtils";
@@ -60,7 +61,11 @@ type PaymentFlowContextValue = {
   updateRequest: (id: string, updater: (r: PaymentRequest) => PaymentRequest) => void;
   updateActiveRequest: (id: string, updater: (ar: ActiveRequest) => ActiveRequest) => void;
   handleCreate: (payload: CreatePaymentRequestPayload) => Promise<PaymentRequest>;
-  handleAddPayment: (requestId: string, payload: AddPaymentAttemptPayload) => Promise<PaymentAttempt | null>;
+  handleUpdatePr: (id: string, payload: UpdatePaymentRequestPayload) => Promise<PaymentRequest>;
+  handleAddPayment: (
+    requestId: string,
+    payload: AddPaymentAttemptPayload
+  ) => Promise<{ payment: PaymentAttempt; request: PaymentRequest } | null>;
   confirmTransaction: (prId: string, paymentId: string) => Promise<void>;
   rejectTransaction: (prId: string, paymentId: string) => Promise<void>;
   handleCreateActiveRequest: (pr: PaymentRequest) => Promise<ActiveRequest>;
@@ -179,52 +184,48 @@ export function PaymentFlowProvider({
     []
   );
 
+  const handleUpdatePr = useCallback(
+    async (id: string, payload: UpdatePaymentRequestPayload) => {
+      const response = await endpoints.paymentRequests.update(id, payload);
+      const saved = normalizeRequest(fromApiPaymentRequest(response.data.payment_request));
+      setRequests((prev) => prev.map((r) => (r.id === id ? saved : r)));
+      setApiNote("");
+      return saved;
+    },
+    []
+  );
+
   const handleAddPayment = useCallback(
     async (requestId: string, payload: AddPaymentAttemptPayload) => {
       const selected = requests.find((r) => r.id === requestId);
       if (!selected) return null;
-      const nextIdx = (selected.payments[selected.payments.length - 1]?.idx || 0) + 1;
-      const localPayment: PaymentAttempt = {
-        id: `${requestId}-${Date.now()}`,
-        idx: nextIdx,
-        amount: payload.amount,
-        status: "pending",
-        createdAt: nowStamp(),
-        paidAt: null,
-        code: nextPaymentCode(requestId, nextIdx),
-        bill: false,
-        method: payload.method,
-        bank: payload.bank,
-        cardLast4: payload.cardLast4,
-        installmentMonths: payload.installmentMonths,
-        cashier: payload.cashier,
-      };
-      updateRequest(requestId, (r) => ({ ...r, payments: [...r.payments, localPayment] }));
+
+      const nextIdx =
+        selected.payments.filter((p) => !p.cancelled).length > 0
+          ? Math.max(...selected.payments.filter((p) => !p.cancelled).map((p) => p.idx)) + 1
+          : 1;
+
       try {
         const res = (await endpoints.paymentRequests.addPayment(requestId, payload)).data;
-        const confirmed: PaymentAttempt = {
-          ...localPayment,
-          id: res.payment_line.id || localPayment.id,
-          code: res.payment_line.transfer_code || localPayment.code,
-          status: res.payment_line.status === "paid" ? "paid" : "pending",
-          paidAt: res.payment_line.paid_at || null,
-          qrCode: res.payment_line.qr_code || res.payos?.qr_code || null,
-          checkoutUrl: res.payment_line.checkout_url || res.payos?.checkout_url || null,
-          paymentLinkId: res.payos?.payment_link_id || null,
-          transferContent: res.payos?.transfer_content || res.payment_line.transfer_code || localPayment.code,
-          billImage: res.payment_line.bill_image ?? null,
-          bill: !!(res.payment_line.bill_image),
-        };
+        let merged: PaymentRequest | null = null;
         updateRequest(requestId, (r) => {
-          const updatedPayments = r.payments.map((p) => (p.id === localPayment.id ? confirmed : p));
-          const prFromBe = fromApiPaymentRequest(res.payment_request);
-          return normalizeRequest({ ...r, ...prFromBe, payments: updatedPayments });
+          merged = mergeAddPaymentLineResponse(r, res, nextIdx);
+          return merged;
         });
+        if (!merged) return null;
+        const payment =
+          merged.payments.find((p) => p.id === res.payment_line.id) ??
+          merged.payments[merged.payments.length - 1] ??
+          null;
+        if (!payment) return null;
         setApiNote("");
-        return confirmed;
-      } catch {
-        setApiNote("Máy chủ thêm lần thanh toán chưa sẵn sàng; giao diện cập nhật tạm.");
-        return localPayment;
+        return { payment, request: merged };
+      } catch (err) {
+        const msg =
+          (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ||
+          "Máy chủ thêm lần thanh toán chưa sẵn sàng.";
+        setApiNote(String(msg));
+        throw err;
       }
     },
     [requests, updateRequest]
@@ -422,6 +423,7 @@ export function PaymentFlowProvider({
       updateRequest,
       updateActiveRequest,
       handleCreate,
+      handleUpdatePr,
       handleAddPayment,
       confirmTransaction,
       rejectTransaction,
@@ -443,6 +445,7 @@ export function PaymentFlowProvider({
       updateRequest,
       updateActiveRequest,
       handleCreate,
+      handleUpdatePr,
       handleAddPayment,
       confirmTransaction,
       rejectTransaction,

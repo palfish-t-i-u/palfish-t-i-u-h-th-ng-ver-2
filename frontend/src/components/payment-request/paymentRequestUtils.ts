@@ -93,6 +93,32 @@ export function fromApiPaymentRequest(raw: any): PaymentRequest {
   };
 }
 
+/** Merge POST payment-lines response into a PR — append line if poll wiped optimistic state. */
+export function mergeAddPaymentLineResponse(
+  current: PaymentRequest,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  res: { payment_line: any; payment_request: any; payos?: any },
+  fallbackIdx: number
+): PaymentRequest {
+  const prRaw = res.payment_request;
+  if (Array.isArray(prRaw?.payments) && prRaw.payments.length > 0) {
+    return normalizeRequest(fromApiPaymentRequest(prRaw));
+  }
+  const line = fromApiAttempt(res.payment_line, fallbackIdx);
+  if (res.payos?.qr_code) {
+    line.qrCode = res.payos.qr_code;
+    line.checkoutUrl = res.payos.checkout_url;
+    line.paymentLinkId = res.payos.payment_link_id;
+    line.transferContent = res.payos.transfer_content || line.code;
+  }
+  const exists = current.payments.some((p) => p.id === line.id);
+  const payments = exists
+    ? current.payments.map((p) => (p.id === line.id ? { ...p, ...line } : p))
+    : [...current.payments, line];
+  const prFromBe = fromApiPaymentRequest(prRaw);
+  return normalizeRequest({ ...current, ...prFromBe, payments });
+}
+
 export function normalizeRequest(req: PaymentRequest): PaymentRequest {
   const payments = req.payments || [];
   const live = payments.filter((p) => !p.cancelled);

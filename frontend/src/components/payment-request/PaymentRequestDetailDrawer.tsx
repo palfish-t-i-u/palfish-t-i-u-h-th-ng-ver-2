@@ -186,10 +186,12 @@ function AddPaymentForm({
   pr,
   onCancel,
   onSubmit,
+  submitting = false,
 }: {
   pr: PaymentRequest;
   onCancel: () => void;
-  onSubmit: (payload: AddPaymentAttemptPayload) => void;
+  onSubmit: (payload: AddPaymentAttemptPayload) => void | Promise<void>;
+  submitting?: boolean;
 }) {
   const [method, setMethod] = useState<PaymentMethod>("qr");
   const [amount, setAmount] = useState("");
@@ -204,8 +206,8 @@ function AddPaymentForm({
 
   const submit = () => {
     const n = parseInt(String(amount).replace(/\D/g, ""), 10);
-    if (!n) return;
-    onSubmit({
+    if (!n || submitting) return;
+    void onSubmit({
       amount: n,
       method,
       bank: method === "qr" || method === "card" ? bank : undefined,
@@ -319,11 +321,16 @@ function AddPaymentForm({
       </div>
 
       <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-        <button className="btn btn-outline" onClick={onCancel}>
+        <button className="btn btn-outline" onClick={onCancel} disabled={submitting}>
           Huỷ
         </button>
-        <button className="btn btn-primary" onClick={submit}>
-          <Icons.Sparkle size={14} /> {method === "qr" ? "Tạo QR & mã CK" : "Ghi nhận lần thanh toán"}
+        <button className="btn btn-primary" onClick={submit} disabled={submitting}>
+          <Icons.Sparkle size={14} />{" "}
+          {submitting
+            ? "Đang tạo..."
+            : method === "qr"
+            ? "Tạo QR & mã CK"
+            : "Ghi nhận lần thanh toán"}
         </button>
       </div>
     </div>
@@ -342,6 +349,8 @@ interface DraftPr {
   note: string;
 }
 
+export type PaymentRequestDraft = DraftPr;
+
 export default function PaymentRequestDetailDrawer({
   request,
   open,
@@ -357,12 +366,15 @@ export default function PaymentRequestDetailDrawer({
   activeRequestId,
   onShowQr,
   uploadingBillId,
+  savingPr = false,
+  addingPayment = false,
+  savePrError = null,
 }: {
   request: PaymentRequest | null;
   open: boolean;
   onClose: () => void;
-  onUpdatePr: (next: PaymentRequest) => void;
-  onAddPayment: (payload: AddPaymentAttemptPayload) => void;
+  onUpdatePr: (draft: DraftPr) => Promise<void>;
+  onAddPayment: (payload: AddPaymentAttemptPayload) => Promise<void>;
   onCancelPayment: (qr: PaymentAttempt) => void;
   onMarkPaid: (qr: PaymentAttempt) => void;
   onBillFile: (qr: PaymentAttempt, file: File) => void;
@@ -372,6 +384,9 @@ export default function PaymentRequestDetailDrawer({
   activeRequestId?: string | null;
   onShowQr: (qr: PaymentAttempt) => void;
   uploadingBillId?: string | null;
+  savingPr?: boolean;
+  addingPayment?: boolean;
+  savePrError?: string | null;
 }) {
   const [showAdd, setShowAdd] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -506,27 +521,16 @@ export default function PaymentRequestDetailDrawer({
                   </button>
                   <button
                     className="btn btn-primary btn-sm"
+                    disabled={savingPr}
                     onClick={() => {
-                      if (!draft) return;
-                      const targetNum =
-                        Number(String(draft.target).replace(/\D/g, "")) || request.target;
-                      onUpdatePr({
-                        ...request,
-                        uid: draft.uid,
-                        name: draft.name,
-                        country: draft.country,
-                        phone: draft.phone,
-                        province: draft.province,
-                        ward: draft.ward,
-                        address: draft.address,
-                        target: targetNum,
-                        note: draft.note,
+                      if (!draft || savingPr) return;
+                      void onUpdatePr(draft).then(() => {
+                        setEditing(false);
+                        setDraft(null);
                       });
-                      setEditing(false);
-                      setDraft(null);
                     }}
                   >
-                    <Icons.Check size={13} strokeWidth={2.5} /> Lưu thay đổi
+                    <Icons.Check size={13} strokeWidth={2.5} /> {savingPr ? "Đang lưu..." : "Lưu thay đổi"}
                   </button>
                 </div>
               )}
@@ -592,6 +596,14 @@ export default function PaymentRequestDetailDrawer({
               </div>
             ) : draft ? (
               <div className="info-grid">
+                {savePrError ? (
+                  <div
+                    className="info-cell full"
+                    style={{ gridColumn: "1 / -1", color: "var(--danger-text)", fontSize: 12.5 }}
+                  >
+                    {savePrError}
+                  </div>
+                ) : null}
                 <div className="info-cell">
                   <div className="info-label">UID CRM</div>
                   <input
@@ -734,9 +746,10 @@ export default function PaymentRequestDetailDrawer({
               <div style={{ marginTop: 12 }} ref={addFormRef}>
                 <AddPaymentForm
                   pr={request}
-                  onCancel={() => setShowAdd(false)}
-                  onSubmit={(payload) => {
-                    onAddPayment(payload);
+                  submitting={addingPayment}
+                  onCancel={() => !addingPayment && setShowAdd(false)}
+                  onSubmit={async (payload) => {
+                    await onAddPayment(payload);
                     setShowAdd(false);
                   }}
                 />

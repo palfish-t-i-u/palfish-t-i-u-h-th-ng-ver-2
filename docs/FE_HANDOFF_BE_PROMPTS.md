@@ -1,25 +1,25 @@
 # FE Handoff — Backend / API / Schema Prompts
 
-> **Cập nhật:** 2026-05-26 · Branch **`ui/ux`**  
-> FE đã implement feedback B1–B4 (commit `5d515aa` + fix encoding). Các mục dưới cần **Giang & Đức** trên backend / Supabase.
+> **Cập nhật:** 2026-05-27 · Branch **`main`** @ `2f93684`  
+> FE + BE handoff B1–B4 đã merge và push prod. SQL patches prod **đã chạy**. Chi tiết: `docs/HANDOFF_STATUS_2026-05-27.md`.
 
 ## Trạng thái nhanh
 
 | # | Mục | FE | BE / DB |
 |---|-----|----|---------|
-| 1 | Bill upload payment line | ✅ `BillUploadZone` + `POST .../payments/{lineId}/bill` | ⚠️ Chạy SQL + bucket `bills`; verify Render |
-| 2 | Tax XLSX ZIP batch (B4) | ✅ Client `taxInvoiceXlsxExport.ts` (tạm) | ❌ Batch API + persist M/PF codes |
-| 3 | Standalone Active Request | ✅ Modal; local-only khi không PR | ❌ `POST /active-requests` |
-| 4 | Email trên PR | ✅ Create + hiển thị B4 | ⚠️ Column + serializer |
+| 1 | Bill upload payment line | ✅ `BillUploadZone` + `POST .../payment-lines/{lineId}/bill` | ✅ Deploy + SQL + bucket `bills` |
+| 2 | Tax XLSX ZIP batch (B4) | ✅ Gọi BE, fallback client | ✅ `POST /invoice-courses/export-batch` + persist M/PF |
+| 3 | Standalone Active Request | ✅ Gọi API khi không PR | ✅ `POST /active-requests` + SQL nullable `pr_id` |
+| 4 | Email trên PR | ✅ Create + hiển thị B4 | ✅ Column + serializer |
 | 5 | Issue invoice từ B4 | ✅ Navigate B3→B4; issue tại B4 | ✅ Giữ endpoint hiện tại |
-| 6 | Reject reason | ✅ Drawer B2 map field | ❌ Column + PATCH |
-| 7 | Cash/card pending → confirm | ✅ FE tạo `pending` | ⚠️ Align aggregation + webhook |
+| 6 | Reject reason | ✅ Drawer B2 map field | ✅ PATCH + serializer — verify prod column |
+| 7 | Cash/card pending → confirm | ✅ FE tạo `pending` | ✅ BE không auto-paid on create |
 
 ---
 
 ## 1. Payment line bill upload (persistent storage)
 
-**FE (done):** Tab B1 upload qua `endpoints.paymentRequests.uploadPaymentLineBill()` → `POST /api/v1/payment-requests/payments/{lineId}/bill` (multipart). B2 drawer đọc `bill_image` / `billImage` từ API — **không** dùng `localStorage`.
+**FE (done):** Tab B1 upload qua `endpoints.paymentRequests.uploadPaymentLineBill()` → `POST /api/v1/payment-lines/{lineId}/bill` (multipart). B2 drawer đọc `bill_image` / `billImage` từ API — **không** dùng `localStorage`.
 
 **BE cần:**
 - Endpoint đã có trong `backend/payment_request_routes.py` (`upload_payment_line_bill`) — deploy Render + smoke test prod
@@ -118,8 +118,11 @@
 | `supabase_schema_patch_active_requests_pr_id_text.sql` | `pr_id` text |
 | `supabase_schema_patch_payment_requests_cancel.sql` | Huỷ PR |
 | `supabase_schema_patch_invoice_courses.sql` | Invoice queue fields |
+| `supabase_schema_patch_active_requests_nullable_pr.sql` | AR không PR + `customer_name` |
 
 Sau mỗi patch: `NOTIFY pgrst, 'reload schema';`
+
+**Prod 27/05:** `bill`, `email`, `nullable_pr` patches đã chạy.
 
 ---
 

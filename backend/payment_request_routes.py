@@ -71,6 +71,25 @@ class PaymentRequestCancelBody(BaseModel):
     reason: str | None = None
 
 
+class PaymentRequestPatch(BaseModel):
+    uid: str | None = None
+    name: str | None = None
+    phone: str | None = None
+    country: str | None = None
+    address: str | None = None
+    ward: str | None = None
+    province: str | None = None
+    note: str | None = None
+    email: str | None = None
+    target: int | str | None = None
+
+    uid_khach_hang: str | None = None
+    ten_khach: str | None = None
+    sdt: str | None = None
+    dia_chi: str | None = None
+    tong_tien_phai_thu: int | str | None = None
+
+
 def _sb_or_503(get_supabase: Callable[[], Any]):
     sb = get_supabase()
     if not sb:
@@ -328,6 +347,54 @@ def _payment_request_insert_row(body: PaymentRequestCreate) -> dict[str, Any]:
         "received": 0,
         "state": "pending",
     }
+
+
+def _payment_request_patch_row(body: PaymentRequestPatch) -> dict[str, Any]:
+    patch: dict[str, Any] = {}
+    uid = _clean_text(body.uid or body.uid_khach_hang)
+    name = _clean_text(body.name or body.ten_khach)
+    phone = _clean_text(body.phone or body.sdt)
+    address = _clean_text(body.address or body.dia_chi)
+    if uid:
+        patch["uid"] = uid
+    if name:
+        patch["name"] = name
+    if phone:
+        patch["phone"] = phone
+    if body.country is not None:
+        patch["country"] = _clean_text(body.country) or "VN"
+    if body.address is not None or body.dia_chi is not None:
+        patch["address"] = address
+    if body.ward is not None:
+        patch["ward"] = _clean_text(body.ward)
+    if body.province is not None:
+        patch["province"] = _clean_text(body.province)
+    if body.note is not None:
+        patch["note"] = _clean_text(body.note)
+    if body.email is not None:
+        patch["email"] = _clean_text(body.email)
+    if body.target is not None or body.tong_tien_phai_thu is not None:
+        target = _parse_amount(body.target or body.tong_tien_phai_thu)
+        if target <= 0:
+            raise HTTPException(400, "target khong hop le")
+        patch["target"] = target
+    if not patch:
+        raise HTTPException(400, "Khong co truong nao de cap nhat")
+    return patch
+
+
+def _serialize_pr_with_lines(sb, pr_row: dict[str, Any]) -> dict[str, Any]:
+    payment_request_id = str(pr_row.get("id") or "")
+    line_res = (
+        sb.table("payment_lines")
+        .select("*")
+        .eq("payment_request_id", payment_request_id)
+        .execute()
+    )
+    lines = line_res.data or []
+    line_ids = [str(line.get("id") or "") for line in lines if line.get("id")]
+    bill_urls = _fetch_bill_urls_from_storage(sb, line_ids)
+    return _serialize_payment_request_list_item(pr_row, lines, bill_urls)
 
 
 def _allocate_pr_id(sb, year: int | None = None) -> str:
@@ -759,6 +826,42 @@ def register_payment_request_routes(app, get_supabase) -> None:
         inserted = res.data[0] if res.data else row
         return {"payment_request": _serialize_payment_request(inserted)}
 
+    @router.patch("/payment-requests/{payment_request_id}")
+    def patch_payment_request(payment_request_id: str, body: PaymentRequestPatch):
+        """Cập nhật thông tin PR (B1) — persist Supabase, trả PR kèm payment lines."""
+        sb = _sb_or_503(get_supabase)
+        request_res = (
+            sb.table("payment_requests")
+            .select("*")
+            .eq("id", payment_request_id)
+            .limit(1)
+            .execute()
+        )
+        if not request_res.data:
+            raise HTTPException(404, "Khong tim thay payment_request")
+
+        pr_row = request_res.data[0]
+        if _clean_text(pr_row.get("state")).lower() == "cancelled":
+            raise HTTPException(400, "Payment request da bi huy")
+
+        patch = _payment_request_patch_row(body)
+        received = _parse_amount(pr_row.get("received"))
+        if "target" in patch:
+            patch["state"] = _compute_state(received, patch["target"])
+
+        try:
+            upd = (
+                sb.table("payment_requests")
+                .update(patch)
+                .eq("id", payment_request_id)
+                .execute()
+            )
+        except Exception as exc:
+            raise HTTPException(500, f"Khong cap nhat payment_request: {exc}") from exc
+
+        updated = upd.data[0] if upd.data else {**pr_row, **patch}
+        return {"payment_request": _serialize_pr_with_lines(sb, updated)}
+
     @router.post("/payment-requests/{payment_request_id}/payment-lines")
     async def create_payment_line(payment_request_id: str, body: PaymentLineCreate):
         sb = _sb_or_503(get_supabase)
@@ -825,9 +928,17 @@ def register_payment_request_routes(app, get_supabase) -> None:
             raise HTTPException(500, f"Khong tao duoc payment_line: {exc}") from exc
 
         line_row = line_res.data[0] if line_res.data else insert_row
+        pr_row_res = (
+            sb.table("payment_requests")
+            .select("*")
+            .eq("id", payment_request_id)
+            .limit(1)
+            .execute()
+        )
+        pr_row = pr_row_res.data[0] if pr_row_res.data else {**pr_row, **totals}
         response: dict[str, Any] = {
             "payment_line": _serialize_payment_line(line_row),
-            "payment_request": totals["payment_request"],
+            "payment_request": _serialize_pr_with_lines(sb, pr_row),
             "received": totals["received"],
             "target": totals["target"],
             "state": totals["state"],
