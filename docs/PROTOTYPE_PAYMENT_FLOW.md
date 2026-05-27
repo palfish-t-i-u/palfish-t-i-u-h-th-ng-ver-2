@@ -80,14 +80,14 @@ Các block UI dùng chung: KPI cards, Table, Cancel confirm modal, Topbar.
 
 ## Map prototype ↔ app hiện tại
 
-| Prototype | App hiện tại | Ghi chú |
-|-----------|--------------|---------|
-| B1 Payment Request | Tab 1 tạo đơn + QR trực tiếp | Cần tách PR làm entity riêng |
-| B2 QR trong PR | PaymentModal / Tab 1 | N lần QR / PR |
-| Đối soát giao dịch | PayOS history + tick tiền về Tab 2 | Thêm cash / CK tay |
-| Active Request (Kích hoạt khóa học) | Tab 3 M3 | Course code thay Activate Code |
-| Xuất hóa đơn | Tab 4 M4 | Input từ B1 + B3 |
-| Sổ doanh thu | Module 5 | Auto khi tiền về — chưa có |
+| Prototype | App hiện tại (`ui/ux` @ `2f936840`) | Ghi chú |
+|-----------|--------------------------------------|---------|
+| B1 Payment Request | `PaymentRequestsTab` + `CreatePaymentRequestModal` | `POST /api/v1/payment-requests` — song song Tab 1 legacy |
+| B2 QR / lần TT trong PR | `PaymentRequestDetailDrawer` | `POST .../payment-lines`; cash/card `pending` |
+| Đối soát giao dịch | `ReconciliationTab` | Confirm/reject `PATCH /transactions/{id}/status` |
+| Active Request (Kích hoạt khóa học) | `ActivationTab` | Course code; standalone `POST /active-requests` |
+| Xuất hóa đơn | `InvoiceRequestTab` | Issue + `export-batch` ZIP 3 XLSX |
+| Sổ doanh thu | `SoDoanhThuTab` (M5) | Auto khi tiền về — roadmap |
 
 ---
 

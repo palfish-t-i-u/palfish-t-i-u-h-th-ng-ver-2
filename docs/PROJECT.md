@@ -145,7 +145,7 @@ Chi tiết: `docs/WIREFRAMES.md`.
 | UI sidebar | `AppShell`, flatten Quản lý quyền |
 | UI design system | `gmv-tokens`, `components/ui`, brand tím — `docs/DESIGN.md` |
 | UI/UX merge `main` | PR #2 → `main` — **Done** (2026-05-23) |
-| Luồng B1–B4 | Branch **`ui/ux`** — FE done; BE handoff `FE_HANDOFF_BE_PROMPTS.md` |
+| Luồng B1–B4 | Branch **`ui/ux`** @ `2f936840` — FE + BE handoff merged; SQL standalone AR: `supabase_schema_patch_active_requests_nullable_pr.sql` |
 | Tab 2 sticky table | Freeze 3 trái + 2 phải, scroll + scrollbar — **Done** |
 | VietQR defaults | MB Bank `970422` / `1680011668899` — override `VITE_BANK_*` |
 | Production deploy | Vercel + Render, Docker context `.`, `python-multipart` |
