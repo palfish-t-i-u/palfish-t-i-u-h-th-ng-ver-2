@@ -204,7 +204,7 @@ def _derive_status(uids_data: list[dict[str, Any]]) -> str:
     courses = [c for u in uids_data for c in (u.get("courses") or [])]
     if not courses:
         return "pending_order"
-    ordered = sum(1 for c in courses if str(c.get("order_id") or "").strip())
+    ordered = sum(1 for c in courses if _course_order_id(c))
     if ordered == 0:
         return "pending_order"
     if ordered < len(courses):
@@ -216,10 +216,25 @@ def _derive_status(uids_data: list[dict[str, Any]]) -> str:
 
 
 def _serialize_ar(row: dict[str, Any], pr: dict[str, Any] | None = None) -> dict[str, Any]:
-    uids_data = row.get("uids_data") or []
+    raw_uids_data = row.get("uids_data") or []
+    uids_data: list[dict[str, Any]] = []
+    for uid_block in raw_uids_data:
+        if not isinstance(uid_block, dict):
+            continue
+        next_uid = dict(uid_block)
+        next_courses: list[dict[str, Any]] = []
+        for course in uid_block.get("courses") or []:
+            if not isinstance(course, dict):
+                continue
+            next_course = dict(course)
+            next_course["order_id"] = _course_order_id(next_course)
+            next_course.pop("orderId", None)
+            next_courses.append(next_course)
+        next_uid["courses"] = next_courses
+        uids_data.append(next_uid)
     courses = [c for u in uids_data for c in (u.get("courses") or [])]
     total_amount = sum(float(c.get("amount") or 0) for c in courses)
-    ordered_count = sum(1 for c in courses if str(c.get("order_id") or "").strip())
+    ordered_count = sum(1 for c in courses if _course_order_id(c))
 
     out: dict[str, Any] = {
         "id": row.get("id"),
@@ -247,6 +262,13 @@ def _serialize_ar(row: dict[str, Any], pr: dict[str, Any] | None = None) -> dict
             "state": _pr_payment_state(pr),
         }
     return out
+
+
+def _course_order_id(course: dict[str, Any]) -> str:
+    raw = course.get("order_id")
+    if raw in (None, ""):
+        raw = course.get("orderId")
+    return str(raw or "").strip()
 
 
 def _fetch_prs_by_ids(sb, pr_ids: list[str]) -> dict[str, dict[str, Any]]:

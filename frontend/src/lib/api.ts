@@ -130,6 +130,16 @@ export const endpoints = {
         { timeout: 60000 }
       );
     },
+    deleteLatestPaymentLineBill: (lineId: string) =>
+      api.delete<{ payment_line: PaymentLineApiRow }>(`/api/v1/payment-lines/${lineId}/bills/latest`),
+    deletePaymentLineBill: (lineId: string, billUrl: string) =>
+      api.post<{ payment_line: PaymentLineApiRow }>(`/api/v1/payment-lines/${lineId}/bills/delete`, {
+        bill_url: billUrl,
+      }),
+    deleteAllPaymentLineBills: (lineId: string) =>
+      api.post<{ payment_line: PaymentLineApiRow }>(`/api/v1/payment-lines/${lineId}/bills/delete`, {
+        delete_all: true,
+      }),
     // B3: create active request nested under PR
     createActiveRequest: (prId: string, body: CreateActiveRequestPayload) =>
       api.post<ActiveRequestApiRow>(`/api/v1/payment-requests/${prId}/active-requests`, body),

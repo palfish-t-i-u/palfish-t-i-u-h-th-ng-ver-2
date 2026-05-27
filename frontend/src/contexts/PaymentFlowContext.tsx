@@ -77,7 +77,11 @@ type PaymentFlowContextValue = {
     amount: number;
   }) => Promise<ActiveRequest>;
   updateActiveRequestCoursePackage: (arId: string, courseCode: string, packageName: string) => Promise<void>;
-  patchCourseOrderId: (arId: string, courseCode: string, orderId: string) => Promise<void>;
+  patchCourseOrderId: (
+    arId: string,
+    courseCode: string,
+    orderId: string
+  ) => Promise<{ ok: boolean; error?: string }>;
   issueInvoiceForCourse: (arId: string, courseCode: string) => Promise<void>;
   badgeCounts: { reconciliation: number; activation: number; invoice: number };
   nav: NavState;
@@ -109,6 +113,7 @@ export function PaymentFlowProvider({
   const [apiNote, setApiNote] = useState("");
   const [nav, setNav] = useState<NavState>({});
   const onViewChangeRef = useRef(onViewChange);
+  const courseOrderPatchSeqRef = useRef<Record<string, number>>({});
 
   useEffect(() => {
     onViewChangeRef.current = onViewChange;
@@ -398,40 +403,67 @@ export function PaymentFlowProvider({
   const patchCourseOrderId = useCallback(
     async (arId: string, courseCode: string, orderId: string) => {
       const trimmed = orderId.trim();
-      let optimistic: ActiveRequest | null = null;
-      updateActiveRequest(arId, (ar) => ({
-        ...(optimistic = {
-          ...ar,
-          uids: ar.uids.map((u) => ({
-            ...u,
-            courses: u.courses.map((c) =>
-              c.courseCode === courseCode ? { ...c, orderId: trimmed } : c
-            ),
-          })),
-        }),
-      }));
-
-      if (!optimistic) return;
+      const seqKey = `${arId}::${courseCode}`;
+      const seq = (courseOrderPatchSeqRef.current[seqKey] ?? 0) + 1;
+      courseOrderPatchSeqRef.current[seqKey] = seq;
+      const readOrderId = (ar: ActiveRequest) => {
+        for (const uid of ar.uids) {
+          const course = uid.courses.find((c) => c.courseCode === courseCode);
+          if (course) return (course.orderId || "").trim();
+        }
+        return "";
+      };
+      const currentAr = activeRequests.find((x) => x.id === arId) || null;
+      if (!currentAr) {
+        const error = `Khong tim thay Active Request ${arId}`;
+        setApiNote(error);
+        return { ok: false, error };
+      }
+      const optimistic: ActiveRequest = {
+        ...currentAr,
+        uids: currentAr.uids.map((u) => ({
+          ...u,
+          courses: u.courses.map((c) =>
+            c.courseCode === courseCode ? { ...c, orderId: trimmed } : c
+          ),
+        })),
+      };
 
       try {
         const res = await endpoints.activeRequests.patchCourseOrderId(arId, courseCode, trimmed);
+        if (courseOrderPatchSeqRef.current[seqKey] !== seq) {
+          return { ok: false, error: "Yeu cau cu da bi ghi de boi thao tac moi hon." };
+        }
         const ar = fromApiActiveRequest(res.data);
+        if (readOrderId(ar) !== trimmed) {
+          throw new Error("PATCH returned stale order_id");
+        }
         setActiveRequests((prev) => prev.map((x) => (x.id === arId ? ar : x)));
         setApiNote("");
+        return { ok: true };
       } catch {
         try {
           const res = await endpoints.activeRequests.update(arId, {
             uids_data: toActiveRequestPatchUidsData(optimistic),
           });
+          if (courseOrderPatchSeqRef.current[seqKey] !== seq) {
+            return { ok: false, error: "Yeu cau cu da bi ghi de boi thao tac moi hon." };
+          }
           const ar = fromApiActiveRequest(res.data);
+          if (readOrderId(ar) !== trimmed) {
+            throw new Error("Full update returned stale order_id");
+          }
           setActiveRequests((prev) => prev.map((x) => (x.id === arId ? ar : x)));
           setApiNote("");
+          return { ok: true };
         } catch {
-          setApiNote("Không lưu được Order ID lên máy chủ.");
+          const error = "Khong luu duoc Order ID len may chu.";
+          setApiNote(error);
+          return { ok: false, error };
         }
       }
     },
-    [updateActiveRequest]
+    [activeRequests]
   );
 
   const issueInvoiceForCourse = useCallback(
