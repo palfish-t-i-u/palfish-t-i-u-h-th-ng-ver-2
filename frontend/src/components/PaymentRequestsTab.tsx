@@ -7,6 +7,7 @@ import { compressImageFile } from "../lib/imageCompress";
 import type {
   AddPaymentAttemptPayload,
   CreatePaymentRequestPayload,
+  PatchPaymentRequestPayload,
   PaymentAttempt,
   PaymentRequest,
 } from "../types/paymentRequest";
@@ -174,8 +175,38 @@ export default function PaymentRequestsTab() {
     setDrawerOpen(true);
   };
 
-  const handleUpdatePr = (next: PaymentRequest) => {
+  const handleUpdatePr = async (next: PaymentRequest) => {
+    const previous = requests.find((r) => r.id === next.id) ?? null;
     updateRequest(next.id, () => next);
+
+    const payload: PatchPaymentRequestPayload = {
+      uid: next.uid.trim(),
+      name: next.name.trim(),
+      phone: next.phone.trim(),
+      country: (next.country || "VN").trim(),
+      address: (next.address || "").trim(),
+      ward: (next.ward || "").trim(),
+      province: (next.province || "").trim(),
+      note: (next.note || "").trim(),
+      email: (next.email || "").trim(),
+      target: next.target,
+    };
+
+    try {
+      const res = await endpoints.paymentRequests.update(next.id, payload);
+      const savedRaw = res.data?.payment_request;
+      if (savedRaw) {
+        const saved = normalizeRequest(fromApiPaymentRequest(savedRaw));
+        updateRequest(next.id, () => saved);
+      }
+      return true;
+    } catch {
+      if (previous) {
+        updateRequest(next.id, () => previous);
+      }
+      alert("Không thể lưu thông tin khách hàng. Vui lòng thử lại.");
+      return false;
+    }
   };
 
   const handleCreate = async (payload: CreatePaymentRequestPayload) => {

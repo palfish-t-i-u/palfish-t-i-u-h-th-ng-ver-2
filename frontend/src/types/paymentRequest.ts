@@ -155,6 +155,8 @@ export type CreatePaymentRequestPayload = {
   email?: string;
 };
 
+export type PatchPaymentRequestPayload = Partial<CreatePaymentRequestPayload>;
+
 export type CreateActiveRequestCoursePayload = {
   name?: string;
   package_name?: string;
