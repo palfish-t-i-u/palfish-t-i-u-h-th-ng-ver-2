@@ -141,6 +141,11 @@ export const endpoints = {
       api.post<ActiveRequestApiRow>("/api/v1/active-requests", body),
     update: (arId: string, body: PatchActiveRequestPayload) =>
       api.patch<ActiveRequestApiRow>(`/api/v1/active-requests/${arId}`, body),
+    patchCourseOrderId: (arId: string, courseCode: string, orderId: string) =>
+      api.patch<ActiveRequestApiRow>(
+        `/api/v1/active-requests/${arId}/courses/${encodeURIComponent(courseCode)}`,
+        { order_id: orderId }
+      ),
     issueInvoice: (arId: string, courseCode: string) =>
       api.post<{
         active_request: ActiveRequestApiRow;

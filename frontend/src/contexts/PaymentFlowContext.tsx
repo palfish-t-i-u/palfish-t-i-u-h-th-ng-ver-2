@@ -414,14 +414,21 @@ export function PaymentFlowProvider({
       if (!optimistic) return;
 
       try {
-        const res = await endpoints.activeRequests.update(arId, {
-          uids_data: toActiveRequestPatchUidsData(optimistic),
-        });
+        const res = await endpoints.activeRequests.patchCourseOrderId(arId, courseCode, trimmed);
         const ar = fromApiActiveRequest(res.data);
         setActiveRequests((prev) => prev.map((x) => (x.id === arId ? ar : x)));
         setApiNote("");
       } catch {
-        setApiNote("Không lưu được Order ID lên máy chủ.");
+        try {
+          const res = await endpoints.activeRequests.update(arId, {
+            uids_data: toActiveRequestPatchUidsData(optimistic),
+          });
+          const ar = fromApiActiveRequest(res.data);
+          setActiveRequests((prev) => prev.map((x) => (x.id === arId ? ar : x)));
+          setApiNote("");
+        } catch {
+          setApiNote("Không lưu được Order ID lên máy chủ.");
+        }
       }
     },
     [updateActiveRequest]

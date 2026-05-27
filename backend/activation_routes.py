@@ -45,7 +45,7 @@ _TRANG_THAI_ALIASES: dict[str, str] = {
 
 
 class PatchCourseOrderBody(BaseModel):
-    order_id: str = Field(..., min_length=1)
+    order_id: str | None = ""
 
 
 class ActiveRequestPatchCoursePayload(BaseModel):
@@ -927,32 +927,32 @@ def register_activation_routes(app, supabase_factory):
         if not sb:
             raise HTTPException(503, "Supabase chưa cấu hình")
 
-        order_id = body.order_id.strip()
-        if not order_id:
-            raise HTTPException(400, "order_id không được rỗng")
+        order_id = str(body.order_id or "").strip()
 
-        try:
-            rpc = sb.rpc(
-                "patch_active_request_course_order",
-                {
-                    "p_ar_id": ar_id,
-                    "p_course_code": course_code,
-                    "p_order_id": order_id,
-                },
-            ).execute()
-            if rpc.data:
-                row = rpc.data[0] if isinstance(rpc.data, list) else rpc.data
-                pr_map = _fetch_prs_by_ids(sb, [str(row.get("pr_id") or "")])
-                return _serialize_ar(row, pr_map.get(str(row.get("pr_id") or "")))
-        except Exception as exc:
-            msg = str(exc).lower()
-            if "active_request_not_found" in msg or "p0002" in msg and "active" in msg:
-                raise HTTPException(404, f"Active Request {ar_id} không tồn tại") from exc
-            if "course_code_not_found" in msg:
-                raise HTTPException(404, f"Không tìm thấy course code {course_code}") from exc
-            # Fallback when RPC not deployed yet
-            if "patch_active_request_course_order" not in msg:
-                raise HTTPException(500, f"RPC patch_active_request_course_order lỗi: {exc}") from exc
+        # RPC path for non-empty Order ID (atomic JSONB patch)
+        if order_id:
+            try:
+                rpc = sb.rpc(
+                    "patch_active_request_course_order",
+                    {
+                        "p_ar_id": ar_id,
+                        "p_course_code": course_code,
+                        "p_order_id": order_id,
+                    },
+                ).execute()
+                if rpc.data:
+                    row = rpc.data[0] if isinstance(rpc.data, list) else rpc.data
+                    pr_map = _fetch_prs_by_ids(sb, [str(row.get("pr_id") or "")])
+                    return _serialize_ar(row, pr_map.get(str(row.get("pr_id") or "")))
+            except Exception as exc:
+                msg = str(exc).lower()
+                if "active_request_not_found" in msg or "p0002" in msg and "active" in msg:
+                    raise HTTPException(404, f"Active Request {ar_id} không tồn tại") from exc
+                if "course_code_not_found" in msg:
+                    raise HTTPException(404, f"Không tìm thấy course code {course_code}") from exc
+                # Fallback when RPC not deployed yet
+                if "patch_active_request_course_order" not in msg:
+                    raise HTTPException(500, f"RPC patch_active_request_course_order lỗi: {exc}") from exc
 
         # Python fallback (non-atomic) if SQL function missing
         try:

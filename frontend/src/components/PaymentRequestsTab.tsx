@@ -226,15 +226,51 @@ export default function PaymentRequestsTab() {
     }
   };
 
-  const handleCancelPayment = (qr: PaymentAttempt) => {
+  const handleCancelPayment = async (qr: PaymentAttempt) => {
     if (!selected) return;
-    if (!window.confirm(`Huỷ lần giao dịch #${qr.idx}?`)) return;
-    updateRequest(selected.id, (r) => ({
+    const prId = selected.id;
+    const cancelledAt = nowStamp();
+    const reason = "Sales huỷ lần thanh toán";
+
+    updateRequest(prId, (r) => ({
       ...r,
       payments: r.payments.map((p: PaymentAttempt) =>
-        p.id === qr.id ? { ...p, cancelled: true, cancelledAt: nowStamp() } : p
+        p.id === qr.id
+          ? {
+              ...p,
+              cancelled: true,
+              cancelledAt,
+              status: "rejected" as const,
+              paidAt: null,
+              rejectReason: reason,
+            }
+          : p
       ),
     }));
+
+    if (!isBackendLineId(qr.id)) return;
+    try {
+      const res = await endpoints.transactions.patchStatus(qr.id, "rejected", reason);
+      const line = res.data.payment_line;
+      updateRequest(prId, (r) => {
+        const updatedPayments = r.payments.map((p: PaymentAttempt) =>
+          p.id === qr.id
+            ? {
+                ...p,
+                status: "rejected" as const,
+                paidAt: null,
+                rejectReason: line.reject_reason || reason,
+                cancelled: true,
+                cancelledAt: p.cancelledAt || cancelledAt,
+              }
+            : p
+        );
+        const prFromBe = fromApiPaymentRequest(res.data.payment_request);
+        return normalizeRequest({ ...r, ...prFromBe, payments: updatedPayments });
+      });
+    } catch {
+      /* optimistic */
+    }
   };
 
   const handleMarkPaid = async (qr: PaymentAttempt) => {

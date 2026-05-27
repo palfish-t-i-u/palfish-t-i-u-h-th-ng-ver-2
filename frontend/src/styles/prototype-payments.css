@@ -1276,6 +1276,13 @@
 .gmv-prototype .course-row .remove-btn:hover {
   color: var(--danger); border-color: var(--danger-bg); background: var(--danger-bg);
 }
+.gmv-prototype .course-row .remove-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  color: var(--text-muted);
+  border-color: var(--border);
+  background: var(--surface-2);
+}
 .gmv-prototype .btn-invoice {
   display: inline-flex; align-items: center; gap: 5px;
   padding: 6px 10px; border-radius: 8px; border: 0;

@@ -103,6 +103,7 @@ export function deriveArStatus(ar: ActiveRequest): ActiveRequestStatus {
   if (all.length === 0) return "pending_order";
   if (all.every((c) => c.invoiced)) return "invoiced";
   const ordered = all.filter((c) => c.orderId?.trim()).length;
+  if (ordered === 0) return "pending_order";
   if (ordered > 0 && ordered < all.length) return "partial_order";
   return "ready_invoice";
 }

@@ -153,6 +153,7 @@ function ARCreateModal({
   const [firstUid, setFirstUid] = useState("");
   const [pkgName, setPkgName] = useState("");
   const [amount, setAmount] = useState("");
+  const [isAmountFocused, setIsAmountFocused] = useState(false);
   const [customerName, setCustomerName] = useState("");
 
   useEffect(() => {
@@ -161,6 +162,7 @@ function ARCreateModal({
     setFirstUid("");
     setCustomerName("");
     setAmount("");
+    setIsAmountFocused(false);
     setPkgName("");
   }, [open]);
 
@@ -199,7 +201,7 @@ function ARCreateModal({
                   if (p) {
                     setFirstUid(p.uid);
                     setCustomerName(p.name);
-                    if (!amount) setAmount(p.target.toLocaleString("vi-VN"));
+                    if (!amount) setAmount(String(p.target));
                   }
                 }
               }}
@@ -241,10 +243,14 @@ function ARCreateModal({
                   Số tiền khoá học <span style={{ color: "var(--danger)" }}>*</span>
                 </label>
                 <input
-                  value={amount}
+                  value={isAmountFocused ? amount : amount ? Number(amount).toLocaleString("vi-VN") : ""}
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  onFocus={() => setIsAmountFocused(true)}
+                  onBlur={() => setIsAmountFocused(false)}
                   onChange={(e) => {
                     const v = e.target.value.replace(/[^\d]/g, "");
-                    setAmount(v ? Number(v).toLocaleString("vi-VN") : "");
+                    setAmount(v);
                   }}
                   placeholder="VD: 12.000.000"
                 />
@@ -692,7 +698,9 @@ function ActivationDetailDrawer({
                   </div>
                   <input
                     className="amt-input"
-                    value={course.amount ? Number(course.amount).toLocaleString("vi-VN") : ""}
+                    value={course.amount ? String(course.amount) : ""}
+                    inputMode="numeric"
+                    pattern="[0-9]*"
                     onChange={(e) => {
                       const v = e.target.value.replace(/[^\d]/g, "");
                       updateCourse(uidIdx, courseIdx, { amount: v ? Number(v) : 0 });
@@ -762,8 +770,13 @@ function ActivationDetailDrawer({
                   <button
                     type="button"
                     className="remove-btn"
+                    disabled={ar.uids.length === 1 && uidObj.courses.length === 1}
                     onClick={() => removeCourse(uidIdx, courseIdx)}
-                    title="Xoá khoá học"
+                    title={
+                      ar.uids.length === 1 && uidObj.courses.length === 1
+                        ? "Không thể xoá khoá học cuối cùng"
+                        : "Xoá khoá học"
+                    }
                   >
                     <Icons.Close size={14} />
                   </button>
