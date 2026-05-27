@@ -17,7 +17,7 @@ from typing import Any
 
 from fastapi import Header, HTTPException
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from rbac import can_confirm_payment, resolve_actor
 from revenue_routes import sync_ledger_from_m3_order
@@ -46,6 +46,10 @@ class M3SaveBody(BaseModel):
 
 class M4CancelBody(BaseModel):
     id: str
+
+
+class ExportBatchBody(BaseModel):
+    order_ids: list[str] = Field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
@@ -644,6 +648,31 @@ def register_invoice_routes(app, get_supabase) -> None:
         except Exception as exc:
             raise HTTPException(500, f"Lỗi lấy queue M4: {exc}") from exc
 
+    @app.get("/invoice/m4-issued")
+    def m4_issued(authorization: str | None = Header(None)):
+        """Danh sach da xuat: chi don DA_XUAT_HD."""
+        sb = _sb()
+        actor = resolve_actor(sb, authorization)
+        _require_ops(actor)
+
+        try:
+            res = (
+                sb.table("don_hang")
+                .select("*, khach_hang(*)")
+                .eq("trang_thai_thu_tuc", TRANG_THAI_DA_XUAT_HD)
+                .order("m3_approved_at", desc=True)
+                .execute()
+            )
+            out = []
+            for row in res.data or []:
+                kh = row.pop("khach_hang", None) if isinstance(row, dict) else None
+                out.append(_row_to_invoice_order(row, kh))
+            return {"orders": out, "count": len(out)}
+        except HTTPException:
+            raise
+        except Exception as exc:
+            raise HTTPException(500, f"Loi lay danh sach da xuat M4: {exc}") from exc
+
     # ------------------------------------------------------------------
     # POST /invoice/m4-cancel
     # ------------------------------------------------------------------
@@ -682,7 +711,7 @@ def register_invoice_routes(app, get_supabase) -> None:
     # POST /invoice/export-batch  ← quan trọng nhất
     # ------------------------------------------------------------------
     @app.post("/invoice/export-batch")
-    def export_batch(authorization: str | None = Header(None)):
+    def export_batch(body: ExportBatchBody, authorization: str | None = Header(None)):
         """Xuất hóa đơn thuế: cấp mã M.../PF..., cập nhật DB, trả ZIP 3 file Excel.
 
         Luồng:
@@ -696,6 +725,8 @@ def register_invoice_routes(app, get_supabase) -> None:
         sb = _sb()
         actor = resolve_actor(sb, authorization)
         _require_ops(actor)
+        requested_ids = [str(x).strip() for x in (body.order_ids or []) if str(x).strip()]
+        requested_ids = list(dict.fromkeys(requested_ids))
 
         # 1. Lấy toàn bộ đơn CHO_XUAT_HD
         try:
@@ -709,7 +740,17 @@ def register_invoice_routes(app, get_supabase) -> None:
         except Exception as exc:
             raise HTTPException(500, f"Lỗi đọc queue xuất hóa đơn: {exc}") from exc
 
-        raw_orders = res.data or []
+        raw_orders = [row for row in (res.data or []) if not row.get("tax_invoice_code")]
+        if requested_ids:
+            raw_orders = [row for row in raw_orders if str(row.get("id") or "") in requested_ids]
+            found_ids = {str(row.get("id")) for row in raw_orders if row.get("id")}
+            missing_ids = [oid for oid in requested_ids if oid not in found_ids]
+            if missing_ids:
+                raise HTTPException(
+                    409,
+                    "Mot so don khong con o trang thai cho xuat hoac da duoc xuat: "
+                    + ", ".join(missing_ids),
+                )
         if not raw_orders:
             raise HTTPException(400, "Hàng đợi trống — không có đơn nào để xuất hóa đơn")
 
@@ -745,6 +786,7 @@ def register_invoice_routes(app, get_supabase) -> None:
                         }
                     )
                     .eq("id", row["id"])
+                    .eq("trang_thai_thu_tuc", TRANG_THAI_CHO_XUAT_HD)
                     .execute()
                 )
                 if not upd.data:
