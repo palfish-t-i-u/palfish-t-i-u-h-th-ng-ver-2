@@ -101,12 +101,12 @@ export function nextCourseCode(ar: ActiveRequest): string {
 export function deriveArStatus(ar: ActiveRequest): ActiveRequestStatus {
   const all = flatCourses(ar);
   if (all.length === 0) return "pending_order";
-  const ordered = all.filter((c) => (c.orderId ?? "").trim().length > 0).length;
-  // Spec: if there is no non-empty order_id at all, AR must stay in pending_order.
-  if (ordered === 0) return "pending_order";
   if (all.every((c) => c.invoiced)) return "invoiced";
-  if (ordered > 0 && ordered < all.length) return "partial_order";
-  return "ready_invoice";
+  const ordered = all.filter((c) => c.orderId?.trim()).length;
+  if (ordered === 0) return "pending_order";
+  const requestedInvoice = all.filter((c) => c.invoiceRequestedAt || c.invoiced).length;
+  if (requestedInvoice > 0 && requestedInvoice === all.length) return "ready_invoice";
+  return "partial_order";
 }
 
 export function findInvoiceRowKey(ar: ActiveRequest, courseCode: string): string | null {
@@ -162,7 +162,7 @@ export function countPendingInvoice(ars: ActiveRequest[]) {
   for (const ar of ars) {
     for (const u of ar.uids) {
       for (const c of u.courses) {
-        if (!c.invoiced) n++;
+        if (c.invoiceRequestedAt && !c.invoiced) n++;
       }
     }
   }

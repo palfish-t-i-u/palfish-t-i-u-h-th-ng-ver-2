@@ -334,7 +334,7 @@ function ActivationDetailDrawer({
   onPersist: (next: ActiveRequest) => Promise<{ ok: boolean; saved?: ActiveRequest; error?: string }>;
   onNavigateInvoice: () => void;
   onOpenPr?: () => void;
-  onGoToInvoice: (courseCode: string) => void;
+  onGoToInvoice: (courseCode: string) => void | Promise<void>;
 }) {
   const [courseDrafts, setCourseDrafts] = useState<
     Record<string, { packageName: string; amount: string; orderId: string }>
@@ -1195,7 +1195,7 @@ function ActivationDetailDrawer({
                         className="btn-invoice"
                         disabled={!course.orderId?.trim()}
                         title={course.orderId ? "Chuyển sang B4 xuất hoá đơn" : "Cần điền Order ID trước"}
-                        onClick={() => onGoToInvoice(course.courseCode)}
+                        onClick={() => void onGoToInvoice(course.courseCode)}
                       >
                         <Icons.Doc size={12} /> Xuất HĐ
                       </button>
@@ -1367,6 +1367,7 @@ export default function ActivationTab() {
     setApiNote,
     updateActiveRequest,
     handleCreateActiveRequestFromForm,
+    requestInvoiceForCourse,
   } = usePaymentFlow();
   const [openArId, setOpenArId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
@@ -1645,8 +1646,9 @@ export default function ActivationTab() {
             ? () => navigate("paymentRequests", { openPrId: openAr.prId })
             : undefined
         }
-        onGoToInvoice={(courseCode) => {
+        onGoToInvoice={async (courseCode) => {
           if (!openAr) return;
+          await requestInvoiceForCourse(openAr.id, courseCode);
           const key = findInvoiceRowKey(openAr, courseCode);
           setOpenArId(null);
           navigate("module4", { invoiceTab: "pending", openInvoiceKey: key ?? undefined });

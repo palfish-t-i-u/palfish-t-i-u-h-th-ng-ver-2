@@ -48,6 +48,8 @@ export default function PaymentRequestsTab() {
     handleCreate: ctxCreate,
     handleAddPayment: ctxAddPayment,
     handleCreateActiveRequest,
+    saveActiveRequest,
+    deleteActiveRequest,
     nav,
     setNav,
   } = usePaymentFlow();
@@ -534,6 +536,8 @@ export default function PaymentRequestsTab() {
         activeRequestId={selected ? arByPrId[selected.id]?.id ?? null : null}
         activeRequest={selected ? arByPrId[selected.id] ?? null : null}
         onActiveRequestMutate={handleActiveRequestMiniMutate}
+        onActiveRequestSave={saveActiveRequest}
+        onActiveRequestDelete={deleteActiveRequest}
         onShowQr={(qr) => selected && setQrView({ qr, request: selected })}
       />
 
