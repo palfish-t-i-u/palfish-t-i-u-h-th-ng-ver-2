@@ -515,10 +515,12 @@ function ActiveRequestMiniCardV2({
       return;
     }
     if (course.orderId && course.orderId.trim()) {
-      if (!window.confirm(`Khóa học ${courseCode} đã có Order ID (${course.orderId}). Vẫn xóa?`)) return;
-    } else {
-      if (!window.confirm(`Xóa khóa học ${courseCode}?`)) return;
+      window.alert(
+        `Khóa học ${courseCode} đã được Ops kích hoạt (Order ID ${course.orderId}). Sales không thể xóa — liên hệ Ops nếu cần hủy.`
+      );
+      return;
     }
+    if (!window.confirm(`Xóa khóa học ${courseCode}?`)) return;
     setAmountDrafts((prev) => {
       if (!(courseCode in prev)) return prev;
       const next = { ...prev };
@@ -680,7 +682,9 @@ function ActiveRequestMiniCardV2({
               </div>
             ) : (
               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                {u.courses.map((c, cIdx) => (
+                {u.courses.map((c, cIdx) => {
+                  const courseLocked = !!(c.orderId && c.orderId.trim()) || !!c.invoiced;
+                  return (
                   <div
                     key={`${c.courseCode}-${cIdx}`}
                     style={{
@@ -709,9 +713,13 @@ function ActiveRequestMiniCardV2({
                         )}
                       </div>
                     )}
-                    <div style={{ minWidth: 0, display: editing ? "block" : "none", position: "relative" }}>
+                    <div
+                      style={{ minWidth: 0, display: editing ? "block" : "none", position: "relative" }}
+                      title={courseLocked ? "Đã kích hoạt — Sales không thể đổi gói học" : undefined}
+                    >
                       <Combobox
                         value={c.packageName || c.name || ""}
+                        disabled={courseLocked}
                         onChange={(value) =>
                           mutate((next) => ({
                             ...next,
@@ -733,7 +741,7 @@ function ActiveRequestMiniCardV2({
                         placeholder="Chọn hoặc gõ tên gói học..."
                         emptyLabel="Chưa chọn gói"
                       />
-                      {(c.packageName || c.name) && (
+                      {!courseLocked && (c.packageName || c.name) && (
                         <button
                           type="button"
                           className="btn btn-outline btn-sm"
@@ -781,13 +789,16 @@ function ActiveRequestMiniCardV2({
                     <input
                       value={amountDrafts[c.courseCode] ?? (c.amount ? String(c.amount) : "")}
                       onChange={(e) => {
+                        if (courseLocked) return;
                         const raw = e.target.value.replace(/[^\d]/g, "");
                         setAmountDrafts((prev) => ({ ...prev, [c.courseCode]: raw }));
                       }}
                       onBlur={() => commitAmount(uIdx, c.courseCode)}
+                      readOnly={courseLocked}
                       inputMode="numeric"
                       pattern="[0-9]*"
                       placeholder="Số tiền"
+                      title={courseLocked ? "Đã kích hoạt — Sales không thể đổi số tiền" : undefined}
                       style={{
                         display: editing ? "block" : "none",
                         border: "1px solid var(--border)",
@@ -797,7 +808,9 @@ function ActiveRequestMiniCardV2({
                         fontFamily: "JetBrains Mono, monospace",
                         outline: "none",
                         textAlign: "right",
-                        background: "white",
+                        background: courseLocked ? "var(--row-hover, #f4f5f7)" : "white",
+                        color: courseLocked ? "var(--text-3)" : undefined,
+                        cursor: courseLocked ? "not-allowed" : "text",
                       }}
                     />
                     <div style={{ textAlign: "right" }}>
@@ -815,17 +828,18 @@ function ActiveRequestMiniCardV2({
                       <button
                         type="button"
                         className="btn btn-outline btn-sm"
-                        title="Xóa khóa học"
+                        title={courseLocked ? "Đã kích hoạt — không thể xóa" : "Xóa khóa học"}
                         aria-label="Xóa khóa học"
-                        disabled={c.invoiced}
+                        disabled={courseLocked}
                         onClick={() => removeCourse(uIdx, c.courseCode)}
-                        style={{ width: 28, padding: 0, color: "var(--danger)" }}
+                        style={{ width: 28, padding: 0, color: "var(--danger)", opacity: courseLocked ? 0.4 : 1 }}
                       >
                         <Icons.Close size={12} strokeWidth={2.4} />
                       </button>
                     )}
                   </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>

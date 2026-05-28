@@ -51,9 +51,9 @@ export const AR_STATUS_META: Record<
   ActiveRequestStatus,
   { cls: string; text: string }
 > = {
-  pending_order: { cls: "is-ar-pending", text: "Chờ tạo đơn" },
-  partial_order: { cls: "is-ar-partial", text: "Đang điền Order ID" },
-  ready_invoice: { cls: "is-ar-ready", text: "Sẵn sàng xuất HĐ" },
+  pending_order: { cls: "is-ar-pending", text: "Chờ điền Order ID" },
+  partial_order: { cls: "is-ar-pending", text: "Chờ điền Order ID" },
+  ready_invoice: { cls: "is-ar-ready", text: "Đã kích hoạt" },
   invoiced: { cls: "is-ar-invoiced", text: "Đã xuất hoá đơn" },
 };
 

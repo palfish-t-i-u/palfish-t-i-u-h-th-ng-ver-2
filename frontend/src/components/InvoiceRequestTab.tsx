@@ -203,7 +203,7 @@ function InvoiceDetailDrawer({
 }
 
 export default function InvoiceRequestTab() {
-  const { activeRequests, requests, issueInvoiceForCourse, navigate, nav, setNav, apiNote, loadData } =
+  const { activeRequests, requests, issueInvoiceForCourse, navigate, nav, setNav, apiNote } =
     usePaymentFlow();
   const [tab, setTab] = useState<"pending" | "issued">("pending");
   const [search, setSearch] = useState("");
@@ -305,7 +305,6 @@ export default function InvoiceRequestTab() {
       } catch {
         await downloadTaxInvoiceZip(issuedForExport);
       }
-      await loadData({ silent: true });
       setTab("issued");
     }
     if (failCount > 0) {
@@ -324,7 +323,6 @@ export default function InvoiceRequestTab() {
         toDownload.map((r) => ({ ar_id: r.ar.id, course_code: r.course.courseCode }))
       );
       downloadApiTaxZip(res.data);
-      await loadData({ silent: true });
     } catch {
       await downloadTaxInvoiceZip(toDownload);
     } finally {

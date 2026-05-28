@@ -12,6 +12,8 @@ type Props = {
   className?: string;
   /** Gõ số → gợi ý ordinal (vd. 11 → 11th) */
   matchDigitsToOrdinal?: boolean;
+  /** Disable input + dropdown (read-only mode). */
+  disabled?: boolean;
 };
 
 function ordinalSuffix(n: number): string {
@@ -61,6 +63,7 @@ export default function Combobox({
   emptyLabel = "— Chọn —",
   className,
   matchDigitsToOrdinal = false,
+  disabled = false,
 }: Props) {
   const listId = useId();
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -94,14 +97,21 @@ export default function Combobox({
         aria-expanded={open}
         aria-controls={listId}
         autoComplete="off"
-        className="gmv-field w-full min-h-10 rounded-gmv-md border border-gmv-border bg-gmv-canvas px-3 text-sm text-gmv-text-strong"
+        disabled={disabled}
+        aria-disabled={disabled || undefined}
+        className={cn(
+          "gmv-field w-full min-h-10 rounded-gmv-md border border-gmv-border bg-gmv-canvas px-3 text-sm text-gmv-text-strong",
+          disabled && "cursor-not-allowed bg-gmv-row-hover text-gmv-muted opacity-70"
+        )}
         placeholder={placeholder}
         value={open ? query : value ? selectedLabel : ""}
         onFocus={() => {
+          if (disabled) return;
           setOpen(true);
           setQuery(value ? selectedLabel : "");
         }}
         onChange={(e) => {
+          if (disabled) return;
           setQuery(e.target.value);
           setOpen(true);
           const exact = options.find(
@@ -111,6 +121,7 @@ export default function Combobox({
           else if (!e.target.value.trim()) onChange("");
         }}
         onKeyDown={(e) => {
+          if (disabled) return;
           if (e.key === "Escape") setOpen(false);
           if (e.key === "Enter" && filtered[0]) {
             e.preventDefault();
@@ -119,7 +130,7 @@ export default function Combobox({
           }
         }}
       />
-      {open && filtered.length > 0 && (
+      {!disabled && open && filtered.length > 0 && (
         <ul
           id={listId}
           role="listbox"
