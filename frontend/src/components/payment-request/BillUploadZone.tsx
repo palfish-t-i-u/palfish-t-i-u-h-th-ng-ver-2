@@ -17,9 +17,8 @@ export default function BillUploadZone({
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragOver, setDragOver] = useState(false);
 
-  const handleFiles = (files: FileList | null) => {
-    if (!files) return;
-    const images = Array.from(files).filter((f) => f.type.startsWith("image/"));
+  const handleFiles = (files: File[]) => {
+    const images = files.filter((f) => f.type.startsWith("image/"));
     if (images.length === 0) {
       alert("Vui lòng chọn ảnh để upload!");
       return;
@@ -27,13 +26,7 @@ export default function BillUploadZone({
     images.forEach((f) => onFile(f));
   };
 
-  const handleFile = (file: File) => {
-    if (!file.type.startsWith("image/")) {
-      alert("Vui lòng chọn ảnh để upload!");
-      return;
-    }
-    onFile(file);
-  };
+  const handleFile = (file: File) => handleFiles([file]);
 
   return (
     <div className="bill-upload-actions">
@@ -44,9 +37,9 @@ export default function BillUploadZone({
             e.stopPropagation();
             onView?.();
           }}
-          title="Da co anh bill - nhan de xem"
+          title="Đã có ảnh bill — nhấn để xem"
         >
-          <Icons.Receipt size={13} /> Da co anh bill
+          <Icons.Receipt size={13} /> Đã có ảnh bill
         </span>
       )}
 
@@ -74,12 +67,12 @@ export default function BillUploadZone({
           const file = e.dataTransfer.files?.[0];
           if (file) handleFile(file);
         }}
-        title={hasBill ? "Upload them bill (khong xoa bill cu)" : "Keo tha anh bill hoac bam de chon file"}
+        title={hasBill ? "Upload thêm bill (không xoá bill cũ) — chọn được nhiều ảnh" : "Kéo thả ảnh bill hoặc bấm để chọn file (có thể chọn nhiều)"}
       >
         {uploading ? (
-          <>Dang tai...</>
+          <>Đang tải...</>
         ) : deleting ? (
-          <>Dang xoa...</>
+          <>Đang xoá...</>
         ) : (
           <>
             <Icons.Upload size={13} />
@@ -95,7 +88,8 @@ export default function BillUploadZone({
         multiple
         className="hidden"
         onChange={(e) => {
-          const files = e.target.files;
+          // Snapshot file list to array BEFORE clearing input (clearing nukes e.target.files).
+          const files = Array.from(e.target.files ?? []);
           e.target.value = "";
           handleFiles(files);
         }}
