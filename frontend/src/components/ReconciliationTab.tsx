@@ -262,7 +262,8 @@ export default function ReconciliationTab() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [lightboxBill, setLightboxBill] = useState<BillImage | null>(null);
   const [currentBillIdx, setCurrentBillIdx] = useState(0);
-  const [showDownloadMenu, setShowDownloadMenu] = useState(false);
+  const [albumOpen, setAlbumOpen] = useState(false);
+  const [albumSelected, setAlbumSelected] = useState<Set<number>>(new Set());
   const [isBulkConfirming, setIsBulkConfirming] = useState(false);
   const [pendingReject, setPendingReject] = useState<{ txns: FlatTransaction[]; label: string } | null>(null);
 
@@ -317,7 +318,8 @@ export default function ReconciliationTab() {
 
   useEffect(() => {
     setCurrentBillIdx(0);
-    setShowDownloadMenu(false);
+    setAlbumOpen(false);
+    setAlbumSelected(new Set());
   }, [drawerTxn?.key]);
 
   const handleConfirm = async (t: FlatTransaction) => {
@@ -802,60 +804,16 @@ export default function ReconciliationTab() {
                         <button type="button" className="btn btn-outline btn-sm" onClick={() => setLightboxBill(billImages[currentBillIdx])}>
                           <Icons.Image size={13} /> Phóng to
                         </button>
-                        {/* Download dropdown */}
-                        <div style={{ position: "relative" }}>
-                          <button
-                            type="button"
-                            className="btn btn-outline btn-sm"
-                            onClick={() => setShowDownloadMenu((v) => !v)}
-                          >
-                            <Icons.Download size={13} /> Tải ảnh {billImages.length > 1 && `(${billImages.length})`}
-                          </button>
-                          {showDownloadMenu && (
-                            <div
-                              style={{
-                                position: "absolute", bottom: "calc(100% + 6px)", right: 0,
-                                background: "var(--surface)", border: "1px solid var(--border)",
-                                borderRadius: 10, padding: "8px 0", minWidth: 200,
-                                boxShadow: "0 4px 16px rgba(0,0,0,.12)", zIndex: 50,
-                              }}
-                            >
-                              {billImages.map((b, i) => (
-                                <a
-                                  key={b.id}
-                                  href={b.src}
-                                  download={b.name}
-                                  className="btn btn-ghost btn-sm"
-                                  style={{ display: "flex", gap: 8, padding: "6px 14px", textDecoration: "none", color: "inherit" }}
-                                  onClick={() => setShowDownloadMenu(false)}
-                                >
-                                  <Icons.Download size={12} />
-                                  <span>Ảnh #{i + 1}</span>
-                                </a>
-                              ))}
-                              {billImages.length > 1 && (
-                                <>
-                                  <div style={{ height: 1, background: "var(--border)", margin: "6px 0" }} />
-                                  <button
-                                    type="button"
-                                    className="btn btn-ghost btn-sm"
-                                    style={{ display: "flex", gap: 8, padding: "6px 14px", width: "100%", fontWeight: 600 }}
-                                    onClick={() => {
-                                      billImages.forEach((b) => {
-                                        const a = document.createElement("a");
-                                        a.href = b.src; a.download = b.name;
-                                        document.body.appendChild(a); a.click(); a.remove();
-                                      });
-                                      setShowDownloadMenu(false);
-                                    }}
-                                  >
-                                    <Icons.Download size={12} /> Tải tất cả ({billImages.length} ảnh)
-                                  </button>
-                                </>
-                              )}
-                            </div>
-                          )}
-                        </div>
+                        <button
+                          type="button"
+                          className="btn btn-outline btn-sm"
+                          onClick={() => {
+                            setAlbumSelected(new Set());
+                            setAlbumOpen(true);
+                          }}
+                        >
+                          <Icons.Download size={13} /> Tải ảnh {billImages.length > 1 && `(${billImages.length})`}
+                        </button>
                       </>
                     ) : (
                       <button type="button" className="btn btn-outline btn-sm" disabled style={{ opacity: 0.5 }}>
@@ -1039,6 +997,135 @@ export default function ReconciliationTab() {
       </aside>
 
       {lightboxBill && <BillLightbox bill={lightboxBill} onClose={() => setLightboxBill(null)} />}
+      {albumOpen && drawerTxn && (() => {
+        const bills = getBillsForTxn(drawerTxn);
+        const allSelected = albumSelected.size === bills.length && bills.length > 0;
+        const downloadOne = (b: BillImage) => {
+          const a = document.createElement("a");
+          a.href = b.src;
+          a.download = b.name;
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+        };
+        const downloadSelected = () => {
+          bills.filter((_, i) => albumSelected.has(i)).forEach(downloadOne);
+          setAlbumOpen(false);
+        };
+        const downloadAll = () => {
+          bills.forEach(downloadOne);
+          setAlbumOpen(false);
+        };
+        const toggleSelect = (i: number) => {
+          setAlbumSelected((prev) => {
+            const next = new Set(prev);
+            if (next.has(i)) next.delete(i); else next.add(i);
+            return next;
+          });
+        };
+        return (
+          <div className="gmv-prototype-modal-scrim" onClick={() => setAlbumOpen(false)}>
+            <div
+              className="modal"
+              style={{ width: "min(880px, 94vw)", maxHeight: "88vh", display: "flex", flexDirection: "column" }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="modal-head">
+                <div>
+                  <h3 style={{ color: "var(--text)" }}>Album ảnh bill</h3>
+                  <div style={{ fontSize: 12, color: "var(--text-3)", marginTop: 2 }}>
+                    {bills.length} ảnh · Tick để chọn từng ảnh, hoặc "Tải tất cả"
+                  </div>
+                </div>
+                <button className="drawer-close" onClick={() => setAlbumOpen(false)}>
+                  <Icons.Close size={16} />
+                </button>
+              </div>
+              <div
+                className="modal-body"
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))",
+                  gap: 12,
+                  overflowY: "auto",
+                  padding: "14px 18px",
+                }}
+              >
+                {bills.map((b, i) => {
+                  const checked = albumSelected.has(i);
+                  return (
+                    <div
+                      key={b.id}
+                      onClick={() => toggleSelect(i)}
+                      style={{
+                        position: "relative",
+                        border: checked ? "2px solid var(--primary)" : "1px solid var(--border)",
+                        borderRadius: 10,
+                        overflow: "hidden",
+                        cursor: "pointer",
+                        background: "var(--surface-2)",
+                        aspectRatio: "1 / 1",
+                      }}
+                    >
+                      <img
+                        src={b.src}
+                        alt={b.name}
+                        style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+                      />
+                      <div
+                        style={{
+                          position: "absolute", top: 8, left: 8,
+                          width: 22, height: 22, borderRadius: "50%",
+                          background: checked ? "var(--primary)" : "rgba(255,255,255,.85)",
+                          border: checked ? "2px solid #fff" : "1px solid var(--border)",
+                          display: "flex", alignItems: "center", justifyContent: "center",
+                          boxShadow: "0 2px 6px rgba(0,0,0,.18)",
+                        }}
+                      >
+                        {checked && <Icons.Check size={13} stroke="#fff" strokeWidth={3} />}
+                      </div>
+                      <div
+                        style={{
+                          position: "absolute", bottom: 0, left: 0, right: 0,
+                          background: "linear-gradient(to top, rgba(0,0,0,.65), transparent)",
+                          color: "#fff", padding: "16px 10px 8px", fontSize: 11.5, fontWeight: 600,
+                        }}
+                      >
+                        Ảnh #{i + 1}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              <div className="modal-foot" style={{ justifyContent: "space-between" }}>
+                <button
+                  type="button"
+                  className="btn btn-outline"
+                  onClick={() => {
+                    if (allSelected) setAlbumSelected(new Set());
+                    else setAlbumSelected(new Set(bills.map((_, i) => i)));
+                  }}
+                >
+                  {allSelected ? "Bỏ chọn tất cả" : "Chọn tất cả"}
+                </button>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button
+                    type="button"
+                    className="btn btn-outline"
+                    disabled={albumSelected.size === 0}
+                    onClick={downloadSelected}
+                  >
+                    <Icons.Download size={13} /> Tải đã chọn ({albumSelected.size})
+                  </button>
+                  <button type="button" className="btn btn-primary" onClick={downloadAll}>
+                    <Icons.Download size={13} /> Tải tất cả ({bills.length})
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
       {pendingReject && (
         <RejectReasonModal
           txnLabel={pendingReject.label}

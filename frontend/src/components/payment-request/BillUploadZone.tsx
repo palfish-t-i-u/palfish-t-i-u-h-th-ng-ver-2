@@ -12,21 +12,28 @@ export default function BillUploadZone({
   uploading?: boolean;
   deleting?: boolean;
   onView?: () => void;
-  onFile: (file: File) => void;
+  onFile: (file: File) => void | Promise<void>;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragOver, setDragOver] = useState(false);
 
-  const handleFiles = (files: File[]) => {
+  const handleFiles = async (files: File[]) => {
     const images = files.filter((f) => f.type.startsWith("image/"));
     if (images.length === 0) {
       alert("Vui lòng chọn ảnh để upload!");
       return;
     }
-    images.forEach((f) => onFile(f));
+    // Serialize uploads — each call's BE response refreshes state with the
+    // full bill_images array. Parallel uploads would race and only the last
+    // resolved response would be applied to FE state.
+    for (const f of images) {
+      await onFile(f);
+    }
   };
 
-  const handleFile = (file: File) => handleFiles([file]);
+  const handleFile = (file: File) => {
+    void handleFiles([file]);
+  };
 
   return (
     <div className="bill-upload-actions">
@@ -91,7 +98,7 @@ export default function BillUploadZone({
           // Snapshot file list to array BEFORE clearing input (clearing nukes e.target.files).
           const files = Array.from(e.target.files ?? []);
           e.target.value = "";
-          handleFiles(files);
+          void handleFiles(files);
         }}
       />
     </div>

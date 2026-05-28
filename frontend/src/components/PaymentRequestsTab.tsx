@@ -574,7 +574,7 @@ export default function PaymentRequestsTab() {
               await handleBillDelete(billModalQr, undefined, true);
             }}
           >
-            <Icons.XCircle size={13} /> Xoa tat ca
+            <Icons.XCircle size={13} /> Xoá tất cả
           </button>
         </div>
         <div
@@ -600,7 +600,7 @@ export default function PaymentRequestsTab() {
             >
               <img
                 src={src}
-                alt={`Bien lai ${idx + 1}`}
+                alt={`Biên lai ${idx + 1}`}
                 style={{
                   width: "100%",
                   maxHeight: 260,
@@ -624,7 +624,7 @@ export default function PaymentRequestsTab() {
                     await handleBillDelete(billModalQr, src);
                   }}
                 >
-                  <Icons.XCircle size={12} /> Xoa bill nay
+                  <Icons.XCircle size={12} /> Xoá bill này
                 </button>
               </div>
             </div>

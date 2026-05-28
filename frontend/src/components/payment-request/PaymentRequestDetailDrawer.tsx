@@ -75,7 +75,7 @@ function QrRow({
 }: {
   qr: PaymentAttempt;
   onCancelQr: (qr: PaymentAttempt) => void;
-  onBillFile: (qr: PaymentAttempt, file: File) => void;
+  onBillFile: (qr: PaymentAttempt, file: File) => void | Promise<void>;
   onBillView: (qr: PaymentAttempt) => void;
   onMarkPaid: (qr: PaymentAttempt) => void;
   onShowQr: (qr: PaymentAttempt) => void;
@@ -885,7 +885,7 @@ export default function PaymentRequestDetailDrawer({
   onAddPayment: (payload: AddPaymentAttemptPayload) => void;
   onCancelPayment: (qr: PaymentAttempt) => void;
   onMarkPaid: (qr: PaymentAttempt) => void;
-  onBillFile: (qr: PaymentAttempt, file: File) => void;
+  onBillFile: (qr: PaymentAttempt, file: File) => void | Promise<void>;
   onBillView: (qr: PaymentAttempt) => void;
   onCreateActiveRequest: () => void;
   onCancelRequest: () => void;
