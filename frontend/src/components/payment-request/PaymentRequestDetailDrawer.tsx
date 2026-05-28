@@ -507,6 +507,34 @@ function ActiveRequestMiniCardV2({
     });
   };
 
+  const removeCourse = (uidIdx: number, courseCode: string) => {
+    const course = ar.uids[uidIdx]?.courses.find((c) => c.courseCode === courseCode);
+    if (!course) return;
+    if (course.invoiced) {
+      window.alert("Không thể xóa khóa học đã xuất hóa đơn.");
+      return;
+    }
+    if (course.orderId && course.orderId.trim()) {
+      if (!window.confirm(`Khóa học ${courseCode} đã có Order ID (${course.orderId}). Vẫn xóa?`)) return;
+    } else {
+      if (!window.confirm(`Xóa khóa học ${courseCode}?`)) return;
+    }
+    setAmountDrafts((prev) => {
+      if (!(courseCode in prev)) return prev;
+      const next = { ...prev };
+      delete next[courseCode];
+      return next;
+    });
+    mutate((next) => ({
+      ...next,
+      uids: next.uids.map((u, idx) =>
+        idx === uidIdx
+          ? { ...u, courses: u.courses.filter((c) => c.courseCode !== courseCode) }
+          : u
+      ),
+    }));
+  };
+
   const addUidGroup = () => {
     mutate((next) => {
       const code = nextCourseCode(next);
@@ -657,7 +685,9 @@ function ActiveRequestMiniCardV2({
                     key={`${c.courseCode}-${cIdx}`}
                     style={{
                       display: "grid",
-                      gridTemplateColumns: "minmax(0, 1fr) 130px auto",
+                      gridTemplateColumns: editing
+                        ? "minmax(0, 1fr) 130px auto auto"
+                        : "minmax(0, 1fr) 130px auto",
                       gap: 10,
                       alignItems: "center",
                       padding: "6px 8px",
@@ -781,6 +811,19 @@ function ActiveRequestMiniCardV2({
                         </span>
                       )}
                     </div>
+                    {editing && (
+                      <button
+                        type="button"
+                        className="btn btn-outline btn-sm"
+                        title="Xóa khóa học"
+                        aria-label="Xóa khóa học"
+                        disabled={c.invoiced}
+                        onClick={() => removeCourse(uIdx, c.courseCode)}
+                        style={{ width: 28, padding: 0, color: "var(--danger)" }}
+                      >
+                        <Icons.Close size={12} strokeWidth={2.4} />
+                      </button>
+                    )}
                   </div>
                 ))}
               </div>
