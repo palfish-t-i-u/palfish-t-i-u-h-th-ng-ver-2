@@ -69,7 +69,7 @@ export default function QrViewModal({
   qr: PaymentAttempt | null;
   request: PaymentRequest | null;
   onClose: () => void;
-  onBillFile?: (file: File) => void;
+  onBillFile?: (file: File) => void | Promise<void>;
   onBillView?: () => void;
   uploadingBill?: boolean;
   deletingBill?: boolean;
