@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import time
 import uuid
 from datetime import datetime, timezone
 from typing import Any, Callable
@@ -31,6 +32,9 @@ METHOD_ALIASES = {
     "installment": "installment",
     "tra_gop": "installment",
 }
+
+_BILL_STORAGE_CACHE_TTL_SECONDS = 30.0
+_bill_assets_cache: dict[str, Any] = {"expires_at": 0.0, "assets_by_line": {}}
 
 
 class PaymentRequestCreate(BaseModel):
@@ -261,6 +265,142 @@ def _fetch_bill_assets_from_storage(sb, line_ids: list[str]) -> dict[str, list[d
             )
         assets.sort(key=lambda x: (x.get("created_at") or "", x.get("name") or ""))
         out[line_id] = assets
+    return out
+
+
+def _invalidate_bill_storage_cache() -> None:
+    _bill_assets_cache["expires_at"] = 0.0
+    _bill_assets_cache["assets_by_line"] = {}
+
+
+def _build_bill_assets_from_storage_objects(sb) -> dict[str, list[dict[str, str]]]:
+    """
+    Build full bill assets index in one DB-flow via storage.objects.
+    Falls back to {} when schema access is unavailable.
+    """
+    out: dict[str, list[dict[str, str]]] = {}
+    bucket = sb.storage.from_("bills")
+    start = 0
+    page_size = 1000
+
+    try:
+        while True:
+            res = (
+                sb.schema("storage")
+                .table("objects")
+                .select("name, created_at, updated_at")
+                .eq("bucket_id", "bills")
+                .like("name", "payment-lines/%/bill%")
+                .order("name")
+                .range(start, start + page_size - 1)
+                .execute()
+            )
+            rows = res.data or []
+            if not rows:
+                break
+            for row in rows:
+                raw_path = str(row.get("name") or "").strip().lstrip("/")
+                if not raw_path.startswith("payment-lines/"):
+                    continue
+                parts = raw_path.split("/", 2)
+                if len(parts) != 3:
+                    continue
+                line_id = parts[1].strip()
+                filename = parts[2].strip()
+                if not line_id or not filename or not filename.startswith("bill"):
+                    continue
+                path = f"payment-lines/{line_id}/{filename}"
+                out.setdefault(line_id, []).append(
+                    {
+                        "name": filename,
+                        "path": path,
+                        "url": _storage_public_url(bucket, path),
+                        "created_at": str(row.get("created_at") or row.get("updated_at") or ""),
+                    }
+                )
+            if len(rows) < page_size:
+                break
+            start += page_size
+    except Exception as exc:
+        print(f"[payment_lines] storage.objects query failed; fallback to direct Storage list: {exc}")
+        return {}
+
+    for line_id, assets in out.items():
+        assets.sort(key=lambda x: (x.get("created_at") or "", x.get("name") or ""))
+    return out
+
+
+def _build_bill_assets_from_storage_fallback(sb, wanted: set[str]) -> dict[str, list[dict[str, str]]]:
+    """Fallback when storage.objects query is unavailable: list per line_id."""
+    out: dict[str, list[dict[str, str]]] = {}
+    bucket = sb.storage.from_("bills")
+    for line_id in wanted:
+        try:
+            files = bucket.list(f"payment-lines/{line_id}") or []
+        except Exception as exc:
+            print(f"[payment_lines] bill storage list {line_id}: {exc}")
+            continue
+        assets: list[dict[str, str]] = []
+        for file_row in files:
+            name = str(file_row.get("name") or "")
+            if not name.startswith("bill"):
+                continue
+            path = f"payment-lines/{line_id}/{name}"
+            assets.append(
+                {
+                    "name": name,
+                    "path": path,
+                    "url": _storage_public_url(bucket, path),
+                    "created_at": str(file_row.get("created_at") or file_row.get("updated_at") or ""),
+                }
+            )
+        assets.sort(key=lambda x: (x.get("created_at") or "", x.get("name") or ""))
+        out[line_id] = assets
+    return out
+
+
+def _fetch_bill_assets_fast(
+    sb,
+    line_ids: list[str],
+    *,
+    force_refresh: bool = False,
+) -> dict[str, list[dict[str, str]]]:
+    """
+    Fast path for bill assets:
+    1) Try cached storage.objects index (single query flow)
+    2) Fallback to per-line Storage API listing
+    """
+    wanted = {str(line_id) for line_id in line_ids if line_id}
+    if not wanted:
+        return {}
+
+    now = time.monotonic()
+    cached = _bill_assets_cache.get("assets_by_line")
+    if not force_refresh and isinstance(cached, dict) and cached:
+        # Serve stale cache to avoid periodic latency spikes during polling.
+        if now >= float(_bill_assets_cache.get("expires_at") or 0.0):
+            _bill_assets_cache["expires_at"] = now + _BILL_STORAGE_CACHE_TTL_SECONDS
+        return {line_id: cached.get(line_id, []) for line_id in wanted}
+
+    indexed = _build_bill_assets_from_storage_objects(sb)
+    if indexed:
+        _bill_assets_cache["assets_by_line"] = indexed
+        _bill_assets_cache["expires_at"] = now + _BILL_STORAGE_CACHE_TTL_SECONDS
+        return {line_id: indexed.get(line_id, []) for line_id in wanted}
+
+    fallback = _build_bill_assets_from_storage_fallback(sb, wanted)
+    if fallback:
+        _bill_assets_cache["assets_by_line"] = dict(fallback)
+        _bill_assets_cache["expires_at"] = now + _BILL_STORAGE_CACHE_TTL_SECONDS
+    return fallback
+
+
+def _bill_urls_from_assets(bill_assets: dict[str, list[dict[str, str]]]) -> dict[str, str]:
+    out: dict[str, str] = {}
+    for line_id, assets in (bill_assets or {}).items():
+        if not assets:
+            continue
+        out[line_id] = str(assets[-1].get("url") or "").strip()
     return out
 
 
@@ -799,8 +939,8 @@ def register_payment_request_routes(app, get_supabase) -> None:
             for line in lines
             if line.get("id")
         ]
-        bill_urls = _fetch_bill_urls_from_storage(sb, all_line_ids)
-        bill_assets = _fetch_bill_assets_from_storage(sb, all_line_ids)
+        bill_assets = _fetch_bill_assets_fast(sb, all_line_ids)
+        bill_urls = _bill_urls_from_assets(bill_assets)
 
         requests = [
             _serialize_payment_request_list_item(
@@ -853,21 +993,10 @@ def register_payment_request_routes(app, get_supabase) -> None:
             .eq("payment_request_id", payment_request_id)
             .execute()
         )
-        bill_urls = _fetch_bill_urls_from_storage(
-            sb,
-            [str(line.get("id") or "") for line in (line_res.data or []) if line.get("id")],
-        )
-        bill_assets = _fetch_bill_assets_from_storage(
-            sb,
-            [str(line.get("id") or "") for line in (line_res.data or []) if line.get("id")],
-        )
-
         return {
             "payment_request": _serialize_payment_request_list_item(
                 updated_row,
                 line_res.data or [],
-                bill_urls,
-                bill_assets,
             )
         }
 
@@ -1166,8 +1295,9 @@ def register_payment_request_routes(app, get_supabase) -> None:
         except Exception as exc:
             raise HTTPException(500, f"Loi cap nhat bill_image: {exc}") from exc
 
+        _invalidate_bill_storage_cache()
         merged_line = {**line, "bill_image": public_url}
-        bill_assets = _fetch_bill_assets_from_storage(sb, [line_id])
+        bill_assets = _fetch_bill_assets_fast(sb, [line_id], force_refresh=True)
         return {
             "billImage": public_url,
             "payment_line": _serialize_payment_line(
@@ -1186,7 +1316,7 @@ def register_payment_request_routes(app, get_supabase) -> None:
             raise HTTPException(404, "Khong tim thay payment_line")
 
         line = line_res.data[0]
-        assets = _fetch_bill_assets_from_storage(sb, [line_id]).get(line_id, [])
+        assets = _fetch_bill_assets_fast(sb, [line_id]).get(line_id, [])
         if len(assets) <= 1:
             raise HTTPException(400, "Khong the xoa bill ban dau")
 
@@ -1200,7 +1330,8 @@ def register_payment_request_routes(app, get_supabase) -> None:
         except Exception as exc:
             raise HTTPException(500, f"Khong xoa duoc bill tren Storage: {exc}") from exc
 
-        next_assets = _fetch_bill_assets_from_storage(sb, [line_id]).get(line_id, [])
+        _invalidate_bill_storage_cache()
+        next_assets = _fetch_bill_assets_fast(sb, [line_id], force_refresh=True).get(line_id, [])
         next_bill_url = (next_assets[-1].get("url") if next_assets else "") or ""
         try:
             _persist_bill_image(sb, line_id, next_bill_url)
@@ -1230,7 +1361,7 @@ def register_payment_request_routes(app, get_supabase) -> None:
             raise HTTPException(404, "Khong tim thay payment_line")
 
         line = line_res.data[0]
-        assets = _fetch_bill_assets_from_storage(sb, [line_id]).get(line_id, [])
+        assets = _fetch_bill_assets_fast(sb, [line_id]).get(line_id, [])
         if not assets:
             raise HTTPException(400, "Khong co bill de xoa")
 
@@ -1260,7 +1391,8 @@ def register_payment_request_routes(app, get_supabase) -> None:
         except Exception as exc:
             raise HTTPException(500, f"Khong xoa duoc bill tren Storage: {exc}") from exc
 
-        next_assets = _fetch_bill_assets_from_storage(sb, [line_id]).get(line_id, [])
+        _invalidate_bill_storage_cache()
+        next_assets = _fetch_bill_assets_fast(sb, [line_id], force_refresh=True).get(line_id, [])
         next_bill_url = (next_assets[-1].get("url") if next_assets else "") or ""
         try:
             _persist_bill_image(sb, line_id, next_bill_url)
