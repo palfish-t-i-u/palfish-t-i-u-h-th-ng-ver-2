@@ -153,6 +153,8 @@ export const endpoints = {
       api.patch<ActiveRequestApiRow>(`/api/v1/active-requests/${arId}`, body),
     delete: (arId: string) =>
       api.delete<{ ok: boolean; id: string }>(`/api/v1/active-requests/${arId}`),
+    requestInvoice: (arId: string) =>
+      api.post<ActiveRequestApiRow>(`/api/v1/active-requests/${arId}/request-invoice`),
     patchCourseOrderId: (arId: string, courseCode: string, orderId: string) =>
       api.patch<ActiveRequestApiRow>(
         `/api/v1/active-requests/${arId}/courses/${encodeURIComponent(courseCode)}`,

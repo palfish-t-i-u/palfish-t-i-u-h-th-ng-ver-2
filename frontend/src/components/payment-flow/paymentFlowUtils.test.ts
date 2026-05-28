@@ -31,7 +31,7 @@ describe("active request status derivation", () => {
     expect(deriveArStatus(baseAr)).toBe("pending_order");
   });
 
-  it("does not treat order id alone as ready for invoice", () => {
+  it("treats AR with all order ids filled as activated", () => {
     const withOrderId: ActiveRequest = {
       ...baseAr,
       uids: [
@@ -42,11 +42,28 @@ describe("active request status derivation", () => {
       ],
     };
 
-    expect(deriveArStatus(withOrderId)).toBe("partial_order");
+    expect(deriveArStatus(withOrderId)).toBe("activated");
   });
 
-  it("moves to ready for invoice only after invoice is requested", () => {
-    const requested: ActiveRequest = {
+  it("stays in pending_order if any course is still missing order id", () => {
+    const partial: ActiveRequest = {
+      ...baseAr,
+      uids: [
+        {
+          ...baseAr.uids[0],
+          courses: [
+            { ...baseAr.uids[0].courses[0], orderId: "ORD-CRM-88901" },
+            { ...baseAr.uids[0].courses[0], courseCode: "CC-0051-002", orderId: "" },
+          ],
+        },
+      ],
+    };
+
+    expect(deriveArStatus(partial)).toBe("pending_order");
+  });
+
+  it("moves to invoiced only when all courses are invoiced", () => {
+    const invoiced: ActiveRequest = {
       ...baseAr,
       uids: [
         {
@@ -55,13 +72,14 @@ describe("active request status derivation", () => {
             {
               ...baseAr.uids[0].courses[0],
               orderId: "ORD-CRM-88901",
-              invoiceRequestedAt: "2026-05-28T00:00:00.000Z",
+              invoiced: true,
+              invoicedAt: "2026-05-28T00:00:00.000Z",
             },
           ],
         },
       ],
     };
 
-    expect(deriveArStatus(requested)).toBe("ready_invoice");
+    expect(deriveArStatus(invoiced)).toBe("invoiced");
   });
 });
