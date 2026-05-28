@@ -130,6 +130,16 @@ export const endpoints = {
         { timeout: 60000 }
       );
     },
+    deleteLatestPaymentLineBill: (lineId: string) =>
+      api.delete<{ payment_line: PaymentLineApiRow }>(`/api/v1/payment-lines/${lineId}/bills/latest`),
+    deletePaymentLineBill: (lineId: string, billUrl: string) =>
+      api.post<{ payment_line: PaymentLineApiRow }>(`/api/v1/payment-lines/${lineId}/bills/delete`, {
+        bill_url: billUrl,
+      }),
+    deleteAllPaymentLineBills: (lineId: string) =>
+      api.post<{ payment_line: PaymentLineApiRow }>(`/api/v1/payment-lines/${lineId}/bills/delete`, {
+        delete_all: true,
+      }),
     // B3: create active request nested under PR
     createActiveRequest: (prId: string, body: CreateActiveRequestPayload) =>
       api.post<ActiveRequestApiRow>(`/api/v1/payment-requests/${prId}/active-requests`, body),
@@ -143,6 +153,11 @@ export const endpoints = {
       api.patch<ActiveRequestApiRow>(`/api/v1/active-requests/${arId}`, body),
     delete: (arId: string) =>
       api.delete<{ ok: boolean; id: string }>(`/api/v1/active-requests/${arId}`),
+    patchCourseOrderId: (arId: string, courseCode: string, orderId: string) =>
+      api.patch<ActiveRequestApiRow>(
+        `/api/v1/active-requests/${arId}/courses/${encodeURIComponent(courseCode)}`,
+        { order_id: orderId }
+      ),
     issueInvoice: (arId: string, courseCode: string) =>
       api.post<{
         active_request: ActiveRequestApiRow;

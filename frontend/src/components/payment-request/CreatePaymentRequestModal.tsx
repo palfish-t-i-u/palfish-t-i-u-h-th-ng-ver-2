@@ -40,9 +40,13 @@ export default function CreatePaymentRequestModal({
   onSubmit: (payload: CreatePaymentRequestPayload) => void;
 }) {
   const [form, setForm] = useState<FormState>(INITIAL);
+  const [isTargetFocused, setIsTargetFocused] = useState(false);
 
   useEffect(() => {
-    if (open) setForm(INITIAL);
+    if (open) {
+      setForm(INITIAL);
+      setIsTargetFocused(false);
+    }
   }, [open]);
 
   if (!open) return null;
@@ -120,10 +124,20 @@ export default function CreatePaymentRequestModal({
               </label>
               <input
                 placeholder="VD: 12.000.000"
-                value={form.target}
+                value={
+                  isTargetFocused
+                    ? form.target
+                    : form.target
+                    ? Number(form.target).toLocaleString("vi-VN")
+                    : ""
+                }
+                inputMode="numeric"
+                pattern="[0-9]*"
+                onFocus={() => setIsTargetFocused(true)}
+                onBlur={() => setIsTargetFocused(false)}
                 onChange={(e) => {
                   const v = e.target.value.replace(/[^\d]/g, "");
-                  set("target", v ? Number(v).toLocaleString("vi-VN") : "");
+                  set("target", v);
                 }}
               />
             </div>

@@ -135,6 +135,9 @@
 | UX-13 | `git push origin ui/ux` — đồng bộ remote + graph Git | pending | 2026-05-26 21:45 | | `ahead 1` sau merge |
 | UX-14 | Supabase: chạy `active_requests_nullable_pr.sql` (dev + prod nếu standalone AR) | pending | 2026-05-26 21:45 | | FE_HANDOFF §3, §8 |
 | UX-15 | Smoke: standalone AR + export-batch B4 + cash pending B2 | pending | 2026-05-26 21:45 | | Sau UX-13/14 |
+| UX-16 | Merge `main@3c0c579` và triển khai P0/P1 Active Request feedback trong FE | done | 2026-05-28 08:15 | 2026-05-28 08:45 | Payment Request mini-window: UID/SĐT/gói/tiền, icon Sửa/Lưu/Xóa/Xóa gói, wording "Chờ kích hoạt"; `npm test` + `npm run build` pass |
+| UX-17 | BE: endpoint xóa/cancel Active Request cho nút X đỏ vuông | pending | 2026-05-28 08:45 | | FE đã gắn optimistic `DELETE /api/v1/active-requests/{ar_id}`; cần Giang/Đức implement hoặc chốt soft-cancel |
+| UX-18 | BE: persist `invoice_requested_at` trong `uids_data.courses[]` | pending | 2026-05-28 08:45 | | FE B4 gating đã dùng `invoiceRequestedAt`; cần BE giữ field khi PATCH AR để reload không mất trạng thái |
 
 ---
 

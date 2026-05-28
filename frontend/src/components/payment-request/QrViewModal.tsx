@@ -64,6 +64,7 @@ export default function QrViewModal({
   onBillFile,
   onBillView,
   uploadingBill,
+  deletingBill,
 }: {
   qr: PaymentAttempt | null;
   request: PaymentRequest | null;
@@ -71,6 +72,7 @@ export default function QrViewModal({
   onBillFile?: (file: File) => void;
   onBillView?: () => void;
   uploadingBill?: boolean;
+  deletingBill?: boolean;
 }) {
   const [copyQrState, setCopyQrState] = useState<"idle" | "copying" | "done" | "error">("idle");
 
@@ -206,6 +208,7 @@ export default function QrViewModal({
               <BillUploadZone
                 hasBill={!!qr.billImage}
                 uploading={uploadingBill}
+                deleting={deletingBill}
                 onView={onBillView}
                 onFile={onBillFile}
               />

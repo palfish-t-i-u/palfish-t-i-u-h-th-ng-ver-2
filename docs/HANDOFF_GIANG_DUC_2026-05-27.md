@@ -338,6 +338,26 @@ Acceptance:
 
 ## Việc còn lại sau tối nay
 
+### Cập nhật 28/05 sau merge `main@3c0c579` vào `ui/ux`
+
+Minh đã triển khai phần FE P0/P1 trong `frontend/src/` và không sửa tay `backend/`.
+
+Đã xử lý ở FE:
+- Payment Request mini-window dùng base multi UID / multi course từ `main`, bổ sung phone format `+country_code`, hiển thị UID/SĐT/gói học/số tiền.
+- Sales view không show Order ID; chỉ hiển thị “Chờ kích hoạt khóa học” hoặc “Đã kích hoạt khóa học”, course badge là “Chờ kích hoạt” / “Đã kích hoạt”.
+- Mini-window có icon action: bút sửa, tick xanh lưu, X đỏ xóa Active Request, X tròn xóa tên gói học trong ô chọn gói.
+- Active Request drawer: khi Ops bấm “Xuất HĐ”, FE set `invoice_requested_at` vào course qua `PATCH /api/v1/active-requests/{ar_id}` body `uids_data`.
+- Tab B4 chỉ nhận course có `invoiceRequestedAt && !invoiced`.
+
+Verification FE:
+- `cd frontend && npm test` pass 3 files / 11 tests.
+- `cd frontend && npm run build` pass.
+
+BE còn cần Giang/Đức:
+- Implement hoặc chốt API xóa/cancel AR cho FE call `DELETE /api/v1/active-requests/{ar_id}`. Nếu không dùng hard delete, thống nhất endpoint soft-cancel để Minh đổi FE wrapper.
+- Đảm bảo `PATCH /api/v1/active-requests/{ar_id}` giữ nguyên field `invoice_requested_at` trong `uids_data.courses[]` và serializer trả lại field này.
+- Nếu BE còn derive `ready_invoice` chỉ dựa vào `order_id`, cần đổi logic: Order ID = đã kích hoạt khóa học; `invoice_requested_at` = đã bấm Xuất HĐ và mới vào B4.
+
 | ID | Việc | Người làm | Trạng thái |
 |----|------|-----------|-----------|
 | B-03 | Multi-bill upload (schema `bill_images text[]` + endpoint upload N file) | Giang + Đức | ⏸ Hold đến sau preview với team |
