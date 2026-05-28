@@ -46,6 +46,7 @@ function BankInfoRow({ label, value, onCopy }: { label: string; value: string; o
             className="btn btn-outline btn-sm"
             style={{ flexShrink: 0, padding: "2px 10px", fontSize: 12 }}
             onClick={onCopy}
+            data-qr-capture-hide="true"
           >
             Sao chép
           </button>
@@ -65,7 +66,7 @@ export default function QrViewModal({
   onClose: () => void;
 }) {
   const [copyQrState, setCopyQrState] = useState<"idle" | "copying" | "done" | "error">("idle");
-  const [captureState, setCaptureState] = useState<"idle" | "capturing" | "done" | "error">("idle");
+  const [captureState, setCaptureState] = useState<"idle" | "capturing" | "done" | "downloaded" | "error">("idle");
   const captureRef = useRef<HTMLDivElement>(null);
 
   if (!qr || !request) return null;
@@ -88,18 +89,34 @@ export default function QrViewModal({
     if (!captureRef.current) return;
     setCaptureState("capturing");
     try {
-      const { toPng } = await import("html-to-image");
-      const dataUrl = await toPng(captureRef.current, {
+      const { toBlob } = await import("html-to-image");
+      const blob = await toBlob(captureRef.current, {
         backgroundColor: "#ffffff",
         pixelRatio: 2,
+        filter: (node) =>
+          !(node instanceof HTMLElement && node.dataset.qrCaptureHide === "true"),
       });
-      const a = document.createElement("a");
-      a.href = dataUrl;
-      a.download = `QR-${transferCode}.png`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      setCaptureState("done");
+      if (!blob) throw new Error("toBlob returned null");
+
+      let copied = false;
+      try {
+        await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
+        copied = true;
+      } catch {
+        // clipboard không hỗ trợ → fallback download
+      }
+
+      if (!copied) {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `QR-${transferCode}.png`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 5000);
+      }
+      setCaptureState(copied ? "done" : "downloaded");
     } catch {
       setCaptureState("error");
     }
@@ -121,7 +138,9 @@ export default function QrViewModal({
   const captureLabel = captureState === "capturing"
     ? "Đang chụp…"
     : captureState === "done"
-    ? "Đã lưu ảnh!"
+    ? "Đã copy ảnh — paste vào chat!"
+    : captureState === "downloaded"
+    ? "Clipboard lỗi — đã tải ảnh"
     : captureState === "error"
     ? "Lỗi — thử lại"
     : "Chụp mã QR";

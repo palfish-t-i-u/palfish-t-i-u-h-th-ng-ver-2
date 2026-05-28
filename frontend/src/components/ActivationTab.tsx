@@ -500,6 +500,15 @@ function ActivationDetailDrawer({
     };
   }, [open, ar?.id, ar?.uids.length]);
 
+  useEffect(() => {
+    if (!open) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [open]);
+
   if (!ar) {
     return (
       <>
