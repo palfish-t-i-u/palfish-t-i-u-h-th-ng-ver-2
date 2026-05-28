@@ -20,7 +20,7 @@ import { downloadTaxInvoiceZip } from "../utils/taxInvoiceXlsxExport";
 import type { InvoiceRow } from "./payment-flow/paymentFlowUtils";
 import "../styles/prototype-payments.css";
 
-type ArTabId = "pending_order" | "partial_order" | "ready_invoice" | "all";
+type ArTabId = "pending_order" | "ready_invoice" | "all";
 
 function PrSearchCombo({
   prs,
@@ -1387,9 +1387,11 @@ export default function ActivationTab() {
   const counts = useMemo(
     () => ({
       all: rows.length,
-      pending_order: rows.filter((a) => a.status === "pending_order").length,
-      partial_order: rows.filter((a) => a.status === "partial_order").length,
+      // Gộp pending_order + partial_order vào "Chờ điền Order ID" — forward-compatible với BE mới
+      // (BE mới sẽ chỉ trả pending_order; BE cũ vẫn có thể trả partial_order trong giai đoạn migrate).
+      pending_order: rows.filter((a) => a.status === "pending_order" || a.status === "partial_order").length,
       ready_invoice: rows.filter((a) => a.status === "ready_invoice").length,
+      invoiced: rows.filter((a) => a.status === "invoiced").length,
     }),
     [rows]
   );
@@ -1402,7 +1404,12 @@ export default function ActivationTab() {
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return rows.filter((a) => {
-      if (tab !== "all" && a.status !== tab) return false;
+      // Tab "Chờ điền Order ID" gộp cả pending_order và partial_order (giai đoạn migrate BE).
+      if (tab === "pending_order") {
+        if (a.status !== "pending_order" && a.status !== "partial_order") return false;
+      } else if (tab !== "all" && a.status !== tab) {
+        return false;
+      }
       if (!inDateRange(a.createdAt, dateRange)) return false;
       if (!q) return true;
       return [a.id, a.prId || "", a.customerName, a.uids[0]?.uid || ""].some((v) =>
@@ -1472,25 +1479,25 @@ export default function ActivationTab() {
             <div className="kpi-icon" style={{ background: "var(--warning-bg)", color: "var(--warning-text)" }}>
               <Icons.Clock size={16} />
             </div>
-            <div className="kpi-label">Chờ tạo đơn</div>
+            <div className="kpi-label">Chờ điền Order ID</div>
             <div className="kpi-value">{counts.pending_order}</div>
-            <div className="kpi-sub">Chưa có Order ID nào</div>
-          </div>
-          <div className="kpi">
-            <div className="kpi-icon" style={{ background: "var(--info-bg)", color: "var(--info-text)" }}>
-              <Icons.Pencil size={16} />
-            </div>
-            <div className="kpi-label">Đang điền Order ID</div>
-            <div className="kpi-value">{counts.partial_order}</div>
-            <div className="kpi-sub">Admin đang xử lý</div>
+            <div className="kpi-sub">Ops chưa điền hết Order ID</div>
           </div>
           <div className="kpi">
             <div className="kpi-icon" style={{ background: "var(--success-bg)", color: "var(--success-text)" }}>
               <Icons.CheckCircle size={16} />
             </div>
-            <div className="kpi-label">Sẵn sàng xuất HĐ</div>
+            <div className="kpi-label">Đã kích hoạt</div>
             <div className="kpi-value">{counts.ready_invoice}</div>
-            <div className="kpi-sub">{vnd(sumReady)} chờ B4</div>
+            <div className="kpi-sub">{vnd(sumReady)} sẵn sàng xuất HĐ</div>
+          </div>
+          <div className="kpi">
+            <div className="kpi-icon" style={{ background: "var(--info-bg)", color: "var(--info-text)" }}>
+              <Icons.Doc size={16} />
+            </div>
+            <div className="kpi-label">Đã xuất HĐ</div>
+            <div className="kpi-value">{counts.invoiced}</div>
+            <div className="kpi-sub">AR đã hoàn tất</div>
           </div>
         </div>
 
@@ -1513,9 +1520,8 @@ export default function ActivationTab() {
             <div className="tabs">
               {(
                 [
-                  { id: "pending_order" as const, label: "Chờ tạo đơn", icon: "Clock" as const, count: counts.pending_order, attention: true },
-                  { id: "partial_order" as const, label: "Đang điền Order ID", icon: "Pencil" as const, count: counts.partial_order },
-                  { id: "ready_invoice" as const, label: "Sẵn sàng xuất HĐ", icon: "CheckCircle" as const, count: counts.ready_invoice },
+                  { id: "pending_order" as const, label: "Chờ điền Order ID", icon: "Clock" as const, count: counts.pending_order, attention: true },
+                  { id: "ready_invoice" as const, label: "Đã kích hoạt", icon: "CheckCircle" as const, count: counts.ready_invoice },
                   { id: "all" as const, label: "Tất cả", icon: "Database" as const, count: counts.all },
                 ] as const
               ).map((tc) => {

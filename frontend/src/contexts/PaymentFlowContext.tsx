@@ -94,7 +94,7 @@ type PaymentFlowContextValue = {
 
 const PaymentFlowContext = createContext<PaymentFlowContextValue | null>(null);
 
-const POLL_MS = 12_000;
+const POLL_MS = 30_000;
 
 function hasPendingQrPayments(requests: PaymentRequest[]) {
   return requests.some((pr) =>
@@ -117,12 +117,14 @@ export function PaymentFlowProvider({
   const [nav, setNav] = useState<NavState>({});
   const onViewChangeRef = useRef(onViewChange);
   const courseOrderPatchSeqRef = useRef<Record<string, number>>({});
+  const loadDataSeqRef = useRef(0);
 
   useEffect(() => {
     onViewChangeRef.current = onViewChange;
   }, [onViewChange]);
 
   const loadData = useCallback(async (options?: LoadDataOptions) => {
+    const seq = ++loadDataSeqRef.current;
     if (!options?.silent) setLoading(true);
     const notes: string[] = [];
 
@@ -154,6 +156,9 @@ export function PaymentFlowProvider({
     } catch {
       notes.push("GET /active-requests chưa sẵn sàng.");
     }
+
+    // Drop stale poll: a newer loadData() has already started.
+    if (seq !== loadDataSeqRef.current) return;
 
     if (prOk) setRequests(nextRequests);
     if (arOk) setActiveRequests(nextArs);
@@ -238,14 +243,13 @@ export function PaymentFlowProvider({
           return normalizeRequest({ ...r, ...prFromBe, payments: updatedPayments });
         });
         setApiNote("");
-        void loadData({ silent: true });
         return confirmed;
       } catch {
         setApiNote("Máy chủ thêm lần thanh toán chưa sẵn sàng; giao diện cập nhật tạm.");
         return localPayment;
       }
     },
-    [requests, updateRequest, loadData]
+    [requests, updateRequest]
   );
 
   const confirmTransaction = useCallback(
