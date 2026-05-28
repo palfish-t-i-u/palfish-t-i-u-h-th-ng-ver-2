@@ -65,6 +65,9 @@ export default function PaymentRequestsTab() {
   const [qrView, setQrView] = useState<{ qr: PaymentAttempt; request: PaymentRequest } | null>(null);
   const [uploadingBillId, setUploadingBillId] = useState<string | null>(null);
   const [deletingBillId, setDeletingBillId] = useState<string | null>(null);
+  const [downloadingAllBills, setDownloadingAllBills] = useState(false);
+  const [downloadingBillIndex, setDownloadingBillIndex] = useState<number | null>(null);
+  const [billDownloadStatus, setBillDownloadStatus] = useState("");
   const [billModal, setBillModal] = useState<{
     open: boolean;
     code: string;
@@ -99,6 +102,11 @@ export default function PaymentRequestsTab() {
     if (!billModal.open || !selected) return null;
     return selected.payments.find((p) => p.id === billModal.lineId) || null;
   }, [billModal.open, billModal.lineId, selected]);
+
+  const billModalLineIsBackend = useMemo(
+    () => isBackendLineId(billModal.lineId),
+    [billModal.lineId]
+  );
 
   const trackingRequests = useMemo(
     () => requests.filter((r) => r.state !== "cancelled"),
@@ -404,6 +412,132 @@ export default function PaymentRequestsTab() {
     }
   };
 
+  const parseDownloadFilename = (contentDisposition: string | undefined, fallback: string) => {
+    if (!contentDisposition) return fallback;
+    const utf8 = contentDisposition.match(/filename\*=UTF-8''([^;]+)/i);
+    if (utf8?.[1]) {
+      try {
+        return decodeURIComponent(utf8[1].trim());
+      } catch {
+        /* ignore decode failure */
+      }
+    }
+    const plain = contentDisposition.match(/filename=\"?([^\";]+)\"?/i);
+    return plain?.[1]?.trim() || fallback;
+  };
+
+  const triggerBlobDownload = (blob: Blob, filename: string) => {
+    const navWithMsSave = navigator as Navigator & {
+      msSaveOrOpenBlob?: (blobData: Blob, defaultName?: string) => boolean;
+    };
+    if (typeof navWithMsSave.msSaveOrOpenBlob === "function") {
+      navWithMsSave.msSaveOrOpenBlob(blob, filename);
+      return;
+    }
+
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    // Some embedded browsers finish download asynchronously; revoking too early can cancel silently.
+    window.setTimeout(() => URL.revokeObjectURL(url), 15000);
+  };
+
+  const setDownloadStatusTransient = (text: string, timeoutMs = 2200) => {
+    setBillDownloadStatus(text);
+    if (!text) return;
+    window.setTimeout(() => setBillDownloadStatus(""), timeoutMs);
+  };
+
+  const fallbackDirectImageDownload = (src: string, fallbackName: string) => {
+    const a = document.createElement("a");
+    a.href = src;
+    a.download = fallbackName;
+    a.target = "_blank";
+    a.rel = "noopener noreferrer";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  };
+
+  const handleDownloadSingleBill = async (idx: number) => {
+    if (!billModal.lineId || idx < 0 || idx >= billModal.images.length) return;
+    if (downloadingAllBills || downloadingBillIndex !== null) return;
+
+    setDownloadingBillIndex(idx);
+    setBillDownloadStatus("Dang tai bill...");
+    try {
+      if (billModalLineIsBackend) {
+        const res = await endpoints.paymentRequests.downloadPaymentLineBill(billModal.lineId, idx);
+        const fallback = `${billModal.code || billModal.lineId}-bill-${idx + 1}.jpg`;
+        const filename = parseDownloadFilename(
+          (res.headers?.["content-disposition"] as string | undefined) ??
+            (res.headers?.["Content-Disposition"] as string | undefined),
+          fallback
+        );
+        triggerBlobDownload(res.data, filename);
+        setDownloadStatusTransient("Da bat dau tai bill");
+        return;
+      }
+      fallbackDirectImageDownload(
+        billModal.images[idx],
+        `${billModal.code || "bill"}-${idx + 1}.jpg`
+      );
+      setDownloadStatusTransient("Da mo link tai bill");
+    } catch {
+      if (billModal.images[idx]) {
+        fallbackDirectImageDownload(
+          billModal.images[idx],
+          `${billModal.code || "bill"}-${idx + 1}.jpg`
+        );
+        setDownloadStatusTransient("Tai API loi, da fallback link truc tiep");
+      } else {
+        setDownloadStatusTransient("Loi tai bill", 3000);
+        alert("Không tải được ảnh bill.");
+      }
+    } finally {
+      setDownloadingBillIndex(null);
+    }
+  };
+
+  const handleDownloadAllBills = async () => {
+    if (!billModal.open || !billModal.lineId || billModal.images.length === 0 || downloadingAllBills) return;
+    setDownloadingAllBills(true);
+    setBillDownloadStatus("Dang tao file ZIP...");
+    try {
+      if (billModalLineIsBackend) {
+        const res = await endpoints.paymentRequests.downloadAllPaymentLineBills(billModal.lineId);
+        const fallback = `${billModal.code || billModal.lineId}-bills.zip`;
+        const filename = parseDownloadFilename(
+          (res.headers?.["content-disposition"] as string | undefined) ??
+            (res.headers?.["Content-Disposition"] as string | undefined),
+          fallback
+        );
+        triggerBlobDownload(res.data, filename);
+        setDownloadStatusTransient("Da bat dau tai ZIP");
+      } else {
+        billModal.images.forEach((src, idx) =>
+          fallbackDirectImageDownload(src, `${billModal.code || "bill"}-${idx + 1}.jpg`)
+        );
+        setDownloadStatusTransient("Da mo tai tung bill");
+      }
+    } catch {
+      if (billModal.images.length) {
+        billModal.images.forEach((src, idx) =>
+          fallbackDirectImageDownload(src, `${billModal.code || "bill"}-${idx + 1}.jpg`)
+        );
+        setDownloadStatusTransient("Tai ZIP loi, da fallback tung bill");
+      } else {
+        alert("Không tải được bộ bill.");
+      }
+    } finally {
+      setDownloadingAllBills(false);
+    }
+  };
+
   const handleConfirmCancel = async ({ reason }: { reason: string }) => {
     if (!cancelTarget) return;
     const id = cancelTarget.id;
@@ -563,19 +697,49 @@ export default function PaymentRequestsTab() {
         className="text-center"
       >
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-          <div style={{ fontSize: 12, color: "var(--text-3)" }}>{billModal.images.length} bill</div>
-          <button
-            type="button"
-            className="btn btn-outline btn-sm"
-            style={{ color: "var(--danger)" }}
-            disabled={!billModalQr || deletingBillId === billModal.lineId || billModal.images.length === 0}
-            onClick={async () => {
-              if (!billModalQr) return;
-              await handleBillDelete(billModalQr, undefined, true);
-            }}
-          >
-            <Icons.XCircle size={13} /> Xoá tất cả
-          </button>
+          <div style={{ fontSize: 12, color: "var(--text-3)" }}>
+            {billModal.images.length} bill
+            {billDownloadStatus ? (
+              <span style={{ marginLeft: 10, color: "var(--text-2)", fontWeight: 600 }}>
+                {billDownloadStatus}
+              </span>
+            ) : null}
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <button
+              type="button"
+              className="btn btn-outline btn-sm"
+              disabled={
+                !billModal.lineId ||
+                (!billModalLineIsBackend && billModal.images.length === 0) ||
+                deletingBillId === billModal.lineId ||
+                billModal.images.length === 0 ||
+                downloadingAllBills ||
+                downloadingBillIndex !== null
+              }
+              onClick={() => void handleDownloadAllBills()}
+            >
+              <Icons.Download size={13} /> {downloadingAllBills ? "Đang tải..." : "Tải tất cả"}
+            </button>
+            <button
+              type="button"
+              className="btn btn-outline btn-sm"
+              style={{ color: "var(--danger)" }}
+              disabled={
+                !billModalQr ||
+                deletingBillId === billModal.lineId ||
+                billModal.images.length === 0 ||
+                downloadingAllBills ||
+                downloadingBillIndex !== null
+              }
+              onClick={async () => {
+                if (!billModalQr) return;
+                await handleBillDelete(billModalQr, undefined, true);
+              }}
+            >
+              <Icons.XCircle size={13} /> Xoá tất cả
+            </button>
+          </div>
         </div>
         <div
           style={{
@@ -614,18 +778,33 @@ export default function PaymentRequestsTab() {
               />
               <div style={{ marginTop: 8, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
                 <span style={{ fontSize: 12, color: "var(--text-3)" }}>Bill #{idx + 1}</span>
-                <button
-                  type="button"
-                  className="btn btn-outline btn-sm"
-                  style={{ color: "var(--danger)" }}
-                  disabled={!billModalQr || deletingBillId === billModal.lineId}
-                  onClick={async () => {
-                    if (!billModalQr) return;
-                    await handleBillDelete(billModalQr, src);
-                  }}
-                >
-                  <Icons.XCircle size={12} /> Xoá bill này
-                </button>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <button
+                    type="button"
+                    className="btn btn-outline btn-sm"
+                    disabled={
+                      !billModal.lineId ||
+                      deletingBillId === billModal.lineId ||
+                      downloadingAllBills ||
+                      downloadingBillIndex !== null
+                    }
+                    onClick={() => void handleDownloadSingleBill(idx)}
+                  >
+                    <Icons.Download size={12} /> {downloadingBillIndex === idx ? "Đang tải..." : "Tải ảnh"}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-outline btn-sm"
+                    style={{ color: "var(--danger)" }}
+                    disabled={!billModalQr || deletingBillId === billModal.lineId || downloadingAllBills}
+                    onClick={async () => {
+                      if (!billModalQr) return;
+                      await handleBillDelete(billModalQr, src);
+                    }}
+                  >
+                    <Icons.XCircle size={12} /> Xoá bill này
+                  </button>
+                </div>
               </div>
             </div>
           ))}

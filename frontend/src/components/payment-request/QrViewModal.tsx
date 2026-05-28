@@ -130,14 +130,24 @@ export default function QrViewModal({
                 borderRadius: 10,
                 overflow: "hidden",
                 background: "#fff",
-                width: 200,
-                height: 200,
+                width: 220,
+                minHeight: 220,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
               }}
             >
               <img
                 src={qrImageUrl}
                 alt="VietQR"
-                style={{ width: 200, height: 200, display: "block", objectFit: "cover" }}
+                style={{
+                  width: "100%",
+                  height: "100%",
+                  maxHeight: 320,
+                  display: "block",
+                  objectFit: "contain",
+                  background: "#fff",
+                }}
               />
             </div>
 

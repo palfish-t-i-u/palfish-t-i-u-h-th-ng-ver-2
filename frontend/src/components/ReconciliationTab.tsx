@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { usePaymentFlow } from "../contexts/PaymentFlowContext";
+import { endpoints } from "../lib/api";
 import {
   type FlatTransaction,
   METHOD_META,
@@ -12,22 +13,78 @@ import {
 import DateRangeFilter, { EMPTY_RANGE, type DateRange, inDateRange } from "./payment-request/DateRangeFilter";
 import { Icons } from "./payment-request/Icons";
 import { findCountry } from "./payment-request/CountryCombo";
-import { formatPaymentDateFull, formatPaymentDateTime, fmtPhone } from "./payment-request/paymentRequestUtils";
+import Modal from "./ui/Modal";
+import {
+  formatPaymentDateFull,
+  formatPaymentDateTime,
+  fmtPhone,
+  isBackendLineId,
+} from "./payment-request/paymentRequestUtils";
 import "../styles/prototype-payments.css";
 
 type TabId = "awaiting" | "confirmed" | "cancelled" | "all";
 type MethodFilter = "all" | "qr" | "cash" | "card" | "installment";
 
 type BillImage = { id: number; src: string; name: string };
+type BillModalState = {
+  open: boolean;
+  lineId: string;
+  code: string;
+  images: string[];
+};
 
 function getBillsForTxn(t: FlatTransaction): BillImage[] {
-  if (t.billImages?.length) {
-    return t.billImages.map((src, i) => ({ id: i, src, name: `bill_${t.code}_${i + 1}.png` }));
+  const fromList = Array.isArray(t.billImages) ? t.billImages.filter((src): src is string => !!src) : [];
+  const all = fromList.length > 0 ? fromList : t.billImage ? [t.billImage] : [];
+  const unique = Array.from(new Set(all));
+  return unique.map((src, idx) => ({
+    id: idx,
+    src,
+    name: `bill_${t.code}_${idx + 1}.png`,
+  }));
+}
+
+function parseDownloadFilename(contentDisposition: string | undefined, fallback: string) {
+  if (!contentDisposition) return fallback;
+  const utf8 = contentDisposition.match(/filename\*=UTF-8''([^;]+)/i);
+  if (utf8?.[1]) {
+    try {
+      return decodeURIComponent(utf8[1].trim());
+    } catch {
+      // ignore decode failures and use plain fallback
+    }
   }
-  if (t.billImage) {
-    return [{ id: 0, src: t.billImage, name: `bill_${t.code}.png` }];
+  const plain = contentDisposition.match(/filename=\"?([^\";]+)\"?/i);
+  return plain?.[1]?.trim() || fallback;
+}
+
+function triggerBlobDownload(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+}
+
+async function fallbackDirectImageDownload(src: string, fallbackName: string) {
+  try {
+    const resp = await fetch(src);
+    const blob = await resp.blob();
+    triggerBlobDownload(blob, fallbackName);
+    return;
+  } catch {
+    // Last fallback for CORS-restricted URLs: open source image.
   }
-  return [];
+  const a = document.createElement("a");
+  a.href = src;
+  a.target = "_blank";
+  a.rel = "noopener noreferrer";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
 }
 
 function BillReceiptArt({ txn, pr }: { txn: FlatTransaction; pr: FlatTransaction["pr"] }) {
@@ -141,7 +198,7 @@ function BillReceiptArt({ txn, pr }: { txn: FlatTransaction; pr: FlatTransaction
   );
 }
 
-function BillLightbox({ bill, onClose }: { bill: BillImage; onClose: () => void }) {
+export function BillLightbox({ bill, onClose }: { bill: BillImage; onClose: () => void }) {
   return (
     <div className="bill-lightbox-scrim" onClick={onClose}>
       <div
@@ -264,10 +321,42 @@ export default function ReconciliationTab() {
   const [currentBillIdx, setCurrentBillIdx] = useState(0);
   const [albumOpen, setAlbumOpen] = useState(false);
   const [albumSelected, setAlbumSelected] = useState<Set<number>>(new Set());
+  const [billModal, setBillModal] = useState<BillModalState>({
+    open: false,
+    lineId: "",
+    code: "",
+    images: [],
+  });
+  const [downloadingAllBills, setDownloadingAllBills] = useState(false);
+  const [downloadingBillIndex, setDownloadingBillIndex] = useState<number | null>(null);
+  const [billDownloadStatus, setBillDownloadStatus] = useState("");
   const [isBulkConfirming, setIsBulkConfirming] = useState(false);
   const [pendingReject, setPendingReject] = useState<{ txns: FlatTransaction[]; label: string } | null>(null);
 
   const transactions = useMemo(() => flattenTransactions(requests), [requests]);
+  const billModalLineIsBackend = useMemo(
+    () => isBackendLineId(billModal.lineId),
+    [billModal.lineId]
+  );
+
+  const setDownloadStatusTransient = (msg: string, timeoutMs = 1800) => {
+    setBillDownloadStatus(msg);
+    window.setTimeout(() => {
+      setBillDownloadStatus((curr) => (curr === msg ? "" : curr));
+    }, timeoutMs);
+  };
+
+  const openBillModal = (txn: FlatTransaction) => {
+    const images = getBillsForTxn(txn).map((b) => b.src);
+    if (images.length === 0) return;
+    setBillDownloadStatus("");
+    setBillModal({
+      open: true,
+      lineId: txn.id,
+      code: txn.code,
+      images,
+    });
+  };
 
   const counts = useMemo(() => {
     const c = { awaiting: 0, confirmed: 0, rejected: 0, cancelled: 0, unsent: 0, all: transactions.length };
@@ -322,6 +411,18 @@ export default function ReconciliationTab() {
     setAlbumSelected(new Set());
   }, [drawerTxn?.key]);
 
+  useEffect(() => {
+    if (!billModal.open) return;
+    const fresh = transactions.find((t) => t.id === billModal.lineId);
+    if (!fresh) return;
+    const nextImages = getBillsForTxn(fresh).map((b) => b.src);
+    setBillModal((prev) => ({
+      ...prev,
+      code: fresh.code,
+      images: nextImages,
+    }));
+  }, [transactions, billModal.open, billModal.lineId]);
+
   const handleConfirm = async (t: FlatTransaction) => {
     await confirmTransaction(t.prId, t.id);
   };
@@ -341,6 +442,83 @@ export default function ReconciliationTab() {
     if (!pendingReject) return;
     setPendingReject(null);
     await Promise.all(pendingReject.txns.map((t) => rejectTransaction(t.prId, t.id, reason)));
+  };
+
+  const handleDownloadSingleBill = async (idx: number) => {
+    if (!billModal.lineId || idx < 0 || idx >= billModal.images.length) return;
+    if (downloadingAllBills || downloadingBillIndex !== null) return;
+
+    setDownloadingBillIndex(idx);
+    setBillDownloadStatus("Dang tai bill...");
+    try {
+      if (billModalLineIsBackend) {
+        const res = await endpoints.paymentRequests.downloadPaymentLineBill(billModal.lineId, idx);
+        const fallback = `${billModal.code || billModal.lineId}-bill-${idx + 1}.jpg`;
+        const filename = parseDownloadFilename(
+          (res.headers?.["content-disposition"] as string | undefined) ??
+            (res.headers?.["Content-Disposition"] as string | undefined),
+          fallback
+        );
+        triggerBlobDownload(res.data, filename);
+        setDownloadStatusTransient("Da bat dau tai bill");
+        return;
+      }
+      await fallbackDirectImageDownload(billModal.images[idx], `${billModal.code || "bill"}-${idx + 1}.jpg`);
+      setDownloadStatusTransient("Da tai bill");
+    } catch {
+      if (billModal.images[idx]) {
+        await fallbackDirectImageDownload(
+          billModal.images[idx],
+          `${billModal.code || "bill"}-${idx + 1}.jpg`
+        );
+        setDownloadStatusTransient("Da tai bill (fallback)");
+      } else {
+        setDownloadStatusTransient("Loi tai bill", 3000);
+        alert("Khong tai duoc anh bill.");
+      }
+    } finally {
+      setDownloadingBillIndex(null);
+    }
+  };
+
+  const handleDownloadAllBills = async () => {
+    if (!billModal.open || !billModal.lineId || billModal.images.length === 0 || downloadingAllBills) return;
+    setDownloadingAllBills(true);
+    setBillDownloadStatus("Dang tao goi tai...");
+    try {
+      if (billModalLineIsBackend) {
+        const res = await endpoints.paymentRequests.downloadAllPaymentLineBills(billModal.lineId);
+        const fallback = `${billModal.code || billModal.lineId}-bills.zip`;
+        const filename = parseDownloadFilename(
+          (res.headers?.["content-disposition"] as string | undefined) ??
+            (res.headers?.["Content-Disposition"] as string | undefined),
+          fallback
+        );
+        triggerBlobDownload(res.data, filename);
+        setDownloadStatusTransient("Da bat dau tai ZIP");
+      } else {
+        await Promise.all(
+          billModal.images.map((src, idx) =>
+            fallbackDirectImageDownload(src, `${billModal.code || "bill"}-${idx + 1}.jpg`)
+          )
+        );
+        setDownloadStatusTransient("Da mo tai tung bill");
+      }
+    } catch {
+      if (billModal.images.length > 0) {
+        await Promise.all(
+          billModal.images.map((src, idx) =>
+            fallbackDirectImageDownload(src, `${billModal.code || "bill"}-${idx + 1}.jpg`)
+          )
+        );
+        setDownloadStatusTransient("Tai ZIP loi, da fallback tung bill");
+      } else {
+        setDownloadStatusTransient("Loi tai bill", 3000);
+        alert("Khong tai duoc bo bill.");
+      }
+    } finally {
+      setDownloadingAllBills(false);
+    }
   };
 
   const tabConfig = [
@@ -570,8 +748,8 @@ export default function ReconciliationTab() {
                   const method = METHOD_META[t.method || "qr"];
                   const MIco = Icons[method.icon];
                   const created = formatPaymentDateTime(t.createdAt);
-                  const rowBills = getBillsForTxn(t);
-                  const hasBill = rowBills.length > 0;
+                  const txnBills = getBillsForTxn(t);
+                  const hasBill = txnBills.length > 0 || !!t.bill;
                   return (
                     <tr
                       key={t.key}
@@ -644,12 +822,12 @@ export default function ReconciliationTab() {
                           className={`txn-bill-preview ${hasBill ? "has" : ""}`}
                           title={hasBill ? "Xem biên lai" : "Chưa có biên lai"}
                           onClick={() => {
-                            if (rowBills[0]) setLightboxBill(rowBills[0]);
+                            if (txnBills.length > 0) openBillModal(t);
                           }}
-                          style={rowBills[0] ? { cursor: "pointer", padding: 0, overflow: "hidden" } : undefined}
+                          style={txnBills[0]?.src ? { cursor: "pointer", padding: 0, overflow: "hidden" } : undefined}
                         >
-                          {rowBills[0] ? (
-                            <img src={rowBills[0].src} alt="Biên lai" className="txn-bill-thumb" />
+                          {txnBills[0]?.src ? (
+                            <img src={txnBills[0].src} alt="Biên lai" className="txn-bill-thumb" />
                           ) : hasBill ? (
                             <Icons.Receipt />
                           ) : (
@@ -997,17 +1175,92 @@ export default function ReconciliationTab() {
       </aside>
 
       {lightboxBill && <BillLightbox bill={lightboxBill} onClose={() => setLightboxBill(null)} />}
+
+      {/* Bill modal từ click thumbnail trên bảng — có nút tải từng ảnh + tải tất cả */}
+      <Modal
+        open={billModal.open}
+        onClose={() => {
+          setBillModal({ open: false, lineId: "", code: "", images: [] });
+          setBillDownloadStatus("");
+        }}
+        title={`Bill: ${billModal.code}`}
+      >
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+          <div style={{ fontSize: 12, color: "var(--text-3)" }}>
+            {billModal.images.length} bill
+            {billDownloadStatus ? (
+              <span style={{ marginLeft: 8, color: "var(--text-2)" }}>
+                · {billDownloadStatus}
+              </span>
+            ) : null}
+          </div>
+          <button
+            type="button"
+            className="btn btn-outline btn-sm"
+            disabled={
+              !billModal.lineId ||
+              (billModal.images.length === 0 && !billModalLineIsBackend) ||
+              downloadingAllBills ||
+              downloadingBillIndex !== null
+            }
+            onClick={() => void handleDownloadAllBills()}
+          >
+            <Icons.Download size={13} /> {downloadingAllBills ? "Đang tải..." : "Tải tất cả"}
+          </button>
+        </div>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))",
+            gap: 12,
+            maxHeight: "min(70vh, 680px)",
+            overflowY: "auto",
+            paddingRight: 4,
+          }}
+        >
+          {billModal.images.map((src, idx) => (
+            <div
+              key={`${src}-${idx}`}
+              style={{
+                border: "1px solid var(--border)",
+                borderRadius: 12,
+                padding: 10,
+                background: "var(--surface)",
+              }}
+            >
+              <img
+                src={src}
+                alt={`bill-${idx + 1}`}
+                style={{
+                  width: "100%",
+                  borderRadius: 8,
+                  height: "auto",
+                  maxHeight: 360,
+                  objectFit: "contain",
+                  background: "var(--surface-2)",
+                }}
+              />
+              <div style={{ marginTop: 8, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+                <span style={{ fontSize: 12, color: "var(--text-3)" }}>Bill #{idx + 1}</span>
+                <button
+                  type="button"
+                  className="btn btn-outline btn-sm"
+                  disabled={downloadingAllBills || downloadingBillIndex !== null}
+                  onClick={() => void handleDownloadSingleBill(idx)}
+                >
+                  <Icons.Download size={12} /> {downloadingBillIndex === idx ? "Đang tải..." : "Tải ảnh"}
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      </Modal>
+
+      {/* Album gallery từ drawer — tick chọn ảnh, tải đã chọn hoặc tải tất cả */}
       {albumOpen && drawerTxn && (() => {
         const bills = getBillsForTxn(drawerTxn);
         const allSelected = albumSelected.size === bills.length && bills.length > 0;
-        const downloadOne = (b: BillImage) => {
-          const a = document.createElement("a");
-          a.href = b.src;
-          a.download = b.name;
-          document.body.appendChild(a);
-          a.click();
-          a.remove();
-        };
+        const downloadOne = (b: BillImage) => void fallbackDirectImageDownload(b.src, b.name);
         const downloadSelected = () => {
           bills.filter((_, i) => albumSelected.has(i)).forEach(downloadOne);
           setAlbumOpen(false);
