@@ -682,10 +682,6 @@ export default function PaymentRequestsTab() {
         qr={qrView?.qr ?? null}
         request={qrView?.request ?? null}
         onClose={() => setQrView(null)}
-        onBillFile={qrView?.qr ? (file) => handleBillFile(qrView.qr, file) : undefined}
-        onBillView={qrView?.qr ? () => handleBillView(qrView.qr) : undefined}
-        uploadingBill={uploadingBillId === qrView?.qr?.id}
-        deletingBill={deletingBillId === qrView?.qr?.id}
       />
 
       <Modal
