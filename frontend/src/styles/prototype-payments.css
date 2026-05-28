@@ -486,7 +486,7 @@
 }
 .gmv-prototype .drawer-close:hover { color: var(--text); border-color: var(--border-strong); }
 .gmv-prototype .drawer-body {
-  flex: 1; overflow-y: auto;
+  flex: 1; overflow-y: auto; overscroll-behavior: contain;
   padding: 22px 24px 80px;
   display: flex; flex-direction: column; gap: 18px;
 }
