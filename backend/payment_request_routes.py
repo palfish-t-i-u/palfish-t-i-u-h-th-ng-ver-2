@@ -97,6 +97,7 @@ class PaymentRequestCancelBody(BaseModel):
 class PaymentLineBillDeleteBody(BaseModel):
     bill_url: str | None = None
     delete_all: bool = False
+    index: int | None = None
 
 
 def _sb_or_503(get_supabase: Callable[[], Any]):
@@ -407,9 +408,32 @@ def _bill_urls_from_assets(bill_assets: dict[str, list[dict[str, str]]]) -> dict
 def _persist_bill_image(sb, line_id: str, public_url: str) -> bool:
     """Try DB column first; ignore if schema patch not applied yet."""
     try:
+        # Read current bill_images
+        res = sb.table("payment_lines").select("bill_image, bill_images").eq("id", line_id).limit(1).execute()
+        if res.data:
+            row = res.data[0]
+            bill_images = row.get("bill_images") or []
+            if not isinstance(bill_images, list):
+                bill_images = []
+            
+            # Migrate old bill_image if needed
+            old_bill = (row.get("bill_image") or "").strip()
+            if old_bill and old_bill not in bill_images:
+                bill_images.append(old_bill)
+                
+            if public_url and public_url not in bill_images:
+                bill_images.append(public_url)
+            
+            patch = {
+                "bill_image": public_url,
+                "bill_images": bill_images
+            }
+        else:
+            patch = {"bill_image": public_url}
+
         updated_res = (
             sb.table("payment_lines")
-            .update({"bill_image": public_url})
+            .update(patch)
             .eq("id", line_id)
             .execute()
         )
@@ -433,19 +457,26 @@ def _bill_fields(
     bill_assets: dict[str, list[dict[str, str]]] | None = None,
 ) -> dict[str, Any]:
     line_id = str(row.get("id") or "")
-    bill_images = [
-        asset.get("url") or ""
-        for asset in ((bill_assets or {}).get(line_id) or [])
-        if (asset.get("url") or "").strip()
-    ]
-    bill_image = (row.get("bill_image") or "").strip()
-    if not bill_image and bill_urls:
-        bill_image = (bill_urls.get(line_id) or "").strip()
-    if bill_image and bill_image not in bill_images:
-        bill_images.append(bill_image)
+    bill_images = row.get("bill_images")
+    if not isinstance(bill_images, list):
+        bill_images = []
+        
+    if not bill_images:
+        bill_images = [
+            asset.get("url") or ""
+            for asset in ((bill_assets or {}).get(line_id) or [])
+            if (asset.get("url") or "").strip()
+        ]
+        bill_image = (row.get("bill_image") or "").strip()
+        if not bill_image and bill_urls:
+            bill_image = (bill_urls.get(line_id) or "").strip()
+        if bill_image and bill_image not in bill_images:
+            bill_images.append(bill_image)
+            
+    bill_image = bill_images[-1] if bill_images else None
     return {
-        "bill_image": bill_image or None,
-        "bill": bool(bill_image),
+        "bill_image": bill_image,
+        "bill": bool(bill_images),
         "bill_images": bill_images,
     }
 
@@ -1291,17 +1322,28 @@ def register_payment_request_routes(app, get_supabase) -> None:
             raise HTTPException(500, "Khong lay duoc public URL sau upload Storage")
 
         try:
-            _persist_bill_image(sb, line_id, public_url)
+            sb.rpc("append_payment_line_bill", {
+                "p_line_id": line_id,
+                "p_bill_url": public_url
+            }).execute()
         except Exception as exc:
-            raise HTTPException(500, f"Loi cap nhat bill_image: {exc}") from exc
+            raise HTTPException(500, f"Lỗi lưu trữ bill atomic: {exc}") from exc
 
         _invalidate_bill_storage_cache()
-        merged_line = {**line, "bill_image": public_url}
+        
+        # Read the newly saved line state
+        try:
+            updated_res = sb.table("payment_lines").select("*").eq("id", line_id).single().execute()
+            if updated_res.data:
+                line = updated_res.data
+        except Exception:
+            pass
+            
         bill_assets = _fetch_bill_assets_fast(sb, [line_id], force_refresh=True)
         return {
             "billImage": public_url,
             "payment_line": _serialize_payment_line(
-                merged_line,
+                line,
                 {line_id: public_url},
                 bill_assets,
             ),
@@ -1352,6 +1394,7 @@ def register_payment_request_routes(app, get_supabase) -> None:
         """
         Delete bill image(s) for a payment line.
         - delete_all=true  -> remove all bills
+        - index provided  -> remove bill at that index in bill_images array
         - bill_url provided -> remove that exact bill
         - otherwise -> remove latest bill
         """
@@ -1361,48 +1404,88 @@ def register_payment_request_routes(app, get_supabase) -> None:
             raise HTTPException(404, "Khong tim thay payment_line")
 
         line = line_res.data[0]
+        bill_images = line.get("bill_images") or []
+        if not isinstance(bill_images, list):
+            bill_images = []
+
         assets = _fetch_bill_assets_fast(sb, [line_id]).get(line_id, [])
-        if not assets:
+        if not assets and not bill_images:
             raise HTTPException(400, "Khong co bill de xoa")
 
         paths_to_remove: list[str] = []
+        url_to_remove = ""
+
         if body.delete_all:
             paths_to_remove = [str(a.get("path") or "") for a in assets if (a.get("path") or "").strip()]
+            bill_images = []
+        elif body.index is not None:
+            idx = body.index
+            if idx < 0 or idx >= len(bill_images):
+                raise HTTPException(400, f"Index {idx} khong hop le (mang co {len(bill_images)} phan tu)")
+            url_to_remove = bill_images[idx]
+            bill_images.pop(idx)
+            
+            matched = next((a for a in assets if (a.get("url") or "").strip() == url_to_remove), None)
+            if matched:
+                matched_path = (matched.get("path") or "").strip()
+                if matched_path:
+                    paths_to_remove = [matched_path]
         elif (body.bill_url or "").strip():
-            bill_url = (body.bill_url or "").strip()
-            matched = next((a for a in assets if (a.get("url") or "").strip() == bill_url), None)
+            url_to_remove = (body.bill_url or "").strip()
+            matched = next((a for a in assets if (a.get("url") or "").strip() == url_to_remove), None)
             if not matched:
                 raise HTTPException(404, "Khong tim thay bill tuong ung bill_url")
             matched_path = (matched.get("path") or "").strip()
-            if not matched_path:
-                raise HTTPException(400, "Khong xac dinh duoc path bill can xoa")
-            paths_to_remove = [matched_path]
+            if matched_path:
+                paths_to_remove = [matched_path]
+            if url_to_remove in bill_images:
+                bill_images.remove(url_to_remove)
         else:
-            latest_path = (assets[-1].get("path") or "").strip()
-            if not latest_path:
-                raise HTTPException(400, "Khong xac dinh duoc path bill can xoa")
-            paths_to_remove = [latest_path]
+            if bill_images:
+                url_to_remove = bill_images[-1]
+                bill_images.pop()
+                matched = next((a for a in assets if (a.get("url") or "").strip() == url_to_remove), None)
+                if matched:
+                    matched_path = (matched.get("path") or "").strip()
+                    if matched_path:
+                        paths_to_remove = [matched_path]
+            elif assets:
+                latest_path = (assets[-1].get("path") or "").strip()
+                if latest_path:
+                    paths_to_remove = [latest_path]
 
-        if not paths_to_remove:
-            raise HTTPException(400, "Khong xac dinh duoc bill can xoa")
-
-        try:
-            sb.storage.from_("bills").remove(paths_to_remove)
-        except Exception as exc:
-            raise HTTPException(500, f"Khong xoa duoc bill tren Storage: {exc}") from exc
+        if paths_to_remove:
+            try:
+                sb.storage.from_("bills").remove(paths_to_remove)
+            except Exception as exc:
+                raise HTTPException(500, f"Khong xoa duoc bill tren Storage: {exc}") from exc
 
         _invalidate_bill_storage_cache()
         next_assets = _fetch_bill_assets_fast(sb, [line_id], force_refresh=True).get(line_id, [])
-        next_bill_url = (next_assets[-1].get("url") if next_assets else "") or ""
+        next_bill_url = bill_images[-1] if bill_images else ((next_assets[-1].get("url") if next_assets else "") or "")
+        
+        # If DB columns are updated, sync bill_image and bill_images
         try:
-            _persist_bill_image(sb, line_id, next_bill_url)
+            patch = {
+                "bill_image": next_bill_url or None,
+                "bill_images": bill_images,
+                "updated_at": _iso_now(),
+            }
+            sb.table("payment_lines").update(patch).eq("id", line_id).execute()
         except Exception as exc:
-            raise HTTPException(500, f"Loi cap nhat bill_image sau khi xoa: {exc}") from exc
+            raise HTTPException(500, f"Loi cap nhat database sau khi xoa: {exc}") from exc
 
-        merged_line = {**line, "bill_image": next_bill_url}
+        # Read the newly saved line state
+        try:
+            updated_res = sb.table("payment_lines").select("*").eq("id", line_id).single().execute()
+            if updated_res.data:
+                line = updated_res.data
+        except Exception:
+            pass
+
         return {
             "payment_line": _serialize_payment_line(
-                merged_line,
+                line,
                 {line_id: next_bill_url},
                 {line_id: next_assets},
             )

@@ -21,7 +21,7 @@ from invoice_routes import (
 
 # Parent PR must be fully paid (100% or overpaid) before course activation.
 ALLOWED_PR_STATES = frozenset({"done", "over"})
-ALLOWED_AR_STATUSES = frozenset({"pending_order", "partial_order", "ready_invoice", "invoiced"})
+ALLOWED_AR_STATUSES = frozenset({"pending_order", "partial_order", "ready_invoice", "invoiced", "activated"})
 
 _TRANG_THAI_ALIASES: dict[str, str] = {
     "done": "done",
@@ -207,15 +207,11 @@ def _derive_status(uids_data: list[dict[str, Any]]) -> str:
         return "pending_order"
     if all(_course_is_invoiced(c) for c in courses):
         return "invoiced"
-    ordered = sum(1 for c in courses if _course_order_id(c))
-    if ordered == 0:
+    if any(not _course_order_id(c) for c in courses):
         return "pending_order"
-    pending_invoice_courses = [c for c in courses if not _course_is_invoiced(c)]
-    if any(not _course_order_id(c) for c in pending_invoice_courses):
-        return "partial_order"
-    if any(not _course_invoice_requested_at(c) for c in pending_invoice_courses):
-        return "partial_order"
-    return "ready_invoice"
+    if any(_course_invoice_requested_at(c) for c in courses):
+        return "ready_invoice"
+    return "activated"
 
 
 def _serialize_ar(row: dict[str, Any], pr: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -807,7 +803,7 @@ def register_activation_routes(app, supabase_factory):
     def list_active_requests(
         status: str | None = Query(
             None,
-            description="Lọc theo status: pending_order | partial_order | ready_invoice | invoiced",
+            description="Lọc theo status: pending_order | partial_order | ready_invoice | invoiced | activated",
         ),
     ):
         """Danh sách AR — snake_case, kèm payment_request snippet cho FE Activation/Invoice."""
@@ -1053,6 +1049,61 @@ def register_activation_routes(app, supabase_factory):
         merged = {**row, **saved, "uids_data": uids_data, "status": status}
         pr_map = _fetch_prs_by_ids(sb, [str(merged.get("pr_id") or "")])
         return _serialize_ar(merged, pr_map.get(str(merged.get("pr_id") or "")))
+
+    @app.post(
+        "/api/v1/active-requests/{ar_id}/request-invoice",
+        tags=["Activation"],
+    )
+    def request_active_request_invoice(ar_id: str):
+        """Bấm nút Xuất HĐ màu tím — yêu cầu xuất hoá đơn cho tất cả course có Order ID trong AR."""
+        sb = supabase_factory()
+        if not sb:
+            raise HTTPException(503, "Supabase chưa cấu hình")
+
+        try:
+            res = sb.table("active_requests").select("*").eq("id", ar_id).limit(1).execute()
+        except Exception as exc:
+            raise HTTPException(500, f"Không đọc active_requests: {exc}") from exc
+        if not res.data:
+            raise HTTPException(404, f"Active Request {ar_id} không tồn tại")
+
+        row = res.data[0]
+        uids_data = list(row.get("uids_data") or [])
+        current_time = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M")
+
+        updated = False
+        for uid_block in uids_data:
+            for course in uid_block.get("courses") or []:
+                order_id = _course_order_id(course)
+                is_invoiced = _course_is_invoiced(course)
+                if order_id and not is_invoiced:
+                    if not _course_invoice_requested_at(course):
+                        course["invoice_requested_at"] = current_time
+                        updated = True
+
+        if not updated:
+            pr = _fetch_payment_request(sb, str(row.get("pr_id") or "")) if row.get("pr_id") else None
+            return _serialize_ar(row, pr)
+
+        status = _derive_status(uids_data)
+        try:
+            upd = (
+                sb.table("active_requests")
+                .update({
+                    "uids_data": uids_data,
+                    "status": status,
+                    "updated_at": datetime.now(timezone.utc).isoformat()
+                })
+                .eq("id", ar_id)
+                .execute()
+            )
+        except Exception as exc:
+            raise HTTPException(500, f"Không cập nhật active_requests: {exc}") from exc
+
+        saved = (upd.data or [{**row, "uids_data": uids_data, "status": status}])[0]
+        merged = {**row, **saved, "uids_data": uids_data, "status": status}
+        pr = _fetch_payment_request(sb, str(merged.get("pr_id") or "")) if merged.get("pr_id") else None
+        return _serialize_ar(merged, pr)
 
     @app.post(
         "/api/v1/active-requests/{ar_id}/courses/{course_code}/issue-invoice",
