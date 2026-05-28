@@ -53,6 +53,7 @@ class ActiveRequestPatchCoursePayload(BaseModel):
     name: str = ""
     amount: float | int = 0
     order_id: str | None = ""
+    invoice_requested_at: str | None = ""
     invoiced: bool | None = False
     invoice_id: str | None = ""
     invoiced_at: str | None = ""
@@ -204,14 +205,16 @@ def _derive_status(uids_data: list[dict[str, Any]]) -> str:
     courses = [c for u in uids_data for c in (u.get("courses") or [])]
     if not courses:
         return "pending_order"
+    if all(_course_is_invoiced(c) for c in courses):
+        return "invoiced"
     ordered = sum(1 for c in courses if _course_order_id(c))
     if ordered == 0:
         return "pending_order"
-    if ordered < len(courses):
+    pending_invoice_courses = [c for c in courses if not _course_is_invoiced(c)]
+    if any(not _course_order_id(c) for c in pending_invoice_courses):
         return "partial_order"
-    invoiced = sum(1 for c in courses if c.get("invoiced"))
-    if invoiced == len(courses):
-        return "invoiced"
+    if any(not _course_invoice_requested_at(c) for c in pending_invoice_courses):
+        return "partial_order"
     return "ready_invoice"
 
 
@@ -269,6 +272,21 @@ def _course_order_id(course: dict[str, Any]) -> str:
     if raw in (None, ""):
         raw = course.get("orderId")
     return str(raw or "").strip()
+
+
+def _course_invoice_requested_at(course: dict[str, Any]) -> str:
+    return str(course.get("invoice_requested_at") or "").strip()
+
+
+def _course_is_invoiced(course: dict[str, Any]) -> bool:
+    raw = course.get("invoiced")
+    if isinstance(raw, bool):
+        return raw
+    if isinstance(raw, (int, float)):
+        return raw != 0
+    if isinstance(raw, str):
+        return raw.strip().lower() in {"1", "true", "yes", "y"}
+    return False
 
 
 def _fetch_prs_by_ids(sb, pr_ids: list[str]) -> dict[str, dict[str, Any]]:
@@ -835,6 +853,38 @@ def register_activation_routes(app, supabase_factory):
         row = res.data[0]
         pr = _fetch_payment_request(sb, str(row.get("pr_id") or "")) if row.get("pr_id") else None
         return _serialize_ar(row, pr)
+
+    @app.delete("/api/v1/active-requests/{ar_id}", tags=["Activation"])
+    def delete_active_request(ar_id: str):
+        """Delete Active Request when no course has been invoiced."""
+        sb = supabase_factory()
+        if not sb:
+            raise HTTPException(503, "Supabase chua cau hinh")
+
+        try:
+            res = sb.table("active_requests").select("*").eq("id", ar_id).limit(1).execute()
+        except Exception as exc:
+            raise HTTPException(500, f"Khong doc active_requests: {exc}") from exc
+        if not res.data:
+            raise HTTPException(404, f"Active Request {ar_id} khong ton tai")
+
+        row = res.data[0]
+        courses = [
+            course
+            for uid_block in (row.get("uids_data") or [])
+            if isinstance(uid_block, dict)
+            for course in (uid_block.get("courses") or [])
+            if isinstance(course, dict)
+        ]
+        if any(_course_is_invoiced(course) for course in courses):
+            raise HTTPException(409, "Khong the xoa Active Request da co course invoiced")
+
+        try:
+            sb.table("active_requests").delete().eq("id", ar_id).execute()
+        except Exception as exc:
+            raise HTTPException(500, f"Khong xoa active_requests: {exc}") from exc
+
+        return {"ok": True, "id": ar_id}
 
     @app.patch("/api/v1/active-requests/{ar_id}", tags=["Activation"])
     def patch_active_request(ar_id: str, body: ActiveRequestPatchBody):
