@@ -140,6 +140,15 @@ export const endpoints = {
       api.post<{ payment_line: PaymentLineApiRow }>(`/api/v1/payment-lines/${lineId}/bills/delete`, {
         delete_all: true,
       }),
+    downloadPaymentLineBill: (lineId: string, billIndex?: number) =>
+      api.get<Blob>(`/api/v1/payment-lines/${lineId}/bills/download`, {
+        params: typeof billIndex === "number" ? { bill_index: billIndex } : undefined,
+        responseType: "blob",
+      }),
+    downloadAllPaymentLineBills: (lineId: string) =>
+      api.get<Blob>(`/api/v1/payment-lines/${lineId}/bills/download-all`, {
+        responseType: "blob",
+      }),
     // B3: create active request nested under PR
     createActiveRequest: (prId: string, body: CreateActiveRequestPayload) =>
       api.post<ActiveRequestApiRow>(`/api/v1/payment-requests/${prId}/active-requests`, body),
