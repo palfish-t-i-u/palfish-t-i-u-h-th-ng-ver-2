@@ -476,3 +476,47 @@
 **Known blocker**
 - FE đã chọn/gõ được gói, nhưng DB chưa lưu vì BE `PATCH /api/v1/active-requests/{ar_id}` chưa persist `uids_data`; UI báo "Đã đổi gói tạm trên giao diện; máy chủ chưa lưu được thay đổi gói học."
 - Docs handoff cho Đức đã cập nhật request shape và acceptance trong `docs/HANDOFF_GIANG_DUC_2026-05-27.md`.
+
+---
+
+## 2026-05-27 — Task 2 FE: thêm nút Lưu cho mini-window Active Request
+
+**Frontend**
+- `PaymentRequestDetailDrawer.tsx` — chọn gói học trong mini-window chỉ cập nhật draft tại UI.
+- Thêm nút **Lưu** ở header mini-window; nút chỉ bật khi có thay đổi và bấm nút mới gọi PATCH lưu Active Request.
+- Giữ tách nghiệp vụ: Sales không nhập Order ID, không có nút "Xác nhận thông tin" của tab Kích hoạt khóa học.
+
+**Verification**
+- `npm test` pass 2 files / 6 tests.
+- `npm run build` pass.
+
+---
+
+## 2026-05-28 — P0/P1 FE: mini-window Active Request + trạng thái kích hoạt
+
+**Frontend**
+- `PaymentRequestDetailDrawer.tsx` — mini-window hiển thị UID, SĐT format đầu số quốc gia, gói học, số tiền; đổi badge Sales thành "Chờ kích hoạt" / "Đã kích hoạt"; thêm icon Sửa, Lưu, Xoá AR, Xoá tên gói; thêm gói cho UID hiện có và thêm UID mới.
+- `ActivationTab.tsx` — Order ID chuyển sang draft, Ops bấm **Lưu Order ID** mới PATCH; nút "Xuất HĐ" set cờ `invoiceRequestedAt` rồi mới mở B4.
+- `paymentFlowUtils.ts` / `InvoiceRequestTab.tsx` — AR mới giữ ở `pending_order`; có Order ID nhưng chưa bấm Xuất HĐ không vào `ready_invoice`; tab B4 chỉ nhận course có `invoiceRequestedAt`.
+- `PaymentFlowContext.tsx` / `api.ts` / types — thêm save full AR, optimistic delete AR, và field `invoice_requested_at` trong `uids_data.courses[]`.
+
+**Docs**
+- `TODO.md` — thêm block F2805-P0/P1.
+- `HANDOFF_GIANG_DUC_2026-05-27.md` — cập nhật FE đã làm và BE còn cần persist delete/cancel AR + `invoice_requested_at`.
+
+**Verification**
+- `npm test -- paymentRequestUtils.test.ts paymentFlowUtils.test.ts` pass 2 files / 7 tests.
+- `npm run build` pass.
+
+**Known blocker**
+- Xoá Active Request đang gọi optimistic `DELETE /api/v1/active-requests/{ar_id}`; cần Giang/Đức mở endpoint thật hoặc thống nhất soft-cancel.
+- `invoice_requested_at` đang nằm trong JSONB `uids_data`; cần BE giữ field này khi PATCH để B4 không bị mất trạng thái sau reload.
+---
+
+## 2026-05-28 — FE merge `main@3c0c579` + Active Request feedback P0/P1
+
+- Merge `origin/main@3c0c579` vào `ui/ux`, giữ phần main cho Order ID persistence, Active Request drawer save và multi-bill.
+- Payment Request mini-window: hiển thị UID, SĐT format `+country_code`, gói học, số tiền; thêm icon Sửa, Lưu, Xóa AR, Xóa tên gói; không show Order ID cho Sales.
+- Đổi Sales wording: AR mới hiển thị “Chờ kích hoạt khóa học”; course badge “Chờ kích hoạt” / “Đã kích hoạt”.
+- B4 gating FE: tab hóa đơn chỉ nhận course có `invoiceRequestedAt`; nút “Xuất HĐ” ở Active Request set `invoice_requested_at` qua PATCH `uids_data`.
+- Cập nhật `docs/TODO.md` và handoff Giang/Đức cho BE blockers: delete/cancel AR, persist `invoice_requested_at`.

@@ -15,7 +15,9 @@ import PaymentRequestStatusBadge from "./PaymentRequestStatusBadge";
 import { BANK_ACCOUNTS } from "../../constants/bank";
 import Combobox from "../ui/Combobox";
 import {
+  activationSummary,
   fmtPhone,
+  formatCoursePhone,
   formatPaymentDateFull,
   nextPaymentCode,
   nowStamp,
@@ -373,126 +375,26 @@ interface DraftPr {
  * KHÔNG có nút "Xác nhận thông tin" của Thu Hiền (đó là nghiệp vụ riêng ở tab Kích hoạt khoá học).
  * Sales không nhập Order ID ở đây để giữ tách bạch nghiệp vụ với tab Kích hoạt khoá học.
  */
-function LegacyActiveRequestMiniCard({
-  ar,
-  onCoursePackageChange,
-}: {
-  ar: ActiveRequest;
-  onCoursePackageChange: (arId: string, courseCode: string, packageName: string) => void;
-}) {
-  const courseCount = ar.uids.reduce((sum, u) => sum + u.courses.length, 0);
-  const filledOrderIds = ar.uids.reduce(
-    (sum, u) => sum + u.courses.filter((c) => !!c.orderId).length,
-    0
-  );
-  const allFilled = courseCount > 0 && filledOrderIds === courseCount;
-
-  return (
-    <div className="panel">
-      <div className="panel-head">
-        <h4>
-          <Icons.CheckSquare size={15} /> Kích hoạt khoá học
-          <span className="num-pill">{ar.id}</span>
-        </h4>
-        <span
-          className={`badge ${allFilled ? "is-done" : "is-over"}`}
-          title={allFilled ? "Tất cả course đã có Order ID" : "Đang chờ điền Order ID"}
-        >
-          {allFilled ? <Icons.Check size={11} strokeWidth={2.5} /> : <Icons.Clock size={11} />}{" "}
-          {filledOrderIds}/{courseCount} Order ID
-        </span>
-      </div>
-      <div style={{ padding: "8px 0", display: "flex", flexDirection: "column", gap: 10 }}>
-        {ar.uids.map((u, uIdx) => (
-          <div
-            key={`${u.uid}-${uIdx}`}
-            style={{
-              border: "1px solid var(--border)",
-              borderRadius: 8,
-              padding: 10,
-              background: "var(--surface-2)",
-            }}
-          >
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
-              <span style={{ fontWeight: 600, fontSize: 13 }}>UID {u.uid || "—"}</span>
-              <span style={{ fontSize: 12, color: "var(--text-3)" }}>
-                {u.country} · {u.phone}
-              </span>
-            </div>
-            {u.courses.length === 0 ? (
-              <div style={{ fontSize: 12, color: "var(--text-3)", fontStyle: "italic" }}>
-                Chưa chọn gói khoá học
-              </div>
-            ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                {u.courses.map((c, cIdx) => (
-                  <div
-                    key={cIdx}
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: "1fr auto",
-                      gap: 10,
-                      alignItems: "center",
-                      padding: "6px 8px",
-                      background: "white",
-                      border: "1px solid var(--border)",
-                      borderRadius: 6,
-                      fontSize: 12.5,
-                    }}
-                  >
-                    <div style={{ minWidth: 0 }}>
-                      <Combobox
-                        value={c.packageName || c.name || ""}
-                        onChange={(value) => onCoursePackageChange(ar.id, c.courseCode, value)}
-                        options={COURSE_PACKAGE_OPTIONS}
-                        placeholder="Chọn hoặc gõ tên gói học..."
-                        emptyLabel="Chưa chọn gói"
-                      />
-                      {c.courseCode && (
-                        <div style={{ fontSize: 11, color: "var(--text-3)", marginTop: 2 }}>
-                          Course code: <code>{c.courseCode}</code>
-                        </div>
-                      )}
-                    </div>
-                    <div style={{ textAlign: "right" }}>
-                      {c.orderId ? (
-                        <span className="badge is-done" title="Order ID đã được điền">
-                          <Icons.Check size={10} strokeWidth={2.5} /> {c.orderId}
-                        </span>
-                      ) : (
-                        <span className="badge is-over" title="Chờ điền Order ID">
-                          <Icons.Clock size={10} /> Chờ Order ID
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        ))}
-      </div>
-      <div style={{ fontSize: 11.5, color: "var(--text-3)", paddingTop: 6, lineHeight: 1.5 }}>
-        Sales bấm "Kích hoạt khoá học" sẽ tự động dùng thông tin KH từ PR. Bộ phận quản trị (chị Thu Hiền) sẽ điền Order ID trong tab <strong>Kích hoạt khoá học</strong>.
-      </div>
-    </div>
-  );
-}
-
-void LegacyActiveRequestMiniCard;
-
 function ActiveRequestMiniCardV2({
   ar,
   onActiveRequestMutate,
+  onActiveRequestSave,
+  onActiveRequestDelete,
 }: {
   ar: ActiveRequest;
   onActiveRequestMutate: (arId: string, updater: (ar: ActiveRequest) => ActiveRequest) => void;
+  onActiveRequestSave: (next: ActiveRequest) => Promise<void>;
+  onActiveRequestDelete: (arId: string) => Promise<void>;
 }) {
   const [uidDrafts, setUidDrafts] = useState<Record<number, string>>({});
   const [phoneDrafts, setPhoneDrafts] = useState<Record<number, string>>({});
   const [amountDrafts, setAmountDrafts] = useState<Record<string, string>>({});
+  const [editing, setEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
+    if (editing) return;
     const nextUidDrafts: Record<number, string> = {};
     const nextPhoneDrafts: Record<number, string> = {};
     const nextAmountDrafts: Record<string, string> = {};
@@ -506,14 +408,9 @@ function ActiveRequestMiniCardV2({
     setUidDrafts(nextUidDrafts);
     setPhoneDrafts(nextPhoneDrafts);
     setAmountDrafts(nextAmountDrafts);
-  }, [ar]);
+  }, [ar, editing]);
 
-  const courseCount = ar.uids.reduce((sum, u) => sum + u.courses.length, 0);
-  const filledOrderIds = ar.uids.reduce(
-    (sum, u) => sum + u.courses.filter((c) => !!c.orderId?.trim()).length,
-    0
-  );
-  const allFilled = courseCount > 0 && filledOrderIds === courseCount;
+  const summary = activationSummary(ar);
   const missingRequiredCount = ar.uids.reduce((sum, u) => {
     const uidMissing = u.uid.trim() ? 0 : 1;
     const phoneMissing = u.phone.trim() ? 0 : 1;
@@ -527,6 +424,20 @@ function ActiveRequestMiniCardV2({
 
   const mutate = (updater: (next: ActiveRequest) => ActiveRequest) => {
     onActiveRequestMutate(ar.id, updater);
+  };
+
+  const save = async () => {
+    setSaving(true);
+    await onActiveRequestSave(ar);
+    setSaving(false);
+    setEditing(false);
+  };
+
+  const removeAr = async () => {
+    if (!window.confirm(`Xóa Active Request ${ar.id}?`)) return;
+    setDeleting(true);
+    await onActiveRequestDelete(ar.id);
+    setDeleting(false);
   };
 
   const commitUid = (uidIdx: number) => {
@@ -586,6 +497,7 @@ function ActiveRequestMiniCardV2({
                     amount: 0,
                     orderId: "",
                     invoiced: false,
+                    invoiceRequestedAt: null,
                   },
                 ],
               }
@@ -593,6 +505,34 @@ function ActiveRequestMiniCardV2({
         ),
       };
     });
+  };
+
+  const removeCourse = (uidIdx: number, courseCode: string) => {
+    const course = ar.uids[uidIdx]?.courses.find((c) => c.courseCode === courseCode);
+    if (!course) return;
+    if (course.invoiced) {
+      window.alert("Không thể xóa khóa học đã xuất hóa đơn.");
+      return;
+    }
+    if (course.orderId && course.orderId.trim()) {
+      if (!window.confirm(`Khóa học ${courseCode} đã có Order ID (${course.orderId}). Vẫn xóa?`)) return;
+    } else {
+      if (!window.confirm(`Xóa khóa học ${courseCode}?`)) return;
+    }
+    setAmountDrafts((prev) => {
+      if (!(courseCode in prev)) return prev;
+      const next = { ...prev };
+      delete next[courseCode];
+      return next;
+    });
+    mutate((next) => ({
+      ...next,
+      uids: next.uids.map((u, idx) =>
+        idx === uidIdx
+          ? { ...u, courses: u.courses.filter((c) => c.courseCode !== courseCode) }
+          : u
+      ),
+    }));
   };
 
   const addUidGroup = () => {
@@ -613,6 +553,7 @@ function ActiveRequestMiniCardV2({
                 amount: 0,
                 orderId: "",
                 invoiced: false,
+                invoiceRequestedAt: null,
               },
             ],
           },
@@ -629,12 +570,46 @@ function ActiveRequestMiniCardV2({
           <span className="num-pill">{ar.id}</span>
         </h4>
         <span
-          className={`badge ${allFilled ? "is-done" : "is-over"}`}
-          title={allFilled ? "Tất cả course đã có Order ID" : "Đang chờ điền Order ID"}
+          className={`badge ${summary.allActivated ? "is-done" : "is-over"}`}
+          title={summary.allActivated ? "Tất cả gói học đã được Ops kích hoạt" : "Đang chờ Ops kích hoạt gói học"}
         >
-          {allFilled ? <Icons.Check size={11} strokeWidth={2.5} /> : <Icons.Clock size={11} />}{" "}
-          {filledOrderIds}/{courseCount} Order ID
+          {summary.allActivated ? <Icons.Check size={11} strokeWidth={2.5} /> : <Icons.Clock size={11} />}{" "}
+          {summary.buttonLabel}
         </span>
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <button
+            type="button"
+            className="btn btn-outline btn-sm"
+            title="Sửa thông tin gói học"
+            aria-label="Sửa thông tin gói học"
+            onClick={() => setEditing(true)}
+            style={{ width: 32, padding: 0 }}
+          >
+            <Icons.Pencil size={13} />
+          </button>
+          <button
+            type="button"
+            className="btn btn-success btn-sm"
+            title="Lưu thông tin Active Request"
+            aria-label="Lưu thông tin Active Request"
+            disabled={!editing || saving}
+            onClick={() => void save()}
+            style={{ width: 32, padding: 0 }}
+          >
+            <Icons.Check size={14} strokeWidth={2.6} />
+          </button>
+          <button
+            type="button"
+            className="btn btn-outline btn-sm"
+            title="Xóa Active Request"
+            aria-label="Xóa Active Request"
+            disabled={deleting}
+            onClick={() => void removeAr()}
+            style={{ width: 32, padding: 0, color: "var(--danger)" }}
+          >
+            <Icons.Close size={14} strokeWidth={2.4} />
+          </button>
+        </div>
       </div>
       {missingRequiredCount > 0 && (
         <div className="match-warning" style={{ marginBottom: 10 }}>
@@ -653,7 +628,13 @@ function ActiveRequestMiniCardV2({
               background: "var(--surface-2)",
             }}
           >
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr auto", gap: 8, marginBottom: 8 }}>
+            {!editing && (
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, minWidth: 0 }}>
+                <span style={{ fontWeight: 700, fontSize: 13 }}>UID {u.uid || "—"}</span>
+                <span style={{ fontSize: 12, color: "var(--text-3)" }}>{formatCoursePhone(u.country, u.phone)}</span>
+              </div>
+            )}
+            <div style={{ display: editing ? "grid" : "none", gridTemplateColumns: "1fr 1fr auto", gap: 8, marginBottom: 8 }}>
               <input
                 value={uidDrafts[uIdx] ?? u.uid ?? ""}
                 onChange={(e) => setUidDrafts((prev) => ({ ...prev, [uIdx]: e.target.value }))}
@@ -704,7 +685,9 @@ function ActiveRequestMiniCardV2({
                     key={`${c.courseCode}-${cIdx}`}
                     style={{
                       display: "grid",
-                      gridTemplateColumns: "minmax(0, 1fr) 130px auto",
+                      gridTemplateColumns: editing
+                        ? "minmax(0, 1fr) 130px auto auto"
+                        : "minmax(0, 1fr) 130px auto",
                       gap: 10,
                       alignItems: "center",
                       padding: "6px 8px",
@@ -714,7 +697,19 @@ function ActiveRequestMiniCardV2({
                       fontSize: 12.5,
                     }}
                   >
-                    <div style={{ minWidth: 0 }}>
+                    {!editing && (
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis" }}>
+                          {c.packageName || c.name || "Chưa chọn gói"}
+                        </div>
+                        {c.courseCode && (
+                          <div style={{ fontSize: 11, color: "var(--text-3)", marginTop: 2 }}>
+                            Course code: <code>{c.courseCode}</code>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    <div style={{ minWidth: 0, display: editing ? "block" : "none", position: "relative" }}>
                       <Combobox
                         value={c.packageName || c.name || ""}
                         onChange={(value) =>
@@ -738,12 +733,51 @@ function ActiveRequestMiniCardV2({
                         placeholder="Chọn hoặc gõ tên gói học..."
                         emptyLabel="Chưa chọn gói"
                       />
+                      {(c.packageName || c.name) && (
+                        <button
+                          type="button"
+                          className="btn btn-outline btn-sm"
+                          aria-label="Xóa tên gói học"
+                          title="Xóa tên gói học"
+                          onClick={() =>
+                            mutate((next) => ({
+                              ...next,
+                              uids: next.uids.map((uu, idx) =>
+                                idx === uIdx
+                                  ? {
+                                      ...uu,
+                                      courses: uu.courses.map((course) =>
+                                        course.courseCode === c.courseCode ? { ...course, packageName: "" } : course
+                                      ),
+                                    }
+                                  : uu
+                              ),
+                            }))
+                          }
+                          style={{
+                            position: "absolute",
+                            right: 6,
+                            top: 6,
+                            width: 24,
+                            height: 24,
+                            padding: 0,
+                            borderRadius: 999,
+                            color: "var(--danger)",
+                            background: "white",
+                          }}
+                        >
+                          <Icons.Close size={12} strokeWidth={2.4} />
+                        </button>
+                      )}
                       {c.courseCode && (
                         <div style={{ fontSize: 11, color: "var(--text-3)", marginTop: 2 }}>
                           Course code: <code>{c.courseCode}</code>
                         </div>
                       )}
                     </div>
+                    {!editing && (
+                      <div style={{ textAlign: "right", fontWeight: 700, color: "var(--money)" }}>{vnd(c.amount || 0)}</div>
+                    )}
                     <input
                       value={amountDrafts[c.courseCode] ?? (c.amount ? String(c.amount) : "")}
                       onChange={(e) => {
@@ -755,6 +789,7 @@ function ActiveRequestMiniCardV2({
                       pattern="[0-9]*"
                       placeholder="Số tiền"
                       style={{
+                        display: editing ? "block" : "none",
                         border: "1px solid var(--border)",
                         borderRadius: 8,
                         padding: "7px 9px",
@@ -767,15 +802,28 @@ function ActiveRequestMiniCardV2({
                     />
                     <div style={{ textAlign: "right" }}>
                       {c.orderId ? (
-                        <span className="badge is-done" title="Order ID đã được điền">
-                          <Icons.Check size={10} strokeWidth={2.5} /> {c.orderId}
+                        <span className="badge is-done" title="Gói học đã được Ops kích hoạt">
+                          <Icons.Check size={10} strokeWidth={2.5} /> Đã kích hoạt
                         </span>
                       ) : (
-                        <span className="badge is-over" title="Chờ điền Order ID">
-                          <Icons.Clock size={10} /> Chờ Order ID
+                        <span className="badge is-over" title="Chờ Ops kích hoạt gói học">
+                          <Icons.Clock size={10} /> Chờ kích hoạt
                         </span>
                       )}
                     </div>
+                    {editing && (
+                      <button
+                        type="button"
+                        className="btn btn-outline btn-sm"
+                        title="Xóa khóa học"
+                        aria-label="Xóa khóa học"
+                        disabled={c.invoiced}
+                        onClick={() => removeCourse(uIdx, c.courseCode)}
+                        style={{ width: 28, padding: 0, color: "var(--danger)" }}
+                      >
+                        <Icons.Close size={12} strokeWidth={2.4} />
+                      </button>
+                    )}
                   </div>
                 ))}
               </div>
@@ -810,6 +858,8 @@ export default function PaymentRequestDetailDrawer({
   activeRequestId,
   activeRequest,
   onActiveRequestMutate,
+  onActiveRequestSave,
+  onActiveRequestDelete,
   onShowQr,
   uploadingBillId,
   deletingBillId,
@@ -828,6 +878,8 @@ export default function PaymentRequestDetailDrawer({
   activeRequestId?: string | null;
   activeRequest?: ActiveRequest | null;
   onActiveRequestMutate: (arId: string, updater: (ar: ActiveRequest) => ActiveRequest) => void;
+  onActiveRequestSave: (next: ActiveRequest) => Promise<void>;
+  onActiveRequestDelete: (arId: string) => Promise<void>;
   onShowQr: (qr: PaymentAttempt) => void;
   uploadingBillId?: string | null;
   deletingBillId?: string | null;
@@ -874,6 +926,7 @@ export default function PaymentRequestDetailDrawer({
   const canCancel = request.state !== "cancelled" && request.doneCount === 0 && !activeRequestId;
   const ready = request.state === "done" || request.state === "over";
   const hasActiveRequest = !!activeRequestId;
+  const activeSummary = activationSummary(activeRequest);
   const copyPrId = async () => {
     const id = request.id;
     const fallbackCopy = () => {
@@ -1268,7 +1321,12 @@ export default function PaymentRequestDetailDrawer({
 
           {/* AR mini-window — chỉ Sales view, gọn nhẹ. Tab Kích hoạt khoá học (Thu Hiền) vẫn riêng */}
           {hasActiveRequest && activeRequest && (
-            <ActiveRequestMiniCardV2 ar={activeRequest} onActiveRequestMutate={onActiveRequestMutate} />
+            <ActiveRequestMiniCardV2
+              ar={activeRequest}
+              onActiveRequestMutate={onActiveRequestMutate}
+              onActiveRequestSave={onActiveRequestSave}
+              onActiveRequestDelete={onActiveRequestDelete}
+            />
           )}
 
           {/* Timeline */}
@@ -1301,7 +1359,7 @@ export default function PaymentRequestDetailDrawer({
                   <div className="tl-title">B3 · Active Request (Tạo khoá học)</div>
                   <div className="tl-meta">
                     {hasActiveRequest
-                      ? `Active Request ${activeRequestId} đã tạo — chọn gói khoá học bên dưới`
+                      ? `Active Request ${activeRequestId} — ${activeSummary.buttonLabel}`
                       : ready
                       ? 'Sẵn sàng kích hoạt — bấm "Kích hoạt khoá học" để mở gói'
                       : "Sẽ mở khoá khi đủ 100% tiền"}
@@ -1342,10 +1400,10 @@ export default function PaymentRequestDetailDrawer({
             <button
               className={`btn ${ready && !hasActiveRequest ? "btn-success" : "btn-outline"}`}
               disabled={!ready || hasActiveRequest}
-              title={!ready ? "Cần thu đủ 100% số tiền trước khi kích hoạt" : hasActiveRequest ? "Khoá học đã được kích hoạt" : "Tạo Active Request và chọn gói khoá học"}
+              title={!ready ? "Cần thu đủ 100% số tiền trước khi kích hoạt" : hasActiveRequest ? activeSummary.buttonLabel : "Tạo Active Request và chọn gói khoá học"}
               onClick={onCreateActiveRequest}
             >
-              <Icons.CheckSquare size={14} /> {hasActiveRequest ? "Đã kích hoạt khoá học" : "Kích hoạt khoá học"}
+              <Icons.CheckSquare size={14} /> {hasActiveRequest ? activeSummary.buttonLabel : "Kích hoạt khoá học"}
             </button>
           </div>
         </div>

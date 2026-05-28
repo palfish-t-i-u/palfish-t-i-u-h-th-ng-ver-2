@@ -77,11 +77,14 @@ type PaymentFlowContextValue = {
     amount: number;
   }) => Promise<ActiveRequest>;
   updateActiveRequestCoursePackage: (arId: string, courseCode: string, packageName: string) => Promise<void>;
+  saveActiveRequest: (next: ActiveRequest) => Promise<void>;
+  deleteActiveRequest: (arId: string) => Promise<void>;
   patchCourseOrderId: (
     arId: string,
     courseCode: string,
     orderId: string
   ) => Promise<{ ok: boolean; error?: string }>;
+  requestInvoiceForCourse: (arId: string, courseCode: string) => Promise<void>;
   issueInvoiceForCourse: (arId: string, courseCode: string) => Promise<void>;
   badgeCounts: { reconciliation: number; activation: number; invoice: number };
   nav: NavState;
@@ -400,6 +403,32 @@ export function PaymentFlowProvider({
     [updateActiveRequest]
   );
 
+  const saveActiveRequest = useCallback(async (next: ActiveRequest) => {
+    updateActiveRequest(next.id, () => next);
+    try {
+      const res = await endpoints.activeRequests.update(next.id, {
+        uids_data: toActiveRequestPatchUidsData(next),
+      });
+      const saved = fromApiActiveRequest(res.data);
+      setActiveRequests((prev) => prev.map((x) => (x.id === next.id ? saved : x)));
+      setApiNote("");
+    } catch {
+      setApiNote("Đã đổi tạm trên giao diện; máy chủ chưa lưu được thay đổi Kích hoạt khóa học.");
+    }
+  }, [updateActiveRequest]);
+
+  const deleteActiveRequest = useCallback(async (arId: string) => {
+    const previous = activeRequests;
+    setActiveRequests((prev) => prev.filter((x) => x.id !== arId));
+    try {
+      await endpoints.activeRequests.delete(arId);
+      setApiNote("");
+    } catch {
+      setActiveRequests(previous);
+      setApiNote("Chưa xóa được Active Request trên máy chủ. Cần BE thêm endpoint xóa/cancel AR.");
+    }
+  }, [activeRequests]);
+
   const patchCourseOrderId = useCallback(
     async (arId: string, courseCode: string, orderId: string) => {
       const trimmed = orderId.trim();
@@ -466,6 +495,35 @@ export function PaymentFlowProvider({
     [activeRequests]
   );
 
+  const requestInvoiceForCourse = useCallback(
+    async (arId: string, courseCode: string) => {
+      const currentAr = activeRequests.find((x) => x.id === arId);
+      if (!currentAr) return;
+      const requestedAt = flowNow();
+      const next: ActiveRequest = {
+        ...currentAr,
+        uids: currentAr.uids.map((u) => ({
+          ...u,
+          courses: u.courses.map((c) =>
+            c.courseCode === courseCode ? { ...c, invoiceRequestedAt: requestedAt } : c
+          ),
+        })),
+      };
+      updateActiveRequest(arId, () => next);
+      try {
+        const res = await endpoints.activeRequests.update(arId, {
+          uids_data: toActiveRequestPatchUidsData(next),
+        });
+        const saved = fromApiActiveRequest(res.data);
+        setActiveRequests((prev) => prev.map((x) => (x.id === arId ? saved : x)));
+        setApiNote("");
+      } catch {
+        setApiNote("Đã chuyển tạm sang B4 trên giao diện; máy chủ chưa lưu được trạng thái Xuất HĐ.");
+      }
+    },
+    [activeRequests, updateActiveRequest]
+  );
+
   const issueInvoiceForCourse = useCallback(
     async (arId: string, courseCode: string) => {
       try {
@@ -511,7 +569,10 @@ export function PaymentFlowProvider({
       handleCreateActiveRequest,
       handleCreateActiveRequestFromForm,
       updateActiveRequestCoursePackage,
+      saveActiveRequest,
+      deleteActiveRequest,
       patchCourseOrderId,
+      requestInvoiceForCourse,
       issueInvoiceForCourse,
       badgeCounts,
       nav,
@@ -533,7 +594,10 @@ export function PaymentFlowProvider({
       handleCreateActiveRequest,
       handleCreateActiveRequestFromForm,
       updateActiveRequestCoursePackage,
+      saveActiveRequest,
+      deleteActiveRequest,
       patchCourseOrderId,
+      requestInvoiceForCourse,
       issueInvoiceForCourse,
       badgeCounts,
       nav,

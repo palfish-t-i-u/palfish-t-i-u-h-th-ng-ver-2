@@ -97,6 +97,7 @@ export interface ActiveCourse {
   invoiced: boolean;
   invoiceId?: string;
   invoicedAt?: string | null;
+  invoiceRequestedAt?: string | null;
   /** Mã đơn hàng thuế (M...) — BE cấp khi export batch */
   taxInvoiceCode?: string;
   /** Mã sản phẩm thuế (PF...) — BE cấp khi export batch */
@@ -194,6 +195,7 @@ export type ActiveRequestApiRow = {
       invoiced?: boolean;
       invoice_id?: string;
       invoiced_at?: string;
+      invoice_requested_at?: string;
       tax_invoice_code?: string;
       tax_product_code?: string;
     }>;
@@ -215,6 +217,7 @@ export type ActiveRequestPatchUidPayload = {
     invoiced?: boolean;
     invoice_id?: string;
     invoiced_at?: string;
+    invoice_requested_at?: string;
     tax_invoice_code?: string;
     tax_product_code?: string;
   }>;
