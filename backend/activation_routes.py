@@ -21,7 +21,8 @@ from invoice_routes import (
 
 # Parent PR must be fully paid (100% or overpaid) before course activation.
 ALLOWED_PR_STATES = frozenset({"done", "over"})
-ALLOWED_AR_STATUSES = frozenset({"pending_order", "partial_order", "ready_invoice", "invoiced"})
+ALLOWED_AR_STATUSES = frozenset({"pending_order", "activated", "invoiced"})
+REQUEST_INVOICE_CONFLICT_DETAIL = "AR chưa kích hoạt đầy đủ — vui lòng điền hết Order ID trước khi xuất HĐ"
 
 _TRANG_THAI_ALIASES: dict[str, str] = {
     "done": "done",
@@ -52,13 +53,13 @@ class ActiveRequestPatchCoursePayload(BaseModel):
     code: str = Field(..., min_length=1)
     name: str = ""
     amount: float | int = 0
-    order_id: str | None = ""
-    invoice_requested_at: str | None = ""
+    order_id: str | None = None
+    invoice_requested_at: str | None = None
     invoiced: bool | None = False
-    invoice_id: str | None = ""
-    invoiced_at: str | None = ""
-    tax_invoice_code: str | None = ""
-    tax_product_code: str | None = ""
+    invoice_id: str | None = None
+    invoiced_at: str | None = None
+    tax_invoice_code: str | None = None
+    tax_product_code: str | None = None
 
 
 class ActiveRequestPatchUidPayload(BaseModel):
@@ -191,8 +192,9 @@ def _assign_course_codes(uids_in: list[Any], pr_id: str) -> list[dict[str, Any]]
                     "code": code,
                     "name": _course_name(c),
                     "amount": _course_amount(c),
-                    "order_id": str(order_raw or "").strip(),
+                    "order_id": str(order_raw or "").strip() or None,
                     "invoiced": False,
+                    "invoice_requested_at": None,
                 }
             )
         block["courses"] = norm_courses
@@ -201,50 +203,109 @@ def _assign_course_codes(uids_in: list[Any], pr_id: str) -> list[dict[str, Any]]
     return out
 
 
+def _is_blank(value: Any) -> bool:
+    return value is None or (isinstance(value, str) and not value.strip())
+
+
 def _derive_status(uids_data: list[dict[str, Any]]) -> str:
-    courses = [c for u in uids_data for c in (u.get("courses") or [])]
+    courses = list(_iter_courses(uids_data))
     if not courses:
         return "pending_order"
     if all(_course_is_invoiced(c) for c in courses):
         return "invoiced"
-    ordered = sum(1 for c in courses if _course_order_id(c))
-    if ordered == 0:
+    if any(not _course_order_id(c) for c in courses):
         return "pending_order"
-    pending_invoice_courses = [c for c in courses if not _course_is_invoiced(c)]
-    if any(not _course_order_id(c) for c in pending_invoice_courses):
-        return "partial_order"
-    if any(not _course_invoice_requested_at(c) for c in pending_invoice_courses):
-        return "partial_order"
-    return "ready_invoice"
+    return "activated"
+
+
+def _iter_courses(uids_data: Any):
+    if not isinstance(uids_data, list):
+        return
+    for uid_block in uids_data:
+        if not isinstance(uid_block, dict):
+            continue
+        courses = uid_block.get("courses") or []
+        if not isinstance(courses, list):
+            continue
+        for course in courses:
+            if isinstance(course, dict):
+                yield course
+
+
+def _normalize_uids_data_for_persistence(uids_data: Any) -> list[dict[str, Any]]:
+    if not isinstance(uids_data, list):
+        return []
+
+    out: list[dict[str, Any]] = []
+    for uid_block in uids_data:
+        if not isinstance(uid_block, dict):
+            continue
+
+        next_uid = dict(uid_block)
+        next_courses: list[dict[str, Any]] = []
+        courses = uid_block.get("courses") or []
+        if isinstance(courses, list):
+            for course in courses:
+                if isinstance(course, dict):
+                    next_courses.append(_normalize_course_for_persistence(course))
+
+        next_uid["courses"] = next_courses
+        out.append(next_uid)
+    return out
+
+
+def _normalize_course_for_persistence(course: dict[str, Any]) -> dict[str, Any]:
+    next_course = dict(course)
+    aliases = {
+        "courseCode": "code",
+        "packageName": "name",
+        "orderId": "order_id",
+        "isInvoiced": "invoiced",
+        "invoiceId": "invoice_id",
+        "invoicedAt": "invoiced_at",
+        "invoiceRequestedAt": "invoice_requested_at",
+        "taxInvoiceCode": "tax_invoice_code",
+        "taxProductCode": "tax_product_code",
+    }
+    for camel_key, snake_key in aliases.items():
+        if camel_key not in next_course:
+            continue
+        if _is_blank(next_course.get(snake_key)):
+            next_course[snake_key] = next_course.get(camel_key)
+        next_course.pop(camel_key, None)
+
+    next_course["order_id"] = _course_order_id(next_course) or None
+    next_course["invoiced"] = _course_is_invoiced(next_course)
+    if _course_invoice_requested_at(next_course):
+        next_course["invoice_requested_at"] = _course_invoice_requested_at(next_course)
+    else:
+        next_course["invoice_requested_at"] = None
+    return next_course
+
+
+def _stamp_invoice_requested_at(
+    uids_data: list[dict[str, Any]], invoice_requested_at: str
+) -> list[dict[str, Any]]:
+    next_uids_data = _normalize_uids_data_for_persistence(uids_data)
+    for course in _iter_courses(next_uids_data):
+        if not _course_is_invoiced(course) and not _course_invoice_requested_at(course):
+            course["invoice_requested_at"] = invoice_requested_at
+    return next_uids_data
 
 
 def _serialize_ar(row: dict[str, Any], pr: dict[str, Any] | None = None) -> dict[str, Any]:
-    raw_uids_data = row.get("uids_data") or []
-    uids_data: list[dict[str, Any]] = []
-    for uid_block in raw_uids_data:
-        if not isinstance(uid_block, dict):
-            continue
-        next_uid = dict(uid_block)
-        next_courses: list[dict[str, Any]] = []
-        for course in uid_block.get("courses") or []:
-            if not isinstance(course, dict):
-                continue
-            next_course = dict(course)
-            next_course["order_id"] = _course_order_id(next_course)
-            next_course.pop("orderId", None)
-            next_courses.append(next_course)
-        next_uid["courses"] = next_courses
-        uids_data.append(next_uid)
-    courses = [c for u in uids_data for c in (u.get("courses") or [])]
+    uids_data = _normalize_uids_data_for_persistence(row.get("uids_data") or [])
+    courses = list(_iter_courses(uids_data))
     total_amount = sum(float(c.get("amount") or 0) for c in courses)
     ordered_count = sum(1 for c in courses if _course_order_id(c))
+    status = _derive_status(uids_data)
 
     out: dict[str, Any] = {
         "id": row.get("id"),
         "pr_id": row.get("pr_id"),
         "customer_name": row.get("customer_name") or "",
         "uids_data": uids_data,
-        "status": row.get("status") or "pending_order",
+        "status": status,
         "info_confirmed_at": row.get("info_confirmed_at"),
         "created_at": row.get("created_at"),
         "updated_at": row.get("updated_at"),
@@ -269,7 +330,7 @@ def _serialize_ar(row: dict[str, Any], pr: dict[str, Any] | None = None) -> dict
 
 def _course_order_id(course: dict[str, Any]) -> str:
     raw = course.get("order_id")
-    if raw in (None, ""):
+    if _is_blank(raw):
         raw = course.get("orderId")
     return str(raw or "").strip()
 
@@ -280,6 +341,8 @@ def _course_invoice_requested_at(course: dict[str, Any]) -> str:
 
 def _course_is_invoiced(course: dict[str, Any]) -> bool:
     raw = course.get("invoiced")
+    if raw is None and "isInvoiced" in course:
+        raw = course.get("isInvoiced")
     if isinstance(raw, bool):
         return raw
     if isinstance(raw, (int, float)):
@@ -400,6 +463,7 @@ def _assert_pr_paid(pr: dict[str, Any]) -> None:
 def _patch_course_python(
     uids_data: list[dict[str, Any]], course_code: str, order_id: str
 ) -> list[dict[str, Any]]:
+    uids_data = _normalize_uids_data_for_persistence(uids_data)
     found = False
     for uid_block in uids_data:
         for course in uid_block.get("courses") or []:
@@ -516,10 +580,10 @@ def _issue_course_invoice_python(
         raise HTTPException(404, f"Active Request {ar_id} không tồn tại")
 
     row = res.data[0]
-    uids_data = list(row.get("uids_data") or [])
+    uids_data = _normalize_uids_data_for_persistence(row.get("uids_data") or [])
     course = _find_course(uids_data, course_code)
 
-    if course.get("invoiced"):
+    if _course_is_invoiced(course):
         raise HTTPException(400, f"Course {course_code} đã xuất hoá đơn {course.get('invoice_id')}")
 
     pr = _fetch_payment_request(sb, str(row.get("pr_id") or "")) if row.get("pr_id") else None
@@ -534,7 +598,13 @@ def _issue_course_invoice_python(
     status = _derive_status(uids_data)
     upd = (
         sb.table("active_requests")
-        .update({"uids_data": uids_data, "status": status})
+        .update(
+            {
+                "uids_data": uids_data,
+                "status": status,
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            }
+        )
         .eq("id", ar_id)
         .execute()
     )
@@ -554,9 +624,9 @@ def _revoke_course_invoice_python(sb, ar_id: str, course_code: str) -> dict[str,
         raise HTTPException(404, f"Active Request {ar_id} không tồn tại")
 
     row = res.data[0]
-    uids_data = list(row.get("uids_data") or [])
+    uids_data = _normalize_uids_data_for_persistence(row.get("uids_data") or [])
     course = _find_course(uids_data, course_code)
-    if not course.get("invoiced"):
+    if not _course_is_invoiced(course):
         raise HTTPException(400, f"Course {course_code} chưa xuất hoá đơn")
 
     course["invoiced"] = False
@@ -566,7 +636,13 @@ def _revoke_course_invoice_python(sb, ar_id: str, course_code: str) -> dict[str,
     status = _derive_status(uids_data)
     upd = (
         sb.table("active_requests")
-        .update({"uids_data": uids_data, "status": status})
+        .update(
+            {
+                "uids_data": uids_data,
+                "status": status,
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            }
+        )
         .eq("id", ar_id)
         .execute()
     )
@@ -710,7 +786,11 @@ def _collect_b4_export_queue(
         res = sb.table("active_requests").select("*").in_("id", ar_ids).execute()
     except Exception as exc:
         raise HTTPException(500, f"Không đọc active_requests: {exc}") from exc
-    ar_map = {str(r["id"]): r for r in (res.data or []) if r.get("id")}
+    ar_map = {
+        str(r["id"]): {**r, "uids_data": _normalize_uids_data_for_persistence(r.get("uids_data") or [])}
+        for r in (res.data or [])
+        if r.get("id")
+    }
     pr_map = _fetch_prs_by_ids(sb, list({str(r.get("pr_id")) for r in ar_map.values() if r.get("pr_id")}))
 
     out: list[tuple[dict[str, Any], dict[str, Any], dict[str, Any], dict[str, Any] | None]] = []
@@ -730,7 +810,7 @@ def _collect_b4_export_queue(
                 break
         if not found or not uid_block_match:
             raise HTTPException(404, f"Không tìm thấy course code {course_code} trong {ar_id}")
-        if not found.get("invoiced"):
+        if not _course_is_invoiced(found):
             raise HTTPException(400, f"Course {course_code} chưa xuất hoá đơn (INV)")
         pr = pr_map.get(str(ar_row.get("pr_id") or "")) if ar_row.get("pr_id") else None
         out.append((ar_row, uid_block_match, found, pr))
@@ -770,10 +850,16 @@ def _export_b4_tax_batch(sb, items: list[ExportBatchItem] | None) -> StreamingRe
         ar_row = ar_map.get(ar_id)
         if not ar_row:
             continue
-        uids_data = ar_row.get("uids_data") or []
+        uids_data = _normalize_uids_data_for_persistence(ar_row.get("uids_data") or [])
         status = _derive_status(uids_data)
         try:
-            sb.table("active_requests").update({"uids_data": uids_data, "status": status}).eq("id", ar_id).execute()
+            sb.table("active_requests").update(
+                {
+                    "uids_data": uids_data,
+                    "status": status,
+                    "updated_at": datetime.now(timezone.utc).isoformat(),
+                }
+            ).eq("id", ar_id).execute()
         except Exception as exc:
             raise HTTPException(500, f"Không lưu mã thuế cho {ar_id}: {exc}") from exc
 
@@ -807,7 +893,7 @@ def register_activation_routes(app, supabase_factory):
     def list_active_requests(
         status: str | None = Query(
             None,
-            description="Lọc theo status: pending_order | partial_order | ready_invoice | invoiced",
+            description="Lọc theo status: pending_order | activated | invoiced",
         ),
     ):
         """Danh sách AR — snake_case, kèm payment_request snippet cho FE Activation/Invoice."""
@@ -918,7 +1004,9 @@ def register_activation_routes(app, supabase_factory):
         if body.uids_data is not None:
             if not body.uids_data:
                 raise HTTPException(400, "uids_data phai co it nhat mot uid")
-            uids_data = [uid.model_dump() for uid in body.uids_data]
+            uids_data = _normalize_uids_data_for_persistence(
+                [uid.model_dump() for uid in body.uids_data]
+            )
             patch["uids_data"] = uids_data
             patch["status"] = _derive_status(uids_data)
 
@@ -931,6 +1019,45 @@ def register_activation_routes(app, supabase_factory):
             raise HTTPException(400, "Khong co du lieu de cap nhat")
 
         patch["updated_at"] = datetime.now(timezone.utc).isoformat()
+
+        try:
+            upd = sb.table("active_requests").update(patch).eq("id", ar_id).execute()
+        except Exception as exc:
+            raise HTTPException(500, f"Khong cap nhat active_requests: {exc}") from exc
+
+        saved = (upd.data or [{**current, **patch}])[0]
+        merged = {**current, **saved, **patch}
+        pr_map = _fetch_prs_by_ids(sb, [str(merged.get("pr_id") or "")])
+        return _serialize_ar(merged, pr_map.get(str(merged.get("pr_id") or "")))
+
+    @app.post("/api/v1/active-requests/{ar_id}/request-invoice", tags=["Activation"])
+    def request_active_request_invoice(ar_id: str):
+        """Promote a fully activated AR into the invoice queue."""
+        sb = supabase_factory()
+        if not sb:
+            raise HTTPException(503, "Supabase chua cau hinh")
+
+        try:
+            res = sb.table("active_requests").select("*").eq("id", ar_id).limit(1).execute()
+        except Exception as exc:
+            raise HTTPException(500, f"Khong doc active_requests: {exc}") from exc
+        if not res.data:
+            raise HTTPException(404, f"Active Request {ar_id} khong ton tai")
+
+        current = res.data[0]
+        current_uids_data = _normalize_uids_data_for_persistence(current.get("uids_data") or [])
+        current_status = _derive_status(current_uids_data)
+        if current_status != "activated":
+            raise HTTPException(409, REQUEST_INVOICE_CONFLICT_DETAIL)
+
+        invoice_requested_at = datetime.utcnow().isoformat()
+        uids_data = _stamp_invoice_requested_at(current_uids_data, invoice_requested_at)
+        status = _derive_status(uids_data)
+        patch: dict[str, Any] = {
+            "uids_data": uids_data,
+            "status": status,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }
 
         try:
             upd = sb.table("active_requests").update(patch).eq("id", ar_id).execute()
@@ -1035,14 +1162,20 @@ def register_activation_routes(app, supabase_factory):
             raise HTTPException(404, f"Active Request {ar_id} không tồn tại")
 
         row = res.data[0]
-        uids_data = list(row.get("uids_data") or [])
+        uids_data = _normalize_uids_data_for_persistence(row.get("uids_data") or [])
         uids_data = _patch_course_python(uids_data, course_code, order_id)
         status = _derive_status(uids_data)
 
         try:
             upd = (
                 sb.table("active_requests")
-                .update({"uids_data": uids_data, "status": status})
+                .update(
+                    {
+                        "uids_data": uids_data,
+                        "status": status,
+                        "updated_at": datetime.now(timezone.utc).isoformat(),
+                    }
+                )
                 .eq("id", ar_id)
                 .execute()
             )
