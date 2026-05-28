@@ -362,6 +362,7 @@ interface DraftPr {
   name: string;
   country: string;
   phone: string;
+  email: string;
   province: string;
   ward: string;
   address: string;
@@ -1047,6 +1048,7 @@ export default function PaymentRequestDetailDrawer({
                       name: request.name,
                       country: request.country || "VN",
                       phone: request.phone,
+                      email: request.email || "",
                       province: request.province || "",
                       ward: request.ward || "",
                       address: request.address || "",
@@ -1086,6 +1088,7 @@ export default function PaymentRequestDetailDrawer({
                         name: draft.name,
                         country: draft.country,
                         phone: draft.phone,
+                        email: draft.email,
                         province: draft.province,
                         ward: draft.ward,
                         address: draft.address,
@@ -1216,6 +1219,22 @@ export default function PaymentRequestDetailDrawer({
                       }}
                     />
                   </div>
+                </div>
+                <div className="info-cell">
+                  <div className="info-label">Email</div>
+                  <input
+                    type="email"
+                    value={draft.email}
+                    onChange={(e) => setDraft({ ...draft, email: e.target.value })}
+                    placeholder="example@gmail.com"
+                    style={{
+                      border: "1px solid var(--border)",
+                      borderRadius: 8,
+                      padding: "8px 10px",
+                      font: "inherit",
+                      fontSize: 13,
+                    }}
+                  />
                 </div>
                 <div className="info-cell full">
                   <div className="info-label">Địa chỉ khách hàng</div>
