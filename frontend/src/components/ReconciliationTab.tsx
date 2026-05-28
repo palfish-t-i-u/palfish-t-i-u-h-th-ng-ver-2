@@ -21,7 +21,9 @@ type MethodFilter = "all" | "qr" | "cash" | "card" | "installment";
 type BillImage = { id: number; src: string; name: string };
 
 function getBillsForTxn(t: FlatTransaction): BillImage[] {
-  if (!t.bill && !t.billImage) return [];
+  if (t.billImages?.length) {
+    return t.billImages.map((src, i) => ({ id: i, src, name: `bill_${t.code}_${i + 1}.png` }));
+  }
   if (t.billImage) {
     return [{ id: 0, src: t.billImage, name: `bill_${t.code}.png` }];
   }
@@ -259,6 +261,8 @@ export default function ReconciliationTab() {
   const [drawerTxn, setDrawerTxn] = useState<FlatTransaction | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [lightboxBill, setLightboxBill] = useState<BillImage | null>(null);
+  const [currentBillIdx, setCurrentBillIdx] = useState(0);
+  const [showDownloadMenu, setShowDownloadMenu] = useState(false);
   const [isBulkConfirming, setIsBulkConfirming] = useState(false);
   const [pendingReject, setPendingReject] = useState<{ txns: FlatTransaction[]; label: string } | null>(null);
 
@@ -310,6 +314,11 @@ export default function ReconciliationTab() {
     const fresh = transactions.find((t) => t.key === drawerTxn.key);
     if (fresh) setDrawerTxn(fresh);
   }, [transactions, drawerTxn?.key]);
+
+  useEffect(() => {
+    setCurrentBillIdx(0);
+    setShowDownloadMenu(false);
+  }, [drawerTxn?.key]);
 
   const handleConfirm = async (t: FlatTransaction) => {
     await confirmTransaction(t.prId, t.id);
@@ -559,7 +568,8 @@ export default function ReconciliationTab() {
                   const method = METHOD_META[t.method || "qr"];
                   const MIco = Icons[method.icon];
                   const created = formatPaymentDateTime(t.createdAt);
-                  const hasBill = !!(t.bill || t.billImage);
+                  const rowBills = getBillsForTxn(t);
+                  const hasBill = rowBills.length > 0;
                   return (
                     <tr
                       key={t.key}
@@ -632,13 +642,12 @@ export default function ReconciliationTab() {
                           className={`txn-bill-preview ${hasBill ? "has" : ""}`}
                           title={hasBill ? "Xem biên lai" : "Chưa có biên lai"}
                           onClick={() => {
-                            const bills = getBillsForTxn(t);
-                            if (bills[0]) setLightboxBill(bills[0]);
+                            if (rowBills[0]) setLightboxBill(rowBills[0]);
                           }}
-                          style={t.billImage ? { cursor: "pointer", padding: 0, overflow: "hidden" } : undefined}
+                          style={rowBills[0] ? { cursor: "pointer", padding: 0, overflow: "hidden" } : undefined}
                         >
-                          {t.billImage ? (
-                            <img src={t.billImage} alt="Biên lai" className="txn-bill-thumb" />
+                          {rowBills[0] ? (
+                            <img src={rowBills[0].src} alt="Biên lai" className="txn-bill-thumb" />
                           ) : hasBill ? (
                             <Icons.Receipt />
                           ) : (
@@ -728,23 +737,50 @@ export default function ReconciliationTab() {
                 <div className="txn-bill-zone">
                   {billImages.length > 0 ? (
                     <>
-                      <div className="bill-thumb-grid">
-                        {billImages.map((b) => (
-                          <div
-                            key={b.id}
-                            className="bill-thumb"
-                            onClick={() => setLightboxBill(b)}
-                            title="Click để phóng to"
-                          >
-                            <img src={b.src} alt={b.name} />
-                            <div className="bill-thumb-overlay">
-                              <Icons.Image size={12} /> #{b.id + 1}
-                            </div>
-                          </div>
-                        ))}
+                      {/* Carousel */}
+                      <div style={{ position: "relative", display: "flex", alignItems: "center", gap: 8 }}>
+                        <button
+                          type="button"
+                          disabled={currentBillIdx === 0}
+                          onClick={() => setCurrentBillIdx((i) => i - 1)}
+                          style={{
+                            flexShrink: 0, width: 32, height: 32, borderRadius: "50%",
+                            border: "1px solid var(--border)", background: "var(--surface-2)",
+                            cursor: currentBillIdx === 0 ? "not-allowed" : "pointer",
+                            opacity: currentBillIdx === 0 ? 0.35 : 1,
+                            display: "flex", alignItems: "center", justifyContent: "center",
+                          }}
+                        >
+                          <Icons.ChevronLeft size={16} />
+                        </button>
+                        <div
+                          style={{ flex: 1, cursor: "pointer", borderRadius: 8, overflow: "hidden", maxHeight: 280 }}
+                          onClick={() => setLightboxBill(billImages[currentBillIdx])}
+                          title="Click để phóng to"
+                        >
+                          <img
+                            src={billImages[currentBillIdx].src}
+                            alt={billImages[currentBillIdx].name}
+                            style={{ width: "100%", height: "100%", objectFit: "contain", display: "block" }}
+                          />
+                        </div>
+                        <button
+                          type="button"
+                          disabled={currentBillIdx === billImages.length - 1}
+                          onClick={() => setCurrentBillIdx((i) => i + 1)}
+                          style={{
+                            flexShrink: 0, width: 32, height: 32, borderRadius: "50%",
+                            border: "1px solid var(--border)", background: "var(--surface-2)",
+                            cursor: currentBillIdx === billImages.length - 1 ? "not-allowed" : "pointer",
+                            opacity: currentBillIdx === billImages.length - 1 ? 0.35 : 1,
+                            display: "flex", alignItems: "center", justifyContent: "center",
+                          }}
+                        >
+                          <Icons.ChevronRight size={16} />
+                        </button>
                       </div>
-                      <div style={{ fontSize: 11.5, color: "var(--text-3)", marginTop: 8, textAlign: "center" }}>
-                        {billImages.length} ảnh đã upload · Click thumb để phóng to
+                      <div style={{ fontSize: 11.5, color: "var(--text-3)", marginTop: 6, textAlign: "center" }}>
+                        {currentBillIdx + 1} / {billImages.length} ảnh · Click ảnh để phóng to
                       </div>
                     </>
                   ) : drawerTxn.bill ? (
@@ -763,12 +799,63 @@ export default function ReconciliationTab() {
                   <div className="actions">
                     {billImages.length > 0 ? (
                       <>
-                        <button type="button" className="btn btn-outline btn-sm" onClick={() => setLightboxBill(billImages[0])}>
+                        <button type="button" className="btn btn-outline btn-sm" onClick={() => setLightboxBill(billImages[currentBillIdx])}>
                           <Icons.Image size={13} /> Phóng to
                         </button>
-                        <a href={billImages[0].src} download={billImages[0].name} className="btn btn-outline btn-sm">
-                          <Icons.Download size={13} /> Tải ảnh
-                        </a>
+                        {/* Download dropdown */}
+                        <div style={{ position: "relative" }}>
+                          <button
+                            type="button"
+                            className="btn btn-outline btn-sm"
+                            onClick={() => setShowDownloadMenu((v) => !v)}
+                          >
+                            <Icons.Download size={13} /> Tải ảnh {billImages.length > 1 && `(${billImages.length})`}
+                          </button>
+                          {showDownloadMenu && (
+                            <div
+                              style={{
+                                position: "absolute", bottom: "calc(100% + 6px)", right: 0,
+                                background: "var(--surface)", border: "1px solid var(--border)",
+                                borderRadius: 10, padding: "8px 0", minWidth: 200,
+                                boxShadow: "0 4px 16px rgba(0,0,0,.12)", zIndex: 50,
+                              }}
+                            >
+                              {billImages.map((b, i) => (
+                                <a
+                                  key={b.id}
+                                  href={b.src}
+                                  download={b.name}
+                                  className="btn btn-ghost btn-sm"
+                                  style={{ display: "flex", gap: 8, padding: "6px 14px", textDecoration: "none", color: "inherit" }}
+                                  onClick={() => setShowDownloadMenu(false)}
+                                >
+                                  <Icons.Download size={12} />
+                                  <span>Ảnh #{i + 1}</span>
+                                </a>
+                              ))}
+                              {billImages.length > 1 && (
+                                <>
+                                  <div style={{ height: 1, background: "var(--border)", margin: "6px 0" }} />
+                                  <button
+                                    type="button"
+                                    className="btn btn-ghost btn-sm"
+                                    style={{ display: "flex", gap: 8, padding: "6px 14px", width: "100%", fontWeight: 600 }}
+                                    onClick={() => {
+                                      billImages.forEach((b) => {
+                                        const a = document.createElement("a");
+                                        a.href = b.src; a.download = b.name;
+                                        document.body.appendChild(a); a.click(); a.remove();
+                                      });
+                                      setShowDownloadMenu(false);
+                                    }}
+                                  >
+                                    <Icons.Download size={12} /> Tải tất cả ({billImages.length} ảnh)
+                                  </button>
+                                </>
+                              )}
+                            </div>
+                          )}
+                        </div>
                       </>
                     ) : (
                       <button type="button" className="btn btn-outline btn-sm" disabled style={{ opacity: 0.5 }}>
@@ -824,7 +911,7 @@ export default function ReconciliationTab() {
                       <div className="info-cell">
                         <div className="info-label">Sales upload bill</div>
                         <div className="info-value">
-                          {drawerTxn.bill || drawerTxn.billImage ? (
+                          {billImages.length > 0 ? (
                             <span style={{ color: "var(--success-text)", fontWeight: 600 }}>✓ Đã upload</span>
                           ) : (
                             <span style={{ color: "var(--text-3)" }}>Chưa</span>

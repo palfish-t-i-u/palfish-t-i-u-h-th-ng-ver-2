@@ -17,9 +17,19 @@ export default function BillUploadZone({
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragOver, setDragOver] = useState(false);
 
+  const handleFiles = (files: FileList | null) => {
+    if (!files) return;
+    const images = Array.from(files).filter((f) => f.type.startsWith("image/"));
+    if (images.length === 0) {
+      alert("Vui lòng chọn ảnh để upload!");
+      return;
+    }
+    images.forEach((f) => onFile(f));
+  };
+
   const handleFile = (file: File) => {
     if (!file.type.startsWith("image/")) {
-      alert("Vui long chon anh de upload!");
+      alert("Vui lòng chọn ảnh để upload!");
       return;
     }
     onFile(file);
@@ -82,11 +92,12 @@ export default function BillUploadZone({
         ref={inputRef}
         type="file"
         accept="image/*"
+        multiple
         className="hidden"
         onChange={(e) => {
-          const file = e.target.files?.[0];
+          const files = e.target.files;
           e.target.value = "";
-          if (file) handleFile(file);
+          handleFiles(files);
         }}
       />
     </div>
