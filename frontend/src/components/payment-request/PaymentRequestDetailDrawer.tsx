@@ -22,7 +22,6 @@ import {
   nextPaymentCode,
   nowStamp,
   paymentAttemptLabel,
-  toActiveRequestPatchUidsData,
   vnd,
 } from "./paymentRequestUtils";
 import { nextCourseCode } from "../payment-flow/paymentFlowUtils";
@@ -72,6 +71,7 @@ function QrRow({
   onMarkPaid,
   onShowQr,
   uploadingBillId,
+  deletingBillId,
 }: {
   qr: PaymentAttempt;
   onCancelQr: (qr: PaymentAttempt) => void;
@@ -80,6 +80,7 @@ function QrRow({
   onMarkPaid: (qr: PaymentAttempt) => void;
   onShowQr: (qr: PaymentAttempt) => void;
   uploadingBillId?: string | null;
+  deletingBillId?: string | null;
 }) {
   const isQr = qr.method === "qr";
   const isCancelled = !!qr.cancelled;
@@ -178,6 +179,7 @@ function QrRow({
         <BillUploadZone
           hasBill={!!qr.billImage}
           uploading={uploadingBillId === qr.id}
+          deleting={deletingBillId === qr.id}
           onView={() => onBillView(qr)}
           onFile={(file) => onBillFile(qr, file)}
         />
@@ -215,6 +217,7 @@ function AddPaymentForm({
 }) {
   const [method, setMethod] = useState<PaymentMethod>("qr");
   const [amount, setAmount] = useState("");
+  const [isAmountFocused, setIsAmountFocused] = useState(false);
   const [bank, setBank] = useState(BANK_ACCOUNTS[0].alias);
   const [cardLast4, setCardLast4] = useState("");
   const [installmentMonths, setInstallmentMonths] = useState("6");
@@ -281,10 +284,14 @@ function AddPaymentForm({
           <input
             type="text"
             placeholder={`Còn thiếu: ${vnd(remaining)}`}
-            value={amount}
+            value={isAmountFocused ? amount : amount ? Number(amount).toLocaleString("vi-VN") : ""}
+            inputMode="numeric"
+            pattern="[0-9]*"
+            onFocus={() => setIsAmountFocused(true)}
+            onBlur={() => setIsAmountFocused(false)}
             onChange={(e) => {
               const v = e.target.value.replace(/[^\d]/g, "");
-              setAmount(v ? Number(v).toLocaleString("vi-VN") : "");
+              setAmount(v);
             }}
           />
         </div>
@@ -368,49 +375,131 @@ interface DraftPr {
  * KHÔNG có nút "Xác nhận thông tin" của Thu Hiền (đó là nghiệp vụ riêng ở tab Kích hoạt khoá học).
  * Sales không nhập Order ID ở đây để giữ tách bạch nghiệp vụ với tab Kích hoạt khoá học.
  */
-function ActiveRequestMiniCard({
+function ActiveRequestMiniCardV2({
   ar,
+  onActiveRequestMutate,
   onActiveRequestSave,
   onActiveRequestDelete,
 }: {
   ar: ActiveRequest;
+  onActiveRequestMutate: (arId: string, updater: (ar: ActiveRequest) => ActiveRequest) => void;
   onActiveRequestSave: (next: ActiveRequest) => Promise<void>;
   onActiveRequestDelete: (arId: string) => Promise<void>;
 }) {
-  const [draftAr, setDraftAr] = useState<ActiveRequest>(ar);
+  const [uidDrafts, setUidDrafts] = useState<Record<number, string>>({});
+  const [phoneDrafts, setPhoneDrafts] = useState<Record<number, string>>({});
+  const [amountDrafts, setAmountDrafts] = useState<Record<string, string>>({});
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
-    setDraftAr(ar);
+    if (editing) return;
+    const nextUidDrafts: Record<number, string> = {};
+    const nextPhoneDrafts: Record<number, string> = {};
+    const nextAmountDrafts: Record<string, string> = {};
+    ar.uids.forEach((u, uidIdx) => {
+      nextUidDrafts[uidIdx] = u.uid ?? "";
+      nextPhoneDrafts[uidIdx] = u.phone ?? "";
+      u.courses.forEach((c) => {
+        nextAmountDrafts[c.courseCode] = c.amount ? String(c.amount) : "";
+      });
+    });
+    setUidDrafts(nextUidDrafts);
+    setPhoneDrafts(nextPhoneDrafts);
+    setAmountDrafts(nextAmountDrafts);
+  }, [ar, editing]);
+
+  const summary = activationSummary(ar);
+  const missingRequiredCount = ar.uids.reduce((sum, u) => {
+    const uidMissing = u.uid.trim() ? 0 : 1;
+    const phoneMissing = u.phone.trim() ? 0 : 1;
+    const courseMissing = u.courses.reduce((acc, c) => {
+      const hasPackage = !!(c.packageName || c.name || "").trim();
+      const hasAmount = (c.amount || 0) > 0;
+      return acc + (hasPackage ? 0 : 1) + (hasAmount ? 0 : 1);
+    }, 0);
+    return sum + uidMissing + phoneMissing + courseMissing;
+  }, 0);
+
+  const mutate = (updater: (next: ActiveRequest) => ActiveRequest) => {
+    onActiveRequestMutate(ar.id, updater);
+  };
+
+  const save = async () => {
+    setSaving(true);
+    await onActiveRequestSave(ar);
+    setSaving(false);
     setEditing(false);
-  }, [ar]);
+  };
 
-  const summary = activationSummary(draftAr);
-  const hasDraftChanges = JSON.stringify(toActiveRequestPatchUidsData(draftAr)) !== JSON.stringify(toActiveRequestPatchUidsData(ar));
+  const removeAr = async () => {
+    if (!window.confirm(`Xóa Active Request ${ar.id}?`)) return;
+    setDeleting(true);
+    await onActiveRequestDelete(ar.id);
+    setDeleting(false);
+  };
 
-  const updateCourse = (uidIdx: number, courseIdx: number, patch: Partial<ActiveRequest["uids"][0]["courses"][0]>) => {
-    setDraftAr((prev) => ({
-      ...prev,
-      uids: prev.uids.map((u, i) =>
-        i === uidIdx
-          ? { ...u, courses: u.courses.map((c, j) => (j === courseIdx ? { ...c, ...patch } : c)) }
+  const commitUid = (uidIdx: number) => {
+    const nextUid = (uidDrafts[uidIdx] ?? "").trim();
+    const current = ar.uids[uidIdx]?.uid ?? "";
+    if (nextUid === current) return;
+    mutate((next) => ({
+      ...next,
+      uids: next.uids.map((u, idx) => (idx === uidIdx ? { ...u, uid: nextUid } : u)),
+    }));
+  };
+
+  const commitPhone = (uidIdx: number) => {
+    const nextPhone = (phoneDrafts[uidIdx] ?? "").replace(/[^\d]/g, "");
+    const current = ar.uids[uidIdx]?.phone ?? "";
+    if (nextPhone === current) return;
+    mutate((next) => ({
+      ...next,
+      uids: next.uids.map((u, idx) => (idx === uidIdx ? { ...u, phone: nextPhone } : u)),
+    }));
+  };
+
+  const commitAmount = (uidIdx: number, courseCode: string) => {
+    const raw = (amountDrafts[courseCode] ?? "").replace(/[^\d]/g, "");
+    const nextAmount = raw ? Number(raw) : 0;
+    const current = ar.uids[uidIdx]?.courses.find((x) => x.courseCode === courseCode)?.amount ?? 0;
+    if (nextAmount === current) return;
+    mutate((next) => ({
+      ...next,
+      uids: next.uids.map((u, idx) =>
+        idx === uidIdx
+          ? {
+              ...u,
+              courses: u.courses.map((c) =>
+                c.courseCode === courseCode ? { ...c, amount: nextAmount } : c
+              ),
+            }
           : u
       ),
     }));
   };
 
-  const addCourse = (uidIdx: number) => {
-    setEditing(true);
-    setDraftAr((prev) => {
-      const code = nextCourseCode(prev);
+  const addCourseForUid = (uidIdx: number) => {
+    mutate((next) => {
+      const code = nextCourseCode(next);
       return {
-        ...prev,
-        uids: prev.uids.map((u, i) =>
-          i === uidIdx
+        ...next,
+        uids: next.uids.map((u, idx) =>
+          idx === uidIdx
             ? {
                 ...u,
-                courses: [...u.courses, { courseCode: code, packageName: "", amount: 0, orderId: "", invoiced: false }],
+                courses: [
+                  ...u.courses,
+                  {
+                    courseCode: code,
+                    packageName: "",
+                    amount: 0,
+                    orderId: "",
+                    invoiced: false,
+                    invoiceRequestedAt: null,
+                  },
+                ],
               }
             : u
         ),
@@ -418,39 +507,31 @@ function ActiveRequestMiniCard({
     });
   };
 
-  const addUid = () => {
-    setEditing(true);
-    setDraftAr((prev) => ({
-      ...prev,
-      uids: [
-        ...prev.uids,
-        {
-          uid: "",
-          phone: "",
-          country: "VN",
-          courses: [
-            {
-              courseCode: nextCourseCode(prev),
-              packageName: "",
-              amount: 0,
-              orderId: "",
-              invoiced: false,
-            },
-          ],
-        },
-      ],
-    }));
-  };
-
-  const saveActiveRequest = async () => {
-    if (!hasDraftChanges || saving) return;
-    setSaving(true);
-    try {
-      await onActiveRequestSave(draftAr);
-      setEditing(false);
-    } finally {
-      setSaving(false);
-    }
+  const addUidGroup = () => {
+    mutate((next) => {
+      const code = nextCourseCode(next);
+      return {
+        ...next,
+        uids: [
+          ...next.uids,
+          {
+            uid: "",
+            phone: "",
+            country: next.uids[0]?.country || "VN",
+            courses: [
+              {
+                courseCode: code,
+                packageName: "",
+                amount: 0,
+                orderId: "",
+                invoiced: false,
+                invoiceRequestedAt: null,
+              },
+            ],
+          },
+        ],
+      };
+    });
   };
 
   return (
@@ -460,51 +541,58 @@ function ActiveRequestMiniCard({
           <Icons.CheckSquare size={15} /> Kích hoạt khoá học
           <span className="num-pill">{ar.id}</span>
         </h4>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <span
-            className={`badge ${summary.allActivated ? "is-done" : "is-over"}`}
-            title={summary.allActivated ? "Tất cả khóa học đã được kích hoạt" : "Đang chờ Ops kích hoạt khóa học"}
-          >
-            {summary.allActivated ? <Icons.Check size={11} strokeWidth={2.5} /> : <Icons.Clock size={11} />}{" "}
-            {summary.activatedCount}/{summary.courseCount} đã kích hoạt
-          </span>
+        <span
+          className={`badge ${summary.allActivated ? "is-done" : "is-over"}`}
+          title={summary.allActivated ? "Tất cả gói học đã được Ops kích hoạt" : "Đang chờ Ops kích hoạt gói học"}
+        >
+          {summary.allActivated ? <Icons.Check size={11} strokeWidth={2.5} /> : <Icons.Clock size={11} />}{" "}
+          {summary.buttonLabel}
+        </span>
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
           <button
             type="button"
             className="btn btn-outline btn-sm"
-            onClick={() => setEditing((v) => !v)}
             title="Sửa thông tin gói học"
             aria-label="Sửa thông tin gói học"
+            onClick={() => setEditing(true)}
+            style={{ width: 32, padding: 0 }}
           >
             <Icons.Pencil size={13} />
           </button>
           <button
             type="button"
-            className={`btn btn-sm ${hasDraftChanges ? "btn-primary" : "btn-outline"}`}
-            disabled={!hasDraftChanges || saving}
-            onClick={() => void saveActiveRequest()}
-            title={hasDraftChanges ? "Lưu thông tin Active Request" : "Chưa có thay đổi"}
+            className="btn btn-success btn-sm"
+            title="Lưu thông tin Active Request"
             aria-label="Lưu thông tin Active Request"
+            disabled={!editing || saving}
+            onClick={() => void save()}
+            style={{ width: 32, padding: 0 }}
           >
-            <Icons.Check size={13} strokeWidth={2.5} /> {saving ? "Đang lưu..." : ""}
+            <Icons.Check size={14} strokeWidth={2.6} />
           </button>
           <button
             type="button"
             className="btn btn-outline btn-sm"
-            style={{ color: "var(--danger)" }}
-            onClick={() => {
-              if (window.confirm(`Xoá Active Request ${ar.id}?`)) void onActiveRequestDelete(ar.id);
-            }}
-            title="Xoá Active Request"
-            aria-label="Xoá Active Request"
+            title="Xóa Active Request"
+            aria-label="Xóa Active Request"
+            disabled={deleting}
+            onClick={() => void removeAr()}
+            style={{ width: 32, padding: 0, color: "var(--danger)" }}
           >
-            <Icons.Close size={13} />
+            <Icons.Close size={14} strokeWidth={2.4} />
           </button>
         </div>
       </div>
+      {missingRequiredCount > 0 && (
+        <div className="match-warning" style={{ marginBottom: 10 }}>
+          <Icons.AlertCircle size={14} />
+          <span>Thiếu {missingRequiredCount} trường bắt buộc (UID, SĐT, gói học, số tiền).</span>
+        </div>
+      )}
       <div style={{ padding: "8px 0", display: "flex", flexDirection: "column", gap: 10 }}>
-        {draftAr.uids.map((u, uIdx) => (
+        {ar.uids.map((u, uIdx) => (
           <div
-            key={`${u.uid}-${uIdx}`}
+            key={`${u.uid || "uid"}-${uIdx}`}
             style={{
               border: "1px solid var(--border)",
               borderRadius: 8,
@@ -512,27 +600,49 @@ function ActiveRequestMiniCard({
               background: "var(--surface-2)",
             }}
           >
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6, flexWrap: "wrap" }}>
-              {editing ? (
-                <input
-                  value={u.uid}
-                  onChange={(e) =>
-                    setDraftAr((prev) => ({
-                      ...prev,
-                      uids: prev.uids.map((uidObj, i) => (i === uIdx ? { ...uidObj, uid: e.target.value } : uidObj)),
-                    }))
-                  }
-                  placeholder="UID"
-                  style={{ width: 150, border: "1px solid var(--border)", borderRadius: 7, padding: "6px 8px", font: "inherit", fontSize: 12.5 }}
-                />
-              ) : (
-                <span style={{ fontWeight: 600, fontSize: 13 }}>UID {u.uid || "—"}</span>
-              )}
-              <span style={{ fontSize: 12, color: "var(--text-3)" }}>
-                {formatCoursePhone(u.country, u.phone)}
-              </span>
-              <span className="spacer" />
-              <button type="button" className="btn btn-outline btn-sm" onClick={() => addCourse(uIdx)} title="Thêm gói học cho UID này">
+            {!editing && (
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, minWidth: 0 }}>
+                <span style={{ fontWeight: 700, fontSize: 13 }}>UID {u.uid || "—"}</span>
+                <span style={{ fontSize: 12, color: "var(--text-3)" }}>{formatCoursePhone(u.country, u.phone)}</span>
+              </div>
+            )}
+            <div style={{ display: editing ? "grid" : "none", gridTemplateColumns: "1fr 1fr auto", gap: 8, marginBottom: 8 }}>
+              <input
+                value={uidDrafts[uIdx] ?? u.uid ?? ""}
+                onChange={(e) => setUidDrafts((prev) => ({ ...prev, [uIdx]: e.target.value }))}
+                onBlur={() => commitUid(uIdx)}
+                placeholder="UID CRM"
+                style={{
+                  border: "1px solid var(--border)",
+                  borderRadius: 8,
+                  padding: "7px 9px",
+                  fontFamily: "JetBrains Mono, monospace",
+                  fontSize: 12,
+                  outline: "none",
+                  background: "white",
+                }}
+              />
+              <input
+                value={phoneDrafts[uIdx] ?? u.phone ?? ""}
+                onChange={(e) =>
+                  setPhoneDrafts((prev) => ({
+                    ...prev,
+                    [uIdx]: e.target.value.replace(/[^\d]/g, ""),
+                  }))
+                }
+                onBlur={() => commitPhone(uIdx)}
+                placeholder="Số điện thoại"
+                style={{
+                  border: "1px solid var(--border)",
+                  borderRadius: 8,
+                  padding: "7px 9px",
+                  fontFamily: "JetBrains Mono, monospace",
+                  fontSize: 12,
+                  outline: "none",
+                  background: "white",
+                }}
+              />
+              <button type="button" className="btn btn-outline btn-sm" onClick={() => addCourseForUid(uIdx)}>
                 <Icons.Plus size={12} /> Thêm gói
               </button>
             </div>
@@ -544,10 +654,10 @@ function ActiveRequestMiniCard({
               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                 {u.courses.map((c, cIdx) => (
                   <div
-                    key={cIdx}
+                    key={`${c.courseCode}-${cIdx}`}
                     style={{
                       display: "grid",
-                      gridTemplateColumns: "minmax(0, 1fr) minmax(120px, auto) auto",
+                      gridTemplateColumns: "minmax(0, 1fr) 130px auto",
                       gap: 10,
                       alignItems: "center",
                       padding: "6px 8px",
@@ -557,46 +667,77 @@ function ActiveRequestMiniCard({
                       fontSize: 12.5,
                     }}
                   >
-                    <div style={{ minWidth: 0 }}>
-                      {editing ? (
-                        <div style={{ position: "relative" }}>
-                          <Combobox
-                            value={c.packageName || c.name || ""}
-                            onChange={(value) => updateCourse(uIdx, cIdx, { packageName: value })}
-                            options={COURSE_PACKAGE_OPTIONS}
-                            placeholder="Chọn hoặc gõ tên gói học..."
-                            emptyLabel="Chưa chọn gói"
-                          />
-                          {(c.packageName || c.name) && (
-                            <button
-                              type="button"
-                              onClick={() => updateCourse(uIdx, cIdx, { packageName: "" })}
-                              title="Xoá tên gói học"
-                              aria-label="Xoá tên gói học"
-                              style={{
-                                position: "absolute",
-                                right: 7,
-                                top: "50%",
-                                transform: "translateY(-50%)",
-                                width: 22,
-                                height: 22,
-                                borderRadius: "50%",
-                                border: "1px solid var(--danger)",
-                                color: "var(--danger)",
-                                background: "white",
-                                display: "grid",
-                                placeItems: "center",
-                                cursor: "pointer",
-                              }}
-                            >
-                              <Icons.Close size={12} />
-                            </button>
-                          )}
-                        </div>
-                      ) : (
-                        <div style={{ fontWeight: 600, color: c.packageName ? "var(--text)" : "var(--text-3)" }}>
+                    {!editing && (
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis" }}>
                           {c.packageName || c.name || "Chưa chọn gói"}
                         </div>
+                        {c.courseCode && (
+                          <div style={{ fontSize: 11, color: "var(--text-3)", marginTop: 2 }}>
+                            Course code: <code>{c.courseCode}</code>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    <div style={{ minWidth: 0, display: editing ? "block" : "none", position: "relative" }}>
+                      <Combobox
+                        value={c.packageName || c.name || ""}
+                        onChange={(value) =>
+                          mutate((next) => ({
+                            ...next,
+                            uids: next.uids.map((uu, idx) =>
+                              idx === uIdx
+                                ? {
+                                    ...uu,
+                                    courses: uu.courses.map((course) =>
+                                      course.courseCode === c.courseCode
+                                        ? { ...course, packageName: value }
+                                        : course
+                                    ),
+                                  }
+                                : uu
+                            ),
+                          }))
+                        }
+                        options={COURSE_PACKAGE_OPTIONS}
+                        placeholder="Chọn hoặc gõ tên gói học..."
+                        emptyLabel="Chưa chọn gói"
+                      />
+                      {(c.packageName || c.name) && (
+                        <button
+                          type="button"
+                          className="btn btn-outline btn-sm"
+                          aria-label="Xóa tên gói học"
+                          title="Xóa tên gói học"
+                          onClick={() =>
+                            mutate((next) => ({
+                              ...next,
+                              uids: next.uids.map((uu, idx) =>
+                                idx === uIdx
+                                  ? {
+                                      ...uu,
+                                      courses: uu.courses.map((course) =>
+                                        course.courseCode === c.courseCode ? { ...course, packageName: "" } : course
+                                      ),
+                                    }
+                                  : uu
+                              ),
+                            }))
+                          }
+                          style={{
+                            position: "absolute",
+                            right: 6,
+                            top: 6,
+                            width: 24,
+                            height: 24,
+                            padding: 0,
+                            borderRadius: 999,
+                            color: "var(--danger)",
+                            background: "white",
+                          }}
+                        >
+                          <Icons.Close size={12} strokeWidth={2.4} />
+                        </button>
                       )}
                       {c.courseCode && (
                         <div style={{ fontSize: 11, color: "var(--text-3)", marginTop: 2 }}>
@@ -604,36 +745,38 @@ function ActiveRequestMiniCard({
                         </div>
                       )}
                     </div>
-                    {editing ? (
-                      <input
-                        value={c.amount ? Number(c.amount).toLocaleString("vi-VN") : ""}
-                        onChange={(e) => {
-                          const v = e.target.value.replace(/[^\d]/g, "");
-                          updateCourse(uIdx, cIdx, { amount: v ? Number(v) : 0 });
-                        }}
-                        placeholder="Số tiền"
-                        style={{
-                          width: "100%",
-                          border: "1px solid var(--border)",
-                          borderRadius: 7,
-                          padding: "7px 8px",
-                          font: "inherit",
-                          fontSize: 12.5,
-                          textAlign: "right",
-                          color: "var(--money)",
-                          fontWeight: 600,
-                        }}
-                      />
-                    ) : (
-                      <span style={{ fontWeight: 700, color: "var(--money)", textAlign: "right" }}>{vnd(c.amount || 0)}</span>
+                    {!editing && (
+                      <div style={{ textAlign: "right", fontWeight: 700, color: "var(--money)" }}>{vnd(c.amount || 0)}</div>
                     )}
+                    <input
+                      value={amountDrafts[c.courseCode] ?? (c.amount ? String(c.amount) : "")}
+                      onChange={(e) => {
+                        const raw = e.target.value.replace(/[^\d]/g, "");
+                        setAmountDrafts((prev) => ({ ...prev, [c.courseCode]: raw }));
+                      }}
+                      onBlur={() => commitAmount(uIdx, c.courseCode)}
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      placeholder="Số tiền"
+                      style={{
+                        display: editing ? "block" : "none",
+                        border: "1px solid var(--border)",
+                        borderRadius: 8,
+                        padding: "7px 9px",
+                        fontSize: 12,
+                        fontFamily: "JetBrains Mono, monospace",
+                        outline: "none",
+                        textAlign: "right",
+                        background: "white",
+                      }}
+                    />
                     <div style={{ textAlign: "right" }}>
                       {c.orderId ? (
-                        <span className="badge is-done" title="Ops đã điền Order ID">
+                        <span className="badge is-done" title="Gói học đã được Ops kích hoạt">
                           <Icons.Check size={10} strokeWidth={2.5} /> Đã kích hoạt
                         </span>
                       ) : (
-                        <span className="badge is-over" title="Chờ Ops kích hoạt khóa học">
+                        <span className="badge is-over" title="Chờ Ops kích hoạt gói học">
                           <Icons.Clock size={10} /> Chờ kích hoạt
                         </span>
                       )}
@@ -644,8 +787,10 @@ function ActiveRequestMiniCard({
             )}
           </div>
         ))}
-        <button type="button" className="btn btn-outline btn-sm" onClick={addUid} style={{ alignSelf: "flex-start" }}>
-          <Icons.Plus size={13} /> Thêm UID khác
+      </div>
+      <div style={{ display: "flex", justifyContent: "flex-end", paddingBottom: 4 }}>
+        <button type="button" className="btn btn-outline btn-sm" onClick={addUidGroup}>
+          <Icons.Plus size={12} /> Thêm UID
         </button>
       </div>
       <div style={{ fontSize: 11.5, color: "var(--text-3)", paddingTop: 6, lineHeight: 1.5 }}>
@@ -669,10 +814,12 @@ export default function PaymentRequestDetailDrawer({
   onCancelRequest,
   activeRequestId,
   activeRequest,
+  onActiveRequestMutate,
   onActiveRequestSave,
   onActiveRequestDelete,
   onShowQr,
   uploadingBillId,
+  deletingBillId,
 }: {
   request: PaymentRequest | null;
   open: boolean;
@@ -687,10 +834,12 @@ export default function PaymentRequestDetailDrawer({
   onCancelRequest: () => void;
   activeRequestId?: string | null;
   activeRequest?: ActiveRequest | null;
+  onActiveRequestMutate: (arId: string, updater: (ar: ActiveRequest) => ActiveRequest) => void;
   onActiveRequestSave: (next: ActiveRequest) => Promise<void>;
   onActiveRequestDelete: (arId: string) => Promise<void>;
   onShowQr: (qr: PaymentAttempt) => void;
   uploadingBillId?: string | null;
+  deletingBillId?: string | null;
 }) {
   const [showAdd, setShowAdd] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -735,6 +884,41 @@ export default function PaymentRequestDetailDrawer({
   const ready = request.state === "done" || request.state === "over";
   const hasActiveRequest = !!activeRequestId;
   const activeSummary = activationSummary(activeRequest);
+  const copyPrId = async () => {
+    const id = request.id;
+    const fallbackCopy = () => {
+      try {
+        const ta = document.createElement("textarea");
+        ta.value = id;
+        ta.setAttribute("readonly", "");
+        ta.style.position = "fixed";
+        ta.style.left = "-9999px";
+        document.body.appendChild(ta);
+        ta.select();
+        const ok = document.execCommand("copy");
+        document.body.removeChild(ta);
+        return ok;
+      } catch {
+        return false;
+      }
+    };
+
+    let ok = false;
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(id);
+        ok = true;
+      } else {
+        ok = fallbackCopy();
+      }
+    } catch {
+      ok = fallbackCopy();
+    }
+
+    if (!ok) {
+      window.prompt("Không thể tự copy trong trình duyệt này. Copy PR-ID thủ công:", id);
+    }
+  };
 
   return (
     <>
@@ -1073,6 +1257,7 @@ export default function PaymentRequestDetailDrawer({
                   onMarkPaid={onMarkPaid}
                   onShowQr={onShowQr}
                   uploadingBillId={uploadingBillId}
+                  deletingBillId={deletingBillId}
                 />
               ))}
             </div>
@@ -1093,8 +1278,9 @@ export default function PaymentRequestDetailDrawer({
 
           {/* AR mini-window — chỉ Sales view, gọn nhẹ. Tab Kích hoạt khoá học (Thu Hiền) vẫn riêng */}
           {hasActiveRequest && activeRequest && (
-            <ActiveRequestMiniCard
+            <ActiveRequestMiniCardV2
               ar={activeRequest}
+              onActiveRequestMutate={onActiveRequestMutate}
               onActiveRequestSave={onActiveRequestSave}
               onActiveRequestDelete={onActiveRequestDelete}
             />
@@ -1130,9 +1316,7 @@ export default function PaymentRequestDetailDrawer({
                   <div className="tl-title">B3 · Active Request (Tạo khoá học)</div>
                   <div className="tl-meta">
                     {hasActiveRequest
-                      ? activeSummary.allActivated
-                        ? `Active Request ${activeRequestId} đã kích hoạt đủ khóa học`
-                        : `Active Request ${activeRequestId} đã tạo — chờ Ops kích hoạt khóa học`
+                      ? `Active Request ${activeRequestId} — ${activeSummary.buttonLabel}`
                       : ready
                       ? 'Sẵn sàng kích hoạt — bấm "Kích hoạt khoá học" để mở gói'
                       : "Sẽ mở khoá khi đủ 100% tiền"}
@@ -1154,7 +1338,7 @@ export default function PaymentRequestDetailDrawer({
           <div style={{ display: "flex", gap: 8 }}>
             <button
               className="btn btn-outline btn-sm"
-              onClick={() => navigator.clipboard?.writeText(request.id).catch(() => {})}
+              onClick={() => void copyPrId()}
             >
               <Icons.Copy size={13} /> Copy PR-ID
             </button>

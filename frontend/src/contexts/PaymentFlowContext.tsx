@@ -79,7 +79,11 @@ type PaymentFlowContextValue = {
   updateActiveRequestCoursePackage: (arId: string, courseCode: string, packageName: string) => Promise<void>;
   saveActiveRequest: (next: ActiveRequest) => Promise<void>;
   deleteActiveRequest: (arId: string) => Promise<void>;
-  patchCourseOrderId: (arId: string, courseCode: string, orderId: string) => Promise<void>;
+  patchCourseOrderId: (
+    arId: string,
+    courseCode: string,
+    orderId: string
+  ) => Promise<{ ok: boolean; error?: string }>;
   requestInvoiceForCourse: (arId: string, courseCode: string) => Promise<void>;
   issueInvoiceForCourse: (arId: string, courseCode: string) => Promise<void>;
   badgeCounts: { reconciliation: number; activation: number; invoice: number };
@@ -112,6 +116,7 @@ export function PaymentFlowProvider({
   const [apiNote, setApiNote] = useState("");
   const [nav, setNav] = useState<NavState>({});
   const onViewChangeRef = useRef(onViewChange);
+  const courseOrderPatchSeqRef = useRef<Record<string, number>>({});
 
   useEffect(() => {
     onViewChangeRef.current = onViewChange;
@@ -399,82 +404,124 @@ export function PaymentFlowProvider({
   );
 
   const saveActiveRequest = useCallback(async (next: ActiveRequest) => {
-    const previous = activeRequests.find((ar) => ar.id === next.id) ?? null;
-    setActiveRequests((prev) => prev.map((ar) => (ar.id === next.id ? next : ar)));
+    updateActiveRequest(next.id, () => next);
     try {
       const res = await endpoints.activeRequests.update(next.id, {
         uids_data: toActiveRequestPatchUidsData(next),
       });
-      const ar = fromApiActiveRequest(res.data);
-      setActiveRequests((prev) => prev.map((x) => (x.id === next.id ? ar : x)));
+      const saved = fromApiActiveRequest(res.data);
+      setActiveRequests((prev) => prev.map((x) => (x.id === next.id ? saved : x)));
       setApiNote("");
     } catch {
-      if (previous) setActiveRequests((prev) => prev.map((ar) => (ar.id === previous.id ? previous : ar)));
-      setApiNote("Không lưu được Active Request lên máy chủ.");
+      setApiNote("Đã đổi tạm trên giao diện; máy chủ chưa lưu được thay đổi Kích hoạt khóa học.");
     }
-  }, [activeRequests]);
+  }, [updateActiveRequest]);
 
   const deleteActiveRequest = useCallback(async (arId: string) => {
     const previous = activeRequests;
-    setActiveRequests((prev) => prev.filter((ar) => ar.id !== arId));
+    setActiveRequests((prev) => prev.filter((x) => x.id !== arId));
     try {
       await endpoints.activeRequests.delete(arId);
       setApiNote("");
     } catch {
       setActiveRequests(previous);
-      setApiNote("Chưa xoá được Active Request trên máy chủ; cần Giang/Đức mở endpoint xoá/cancel AR.");
+      setApiNote("Chưa xóa được Active Request trên máy chủ. Cần BE thêm endpoint xóa/cancel AR.");
     }
   }, [activeRequests]);
 
   const patchCourseOrderId = useCallback(
     async (arId: string, courseCode: string, orderId: string) => {
       const trimmed = orderId.trim();
-      let optimistic: ActiveRequest | null = null;
-      updateActiveRequest(arId, (ar) => ({
-        ...(optimistic = {
-          ...ar,
-          uids: ar.uids.map((u) => ({
-            ...u,
-            courses: u.courses.map((c) =>
-              c.courseCode === courseCode ? { ...c, orderId: trimmed } : c
-            ),
-          })),
-        }),
-      }));
-
-      if (!optimistic) return;
+      const seqKey = `${arId}::${courseCode}`;
+      const seq = (courseOrderPatchSeqRef.current[seqKey] ?? 0) + 1;
+      courseOrderPatchSeqRef.current[seqKey] = seq;
+      const readOrderId = (ar: ActiveRequest) => {
+        for (const uid of ar.uids) {
+          const course = uid.courses.find((c) => c.courseCode === courseCode);
+          if (course) return (course.orderId || "").trim();
+        }
+        return "";
+      };
+      const currentAr = activeRequests.find((x) => x.id === arId) || null;
+      if (!currentAr) {
+        const error = `Khong tim thay Active Request ${arId}`;
+        setApiNote(error);
+        return { ok: false, error };
+      }
+      const optimistic: ActiveRequest = {
+        ...currentAr,
+        uids: currentAr.uids.map((u) => ({
+          ...u,
+          courses: u.courses.map((c) =>
+            c.courseCode === courseCode ? { ...c, orderId: trimmed } : c
+          ),
+        })),
+      };
 
       try {
-        const res = await endpoints.activeRequests.update(arId, {
-          uids_data: toActiveRequestPatchUidsData(optimistic),
-        });
+        const res = await endpoints.activeRequests.patchCourseOrderId(arId, courseCode, trimmed);
+        if (courseOrderPatchSeqRef.current[seqKey] !== seq) {
+          return { ok: false, error: "Yeu cau cu da bi ghi de boi thao tac moi hon." };
+        }
         const ar = fromApiActiveRequest(res.data);
+        if (readOrderId(ar) !== trimmed) {
+          throw new Error("PATCH returned stale order_id");
+        }
         setActiveRequests((prev) => prev.map((x) => (x.id === arId ? ar : x)));
         setApiNote("");
+        return { ok: true };
       } catch {
-        setApiNote("Không lưu được Order ID lên máy chủ.");
+        try {
+          const res = await endpoints.activeRequests.update(arId, {
+            uids_data: toActiveRequestPatchUidsData(optimistic),
+          });
+          if (courseOrderPatchSeqRef.current[seqKey] !== seq) {
+            return { ok: false, error: "Yeu cau cu da bi ghi de boi thao tac moi hon." };
+          }
+          const ar = fromApiActiveRequest(res.data);
+          if (readOrderId(ar) !== trimmed) {
+            throw new Error("Full update returned stale order_id");
+          }
+          setActiveRequests((prev) => prev.map((x) => (x.id === arId ? ar : x)));
+          setApiNote("");
+          return { ok: true };
+        } catch {
+          const error = "Khong luu duoc Order ID len may chu.";
+          setApiNote(error);
+          return { ok: false, error };
+        }
       }
     },
-    [updateActiveRequest]
+    [activeRequests]
   );
 
   const requestInvoiceForCourse = useCallback(
     async (arId: string, courseCode: string) => {
-      const current = activeRequests.find((ar) => ar.id === arId);
-      if (!current) return;
-      const requestedAt = new Date().toISOString();
+      const currentAr = activeRequests.find((x) => x.id === arId);
+      if (!currentAr) return;
+      const requestedAt = flowNow();
       const next: ActiveRequest = {
-        ...current,
-        uids: current.uids.map((u) => ({
+        ...currentAr,
+        uids: currentAr.uids.map((u) => ({
           ...u,
           courses: u.courses.map((c) =>
             c.courseCode === courseCode ? { ...c, invoiceRequestedAt: requestedAt } : c
           ),
         })),
       };
-      await saveActiveRequest(next);
+      updateActiveRequest(arId, () => next);
+      try {
+        const res = await endpoints.activeRequests.update(arId, {
+          uids_data: toActiveRequestPatchUidsData(next),
+        });
+        const saved = fromApiActiveRequest(res.data);
+        setActiveRequests((prev) => prev.map((x) => (x.id === arId ? saved : x)));
+        setApiNote("");
+      } catch {
+        setApiNote("Đã chuyển tạm sang B4 trên giao diện; máy chủ chưa lưu được trạng thái Xuất HĐ.");
+      }
     },
-    [activeRequests, saveActiveRequest]
+    [activeRequests, updateActiveRequest]
   );
 
   const issueInvoiceForCourse = useCallback(

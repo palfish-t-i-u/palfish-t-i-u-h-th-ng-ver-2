@@ -5,6 +5,7 @@ import { usePaymentFlow } from "../contexts/PaymentFlowContext";
 import { endpoints } from "../lib/api";
 import { compressImageFile } from "../lib/imageCompress";
 import type {
+  ActiveRequest,
   AddPaymentAttemptPayload,
   CreatePaymentRequestPayload,
   PatchPaymentRequestPayload,
@@ -26,10 +27,12 @@ import {
   type StatusFilter,
   buildArByPrId,
   fromApiAttempt,
+  fromApiActiveRequest,
   fromApiPaymentRequest,
   isBackendLineId,
   normalizeRequest,
   nowStamp,
+  toActiveRequestPatchUidsData,
 } from "./payment-request/paymentRequestUtils";
 
 export default function PaymentRequestsTab() {
@@ -40,6 +43,8 @@ export default function PaymentRequestsTab() {
     apiNote,
     loadData,
     updateRequest,
+    updateActiveRequest,
+    setApiNote,
     handleCreate: ctxCreate,
     handleAddPayment: ctxAddPayment,
     handleCreateActiveRequest,
@@ -59,10 +64,19 @@ export default function PaymentRequestsTab() {
   const [cancelTarget, setCancelTarget] = useState<PaymentRequest | null>(null);
   const [qrView, setQrView] = useState<{ qr: PaymentAttempt; request: PaymentRequest } | null>(null);
   const [uploadingBillId, setUploadingBillId] = useState<string | null>(null);
-  const [billModal, setBillModal] = useState<{ open: boolean; code: string; src: string }>({
+  const [deletingBillId, setDeletingBillId] = useState<string | null>(null);
+  const [billModal, setBillModal] = useState<{
+    open: boolean;
+    code: string;
+    lineId: string;
+    idx: number;
+    images: string[];
+  }>({
     open: false,
     code: "",
-    src: "",
+    lineId: "",
+    idx: 0,
+    images: [],
   });
 
   const arByPrId = useMemo(() => buildArByPrId(activeRequests), [activeRequests]);
@@ -80,6 +94,11 @@ export default function PaymentRequestsTab() {
     () => requests.find((r) => r.id === selectedId) || null,
     [requests, selectedId]
   );
+
+  const billModalQr = useMemo(() => {
+    if (!billModal.open || !selected) return null;
+    return selected.payments.find((p) => p.id === billModal.lineId) || null;
+  }, [billModal.open, billModal.lineId, selected]);
 
   const trackingRequests = useMemo(
     () => requests.filter((r) => r.state !== "cancelled"),
@@ -227,15 +246,51 @@ export default function PaymentRequestsTab() {
     }
   };
 
-  const handleCancelPayment = (qr: PaymentAttempt) => {
+  const handleCancelPayment = async (qr: PaymentAttempt) => {
     if (!selected) return;
-    if (!window.confirm(`Huỷ lần giao dịch #${qr.idx}?`)) return;
-    updateRequest(selected.id, (r) => ({
+    const prId = selected.id;
+    const cancelledAt = nowStamp();
+    const reason = "Sales huỷ lần thanh toán";
+
+    updateRequest(prId, (r) => ({
       ...r,
       payments: r.payments.map((p: PaymentAttempt) =>
-        p.id === qr.id ? { ...p, cancelled: true, cancelledAt: nowStamp() } : p
+        p.id === qr.id
+          ? {
+              ...p,
+              cancelled: true,
+              cancelledAt,
+              status: "rejected" as const,
+              paidAt: null,
+              rejectReason: reason,
+            }
+          : p
       ),
     }));
+
+    if (!isBackendLineId(qr.id)) return;
+    try {
+      const res = await endpoints.transactions.patchStatus(qr.id, "rejected", reason);
+      const line = res.data.payment_line;
+      updateRequest(prId, (r) => {
+        const updatedPayments = r.payments.map((p: PaymentAttempt) =>
+          p.id === qr.id
+            ? {
+                ...p,
+                status: "rejected" as const,
+                paidAt: null,
+                rejectReason: line.reject_reason || reason,
+                cancelled: true,
+                cancelledAt: p.cancelledAt || cancelledAt,
+              }
+            : p
+        );
+        const prFromBe = fromApiPaymentRequest(res.data.payment_request);
+        return normalizeRequest({ ...r, ...prFromBe, payments: updatedPayments });
+      });
+    } catch {
+      /* optimistic */
+    }
   };
 
   const handleMarkPaid = async (qr: PaymentAttempt) => {
@@ -265,10 +320,21 @@ export default function PaymentRequestsTab() {
     }
   };
 
+  const getBillImages = (qr: PaymentAttempt): string[] => {
+    if (qr.billImages?.length) return qr.billImages;
+    return qr.billImage ? [qr.billImage] : [];
+  };
+
   const handleBillView = (qr: PaymentAttempt) => {
-    if (qr.billImage) {
-      setBillModal({ open: true, code: qr.code, src: qr.billImage });
-    }
+    const images = getBillImages(qr);
+    if (!images.length) return;
+    setBillModal({
+      open: true,
+      code: qr.code,
+      lineId: qr.id,
+      idx: qr.idx,
+      images,
+    });
   };
 
   const handleBillFile = async (qr: PaymentAttempt, file: File) => {
@@ -292,12 +358,49 @@ export default function PaymentRequestsTab() {
         ...r,
         payments: r.payments.map((p: PaymentAttempt) => (p.id === qr.id ? { ...p, ...mapped } : p)),
       }));
+      if (billModal.open && billModal.lineId === qr.id) {
+        setBillModal((m) => ({
+          ...m,
+          images: getBillImages(mapped),
+        }));
+      }
     } catch (e) {
       const err = e as { response?: { data?: { detail?: string } }; message?: string };
       const msg = err?.response?.data?.detail || err?.message || "Lỗi không xác định";
       alert(`Không lưu được ảnh biên lai: ${msg}`);
     } finally {
       setUploadingBillId(null);
+    }
+  };
+
+  const handleBillDelete = async (qr: PaymentAttempt, billUrl?: string, deleteAll = false) => {
+    if (!selected) return;
+    if (!isBackendLineId(qr.id)) return;
+    const currentImages = getBillImages(qr);
+    if (!currentImages.length) return;
+    setDeletingBillId(qr.id);
+    try {
+      const res = deleteAll
+        ? await endpoints.paymentRequests.deleteAllPaymentLineBills(qr.id)
+        : billUrl
+        ? await endpoints.paymentRequests.deletePaymentLineBill(qr.id, billUrl)
+        : await endpoints.paymentRequests.deleteLatestPaymentLineBill(qr.id);
+      const line = res.data.payment_line;
+      const mapped = fromApiAttempt(line, qr.idx);
+      updateRequest(selected.id, (r) => ({
+        ...r,
+        payments: r.payments.map((p: PaymentAttempt) => (p.id === qr.id ? { ...p, ...mapped } : p)),
+      }));
+      if (billModal.open && billModal.lineId === qr.id) {
+        const nextImages = getBillImages(mapped);
+        setBillModal((m) => ({ ...m, images: nextImages, open: nextImages.length > 0 }));
+      }
+    } catch (e) {
+      const err = e as { response?: { data?: { detail?: string } }; message?: string };
+      const msg = err?.response?.data?.detail || err?.message || "Loi khong xac dinh";
+      alert(`Khong xoa duoc bill: ${msg}`);
+    } finally {
+      setDeletingBillId(null);
     }
   };
 
@@ -333,6 +436,26 @@ export default function PaymentRequestsTab() {
     // Inline AR mini-window: tạo xong → giữ drawer mở, không navigate sang tab Kích hoạt khoá học
     // Context state cập nhật → drawer tự re-render với AR card mới
     await handleCreateActiveRequest(selected);
+  };
+
+  const handleActiveRequestMiniMutate = async (
+    arId: string,
+    updater: (ar: ActiveRequest) => ActiveRequest
+  ) => {
+    let optimistic: ActiveRequest | null = null;
+    updateActiveRequest(arId, (ar) => (optimistic = updater(ar)));
+    if (!optimistic) return;
+
+    try {
+      const res = await endpoints.activeRequests.update(arId, {
+        uids_data: toActiveRequestPatchUidsData(optimistic),
+      });
+      const saved = fromApiActiveRequest(res.data);
+      updateActiveRequest(arId, () => saved);
+      setApiNote("");
+    } catch {
+      setApiNote("Đã đổi tạm trên giao diện; máy chủ chưa lưu được thay đổi Kích hoạt khoá học.");
+    }
   };
 
   return (
@@ -407,10 +530,12 @@ export default function PaymentRequestsTab() {
         onBillFile={handleBillFile}
         onBillView={handleBillView}
         uploadingBillId={uploadingBillId}
+        deletingBillId={deletingBillId}
         onCreateActiveRequest={onCreateActiveRequest}
         onCancelRequest={() => selected && setCancelTarget(selected)}
         activeRequestId={selected ? arByPrId[selected.id]?.id ?? null : null}
         activeRequest={selected ? arByPrId[selected.id] ?? null : null}
+        onActiveRequestMutate={handleActiveRequestMiniMutate}
         onActiveRequestSave={saveActiveRequest}
         onActiveRequestDelete={deleteActiveRequest}
         onShowQr={(qr) => selected && setQrView({ qr, request: selected })}
@@ -426,20 +551,85 @@ export default function PaymentRequestsTab() {
         onBillFile={qrView?.qr ? (file) => handleBillFile(qrView.qr, file) : undefined}
         onBillView={qrView?.qr ? () => handleBillView(qrView.qr) : undefined}
         uploadingBill={uploadingBillId === qrView?.qr?.id}
+        deletingBill={deletingBillId === qrView?.qr?.id}
       />
 
       <Modal
         open={billModal.open}
         onClose={() => setBillModal((m) => ({ ...m, open: false }))}
-        title={`Biên lai: ${billModal.code}`}
+        title={`Bill: ${billModal.code}`}
         wide
+        overlayClassName="z-[120]"
         className="text-center"
       >
-        <img
-          src={billModal.src}
-          alt="Biên lai"
-          className="mx-auto mt-2 max-h-[70vh] max-w-full rounded-gmv-md"
-        />
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+          <div style={{ fontSize: 12, color: "var(--text-3)" }}>{billModal.images.length} bill</div>
+          <button
+            type="button"
+            className="btn btn-outline btn-sm"
+            style={{ color: "var(--danger)" }}
+            disabled={!billModalQr || deletingBillId === billModal.lineId || billModal.images.length === 0}
+            onClick={async () => {
+              if (!billModalQr) return;
+              await handleBillDelete(billModalQr, undefined, true);
+            }}
+          >
+            <Icons.XCircle size={13} /> Xoa tat ca
+          </button>
+        </div>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
+            gap: 14,
+            maxHeight: "70vh",
+            overflowY: "auto",
+            paddingRight: 4,
+            textAlign: "left",
+          }}
+        >
+          {billModal.images.map((src, idx) => (
+            <div
+              key={`${src}-${idx}`}
+              style={{
+                border: "1px solid var(--border)",
+                borderRadius: 10,
+                background: "var(--surface-2)",
+                padding: 10,
+              }}
+            >
+              <img
+                src={src}
+                alt={`Bien lai ${idx + 1}`}
+                style={{
+                  width: "100%",
+                  maxHeight: 260,
+                  objectFit: "contain",
+                  borderRadius: 8,
+                  background: "white",
+                  border: "1px solid var(--border)",
+                  cursor: "zoom-in",
+                }}
+                onClick={() => window.open(src, "_blank", "noopener,noreferrer")}
+              />
+              <div style={{ marginTop: 8, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+                <span style={{ fontSize: 12, color: "var(--text-3)" }}>Bill #{idx + 1}</span>
+                <button
+                  type="button"
+                  className="btn btn-outline btn-sm"
+                  style={{ color: "var(--danger)" }}
+                  disabled={!billModalQr || deletingBillId === billModal.lineId}
+                  onClick={async () => {
+                    if (!billModalQr) return;
+                    await handleBillDelete(billModalQr, src);
+                  }}
+                >
+                  <Icons.XCircle size={12} /> Xoa bill nay
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
       </Modal>
     </div>
   );

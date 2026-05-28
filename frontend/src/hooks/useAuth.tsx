@@ -10,6 +10,7 @@ const SUPABASE_KEY =
   "";
 const JWT_LIKE = SUPABASE_KEY.split(".").length === 3;
 const PUBLISHABLE_LIKE = SUPABASE_KEY.startsWith("sb_publishable_");
+const GOOGLE_OAUTH_QUERY_PARAMS = { prompt: "select_account" } as const;
 const KEY_PLACEHOLDER =
   !SUPABASE_KEY ||
   SUPABASE_KEY.includes("PASTE_") ||
@@ -87,7 +88,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
-      options: { redirectTo: authRedirectUrl() },
+      options: {
+        redirectTo: authRedirectUrl(),
+        queryParams: GOOGLE_OAUTH_QUERY_PARAMS,
+      },
     });
     return { error: error ? new Error(error.message) : null };
   }

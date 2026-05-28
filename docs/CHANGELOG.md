@@ -511,3 +511,12 @@
 **Known blocker**
 - Xoá Active Request đang gọi optimistic `DELETE /api/v1/active-requests/{ar_id}`; cần Giang/Đức mở endpoint thật hoặc thống nhất soft-cancel.
 - `invoice_requested_at` đang nằm trong JSONB `uids_data`; cần BE giữ field này khi PATCH để B4 không bị mất trạng thái sau reload.
+---
+
+## 2026-05-28 — FE merge `main@3c0c579` + Active Request feedback P0/P1
+
+- Merge `origin/main@3c0c579` vào `ui/ux`, giữ phần main cho Order ID persistence, Active Request drawer save và multi-bill.
+- Payment Request mini-window: hiển thị UID, SĐT format `+country_code`, gói học, số tiền; thêm icon Sửa, Lưu, Xóa AR, Xóa tên gói; không show Order ID cho Sales.
+- Đổi Sales wording: AR mới hiển thị “Chờ kích hoạt khóa học”; course badge “Chờ kích hoạt” / “Đã kích hoạt”.
+- B4 gating FE: tab hóa đơn chỉ nhận course có `invoiceRequestedAt`; nút “Xuất HĐ” ở Active Request set `invoice_requested_at` qua PATCH `uids_data`.
+- Cập nhật `docs/TODO.md` và handoff Giang/Đức cho BE blockers: delete/cancel AR, persist `invoice_requested_at`.
