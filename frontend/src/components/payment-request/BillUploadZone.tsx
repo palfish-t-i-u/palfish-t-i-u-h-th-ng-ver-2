@@ -34,9 +34,9 @@ export default function BillUploadZone({
             e.stopPropagation();
             onView?.();
           }}
-          title="Da co anh bill - nhan de xem"
+          title="Đã có ảnh bill - nhấn để xem"
         >
-          <Icons.Receipt size={13} /> Da co anh bill
+          <Icons.Receipt size={13} /> Đã có ảnh bill
         </span>
       )}
 
@@ -64,12 +64,12 @@ export default function BillUploadZone({
           const file = e.dataTransfer.files?.[0];
           if (file) handleFile(file);
         }}
-        title={hasBill ? "Upload them bill (khong xoa bill cu)" : "Keo tha anh bill hoac bam de chon file"}
+        title={hasBill ? "Upload thêm bill (không xóa bill cũ)" : "Kéo thả ảnh bill hoặc bấm để chọn file"}
       >
         {uploading ? (
-          <>Dang tai...</>
+          <>Đang tải...</>
         ) : deleting ? (
-          <>Dang xoa...</>
+          <>Đang xóa...</>
         ) : (
           <>
             <Icons.Upload size={13} />
