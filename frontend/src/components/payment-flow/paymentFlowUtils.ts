@@ -181,6 +181,37 @@ export function enrichActiveRequest(ar: ActiveRequest) {
 
 export type EnrichedActiveRequest = ReturnType<typeof enrichActiveRequest>;
 
+function normalizedAmount(value: number) {
+  return Number.isFinite(value) ? Math.max(0, value) : 0;
+}
+
+export function remainingReceivedAmount(ar: ActiveRequest, pr: PaymentRequest | null) {
+  if (!pr) return 0;
+  return Math.max(0, normalizedAmount(pr.received) - enrichActiveRequest(ar).total);
+}
+
+export function courseTotalWithAmount(ar: ActiveRequest, courseCode: string, nextAmount: number) {
+  let found = false;
+  const total = flatCourses(ar).reduce((sum, course) => {
+    if (course.courseCode === courseCode) {
+      found = true;
+      return sum + normalizedAmount(nextAmount);
+    }
+    return sum + normalizedAmount(course.amount || 0);
+  }, 0);
+  return found ? total : total + normalizedAmount(nextAmount);
+}
+
+export function canAllocateCourseAmount(
+  ar: ActiveRequest,
+  pr: PaymentRequest | null,
+  courseCode: string,
+  nextAmount: number
+) {
+  if (!pr) return true;
+  return courseTotalWithAmount(ar, courseCode, nextAmount) <= normalizedAmount(pr.received);
+}
+
 export function formatAddress(pr: PaymentRequest | null, row?: InvoiceRow) {
   const ward = row?.course ? row.pr?.ward : pr?.ward;
   const province = row?.course ? row.pr?.province : pr?.province;

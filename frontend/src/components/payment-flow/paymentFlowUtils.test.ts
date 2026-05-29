@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
-import type { ActiveRequest } from "../../types/paymentRequest";
-import { deriveArStatus } from "./paymentFlowUtils";
+import type { ActiveRequest, PaymentRequest } from "../../types/paymentRequest";
+import {
+  canAllocateCourseAmount,
+  deriveArStatus,
+  remainingReceivedAmount,
+} from "./paymentFlowUtils";
 
 describe("active request status derivation", () => {
   const baseAr: ActiveRequest = {
@@ -81,5 +85,62 @@ describe("active request status derivation", () => {
     };
 
     expect(deriveArStatus(invoiced)).toBe("invoiced");
+  });
+});
+
+describe("active request received allocation", () => {
+  const baseAr: ActiveRequest = {
+    id: "AR-2026-0030",
+    prId: "PR-2026-0060",
+    customerName: "Allocation Test",
+    createdAt: "2026-05-30T10:00:00.000Z",
+    createdBy: "minh",
+    uids: [
+      {
+        uid: "uid-1",
+        phone: "0900000001",
+        country: "VN",
+        courses: [
+          {
+            courseCode: "CC-0060-001",
+            packageName: "Course A",
+            amount: 300_000,
+            orderId: "",
+            invoiced: false,
+          },
+        ],
+      },
+    ],
+  };
+
+  const basePr: PaymentRequest = {
+    id: "PR-2026-0060",
+    name: "Allocation PR",
+    uid: "uid-1",
+    phone: "0900000001",
+    country: "VN",
+    address: "HN",
+    target: 1_000_000,
+    source: "manual",
+    createdAt: "2026-05-30T10:00:00.000Z",
+    received: 500_000,
+    doneCount: 1,
+    totalCount: 1,
+    delta: -500_000,
+    state: "short",
+    payments: [],
+  };
+
+  it("uses received amount, not target amount, for the next course default", () => {
+    expect(remainingReceivedAmount(baseAr, basePr)).toBe(200_000);
+  });
+
+  it("blocks saving a course amount that would exceed received money", () => {
+    expect(canAllocateCourseAmount(baseAr, basePr, "CC-0060-001", 500_000)).toBe(true);
+    expect(canAllocateCourseAmount(baseAr, basePr, "CC-0060-001", 500_001)).toBe(false);
+  });
+
+  it("does not cap standalone active requests without a linked PR", () => {
+    expect(canAllocateCourseAmount(baseAr, null, "CC-0060-001", 5_000_000)).toBe(true);
   });
 });

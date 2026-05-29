@@ -6,9 +6,11 @@ import type { ActiveRequest, ActiveCourse, ActiveUidGroup, PaymentRequest } from
 import type { ActiveRequestStatus } from "../types/paymentRequest";
 import {
   AR_STATUS_META,
+  canAllocateCourseAmount,
   enrichActiveRequest,
   flatCourses,
   nextCourseCode,
+  remainingReceivedAmount,
   vnd,
 } from "./payment-flow/paymentFlowUtils";
 import CountryCombo from "./payment-request/CountryCombo";
@@ -524,6 +526,8 @@ function ActivationDetailDrawer({
   const invoicedCount = courses.filter((c) => c.invoiced).length;
   const total = enriched.total;
   const receivedGap = pr ? total - pr.received : 0;
+  const receivedRemaining = pr ? remainingReceivedAmount(ar, pr) : 0;
+  const receivedUsagePct = pr?.received ? Math.min(100, Math.round((total / pr.received) * 100)) : 0;
   const isStructureSaving = !!savingStructureKey;
   const setUidDraftField = (
     uidIdx: number,
@@ -593,7 +597,7 @@ function ActivationDetailDrawer({
   const addCourse = async (uidIdx: number) => {
     const newCode = nextCourseCode(ar);
     const u = ar.uids[uidIdx];
-    const remaining = pr ? Math.max(0, pr.target - total) : 0;
+    const remaining = pr ? receivedRemaining : 0;
     const nextUid: ActiveUidGroup = {
       ...u,
       courses: [
@@ -617,7 +621,7 @@ function ActivationDetailDrawer({
 
   const addUid = async (nextUidValue: string) => {
     const newCode = nextCourseCode(ar);
-    const remaining = pr ? Math.max(0, pr.target - total) : 0;
+    const remaining = pr ? receivedRemaining : 0;
     return await persistStructure("add-uid", {
       ...ar,
       uids: [
@@ -748,6 +752,13 @@ function ActivationDetailDrawer({
     const nextPackage = draft.packageName.trim();
     const nextAmount = parseInt(draft.amount.replace(/[^\d]/g, ""), 10) || 0;
     const nextOrderId = draft.orderId.trim();
+    if (!canAllocateCourseAmount(ar, pr, courseCode, nextAmount)) {
+      setCourseSaveErrors((prev) => ({
+        ...prev,
+        [courseCode]: `Tổng courses không được vượt số tiền đã nhận (${vnd(pr?.received || 0)}).`,
+      }));
+      return;
+    }
     if (
       nextPackage === (source.packageName || "") &&
       nextAmount === (source.amount || 0) &&
@@ -878,6 +889,29 @@ function ActivationDetailDrawer({
               </div>
             </div>
           </div>
+
+          {pr && (
+            <div className={`allocation-progress ${receivedGap > 0 ? "is-over" : ""}`}>
+              <div className="allocation-progress-head">
+                <span>Phân bổ tiền đã nhận</span>
+                <strong>
+                  Đã dùng {vnd(total)} / Đã nhận {vnd(pr.received)}
+                </strong>
+              </div>
+              <div className="prog-bar" aria-label="Tiến độ phân bổ tiền đã nhận">
+                <div
+                  className={`prog-fill ${
+                    receivedGap === 0 && pr.received > 0 ? "is-done" : receivedGap > 0 ? "is-over" : "is-mid"
+                  }`}
+                  style={{ width: `${receivedUsagePct}%` }}
+                />
+              </div>
+              <div className="allocation-progress-meta">
+                <span>Còn lại {vnd(receivedRemaining)}</span>
+                {receivedGap > 0 ? <span className="danger">Vượt {vnd(receivedGap)}</span> : null}
+              </div>
+            </div>
+          )}
 
           {pr &&
             (receivedGap === 0 && pr.received > 0 ? (
@@ -1205,8 +1239,7 @@ function ActivationDetailDrawer({
                       <button
                         type="button"
                         className="btn-invoice"
-                        disabled={!course.orderId?.trim()}
-                        title={course.orderId ? "Yêu cầu xuất hoá đơn" : "Cần điền Order ID trước"}
+                        title="Yêu cầu xuất hoá đơn"
                         onClick={() => void onGoToInvoice(course.courseCode)}
                       >
                         <Icons.Doc size={12} /> Yêu cầu xuất
