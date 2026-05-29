@@ -17,6 +17,7 @@ import { useMe } from "../../hooks/useMe";
 import Combobox from "../ui/Combobox";
 import {
   activationSummary,
+  activeRequestAllocation,
   fmtPhone,
   formatCoursePhone,
   formatPaymentDateFull,
@@ -382,11 +383,13 @@ interface DraftPr {
  */
 function ActiveRequestMiniCardV2({
   ar,
+  request,
   onActiveRequestMutate,
   onActiveRequestSave,
   onActiveRequestDelete,
 }: {
   ar: ActiveRequest;
+  request: PaymentRequest;
   onActiveRequestMutate: (arId: string, updater: (ar: ActiveRequest) => ActiveRequest) => void;
   onActiveRequestSave: (next: ActiveRequest) => Promise<void>;
   onActiveRequestDelete: (arId: string) => Promise<void>;
@@ -397,6 +400,7 @@ function ActiveRequestMiniCardV2({
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [allocationError, setAllocationError] = useState("");
 
   useEffect(() => {
     if (editing) return;
@@ -416,6 +420,10 @@ function ActiveRequestMiniCardV2({
   }, [ar, editing]);
 
   const summary = activationSummary(ar);
+  const allocation = activeRequestAllocation(ar, request);
+  const allocationWarning = allocation.isOver
+    ? `Tổng gói học (${vnd(allocation.total)}) đang vượt tiền đã nhận (${vnd(allocation.received)}) — vượt ${vnd(allocation.overAmount)}.`
+    : "";
   const missingRequiredCount = ar.uids.reduce((sum, u) => {
     const uidMissing = u.uid.trim() ? 0 : 1;
     const phoneMissing = u.phone.trim() ? 0 : 1;
@@ -432,6 +440,10 @@ function ActiveRequestMiniCardV2({
   };
 
   const save = async () => {
+    if (allocation.isOver) {
+      setAllocationError(allocationWarning);
+      return;
+    }
     setSaving(true);
     await onActiveRequestSave(ar);
     setSaving(false);
@@ -470,9 +482,9 @@ function ActiveRequestMiniCardV2({
     const nextAmount = raw ? Number(raw) : 0;
     const current = ar.uids[uidIdx]?.courses.find((x) => x.courseCode === courseCode)?.amount ?? 0;
     if (nextAmount === current) return;
-    mutate((next) => ({
-      ...next,
-      uids: next.uids.map((u, idx) =>
+    const nextAr = {
+      ...ar,
+      uids: ar.uids.map((u, idx) =>
         idx === uidIdx
           ? {
               ...u,
@@ -482,12 +494,24 @@ function ActiveRequestMiniCardV2({
             }
           : u
       ),
-    }));
+    };
+    const nextAllocation = activeRequestAllocation(nextAr, request);
+    if (nextAllocation.isOver) {
+      setAllocationError(
+        `Không thể lưu số tiền này: tổng gói học ${vnd(nextAllocation.total)} vượt tiền đã nhận ${vnd(nextAllocation.received)}.`
+      );
+      setAmountDrafts((prev) => ({ ...prev, [courseCode]: current ? String(current) : "" }));
+      return;
+    }
+    setAllocationError("");
+    mutate(() => nextAr);
   };
 
   const addCourseForUid = (uidIdx: number) => {
+    setAllocationError("");
     mutate((next) => {
       const code = nextCourseCode(next);
+      const remaining = activeRequestAllocation(next, request).remaining;
       return {
         ...next,
         uids: next.uids.map((u, idx) =>
@@ -499,7 +523,7 @@ function ActiveRequestMiniCardV2({
                   {
                     courseCode: code,
                     packageName: "",
-                    amount: 0,
+                    amount: remaining,
                     orderId: "",
                     invoiced: false,
                     invoiceRequestedAt: null,
@@ -543,8 +567,10 @@ function ActiveRequestMiniCardV2({
   };
 
   const addUidGroup = () => {
+    setAllocationError("");
     mutate((next) => {
       const code = nextCourseCode(next);
+      const remaining = activeRequestAllocation(next, request).remaining;
       return {
         ...next,
         uids: [
@@ -557,7 +583,7 @@ function ActiveRequestMiniCardV2({
               {
                 courseCode: code,
                 packageName: "",
-                amount: 0,
+                amount: remaining,
                 orderId: "",
                 invoiced: false,
                 invoiceRequestedAt: null,
@@ -569,9 +595,11 @@ function ActiveRequestMiniCardV2({
     });
   };
 
+  const activationPct = summary.courseCount > 0 ? Math.round((summary.activatedCount / summary.courseCount) * 100) : 0;
+
   return (
-    <div className="panel">
-      <div className="panel-head">
+    <div className={`panel ar-mini-card ${allocation.isOver ? "is-over-allocated" : ""}`}>
+      <div className="panel-head ar-mini-head">
         <h4>
           <Icons.CheckSquare size={15} /> Kích hoạt khoá học
           <span className="num-pill">{ar.id}</span>
@@ -599,7 +627,7 @@ function ActiveRequestMiniCardV2({
             className="btn btn-success btn-sm"
             title="Lưu thông tin Active Request"
             aria-label="Lưu thông tin Active Request"
-            disabled={!editing || saving}
+            disabled={!editing || saving || allocation.isOver}
             onClick={() => void save()}
             style={{ width: 32, padding: 0 }}
           >
@@ -624,24 +652,51 @@ function ActiveRequestMiniCardV2({
           <span>Thiếu {missingRequiredCount} trường bắt buộc (UID, SĐT, gói học, số tiền).</span>
         </div>
       )}
-      <div style={{ padding: "8px 0", display: "flex", flexDirection: "column", gap: 10 }}>
+      <div className={`pulse-progress ${allocation.isOver ? "is-over" : ""}`}>
+        <div className="pulse-progress-head">
+          <div className="pulse-progress-count">
+            <span className="pulse-count-num">{summary.activatedCount}/{summary.courseCount}</span>
+            <span className="pulse-count-label">gói đã kích hoạt</span>
+          </div>
+          <div className="pulse-progress-total">
+            <span className="pulse-total-label">TỔNG TIỀN</span>
+            <span className="pulse-total-amount">{vnd(allocation.total)}</span>
+          </div>
+        </div>
+        <div className="prog-bar" aria-label="Tiến độ kích hoạt gói học">
+          <div
+            className={`prog-fill ${summary.allActivated ? "is-done" : activationPct > 0 ? "is-mid" : ""}`}
+            style={{ width: `${activationPct}%` }}
+          />
+        </div>
+        {allocation.isOver && (
+          <div className="pulse-progress-warn">
+            Vượt {vnd(allocation.overAmount)} so với tiền đã nhận ({vnd(allocation.received)})
+          </div>
+        )}
+      </div>
+      {(allocationError || allocationWarning) && (
+        <div className="match-warning" style={{ marginBottom: 10 }}>
+          <Icons.AlertCircle size={14} />
+          <span>{allocationError || allocationWarning}</span>
+        </div>
+      )}
+      <div className="ar-mini-body">
         {ar.uids.map((u, uIdx) => (
           <div
             key={`${u.uid || "uid"}-${uIdx}`}
-            style={{
-              border: "1px solid var(--border)",
-              borderRadius: 8,
-              padding: 10,
-              background: "var(--surface-2)",
-            }}
+            className="ar-mini-uid"
           >
             {!editing && (
-              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, minWidth: 0 }}>
-                <span style={{ fontWeight: 700, fontSize: 13 }}>UID {u.uid || "—"}</span>
-                <span style={{ fontSize: 12, color: "var(--text-3)" }}>{formatCoursePhone(u.country, u.phone)}</span>
+              <div className="ar-mini-uid-header">
+                <span className="ar-avatar">{(u.uid || "?").slice(0, 2).toUpperCase()}</span>
+                <div className="ar-uid-info">
+                  <span className="ar-uid-name">{u.uid || "—"}</span>
+                  <span className="ar-uid-phone">{formatCoursePhone(u.country, u.phone)}</span>
+                </div>
               </div>
             )}
-            <div style={{ display: editing ? "grid" : "none", gridTemplateColumns: "1fr 1fr auto", gap: 8, marginBottom: 8 }}>
+            <div className="ar-mini-uid-edit" style={{ display: editing ? "grid" : "none" }}>
               <input
                 value={uidDrafts[uIdx] ?? u.uid ?? ""}
                 onChange={(e) => setUidDrafts((prev) => ({ ...prev, [uIdx]: e.target.value }))}
@@ -686,25 +741,13 @@ function ActiveRequestMiniCardV2({
                 Chưa chọn gói khoá học
               </div>
             ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              <div className="ar-mini-course-list">
                 {u.courses.map((c, cIdx) => {
                   const courseLocked = !!(c.orderId && c.orderId.trim()) || !!c.invoiced;
                   return (
                   <div
                     key={`${c.courseCode}-${cIdx}`}
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: editing
-                        ? "minmax(0, 1fr) 130px auto auto"
-                        : "minmax(0, 1fr) 130px auto",
-                      gap: 10,
-                      alignItems: "center",
-                      padding: "6px 8px",
-                      background: "white",
-                      border: "1px solid var(--border)",
-                      borderRadius: 6,
-                      fontSize: 12.5,
-                    }}
+                    className={`ar-mini-course ${editing ? "is-editing" : ""}`}
                   >
                     {!editing && (
                       <div style={{ minWidth: 0 }}>
@@ -713,7 +756,7 @@ function ActiveRequestMiniCardV2({
                         </div>
                         {c.courseCode && (
                           <div style={{ fontSize: 11, color: "var(--text-3)", marginTop: 2 }}>
-                            Course code: <code>{c.courseCode}</code>
+                            Course code: <code className="ar-course-code">{c.courseCode}</code>
                           </div>
                         )}
                       </div>
@@ -789,7 +832,7 @@ function ActiveRequestMiniCardV2({
                       )}
                     </div>
                     {!editing && (
-                      <div style={{ textAlign: "right", fontWeight: 700, color: "var(--money)" }}>{vnd(c.amount || 0)}</div>
+                      <div className="ar-course-amount">{vnd(c.amount || 0)}</div>
                     )}
                     <input
                       value={amountDrafts[c.courseCode] ?? (c.amount ? String(c.amount) : "")}
@@ -818,16 +861,16 @@ function ActiveRequestMiniCardV2({
                         cursor: courseLocked ? "not-allowed" : "text",
                       }}
                     />
-                    <div style={{ textAlign: "right" }}>
-                      {c.orderId ? (
-                        <span className="badge is-done" title="Gói học đã được Ops kích hoạt">
-                          <Icons.Check size={10} strokeWidth={2.5} /> Đã kích hoạt
-                        </span>
-                      ) : (
-                        <span className="badge is-over" title="Chờ Ops kích hoạt gói học">
-                          <Icons.Clock size={10} /> Chờ kích hoạt
-                        </span>
-                      )}
+                    <div className="ar-toggle-cell">
+                      <span className={`ar-toggle-label ${c.orderId ? "is-active" : ""}`}>
+                        {c.orderId ? "Đã kích hoạt" : "Chờ kích hoạt"}
+                      </span>
+                      <span
+                        className={`ar-toggle ${c.orderId ? "is-on" : ""}`}
+                        title={c.orderId ? "Gói học đã được Ops kích hoạt" : "Chờ Ops kích hoạt gói học"}
+                      >
+                        <span className="ar-toggle-knob" />
+                      </span>
                     </div>
                     {editing && (
                       <button
@@ -1360,6 +1403,7 @@ export default function PaymentRequestDetailDrawer({
           {hasActiveRequest && activeRequest && (
             <ActiveRequestMiniCardV2
               ar={activeRequest}
+              request={request}
               onActiveRequestMutate={onActiveRequestMutate}
               onActiveRequestSave={onActiveRequestSave}
               onActiveRequestDelete={onActiveRequestDelete}
