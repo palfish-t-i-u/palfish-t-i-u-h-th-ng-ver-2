@@ -24,7 +24,6 @@ services:
         sync: false
     healthCheckPath: /healthz
     autoDeploy: true
-
   - type: web
     name: palfish-gmv-api-sandbox
     runtime: docker

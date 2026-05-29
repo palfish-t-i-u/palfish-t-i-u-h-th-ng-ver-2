@@ -317,6 +317,10 @@ export default function ReconciliationTab() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [drawerTxn, setDrawerTxn] = useState<FlatTransaction | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [lightboxBill, setLightboxBill] = useState<BillImage | null>(null);
+  const [currentBillIdx, setCurrentBillIdx] = useState(0);
+  const [albumOpen, setAlbumOpen] = useState(false);
+  const [albumSelected, setAlbumSelected] = useState<Set<number>>(new Set());
   const [billModal, setBillModal] = useState<BillModalState>({
     open: false,
     lineId: "",
@@ -400,6 +404,12 @@ export default function ReconciliationTab() {
     const fresh = transactions.find((t) => t.key === drawerTxn.key);
     if (fresh) setDrawerTxn(fresh);
   }, [transactions, drawerTxn?.key]);
+
+  useEffect(() => {
+    setCurrentBillIdx(0);
+    setAlbumOpen(false);
+    setAlbumSelected(new Set());
+  }, [drawerTxn?.key]);
 
   useEffect(() => {
     if (!billModal.open) return;
@@ -907,23 +917,50 @@ export default function ReconciliationTab() {
                 <div className="txn-bill-zone">
                   {billImages.length > 0 ? (
                     <>
-                      <div className="bill-thumb-grid">
-                        {billImages.map((b) => (
-                          <div
-                            key={b.id}
-                            className="bill-thumb"
-                            onClick={() => openBillModal(drawerTxn)}
-                            title="Click để phóng to"
-                          >
-                            <img src={b.src} alt={b.name} />
-                            <div className="bill-thumb-overlay">
-                              <Icons.Image size={12} /> #{b.id + 1}
-                            </div>
-                          </div>
-                        ))}
+                      {/* Carousel */}
+                      <div style={{ position: "relative", display: "flex", alignItems: "center", gap: 8 }}>
+                        <button
+                          type="button"
+                          disabled={currentBillIdx === 0}
+                          onClick={() => setCurrentBillIdx((i) => i - 1)}
+                          style={{
+                            flexShrink: 0, width: 32, height: 32, borderRadius: "50%",
+                            border: "1px solid var(--border)", background: "var(--surface-2)",
+                            cursor: currentBillIdx === 0 ? "not-allowed" : "pointer",
+                            opacity: currentBillIdx === 0 ? 0.35 : 1,
+                            display: "flex", alignItems: "center", justifyContent: "center",
+                          }}
+                        >
+                          <Icons.ChevronLeft size={16} />
+                        </button>
+                        <div
+                          style={{ flex: 1, cursor: "pointer", borderRadius: 8, overflow: "hidden", maxHeight: 280 }}
+                          onClick={() => setLightboxBill(billImages[currentBillIdx])}
+                          title="Click để phóng to"
+                        >
+                          <img
+                            src={billImages[currentBillIdx].src}
+                            alt={billImages[currentBillIdx].name}
+                            style={{ width: "100%", height: "100%", objectFit: "contain", display: "block" }}
+                          />
+                        </div>
+                        <button
+                          type="button"
+                          disabled={currentBillIdx === billImages.length - 1}
+                          onClick={() => setCurrentBillIdx((i) => i + 1)}
+                          style={{
+                            flexShrink: 0, width: 32, height: 32, borderRadius: "50%",
+                            border: "1px solid var(--border)", background: "var(--surface-2)",
+                            cursor: currentBillIdx === billImages.length - 1 ? "not-allowed" : "pointer",
+                            opacity: currentBillIdx === billImages.length - 1 ? 0.35 : 1,
+                            display: "flex", alignItems: "center", justifyContent: "center",
+                          }}
+                        >
+                          <Icons.ChevronRight size={16} />
+                        </button>
                       </div>
-                      <div style={{ fontSize: 11.5, color: "var(--text-3)", marginTop: 8, textAlign: "center" }}>
-                        {billImages.length} ảnh đã upload · Click thumb để mở danh sách bill
+                      <div style={{ fontSize: 11.5, color: "var(--text-3)", marginTop: 6, textAlign: "center" }}>
+                        {currentBillIdx + 1} / {billImages.length} ảnh · Click ảnh để phóng to
                       </div>
                     </>
                   ) : drawerTxn.bill ? (
@@ -942,11 +979,18 @@ export default function ReconciliationTab() {
                   <div className="actions">
                     {billImages.length > 0 ? (
                       <>
-                        <button type="button" className="btn btn-outline btn-sm" onClick={() => openBillModal(drawerTxn)}>
-                          <Icons.Image size={13} /> Xem bill
+                        <button type="button" className="btn btn-outline btn-sm" onClick={() => setLightboxBill(billImages[currentBillIdx])}>
+                          <Icons.Image size={13} /> Phóng to
                         </button>
-                        <button type="button" className="btn btn-outline btn-sm" onClick={() => openBillModal(drawerTxn)}>
-                          <Icons.Download size={13} /> Tải bill
+                        <button
+                          type="button"
+                          className="btn btn-outline btn-sm"
+                          onClick={() => {
+                            setAlbumSelected(new Set());
+                            setAlbumOpen(true);
+                          }}
+                        >
+                          <Icons.Download size={13} /> Tải ảnh {billImages.length > 1 && `(${billImages.length})`}
                         </button>
                       </>
                     ) : (
@@ -1003,7 +1047,7 @@ export default function ReconciliationTab() {
                       <div className="info-cell">
                         <div className="info-label">Sales upload bill</div>
                         <div className="info-value">
-                          {drawerTxn.bill || drawerTxn.billImage ? (
+                          {billImages.length > 0 ? (
                             <span style={{ color: "var(--success-text)", fontWeight: 600 }}>✓ Đã upload</span>
                           ) : (
                             <span style={{ color: "var(--text-3)" }}>Chưa</span>
@@ -1130,6 +1174,9 @@ export default function ReconciliationTab() {
         })()}
       </aside>
 
+      {lightboxBill && <BillLightbox bill={lightboxBill} onClose={() => setLightboxBill(null)} />}
+
+      {/* Bill modal từ click thumbnail trên bảng — có nút tải từng ảnh + tải tất cả */}
       <Modal
         open={billModal.open}
         onClose={() => {
@@ -1208,6 +1255,130 @@ export default function ReconciliationTab() {
           ))}
         </div>
       </Modal>
+
+      {/* Album gallery từ drawer — tick chọn ảnh, tải đã chọn hoặc tải tất cả */}
+      {albumOpen && drawerTxn && (() => {
+        const bills = getBillsForTxn(drawerTxn);
+        const allSelected = albumSelected.size === bills.length && bills.length > 0;
+        const downloadOne = (b: BillImage) => void fallbackDirectImageDownload(b.src, b.name);
+        const downloadSelected = () => {
+          bills.filter((_, i) => albumSelected.has(i)).forEach(downloadOne);
+          setAlbumOpen(false);
+        };
+        const downloadAll = () => {
+          bills.forEach(downloadOne);
+          setAlbumOpen(false);
+        };
+        const toggleSelect = (i: number) => {
+          setAlbumSelected((prev) => {
+            const next = new Set(prev);
+            if (next.has(i)) next.delete(i); else next.add(i);
+            return next;
+          });
+        };
+        return (
+          <div className="gmv-prototype-modal-scrim" onClick={() => setAlbumOpen(false)}>
+            <div
+              className="modal"
+              style={{ width: "min(880px, 94vw)", maxHeight: "88vh", display: "flex", flexDirection: "column" }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="modal-head">
+                <div>
+                  <h3 style={{ color: "var(--text)" }}>Album ảnh bill</h3>
+                  <div style={{ fontSize: 12, color: "var(--text-3)", marginTop: 2 }}>
+                    {bills.length} ảnh · Tick để chọn từng ảnh, hoặc "Tải tất cả"
+                  </div>
+                </div>
+                <button className="drawer-close" onClick={() => setAlbumOpen(false)}>
+                  <Icons.Close size={16} />
+                </button>
+              </div>
+              <div
+                className="modal-body"
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))",
+                  gap: 12,
+                  overflowY: "auto",
+                  padding: "14px 18px",
+                }}
+              >
+                {bills.map((b, i) => {
+                  const checked = albumSelected.has(i);
+                  return (
+                    <div
+                      key={b.id}
+                      onClick={() => toggleSelect(i)}
+                      style={{
+                        position: "relative",
+                        border: checked ? "2px solid var(--primary)" : "1px solid var(--border)",
+                        borderRadius: 10,
+                        overflow: "hidden",
+                        cursor: "pointer",
+                        background: "var(--surface-2)",
+                        aspectRatio: "1 / 1",
+                      }}
+                    >
+                      <img
+                        src={b.src}
+                        alt={b.name}
+                        style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+                      />
+                      <div
+                        style={{
+                          position: "absolute", top: 8, left: 8,
+                          width: 22, height: 22, borderRadius: "50%",
+                          background: checked ? "var(--primary)" : "rgba(255,255,255,.85)",
+                          border: checked ? "2px solid #fff" : "1px solid var(--border)",
+                          display: "flex", alignItems: "center", justifyContent: "center",
+                          boxShadow: "0 2px 6px rgba(0,0,0,.18)",
+                        }}
+                      >
+                        {checked && <Icons.Check size={13} stroke="#fff" strokeWidth={3} />}
+                      </div>
+                      <div
+                        style={{
+                          position: "absolute", bottom: 0, left: 0, right: 0,
+                          background: "linear-gradient(to top, rgba(0,0,0,.65), transparent)",
+                          color: "#fff", padding: "16px 10px 8px", fontSize: 11.5, fontWeight: 600,
+                        }}
+                      >
+                        Ảnh #{i + 1}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              <div className="modal-foot" style={{ justifyContent: "space-between" }}>
+                <button
+                  type="button"
+                  className="btn btn-outline"
+                  onClick={() => {
+                    if (allSelected) setAlbumSelected(new Set());
+                    else setAlbumSelected(new Set(bills.map((_, i) => i)));
+                  }}
+                >
+                  {allSelected ? "Bỏ chọn tất cả" : "Chọn tất cả"}
+                </button>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button
+                    type="button"
+                    className="btn btn-outline"
+                    disabled={albumSelected.size === 0}
+                    onClick={downloadSelected}
+                  >
+                    <Icons.Download size={13} /> Tải đã chọn ({albumSelected.size})
+                  </button>
+                  <button type="button" className="btn btn-primary" onClick={downloadAll}>
+                    <Icons.Download size={13} /> Tải tất cả ({bills.length})
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
       {pendingReject && (
         <RejectReasonModal
           txnLabel={pendingReject.label}

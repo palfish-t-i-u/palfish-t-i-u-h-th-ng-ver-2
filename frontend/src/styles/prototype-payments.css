@@ -486,7 +486,7 @@
 }
 .gmv-prototype .drawer-close:hover { color: var(--text); border-color: var(--border-strong); }
 .gmv-prototype .drawer-body {
-  flex: 1; overflow-y: auto;
+  flex: 1; overflow-y: auto; overscroll-behavior: contain;
   padding: 22px 24px 80px;
   display: flex; flex-direction: column; gap: 18px;
 }
@@ -560,6 +560,45 @@
 .gmv-prototype .summary.is-delta-done .summary-value { color: var(--success-text); }
 .gmv-prototype .summary.is-delta-pending .summary-value { color: var(--danger); }
 .gmv-prototype .summary.is-delta-cancelled .summary-value { color: var(--text-3); }
+.gmv-prototype .allocation-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: white;
+}
+.gmv-prototype .allocation-progress.is-over {
+  border-color: #f6d36b;
+  background: var(--warning-bg);
+}
+.gmv-prototype .allocation-progress-head,
+.gmv-prototype .allocation-progress-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  font-size: 12px;
+  color: var(--text-3);
+}
+.gmv-prototype .allocation-progress-head span {
+  text-transform: uppercase;
+  letter-spacing: 0;
+  font-size: 11px;
+  font-weight: 700;
+}
+.gmv-prototype .allocation-progress-head strong {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+.gmv-prototype .allocation-progress-meta {
+  font-variant-numeric: tabular-nums;
+}
+.gmv-prototype .allocation-progress-meta .danger {
+  color: var(--danger);
+  font-weight: 700;
+}
 
 /* QR transactions list */
 .gmv-prototype .qr-row {
@@ -1211,6 +1250,7 @@
   gap: 14px;
   max-height: min(56vh, 620px);
   overflow: auto;
+  overscroll-behavior: contain;
   padding-right: 4px;
 }
 .gmv-prototype .uid-group {

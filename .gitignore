@@ -6,11 +6,15 @@ _prototype_ref/
 docs/Brief_Module3_Module4_xuat_hoa_don.pdf
 scripts/gen_module34_brief_pdf.py
 
+# Node modules (root level)
+node_modules/
+
 # Frontend
 frontend/node_modules/
 frontend/dist/
 frontend/.env
 frontend/.env.local
+frontend/.env.sandbox
 frontend/.env.development.local
 frontend/coverage/
 
@@ -20,6 +24,7 @@ backend/*.py[cod]
 backend/.venv/
 backend/venv/
 backend/.env
+backend/.env.sandbox
 api_pipe/.env
 **/secrets/
 *gsheet*.json
