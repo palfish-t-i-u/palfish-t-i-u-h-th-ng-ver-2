@@ -113,7 +113,9 @@ export default function AppShell({
     });
   }
 
-  const isSandbox = import.meta.env.VITE_SANDBOX === "true";
+  // Khớp convention của BE/seed (Giang): VITE_APP_ENV=sandbox. Giữ VITE_SANDBOX để tương thích ngược.
+  const isSandbox =
+    import.meta.env.VITE_APP_ENV === "sandbox" || import.meta.env.VITE_SANDBOX === "true";
 
   return (
     <div className="flex min-h-screen w-full flex-col bg-gmv-bg font-sans text-gmv-text">
