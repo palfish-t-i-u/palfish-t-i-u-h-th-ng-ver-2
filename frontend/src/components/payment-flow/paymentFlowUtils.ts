@@ -52,8 +52,7 @@ export const AR_STATUS_META: Record<
   { cls: string; text: string }
 > = {
   pending_order: { cls: "is-ar-pending", text: "Chờ điền Order ID" },
-  partial_order: { cls: "is-ar-pending", text: "Chờ điền Order ID" },
-  ready_invoice: { cls: "is-ar-ready", text: "Đã kích hoạt" },
+  activated: { cls: "is-ar-ready", text: "Đã kích hoạt" },
   invoiced: { cls: "is-ar-invoiced", text: "Đã xuất hoá đơn" },
 };
 
@@ -102,11 +101,8 @@ export function deriveArStatus(ar: ActiveRequest): ActiveRequestStatus {
   const all = flatCourses(ar);
   if (all.length === 0) return "pending_order";
   if (all.every((c) => c.invoiced)) return "invoiced";
-  const ordered = all.filter((c) => c.orderId?.trim()).length;
-  if (ordered === 0) return "pending_order";
-  const requestedInvoice = all.filter((c) => c.invoiceRequestedAt || c.invoiced).length;
-  if (requestedInvoice > 0 && requestedInvoice === all.length) return "ready_invoice";
-  return "partial_order";
+  if (all.every((c) => c.orderId?.trim())) return "activated";
+  return "pending_order";
 }
 
 export function findInvoiceRowKey(ar: ActiveRequest, courseCode: string): string | null {
@@ -151,10 +147,7 @@ export function countAwaitingTransactions(requests: PaymentRequest[]) {
 }
 
 export function countPendingAr(ars: ActiveRequest[]) {
-  return ars.filter((ar) => {
-    const st = deriveArStatus(ar);
-    return st === "pending_order" || st === "partial_order";
-  }).length;
+  return ars.filter((ar) => deriveArStatus(ar) === "pending_order").length;
 }
 
 export function countPendingInvoice(ars: ActiveRequest[]) {
@@ -187,6 +180,37 @@ export function enrichActiveRequest(ar: ActiveRequest) {
 }
 
 export type EnrichedActiveRequest = ReturnType<typeof enrichActiveRequest>;
+
+function normalizedAmount(value: number) {
+  return Number.isFinite(value) ? Math.max(0, value) : 0;
+}
+
+export function remainingReceivedAmount(ar: ActiveRequest, pr: PaymentRequest | null) {
+  if (!pr) return 0;
+  return Math.max(0, normalizedAmount(pr.received) - enrichActiveRequest(ar).total);
+}
+
+export function courseTotalWithAmount(ar: ActiveRequest, courseCode: string, nextAmount: number) {
+  let found = false;
+  const total = flatCourses(ar).reduce((sum, course) => {
+    if (course.courseCode === courseCode) {
+      found = true;
+      return sum + normalizedAmount(nextAmount);
+    }
+    return sum + normalizedAmount(course.amount || 0);
+  }, 0);
+  return found ? total : total + normalizedAmount(nextAmount);
+}
+
+export function canAllocateCourseAmount(
+  ar: ActiveRequest,
+  pr: PaymentRequest | null,
+  courseCode: string,
+  nextAmount: number
+) {
+  if (!pr) return true;
+  return courseTotalWithAmount(ar, courseCode, nextAmount) <= normalizedAmount(pr.received);
+}
 
 export function formatAddress(pr: PaymentRequest | null, row?: InvoiceRow) {
   const ward = row?.course ? row.pr?.ward : pr?.ward;
