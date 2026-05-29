@@ -3,15 +3,14 @@ import { resolveApiBaseUrl } from "./apiBaseUrl";
 import { supabase } from "./supabase";
 import type { Bc03Report, Bc03MonthlySettings, Bc03StaffOption, CreateOrderPayload, DashboardDailyTrends, DashboardLiveSummary, DashboardSummary, InvoiceOrder, Order } from "../types/order";
 import type {
-  ActiveRequest,
   ActiveRequestApiRow,
   AddPaymentAttemptPayload,
   AddPaymentLineResponse,
-  AttachCoursePayload,
   CreateActiveRequestPayload,
   CreateStandaloneActiveRequestPayload,
   CreatePaymentRequestPayload,
-  UpdatePaymentRequestPayload,
+  PatchPaymentRequestPayload,
+  PatchActiveRequestPayload,
   CreatePrResponse,
   PaymentLineApiRow,
   PaymentRequestsListResponse,
@@ -116,8 +115,8 @@ export const endpoints = {
       ),
     create: (body: CreatePaymentRequestPayload) =>
       api.post<CreatePrResponse>("/api/v1/payment-requests", body),
-    update: (id: string, body: UpdatePaymentRequestPayload) =>
-      api.patch<{ payment_request: Record<string, unknown> }>(`/api/v1/payment-requests/${id}`, body),
+    update: (id: string, body: PatchPaymentRequestPayload) =>
+      api.patch<CreatePrResponse>(`/api/v1/payment-requests/${id}`, body),
     // B2: add payment line (QR / cash / card / installment)
     addPayment: (id: string, body: AddPaymentAttemptPayload) =>
       api.post<AddPaymentLineResponse>(`/api/v1/payment-requests/${id}/payment-lines`, body),
@@ -131,6 +130,25 @@ export const endpoints = {
         { timeout: 60000 }
       );
     },
+    deleteLatestPaymentLineBill: (lineId: string) =>
+      api.delete<{ payment_line: PaymentLineApiRow }>(`/api/v1/payment-lines/${lineId}/bills/latest`),
+    deletePaymentLineBill: (lineId: string, billUrl: string) =>
+      api.post<{ payment_line: PaymentLineApiRow }>(`/api/v1/payment-lines/${lineId}/bills/delete`, {
+        bill_url: billUrl,
+      }),
+    deleteAllPaymentLineBills: (lineId: string) =>
+      api.post<{ payment_line: PaymentLineApiRow }>(`/api/v1/payment-lines/${lineId}/bills/delete`, {
+        delete_all: true,
+      }),
+    downloadPaymentLineBill: (lineId: string, billIndex?: number) =>
+      api.get<Blob>(`/api/v1/payment-lines/${lineId}/bills/download`, {
+        params: typeof billIndex === "number" ? { bill_index: billIndex } : undefined,
+        responseType: "blob",
+      }),
+    downloadAllPaymentLineBills: (lineId: string) =>
+      api.get<Blob>(`/api/v1/payment-lines/${lineId}/bills/download-all`, {
+        responseType: "blob",
+      }),
     // B3: create active request nested under PR
     createActiveRequest: (prId: string, body: CreateActiveRequestPayload) =>
       api.post<ActiveRequestApiRow>(`/api/v1/payment-requests/${prId}/active-requests`, body),
@@ -140,10 +158,14 @@ export const endpoints = {
       api.get<ActiveRequestApiRow[]>("/api/v1/active-requests", { params }),
     create: (body: CreateStandaloneActiveRequestPayload) =>
       api.post<ActiveRequestApiRow>("/api/v1/active-requests", body),
-    attachCourse: (arId: string, courseCode: string, body: AttachCoursePayload) =>
-      api.patch<ActiveRequest>(
+    update: (arId: string, body: PatchActiveRequestPayload) =>
+      api.patch<ActiveRequestApiRow>(`/api/v1/active-requests/${arId}`, body),
+    delete: (arId: string) =>
+      api.delete<{ ok: boolean; id: string }>(`/api/v1/active-requests/${arId}`),
+    patchCourseOrderId: (arId: string, courseCode: string, orderId: string) =>
+      api.patch<ActiveRequestApiRow>(
         `/api/v1/active-requests/${arId}/courses/${encodeURIComponent(courseCode)}`,
-        body
+        { order_id: orderId }
       ),
     issueInvoice: (arId: string, courseCode: string) =>
       api.post<{
@@ -167,8 +189,11 @@ export const endpoints = {
       ),
   },
   transactions: {
-    patchStatus: (id: string, status: string) =>
-      api.patch(`/api/v1/transactions/${id}/status`, { status }),
+    patchStatus: (id: string, status: string, rejectReason?: string) =>
+      api.patch(`/api/v1/transactions/${id}/status`, {
+        status,
+        ...(rejectReason ? { reject_reason: rejectReason } : {}),
+      }),
   },
   crm: {
     activate: (infoCode: string) => api.post("/crm/activate", { infoCode }),

@@ -67,6 +67,42 @@ export default function PaymentRequestTable({
   onRestoreClick: (request: PaymentRequest) => void;
   arByPrId: Record<string, ActiveRequest>;
 }) {
+  const copyPrId = async (id: string) => {
+    // In-app browsers may block navigator.clipboard; fallback to execCommand copy.
+    const fallbackCopy = () => {
+      try {
+        const ta = document.createElement("textarea");
+        ta.value = id;
+        ta.setAttribute("readonly", "");
+        ta.style.position = "fixed";
+        ta.style.left = "-9999px";
+        document.body.appendChild(ta);
+        ta.select();
+        const ok = document.execCommand("copy");
+        document.body.removeChild(ta);
+        return ok;
+      } catch {
+        return false;
+      }
+    };
+
+    let ok: boolean;
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(id);
+        ok = true;
+      } else {
+        ok = fallbackCopy();
+      }
+    } catch {
+      ok = fallbackCopy();
+    }
+
+    if (!ok) {
+      window.prompt("Không thể tự copy trong trình duyệt này. Copy PR-ID thủ công:", id);
+    }
+  };
+
   return (
     <div className="table-card has-tabs">
       <div className="table-head with-tabs">
@@ -129,7 +165,18 @@ export default function PaymentRequestTable({
                   <td>
                     <span className="cell-pr">
                       {p.id}
-                      <Icons.Copy className="copy" size={13} />
+                      <button
+                        type="button"
+                        className="icon-btn-copy"
+                        title="Copy PR-ID"
+                        aria-label={`Copy ${p.id}`}
+                        onClick={async (e) => {
+                          e.stopPropagation();
+                          await copyPrId(p.id);
+                        }}
+                      >
+                        <Icons.Copy className="copy" size={13} />
+                      </button>
                     </span>
                   </td>
                   <td>
@@ -167,9 +214,15 @@ export default function PaymentRequestTable({
                   </td>
                   <td style={{ textAlign: "center" }}>
                     {arByPrId[p.id] ? (
-                      <span className="badge is-done" title={`Active Request: ${arByPrId[p.id].id}`}>
-                        <Icons.Check size={11} strokeWidth={2.5} /> Đã tạo
-                      </span>
+                      arByPrId[p.id].uids.some((u) => u.courses.some((c) => !!c.orderId)) ? (
+                        <span className="badge is-done" title={`Active Request: ${arByPrId[p.id].id}`}>
+                          <Icons.Check size={11} strokeWidth={2.5} /> Đã tạo
+                        </span>
+                      ) : (
+                        <span className="badge is-over" title={`Active Request: ${arByPrId[p.id].id} — chờ Order ID`}>
+                          <Icons.Clock size={11} /> Đang tạo
+                        </span>
+                      )
                     ) : (
                       <span className="badge is-pending">— Chưa tạo</span>
                     )}

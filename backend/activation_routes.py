@@ -45,7 +45,33 @@ _TRANG_THAI_ALIASES: dict[str, str] = {
 
 
 class PatchCourseOrderBody(BaseModel):
-    order_id: str = Field(..., min_length=1)
+    order_id: str | None = ""
+
+
+class ActiveRequestPatchCoursePayload(BaseModel):
+    code: str = Field(..., min_length=1)
+    name: str = ""
+    amount: float | int = 0
+    order_id: str | None = ""
+    invoice_requested_at: str | None = ""
+    invoiced: bool | None = False
+    invoice_id: str | None = ""
+    invoiced_at: str | None = ""
+    tax_invoice_code: str | None = ""
+    tax_product_code: str | None = ""
+
+
+class ActiveRequestPatchUidPayload(BaseModel):
+    uid: str = Field(..., min_length=1)
+    phone: str | None = ""
+    country: str | None = "VN"
+    courses: list[ActiveRequestPatchCoursePayload] = Field(default_factory=list)
+
+
+class ActiveRequestPatchBody(BaseModel):
+    customer_name: str | None = None
+    info_confirmed: bool | None = None
+    uids_data: list[ActiveRequestPatchUidPayload] | None = None
 
 
 class IssueCourseInvoiceBody(BaseModel):
@@ -179,22 +205,39 @@ def _derive_status(uids_data: list[dict[str, Any]]) -> str:
     courses = [c for u in uids_data for c in (u.get("courses") or [])]
     if not courses:
         return "pending_order"
-    ordered = sum(1 for c in courses if str(c.get("order_id") or "").strip())
+    if all(_course_is_invoiced(c) for c in courses):
+        return "invoiced"
+    ordered = sum(1 for c in courses if _course_order_id(c))
     if ordered == 0:
         return "pending_order"
-    if ordered < len(courses):
+    pending_invoice_courses = [c for c in courses if not _course_is_invoiced(c)]
+    if any(not _course_order_id(c) for c in pending_invoice_courses):
         return "partial_order"
-    invoiced = sum(1 for c in courses if c.get("invoiced"))
-    if invoiced == len(courses):
-        return "invoiced"
+    if any(not _course_invoice_requested_at(c) for c in pending_invoice_courses):
+        return "partial_order"
     return "ready_invoice"
 
 
 def _serialize_ar(row: dict[str, Any], pr: dict[str, Any] | None = None) -> dict[str, Any]:
-    uids_data = row.get("uids_data") or []
+    raw_uids_data = row.get("uids_data") or []
+    uids_data: list[dict[str, Any]] = []
+    for uid_block in raw_uids_data:
+        if not isinstance(uid_block, dict):
+            continue
+        next_uid = dict(uid_block)
+        next_courses: list[dict[str, Any]] = []
+        for course in uid_block.get("courses") or []:
+            if not isinstance(course, dict):
+                continue
+            next_course = dict(course)
+            next_course["order_id"] = _course_order_id(next_course)
+            next_course.pop("orderId", None)
+            next_courses.append(next_course)
+        next_uid["courses"] = next_courses
+        uids_data.append(next_uid)
     courses = [c for u in uids_data for c in (u.get("courses") or [])]
     total_amount = sum(float(c.get("amount") or 0) for c in courses)
-    ordered_count = sum(1 for c in courses if str(c.get("order_id") or "").strip())
+    ordered_count = sum(1 for c in courses if _course_order_id(c))
 
     out: dict[str, Any] = {
         "id": row.get("id"),
@@ -202,6 +245,7 @@ def _serialize_ar(row: dict[str, Any], pr: dict[str, Any] | None = None) -> dict
         "customer_name": row.get("customer_name") or "",
         "uids_data": uids_data,
         "status": row.get("status") or "pending_order",
+        "info_confirmed_at": row.get("info_confirmed_at"),
         "created_at": row.get("created_at"),
         "updated_at": row.get("updated_at"),
         "total_amount": total_amount,
@@ -221,6 +265,28 @@ def _serialize_ar(row: dict[str, Any], pr: dict[str, Any] | None = None) -> dict
             "state": _pr_payment_state(pr),
         }
     return out
+
+
+def _course_order_id(course: dict[str, Any]) -> str:
+    raw = course.get("order_id")
+    if raw in (None, ""):
+        raw = course.get("orderId")
+    return str(raw or "").strip()
+
+
+def _course_invoice_requested_at(course: dict[str, Any]) -> str:
+    return str(course.get("invoice_requested_at") or "").strip()
+
+
+def _course_is_invoiced(course: dict[str, Any]) -> bool:
+    raw = course.get("invoiced")
+    if isinstance(raw, bool):
+        return raw
+    if isinstance(raw, (int, float)):
+        return raw != 0
+    if isinstance(raw, str):
+        return raw.strip().lower() in {"1", "true", "yes", "y"}
+    return False
 
 
 def _fetch_prs_by_ids(sb, pr_ids: list[str]) -> dict[str, dict[str, Any]]:
@@ -788,6 +854,94 @@ def register_activation_routes(app, supabase_factory):
         pr = _fetch_payment_request(sb, str(row.get("pr_id") or "")) if row.get("pr_id") else None
         return _serialize_ar(row, pr)
 
+    @app.delete("/api/v1/active-requests/{ar_id}", tags=["Activation"])
+    def delete_active_request(ar_id: str):
+        """Delete Active Request when no course has been invoiced."""
+        sb = supabase_factory()
+        if not sb:
+            raise HTTPException(503, "Supabase chua cau hinh")
+
+        try:
+            res = sb.table("active_requests").select("*").eq("id", ar_id).limit(1).execute()
+        except Exception as exc:
+            raise HTTPException(500, f"Khong doc active_requests: {exc}") from exc
+        if not res.data:
+            raise HTTPException(404, f"Active Request {ar_id} khong ton tai")
+
+        row = res.data[0]
+        courses = [
+            course
+            for uid_block in (row.get("uids_data") or [])
+            if isinstance(uid_block, dict)
+            for course in (uid_block.get("courses") or [])
+            if isinstance(course, dict)
+        ]
+        if any(_course_is_invoiced(course) for course in courses):
+            raise HTTPException(409, "Khong the xoa Active Request da co course invoiced")
+
+        try:
+            sb.table("active_requests").delete().eq("id", ar_id).execute()
+        except Exception as exc:
+            raise HTTPException(500, f"Khong xoa active_requests: {exc}") from exc
+
+        return {"ok": True, "id": ar_id}
+
+    @app.patch("/api/v1/active-requests/{ar_id}", tags=["Activation"])
+    def patch_active_request(ar_id: str, body: ActiveRequestPatchBody):
+        """
+        Patch Active Request at AR-level.
+        Supports:
+        - customer_name
+        - info_confirmed (writes info_confirmed_at timestamp / clear)
+        - uids_data (replace full JSONB block, recompute status)
+        """
+        sb = supabase_factory()
+        if not sb:
+            raise HTTPException(503, "Supabase chua cau hinh")
+
+        try:
+            res = sb.table("active_requests").select("*").eq("id", ar_id).limit(1).execute()
+        except Exception as exc:
+            raise HTTPException(500, f"Khong doc active_requests: {exc}") from exc
+        if not res.data:
+            raise HTTPException(404, f"Active Request {ar_id} khong ton tai")
+
+        current = res.data[0]
+        patch: dict[str, Any] = {}
+
+        if body.customer_name is not None:
+            customer_name = str(body.customer_name or "").strip()
+            if not customer_name:
+                raise HTTPException(400, "customer_name khong duoc rong")
+            patch["customer_name"] = customer_name
+
+        if body.uids_data is not None:
+            if not body.uids_data:
+                raise HTTPException(400, "uids_data phai co it nhat mot uid")
+            uids_data = [uid.model_dump() for uid in body.uids_data]
+            patch["uids_data"] = uids_data
+            patch["status"] = _derive_status(uids_data)
+
+        if body.info_confirmed is not None:
+            patch["info_confirmed_at"] = (
+                datetime.now(timezone.utc).isoformat() if body.info_confirmed else None
+            )
+
+        if not patch:
+            raise HTTPException(400, "Khong co du lieu de cap nhat")
+
+        patch["updated_at"] = datetime.now(timezone.utc).isoformat()
+
+        try:
+            upd = sb.table("active_requests").update(patch).eq("id", ar_id).execute()
+        except Exception as exc:
+            raise HTTPException(500, f"Khong cap nhat active_requests: {exc}") from exc
+
+        saved = (upd.data or [{**current, **patch}])[0]
+        merged = {**current, **saved, **patch}
+        pr_map = _fetch_prs_by_ids(sb, [str(merged.get("pr_id") or "")])
+        return _serialize_ar(merged, pr_map.get(str(merged.get("pr_id") or "")))
+
     @app.post("/api/v1/active-requests", tags=["Activation"])
     def create_standalone_active_request(payload: Any = Body(...)):
         """
@@ -845,32 +999,32 @@ def register_activation_routes(app, supabase_factory):
         if not sb:
             raise HTTPException(503, "Supabase chưa cấu hình")
 
-        order_id = body.order_id.strip()
-        if not order_id:
-            raise HTTPException(400, "order_id không được rỗng")
+        order_id = str(body.order_id or "").strip()
 
-        try:
-            rpc = sb.rpc(
-                "patch_active_request_course_order",
-                {
-                    "p_ar_id": ar_id,
-                    "p_course_code": course_code,
-                    "p_order_id": order_id,
-                },
-            ).execute()
-            if rpc.data:
-                row = rpc.data[0] if isinstance(rpc.data, list) else rpc.data
-                pr_map = _fetch_prs_by_ids(sb, [str(row.get("pr_id") or "")])
-                return _serialize_ar(row, pr_map.get(str(row.get("pr_id") or "")))
-        except Exception as exc:
-            msg = str(exc).lower()
-            if "active_request_not_found" in msg or "p0002" in msg and "active" in msg:
-                raise HTTPException(404, f"Active Request {ar_id} không tồn tại") from exc
-            if "course_code_not_found" in msg:
-                raise HTTPException(404, f"Không tìm thấy course code {course_code}") from exc
-            # Fallback when RPC not deployed yet
-            if "patch_active_request_course_order" not in msg:
-                raise HTTPException(500, f"RPC patch_active_request_course_order lỗi: {exc}") from exc
+        # RPC path for non-empty Order ID (atomic JSONB patch)
+        if order_id:
+            try:
+                rpc = sb.rpc(
+                    "patch_active_request_course_order",
+                    {
+                        "p_ar_id": ar_id,
+                        "p_course_code": course_code,
+                        "p_order_id": order_id,
+                    },
+                ).execute()
+                if rpc.data:
+                    row = rpc.data[0] if isinstance(rpc.data, list) else rpc.data
+                    pr_map = _fetch_prs_by_ids(sb, [str(row.get("pr_id") or "")])
+                    return _serialize_ar(row, pr_map.get(str(row.get("pr_id") or "")))
+            except Exception as exc:
+                msg = str(exc).lower()
+                if "active_request_not_found" in msg or "p0002" in msg and "active" in msg:
+                    raise HTTPException(404, f"Active Request {ar_id} không tồn tại") from exc
+                if "course_code_not_found" in msg:
+                    raise HTTPException(404, f"Không tìm thấy course code {course_code}") from exc
+                # Fallback when RPC not deployed yet
+                if "patch_active_request_course_order" not in msg:
+                    raise HTTPException(500, f"RPC patch_active_request_course_order lỗi: {exc}") from exc
 
         # Python fallback (non-atomic) if SQL function missing
         try:

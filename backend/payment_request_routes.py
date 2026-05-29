@@ -2,13 +2,18 @@
 
 from __future__ import annotations
 
+import io
+import mimetypes
 import re
+import time
 import uuid
+import zipfile
 from datetime import datetime, timezone
 from typing import Any, Callable
 
 import pandas as pd
 from fastapi import APIRouter, File, Header, HTTPException, Query, UploadFile
+from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
 from rbac import resolve_actor
@@ -32,6 +37,9 @@ METHOD_ALIASES = {
     "tra_gop": "installment",
 }
 
+_BILL_STORAGE_CACHE_TTL_SECONDS = 30.0
+_bill_assets_cache: dict[str, Any] = {"expires_at": 0.0, "assets_by_line": {}}
+
 
 class PaymentRequestCreate(BaseModel):
     uid: str | None = None
@@ -43,6 +51,25 @@ class PaymentRequestCreate(BaseModel):
     province: str | None = ""
     note: str | None = ""
     email: str | None = ""
+    target: int | str | None = None
+
+    uid_khach_hang: str | None = None
+    ten_khach: str | None = None
+    sdt: str | None = None
+    dia_chi: str | None = None
+    tong_tien_phai_thu: int | str | None = None
+
+
+class PaymentRequestPatch(BaseModel):
+    uid: str | None = None
+    name: str | None = None
+    phone: str | None = None
+    country: str | None = None
+    address: str | None = None
+    ward: str | None = None
+    province: str | None = None
+    note: str | None = None
+    email: str | None = None
     target: int | str | None = None
 
     uid_khach_hang: str | None = None
@@ -71,23 +98,9 @@ class PaymentRequestCancelBody(BaseModel):
     reason: str | None = None
 
 
-class PaymentRequestPatch(BaseModel):
-    uid: str | None = None
-    name: str | None = None
-    phone: str | None = None
-    country: str | None = None
-    address: str | None = None
-    ward: str | None = None
-    province: str | None = None
-    note: str | None = None
-    email: str | None = None
-    target: int | str | None = None
-
-    uid_khach_hang: str | None = None
-    ten_khach: str | None = None
-    sdt: str | None = None
-    dia_chi: str | None = None
-    tong_tien_phai_thu: int | str | None = None
+class PaymentLineBillDeleteBody(BaseModel):
+    bill_url: str | None = None
+    delete_all: bool = False
 
 
 def _sb_or_503(get_supabase: Callable[[], Any]):
@@ -185,7 +198,38 @@ def _storage_public_url(bucket, object_path: str) -> str:
 
 
 def _bill_object_path(line_id: str, ext: str = "jpg") -> str:
-    return f"payment-lines/{line_id}/bill.{ext}"
+    ts = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S%f")
+    return f"payment-lines/{line_id}/bill-{ts}.{ext}"
+
+
+def _sanitize_download_filename(raw: str, fallback: str) -> str:
+    cleaned = re.sub(r"[^A-Za-z0-9._-]+", "_", _clean_text(raw))
+    cleaned = cleaned.strip("._")
+    return cleaned or fallback
+
+
+def _content_type_for_asset(name: str) -> str:
+    guessed, _ = mimetypes.guess_type(name or "")
+    return guessed or "application/octet-stream"
+
+
+def _download_bill_bytes(sb, object_path: str) -> bytes:
+    try:
+        raw = sb.storage.from_("bills").download(object_path)
+    except Exception as exc:
+        raise HTTPException(502, f"Khong tai duoc file bill tu Storage: {exc}") from exc
+    if raw is None:
+        raise HTTPException(404, "Bill khong ton tai tren Storage")
+    if isinstance(raw, bytes):
+        return raw
+    if isinstance(raw, bytearray):
+        return bytes(raw)
+    if isinstance(raw, str):
+        return raw.encode("utf-8")
+    try:
+        return bytes(raw)
+    except Exception as exc:
+        raise HTTPException(500, f"Du lieu bill khong hop le: {exc}") from exc
 
 
 def _fetch_bill_urls_from_storage(sb, line_ids: list[str]) -> dict[str, str]:
@@ -218,6 +262,182 @@ def _fetch_bill_urls_from_storage(sb, line_ids: list[str]) -> dict[str, str]:
     return out
 
 
+def _fetch_bill_assets_from_storage(sb, line_ids: list[str]) -> dict[str, list[dict[str, str]]]:
+    """Map payment_line id -> ordered bill assets (oldest -> newest)."""
+    wanted = {str(line_id) for line_id in line_ids if line_id}
+    if not wanted:
+        return {}
+    out: dict[str, list[dict[str, str]]] = {}
+    bucket = sb.storage.from_("bills")
+    try:
+        folders = bucket.list("payment-lines") or []
+    except Exception as exc:
+        print(f"[payment_lines] bill storage list root: {exc}")
+        return out
+    for folder in folders:
+        line_id = str(folder.get("name") or "")
+        if line_id not in wanted:
+            continue
+        try:
+            files = bucket.list(f"payment-lines/{line_id}") or []
+        except Exception as exc:
+            print(f"[payment_lines] bill storage list {line_id}: {exc}")
+            continue
+        assets: list[dict[str, str]] = []
+        for file_row in files:
+            name = str(file_row.get("name") or "")
+            if not name.startswith("bill"):
+                continue
+            path = f"payment-lines/{line_id}/{name}"
+            assets.append(
+                {
+                    "name": name,
+                    "path": path,
+                    "url": _storage_public_url(bucket, path),
+                    "created_at": str(file_row.get("created_at") or file_row.get("updated_at") or ""),
+                }
+            )
+        assets.sort(key=lambda x: (x.get("created_at") or "", x.get("name") or ""))
+        out[line_id] = assets
+    return out
+
+
+def _invalidate_bill_storage_cache() -> None:
+    _bill_assets_cache["expires_at"] = 0.0
+    _bill_assets_cache["assets_by_line"] = {}
+
+
+def _build_bill_assets_from_storage_objects(sb) -> dict[str, list[dict[str, str]]]:
+    """
+    Build full bill assets index in one DB-flow via storage.objects.
+    Falls back to {} when schema access is unavailable.
+    """
+    out: dict[str, list[dict[str, str]]] = {}
+    bucket = sb.storage.from_("bills")
+    start = 0
+    page_size = 1000
+
+    try:
+        while True:
+            res = (
+                sb.schema("storage")
+                .table("objects")
+                .select("name, created_at, updated_at")
+                .eq("bucket_id", "bills")
+                .like("name", "payment-lines/%/bill%")
+                .order("name")
+                .range(start, start + page_size - 1)
+                .execute()
+            )
+            rows = res.data or []
+            if not rows:
+                break
+            for row in rows:
+                raw_path = str(row.get("name") or "").strip().lstrip("/")
+                if not raw_path.startswith("payment-lines/"):
+                    continue
+                parts = raw_path.split("/", 2)
+                if len(parts) != 3:
+                    continue
+                line_id = parts[1].strip()
+                filename = parts[2].strip()
+                if not line_id or not filename or not filename.startswith("bill"):
+                    continue
+                path = f"payment-lines/{line_id}/{filename}"
+                out.setdefault(line_id, []).append(
+                    {
+                        "name": filename,
+                        "path": path,
+                        "url": _storage_public_url(bucket, path),
+                        "created_at": str(row.get("created_at") or row.get("updated_at") or ""),
+                    }
+                )
+            if len(rows) < page_size:
+                break
+            start += page_size
+    except Exception as exc:
+        print(f"[payment_lines] storage.objects query failed; fallback to direct Storage list: {exc}")
+        return {}
+
+    for line_id, assets in out.items():
+        assets.sort(key=lambda x: (x.get("created_at") or "", x.get("name") or ""))
+    return out
+
+
+def _build_bill_assets_from_storage_fallback(sb, wanted: set[str]) -> dict[str, list[dict[str, str]]]:
+    """Fallback when storage.objects query is unavailable: list per line_id."""
+    out: dict[str, list[dict[str, str]]] = {}
+    bucket = sb.storage.from_("bills")
+    for line_id in wanted:
+        try:
+            files = bucket.list(f"payment-lines/{line_id}") or []
+        except Exception as exc:
+            print(f"[payment_lines] bill storage list {line_id}: {exc}")
+            continue
+        assets: list[dict[str, str]] = []
+        for file_row in files:
+            name = str(file_row.get("name") or "")
+            if not name.startswith("bill"):
+                continue
+            path = f"payment-lines/{line_id}/{name}"
+            assets.append(
+                {
+                    "name": name,
+                    "path": path,
+                    "url": _storage_public_url(bucket, path),
+                    "created_at": str(file_row.get("created_at") or file_row.get("updated_at") or ""),
+                }
+            )
+        assets.sort(key=lambda x: (x.get("created_at") or "", x.get("name") or ""))
+        out[line_id] = assets
+    return out
+
+
+def _fetch_bill_assets_fast(
+    sb,
+    line_ids: list[str],
+    *,
+    force_refresh: bool = False,
+) -> dict[str, list[dict[str, str]]]:
+    """
+    Fast path for bill assets:
+    1) Try cached storage.objects index (single query flow)
+    2) Fallback to per-line Storage API listing
+    """
+    wanted = {str(line_id) for line_id in line_ids if line_id}
+    if not wanted:
+        return {}
+
+    now = time.monotonic()
+    cached = _bill_assets_cache.get("assets_by_line")
+    if not force_refresh and isinstance(cached, dict) and cached:
+        # Serve stale cache to avoid periodic latency spikes during polling.
+        if now >= float(_bill_assets_cache.get("expires_at") or 0.0):
+            _bill_assets_cache["expires_at"] = now + _BILL_STORAGE_CACHE_TTL_SECONDS
+        return {line_id: cached.get(line_id, []) for line_id in wanted}
+
+    indexed = _build_bill_assets_from_storage_objects(sb)
+    if indexed:
+        _bill_assets_cache["assets_by_line"] = indexed
+        _bill_assets_cache["expires_at"] = now + _BILL_STORAGE_CACHE_TTL_SECONDS
+        return {line_id: indexed.get(line_id, []) for line_id in wanted}
+
+    fallback = _build_bill_assets_from_storage_fallback(sb, wanted)
+    if fallback:
+        _bill_assets_cache["assets_by_line"] = dict(fallback)
+        _bill_assets_cache["expires_at"] = now + _BILL_STORAGE_CACHE_TTL_SECONDS
+    return fallback
+
+
+def _bill_urls_from_assets(bill_assets: dict[str, list[dict[str, str]]]) -> dict[str, str]:
+    out: dict[str, str] = {}
+    for line_id, assets in (bill_assets or {}).items():
+        if not assets:
+            continue
+        out[line_id] = str(assets[-1].get("url") or "").strip()
+    return out
+
+
 def _persist_bill_image(sb, line_id: str, public_url: str) -> bool:
     """Try DB column first; ignore if schema patch not applied yet."""
     try:
@@ -241,17 +461,34 @@ def _persist_bill_image(sb, line_id: str, public_url: str) -> bool:
         raise
 
 
-def _bill_fields(row: dict[str, Any], bill_urls: dict[str, str] | None = None) -> dict[str, Any]:
+def _bill_fields(
+    row: dict[str, Any],
+    bill_urls: dict[str, str] | None = None,
+    bill_assets: dict[str, list[dict[str, str]]] | None = None,
+) -> dict[str, Any]:
+    line_id = str(row.get("id") or "")
+    bill_images = [
+        asset.get("url") or ""
+        for asset in ((bill_assets or {}).get(line_id) or [])
+        if (asset.get("url") or "").strip()
+    ]
     bill_image = (row.get("bill_image") or "").strip()
     if not bill_image and bill_urls:
-        bill_image = (bill_urls.get(str(row.get("id") or "")) or "").strip()
+        bill_image = (bill_urls.get(line_id) or "").strip()
+    if bill_image and bill_image not in bill_images:
+        bill_images.append(bill_image)
     return {
         "bill_image": bill_image or None,
         "bill": bool(bill_image),
+        "bill_images": bill_images,
     }
 
 
-def _serialize_payment_line(row: dict[str, Any], bill_urls: dict[str, str] | None = None) -> dict[str, Any]:
+def _serialize_payment_line(
+    row: dict[str, Any],
+    bill_urls: dict[str, str] | None = None,
+    bill_assets: dict[str, list[dict[str, str]]] | None = None,
+) -> dict[str, Any]:
     return {
         "id": str(row.get("id") or ""),
         "payment_request_id": row.get("payment_request_id") or "",
@@ -266,11 +503,16 @@ def _serialize_payment_line(row: dict[str, Any], bill_urls: dict[str, str] | Non
         "reject_reason": row.get("reject_reason") or "",
         "created_at": row.get("created_at") or "",
         "updated_at": row.get("updated_at") or "",
-        **_bill_fields(row, bill_urls),
+        **_bill_fields(row, bill_urls, bill_assets),
     }
 
 
-def _serialize_payment_for_list(row: dict[str, Any], idx: int, bill_urls: dict[str, str] | None = None) -> dict[str, Any]:
+def _serialize_payment_for_list(
+    row: dict[str, Any],
+    idx: int,
+    bill_urls: dict[str, str] | None = None,
+    bill_assets: dict[str, list[dict[str, str]]] | None = None,
+) -> dict[str, Any]:
     reject = row.get("reject_reason")
     paid_at = row.get("paid_at")
     return {
@@ -285,15 +527,21 @@ def _serialize_payment_for_list(row: dict[str, Any], idx: int, bill_urls: dict[s
         "paid_at": paid_at if paid_at else None,
         "created_at": row.get("created_at") or "",
         "reject_reason": reject if reject else None,
-        **_bill_fields(row, bill_urls),
+        **_bill_fields(row, bill_urls, bill_assets),
     }
 
 
 def _serialize_payment_request_list_item(
-    row: dict[str, Any], lines: list[dict[str, Any]], bill_urls: dict[str, str] | None = None
+    row: dict[str, Any],
+    lines: list[dict[str, Any]],
+    bill_urls: dict[str, str] | None = None,
+    bill_assets: dict[str, list[dict[str, str]]] | None = None,
 ) -> dict[str, Any]:
     sorted_lines = sorted(lines, key=lambda item: str(item.get("created_at") or ""))
-    payments = [_serialize_payment_for_list(line, idx, bill_urls) for idx, line in enumerate(sorted_lines, start=1)]
+    payments = [
+        _serialize_payment_for_list(line, idx, bill_urls, bill_assets)
+        for idx, line in enumerate(sorted_lines, start=1)
+    ]
     done_count = sum(1 for payment in payments if payment["status"] == "paid")
     item = _serialize_payment_request(row)
     item["cancelled_at"] = row.get("cancelled_at") or None
@@ -349,22 +597,37 @@ def _payment_request_insert_row(body: PaymentRequestCreate) -> dict[str, Any]:
     }
 
 
-def _payment_request_patch_row(body: PaymentRequestPatch) -> dict[str, Any]:
+def _payment_request_patch_row(body: PaymentRequestPatch, current_row: dict[str, Any]) -> dict[str, Any]:
     patch: dict[str, Any] = {}
-    uid = _clean_text(body.uid or body.uid_khach_hang)
-    name = _clean_text(body.name or body.ten_khach)
-    phone = _clean_text(body.phone or body.sdt)
-    address = _clean_text(body.address or body.dia_chi)
-    if uid:
+
+    uid_val = body.uid if body.uid is not None else body.uid_khach_hang
+    if uid_val is not None:
+        uid = _clean_text(uid_val)
+        if not uid:
+            raise HTTPException(400, "uid khong duoc de trong")
         patch["uid"] = uid
-    if name:
+
+    name_val = body.name if body.name is not None else body.ten_khach
+    if name_val is not None:
+        name = _clean_text(name_val)
+        if not name:
+            raise HTTPException(400, "name khong duoc de trong")
         patch["name"] = name
-    if phone:
+
+    phone_val = body.phone if body.phone is not None else body.sdt
+    if phone_val is not None:
+        phone = _clean_text(phone_val)
+        if not phone:
+            raise HTTPException(400, "phone khong duoc de trong")
         patch["phone"] = phone
+
     if body.country is not None:
         patch["country"] = _clean_text(body.country) or "VN"
-    if body.address is not None or body.dia_chi is not None:
-        patch["address"] = address
+
+    address_val = body.address if body.address is not None else body.dia_chi
+    if address_val is not None:
+        patch["address"] = _clean_text(address_val)
+
     if body.ward is not None:
         patch["ward"] = _clean_text(body.ward)
     if body.province is not None:
@@ -373,28 +636,25 @@ def _payment_request_patch_row(body: PaymentRequestPatch) -> dict[str, Any]:
         patch["note"] = _clean_text(body.note)
     if body.email is not None:
         patch["email"] = _clean_text(body.email)
-    if body.target is not None or body.tong_tien_phai_thu is not None:
-        target = _parse_amount(body.target or body.tong_tien_phai_thu)
+
+    target_val = body.target if body.target is not None else body.tong_tien_phai_thu
+    if target_val is not None:
+        target = _parse_amount(target_val)
         if target <= 0:
             raise HTTPException(400, "target khong hop le")
         patch["target"] = target
+
     if not patch:
-        raise HTTPException(400, "Khong co truong nao de cap nhat")
+        return {}
+
+    next_uid = patch.get("uid", _clean_text(current_row.get("uid")))
+    next_name = patch.get("name", _clean_text(current_row.get("name")))
+    next_phone = patch.get("phone", _clean_text(current_row.get("phone")))
+    if not next_uid or not next_name or not next_phone:
+        raise HTTPException(400, "uid, name, phone la bat buoc")
+
+    patch["updated_at"] = _iso_now()
     return patch
-
-
-def _serialize_pr_with_lines(sb, pr_row: dict[str, Any]) -> dict[str, Any]:
-    payment_request_id = str(pr_row.get("id") or "")
-    line_res = (
-        sb.table("payment_lines")
-        .select("*")
-        .eq("payment_request_id", payment_request_id)
-        .execute()
-    )
-    lines = line_res.data or []
-    line_ids = [str(line.get("id") or "") for line in lines if line.get("id")]
-    bill_urls = _fetch_bill_urls_from_storage(sb, line_ids)
-    return _serialize_payment_request_list_item(pr_row, lines, bill_urls)
 
 
 def _allocate_pr_id(sb, year: int | None = None) -> str:
@@ -713,15 +973,66 @@ def register_payment_request_routes(app, get_supabase) -> None:
             for line in lines
             if line.get("id")
         ]
-        bill_urls = _fetch_bill_urls_from_storage(sb, all_line_ids)
+        bill_assets = _fetch_bill_assets_fast(sb, all_line_ids)
+        bill_urls = _bill_urls_from_assets(bill_assets)
 
         requests = [
             _serialize_payment_request_list_item(
-                row, lines_by_pr.get(str(row.get("id") or ""), []), bill_urls
+                row, lines_by_pr.get(str(row.get("id") or ""), []), bill_urls, bill_assets
             )
             for row in pr_rows
         ]
         return {"requests": requests}
+
+    @router.patch("/payment-requests/{payment_request_id}")
+    def patch_payment_request(payment_request_id: str, body: PaymentRequestPatch):
+        sb = _sb_or_503(get_supabase)
+        request_res = (
+            sb.table("payment_requests")
+            .select("*")
+            .eq("id", payment_request_id)
+            .limit(1)
+            .execute()
+        )
+        if not request_res.data:
+            raise HTTPException(404, "Khong tim thay payment_request")
+
+        current_row = request_res.data[0]
+        patch = _payment_request_patch_row(body, current_row)
+        if not patch:
+            raise HTTPException(400, "Khong co du lieu de cap nhat")
+
+        try:
+            updated_res = (
+                sb.table("payment_requests")
+                .update(patch)
+                .eq("id", payment_request_id)
+                .execute()
+            )
+        except Exception as exc:
+            raise HTTPException(500, f"Khong cap nhat duoc payment_request: {exc}") from exc
+
+        updated_row = updated_res.data[0] if updated_res.data else {**current_row, **patch}
+
+        # target thay doi co the anh huong state => recompute theo payment_lines.
+        if "target" in patch:
+            totals = recompute_payment_request_totals(sb, payment_request_id)
+            refreshed = totals.get("payment_request")
+            if isinstance(refreshed, dict):
+                updated_row = {**updated_row, **refreshed}
+
+        line_res = (
+            sb.table("payment_lines")
+            .select("*")
+            .eq("payment_request_id", payment_request_id)
+            .execute()
+        )
+        return {
+            "payment_request": _serialize_payment_request_list_item(
+                updated_row,
+                line_res.data or [],
+            )
+        }
 
     @router.post("/payment-requests/{payment_request_id}/cancel")
     def cancel_payment_request(
@@ -826,42 +1137,6 @@ def register_payment_request_routes(app, get_supabase) -> None:
         inserted = res.data[0] if res.data else row
         return {"payment_request": _serialize_payment_request(inserted)}
 
-    @router.patch("/payment-requests/{payment_request_id}")
-    def patch_payment_request(payment_request_id: str, body: PaymentRequestPatch):
-        """Cập nhật thông tin PR (B1) — persist Supabase, trả PR kèm payment lines."""
-        sb = _sb_or_503(get_supabase)
-        request_res = (
-            sb.table("payment_requests")
-            .select("*")
-            .eq("id", payment_request_id)
-            .limit(1)
-            .execute()
-        )
-        if not request_res.data:
-            raise HTTPException(404, "Khong tim thay payment_request")
-
-        pr_row = request_res.data[0]
-        if _clean_text(pr_row.get("state")).lower() == "cancelled":
-            raise HTTPException(400, "Payment request da bi huy")
-
-        patch = _payment_request_patch_row(body)
-        received = _parse_amount(pr_row.get("received"))
-        if "target" in patch:
-            patch["state"] = _compute_state(received, patch["target"])
-
-        try:
-            upd = (
-                sb.table("payment_requests")
-                .update(patch)
-                .eq("id", payment_request_id)
-                .execute()
-            )
-        except Exception as exc:
-            raise HTTPException(500, f"Khong cap nhat payment_request: {exc}") from exc
-
-        updated = upd.data[0] if upd.data else {**pr_row, **patch}
-        return {"payment_request": _serialize_pr_with_lines(sb, updated)}
-
     @router.post("/payment-requests/{payment_request_id}/payment-lines")
     async def create_payment_line(payment_request_id: str, body: PaymentLineCreate):
         sb = _sb_or_503(get_supabase)
@@ -928,17 +1203,9 @@ def register_payment_request_routes(app, get_supabase) -> None:
             raise HTTPException(500, f"Khong tao duoc payment_line: {exc}") from exc
 
         line_row = line_res.data[0] if line_res.data else insert_row
-        pr_row_res = (
-            sb.table("payment_requests")
-            .select("*")
-            .eq("id", payment_request_id)
-            .limit(1)
-            .execute()
-        )
-        pr_row = pr_row_res.data[0] if pr_row_res.data else {**pr_row, **totals}
         response: dict[str, Any] = {
             "payment_line": _serialize_payment_line(line_row),
-            "payment_request": _serialize_pr_with_lines(sb, pr_row),
+            "payment_request": totals["payment_request"],
             "received": totals["received"],
             "target": totals["target"],
             "state": totals["state"],
@@ -1046,7 +1313,7 @@ def register_payment_request_routes(app, get_supabase) -> None:
             bucket.upload(
                 path=object_path,
                 file=content,
-                file_options={"content-type": content_type, "upsert": "true"},
+                file_options={"content-type": content_type, "upsert": "false"},
             )
             public_url = _storage_public_url(bucket, object_path)
         except Exception as exc:
@@ -1062,10 +1329,193 @@ def register_payment_request_routes(app, get_supabase) -> None:
         except Exception as exc:
             raise HTTPException(500, f"Loi cap nhat bill_image: {exc}") from exc
 
+        _invalidate_bill_storage_cache()
         merged_line = {**line, "bill_image": public_url}
+        bill_assets = _fetch_bill_assets_fast(sb, [line_id], force_refresh=True)
         return {
             "billImage": public_url,
-            "payment_line": _serialize_payment_line(merged_line),
+            "payment_line": _serialize_payment_line(
+                merged_line,
+                {line_id: public_url},
+                bill_assets,
+            ),
         }
+
+    @router.delete("/payment-lines/{line_id}/bills/latest")
+    def delete_latest_uploaded_bill(line_id: str):
+        """Delete latest uploaded bill, but keep the original first bill."""
+        sb = _sb_or_503(get_supabase)
+        line_res = sb.table("payment_lines").select("*").eq("id", line_id).limit(1).execute()
+        if not line_res.data:
+            raise HTTPException(404, "Khong tim thay payment_line")
+
+        line = line_res.data[0]
+        assets = _fetch_bill_assets_fast(sb, [line_id]).get(line_id, [])
+        if len(assets) <= 1:
+            raise HTTPException(400, "Khong the xoa bill ban dau")
+
+        latest = assets[-1]
+        latest_path = latest.get("path") or ""
+        if not latest_path:
+            raise HTTPException(400, "Khong xac dinh duoc path bill can xoa")
+
+        try:
+            sb.storage.from_("bills").remove([latest_path])
+        except Exception as exc:
+            raise HTTPException(500, f"Khong xoa duoc bill tren Storage: {exc}") from exc
+
+        _invalidate_bill_storage_cache()
+        next_assets = _fetch_bill_assets_fast(sb, [line_id], force_refresh=True).get(line_id, [])
+        next_bill_url = (next_assets[-1].get("url") if next_assets else "") or ""
+        try:
+            _persist_bill_image(sb, line_id, next_bill_url)
+        except Exception as exc:
+            raise HTTPException(500, f"Loi cap nhat bill_image sau khi xoa: {exc}") from exc
+
+        merged_line = {**line, "bill_image": next_bill_url}
+        return {
+            "payment_line": _serialize_payment_line(
+                merged_line,
+                {line_id: next_bill_url},
+                {line_id: next_assets},
+            )
+        }
+
+    @router.post("/payment-lines/{line_id}/bills/delete")
+    def delete_payment_line_bill(line_id: str, body: PaymentLineBillDeleteBody):
+        """
+        Delete bill image(s) for a payment line.
+        - delete_all=true  -> remove all bills
+        - bill_url provided -> remove that exact bill
+        - otherwise -> remove latest bill
+        """
+        sb = _sb_or_503(get_supabase)
+        line_res = sb.table("payment_lines").select("*").eq("id", line_id).limit(1).execute()
+        if not line_res.data:
+            raise HTTPException(404, "Khong tim thay payment_line")
+
+        line = line_res.data[0]
+        assets = _fetch_bill_assets_fast(sb, [line_id]).get(line_id, [])
+        if not assets:
+            raise HTTPException(400, "Khong co bill de xoa")
+
+        paths_to_remove: list[str] = []
+        if body.delete_all:
+            paths_to_remove = [str(a.get("path") or "") for a in assets if (a.get("path") or "").strip()]
+        elif (body.bill_url or "").strip():
+            bill_url = (body.bill_url or "").strip()
+            matched = next((a for a in assets if (a.get("url") or "").strip() == bill_url), None)
+            if not matched:
+                raise HTTPException(404, "Khong tim thay bill tuong ung bill_url")
+            matched_path = (matched.get("path") or "").strip()
+            if not matched_path:
+                raise HTTPException(400, "Khong xac dinh duoc path bill can xoa")
+            paths_to_remove = [matched_path]
+        else:
+            latest_path = (assets[-1].get("path") or "").strip()
+            if not latest_path:
+                raise HTTPException(400, "Khong xac dinh duoc path bill can xoa")
+            paths_to_remove = [latest_path]
+
+        if not paths_to_remove:
+            raise HTTPException(400, "Khong xac dinh duoc bill can xoa")
+
+        try:
+            sb.storage.from_("bills").remove(paths_to_remove)
+        except Exception as exc:
+            raise HTTPException(500, f"Khong xoa duoc bill tren Storage: {exc}") from exc
+
+        _invalidate_bill_storage_cache()
+        next_assets = _fetch_bill_assets_fast(sb, [line_id], force_refresh=True).get(line_id, [])
+        next_bill_url = (next_assets[-1].get("url") if next_assets else "") or ""
+        try:
+            _persist_bill_image(sb, line_id, next_bill_url)
+        except Exception as exc:
+            raise HTTPException(500, f"Loi cap nhat bill_image sau khi xoa: {exc}") from exc
+
+        merged_line = {**line, "bill_image": next_bill_url}
+        return {
+            "payment_line": _serialize_payment_line(
+                merged_line,
+                {line_id: next_bill_url},
+                {line_id: next_assets},
+            )
+        }
+
+    @router.get("/payment-lines/{line_id}/bills/download")
+    def download_payment_line_bill(line_id: str, bill_index: int | None = Query(None, ge=0)):
+        sb = _sb_or_503(get_supabase)
+        line_res = sb.table("payment_lines").select("id").eq("id", line_id).limit(1).execute()
+        if not line_res.data:
+            raise HTTPException(404, "Khong tim thay payment_line")
+
+        assets = _fetch_bill_assets_fast(sb, [line_id]).get(line_id, [])
+        if not assets:
+            raise HTTPException(404, "Khong co bill de tai")
+
+        if bill_index is None:
+            asset = assets[-1]
+        else:
+            if bill_index >= len(assets):
+                raise HTTPException(400, "bill_index vuot qua so luong bill hien co")
+            asset = assets[bill_index]
+
+        object_path = _clean_text(asset.get("path"))
+        if not object_path:
+            raise HTTPException(404, "Khong xac dinh duoc file bill can tai")
+
+        raw_name = _clean_text(asset.get("name")) or f"{line_id}-bill-{(bill_index or 0) + 1}.jpg"
+        filename = _sanitize_download_filename(raw_name, f"{line_id}-bill.jpg")
+        payload = _download_bill_bytes(sb, object_path)
+        content_type = _content_type_for_asset(filename)
+        return Response(
+            content=payload,
+            media_type=content_type,
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+
+    @router.get("/payment-lines/{line_id}/bills/download-all")
+    def download_all_payment_line_bills(line_id: str):
+        sb = _sb_or_503(get_supabase)
+        line_res = sb.table("payment_lines").select("id").eq("id", line_id).limit(1).execute()
+        if not line_res.data:
+            raise HTTPException(404, "Khong tim thay payment_line")
+
+        assets = _fetch_bill_assets_fast(sb, [line_id]).get(line_id, [])
+        if not assets:
+            raise HTTPException(404, "Khong co bill de tai")
+
+        archive_buffer = io.BytesIO()
+        saved_count = 0
+        failed_count = 0
+
+        with zipfile.ZipFile(archive_buffer, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
+            for idx, asset in enumerate(assets, start=1):
+                object_path = _clean_text(asset.get("path"))
+                if not object_path:
+                    failed_count += 1
+                    continue
+                base_name = _clean_text(asset.get("name")) or f"{line_id}-bill-{idx}.jpg"
+                filename = _sanitize_download_filename(base_name, f"{line_id}-bill-{idx}.jpg")
+                try:
+                    payload = _download_bill_bytes(sb, object_path)
+                except HTTPException:
+                    failed_count += 1
+                    continue
+                zf.writestr(filename, payload)
+                saved_count += 1
+
+        if saved_count == 0:
+            raise HTTPException(502, "Khong tai duoc bat ky bill nao de dong goi ZIP")
+
+        archive_name = _sanitize_download_filename(f"{line_id}-bills.zip", "payment-line-bills.zip")
+        return Response(
+            content=archive_buffer.getvalue(),
+            media_type="application/zip",
+            headers={
+                "Content-Disposition": f'attachment; filename="{archive_name}"',
+                "X-Bills-Failed": str(failed_count),
+            },
+        )
 
     app.include_router(router)

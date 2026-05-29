@@ -203,7 +203,7 @@ function InvoiceDetailDrawer({
 }
 
 export default function InvoiceRequestTab() {
-  const { activeRequests, requests, issueInvoiceForCourse, navigate, nav, setNav, apiNote, loadData } =
+  const { activeRequests, requests, issueInvoiceForCourse, navigate, nav, setNav, apiNote } =
     usePaymentFlow();
   const [tab, setTab] = useState<"pending" | "issued">("pending");
   const [search, setSearch] = useState("");
@@ -238,7 +238,7 @@ export default function InvoiceRequestTab() {
   ]);
 
   const rows = useMemo(() => deriveInvoiceRows(activeRequests, requests), [activeRequests, requests]);
-  const pending = useMemo(() => rows.filter((r) => !r.course.invoiced), [rows]);
+  const pending = useMemo(() => rows.filter((r) => r.course.invoiceRequestedAt && !r.course.invoiced), [rows]);
   const issued = useMemo(() => rows.filter((r) => r.course.invoiced), [rows]);
   const list = tab === "pending" ? pending : issued;
 
@@ -305,7 +305,6 @@ export default function InvoiceRequestTab() {
       } catch {
         await downloadTaxInvoiceZip(issuedForExport);
       }
-      await loadData({ silent: true });
       setTab("issued");
     }
     if (failCount > 0) {
@@ -324,7 +323,6 @@ export default function InvoiceRequestTab() {
         toDownload.map((r) => ({ ar_id: r.ar.id, course_code: r.course.courseCode }))
       );
       downloadApiTaxZip(res.data);
-      await loadData({ silent: true });
     } catch {
       await downloadTaxInvoiceZip(toDownload);
     } finally {
@@ -653,10 +651,21 @@ export default function InvoiceRequestTab() {
                       <td style={{ textAlign: "center" }}>
                         <CustomerTypeBadge type={d.customerType} />
                       </td>
-                      <td>
-                        <span className="row-action">
-                          <Icons.ChevronRight size={15} />
-                        </span>
+                      <td onClick={(e) => e.stopPropagation()}>
+                        {tab === "pending" && complete ? (
+                          <button
+                            type="button"
+                            className="btn btn-primary btn-sm"
+                            title="Xuất hoá đơn"
+                            onClick={() => void issueInvoiceForCourse(r.ar.id, r.course.courseCode)}
+                          >
+                            <Icons.Doc size={13} /> Xuất HĐ
+                          </button>
+                        ) : (
+                          <span className="row-action">
+                            <Icons.ChevronRight size={15} />
+                          </span>
+                        )}
                       </td>
                     </tr>
                   );

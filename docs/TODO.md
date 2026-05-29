@@ -131,6 +131,13 @@
 | UX-09 | Fix UTF-8 mojibake tab Quản lý thanh toán | done | 2026-05-26 | 2026-05-26 | 3 TSX + Inter font; CHANGELOG |
 | UX-10 | Fix Vercel build `ActivationTab` TS | done | 2026-05-26 | 2026-05-26 | Push `ui/ux` |
 | UX-11 | Promote Vercel + smoke B1–B4 prod | pending | 2026-05-26 | | Sau push encoding fix |
+| UX-12 | Merge `main` @ `2f936840` (BE handoff) vào `ui/ux` local | done | 2026-05-26 21:30 | 2026-05-26 21:45 | Fast-forward `2db4745`→`2f93684`; CHANGELOG |
+| UX-13 | `git push origin ui/ux` — đồng bộ remote + graph Git | pending | 2026-05-26 21:45 | | `ahead 1` sau merge |
+| UX-14 | Supabase: chạy `active_requests_nullable_pr.sql` (dev + prod nếu standalone AR) | pending | 2026-05-26 21:45 | | FE_HANDOFF §3, §8 |
+| UX-15 | Smoke: standalone AR + export-batch B4 + cash pending B2 | pending | 2026-05-26 21:45 | | Sau UX-13/14 |
+| UX-16 | Merge `main@3c0c579` và triển khai P0/P1 Active Request feedback trong FE | done | 2026-05-28 08:15 | 2026-05-28 08:45 | Payment Request mini-window: UID/SĐT/gói/tiền, icon Sửa/Lưu/Xóa/Xóa gói, wording "Chờ kích hoạt"; `npm test` + `npm run build` pass |
+| UX-17 | BE: endpoint xóa/cancel Active Request cho nút X đỏ vuông | pending | 2026-05-28 08:45 | | FE đã gắn optimistic `DELETE /api/v1/active-requests/{ar_id}`; cần Giang/Đức implement hoặc chốt soft-cancel |
+| UX-18 | BE: persist `invoice_requested_at` trong `uids_data.courses[]` | pending | 2026-05-28 08:45 | | FE B4 gating đã dùng `invoiceRequestedAt`; cần BE giữ field khi PATCH AR để reload không mất trạng thái |
 
 ---
 
@@ -208,10 +215,10 @@
 
 | ID | Task | Status | Owner | Ghi chú |
 |----|------|--------|-------|---------|
-| F2605-BE-01 | Schema + API **Payment Request** (PR ID) | pending | Giang/Đức | Thay `1 QR = 1 đơn` |
-| F2605-BE-02 | Mã thanh toán lẻ / Info Code (vd. TTPR…) gắn PR | pending | Giang/Đức | N lần thanh toán / 1 PR |
-| F2605-BE-03 | **Course code** (B3) — mở khi PR thu đủ 100%; link xuất HĐ | pending | Giang/Đức | 1 Course code = 1 Order ID |
-| F2605-BE-04 | Module xác nhận **tiền mặt** | pending | Giang/Đức | |
+| F2605-BE-01 | Schema + API **Payment Request** (PR ID) | in_progress | Giang/Đức | `ui/ux` @ `2f93684`; smoke prod |
+| F2605-BE-02 | Mã thanh toán lẻ / Info Code (vd. TTPR…) gắn PR | done | Giang/Đức | `payment-lines` + PayOS |
+| F2605-BE-03 | **Course code** (B3) — mở khi PR thu đủ 100%; link xuất HĐ | in_progress | Giang/Đức | AR routes + export-batch |
+| F2605-BE-04 | Module xác nhận **tiền mặt** | done | Giang/Đức | Cash/card `pending` @ `2f93684` |
 | F2605-BE-05 | Tích hợp **thẻ tín dụng / trả góp** | pending | Giang/Đức | |
 | F2605-BE-06 | PayOS **PalFish Saigon** — chỉ team HCM tạo QR HCM | pending | Giang/Đức | Pháp nhân HCM riêng |
 | F2605-BE-07 | Khớp **Order ID CRM** với Activate Code (matching) | pending | Giang/Đức | Bước cuối — Thu Hiền |
@@ -232,3 +239,99 @@
 | F2605-MINH-08 | UX chọn tài khoản HN / HCM | pending | 2026-05-26 | |
 | F2605-MINH-09 | Catalog tên sản phẩm HĐ (dropdown TTS) | pending | 2026-05-26 | `ke-hoach-cai-thien-feedback-thu-hien.md` |
 | F2605-MINH-10 | Checklist UAT go-live với Giang & Đức | pending | 2026-05-26 | |
+
+---
+
+## Feedback Hiếu 27/05 — Fix plan
+
+> Nguồn: `E:\PalFish\DA\Report\FEEDBACK SÁNG 27-05-2026.md`  
+> Verify session: 2026-05-27. Root cause chính: **local state không đồng bộ DB** (confirmed code review).  
+> Handoff Giang/Đức: `docs/HANDOFF_GIANG_DUC_2026-05-27.md`
+
+### Phase A — FE quick wins ✅ Done (commit a9c50b7 · 2026-05-27)
+
+| ID | Task | Status | Owner | Ghi chú |
+|----|------|--------|-------|---------|
+| F2705-A-01 | Reorder fields CreatePaymentRequestModal: UID→Tên→SĐT→Tổng tiền→**Địa chỉ**→Email→Ghi chú | done | Minh | verified 2026-05-27 |
+| F2705-A-02 | Gate nút "Mô phỏng kế toán xác nhận" behind `import.meta.env.DEV` | done | Minh | verified 2026-05-27 |
+| F2705-A-03 | Badge 3-state AR: "Đã tạo" / "Đang tạo" / "Chưa tạo" | done | Minh | verified 2026-05-27 |
+| F2705-A-04 | `canCancel`: chặn hủy PR khi đã có Active Request | done | Minh | verified 2026-05-27 |
+| F2705-A-05 | Format `qr.paidAt` qua `formatPaymentDateFull` | done | Minh | fixed [object Object] bug |
+| F2705-A-06 | Bulk confirm reconciliation: `Promise.all` + spinner | done | Minh | verified 2026-05-27 |
+| F2705-A-07 | InvoiceRequestTab: nút "Xuất HĐ" nhanh trên row có orderId | done | Minh | verified 2026-05-27 |
+| F2705-A-08 | `loadData` ngay sau addPayment thành công | done | Minh | verified 2026-05-27 |
+| F2705-BUG-01 | Email KH hiển thị trong PR detail drawer | done | Minh | verified end-to-end 2026-05-27 |
+| F2705-B1-9 | QrViewModal: VietQR print template + đủ thông tin ngân hàng + logo | done | Minh | verified 2026-05-27 |
+
+### Phase A2 — FE fixes đợt 2 (feedback sau merge BE · 2026-05-27)
+
+> Nguồn: feedback Hiếu sau khi merge `b694a00` + `aa6f32b` vào ui/ux  
+> Tất cả items đều **FE-only** trừ F2705-A2-08 (F5 hold off)
+
+| ID | Task | Status | Owner | Ghi chú |
+|----|------|--------|-------|---------|
+| F2705-A2-01 | **F7** Format `qr.createdAt` — sửa nhánh else `Tạo ${raw}` → `formatPaymentDateFull` | pending | Minh | `PaymentRequestDetailDrawer.tsx:131`; sót khi sửa A-05 |
+| F2705-A2-02 | **F6b** Add `"rejected"` branch vào `paymentAttemptLabel` + pill QrRow | pending | Minh | `paymentRequestUtils.ts:112`; hiện fall-through → "Chờ chuyển" |
+| F2705-A2-03 | **F6c** Popup nhập lý do từ chối khi bấm "Từ chối" / "Hoàn tác" | pending | Minh | BE đã sẵn `reject_reason` field; FE: modal + `<input list>` datalist; gửi kèm PATCH |
+| F2705-A2-04 | **F6a** Optimistic reject: bỏ `await loadData` trong `rejectTransaction`, dùng optimistic update | pending | Minh | `PaymentFlowContext.tsx:270`; hiện wait full reload ~5s |
+| F2705-A2-05 | **F4a** CSS fix `.qr-row.v2`: tăng col bill + action, tránh overlap "Up bill" / "Xem QR" | pending | Minh | `prototype-payments.css:570`; grid `56px 1fr 140px 110px` quá chật |
+| F2705-A2-06 | **F4b/c** Đổi label BillUploadZone: "Kéo thả / chọn ảnh" → "Up bill" / "Đã có ảnh bill" | pending | Minh | `BillUploadZone.tsx:79,40`; BE không quan tâm label |
+| F2705-A2-07 | **F3** Bank dropdown: thay tên NH → account alias "PalFish Hà Nội - MB Bank" (sẵn cho HCM sau) | pending | Minh | `PaymentRequestDetailDrawer.tsx:275`; refactor thành `BANK_ACCOUNTS[]` trong `bank.ts` |
+| F2705-A2-08 | **F2a** QR scale: đổi VietQR template `print` → `compact2` hoặc resize/crop cho QR chiếm đủ khung | pending | Minh | `QrViewModal.tsx:8`; print template có quá nhiều whitespace |
+| F2705-A2-09 | **F2b** Copy nội dung CK đầy đủ: Ngân hàng + Chủ TK + Số TK + Số tiền + Nội dung | pending | Minh | `QrViewModal.tsx:131`; hiện chỉ copy `transferCode` |
+| F2705-A2-10 | **F2c** Nút "Copy mã QR": fetch PNG → `ClipboardItem` → clipboard; fallback link tải về | pending | Minh | Pure FE, không cần BE; dùng Clipboard API `write([ClipboardItem])` |
+| F2705-A2-11 | **F5 (hold)** Multi-bill upload — chờ confirm với team | pending | Minh+Giang/Đức | Cần SQL `bill_images text[]` + BE code; hold đến sau preview |
+
+### Phase B — Cần BE mới làm được (Giang/Đức + Minh kết nối FE)
+
+| ID | Task | Status | Owner | Ghi chú |
+|----|------|--------|-------|---------|
+| F2705-B-01 | `PATCH /api/v1/payment-requests/{id}` — lưu edit PR vào DB | pending | Giang/Đức | Hiện `updateRequest` chỉ local state |
+| F2705-B-02 | `PATCH /api/v1/active-requests/{id}` + `info_confirmed_at` | pending | Giang/Đức | Hiện `updateActiveRequest` chỉ local state; bị ghi đè khi poll 12s |
+| F2705-B-03 | ~~Multi-bill upload~~ — gộp vào A2-11 (hold) | pending | Giang/Đức | SQL: `ALTER TABLE payment_lines ADD COLUMN bill_images text[]`; cần đồng thời sửa upload endpoint |
+| F2705-B-04 | Bank list alias: "PalFish Hà Nội - MB Bank" (`1680011668899`) + HCM khi có | in_progress | Minh | HN đã confirm; FE refactor A2-07; HCM chờ Hiếu |
+| F2705-B-05 | `payment_lines.downloaded_at` — tracking B4 download thuế | pending | Giang/Đức | |
+
+### Phase C — Lớn, lên kế hoạch riêng
+
+| ID | Task | Status | Owner | Ghi chú |
+|----|------|--------|-------|---------|
+| F2705-C-01 | ~~QR image export~~ — **done** bằng VietQR print template (A-B1-9) | done | Minh | |
+| F2705-C-02 | ~~Fix CSS QR row overlap~~ — **gộp vào A2-05** | done | Minh | |
+| F2705-C-03 | Inline AR create trong PR drawer (thay navigate tab riêng B3) | pending | Minh | Lớn, lên kế hoạch riêng |
+
+### Cần Hiếu xác nhận thêm
+
+| ID | Task | Status | Owner | Ghi chú |
+|----|------|--------|-------|---------|
+| F2705-H-01 | Account HCM: tên alias + accountNo + BIN MB Bank | pending | Hiếu | Input cho F2705-B-04 / A2-07 |
+| F2705-H-02 | ~~Spec QR image export~~ — **done** (VietQR print + full bank info xác nhận 27/05) | done | Hiếu | |
+| F2705-H-03 | ~~Confirm checklist B4~~ — đã rõ | done | Minh | |
+| F2705-H-04 | Confirm list lý do từ chối datalist cho A2-03 | done | Minh | Free text + gợi ý: "Tiền chưa về / Sai số tiền / Sai nội dung CK / Bill không khớp / Khác" |
+
+### Bug bổ sung (phát hiện 27/05)
+
+| ID | Task | Status | Owner | Ghi chú |
+|----|------|--------|-------|---------|
+| F2705-BUG-01 | Email KH không hiển thị trong PR detail drawer | done | Minh | verified end-to-end 2026-05-27 |
+| F2705-BUG-02 | AR drawer: nút "Xác nhận thông tin" Thu Hiền + B4 disable trước confirm | pending | Minh + Giang/Đức | BE: `info_confirmed_at` gộp vào F2705-B-02 |
+
+### Cập nhật Task 2 mini-window PR drawer (2026-05-27 tối)
+
+| ID | Task | Status | Owner | Ghi chú |
+|----|------|--------|-------|---------|
+| F2705-T2-01 | PR drawer mini-window: cho Sales chọn/gõ tìm gói học trong Active Request | done | Minh | FE-only; gọi thử `PATCH /api/v1/active-requests/{id}`; `npm test` + `npm run build` pass |
+| F2705-T2-02 | BE lưu gói học từ PR drawer vào `active_requests.uids_data` | pending | Đức | Blocker: FE báo "Đã đổi gói tạm..." vì PATCH AR chưa lưu DB; request shape xem `HANDOFF_GIANG_DUC_2026-05-27.md` |
+| F2705-T2-03 | Thêm nút "Lưu" trong mini-window sau khi BE PATCH AR ổn định | done | Minh | Chọn gói chỉ đổi draft; bấm "Lưu" mới gọi PATCH; verified `npm test` + `npm run build` 2026-05-27 |
+
+### Cập nhật Mini-window Active Request sau feedback test (2026-05-28)
+
+| ID | Task | Status | Owner | Ghi chú |
+|----|------|--------|-------|---------|
+| F2805-P0-01 | Payment Request drawer: mini-window hiện đủ UID, SĐT format quốc gia, gói học, số tiền | done | Minh | FE-only; helper `formatCoursePhone`; verified `npm test -- paymentRequestUtils.test.ts paymentFlowUtils.test.ts` + `npm run build` |
+| F2805-P0-02 | Payment Request drawer: đổi trạng thái "Chờ kích hoạt khóa học" / "Đã kích hoạt khóa học" | done | Minh | FE-only; không show Order ID cho Sales, badge course chuyển "Chờ kích hoạt" / "Đã kích hoạt" |
+| F2805-P0-03 | Payment Request drawer: thêm nhiều gói / nhiều UID trong mini-window | done | Minh | FE gọi `PATCH /api/v1/active-requests/{ar_id}` với `uids_data`; phụ thuộc BE persist JSONB ổn định |
+| F2805-P0-04 | Payment Request drawer: icon Sửa / Lưu / Xoá AR / Xoá tên gói | partial | Minh + Giang/Đức | FE đã có UI và optimistic delete; xoá AR cần BE `DELETE` hoặc cancel endpoint thật |
+| F2805-P1-01 | Tab Kích hoạt khóa học: AR mới không tự nhảy "Sẵn sàng xuất HĐ" | done | Minh | FE derive status: chưa Order ID = `pending_order`; có Order ID nhưng chưa bấm Xuất HĐ = `partial_order` |
+| F2805-P1-02 | Active Request drawer: thêm nút Lưu Order ID cho Ops | done | Minh | Bỏ save-on-blur; Ops nhập draft rồi bấm Lưu mới PATCH |
+| F2805-P1-03 | Tách "Đã kích hoạt" khỏi "Sẵn sàng xuất HĐ" | partial | Minh + Giang/Đức | FE dùng `invoiceRequestedAt` trong JSONB; cần BE chấp nhận/persist `invoice_requested_at` |

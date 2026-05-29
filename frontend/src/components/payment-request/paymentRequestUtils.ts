@@ -1,4 +1,4 @@
-import type { ActiveRequest, ActiveRequestApiRow, CreateActiveRequestPayload, PaymentAttempt, PaymentMethod, PaymentRequest, PaymentRequestStatus } from "../../types/paymentRequest";
+import type { ActiveRequest, ActiveRequestApiRow, ActiveRequestPatchUidPayload, CreateActiveRequestPayload, PaymentAttempt, PaymentMethod, PaymentRequest, PaymentRequestStatus } from "../../types/paymentRequest";
 
 export type RequestBucket = "tracking" | "created" | "cancelled";
 export type StatusFilter = "all" | "pending" | "short" | "done" | "over";
@@ -28,6 +28,20 @@ export const STATUS_CLASS: Record<PaymentRequestStatus, string> = {
 
 export const vnd = (value: number) => `${Math.round(value).toLocaleString("vi-VN")} đ`;
 
+const COUNTRY_DIALS: Record<string, string> = {
+  VN: "+84",
+  US: "+1",
+  GB: "+44",
+  CN: "+86",
+  JP: "+81",
+  KR: "+82",
+  TH: "+66",
+  SG: "+65",
+  MY: "+60",
+  ID: "+62",
+  PH: "+63",
+};
+
 /** PayOS returns EMV payload in qrCode — render via QR image API (same as Tab1Form). */
 export function payosQrImageUrl(qrCode: string | null | undefined, size = 240): string | null {
   const raw = (qrCode || "").trim();
@@ -39,6 +53,16 @@ export function payosQrImageUrl(qrCode: string | null | undefined, size = 240): 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function fromApiAttempt(raw: any, idx = 0): PaymentAttempt {
   const status = (raw.status ?? "pending") as PaymentAttempt["status"];
+  const rejectReason = raw.reject_reason ?? raw.rejectReason ?? null;
+  const cancelledFromReason =
+    status === "rejected" && /hu(y|ỷ|ỷ)/i.test(String(rejectReason || ""));
+  const billImages = Array.isArray(raw.bill_images)
+    ? raw.bill_images.filter((x: unknown) => typeof x === "string")
+    : Array.isArray(raw.billImages)
+    ? raw.billImages.filter((x: unknown) => typeof x === "string")
+    : (raw.bill_image ?? raw.billImage)
+    ? [raw.bill_image ?? raw.billImage]
+    : [];
   return {
     id: raw.id ?? "",
     idx: raw.idx ?? idx,
@@ -48,8 +72,9 @@ export function fromApiAttempt(raw: any, idx = 0): PaymentAttempt {
     paidAt: raw.paid_at ?? raw.paidAt ?? null,
     // BE uses transfer_code; fallback to code / payment_code for camelCase sources
     code: raw.transfer_code ?? raw.code ?? raw.payment_code ?? "",
-    billImage: raw.bill_image ?? raw.billImage ?? null,
-    bill: !!(raw.bill_image ?? raw.billImage),
+    billImage: raw.bill_image ?? raw.billImage ?? billImages[billImages.length - 1] ?? null,
+    billImages,
+    bill: !!(raw.bill_image ?? raw.billImage) || billImages.length > 0,
     method: (raw.method ?? "qr") as PaymentAttempt["method"],
     bank: raw.bank,
     cardLast4: raw.card_last4 ?? raw.cardLast4 ?? null,
@@ -59,9 +84,9 @@ export function fromApiAttempt(raw: any, idx = 0): PaymentAttempt {
     transferContent: raw.transfer_content ?? raw.transferContent ?? null,
     qrCode: raw.qr_code ?? raw.qrCode ?? null,
     checkoutUrl: raw.checkout_url ?? raw.checkoutUrl ?? null,
-    cancelled: raw.cancelled ?? false,
+    cancelled: raw.cancelled ?? cancelledFromReason,
     cancelledAt: raw.cancelled_at ?? raw.cancelledAt ?? null,
-    rejectReason: raw.reject_reason ?? raw.rejectReason ?? null,
+    rejectReason,
   };
 }
 
@@ -126,7 +151,7 @@ export function normalizeRequest(req: PaymentRequest): PaymentRequest {
   const doneCount = live.filter((p) => p.status === "paid").length;
   const totalCount = live.length;
   const delta = received - req.target;
-  let state: PaymentRequestStatus = "pending";
+  let state: PaymentRequestStatus;
   if (req.cancelledAt || req.state === "cancelled") state = "cancelled";
   else if (received === 0) state = "pending";
   else if (delta === 0) state = "done";
@@ -138,6 +163,7 @@ export function normalizeRequest(req: PaymentRequest): PaymentRequest {
 export function paymentAttemptLabel(payment: PaymentAttempt) {
   if (payment.cancelled) return "Đã huỷ";
   if (payment.status === "paid") return "Đã xác nhận";
+  if (payment.status === "rejected") return "Bị từ chối";
   if (payment.billImage || payment.bill) return "Chờ xác nhận";
   return "Chờ chuyển";
 }
@@ -171,10 +197,11 @@ export function fromApiActiveRequest(raw: ActiveRequestApiRow): ActiveRequest {
         courseCode: c.code ?? "",
         packageName: c.name ?? "",
         amount: c.amount ?? 0,
-        orderId: c.order_id ?? "",
+        orderId: c.order_id ?? c.orderId ?? "",
         invoiced: !!c.invoiced,
         invoiceId: c.invoice_id,
         invoicedAt: c.invoiced_at ?? null,
+        invoiceRequestedAt: c.invoice_requested_at ?? null,
         taxInvoiceCode: c.tax_invoice_code,
         taxProductCode: c.tax_product_code,
       })),
@@ -201,6 +228,42 @@ export function buildCreateActiveRequestPayload(pr: PaymentRequest): CreateActiv
       },
     ],
   };
+}
+
+export function updateActiveCoursePackage(
+  ar: ActiveRequest,
+  courseCode: string,
+  packageName: string
+): ActiveRequest {
+  return {
+    ...ar,
+    uids: ar.uids.map((u) => ({
+      ...u,
+      courses: u.courses.map((c) =>
+        c.courseCode === courseCode ? { ...c, packageName } : c
+      ),
+    })),
+  };
+}
+
+export function toActiveRequestPatchUidsData(ar: ActiveRequest): ActiveRequestPatchUidPayload[] {
+  return ar.uids.map((u) => ({
+    uid: u.uid,
+    phone: u.phone,
+    country: u.country,
+    courses: u.courses.map((c) => ({
+      code: c.courseCode,
+      name: c.packageName,
+      amount: c.amount,
+      order_id: c.orderId,
+      invoiced: c.invoiced,
+      invoice_id: c.invoiceId,
+      invoiced_at: c.invoicedAt ?? undefined,
+      invoice_requested_at: c.invoiceRequestedAt ?? undefined,
+      tax_invoice_code: c.taxInvoiceCode,
+      tax_product_code: c.taxProductCode,
+    })),
+  }));
 }
 
 export function createLocalActiveRequest(pr: PaymentRequest, existing: ActiveRequest[]): ActiveRequest {
@@ -325,6 +388,37 @@ export function fmtPhone(raw: string): string {
   const digits = raw.replace(/[^\d]/g, "");
   if (digits.length < 7) return raw;
   return digits.replace(/(\d{4})(\d{3})(\d+)/, "$1 $2 $3");
+}
+
+export function formatCoursePhone(countryCode: string | undefined | null, raw: string | undefined | null): string {
+  const digits = (raw || "").replace(/[^\d]/g, "");
+  if (!digits) return "";
+  const dial = COUNTRY_DIALS[countryCode || "VN"] || COUNTRY_DIALS.VN;
+  return `${dial} ${fmtPhone(digits)}`.trim();
+}
+
+export function activationSummary(ar: ActiveRequest | null | undefined) {
+  if (!ar) {
+    return {
+      allActivated: false,
+      activatedCount: 0,
+      courseCount: 0,
+      buttonLabel: "Kích hoạt khóa học",
+      courseBadgeLabel: "Chờ kích hoạt",
+      courseBadgeClass: "is-over",
+    };
+  }
+  const courses = ar.uids.flatMap((u) => u.courses);
+  const activatedCount = courses.filter((c) => !!c.orderId?.trim()).length;
+  const allActivated = courses.length > 0 && activatedCount === courses.length;
+  return {
+    allActivated,
+    activatedCount,
+    courseCount: courses.length,
+    buttonLabel: allActivated ? "Đã kích hoạt khóa học" : "Chờ kích hoạt khóa học",
+    courseBadgeLabel: allActivated ? "Đã kích hoạt" : "Chờ kích hoạt",
+    courseBadgeClass: allActivated ? "is-done" : "is-over",
+  };
 }
 
 export function createdAtDate(createdAt: string) {

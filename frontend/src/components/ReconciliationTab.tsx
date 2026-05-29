@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { usePaymentFlow } from "../contexts/PaymentFlowContext";
+import { endpoints } from "../lib/api";
 import {
   type FlatTransaction,
   METHOD_META,
@@ -12,20 +13,78 @@ import {
 import DateRangeFilter, { EMPTY_RANGE, type DateRange, inDateRange } from "./payment-request/DateRangeFilter";
 import { Icons } from "./payment-request/Icons";
 import { findCountry } from "./payment-request/CountryCombo";
-import { formatPaymentDateFull, formatPaymentDateTime, fmtPhone } from "./payment-request/paymentRequestUtils";
+import Modal from "./ui/Modal";
+import {
+  formatPaymentDateFull,
+  formatPaymentDateTime,
+  fmtPhone,
+  isBackendLineId,
+} from "./payment-request/paymentRequestUtils";
 import "../styles/prototype-payments.css";
 
 type TabId = "awaiting" | "confirmed" | "cancelled" | "all";
 type MethodFilter = "all" | "qr" | "cash" | "card" | "installment";
 
 type BillImage = { id: number; src: string; name: string };
+type BillModalState = {
+  open: boolean;
+  lineId: string;
+  code: string;
+  images: string[];
+};
 
 function getBillsForTxn(t: FlatTransaction): BillImage[] {
-  if (!t.bill && !t.billImage) return [];
-  if (t.billImage) {
-    return [{ id: 0, src: t.billImage, name: `bill_${t.code}.png` }];
+  const fromList = Array.isArray(t.billImages) ? t.billImages.filter((src): src is string => !!src) : [];
+  const all = fromList.length > 0 ? fromList : t.billImage ? [t.billImage] : [];
+  const unique = Array.from(new Set(all));
+  return unique.map((src, idx) => ({
+    id: idx,
+    src,
+    name: `bill_${t.code}_${idx + 1}.png`,
+  }));
+}
+
+function parseDownloadFilename(contentDisposition: string | undefined, fallback: string) {
+  if (!contentDisposition) return fallback;
+  const utf8 = contentDisposition.match(/filename\*=UTF-8''([^;]+)/i);
+  if (utf8?.[1]) {
+    try {
+      return decodeURIComponent(utf8[1].trim());
+    } catch {
+      // ignore decode failures and use plain fallback
+    }
   }
-  return [];
+  const plain = contentDisposition.match(/filename=\"?([^\";]+)\"?/i);
+  return plain?.[1]?.trim() || fallback;
+}
+
+function triggerBlobDownload(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+}
+
+async function fallbackDirectImageDownload(src: string, fallbackName: string) {
+  try {
+    const resp = await fetch(src);
+    const blob = await resp.blob();
+    triggerBlobDownload(blob, fallbackName);
+    return;
+  } catch {
+    // Last fallback for CORS-restricted URLs: open source image.
+  }
+  const a = document.createElement("a");
+  a.href = src;
+  a.target = "_blank";
+  a.rel = "noopener noreferrer";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
 }
 
 function BillReceiptArt({ txn, pr }: { txn: FlatTransaction; pr: FlatTransaction["pr"] }) {
@@ -139,7 +198,7 @@ function BillReceiptArt({ txn, pr }: { txn: FlatTransaction; pr: FlatTransaction
   );
 }
 
-function BillLightbox({ bill, onClose }: { bill: BillImage; onClose: () => void }) {
+export function BillLightbox({ bill, onClose }: { bill: BillImage; onClose: () => void }) {
   return (
     <div className="bill-lightbox-scrim" onClick={onClose}>
       <div
@@ -178,6 +237,67 @@ function BillLightbox({ bill, onClose }: { bill: BillImage; onClose: () => void 
   );
 }
 
+const REJECT_REASON_SUGGESTIONS = [
+  "Tiền chưa về ngân hàng",
+  "Sai số tiền (khác sao kê)",
+  "Sai nội dung chuyển khoản",
+  "Bill không rõ / không khớp",
+  "Khác",
+];
+
+function RejectReasonModal({
+  txnLabel,
+  onConfirm,
+  onCancel,
+}: {
+  txnLabel: string;
+  onConfirm: (reason: string) => void;
+  onCancel: () => void;
+}) {
+  const [reason, setReason] = useState("");
+  return (
+    <div className="gmv-prototype gmv-prototype-modal-scrim" onClick={onCancel}>
+      <div className="modal" style={{ width: "min(460px, 100%)" }} onClick={(e) => e.stopPropagation()}>
+        <div className="modal-head">
+          <div>
+            <h3>Lý do từ chối</h3>
+            <div style={{ fontSize: 12, color: "var(--text-3)", marginTop: 2 }}>{txnLabel}</div>
+          </div>
+          <button className="drawer-close" onClick={onCancel}>
+            <Icons.Close size={16} />
+          </button>
+        </div>
+        <div className="modal-body" style={{ gap: 12 }}>
+          <div className="field">
+            <label>Lý do <span style={{ color: "var(--text-3)", fontWeight: 400 }}>(bắt buộc)</span></label>
+            <input
+              list="reject-reasons"
+              value={reason}
+              autoFocus
+              placeholder="Nhập hoặc chọn lý do…"
+              onChange={(e) => setReason(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter" && reason.trim()) { e.preventDefault(); onConfirm(reason.trim()); } }}
+            />
+            <datalist id="reject-reasons">
+              {REJECT_REASON_SUGGESTIONS.map((s) => <option key={s} value={s} />)}
+            </datalist>
+          </div>
+        </div>
+        <div className="modal-foot">
+          <button className="btn btn-outline" onClick={onCancel}>Huỷ bỏ</button>
+          <button
+            className="btn btn-danger"
+            disabled={!reason.trim()}
+            onClick={() => onConfirm(reason.trim())}
+          >
+            <Icons.XCircle size={14} /> Xác nhận từ chối
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function TxnStatusBadge({ status }: { status: TxnDisplayStatus }) {
   const meta = TXN_STATUS_META[status] || TXN_STATUS_META.unsent;
   return (
@@ -197,9 +317,42 @@ export default function ReconciliationTab() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [drawerTxn, setDrawerTxn] = useState<FlatTransaction | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [lightboxBill, setLightboxBill] = useState<BillImage | null>(null);
+  const [billModal, setBillModal] = useState<BillModalState>({
+    open: false,
+    lineId: "",
+    code: "",
+    images: [],
+  });
+  const [downloadingAllBills, setDownloadingAllBills] = useState(false);
+  const [downloadingBillIndex, setDownloadingBillIndex] = useState<number | null>(null);
+  const [billDownloadStatus, setBillDownloadStatus] = useState("");
+  const [isBulkConfirming, setIsBulkConfirming] = useState(false);
+  const [pendingReject, setPendingReject] = useState<{ txns: FlatTransaction[]; label: string } | null>(null);
 
   const transactions = useMemo(() => flattenTransactions(requests), [requests]);
+  const billModalLineIsBackend = useMemo(
+    () => isBackendLineId(billModal.lineId),
+    [billModal.lineId]
+  );
+
+  const setDownloadStatusTransient = (msg: string, timeoutMs = 1800) => {
+    setBillDownloadStatus(msg);
+    window.setTimeout(() => {
+      setBillDownloadStatus((curr) => (curr === msg ? "" : curr));
+    }, timeoutMs);
+  };
+
+  const openBillModal = (txn: FlatTransaction) => {
+    const images = getBillsForTxn(txn).map((b) => b.src);
+    if (images.length === 0) return;
+    setBillDownloadStatus("");
+    setBillModal({
+      open: true,
+      lineId: txn.id,
+      code: txn.code,
+      images,
+    });
+  };
 
   const counts = useMemo(() => {
     const c = { awaiting: 0, confirmed: 0, rejected: 0, cancelled: 0, unsent: 0, all: transactions.length };
@@ -248,12 +401,114 @@ export default function ReconciliationTab() {
     if (fresh) setDrawerTxn(fresh);
   }, [transactions, drawerTxn?.key]);
 
+  useEffect(() => {
+    if (!billModal.open) return;
+    const fresh = transactions.find((t) => t.id === billModal.lineId);
+    if (!fresh) return;
+    const nextImages = getBillsForTxn(fresh).map((b) => b.src);
+    setBillModal((prev) => ({
+      ...prev,
+      code: fresh.code,
+      images: nextImages,
+    }));
+  }, [transactions, billModal.open, billModal.lineId]);
+
   const handleConfirm = async (t: FlatTransaction) => {
     await confirmTransaction(t.prId, t.id);
   };
 
-  const handleReject = async (t: FlatTransaction) => {
-    await rejectTransaction(t.prId, t.id);
+  // Opens the reject-reason modal for one or more transactions
+  const handleReject = (t: FlatTransaction, label?: string) => {
+    setPendingReject({ txns: [t], label: label ?? `${t.code} · ${t.prName}` });
+  };
+
+  const handleBulkReject = (txns: FlatTransaction[]) => {
+    if (txns.length === 0) return;
+    const label = txns.length === 1 ? `${txns[0].code} · ${txns[0].prName}` : `${txns.length} giao dịch đã chọn`;
+    setPendingReject({ txns, label });
+  };
+
+  const confirmReject = async (reason: string) => {
+    if (!pendingReject) return;
+    setPendingReject(null);
+    await Promise.all(pendingReject.txns.map((t) => rejectTransaction(t.prId, t.id, reason)));
+  };
+
+  const handleDownloadSingleBill = async (idx: number) => {
+    if (!billModal.lineId || idx < 0 || idx >= billModal.images.length) return;
+    if (downloadingAllBills || downloadingBillIndex !== null) return;
+
+    setDownloadingBillIndex(idx);
+    setBillDownloadStatus("Dang tai bill...");
+    try {
+      if (billModalLineIsBackend) {
+        const res = await endpoints.paymentRequests.downloadPaymentLineBill(billModal.lineId, idx);
+        const fallback = `${billModal.code || billModal.lineId}-bill-${idx + 1}.jpg`;
+        const filename = parseDownloadFilename(
+          (res.headers?.["content-disposition"] as string | undefined) ??
+            (res.headers?.["Content-Disposition"] as string | undefined),
+          fallback
+        );
+        triggerBlobDownload(res.data, filename);
+        setDownloadStatusTransient("Da bat dau tai bill");
+        return;
+      }
+      await fallbackDirectImageDownload(billModal.images[idx], `${billModal.code || "bill"}-${idx + 1}.jpg`);
+      setDownloadStatusTransient("Da tai bill");
+    } catch {
+      if (billModal.images[idx]) {
+        await fallbackDirectImageDownload(
+          billModal.images[idx],
+          `${billModal.code || "bill"}-${idx + 1}.jpg`
+        );
+        setDownloadStatusTransient("Da tai bill (fallback)");
+      } else {
+        setDownloadStatusTransient("Loi tai bill", 3000);
+        alert("Khong tai duoc anh bill.");
+      }
+    } finally {
+      setDownloadingBillIndex(null);
+    }
+  };
+
+  const handleDownloadAllBills = async () => {
+    if (!billModal.open || !billModal.lineId || billModal.images.length === 0 || downloadingAllBills) return;
+    setDownloadingAllBills(true);
+    setBillDownloadStatus("Dang tao goi tai...");
+    try {
+      if (billModalLineIsBackend) {
+        const res = await endpoints.paymentRequests.downloadAllPaymentLineBills(billModal.lineId);
+        const fallback = `${billModal.code || billModal.lineId}-bills.zip`;
+        const filename = parseDownloadFilename(
+          (res.headers?.["content-disposition"] as string | undefined) ??
+            (res.headers?.["Content-Disposition"] as string | undefined),
+          fallback
+        );
+        triggerBlobDownload(res.data, filename);
+        setDownloadStatusTransient("Da bat dau tai ZIP");
+      } else {
+        await Promise.all(
+          billModal.images.map((src, idx) =>
+            fallbackDirectImageDownload(src, `${billModal.code || "bill"}-${idx + 1}.jpg`)
+          )
+        );
+        setDownloadStatusTransient("Da mo tai tung bill");
+      }
+    } catch {
+      if (billModal.images.length > 0) {
+        await Promise.all(
+          billModal.images.map((src, idx) =>
+            fallbackDirectImageDownload(src, `${billModal.code || "bill"}-${idx + 1}.jpg`)
+          )
+        );
+        setDownloadStatusTransient("Tai ZIP loi, da fallback tung bill");
+      } else {
+        setDownloadStatusTransient("Loi tai bill", 3000);
+        alert("Khong tai duoc bo bill.");
+      }
+    } finally {
+      setDownloadingAllBills(false);
+    }
   };
 
   const tabConfig = [
@@ -400,11 +655,11 @@ export default function ReconciliationTab() {
                   className="btn btn-outline btn-sm"
                   style={{ color: "var(--danger)" }}
                   onClick={() => {
-                    selectedIds.forEach((key) => {
-                      const t = transactions.find((x) => x.key === key);
-                      if (t) void handleReject(t);
-                    });
+                    const txns = [...selectedIds]
+                      .map((key) => transactions.find((x) => x.key === key))
+                      .filter((t): t is FlatTransaction => !!t);
                     setSelectedIds(new Set());
+                    handleBulkReject(txns);
                   }}
                 >
                   <Icons.XCircle size={13} /> Từ chối đã chọn
@@ -412,15 +667,21 @@ export default function ReconciliationTab() {
                 <button
                   type="button"
                   className="btn btn-success btn-sm"
-                  onClick={() => {
-                    selectedIds.forEach((key) => {
-                      const t = transactions.find((x) => x.key === key);
-                      if (t) void handleConfirm(t);
-                    });
-                    setSelectedIds(new Set());
+                  disabled={isBulkConfirming}
+                  onClick={async () => {
+                    setIsBulkConfirming(true);
+                    try {
+                      const toConfirm = [...selectedIds]
+                        .map((key) => transactions.find((x) => x.key === key))
+                        .filter((t): t is FlatTransaction => !!t);
+                      await Promise.all(toConfirm.map((t) => handleConfirm(t)));
+                    } finally {
+                      setSelectedIds(new Set());
+                      setIsBulkConfirming(false);
+                    }
                   }}
                 >
-                  <Icons.Check size={13} strokeWidth={2.5} /> Xác nhận đã chọn
+                  <Icons.Check size={13} strokeWidth={2.5} /> {isBulkConfirming ? "Đang xác nhận…" : "Xác nhận đã chọn"}
                 </button>
               </div>
             </div>
@@ -477,7 +738,8 @@ export default function ReconciliationTab() {
                   const method = METHOD_META[t.method || "qr"];
                   const MIco = Icons[method.icon];
                   const created = formatPaymentDateTime(t.createdAt);
-                  const hasBill = !!(t.bill || t.billImage);
+                  const txnBills = getBillsForTxn(t);
+                  const hasBill = txnBills.length > 0 || !!t.bill;
                   return (
                     <tr
                       key={t.key}
@@ -550,13 +812,12 @@ export default function ReconciliationTab() {
                           className={`txn-bill-preview ${hasBill ? "has" : ""}`}
                           title={hasBill ? "Xem biên lai" : "Chưa có biên lai"}
                           onClick={() => {
-                            const bills = getBillsForTxn(t);
-                            if (bills[0]) setLightboxBill(bills[0]);
+                            if (txnBills.length > 0) openBillModal(t);
                           }}
-                          style={t.billImage ? { cursor: "pointer", padding: 0, overflow: "hidden" } : undefined}
+                          style={txnBills[0]?.src ? { cursor: "pointer", padding: 0, overflow: "hidden" } : undefined}
                         >
-                          {t.billImage ? (
-                            <img src={t.billImage} alt="Biên lai" className="txn-bill-thumb" />
+                          {txnBills[0]?.src ? (
+                            <img src={txnBills[0].src} alt="Biên lai" className="txn-bill-thumb" />
                           ) : hasBill ? (
                             <Icons.Receipt />
                           ) : (
@@ -582,7 +843,7 @@ export default function ReconciliationTab() {
                               type="button"
                               className="btn-icon-danger"
                               title="Từ chối"
-                              onClick={() => void handleReject(t)}
+                              onClick={() => handleReject(t)}
                             >
                               <Icons.Close size={14} strokeWidth={2.2} />
                             </button>
@@ -651,7 +912,7 @@ export default function ReconciliationTab() {
                           <div
                             key={b.id}
                             className="bill-thumb"
-                            onClick={() => setLightboxBill(b)}
+                            onClick={() => openBillModal(drawerTxn)}
                             title="Click để phóng to"
                           >
                             <img src={b.src} alt={b.name} />
@@ -662,7 +923,7 @@ export default function ReconciliationTab() {
                         ))}
                       </div>
                       <div style={{ fontSize: 11.5, color: "var(--text-3)", marginTop: 8, textAlign: "center" }}>
-                        {billImages.length} ảnh đã upload · Click thumb để phóng to
+                        {billImages.length} ảnh đã upload · Click thumb để mở danh sách bill
                       </div>
                     </>
                   ) : drawerTxn.bill ? (
@@ -681,12 +942,12 @@ export default function ReconciliationTab() {
                   <div className="actions">
                     {billImages.length > 0 ? (
                       <>
-                        <button type="button" className="btn btn-outline btn-sm" onClick={() => setLightboxBill(billImages[0])}>
-                          <Icons.Image size={13} /> Phóng to
+                        <button type="button" className="btn btn-outline btn-sm" onClick={() => openBillModal(drawerTxn)}>
+                          <Icons.Image size={13} /> Xem bill
                         </button>
-                        <a href={billImages[0].src} download={billImages[0].name} className="btn btn-outline btn-sm">
-                          <Icons.Download size={13} /> Tải ảnh
-                        </a>
+                        <button type="button" className="btn btn-outline btn-sm" onClick={() => openBillModal(drawerTxn)}>
+                          <Icons.Download size={13} /> Tải bill
+                        </button>
                       </>
                     ) : (
                       <button type="button" className="btn btn-outline btn-sm" disabled style={{ opacity: 0.5 }}>
@@ -828,7 +1089,7 @@ export default function ReconciliationTab() {
                         type="button"
                         className="btn btn-outline"
                         style={{ color: "var(--danger)" }}
-                        onClick={() => void handleReject(drawerTxn)}
+                        onClick={() => handleReject(drawerTxn, "Từ chối")}
                       >
                         <Icons.XCircle size={14} /> Từ chối
                       </button>
@@ -847,7 +1108,7 @@ export default function ReconciliationTab() {
                       type="button"
                       className="btn btn-outline"
                       style={{ color: "var(--danger)" }}
-                      onClick={() => void handleReject(drawerTxn)}
+                      onClick={() => handleReject(drawerTxn, "Hoàn tác xác nhận")}
                     >
                       <Icons.XCircle size={14} /> Hoàn tác xác nhận
                     </button>
@@ -869,7 +1130,91 @@ export default function ReconciliationTab() {
         })()}
       </aside>
 
-      {lightboxBill && <BillLightbox bill={lightboxBill} onClose={() => setLightboxBill(null)} />}
+      <Modal
+        open={billModal.open}
+        onClose={() => {
+          setBillModal({ open: false, lineId: "", code: "", images: [] });
+          setBillDownloadStatus("");
+        }}
+        title={`Bill: ${billModal.code}`}
+      >
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+          <div style={{ fontSize: 12, color: "var(--text-3)" }}>
+            {billModal.images.length} bill
+            {billDownloadStatus ? (
+              <span style={{ marginLeft: 8, color: "var(--text-2)" }}>
+                · {billDownloadStatus}
+              </span>
+            ) : null}
+          </div>
+          <button
+            type="button"
+            className="btn btn-outline btn-sm"
+            disabled={
+              !billModal.lineId ||
+              (billModal.images.length === 0 && !billModalLineIsBackend) ||
+              downloadingAllBills ||
+              downloadingBillIndex !== null
+            }
+            onClick={() => void handleDownloadAllBills()}
+          >
+            <Icons.Download size={13} /> {downloadingAllBills ? "Đang tải..." : "Tải tất cả"}
+          </button>
+        </div>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))",
+            gap: 12,
+            maxHeight: "min(70vh, 680px)",
+            overflowY: "auto",
+            paddingRight: 4,
+          }}
+        >
+          {billModal.images.map((src, idx) => (
+            <div
+              key={`${src}-${idx}`}
+              style={{
+                border: "1px solid var(--border)",
+                borderRadius: 12,
+                padding: 10,
+                background: "var(--surface)",
+              }}
+            >
+              <img
+                src={src}
+                alt={`bill-${idx + 1}`}
+                style={{
+                  width: "100%",
+                  borderRadius: 8,
+                  height: "auto",
+                  maxHeight: 360,
+                  objectFit: "contain",
+                  background: "var(--surface-2)",
+                }}
+              />
+              <div style={{ marginTop: 8, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+                <span style={{ fontSize: 12, color: "var(--text-3)" }}>Bill #{idx + 1}</span>
+                <button
+                  type="button"
+                  className="btn btn-outline btn-sm"
+                  disabled={downloadingAllBills || downloadingBillIndex !== null}
+                  onClick={() => void handleDownloadSingleBill(idx)}
+                >
+                  <Icons.Download size={12} /> {downloadingBillIndex === idx ? "Đang tải..." : "Tải ảnh"}
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      </Modal>
+      {pendingReject && (
+        <RejectReasonModal
+          txnLabel={pendingReject.label}
+          onConfirm={confirmReject}
+          onCancel={() => setPendingReject(null)}
+        />
+      )}
     </div>
   );
 }
