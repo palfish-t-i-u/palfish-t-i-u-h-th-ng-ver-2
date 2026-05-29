@@ -1,14 +1,6 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import StaffCRMTab from "../components/StaffCRMTab";
 import AuthAccountsTab from "../components/AuthAccountsTab";
-import SoDoanhThuTab from "../components/SoDoanhThuTab";
-const BC01SalesPerformance = lazy(() => import("../components/reports/BC01SalesPerformance"));
-const BC02KeyDataReport = lazy(() => import("../components/reports/BC02KeyDataReport"));
-const ReportBC03Tab = lazy(() => import("../components/ReportBC03Tab"));
-const PaymentRequestsTab = lazy(() => import("../components/PaymentRequestsTab"));
-const ReconciliationTab = lazy(() => import("../components/ReconciliationTab"));
-const ActivationTab = lazy(() => import("../components/ActivationTab"));
-const InvoiceRequestTab = lazy(() => import("../components/InvoiceRequestTab"));
 import Module5Tab from "../components/Module5Tab";
 import Module6Tab from "../components/Module6Tab";
 import { PaymentFlowProvider, usePaymentFlow, type PaymentFlowView } from "../contexts/PaymentFlowContext";
@@ -17,6 +9,15 @@ import { useMe } from "../hooks/useMe";
 import ProfilePage from "./ProfilePage";
 import AppShell, { type NavItem } from "../layouts/AppShell";
 import Badge from "../components/ui/Badge";
+
+const BC01SalesPerformance = lazy(() => import("../components/reports/BC01SalesPerformance"));
+const BC02KeyDataReport = lazy(() => import("../components/reports/BC02KeyDataReport"));
+const ReportBC03Tab = lazy(() => import("../components/ReportBC03Tab"));
+const PaymentRequestsTab = lazy(() => import("../components/PaymentRequestsTab"));
+const ReconciliationTab = lazy(() => import("../components/ReconciliationTab"));
+const ActivationTab = lazy(() => import("../components/ActivationTab"));
+const InvoiceRequestTab = lazy(() => import("../components/InvoiceRequestTab"));
+const SoDoanhThuTab = lazy(() => import("../components/SoDoanhThuTab"));
 
 type ViewId =
   | "paymentRequests"
@@ -39,6 +40,14 @@ const FLOW_VIEW_MAP: Record<PaymentFlowView, ViewId> = {
   module3: "module3",
   module4: "module4",
 };
+
+function ViewFallback() {
+  return (
+    <div className="p-6 text-center text-sm text-gmv-muted animate-pulse">
+      Optimizing data view...
+    </div>
+  );
+}
 
 const I = {
   list: (
@@ -281,6 +290,39 @@ function MainPageInner({
     activeView === "bc02" ||
     activeView === "bc03";
 
+  const renderActiveView = () => {
+    switch (activeView) {
+      case "paymentRequests":
+        return <PaymentRequestsTab />;
+      case "reconciliation":
+        return <ReconciliationTab />;
+      case "module3":
+        return showInvoice ? <ActivationTab /> : null;
+      case "module4":
+        return showInvoice ? <InvoiceRequestTab /> : null;
+      case "profile":
+        return <ProfilePage />;
+      case "revenueLedger":
+        return showInvoice ? <SoDoanhThuTab /> : null;
+      case "bc01":
+        return showInvoice ? <BC01SalesPerformance /> : null;
+      case "bc02":
+        return showInvoice ? <BC02KeyDataReport /> : null;
+      case "bc03":
+        return showInvoice ? <ReportBC03Tab /> : null;
+      case "module5":
+        return showInvoice ? <Module5Tab /> : null;
+      case "module6":
+        return showInvoice ? <Module6Tab /> : null;
+      case "staffCrm":
+        return showStaffCrm ? <StaffCRMTab /> : null;
+      case "authAccounts":
+        return showAuthAccounts ? <AuthAccountsTab /> : null;
+      default:
+        return <PaymentRequestsTab />;
+    }
+  };
+
   return (
     <AppShell
       items={items}
@@ -294,66 +336,7 @@ function MainPageInner({
       isDevMode={isDevMode}
       onSignOut={signOut}
     >
-      <Suspense fallback={<p className="text-sm text-gmv-muted">Đang tải…</p>}>
-        <div style={{ display: activeView === "paymentRequests" ? "block" : "none" }}>
-          <PaymentRequestsTab />
-        </div>
-        <div style={{ display: activeView === "reconciliation" ? "block" : "none" }}>
-          <ReconciliationTab />
-        </div>
-        {showInvoice && (
-          <>
-            <div style={{ display: activeView === "module3" ? "block" : "none" }}>
-              <ActivationTab />
-            </div>
-            <div style={{ display: activeView === "module4" ? "block" : "none" }}>
-              <InvoiceRequestTab />
-            </div>
-          </>
-        )}
-      </Suspense>
-      <div style={{ display: activeView === "profile" ? "block" : "none" }}>
-        <ProfilePage />
-      </div>
-      {showInvoice && (
-        <div style={{ display: activeView === "revenueLedger" ? "block" : "none" }}>
-          <SoDoanhThuTab />
-        </div>
-      )}
-      {showInvoice && (
-        <Suspense fallback={<p className="text-sm text-gmv-muted">Đang tải báo cáo…</p>}>
-          <div style={{ display: activeView === "bc01" ? "block" : "none" }}>
-            <BC01SalesPerformance />
-          </div>
-          <div style={{ display: activeView === "bc02" ? "block" : "none" }}>
-            <BC02KeyDataReport />
-          </div>
-          <div style={{ display: activeView === "bc03" ? "block" : "none" }}>
-            <ReportBC03Tab />
-          </div>
-        </Suspense>
-      )}
-      {showInvoice && (
-        <div style={{ display: activeView === "module5" ? "block" : "none" }}>
-          <Module5Tab />
-        </div>
-      )}
-      {showInvoice && (
-        <div style={{ display: activeView === "module6" ? "block" : "none" }}>
-          <Module6Tab />
-        </div>
-      )}
-      {showStaffCrm && (
-        <div style={{ display: activeView === "staffCrm" ? "block" : "none" }}>
-          <StaffCRMTab />
-        </div>
-      )}
-      {showAuthAccounts && (
-        <div style={{ display: activeView === "authAccounts" ? "block" : "none" }}>
-          <AuthAccountsTab />
-        </div>
-      )}
-
+      <Suspense fallback={<ViewFallback />}>{renderActiveView()}</Suspense>
     </AppShell>
   );
 }
