@@ -113,8 +113,16 @@ export default function AppShell({
     });
   }
 
+  const isSandbox = import.meta.env.VITE_SANDBOX === "true";
+
   return (
-    <div className="flex min-h-screen w-full bg-gmv-bg font-sans text-gmv-text">
+    <div className="flex min-h-screen w-full flex-col bg-gmv-bg font-sans text-gmv-text">
+      {isSandbox && (
+        <div className="z-50 bg-yellow-400 py-1 text-center text-xs font-bold text-yellow-900">
+          ⚠️ SANDBOX — Dữ liệu test, không phải production
+        </div>
+      )}
+    <div className="flex min-w-0 flex-1 bg-gmv-bg font-sans text-gmv-text">
       <aside className="hidden w-60 shrink-0 flex-col border-r border-gmv-border bg-gmv-canvas md:flex">
         <div className="flex h-16 items-center gap-2 border-b border-gmv-border px-5">
           <div className="flex h-8 w-8 items-center justify-center rounded-gmv-md bg-gmv-primary text-white">
@@ -228,6 +236,7 @@ export default function AppShell({
           </div>
         ))}
       </nav>
+    </div>
     </div>
   );
 }
