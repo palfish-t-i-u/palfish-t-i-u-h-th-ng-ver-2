@@ -12,6 +12,11 @@ dist
 dist-ssr
 *.local
 
+# Env files chứa secrets — không commit lên git
+.env.sandbox
+.env.*.sandbox
+.env.production.local
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

@@ -12,17 +12,27 @@ export default function BillUploadZone({
   uploading?: boolean;
   deleting?: boolean;
   onView?: () => void;
-  onFile: (file: File) => void;
+  onFile: (file: File) => void | Promise<void>;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragOver, setDragOver] = useState(false);
 
-  const handleFile = (file: File) => {
-    if (!file.type.startsWith("image/")) {
-      alert("Vui long chon anh de upload!");
+  const handleFiles = async (files: File[]) => {
+    const images = files.filter((f) => f.type.startsWith("image/"));
+    if (images.length === 0) {
+      alert("Vui lòng chọn ảnh để upload!");
       return;
     }
-    onFile(file);
+    // Serialize uploads — each call's BE response refreshes state with the
+    // full bill_images array. Parallel uploads would race and only the last
+    // resolved response would be applied to FE state.
+    for (const f of images) {
+      await onFile(f);
+    }
+  };
+
+  const handleFile = (file: File) => {
+    void handleFiles([file]);
   };
 
   return (
@@ -34,7 +44,7 @@ export default function BillUploadZone({
             e.stopPropagation();
             onView?.();
           }}
-          title="Đã có ảnh bill - nhấn để xem"
+          title="Đã có ảnh bill — nhấn để xem"
         >
           <Icons.Receipt size={13} /> Đã có ảnh bill
         </span>
@@ -64,12 +74,12 @@ export default function BillUploadZone({
           const file = e.dataTransfer.files?.[0];
           if (file) handleFile(file);
         }}
-        title={hasBill ? "Upload thêm bill (không xóa bill cũ)" : "Kéo thả ảnh bill hoặc bấm để chọn file"}
+        title={hasBill ? "Upload thêm bill (không xoá bill cũ) — chọn được nhiều ảnh" : "Kéo thả ảnh bill hoặc bấm để chọn file (có thể chọn nhiều)"}
       >
         {uploading ? (
           <>Đang tải...</>
         ) : deleting ? (
-          <>Đang xóa...</>
+          <>Đang xoá...</>
         ) : (
           <>
             <Icons.Upload size={13} />
@@ -82,11 +92,13 @@ export default function BillUploadZone({
         ref={inputRef}
         type="file"
         accept="image/*"
+        multiple
         className="hidden"
         onChange={(e) => {
-          const file = e.target.files?.[0];
+          // Snapshot file list to array BEFORE clearing input (clearing nukes e.target.files).
+          const files = Array.from(e.target.files ?? []);
           e.target.value = "";
-          if (file) handleFile(file);
+          void handleFiles(files);
         }}
       />
     </div>

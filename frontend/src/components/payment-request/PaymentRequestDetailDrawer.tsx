@@ -12,7 +12,8 @@ import { Icons, type IconKey } from "./Icons";
 import BillUploadZone from "./BillUploadZone";
 import VietnamAddressFields from "./VietnamAddressFields";
 import PaymentRequestStatusBadge from "./PaymentRequestStatusBadge";
-import { BANK_ACCOUNTS } from "../../constants/bank";
+import { getAvailableBanks } from "../../constants/bank";
+import { useMe } from "../../hooks/useMe";
 import Combobox from "../ui/Combobox";
 import {
   activationSummary,
@@ -75,7 +76,7 @@ function QrRow({
 }: {
   qr: PaymentAttempt;
   onCancelQr: (qr: PaymentAttempt) => void;
-  onBillFile: (qr: PaymentAttempt, file: File) => void;
+  onBillFile: (qr: PaymentAttempt, file: File) => void | Promise<void>;
   onBillView: (qr: PaymentAttempt) => void;
   onMarkPaid: (qr: PaymentAttempt) => void;
   onShowQr: (qr: PaymentAttempt) => void;
@@ -215,10 +216,13 @@ function AddPaymentForm({
   onCancel: () => void;
   onSubmit: (payload: AddPaymentAttemptPayload) => void;
 }) {
+  const { profile } = useMe();
+  const availableBanks = getAvailableBanks(profile?.team);
+
   const [method, setMethod] = useState<PaymentMethod>("qr");
   const [amount, setAmount] = useState("");
   const [isAmountFocused, setIsAmountFocused] = useState(false);
-  const [bank, setBank] = useState(BANK_ACCOUNTS[0].alias);
+  const [bank, setBank] = useState(availableBanks[0].alias);
   const [cardLast4, setCardLast4] = useState("");
   const [installmentMonths, setInstallmentMonths] = useState("6");
   const [cashier, setCashier] = useState("");
@@ -300,7 +304,7 @@ function AddPaymentForm({
           <div className="field" style={{ flex: 1, minWidth: 180 }}>
             <label>Ngân hàng nhận</label>
             <select value={bank} onChange={(e) => setBank(e.target.value)}>
-              {BANK_ACCOUNTS.map((b) => (
+              {availableBanks.map((b) => (
                 <option key={b.alias} value={b.alias}>{b.alias}</option>
               ))}
             </select>
@@ -362,6 +366,7 @@ interface DraftPr {
   name: string;
   country: string;
   phone: string;
+  email: string;
   province: string;
   ward: string;
   address: string;
@@ -885,7 +890,7 @@ export default function PaymentRequestDetailDrawer({
   onAddPayment: (payload: AddPaymentAttemptPayload) => void;
   onCancelPayment: (qr: PaymentAttempt) => void;
   onMarkPaid: (qr: PaymentAttempt) => void;
-  onBillFile: (qr: PaymentAttempt, file: File) => void;
+  onBillFile: (qr: PaymentAttempt, file: File) => void | Promise<void>;
   onBillView: (qr: PaymentAttempt) => void;
   onCreateActiveRequest: () => void;
   onCancelRequest: () => void;
@@ -1047,6 +1052,7 @@ export default function PaymentRequestDetailDrawer({
                       name: request.name,
                       country: request.country || "VN",
                       phone: request.phone,
+                      email: request.email || "",
                       province: request.province || "",
                       ward: request.ward || "",
                       address: request.address || "",
@@ -1086,6 +1092,7 @@ export default function PaymentRequestDetailDrawer({
                         name: draft.name,
                         country: draft.country,
                         phone: draft.phone,
+                        email: draft.email,
                         province: draft.province,
                         ward: draft.ward,
                         address: draft.address,
@@ -1216,6 +1223,22 @@ export default function PaymentRequestDetailDrawer({
                       }}
                     />
                   </div>
+                </div>
+                <div className="info-cell">
+                  <div className="info-label">Email</div>
+                  <input
+                    type="email"
+                    value={draft.email}
+                    onChange={(e) => setDraft({ ...draft, email: e.target.value })}
+                    placeholder="example@gmail.com"
+                    style={{
+                      border: "1px solid var(--border)",
+                      borderRadius: 8,
+                      padding: "8px 10px",
+                      font: "inherit",
+                      fontSize: 13,
+                    }}
+                  />
                 </div>
                 <div className="info-cell full">
                   <div className="info-label">Địa chỉ khách hàng</div>
