@@ -172,7 +172,13 @@ function ARCreateModal({
 
   const linkedPr = linkedPrId ? prs.find((p) => p.id === linkedPrId) : null;
   const amountNum = parseInt(String(amount).replace(/\D/g, ""), 10) || 0;
-  const canSubmit = firstUid.trim() && pkgName.trim() && amountNum > 0 && (linkedPr ? true : customerName.trim());
+  const linkedPrOverAmount = linkedPr ? Math.max(0, amountNum - linkedPr.received) : 0;
+  const canSubmit =
+    firstUid.trim() &&
+    pkgName.trim() &&
+    amountNum > 0 &&
+    linkedPrOverAmount === 0 &&
+    (linkedPr ? true : customerName.trim());
 
   return (
     <div className="gmv-prototype-modal-scrim" onClick={onClose}>
@@ -203,7 +209,7 @@ function ARCreateModal({
                   if (p) {
                     setFirstUid(p.uid);
                     setCustomerName(p.name);
-                    if (!amount) setAmount(String(p.target));
+                    if (!amount) setAmount(String(p.received));
                   }
                 }
               }}
@@ -211,6 +217,11 @@ function ARCreateModal({
             {linkedPr && linkedPr.state !== "done" && linkedPr.state !== "over" && (
               <div style={{ marginTop: 8, fontSize: 12, color: "var(--warning-text)", display: "flex", gap: 6, alignItems: "center" }}>
                 <Icons.AlertCircle size={13} /> PR này chưa thanh toán đủ — thường chỉ kích hoạt khi đủ tiền.
+              </div>
+            )}
+            {linkedPrOverAmount > 0 && (
+              <div style={{ marginTop: 8, fontSize: 12, color: "var(--danger)", display: "flex", gap: 6, alignItems: "center" }}>
+                <Icons.AlertCircle size={13} /> Số tiền khóa học không được vượt tiền đã nhận ({vnd(linkedPr?.received ?? 0)}).
               </div>
             )}
           </div>
