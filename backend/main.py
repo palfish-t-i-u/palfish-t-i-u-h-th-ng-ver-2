@@ -24,6 +24,7 @@ from report_routes import register_report_routes
 from revenue_routes import register_revenue_routes
 from rbac import can_confirm_payment, resolve_actor, visible_creator_emails
 from payos_qr import parse_transfer_content_from_qr
+from env_utils import app_env, is_sandbox_env
 
 CANCEL_ANY_ROLES = {"manager", "system", "ops"}
 
@@ -595,6 +596,8 @@ def health():
     api_pipe_env = (_REPO_ROOT / "api_pipe" / ".env").is_file()
     return {
         "status": "ok",
+        "app_env": app_env(),
+        "sandbox": is_sandbox_env(),
         "supabase_configured": configured,
         "supabase_key_valid_format": key_looks_valid,
         "supabase_url_present": bool(url),
@@ -1228,6 +1231,10 @@ register_report_routes(app, _supabase)
 async def _register_payos_webhook_on_startup() -> None:
     """Đăng ký webhook URL với PayOS khi deploy (Render / prod)."""
     from payos_qr import confirm_payos_webhook_url
+
+    if is_sandbox_env():
+        print("[sandbox] PayOS confirm-webhook skipped")
+        return
 
     webhook_url = os.getenv("PAYOS_WEBHOOK_URL", "").strip()
     if not webhook_url:
