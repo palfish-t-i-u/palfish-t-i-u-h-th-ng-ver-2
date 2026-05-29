@@ -2,17 +2,21 @@
 
 from __future__ import annotations
 
+import io
+import mimetypes
 import re
 import time
 import uuid
+import zipfile
 from datetime import datetime, timezone
 from typing import Any, Callable
 
 import pandas as pd
 from fastapi import APIRouter, File, Header, HTTPException, Query, UploadFile
+from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
-from rbac import resolve_actor
+from rbac import resolve_actor, visible_creator_emails
 
 from payos_qr import create_payos_payment_link, fetch_payos_payment, payos_payment_is_paid
 
@@ -197,6 +201,36 @@ def _storage_public_url(bucket, object_path: str) -> str:
 def _bill_object_path(line_id: str, ext: str = "jpg") -> str:
     ts = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S%f")
     return f"payment-lines/{line_id}/bill-{ts}.{ext}"
+
+
+def _sanitize_download_filename(raw: str, fallback: str) -> str:
+    cleaned = re.sub(r"[^A-Za-z0-9._-]+", "_", _clean_text(raw))
+    cleaned = cleaned.strip("._")
+    return cleaned or fallback
+
+
+def _content_type_for_asset(name: str) -> str:
+    guessed, _ = mimetypes.guess_type(name or "")
+    return guessed or "application/octet-stream"
+
+
+def _download_bill_bytes(sb, object_path: str) -> bytes:
+    try:
+        raw = sb.storage.from_("bills").download(object_path)
+    except Exception as exc:
+        raise HTTPException(502, f"Khong tai duoc file bill tu Storage: {exc}") from exc
+    if raw is None:
+        raise HTTPException(404, "Bill khong ton tai tren Storage")
+    if isinstance(raw, bytes):
+        return raw
+    if isinstance(raw, bytearray):
+        return bytes(raw)
+    if isinstance(raw, str):
+        return raw.encode("utf-8")
+    try:
+        return bytes(raw)
+    except Exception as exc:
+        raise HTTPException(500, f"Du lieu bill khong hop le: {exc}") from exc
 
 
 def _fetch_bill_urls_from_storage(sb, line_ids: list[str]) -> dict[str, str]:
@@ -557,6 +591,15 @@ def _group_lines_by_request(lines: list[dict[str, Any]]) -> dict[str, list[dict[
             continue
         grouped.setdefault(pr_id, []).append(line)
     return grouped
+
+
+def _can_access_request(sb, actor: Any, pr_row: dict[str, Any]) -> bool:
+    allowed_emails = visible_creator_emails(sb, actor)
+    if allowed_emails is None:
+        return True
+    row_email = _clean_text(pr_row.get("sale_email")).lower()
+    allowed = {str(email).strip().lower() for email in allowed_emails if str(email).strip()}
+    return bool(row_email) and row_email in allowed
 
 
 def _payment_request_insert_row(body: PaymentRequestCreate) -> dict[str, Any]:
@@ -924,9 +967,14 @@ def register_payment_request_routes(app, get_supabase) -> None:
         uid: str | None = Query(None),
         limit: int = Query(100, ge=1, le=500),
         offset: int = Query(0, ge=0),
+        authorization: str | None = Header(None),
     ):
         sb = _sb_or_503(get_supabase)
+        actor = resolve_actor(sb, authorization)
         query = sb.table("payment_requests").select("*")
+        allowed_emails = visible_creator_emails(sb, actor)
+        if allowed_emails is not None:
+            query = query.in_("sale_email", allowed_emails)
         state_filter = _clean_text(state).lower()
         if state_filter:
             if state_filter not in PR_STATES:
@@ -982,8 +1030,13 @@ def register_payment_request_routes(app, get_supabase) -> None:
         return {"requests": requests}
 
     @router.patch("/payment-requests/{payment_request_id}")
-    def patch_payment_request(payment_request_id: str, body: PaymentRequestPatch):
+    def patch_payment_request(
+        payment_request_id: str,
+        body: PaymentRequestPatch,
+        authorization: str | None = Header(None),
+    ):
         sb = _sb_or_503(get_supabase)
+        actor = resolve_actor(sb, authorization)
         request_res = (
             sb.table("payment_requests")
             .select("*")
@@ -995,6 +1048,8 @@ def register_payment_request_routes(app, get_supabase) -> None:
             raise HTTPException(404, "Khong tim thay payment_request")
 
         current_row = request_res.data[0]
+        if not _can_access_request(sb, actor, current_row):
+            raise HTTPException(403, "Khong co quyen thao tac phieu nay")
         patch = _payment_request_patch_row(body, current_row)
         if not patch:
             raise HTTPException(400, "Khong co du lieu de cap nhat")
@@ -1035,8 +1090,10 @@ def register_payment_request_routes(app, get_supabase) -> None:
     def cancel_payment_request(
         payment_request_id: str,
         body: PaymentRequestCancelBody | None = None,
+        authorization: str | None = Header(None),
     ):
         sb = _sb_or_503(get_supabase)
+        actor = resolve_actor(sb, authorization)
         request_res = (
             sb.table("payment_requests")
             .select("*")
@@ -1048,6 +1105,8 @@ def register_payment_request_routes(app, get_supabase) -> None:
             raise HTTPException(404, "Khong tim thay payment_request")
 
         pr_row = request_res.data[0]
+        if not _can_access_request(sb, actor, pr_row):
+            raise HTTPException(403, "Khong co quyen thao tac phieu nay")
         current_state = _clean_text(pr_row.get("state")).lower()
         if current_state == "cancelled":
             raise HTTPException(400, "Payment request da bi huy")
@@ -1120,9 +1179,14 @@ def register_payment_request_routes(app, get_supabase) -> None:
         return {"synced": True, **outcome}
 
     @router.post("/payment-requests")
-    def create_payment_request(body: PaymentRequestCreate):
+    def create_payment_request(
+        body: PaymentRequestCreate,
+        authorization: str | None = Header(None),
+    ):
         sb = _sb_or_503(get_supabase)
+        actor = resolve_actor(sb, authorization)
         row = _payment_request_insert_row(body)
+        row["sale_email"] = actor.email.lower()
         try:
             row["id"] = _allocate_pr_id(sb)
             res = sb.table("payment_requests").insert(row).execute()
@@ -1135,8 +1199,13 @@ def register_payment_request_routes(app, get_supabase) -> None:
         return {"payment_request": _serialize_payment_request(inserted)}
 
     @router.post("/payment-requests/{payment_request_id}/payment-lines")
-    async def create_payment_line(payment_request_id: str, body: PaymentLineCreate):
+    async def create_payment_line(
+        payment_request_id: str,
+        body: PaymentLineCreate,
+        authorization: str | None = Header(None),
+    ):
         sb = _sb_or_503(get_supabase)
+        actor = resolve_actor(sb, authorization)
         request_res = (
             sb.table("payment_requests")
             .select("*")
@@ -1148,6 +1217,8 @@ def register_payment_request_routes(app, get_supabase) -> None:
             raise HTTPException(404, "Khong tim thay payment_request")
 
         pr_row = request_res.data[0]
+        if not _can_access_request(sb, actor, pr_row):
+            raise HTTPException(403, "Khong co quyen thao tac phieu nay")
         if _clean_text(pr_row.get("state")).lower() == "cancelled":
             raise HTTPException(400, "Payment request da bi huy")
 
@@ -1490,5 +1561,81 @@ def register_payment_request_routes(app, get_supabase) -> None:
                 {line_id: next_assets},
             )
         }
+
+    @router.get("/payment-lines/{line_id}/bills/download")
+    def download_payment_line_bill(line_id: str, bill_index: int | None = Query(None, ge=0)):
+        sb = _sb_or_503(get_supabase)
+        line_res = sb.table("payment_lines").select("id").eq("id", line_id).limit(1).execute()
+        if not line_res.data:
+            raise HTTPException(404, "Khong tim thay payment_line")
+
+        assets = _fetch_bill_assets_fast(sb, [line_id]).get(line_id, [])
+        if not assets:
+            raise HTTPException(404, "Khong co bill de tai")
+
+        if bill_index is None:
+            asset = assets[-1]
+        else:
+            if bill_index >= len(assets):
+                raise HTTPException(400, "bill_index vuot qua so luong bill hien co")
+            asset = assets[bill_index]
+
+        object_path = _clean_text(asset.get("path"))
+        if not object_path:
+            raise HTTPException(404, "Khong xac dinh duoc file bill can tai")
+
+        raw_name = _clean_text(asset.get("name")) or f"{line_id}-bill-{(bill_index or 0) + 1}.jpg"
+        filename = _sanitize_download_filename(raw_name, f"{line_id}-bill.jpg")
+        payload = _download_bill_bytes(sb, object_path)
+        content_type = _content_type_for_asset(filename)
+        return Response(
+            content=payload,
+            media_type=content_type,
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+
+    @router.get("/payment-lines/{line_id}/bills/download-all")
+    def download_all_payment_line_bills(line_id: str):
+        sb = _sb_or_503(get_supabase)
+        line_res = sb.table("payment_lines").select("id").eq("id", line_id).limit(1).execute()
+        if not line_res.data:
+            raise HTTPException(404, "Khong tim thay payment_line")
+
+        assets = _fetch_bill_assets_fast(sb, [line_id]).get(line_id, [])
+        if not assets:
+            raise HTTPException(404, "Khong co bill de tai")
+
+        archive_buffer = io.BytesIO()
+        saved_count = 0
+        failed_count = 0
+
+        with zipfile.ZipFile(archive_buffer, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
+            for idx, asset in enumerate(assets, start=1):
+                object_path = _clean_text(asset.get("path"))
+                if not object_path:
+                    failed_count += 1
+                    continue
+                base_name = _clean_text(asset.get("name")) or f"{line_id}-bill-{idx}.jpg"
+                filename = _sanitize_download_filename(base_name, f"{line_id}-bill-{idx}.jpg")
+                try:
+                    payload = _download_bill_bytes(sb, object_path)
+                except HTTPException:
+                    failed_count += 1
+                    continue
+                zf.writestr(filename, payload)
+                saved_count += 1
+
+        if saved_count == 0:
+            raise HTTPException(502, "Khong tai duoc bat ky bill nao de dong goi ZIP")
+
+        archive_name = _sanitize_download_filename(f"{line_id}-bills.zip", "payment-line-bills.zip")
+        return Response(
+            content=archive_buffer.getvalue(),
+            media_type="application/zip",
+            headers={
+                "Content-Disposition": f'attachment; filename="{archive_name}"',
+                "X-Bills-Failed": str(failed_count),
+            },
+        )
 
     app.include_router(router)
