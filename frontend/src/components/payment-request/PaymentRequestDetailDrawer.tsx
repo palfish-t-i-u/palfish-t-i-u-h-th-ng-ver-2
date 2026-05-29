@@ -12,7 +12,8 @@ import { Icons, type IconKey } from "./Icons";
 import BillUploadZone from "./BillUploadZone";
 import VietnamAddressFields from "./VietnamAddressFields";
 import PaymentRequestStatusBadge from "./PaymentRequestStatusBadge";
-import { BANK_ACCOUNTS } from "../../constants/bank";
+import { getAvailableBanks } from "../../constants/bank";
+import { useMe } from "../../hooks/useMe";
 import Combobox from "../ui/Combobox";
 import {
   activationSummary,
@@ -215,10 +216,13 @@ function AddPaymentForm({
   onCancel: () => void;
   onSubmit: (payload: AddPaymentAttemptPayload) => void;
 }) {
+  const { profile } = useMe();
+  const availableBanks = getAvailableBanks(profile?.team);
+
   const [method, setMethod] = useState<PaymentMethod>("qr");
   const [amount, setAmount] = useState("");
   const [isAmountFocused, setIsAmountFocused] = useState(false);
-  const [bank, setBank] = useState(BANK_ACCOUNTS[0].alias);
+  const [bank, setBank] = useState(availableBanks[0].alias);
   const [cardLast4, setCardLast4] = useState("");
   const [installmentMonths, setInstallmentMonths] = useState("6");
   const [cashier, setCashier] = useState("");
@@ -300,7 +304,7 @@ function AddPaymentForm({
           <div className="field" style={{ flex: 1, minWidth: 180 }}>
             <label>Ngân hàng nhận</label>
             <select value={bank} onChange={(e) => setBank(e.target.value)}>
-              {BANK_ACCOUNTS.map((b) => (
+              {availableBanks.map((b) => (
                 <option key={b.alias} value={b.alias}>{b.alias}</option>
               ))}
             </select>

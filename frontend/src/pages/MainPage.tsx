@@ -167,9 +167,17 @@ function MainPageInner({
     flowNavRef.current = (view) => setActiveView(FLOW_VIEW_MAP[view]);
   }, [flowNavRef]);
 
+  const showReconciliation = profile?.canConfirmPayment ?? isDevMode;
   const showInvoice = profile?.canConfirmPayment ?? isDevMode;
   const showStaffCrm = profile?.canAccessAdmin ?? isDevMode;
   const showAuthAccounts = profile?.canManageStaff ?? isDevMode;
+
+  // Nếu sale/leader đang ở tab bị ẩn, chuyển về paymentRequests
+  useEffect(() => {
+    if (!showReconciliation && activeView === "reconciliation") {
+      setActiveView("paymentRequests");
+    }
+  }, [showReconciliation, activeView]);
 
   const items: NavItem[] = useMemo(() => {
     const list: NavItem[] = [
@@ -179,7 +187,10 @@ function MainPageInner({
         icon: I.invoice,
         section: "Khách hàng & Đơn hàng",
       },
-      {
+    ];
+
+    if (showReconciliation) {
+      list.push({
         id: "reconciliation",
         label: "Đối soát giao dịch",
         icon: I.history,
@@ -188,8 +199,8 @@ function MainPageInner({
           badgeCounts.reconciliation > 0 ? (
             <Badge tone="warn">{badgeCounts.reconciliation}</Badge>
           ) : null,
-      },
-    ];
+      });
+    }
 
     if (showInvoice) {
       list.push(
@@ -269,7 +280,7 @@ function MainPageInner({
     }
 
     return list;
-  }, [badgeCounts, showInvoice, showStaffCrm, showAuthAccounts]);
+  }, [badgeCounts, showReconciliation, showInvoice, showStaffCrm, showAuthAccounts]);
 
   const head = TITLES[activeView as keyof typeof TITLES] ?? TITLES.paymentRequests;
   const wideContent =
@@ -298,9 +309,11 @@ function MainPageInner({
         <div style={{ display: activeView === "paymentRequests" ? "block" : "none" }}>
           <PaymentRequestsTab />
         </div>
-        <div style={{ display: activeView === "reconciliation" ? "block" : "none" }}>
-          <ReconciliationTab />
-        </div>
+        {showReconciliation && (
+          <div style={{ display: activeView === "reconciliation" ? "block" : "none" }}>
+            <ReconciliationTab />
+          </div>
+        )}
         {showInvoice && (
           <>
             <div style={{ display: activeView === "module3" ? "block" : "none" }}>
