@@ -24,6 +24,7 @@ backend/*.py[cod]
 backend/.venv/
 backend/venv/
 backend/.env
+backend/.env.sandbox
 api_pipe/.env
 **/secrets/
 *gsheet*.json
