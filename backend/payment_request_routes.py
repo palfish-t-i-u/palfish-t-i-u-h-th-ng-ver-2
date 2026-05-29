@@ -16,7 +16,7 @@ from fastapi import APIRouter, File, Header, HTTPException, Query, UploadFile
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
-from rbac import resolve_actor
+from rbac import resolve_actor, visible_creator_emails
 
 from payos_qr import create_payos_payment_link, fetch_payos_payment, payos_payment_is_paid
 
@@ -593,6 +593,15 @@ def _group_lines_by_request(lines: list[dict[str, Any]]) -> dict[str, list[dict[
     return grouped
 
 
+def _can_access_request(sb, actor: Any, pr_row: dict[str, Any]) -> bool:
+    allowed_emails = visible_creator_emails(sb, actor)
+    if allowed_emails is None:
+        return True
+    row_email = _clean_text(pr_row.get("sale_email")).lower()
+    allowed = {str(email).strip().lower() for email in allowed_emails if str(email).strip()}
+    return bool(row_email) and row_email in allowed
+
+
 def _payment_request_insert_row(body: PaymentRequestCreate) -> dict[str, Any]:
     uid = _clean_text(body.uid or body.uid_khach_hang)
     name = _clean_text(body.name or body.ten_khach)
@@ -958,9 +967,14 @@ def register_payment_request_routes(app, get_supabase) -> None:
         uid: str | None = Query(None),
         limit: int = Query(100, ge=1, le=500),
         offset: int = Query(0, ge=0),
+        authorization: str | None = Header(None),
     ):
         sb = _sb_or_503(get_supabase)
+        actor = resolve_actor(sb, authorization)
         query = sb.table("payment_requests").select("*")
+        allowed_emails = visible_creator_emails(sb, actor)
+        if allowed_emails is not None:
+            query = query.in_("sale_email", allowed_emails)
         state_filter = _clean_text(state).lower()
         if state_filter:
             if state_filter not in PR_STATES:
@@ -1016,8 +1030,13 @@ def register_payment_request_routes(app, get_supabase) -> None:
         return {"requests": requests}
 
     @router.patch("/payment-requests/{payment_request_id}")
-    def patch_payment_request(payment_request_id: str, body: PaymentRequestPatch):
+    def patch_payment_request(
+        payment_request_id: str,
+        body: PaymentRequestPatch,
+        authorization: str | None = Header(None),
+    ):
         sb = _sb_or_503(get_supabase)
+        actor = resolve_actor(sb, authorization)
         request_res = (
             sb.table("payment_requests")
             .select("*")
@@ -1029,6 +1048,8 @@ def register_payment_request_routes(app, get_supabase) -> None:
             raise HTTPException(404, "Khong tim thay payment_request")
 
         current_row = request_res.data[0]
+        if not _can_access_request(sb, actor, current_row):
+            raise HTTPException(403, "Khong co quyen thao tac phieu nay")
         patch = _payment_request_patch_row(body, current_row)
         if not patch:
             raise HTTPException(400, "Khong co du lieu de cap nhat")
@@ -1069,8 +1090,10 @@ def register_payment_request_routes(app, get_supabase) -> None:
     def cancel_payment_request(
         payment_request_id: str,
         body: PaymentRequestCancelBody | None = None,
+        authorization: str | None = Header(None),
     ):
         sb = _sb_or_503(get_supabase)
+        actor = resolve_actor(sb, authorization)
         request_res = (
             sb.table("payment_requests")
             .select("*")
@@ -1082,6 +1105,8 @@ def register_payment_request_routes(app, get_supabase) -> None:
             raise HTTPException(404, "Khong tim thay payment_request")
 
         pr_row = request_res.data[0]
+        if not _can_access_request(sb, actor, pr_row):
+            raise HTTPException(403, "Khong co quyen thao tac phieu nay")
         current_state = _clean_text(pr_row.get("state")).lower()
         if current_state == "cancelled":
             raise HTTPException(400, "Payment request da bi huy")
@@ -1154,9 +1179,14 @@ def register_payment_request_routes(app, get_supabase) -> None:
         return {"synced": True, **outcome}
 
     @router.post("/payment-requests")
-    def create_payment_request(body: PaymentRequestCreate):
+    def create_payment_request(
+        body: PaymentRequestCreate,
+        authorization: str | None = Header(None),
+    ):
         sb = _sb_or_503(get_supabase)
+        actor = resolve_actor(sb, authorization)
         row = _payment_request_insert_row(body)
+        row["sale_email"] = actor.email.lower()
         try:
             row["id"] = _allocate_pr_id(sb)
             res = sb.table("payment_requests").insert(row).execute()
@@ -1169,8 +1199,13 @@ def register_payment_request_routes(app, get_supabase) -> None:
         return {"payment_request": _serialize_payment_request(inserted)}
 
     @router.post("/payment-requests/{payment_request_id}/payment-lines")
-    async def create_payment_line(payment_request_id: str, body: PaymentLineCreate):
+    async def create_payment_line(
+        payment_request_id: str,
+        body: PaymentLineCreate,
+        authorization: str | None = Header(None),
+    ):
         sb = _sb_or_503(get_supabase)
+        actor = resolve_actor(sb, authorization)
         request_res = (
             sb.table("payment_requests")
             .select("*")
@@ -1182,6 +1217,8 @@ def register_payment_request_routes(app, get_supabase) -> None:
             raise HTTPException(404, "Khong tim thay payment_request")
 
         pr_row = request_res.data[0]
+        if not _can_access_request(sb, actor, pr_row):
+            raise HTTPException(403, "Khong co quyen thao tac phieu nay")
         if _clean_text(pr_row.get("state")).lower() == "cancelled":
             raise HTTPException(400, "Payment request da bi huy")
 
