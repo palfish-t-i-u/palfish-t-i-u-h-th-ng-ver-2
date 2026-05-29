@@ -11,6 +11,7 @@ from gsheet_ledger_import import (
     TeamLookupCache,
     _cell,
     _execute_supabase,
+    _load_existing_import_fingerprints,
     _log,
     _parse_date,
     _parse_pay_time,
@@ -274,16 +275,26 @@ def insert_ledger_payloads(
     log: Callable[[str], None] = _log,
     sb_factory: Callable[[], Any] | None = None,
 ) -> int:
+    log("Kiểm tra dòng đã import (dedup)…")
+    existing_fps = _load_existing_import_fingerprints(sb, log=log)
+    to_insert = [p for p in payloads if row_fingerprint(p) not in existing_fps]
+    skipped = len(payloads) - len(to_insert)
+    log(f"  {skipped} dòng đã có → skip, {len(to_insert)} dòng mới")
+
     if dry_run:
-        log(f"Dry-run — sẽ insert {len(payloads)} dòng")
-        for p in payloads[:3]:
+        log(f"Dry-run — sẽ insert {len(to_insert)} dòng (skip {skipped} đã có)")
+        for p in to_insert[:3]:
             log(f"  sample: {p['ngay_tien_ve']} {p.get('ten_khach')} {p['so_tien_vnd']} GMV={p['gmv_rmb']}")
+        return 0
+
+    if not to_insert:
+        log(f"Không có dòng mới (skip {skipped} đã có)")
         return 0
 
     inserted = 0
     client = sb
-    for i in range(0, len(payloads), INSERT_BATCH):
-        chunk = payloads[i : i + INSERT_BATCH]
+    for i in range(0, len(to_insert), INSERT_BATCH):
+        chunk = to_insert[i : i + INSERT_BATCH]
         try:
             _execute_supabase(
                 lambda c=client, ch=chunk: c.table("so_doanh_thu").insert(ch).execute(),
@@ -301,8 +312,8 @@ def insert_ledger_payloads(
             else:
                 raise
         inserted += len(chunk)
-        log(f"  inserted {inserted}/{len(payloads)}")
-        if INSERT_PAUSE_SEC and i + INSERT_BATCH < len(payloads):
+        log(f"  inserted {inserted}/{len(to_insert)}")
+        if INSERT_PAUSE_SEC and i + INSERT_BATCH < len(to_insert):
             import time
 
             time.sleep(INSERT_PAUSE_SEC)
