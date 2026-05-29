@@ -5,19 +5,18 @@ import { usePaymentFlow } from "../contexts/PaymentFlowContext";
 import { endpoints } from "../lib/api";
 import { compressImageFile } from "../lib/imageCompress";
 import type {
+  ActiveRequest,
   AddPaymentAttemptPayload,
   CreatePaymentRequestPayload,
+  PatchPaymentRequestPayload,
   PaymentAttempt,
   PaymentRequest,
-  UpdatePaymentRequestPayload,
 } from "../types/paymentRequest";
 import CancelPrModal from "./payment-request/CancelPrModal";
 import CreatePaymentRequestModal from "./payment-request/CreatePaymentRequestModal";
 import { type DateRange, EMPTY_RANGE, inDateRange } from "./payment-request/DateRangeFilter";
 import { Icons } from "./payment-request/Icons";
-import PaymentRequestDetailDrawer, {
-  type PaymentRequestDraft,
-} from "./payment-request/PaymentRequestDetailDrawer";
+import PaymentRequestDetailDrawer from "./payment-request/PaymentRequestDetailDrawer";
 import PaymentRequestKpiCards from "./payment-request/PaymentRequestKpiCards";
 import PaymentRequestTable from "./payment-request/PaymentRequestTable";
 import PaymentRequestToolbar from "./payment-request/PaymentRequestToolbar";
@@ -28,10 +27,12 @@ import {
   type StatusFilter,
   buildArByPrId,
   fromApiAttempt,
+  fromApiActiveRequest,
   fromApiPaymentRequest,
   isBackendLineId,
   normalizeRequest,
   nowStamp,
+  toActiveRequestPatchUidsData,
 } from "./payment-request/paymentRequestUtils";
 
 export default function PaymentRequestsTab() {
@@ -42,11 +43,13 @@ export default function PaymentRequestsTab() {
     apiNote,
     loadData,
     updateRequest,
+    updateActiveRequest,
+    setApiNote,
     handleCreate: ctxCreate,
-    handleUpdatePr: ctxUpdatePr,
     handleAddPayment: ctxAddPayment,
     handleCreateActiveRequest,
-    navigate,
+    saveActiveRequest,
+    deleteActiveRequest,
     nav,
     setNav,
   } = usePaymentFlow();
@@ -61,13 +64,22 @@ export default function PaymentRequestsTab() {
   const [cancelTarget, setCancelTarget] = useState<PaymentRequest | null>(null);
   const [qrView, setQrView] = useState<{ qr: PaymentAttempt; request: PaymentRequest } | null>(null);
   const [uploadingBillId, setUploadingBillId] = useState<string | null>(null);
-  const [savingPr, setSavingPr] = useState(false);
-  const [savePrError, setSavePrError] = useState<string | null>(null);
-  const [addingPayment, setAddingPayment] = useState(false);
-  const [billModal, setBillModal] = useState<{ open: boolean; code: string; src: string }>({
+  const [deletingBillId, setDeletingBillId] = useState<string | null>(null);
+  const [downloadingAllBills, setDownloadingAllBills] = useState(false);
+  const [downloadingBillIndex, setDownloadingBillIndex] = useState<number | null>(null);
+  const [billDownloadStatus, setBillDownloadStatus] = useState("");
+  const [billModal, setBillModal] = useState<{
+    open: boolean;
+    code: string;
+    lineId: string;
+    idx: number;
+    images: string[];
+  }>({
     open: false,
     code: "",
-    src: "",
+    lineId: "",
+    idx: 0,
+    images: [],
   });
 
   const arByPrId = useMemo(() => buildArByPrId(activeRequests), [activeRequests]);
@@ -81,13 +93,19 @@ export default function PaymentRequestsTab() {
     setNav({});
   }, [nav.openPrId, requests, setNav]);
 
-  useEffect(() => {
-    setSavePrError(null);
-  }, [selectedId]);
-
   const selected = useMemo(
     () => requests.find((r) => r.id === selectedId) || null,
     [requests, selectedId]
+  );
+
+  const billModalQr = useMemo(() => {
+    if (!billModal.open || !selected) return null;
+    return selected.payments.find((p) => p.id === billModal.lineId) || null;
+  }, [billModal.open, billModal.lineId, selected]);
+
+  const billModalLineIsBackend = useMemo(
+    () => isBackendLineId(billModal.lineId),
+    [billModal.lineId]
   );
 
   const trackingRequests = useMemo(
@@ -185,32 +203,37 @@ export default function PaymentRequestsTab() {
     setDrawerOpen(true);
   };
 
-  const handleUpdatePr = async (draft: PaymentRequestDraft) => {
-    if (!selected) return;
-    setSavingPr(true);
-    setSavePrError(null);
-    const targetNum = Number(String(draft.target).replace(/\D/g, "")) || selected.target;
-    const payload: UpdatePaymentRequestPayload = {
-      uid: draft.uid.trim(),
-      name: draft.name.trim(),
-      phone: draft.phone.trim(),
-      country: draft.country || "VN",
-      address: draft.address.trim(),
-      ward: draft.ward.trim(),
-      province: draft.province.trim(),
-      note: draft.note.trim(),
-      target: targetNum,
+  const handleUpdatePr = async (next: PaymentRequest) => {
+    const previous = requests.find((r) => r.id === next.id) ?? null;
+    updateRequest(next.id, () => next);
+
+    const payload: PatchPaymentRequestPayload = {
+      uid: next.uid.trim(),
+      name: next.name.trim(),
+      phone: next.phone.trim(),
+      country: (next.country || "VN").trim(),
+      address: (next.address || "").trim(),
+      ward: (next.ward || "").trim(),
+      province: (next.province || "").trim(),
+      note: (next.note || "").trim(),
+      email: (next.email || "").trim(),
+      target: next.target,
     };
+
     try {
-      await ctxUpdatePr(selected.id, payload);
-    } catch (err) {
-      const msg =
-        (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ||
-        "Không lưu được thay đổi lên máy chủ.";
-      setSavePrError(String(msg));
-      throw err;
-    } finally {
-      setSavingPr(false);
+      const res = await endpoints.paymentRequests.update(next.id, payload);
+      const savedRaw = res.data?.payment_request;
+      if (savedRaw) {
+        const saved = normalizeRequest(fromApiPaymentRequest(savedRaw));
+        updateRequest(next.id, () => saved);
+      }
+      return true;
+    } catch {
+      if (previous) {
+        updateRequest(next.id, () => previous);
+      }
+      alert("Không thể lưu thông tin khách hàng. Vui lòng thử lại.");
+      return false;
     }
   };
 
@@ -224,26 +247,58 @@ export default function PaymentRequestsTab() {
 
   const handleAddPayment = async (payload: AddPaymentAttemptPayload) => {
     if (!selected) return;
-    setAddingPayment(true);
-    try {
-      const result = await ctxAddPayment(selected.id, payload);
-      if (payload.method === "qr" && result && result.payment.status !== "paid") {
-        setQrView({ qr: result.payment, request: result.request });
-      }
-    } finally {
-      setAddingPayment(false);
+    const confirmed = await ctxAddPayment(selected.id, payload);
+    if (payload.method === "qr" && confirmed && confirmed.status !== "paid") {
+      const fresh = requests.find((r) => r.id === selected.id) || selected;
+      setQrView({ qr: confirmed, request: fresh });
     }
   };
 
-  const handleCancelPayment = (qr: PaymentAttempt) => {
+  const handleCancelPayment = async (qr: PaymentAttempt) => {
     if (!selected) return;
-    if (!window.confirm(`Huỷ lần giao dịch #${qr.idx}?`)) return;
-    updateRequest(selected.id, (r) => ({
+    const prId = selected.id;
+    const cancelledAt = nowStamp();
+    const reason = "Sales huỷ lần thanh toán";
+
+    updateRequest(prId, (r) => ({
       ...r,
       payments: r.payments.map((p: PaymentAttempt) =>
-        p.id === qr.id ? { ...p, cancelled: true, cancelledAt: nowStamp() } : p
+        p.id === qr.id
+          ? {
+              ...p,
+              cancelled: true,
+              cancelledAt,
+              status: "rejected" as const,
+              paidAt: null,
+              rejectReason: reason,
+            }
+          : p
       ),
     }));
+
+    if (!isBackendLineId(qr.id)) return;
+    try {
+      const res = await endpoints.transactions.patchStatus(qr.id, "rejected", reason);
+      const line = res.data.payment_line;
+      updateRequest(prId, (r) => {
+        const updatedPayments = r.payments.map((p: PaymentAttempt) =>
+          p.id === qr.id
+            ? {
+                ...p,
+                status: "rejected" as const,
+                paidAt: null,
+                rejectReason: line.reject_reason || reason,
+                cancelled: true,
+                cancelledAt: p.cancelledAt || cancelledAt,
+              }
+            : p
+        );
+        const prFromBe = fromApiPaymentRequest(res.data.payment_request);
+        return normalizeRequest({ ...r, ...prFromBe, payments: updatedPayments });
+      });
+    } catch {
+      /* optimistic */
+    }
   };
 
   const handleMarkPaid = async (qr: PaymentAttempt) => {
@@ -273,10 +328,21 @@ export default function PaymentRequestsTab() {
     }
   };
 
+  const getBillImages = (qr: PaymentAttempt): string[] => {
+    if (qr.billImages?.length) return qr.billImages;
+    return qr.billImage ? [qr.billImage] : [];
+  };
+
   const handleBillView = (qr: PaymentAttempt) => {
-    if (qr.billImage) {
-      setBillModal({ open: true, code: qr.code, src: qr.billImage });
-    }
+    const images = getBillImages(qr);
+    if (!images.length) return;
+    setBillModal({
+      open: true,
+      code: qr.code,
+      lineId: qr.id,
+      idx: qr.idx,
+      images,
+    });
   };
 
   const handleBillFile = async (qr: PaymentAttempt, file: File) => {
@@ -300,12 +366,175 @@ export default function PaymentRequestsTab() {
         ...r,
         payments: r.payments.map((p: PaymentAttempt) => (p.id === qr.id ? { ...p, ...mapped } : p)),
       }));
+      if (billModal.open && billModal.lineId === qr.id) {
+        setBillModal((m) => ({
+          ...m,
+          images: getBillImages(mapped),
+        }));
+      }
     } catch (e) {
       const err = e as { response?: { data?: { detail?: string } }; message?: string };
       const msg = err?.response?.data?.detail || err?.message || "Lỗi không xác định";
       alert(`Không lưu được ảnh biên lai: ${msg}`);
     } finally {
       setUploadingBillId(null);
+    }
+  };
+
+  const handleBillDelete = async (qr: PaymentAttempt, billUrl?: string, deleteAll = false) => {
+    if (!selected) return;
+    if (!isBackendLineId(qr.id)) return;
+    const currentImages = getBillImages(qr);
+    if (!currentImages.length) return;
+    setDeletingBillId(qr.id);
+    try {
+      const res = deleteAll
+        ? await endpoints.paymentRequests.deleteAllPaymentLineBills(qr.id)
+        : billUrl
+        ? await endpoints.paymentRequests.deletePaymentLineBill(qr.id, billUrl)
+        : await endpoints.paymentRequests.deleteLatestPaymentLineBill(qr.id);
+      const line = res.data.payment_line;
+      const mapped = fromApiAttempt(line, qr.idx);
+      updateRequest(selected.id, (r) => ({
+        ...r,
+        payments: r.payments.map((p: PaymentAttempt) => (p.id === qr.id ? { ...p, ...mapped } : p)),
+      }));
+      if (billModal.open && billModal.lineId === qr.id) {
+        const nextImages = getBillImages(mapped);
+        setBillModal((m) => ({ ...m, images: nextImages, open: nextImages.length > 0 }));
+      }
+    } catch (e) {
+      const err = e as { response?: { data?: { detail?: string } }; message?: string };
+      const msg = err?.response?.data?.detail || err?.message || "Loi khong xac dinh";
+      alert(`Khong xoa duoc bill: ${msg}`);
+    } finally {
+      setDeletingBillId(null);
+    }
+  };
+
+  const parseDownloadFilename = (contentDisposition: string | undefined, fallback: string) => {
+    if (!contentDisposition) return fallback;
+    const utf8 = contentDisposition.match(/filename\*=UTF-8''([^;]+)/i);
+    if (utf8?.[1]) {
+      try {
+        return decodeURIComponent(utf8[1].trim());
+      } catch {
+        /* ignore decode failure */
+      }
+    }
+    const plain = contentDisposition.match(/filename=\"?([^\";]+)\"?/i);
+    return plain?.[1]?.trim() || fallback;
+  };
+
+  const triggerBlobDownload = (blob: Blob, filename: string) => {
+    const navWithMsSave = navigator as Navigator & {
+      msSaveOrOpenBlob?: (blobData: Blob, defaultName?: string) => boolean;
+    };
+    if (typeof navWithMsSave.msSaveOrOpenBlob === "function") {
+      navWithMsSave.msSaveOrOpenBlob(blob, filename);
+      return;
+    }
+
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    // Some embedded browsers finish download asynchronously; revoking too early can cancel silently.
+    window.setTimeout(() => URL.revokeObjectURL(url), 15000);
+  };
+
+  const setDownloadStatusTransient = (text: string, timeoutMs = 2200) => {
+    setBillDownloadStatus(text);
+    if (!text) return;
+    window.setTimeout(() => setBillDownloadStatus(""), timeoutMs);
+  };
+
+  const fallbackDirectImageDownload = (src: string, fallbackName: string) => {
+    const a = document.createElement("a");
+    a.href = src;
+    a.download = fallbackName;
+    a.target = "_blank";
+    a.rel = "noopener noreferrer";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  };
+
+  const handleDownloadSingleBill = async (idx: number) => {
+    if (!billModal.lineId || idx < 0 || idx >= billModal.images.length) return;
+    if (downloadingAllBills || downloadingBillIndex !== null) return;
+
+    setDownloadingBillIndex(idx);
+    setBillDownloadStatus("Dang tai bill...");
+    try {
+      if (billModalLineIsBackend) {
+        const res = await endpoints.paymentRequests.downloadPaymentLineBill(billModal.lineId, idx);
+        const fallback = `${billModal.code || billModal.lineId}-bill-${idx + 1}.jpg`;
+        const filename = parseDownloadFilename(
+          (res.headers?.["content-disposition"] as string | undefined) ??
+            (res.headers?.["Content-Disposition"] as string | undefined),
+          fallback
+        );
+        triggerBlobDownload(res.data, filename);
+        setDownloadStatusTransient("Da bat dau tai bill");
+        return;
+      }
+      fallbackDirectImageDownload(
+        billModal.images[idx],
+        `${billModal.code || "bill"}-${idx + 1}.jpg`
+      );
+      setDownloadStatusTransient("Da mo link tai bill");
+    } catch {
+      if (billModal.images[idx]) {
+        fallbackDirectImageDownload(
+          billModal.images[idx],
+          `${billModal.code || "bill"}-${idx + 1}.jpg`
+        );
+        setDownloadStatusTransient("Tai API loi, da fallback link truc tiep");
+      } else {
+        setDownloadStatusTransient("Loi tai bill", 3000);
+        alert("Không tải được ảnh bill.");
+      }
+    } finally {
+      setDownloadingBillIndex(null);
+    }
+  };
+
+  const handleDownloadAllBills = async () => {
+    if (!billModal.open || !billModal.lineId || billModal.images.length === 0 || downloadingAllBills) return;
+    setDownloadingAllBills(true);
+    setBillDownloadStatus("Dang tao file ZIP...");
+    try {
+      if (billModalLineIsBackend) {
+        const res = await endpoints.paymentRequests.downloadAllPaymentLineBills(billModal.lineId);
+        const fallback = `${billModal.code || billModal.lineId}-bills.zip`;
+        const filename = parseDownloadFilename(
+          (res.headers?.["content-disposition"] as string | undefined) ??
+            (res.headers?.["Content-Disposition"] as string | undefined),
+          fallback
+        );
+        triggerBlobDownload(res.data, filename);
+        setDownloadStatusTransient("Da bat dau tai ZIP");
+      } else {
+        billModal.images.forEach((src, idx) =>
+          fallbackDirectImageDownload(src, `${billModal.code || "bill"}-${idx + 1}.jpg`)
+        );
+        setDownloadStatusTransient("Da mo tai tung bill");
+      }
+    } catch {
+      if (billModal.images.length) {
+        billModal.images.forEach((src, idx) =>
+          fallbackDirectImageDownload(src, `${billModal.code || "bill"}-${idx + 1}.jpg`)
+        );
+        setDownloadStatusTransient("Tai ZIP loi, da fallback tung bill");
+      } else {
+        alert("Không tải được bộ bill.");
+      }
+    } finally {
+      setDownloadingAllBills(false);
     }
   };
 
@@ -338,10 +567,29 @@ export default function PaymentRequestsTab() {
 
   const onCreateActiveRequest = async () => {
     if (!selected || arByPrId[selected.id]) return;
-    const ar = await handleCreateActiveRequest(selected);
-    setDrawerOpen(false);
-    setTab("created");
-    navigate("module3", { openArId: ar.id });
+    // Inline AR mini-window: tạo xong → giữ drawer mở, không navigate sang tab Kích hoạt khoá học
+    // Context state cập nhật → drawer tự re-render với AR card mới
+    await handleCreateActiveRequest(selected);
+  };
+
+  const handleActiveRequestMiniMutate = async (
+    arId: string,
+    updater: (ar: ActiveRequest) => ActiveRequest
+  ) => {
+    let optimistic: ActiveRequest | null = null;
+    updateActiveRequest(arId, (ar) => (optimistic = updater(ar)));
+    if (!optimistic) return;
+
+    try {
+      const res = await endpoints.activeRequests.update(arId, {
+        uids_data: toActiveRequestPatchUidsData(optimistic),
+      });
+      const saved = fromApiActiveRequest(res.data);
+      updateActiveRequest(arId, () => saved);
+      setApiNote("");
+    } catch {
+      setApiNote("Đã đổi tạm trên giao diện; máy chủ chưa lưu được thay đổi Kích hoạt khoá học.");
+    }
   };
 
   return (
@@ -416,12 +664,14 @@ export default function PaymentRequestsTab() {
         onBillFile={handleBillFile}
         onBillView={handleBillView}
         uploadingBillId={uploadingBillId}
-        savingPr={savingPr}
-        addingPayment={addingPayment}
-        savePrError={savePrError}
+        deletingBillId={deletingBillId}
         onCreateActiveRequest={onCreateActiveRequest}
         onCancelRequest={() => selected && setCancelTarget(selected)}
         activeRequestId={selected ? arByPrId[selected.id]?.id ?? null : null}
+        activeRequest={selected ? arByPrId[selected.id] ?? null : null}
+        onActiveRequestMutate={handleActiveRequestMiniMutate}
+        onActiveRequestSave={saveActiveRequest}
+        onActiveRequestDelete={deleteActiveRequest}
         onShowQr={(qr) => selected && setQrView({ qr, request: selected })}
       />
 
@@ -435,20 +685,142 @@ export default function PaymentRequestsTab() {
         onBillFile={qrView?.qr ? (file) => handleBillFile(qrView.qr, file) : undefined}
         onBillView={qrView?.qr ? () => handleBillView(qrView.qr) : undefined}
         uploadingBill={uploadingBillId === qrView?.qr?.id}
+        deletingBill={deletingBillId === qrView?.qr?.id}
       />
 
       <Modal
         open={billModal.open}
         onClose={() => setBillModal((m) => ({ ...m, open: false }))}
-        title={`Biên lai: ${billModal.code}`}
+        title={`Bill: ${billModal.code}`}
         wide
+        overlayClassName="z-[120]"
         className="text-center"
       >
-        <img
-          src={billModal.src}
-          alt="Biên lai"
-          className="mx-auto mt-2 max-h-[70vh] max-w-full rounded-gmv-md"
-        />
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+          <div style={{ fontSize: 12, color: "var(--text-3)" }}>
+            {billModal.images.length} bill
+            {billDownloadStatus ? (
+              <span style={{ marginLeft: 10, color: "var(--text-2)", fontWeight: 600 }}>
+                {billDownloadStatus}
+              </span>
+            ) : null}
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <button
+              type="button"
+              className="btn btn-outline btn-sm"
+              style={{ pointerEvents: "auto", position: "relative", zIndex: 10000 }}
+              disabled={
+                !billModal.lineId ||
+                !billModalLineIsBackend && billModal.images.length === 0 ||
+                deletingBillId === billModal.lineId ||
+                billModal.images.length === 0 ||
+                downloadingAllBills ||
+                downloadingBillIndex !== null
+              }
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                void handleDownloadAllBills();
+              }}
+              onMouseDown={(e) => e.stopPropagation()}
+            >
+              <Icons.Download size={13} /> {downloadingAllBills ? "Đang tải..." : "Tải tất cả"}
+            </button>
+            <button
+              type="button"
+              className="btn btn-outline btn-sm"
+              style={{ color: "var(--danger)" }}
+              disabled={
+                !billModalQr ||
+                deletingBillId === billModal.lineId ||
+                billModal.images.length === 0 ||
+                downloadingAllBills ||
+                downloadingBillIndex !== null
+              }
+              onClick={async () => {
+                if (!billModalQr) return;
+                await handleBillDelete(billModalQr, undefined, true);
+              }}
+            >
+              <Icons.XCircle size={13} /> Xóa tất cả
+            </button>
+          </div>
+        </div>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
+            gap: 14,
+            maxHeight: "70vh",
+            overflowY: "auto",
+            paddingRight: 4,
+            textAlign: "left",
+          }}
+        >
+          {billModal.images.map((src, idx) => (
+            <div
+              key={`${src}-${idx}`}
+              style={{
+                border: "1px solid var(--border)",
+                borderRadius: 10,
+                background: "var(--surface-2)",
+                padding: 10,
+              }}
+            >
+              <img
+                src={src}
+                alt={`Bien lai ${idx + 1}`}
+                style={{
+                  width: "100%",
+                  maxHeight: 260,
+                  objectFit: "contain",
+                  borderRadius: 8,
+                  background: "white",
+                  border: "1px solid var(--border)",
+                  cursor: "zoom-in",
+                }}
+                onClick={() => window.open(src, "_blank", "noopener,noreferrer")}
+              />
+              <div style={{ marginTop: 8, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+                <span style={{ fontSize: 12, color: "var(--text-3)" }}>Bill #{idx + 1}</span>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <button
+                    type="button"
+                    className="btn btn-outline btn-sm"
+                    style={{ pointerEvents: "auto", position: "relative", zIndex: 10000 }}
+                    disabled={
+                      !billModal.lineId ||
+                      deletingBillId === billModal.lineId ||
+                      downloadingAllBills ||
+                      downloadingBillIndex !== null
+                    }
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      void handleDownloadSingleBill(idx);
+                    }}
+                    onMouseDown={(e) => e.stopPropagation()}
+                  >
+                    <Icons.Download size={12} /> {downloadingBillIndex === idx ? "Đang tải..." : "Tải ảnh"}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-outline btn-sm"
+                    style={{ color: "var(--danger)" }}
+                    disabled={!billModalQr || deletingBillId === billModal.lineId || downloadingAllBills}
+                    onClick={async () => {
+                      if (!billModalQr) return;
+                      await handleBillDelete(billModalQr, src);
+                    }}
+                  >
+                    <Icons.XCircle size={12} /> Xóa bill này
+                  </button>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
       </Modal>
     </div>
   );

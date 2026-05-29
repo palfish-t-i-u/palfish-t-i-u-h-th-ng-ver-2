@@ -67,9 +67,11 @@ export function findCountry(code: string | undefined | null): Country {
 export default function CountryCombo({
   value,
   onChange,
+  disabled = false,
 }: {
   value: string;
   onChange: (code: string) => void;
+  disabled?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -106,6 +108,7 @@ export default function CountryCombo({
   }, [query]);
 
   const pick = (c: Country) => {
+    if (disabled) return;
     onChange(c.code);
     setOpen(false);
   };
@@ -127,12 +130,21 @@ export default function CountryCombo({
 
   return (
     <div className="cc-combo" ref={ref}>
-      <button type="button" className={`cc-trigger ${open ? "open" : ""}`} onClick={() => setOpen(!open)}>
+      <button
+        type="button"
+        className={`cc-trigger ${open ? "open" : ""}`}
+        onClick={() => {
+          if (disabled) return;
+          setOpen(!open);
+        }}
+        disabled={disabled}
+        style={disabled ? { opacity: 0.65, cursor: "not-allowed" } : undefined}
+      >
         <span style={{ fontSize: 16, lineHeight: 1 }}>{country.flag}</span>
         <span className="cc-dial">{country.dial}</span>
         <Icons.ChevronDown size={14} stroke="var(--text-3)" />
       </button>
-      {open && (
+      {open && !disabled && (
         <div className="cc-pop">
           <div className="cc-search">
             <Icons.Search size={14} stroke="var(--text-3)" />

@@ -1,22 +1,30 @@
 import { useEffect, useRef, useState } from "react";
 import type {
+  ActiveRequest,
   AddPaymentAttemptPayload,
   PaymentAttempt,
   PaymentMethod,
   PaymentRequest,
 } from "../../types/paymentRequest";
+import { COURSE_PACKAGES } from "../../constants/coursePackages";
 import CountryCombo, { findCountry } from "./CountryCombo";
 import { Icons, type IconKey } from "./Icons";
 import BillUploadZone from "./BillUploadZone";
 import VietnamAddressFields from "./VietnamAddressFields";
 import PaymentRequestStatusBadge from "./PaymentRequestStatusBadge";
+import { BANK_ACCOUNTS } from "../../constants/bank";
+import Combobox from "../ui/Combobox";
 import {
+  activationSummary,
   fmtPhone,
+  formatCoursePhone,
+  formatPaymentDateFull,
   nextPaymentCode,
   nowStamp,
   paymentAttemptLabel,
   vnd,
 } from "./paymentRequestUtils";
+import { nextCourseCode } from "../payment-flow/paymentFlowUtils";
 
 const METHOD_META: Record<PaymentMethod, { cls: string; label: string; icon: IconKey; sub: string }> = {
   qr: { cls: "method-qr", label: "Chuyển khoản", icon: "QrCode", sub: "QR / chuyển khoản" },
@@ -26,6 +34,7 @@ const METHOD_META: Record<PaymentMethod, { cls: string; label: string; icon: Ico
 };
 
 const METHOD_ORDER: PaymentMethod[] = ["qr", "cash", "card", "installment"];
+const COURSE_PACKAGE_OPTIONS = COURSE_PACKAGES.map((name) => ({ value: name, label: name }));
 
 function MethodBadge({ method }: { method: PaymentMethod }) {
   const meta = METHOD_META[method];
@@ -62,6 +71,7 @@ function QrRow({
   onMarkPaid,
   onShowQr,
   uploadingBillId,
+  deletingBillId,
 }: {
   qr: PaymentAttempt;
   onCancelQr: (qr: PaymentAttempt) => void;
@@ -70,6 +80,7 @@ function QrRow({
   onMarkPaid: (qr: PaymentAttempt) => void;
   onShowQr: (qr: PaymentAttempt) => void;
   uploadingBillId?: string | null;
+  deletingBillId?: string | null;
 }) {
   const isQr = qr.method === "qr";
   const isCancelled = !!qr.cancelled;
@@ -85,6 +96,12 @@ function QrRow({
     pill = (
       <span className="badge is-done">
         <Icons.Check size={11} strokeWidth={2.5} /> Đã xác nhận
+      </span>
+    );
+  } else if (qr.status === "rejected") {
+    pill = (
+      <span className="badge is-cancelled">
+        <Icons.XCircle size={11} /> Bị từ chối
       </span>
     );
   } else {
@@ -127,8 +144,14 @@ function QrRow({
           <span className="sep" />
           <code>{qr.code}</code>
           <span className="sep" />
-          <span>{qr.status === "paid" ? `Xác nhận lúc ${qr.paidAt || ""}` : `Tạo ${qr.createdAt}`}</span>
-          {qr.status !== "paid" && (qr.billImage || qr.bill) && (
+          <span>{qr.status === "paid" ? `Xác nhận lúc ${qr.paidAt ? formatPaymentDateFull(qr.paidAt) : ""}` : `Tạo ${qr.createdAt ? formatPaymentDateFull(qr.createdAt) : ""}`}</span>
+          {qr.status === "rejected" && qr.rejectReason && (
+            <>
+              <span className="sep" />
+              <span style={{ color: "var(--danger)", fontStyle: "italic" }}>Lý do: {qr.rejectReason}</span>
+            </>
+          )}
+          {import.meta.env.DEV && qr.status !== "paid" && (qr.billImage || qr.bill) && (
             <>
               <span className="sep" />
               <span
@@ -156,6 +179,7 @@ function QrRow({
         <BillUploadZone
           hasBill={!!qr.billImage}
           uploading={uploadingBillId === qr.id}
+          deleting={deletingBillId === qr.id}
           onView={() => onBillView(qr)}
           onFile={(file) => onBillFile(qr, file)}
         />
@@ -186,16 +210,15 @@ function AddPaymentForm({
   pr,
   onCancel,
   onSubmit,
-  submitting = false,
 }: {
   pr: PaymentRequest;
   onCancel: () => void;
-  onSubmit: (payload: AddPaymentAttemptPayload) => void | Promise<void>;
-  submitting?: boolean;
+  onSubmit: (payload: AddPaymentAttemptPayload) => void;
 }) {
   const [method, setMethod] = useState<PaymentMethod>("qr");
   const [amount, setAmount] = useState("");
-  const [bank, setBank] = useState("MB Bank");
+  const [isAmountFocused, setIsAmountFocused] = useState(false);
+  const [bank, setBank] = useState(BANK_ACCOUNTS[0].alias);
   const [cardLast4, setCardLast4] = useState("");
   const [installmentMonths, setInstallmentMonths] = useState("6");
   const [cashier, setCashier] = useState("");
@@ -206,8 +229,8 @@ function AddPaymentForm({
 
   const submit = () => {
     const n = parseInt(String(amount).replace(/\D/g, ""), 10);
-    if (!n || submitting) return;
-    void onSubmit({
+    if (!n) return;
+    onSubmit({
       amount: n,
       method,
       bank: method === "qr" || method === "card" ? bank : undefined,
@@ -261,10 +284,14 @@ function AddPaymentForm({
           <input
             type="text"
             placeholder={`Còn thiếu: ${vnd(remaining)}`}
-            value={amount}
+            value={isAmountFocused ? amount : amount ? Number(amount).toLocaleString("vi-VN") : ""}
+            inputMode="numeric"
+            pattern="[0-9]*"
+            onFocus={() => setIsAmountFocused(true)}
+            onBlur={() => setIsAmountFocused(false)}
             onChange={(e) => {
               const v = e.target.value.replace(/[^\d]/g, "");
-              setAmount(v ? Number(v).toLocaleString("vi-VN") : "");
+              setAmount(v);
             }}
           />
         </div>
@@ -273,11 +300,9 @@ function AddPaymentForm({
           <div className="field" style={{ flex: 1, minWidth: 180 }}>
             <label>Ngân hàng nhận</label>
             <select value={bank} onChange={(e) => setBank(e.target.value)}>
-              <option>MB Bank</option>
-              <option>Vietcombank</option>
-              <option>Techcombank</option>
-              <option>BIDV</option>
-              <option>VPBank</option>
+              {BANK_ACCOUNTS.map((b) => (
+                <option key={b.alias} value={b.alias}>{b.alias}</option>
+              ))}
             </select>
           </div>
         )}
@@ -321,16 +346,11 @@ function AddPaymentForm({
       </div>
 
       <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-        <button className="btn btn-outline" onClick={onCancel} disabled={submitting}>
+        <button className="btn btn-outline" onClick={onCancel}>
           Huỷ
         </button>
-        <button className="btn btn-primary" onClick={submit} disabled={submitting}>
-          <Icons.Sparkle size={14} />{" "}
-          {submitting
-            ? "Đang tạo..."
-            : method === "qr"
-            ? "Tạo QR & mã CK"
-            : "Ghi nhận lần thanh toán"}
+        <button className="btn btn-primary" onClick={submit}>
+          <Icons.Sparkle size={14} /> {method === "qr" ? "Tạo QR & mã CK" : "Ghi nhận lần thanh toán"}
         </button>
       </div>
     </div>
@@ -349,7 +369,493 @@ interface DraftPr {
   note: string;
 }
 
-export type PaymentRequestDraft = DraftPr;
+/**
+ * AR mini-window cho Sales view — gọn nhẹ, hiện ngay trong drawer PR.
+ * Sales chỉ cần thấy: AR đã được tạo, danh sách UID + course, chọn gói học, Order ID (read-only sau khi BE điền).
+ * KHÔNG có nút "Xác nhận thông tin" của Thu Hiền (đó là nghiệp vụ riêng ở tab Kích hoạt khoá học).
+ * Sales không nhập Order ID ở đây để giữ tách bạch nghiệp vụ với tab Kích hoạt khoá học.
+ */
+function ActiveRequestMiniCardV2({
+  ar,
+  onActiveRequestMutate,
+  onActiveRequestSave,
+  onActiveRequestDelete,
+}: {
+  ar: ActiveRequest;
+  onActiveRequestMutate: (arId: string, updater: (ar: ActiveRequest) => ActiveRequest) => void;
+  onActiveRequestSave: (next: ActiveRequest) => Promise<void>;
+  onActiveRequestDelete: (arId: string) => Promise<void>;
+}) {
+  const [uidDrafts, setUidDrafts] = useState<Record<number, string>>({});
+  const [phoneDrafts, setPhoneDrafts] = useState<Record<number, string>>({});
+  const [amountDrafts, setAmountDrafts] = useState<Record<string, string>>({});
+  const [editing, setEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  useEffect(() => {
+    if (editing) return;
+    const nextUidDrafts: Record<number, string> = {};
+    const nextPhoneDrafts: Record<number, string> = {};
+    const nextAmountDrafts: Record<string, string> = {};
+    ar.uids.forEach((u, uidIdx) => {
+      nextUidDrafts[uidIdx] = u.uid ?? "";
+      nextPhoneDrafts[uidIdx] = u.phone ?? "";
+      u.courses.forEach((c) => {
+        nextAmountDrafts[c.courseCode] = c.amount ? String(c.amount) : "";
+      });
+    });
+    setUidDrafts(nextUidDrafts);
+    setPhoneDrafts(nextPhoneDrafts);
+    setAmountDrafts(nextAmountDrafts);
+  }, [ar, editing]);
+
+  const summary = activationSummary(ar);
+  const missingRequiredCount = ar.uids.reduce((sum, u) => {
+    const uidMissing = u.uid.trim() ? 0 : 1;
+    const phoneMissing = u.phone.trim() ? 0 : 1;
+    const courseMissing = u.courses.reduce((acc, c) => {
+      const hasPackage = !!(c.packageName || c.name || "").trim();
+      const hasAmount = (c.amount || 0) > 0;
+      return acc + (hasPackage ? 0 : 1) + (hasAmount ? 0 : 1);
+    }, 0);
+    return sum + uidMissing + phoneMissing + courseMissing;
+  }, 0);
+
+  const mutate = (updater: (next: ActiveRequest) => ActiveRequest) => {
+    onActiveRequestMutate(ar.id, updater);
+  };
+
+  const save = async () => {
+    setSaving(true);
+    await onActiveRequestSave(ar);
+    setSaving(false);
+    setEditing(false);
+  };
+
+  const removeAr = async () => {
+    if (!window.confirm(`Xóa Active Request ${ar.id}?`)) return;
+    setDeleting(true);
+    await onActiveRequestDelete(ar.id);
+    setDeleting(false);
+  };
+
+  const commitUid = (uidIdx: number) => {
+    const nextUid = (uidDrafts[uidIdx] ?? "").trim();
+    const current = ar.uids[uidIdx]?.uid ?? "";
+    if (nextUid === current) return;
+    mutate((next) => ({
+      ...next,
+      uids: next.uids.map((u, idx) => (idx === uidIdx ? { ...u, uid: nextUid } : u)),
+    }));
+  };
+
+  const commitPhone = (uidIdx: number) => {
+    const nextPhone = (phoneDrafts[uidIdx] ?? "").replace(/[^\d]/g, "");
+    const current = ar.uids[uidIdx]?.phone ?? "";
+    if (nextPhone === current) return;
+    mutate((next) => ({
+      ...next,
+      uids: next.uids.map((u, idx) => (idx === uidIdx ? { ...u, phone: nextPhone } : u)),
+    }));
+  };
+
+  const commitAmount = (uidIdx: number, courseCode: string) => {
+    const raw = (amountDrafts[courseCode] ?? "").replace(/[^\d]/g, "");
+    const nextAmount = raw ? Number(raw) : 0;
+    const current = ar.uids[uidIdx]?.courses.find((x) => x.courseCode === courseCode)?.amount ?? 0;
+    if (nextAmount === current) return;
+    mutate((next) => ({
+      ...next,
+      uids: next.uids.map((u, idx) =>
+        idx === uidIdx
+          ? {
+              ...u,
+              courses: u.courses.map((c) =>
+                c.courseCode === courseCode ? { ...c, amount: nextAmount } : c
+              ),
+            }
+          : u
+      ),
+    }));
+  };
+
+  const addCourseForUid = (uidIdx: number) => {
+    mutate((next) => {
+      const code = nextCourseCode(next);
+      return {
+        ...next,
+        uids: next.uids.map((u, idx) =>
+          idx === uidIdx
+            ? {
+                ...u,
+                courses: [
+                  ...u.courses,
+                  {
+                    courseCode: code,
+                    packageName: "",
+                    amount: 0,
+                    orderId: "",
+                    invoiced: false,
+                    invoiceRequestedAt: null,
+                  },
+                ],
+              }
+            : u
+        ),
+      };
+    });
+  };
+
+  const removeCourse = (uidIdx: number, courseCode: string) => {
+    const course = ar.uids[uidIdx]?.courses.find((c) => c.courseCode === courseCode);
+    if (!course) return;
+    if (course.invoiced) {
+      window.alert("Không thể xóa khóa học đã xuất hóa đơn.");
+      return;
+    }
+    if (course.orderId && course.orderId.trim()) {
+      window.alert(
+        `Khóa học ${courseCode} đã được Ops kích hoạt (Order ID ${course.orderId}). Sales không thể xóa — liên hệ Ops nếu cần hủy.`
+      );
+      return;
+    }
+    if (!window.confirm(`Xóa khóa học ${courseCode}?`)) return;
+    setAmountDrafts((prev) => {
+      if (!(courseCode in prev)) return prev;
+      const next = { ...prev };
+      delete next[courseCode];
+      return next;
+    });
+    mutate((next) => ({
+      ...next,
+      uids: next.uids.map((u, idx) =>
+        idx === uidIdx
+          ? { ...u, courses: u.courses.filter((c) => c.courseCode !== courseCode) }
+          : u
+      ),
+    }));
+  };
+
+  const addUidGroup = () => {
+    mutate((next) => {
+      const code = nextCourseCode(next);
+      return {
+        ...next,
+        uids: [
+          ...next.uids,
+          {
+            uid: "",
+            phone: "",
+            country: next.uids[0]?.country || "VN",
+            courses: [
+              {
+                courseCode: code,
+                packageName: "",
+                amount: 0,
+                orderId: "",
+                invoiced: false,
+                invoiceRequestedAt: null,
+              },
+            ],
+          },
+        ],
+      };
+    });
+  };
+
+  return (
+    <div className="panel">
+      <div className="panel-head">
+        <h4>
+          <Icons.CheckSquare size={15} /> Kích hoạt khoá học
+          <span className="num-pill">{ar.id}</span>
+        </h4>
+        <span
+          className={`badge ${summary.allActivated ? "is-done" : "is-over"}`}
+          title={summary.allActivated ? "Tất cả gói học đã được Ops kích hoạt" : "Đang chờ Ops kích hoạt gói học"}
+        >
+          {summary.allActivated ? <Icons.Check size={11} strokeWidth={2.5} /> : <Icons.Clock size={11} />}{" "}
+          {summary.buttonLabel}
+        </span>
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <button
+            type="button"
+            className="btn btn-outline btn-sm"
+            title="Sửa thông tin gói học"
+            aria-label="Sửa thông tin gói học"
+            onClick={() => setEditing(true)}
+            style={{ width: 32, padding: 0 }}
+          >
+            <Icons.Pencil size={13} />
+          </button>
+          <button
+            type="button"
+            className="btn btn-success btn-sm"
+            title="Lưu thông tin Active Request"
+            aria-label="Lưu thông tin Active Request"
+            disabled={!editing || saving}
+            onClick={() => void save()}
+            style={{ width: 32, padding: 0 }}
+          >
+            <Icons.Check size={14} strokeWidth={2.6} />
+          </button>
+          <button
+            type="button"
+            className="btn btn-outline btn-sm"
+            title="Xóa Active Request"
+            aria-label="Xóa Active Request"
+            disabled={deleting}
+            onClick={() => void removeAr()}
+            style={{ width: 32, padding: 0, color: "var(--danger)" }}
+          >
+            <Icons.Close size={14} strokeWidth={2.4} />
+          </button>
+        </div>
+      </div>
+      {missingRequiredCount > 0 && (
+        <div className="match-warning" style={{ marginBottom: 10 }}>
+          <Icons.AlertCircle size={14} />
+          <span>Thiếu {missingRequiredCount} trường bắt buộc (UID, SĐT, gói học, số tiền).</span>
+        </div>
+      )}
+      <div style={{ padding: "8px 0", display: "flex", flexDirection: "column", gap: 10 }}>
+        {ar.uids.map((u, uIdx) => (
+          <div
+            key={`${u.uid || "uid"}-${uIdx}`}
+            style={{
+              border: "1px solid var(--border)",
+              borderRadius: 8,
+              padding: 10,
+              background: "var(--surface-2)",
+            }}
+          >
+            {!editing && (
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, minWidth: 0 }}>
+                <span style={{ fontWeight: 700, fontSize: 13 }}>UID {u.uid || "—"}</span>
+                <span style={{ fontSize: 12, color: "var(--text-3)" }}>{formatCoursePhone(u.country, u.phone)}</span>
+              </div>
+            )}
+            <div style={{ display: editing ? "grid" : "none", gridTemplateColumns: "1fr 1fr auto", gap: 8, marginBottom: 8 }}>
+              <input
+                value={uidDrafts[uIdx] ?? u.uid ?? ""}
+                onChange={(e) => setUidDrafts((prev) => ({ ...prev, [uIdx]: e.target.value }))}
+                onBlur={() => commitUid(uIdx)}
+                placeholder="UID CRM"
+                style={{
+                  border: "1px solid var(--border)",
+                  borderRadius: 8,
+                  padding: "7px 9px",
+                  fontFamily: "JetBrains Mono, monospace",
+                  fontSize: 12,
+                  outline: "none",
+                  background: "white",
+                }}
+              />
+              <input
+                value={phoneDrafts[uIdx] ?? u.phone ?? ""}
+                onChange={(e) =>
+                  setPhoneDrafts((prev) => ({
+                    ...prev,
+                    [uIdx]: e.target.value.replace(/[^\d]/g, ""),
+                  }))
+                }
+                onBlur={() => commitPhone(uIdx)}
+                placeholder="Số điện thoại"
+                style={{
+                  border: "1px solid var(--border)",
+                  borderRadius: 8,
+                  padding: "7px 9px",
+                  fontFamily: "JetBrains Mono, monospace",
+                  fontSize: 12,
+                  outline: "none",
+                  background: "white",
+                }}
+              />
+              <button type="button" className="btn btn-outline btn-sm" onClick={() => addCourseForUid(uIdx)}>
+                <Icons.Plus size={12} /> Thêm gói
+              </button>
+            </div>
+            {u.courses.length === 0 ? (
+              <div style={{ fontSize: 12, color: "var(--text-3)", fontStyle: "italic" }}>
+                Chưa chọn gói khoá học
+              </div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                {u.courses.map((c, cIdx) => {
+                  const courseLocked = !!(c.orderId && c.orderId.trim()) || !!c.invoiced;
+                  return (
+                  <div
+                    key={`${c.courseCode}-${cIdx}`}
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: editing
+                        ? "minmax(0, 1fr) 130px auto auto"
+                        : "minmax(0, 1fr) 130px auto",
+                      gap: 10,
+                      alignItems: "center",
+                      padding: "6px 8px",
+                      background: "white",
+                      border: "1px solid var(--border)",
+                      borderRadius: 6,
+                      fontSize: 12.5,
+                    }}
+                  >
+                    {!editing && (
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis" }}>
+                          {c.packageName || c.name || "Chưa chọn gói"}
+                        </div>
+                        {c.courseCode && (
+                          <div style={{ fontSize: 11, color: "var(--text-3)", marginTop: 2 }}>
+                            Course code: <code>{c.courseCode}</code>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    <div
+                      style={{ minWidth: 0, display: editing ? "block" : "none", position: "relative" }}
+                      title={courseLocked ? "Đã kích hoạt — Sales không thể đổi gói học" : undefined}
+                    >
+                      <Combobox
+                        value={c.packageName || c.name || ""}
+                        disabled={courseLocked}
+                        onChange={(value) =>
+                          mutate((next) => ({
+                            ...next,
+                            uids: next.uids.map((uu, idx) =>
+                              idx === uIdx
+                                ? {
+                                    ...uu,
+                                    courses: uu.courses.map((course) =>
+                                      course.courseCode === c.courseCode
+                                        ? { ...course, packageName: value }
+                                        : course
+                                    ),
+                                  }
+                                : uu
+                            ),
+                          }))
+                        }
+                        options={COURSE_PACKAGE_OPTIONS}
+                        placeholder="Chọn hoặc gõ tên gói học..."
+                        emptyLabel="Chưa chọn gói"
+                      />
+                      {!courseLocked && (c.packageName || c.name) && (
+                        <button
+                          type="button"
+                          className="btn btn-outline btn-sm"
+                          aria-label="Xóa tên gói học"
+                          title="Xóa tên gói học"
+                          onClick={() =>
+                            mutate((next) => ({
+                              ...next,
+                              uids: next.uids.map((uu, idx) =>
+                                idx === uIdx
+                                  ? {
+                                      ...uu,
+                                      courses: uu.courses.map((course) =>
+                                        course.courseCode === c.courseCode ? { ...course, packageName: "" } : course
+                                      ),
+                                    }
+                                  : uu
+                              ),
+                            }))
+                          }
+                          style={{
+                            position: "absolute",
+                            right: 6,
+                            top: 6,
+                            width: 24,
+                            height: 24,
+                            padding: 0,
+                            borderRadius: 999,
+                            color: "var(--danger)",
+                            background: "white",
+                          }}
+                        >
+                          <Icons.Close size={12} strokeWidth={2.4} />
+                        </button>
+                      )}
+                      {c.courseCode && (
+                        <div style={{ fontSize: 11, color: "var(--text-3)", marginTop: 2 }}>
+                          Course code: <code>{c.courseCode}</code>
+                        </div>
+                      )}
+                    </div>
+                    {!editing && (
+                      <div style={{ textAlign: "right", fontWeight: 700, color: "var(--money)" }}>{vnd(c.amount || 0)}</div>
+                    )}
+                    <input
+                      value={amountDrafts[c.courseCode] ?? (c.amount ? String(c.amount) : "")}
+                      onChange={(e) => {
+                        if (courseLocked) return;
+                        const raw = e.target.value.replace(/[^\d]/g, "");
+                        setAmountDrafts((prev) => ({ ...prev, [c.courseCode]: raw }));
+                      }}
+                      onBlur={() => commitAmount(uIdx, c.courseCode)}
+                      readOnly={courseLocked}
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      placeholder="Số tiền"
+                      title={courseLocked ? "Đã kích hoạt — Sales không thể đổi số tiền" : undefined}
+                      style={{
+                        display: editing ? "block" : "none",
+                        border: "1px solid var(--border)",
+                        borderRadius: 8,
+                        padding: "7px 9px",
+                        fontSize: 12,
+                        fontFamily: "JetBrains Mono, monospace",
+                        outline: "none",
+                        textAlign: "right",
+                        background: courseLocked ? "var(--row-hover, #f4f5f7)" : "white",
+                        color: courseLocked ? "var(--text-3)" : undefined,
+                        cursor: courseLocked ? "not-allowed" : "text",
+                      }}
+                    />
+                    <div style={{ textAlign: "right" }}>
+                      {c.orderId ? (
+                        <span className="badge is-done" title="Gói học đã được Ops kích hoạt">
+                          <Icons.Check size={10} strokeWidth={2.5} /> Đã kích hoạt
+                        </span>
+                      ) : (
+                        <span className="badge is-over" title="Chờ Ops kích hoạt gói học">
+                          <Icons.Clock size={10} /> Chờ kích hoạt
+                        </span>
+                      )}
+                    </div>
+                    {editing && (
+                      <button
+                        type="button"
+                        className="btn btn-outline btn-sm"
+                        title={courseLocked ? "Đã kích hoạt — không thể xóa" : "Xóa khóa học"}
+                        aria-label="Xóa khóa học"
+                        disabled={courseLocked}
+                        onClick={() => removeCourse(uIdx, c.courseCode)}
+                        style={{ width: 28, padding: 0, color: "var(--danger)", opacity: courseLocked ? 0.4 : 1 }}
+                      >
+                        <Icons.Close size={12} strokeWidth={2.4} />
+                      </button>
+                    )}
+                  </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+      <div style={{ display: "flex", justifyContent: "flex-end", paddingBottom: 4 }}>
+        <button type="button" className="btn btn-outline btn-sm" onClick={addUidGroup}>
+          <Icons.Plus size={12} /> Thêm UID
+        </button>
+      </div>
+      <div style={{ fontSize: 11.5, color: "var(--text-3)", paddingTop: 6, lineHeight: 1.5 }}>
+        Sales bấm "Kích hoạt khoá học" sẽ tự động dùng thông tin KH từ PR. Bộ phận quản trị (chị Thu Hiền) sẽ điền Order ID trong tab <strong>Kích hoạt khoá học</strong>.
+      </div>
+    </div>
+  );
+}
 
 export default function PaymentRequestDetailDrawer({
   request,
@@ -364,17 +870,19 @@ export default function PaymentRequestDetailDrawer({
   onCreateActiveRequest,
   onCancelRequest,
   activeRequestId,
+  activeRequest,
+  onActiveRequestMutate,
+  onActiveRequestSave,
+  onActiveRequestDelete,
   onShowQr,
   uploadingBillId,
-  savingPr = false,
-  addingPayment = false,
-  savePrError = null,
+  deletingBillId,
 }: {
   request: PaymentRequest | null;
   open: boolean;
   onClose: () => void;
-  onUpdatePr: (draft: DraftPr) => Promise<void>;
-  onAddPayment: (payload: AddPaymentAttemptPayload) => Promise<void>;
+  onUpdatePr: (next: PaymentRequest) => Promise<boolean>;
+  onAddPayment: (payload: AddPaymentAttemptPayload) => void;
   onCancelPayment: (qr: PaymentAttempt) => void;
   onMarkPaid: (qr: PaymentAttempt) => void;
   onBillFile: (qr: PaymentAttempt, file: File) => void;
@@ -382,14 +890,18 @@ export default function PaymentRequestDetailDrawer({
   onCreateActiveRequest: () => void;
   onCancelRequest: () => void;
   activeRequestId?: string | null;
+  activeRequest?: ActiveRequest | null;
+  onActiveRequestMutate: (arId: string, updater: (ar: ActiveRequest) => ActiveRequest) => void;
+  onActiveRequestSave: (next: ActiveRequest) => Promise<void>;
+  onActiveRequestDelete: (arId: string) => Promise<void>;
   onShowQr: (qr: PaymentAttempt) => void;
   uploadingBillId?: string | null;
-  savingPr?: boolean;
-  addingPayment?: boolean;
-  savePrError?: string | null;
+  deletingBillId?: string | null;
 }) {
   const [showAdd, setShowAdd] = useState(false);
   const [editing, setEditing] = useState(false);
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [isTargetFocused, setIsTargetFocused] = useState(false);
   const [draft, setDraft] = useState<DraftPr | null>(null);
   const drawerBodyRef = useRef<HTMLDivElement | null>(null);
   const addFormRef = useRef<HTMLDivElement | null>(null);
@@ -397,6 +909,8 @@ export default function PaymentRequestDetailDrawer({
   useEffect(() => {
     setShowAdd(false);
     setEditing(false);
+    setSavingEdit(false);
+    setIsTargetFocused(false);
     setDraft(null);
   }, [request?.id]);
 
@@ -423,9 +937,45 @@ export default function PaymentRequestDetailDrawer({
 
   const country = findCountry(request.country);
   const remaining = Math.max(0, request.target - request.received);
-  const canCancel = request.state !== "cancelled" && request.doneCount === 0;
+  const canCancel = request.state !== "cancelled" && request.doneCount === 0 && !activeRequestId;
   const ready = request.state === "done" || request.state === "over";
   const hasActiveRequest = !!activeRequestId;
+  const activeSummary = activationSummary(activeRequest);
+  const copyPrId = async () => {
+    const id = request.id;
+    const fallbackCopy = () => {
+      try {
+        const ta = document.createElement("textarea");
+        ta.value = id;
+        ta.setAttribute("readonly", "");
+        ta.style.position = "fixed";
+        ta.style.left = "-9999px";
+        document.body.appendChild(ta);
+        ta.select();
+        const ok = document.execCommand("copy");
+        document.body.removeChild(ta);
+        return ok;
+      } catch {
+        return false;
+      }
+    };
+
+    let ok = false;
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(id);
+        ok = true;
+      } else {
+        ok = fallbackCopy();
+      }
+    } catch {
+      ok = fallbackCopy();
+    }
+
+    if (!ok) {
+      window.prompt("Không thể tự copy trong trình duyệt này. Copy PR-ID thủ công:", id);
+    }
+  };
 
   return (
     <>
@@ -500,7 +1050,7 @@ export default function PaymentRequestDetailDrawer({
                       province: request.province || "",
                       ward: request.ward || "",
                       address: request.address || "",
-                      target: String(request.target.toLocaleString("vi-VN")),
+                      target: String(request.target),
                       note: request.note || "",
                     });
                     setEditing(true);
@@ -512,7 +1062,9 @@ export default function PaymentRequestDetailDrawer({
                 <div style={{ display: "flex", gap: 6 }}>
                   <button
                     className="btn btn-outline btn-sm"
+                    disabled={savingEdit}
                     onClick={() => {
+                      if (savingEdit) return;
                       setEditing(false);
                       setDraft(null);
                     }}
@@ -521,16 +1073,32 @@ export default function PaymentRequestDetailDrawer({
                   </button>
                   <button
                     className="btn btn-primary btn-sm"
-                    disabled={savingPr}
-                    onClick={() => {
-                      if (!draft || savingPr) return;
-                      void onUpdatePr(draft).then(() => {
-                        setEditing(false);
-                        setDraft(null);
+                    disabled={savingEdit}
+                    onClick={async () => {
+                      if (savingEdit) return;
+                      if (!draft) return;
+                      const targetNum =
+                        Number(String(draft.target).replace(/\D/g, "")) || request.target;
+                      setSavingEdit(true);
+                      const ok = await onUpdatePr({
+                        ...request,
+                        uid: draft.uid,
+                        name: draft.name,
+                        country: draft.country,
+                        phone: draft.phone,
+                        province: draft.province,
+                        ward: draft.ward,
+                        address: draft.address,
+                        target: targetNum,
+                        note: draft.note,
                       });
+                      setSavingEdit(false);
+                      if (!ok) return;
+                      setEditing(false);
+                      setDraft(null);
                     }}
                   >
-                    <Icons.Check size={13} strokeWidth={2.5} /> {savingPr ? "Đang lưu..." : "Lưu thay đổi"}
+                    <Icons.Check size={13} strokeWidth={2.5} /> {savingEdit ? "Đang lưu..." : "Lưu thay đổi"}
                   </button>
                 </div>
               )}
@@ -565,6 +1133,12 @@ export default function PaymentRequestDetailDrawer({
                   <div className="info-label">Số nhà, đường</div>
                   <div className="info-value">{request.address || "—"}</div>
                 </div>
+                {request.email && (
+                  <div className="info-cell">
+                    <div className="info-label">Email</div>
+                    <div className="info-value">{request.email}</div>
+                  </div>
+                )}
                 <div className="info-cell">
                   <div className="info-label">Tổng tiền dự kiến</div>
                   <div className="info-value money">{vnd(request.target)}</div>
@@ -596,14 +1170,6 @@ export default function PaymentRequestDetailDrawer({
               </div>
             ) : draft ? (
               <div className="info-grid">
-                {savePrError ? (
-                  <div
-                    className="info-cell full"
-                    style={{ gridColumn: "1 / -1", color: "var(--danger-text)", fontSize: 12.5 }}
-                  >
-                    {savePrError}
-                  </div>
-                ) : null}
                 <div className="info-cell">
                   <div className="info-label">UID CRM</div>
                   <input
@@ -665,10 +1231,20 @@ export default function PaymentRequestDetailDrawer({
                 <div className="info-cell">
                   <div className="info-label">Tổng tiền dự kiến</div>
                   <input
-                    value={draft.target}
+                    value={
+                      isTargetFocused
+                        ? draft.target
+                        : draft.target
+                        ? Number(draft.target).toLocaleString("vi-VN")
+                        : ""
+                    }
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    onFocus={() => setIsTargetFocused(true)}
+                    onBlur={() => setIsTargetFocused(false)}
                     onChange={(e) => {
                       const v = e.target.value.replace(/[^\d]/g, "");
-                      setDraft({ ...draft, target: v ? Number(v).toLocaleString("vi-VN") : "" });
+                      setDraft({ ...draft, target: v });
                     }}
                     style={{
                       border: "1px solid var(--border)",
@@ -738,6 +1314,7 @@ export default function PaymentRequestDetailDrawer({
                   onMarkPaid={onMarkPaid}
                   onShowQr={onShowQr}
                   uploadingBillId={uploadingBillId}
+                  deletingBillId={deletingBillId}
                 />
               ))}
             </div>
@@ -746,16 +1323,25 @@ export default function PaymentRequestDetailDrawer({
               <div style={{ marginTop: 12 }} ref={addFormRef}>
                 <AddPaymentForm
                   pr={request}
-                  submitting={addingPayment}
-                  onCancel={() => !addingPayment && setShowAdd(false)}
-                  onSubmit={async (payload) => {
-                    await onAddPayment(payload);
+                  onCancel={() => setShowAdd(false)}
+                  onSubmit={(payload) => {
+                    onAddPayment(payload);
                     setShowAdd(false);
                   }}
                 />
               </div>
             )}
           </div>
+
+          {/* AR mini-window — chỉ Sales view, gọn nhẹ. Tab Kích hoạt khoá học (Thu Hiền) vẫn riêng */}
+          {hasActiveRequest && activeRequest && (
+            <ActiveRequestMiniCardV2
+              ar={activeRequest}
+              onActiveRequestMutate={onActiveRequestMutate}
+              onActiveRequestSave={onActiveRequestSave}
+              onActiveRequestDelete={onActiveRequestDelete}
+            />
+          )}
 
           {/* Timeline */}
           <div className="panel">
@@ -787,9 +1373,9 @@ export default function PaymentRequestDetailDrawer({
                   <div className="tl-title">B3 · Active Request (Tạo khoá học)</div>
                   <div className="tl-meta">
                     {hasActiveRequest
-                      ? `Active Request ${activeRequestId} đã tạo — chuyển sang Kích hoạt khóa học để điền Order ID`
+                      ? `Active Request ${activeRequestId} — ${activeSummary.buttonLabel}`
                       : ready
-                      ? 'Sẵn sàng kích hoạt — bấm "Tạo Active Request" để mở khoá học'
+                      ? 'Sẵn sàng kích hoạt — bấm "Kích hoạt khoá học" để mở gói'
                       : "Sẽ mở khoá khi đủ 100% tiền"}
                   </div>
                 </div>
@@ -809,7 +1395,7 @@ export default function PaymentRequestDetailDrawer({
           <div style={{ display: "flex", gap: 8 }}>
             <button
               className="btn btn-outline btn-sm"
-              onClick={() => navigator.clipboard?.writeText(request.id).catch(() => {})}
+              onClick={() => void copyPrId()}
             >
               <Icons.Copy size={13} /> Copy PR-ID
             </button>
@@ -828,9 +1414,10 @@ export default function PaymentRequestDetailDrawer({
             <button
               className={`btn ${ready && !hasActiveRequest ? "btn-success" : "btn-outline"}`}
               disabled={!ready || hasActiveRequest}
+              title={!ready ? "Cần thu đủ 100% số tiền trước khi kích hoạt" : hasActiveRequest ? activeSummary.buttonLabel : "Tạo Active Request và chọn gói khoá học"}
               onClick={onCreateActiveRequest}
             >
-              <Icons.CheckSquare size={14} /> {hasActiveRequest ? "Đã tạo Active Request" : "Tạo Active Request (B3)"}
+              <Icons.CheckSquare size={14} /> {hasActiveRequest ? activeSummary.buttonLabel : "Kích hoạt khoá học"}
             </button>
           </div>
         </div>

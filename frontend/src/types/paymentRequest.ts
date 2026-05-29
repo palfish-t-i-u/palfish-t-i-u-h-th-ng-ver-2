@@ -13,6 +13,7 @@ export interface PaymentAttempt {
   code: string;
   bill: boolean;
   billImage?: string | null;
+  billImages?: string[];
   method: PaymentMethod;
   bank?: string;
   cardLast4?: string | null;
@@ -40,13 +41,14 @@ export interface PaymentLineApiRow {
   paid_at?: string;
   reject_reason?: string;
   bill_image?: string | null;
+  bill_images?: string[];
   created_at?: string;
   updated_at?: string;
 }
 
 export interface AddPaymentLineResponse {
   payment_line: PaymentLineApiRow;
-  payment_request: Record<string, unknown> & { payments?: PaymentLineApiRow[] };
+  payment_request: Record<string, unknown>;
   received: number;
   target: number;
   state: string;
@@ -95,6 +97,7 @@ export interface ActiveCourse {
   invoiced: boolean;
   invoiceId?: string;
   invoicedAt?: string | null;
+  invoiceRequestedAt?: string | null;
   /** Mã đơn hàng thuế (M...) — BE cấp khi export batch */
   taxInvoiceCode?: string;
   /** Mã sản phẩm thuế (PF...) — BE cấp khi export batch */
@@ -155,20 +158,7 @@ export type CreatePaymentRequestPayload = {
   email?: string;
 };
 
-/** PATCH /api/v1/payment-requests/{id} — snake_case body */
-export type UpdatePaymentRequestPayload = {
-  uid: string;
-  name: string;
-  phone: string;
-  country: string;
-  address: string;
-  ward: string;
-  province: string;
-  note: string;
-  target: number;
-};
-
-
+export type PatchPaymentRequestPayload = Partial<CreatePaymentRequestPayload>;
 
 export type CreateActiveRequestCoursePayload = {
   name?: string;
@@ -201,9 +191,11 @@ export type ActiveRequestApiRow = {
       name?: string;
       amount?: number;
       order_id?: string;
+      orderId?: string;
       invoiced?: boolean;
       invoice_id?: string;
       invoiced_at?: string;
+      invoice_requested_at?: string;
       tax_invoice_code?: string;
       tax_product_code?: string;
     }>;
@@ -213,12 +205,32 @@ export type ActiveRequestApiRow = {
   payment_request?: { name?: string; email?: string };
 };
 
+export type ActiveRequestPatchUidPayload = {
+  uid: string;
+  phone?: string;
+  country?: string;
+  courses: Array<{
+    code: string;
+    name: string;
+    amount: number;
+    order_id?: string;
+    invoiced?: boolean;
+    invoice_id?: string;
+    invoiced_at?: string;
+    invoice_requested_at?: string;
+    tax_invoice_code?: string;
+    tax_product_code?: string;
+  }>;
+};
+
+export type PatchActiveRequestPayload = {
+  customer_name?: string;
+  info_confirmed?: boolean;
+  uids_data?: ActiveRequestPatchUidPayload[];
+};
+
 export type CreateStandaloneActiveRequestPayload = {
   customer_name?: string;
   pr_id?: string | null;
   uids: CreateActiveRequestUidPayload[];
-};
-
-export type AttachCoursePayload = {
-  order_id: string;
 };

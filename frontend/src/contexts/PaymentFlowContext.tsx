@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components */
 import {
   createContext,
   useCallback,
@@ -28,6 +29,8 @@ import {
   mergeAddPaymentLineResponse,
   normalizeRequest,
   nowStamp,
+  toActiveRequestPatchUidsData,
+  updateActiveCoursePackage,
 } from "../components/payment-request/paymentRequestUtils";
 import {
   countAwaitingTransactions,
@@ -67,7 +70,7 @@ type PaymentFlowContextValue = {
     payload: AddPaymentAttemptPayload
   ) => Promise<{ payment: PaymentAttempt; request: PaymentRequest } | null>;
   confirmTransaction: (prId: string, paymentId: string) => Promise<void>;
-  rejectTransaction: (prId: string, paymentId: string) => Promise<void>;
+  rejectTransaction: (prId: string, paymentId: string, rejectReason?: string) => Promise<void>;
   handleCreateActiveRequest: (pr: PaymentRequest) => Promise<ActiveRequest>;
   handleCreateActiveRequestFromForm: (data: {
     prId: string | null;
@@ -78,7 +81,15 @@ type PaymentFlowContextValue = {
     packageName: string;
     amount: number;
   }) => Promise<ActiveRequest>;
-  patchCourseOrderId: (arId: string, courseCode: string, orderId: string) => Promise<void>;
+  updateActiveRequestCoursePackage: (arId: string, courseCode: string, packageName: string) => Promise<void>;
+  saveActiveRequest: (next: ActiveRequest) => Promise<void>;
+  deleteActiveRequest: (arId: string) => Promise<void>;
+  patchCourseOrderId: (
+    arId: string,
+    courseCode: string,
+    orderId: string
+  ) => Promise<{ ok: boolean; error?: string }>;
+  requestInvoiceForCourse: (arId: string, courseCode: string) => Promise<void>;
   issueInvoiceForCourse: (arId: string, courseCode: string) => Promise<void>;
   badgeCounts: { reconciliation: number; activation: number; invoice: number };
   nav: NavState;
@@ -88,7 +99,7 @@ type PaymentFlowContextValue = {
 
 const PaymentFlowContext = createContext<PaymentFlowContextValue | null>(null);
 
-const POLL_MS = 12_000;
+const POLL_MS = 30_000;
 
 function hasPendingQrPayments(requests: PaymentRequest[]) {
   return requests.some((pr) =>
@@ -110,9 +121,15 @@ export function PaymentFlowProvider({
   const [apiNote, setApiNote] = useState("");
   const [nav, setNav] = useState<NavState>({});
   const onViewChangeRef = useRef(onViewChange);
-  onViewChangeRef.current = onViewChange;
+  const courseOrderPatchSeqRef = useRef<Record<string, number>>({});
+  const loadDataSeqRef = useRef(0);
+
+  useEffect(() => {
+    onViewChangeRef.current = onViewChange;
+  }, [onViewChange]);
 
   const loadData = useCallback(async (options?: LoadDataOptions) => {
+    const seq = ++loadDataSeqRef.current;
     if (!options?.silent) setLoading(true);
     const notes: string[] = [];
 
@@ -145,13 +162,18 @@ export function PaymentFlowProvider({
       notes.push("GET /active-requests chưa sẵn sàng.");
     }
 
+    // Drop stale poll: a newer loadData() has already started.
+    if (seq !== loadDataSeqRef.current) return;
+
     if (prOk) setRequests(nextRequests);
     if (arOk) setActiveRequests(nextArs);
     setApiNote(notes.join(" "));
     if (!options?.silent) setLoading(false);
   }, []);
 
+  // Initial data load on mount.
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void loadData();
   }, [loadData]);
 
@@ -268,24 +290,25 @@ export function PaymentFlowProvider({
   );
 
   const rejectTransaction = useCallback(
-    async (prId: string, paymentId: string) => {
-      if (isBackendLineId(paymentId)) {
-        try {
-          await endpoints.transactions.patchStatus(paymentId, "rejected");
-          await loadData({ silent: true });
-          return;
-        } catch {
-          /* optimistic */
-        }
-      }
+    async (prId: string, paymentId: string, rejectReason?: string) => {
+      // Optimistic update immediately — no full reload
       updateRequest(prId, (r) => ({
         ...r,
         payments: r.payments.map((p) =>
-          p.id === paymentId ? { ...p, status: "rejected" as const, bill: false, paidAt: null } : p
+          p.id === paymentId
+            ? { ...p, status: "rejected" as const, bill: false, paidAt: null, rejectReason: rejectReason ?? null }
+            : p
         ),
       }));
+      if (isBackendLineId(paymentId)) {
+        try {
+          await endpoints.transactions.patchStatus(paymentId, "rejected", rejectReason);
+        } catch {
+          /* silently ignore — optimistic update already applied */
+        }
+      }
     },
-    [updateRequest, loadData]
+    [updateRequest]
   );
 
   const handleCreateActiveRequest = useCallback(
@@ -361,27 +384,149 @@ export function PaymentFlowProvider({
     [activeRequests]
   );
 
+  const updateActiveRequestCoursePackage = useCallback(
+    async (arId: string, courseCode: string, packageName: string) => {
+      let optimistic: ActiveRequest | null = null;
+      updateActiveRequest(arId, (ar) => {
+        optimistic = updateActiveCoursePackage(ar, courseCode, packageName);
+        return optimistic;
+      });
+
+      if (!optimistic) return;
+
+      try {
+        const res = await endpoints.activeRequests.update(arId, {
+          uids_data: toActiveRequestPatchUidsData(optimistic),
+        });
+        const ar = fromApiActiveRequest(res.data);
+        setActiveRequests((prev) => prev.map((x) => (x.id === arId ? ar : x)));
+        setApiNote("");
+      } catch {
+        setApiNote("Đã đổi gói tạm trên giao diện; máy chủ chưa lưu được thay đổi gói học.");
+      }
+    },
+    [updateActiveRequest]
+  );
+
+  const saveActiveRequest = useCallback(async (next: ActiveRequest) => {
+    updateActiveRequest(next.id, () => next);
+    try {
+      const res = await endpoints.activeRequests.update(next.id, {
+        uids_data: toActiveRequestPatchUidsData(next),
+      });
+      const saved = fromApiActiveRequest(res.data);
+      setActiveRequests((prev) => prev.map((x) => (x.id === next.id ? saved : x)));
+      setApiNote("");
+    } catch {
+      setApiNote("Đã đổi tạm trên giao diện; máy chủ chưa lưu được thay đổi Kích hoạt khóa học.");
+    }
+  }, [updateActiveRequest]);
+
+  const deleteActiveRequest = useCallback(async (arId: string) => {
+    const previous = activeRequests;
+    setActiveRequests((prev) => prev.filter((x) => x.id !== arId));
+    try {
+      await endpoints.activeRequests.delete(arId);
+      setApiNote("");
+    } catch {
+      setActiveRequests(previous);
+      setApiNote("Chưa xóa được Active Request trên máy chủ. Cần BE thêm endpoint xóa/cancel AR.");
+    }
+  }, [activeRequests]);
+
   const patchCourseOrderId = useCallback(
     async (arId: string, courseCode: string, orderId: string) => {
       const trimmed = orderId.trim();
-      updateActiveRequest(arId, (ar) => ({
-        ...ar,
-        uids: ar.uids.map((u) => ({
+      const seqKey = `${arId}::${courseCode}`;
+      const seq = (courseOrderPatchSeqRef.current[seqKey] ?? 0) + 1;
+      courseOrderPatchSeqRef.current[seqKey] = seq;
+      const readOrderId = (ar: ActiveRequest) => {
+        for (const uid of ar.uids) {
+          const course = uid.courses.find((c) => c.courseCode === courseCode);
+          if (course) return (course.orderId || "").trim();
+        }
+        return "";
+      };
+      const currentAr = activeRequests.find((x) => x.id === arId) || null;
+      if (!currentAr) {
+        const error = `Khong tim thay Active Request ${arId}`;
+        setApiNote(error);
+        return { ok: false, error };
+      }
+      const optimistic: ActiveRequest = {
+        ...currentAr,
+        uids: currentAr.uids.map((u) => ({
           ...u,
           courses: u.courses.map((c) =>
             c.courseCode === courseCode ? { ...c, orderId: trimmed } : c
           ),
         })),
-      }));
+      };
+
       try {
-        const res = await endpoints.activeRequests.attachCourse(arId, courseCode, { order_id: trimmed });
-        const ar = fromApiActiveRequest(res.data as Parameters<typeof fromApiActiveRequest>[0]);
+        const res = await endpoints.activeRequests.patchCourseOrderId(arId, courseCode, trimmed);
+        if (courseOrderPatchSeqRef.current[seqKey] !== seq) {
+          return { ok: false, error: "Yeu cau cu da bi ghi de boi thao tac moi hon." };
+        }
+        const ar = fromApiActiveRequest(res.data);
+        if (readOrderId(ar) !== trimmed) {
+          throw new Error("PATCH returned stale order_id");
+        }
         setActiveRequests((prev) => prev.map((x) => (x.id === arId ? ar : x)));
+        setApiNote("");
+        return { ok: true };
       } catch {
-        setApiNote("Không lưu được Order ID lên máy chủ.");
+        try {
+          const res = await endpoints.activeRequests.update(arId, {
+            uids_data: toActiveRequestPatchUidsData(optimistic),
+          });
+          if (courseOrderPatchSeqRef.current[seqKey] !== seq) {
+            return { ok: false, error: "Yeu cau cu da bi ghi de boi thao tac moi hon." };
+          }
+          const ar = fromApiActiveRequest(res.data);
+          if (readOrderId(ar) !== trimmed) {
+            throw new Error("Full update returned stale order_id");
+          }
+          setActiveRequests((prev) => prev.map((x) => (x.id === arId ? ar : x)));
+          setApiNote("");
+          return { ok: true };
+        } catch {
+          const error = "Khong luu duoc Order ID len may chu.";
+          setApiNote(error);
+          return { ok: false, error };
+        }
       }
     },
-    [updateActiveRequest]
+    [activeRequests]
+  );
+
+  const requestInvoiceForCourse = useCallback(
+    async (arId: string, courseCode: string) => {
+      const currentAr = activeRequests.find((x) => x.id === arId);
+      if (!currentAr) return;
+      const requestedAt = flowNow();
+      const next: ActiveRequest = {
+        ...currentAr,
+        uids: currentAr.uids.map((u) => ({
+          ...u,
+          courses: u.courses.map((c) =>
+            c.courseCode === courseCode ? { ...c, invoiceRequestedAt: requestedAt } : c
+          ),
+        })),
+      };
+      updateActiveRequest(arId, () => next);
+      try {
+        const res = await endpoints.activeRequests.update(arId, {
+          uids_data: toActiveRequestPatchUidsData(next),
+        });
+        const saved = fromApiActiveRequest(res.data);
+        setActiveRequests((prev) => prev.map((x) => (x.id === arId ? saved : x)));
+        setApiNote("");
+      } catch {
+        setApiNote("Đã chuyển tạm sang B4 trên giao diện; máy chủ chưa lưu được trạng thái Xuất HĐ.");
+      }
+    },
+    [activeRequests, updateActiveRequest]
   );
 
   const issueInvoiceForCourse = useCallback(
@@ -429,7 +574,11 @@ export function PaymentFlowProvider({
       rejectTransaction,
       handleCreateActiveRequest,
       handleCreateActiveRequestFromForm,
+      updateActiveRequestCoursePackage,
+      saveActiveRequest,
+      deleteActiveRequest,
       patchCourseOrderId,
+      requestInvoiceForCourse,
       issueInvoiceForCourse,
       badgeCounts,
       nav,
@@ -451,7 +600,11 @@ export function PaymentFlowProvider({
       rejectTransaction,
       handleCreateActiveRequest,
       handleCreateActiveRequestFromForm,
+      updateActiveRequestCoursePackage,
+      saveActiveRequest,
+      deleteActiveRequest,
       patchCourseOrderId,
+      requestInvoiceForCourse,
       issueInvoiceForCourse,
       badgeCounts,
       nav,

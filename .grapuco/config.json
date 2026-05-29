@@ -1,0 +1,24 @@
+{
+  "repoId": "d5fb5ca0-cfe2-4feb-9339-1a550498b81e",
+  "repoName": "palfish-t-i-u-h-th-ng-ver-2",
+  "server": "https://api.grapuco.com",
+  "language": "typescript",
+  "features": {
+    "embeddings": true,
+    "dataFlowAnalysis": true
+  },
+  "ignore": [
+    "node_modules",
+    "dist",
+    ".next",
+    ".git",
+    ".grapuco",
+    "__pycache__",
+    "vendor",
+    "target",
+    "build"
+  ],
+  "workspaceId": "e5ed00e2-49e5-449e-95e9-e66cd7939f77",
+  "workspaceName": "palfish gmv",
+  "lastPush": "2026-05-27T15:30:41.308Z"
+}

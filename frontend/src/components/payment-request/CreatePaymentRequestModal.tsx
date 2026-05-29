@@ -40,9 +40,13 @@ export default function CreatePaymentRequestModal({
   onSubmit: (payload: CreatePaymentRequestPayload) => void;
 }) {
   const [form, setForm] = useState<FormState>(INITIAL);
+  const [isTargetFocused, setIsTargetFocused] = useState(false);
 
   useEffect(() => {
-    if (open) setForm(INITIAL);
+    if (open) {
+      setForm(INITIAL);
+      setIsTargetFocused(false);
+    }
   }, [open]);
 
   if (!open) return null;
@@ -120,25 +124,22 @@ export default function CreatePaymentRequestModal({
               </label>
               <input
                 placeholder="VD: 12.000.000"
-                value={form.target}
+                value={
+                  isTargetFocused
+                    ? form.target
+                    : form.target
+                    ? Number(form.target).toLocaleString("vi-VN")
+                    : ""
+                }
+                inputMode="numeric"
+                pattern="[0-9]*"
+                onFocus={() => setIsTargetFocused(true)}
+                onBlur={() => setIsTargetFocused(false)}
                 onChange={(e) => {
                   const v = e.target.value.replace(/[^\d]/g, "");
-                  set("target", v ? Number(v).toLocaleString("vi-VN") : "");
+                  set("target", v);
                 }}
               />
-            </div>
-          </div>
-
-          <div className="field">
-            <label>Email khách hàng</label>
-            <input
-              type="email"
-              placeholder="VD: khach@email.com"
-              value={form.email}
-              onChange={(e) => set("email", e.target.value)}
-            />
-            <div style={{ fontSize: 11.5, color: "var(--text-3)", lineHeight: 1.45, marginTop: 4 }}>
-              Email khách hàng — TH khách cần hóa đơn → Thông tin này sẽ được tổng hợp vào mục &quot;Thông tin xuất hóa đơn&quot; trong tab &quot;Xuất hóa đơn&quot;
             </div>
           </div>
 
@@ -152,6 +153,19 @@ export default function CreatePaymentRequestModal({
               onWardChange={(v) => set("ward", v)}
               onAddressChange={(v) => set("address", v)}
             />
+          </div>
+
+          <div className="field">
+            <label>Email khách hàng</label>
+            <input
+              type="email"
+              placeholder="VD: khach@email.com"
+              value={form.email}
+              onChange={(e) => set("email", e.target.value)}
+            />
+            <div style={{ fontSize: 11.5, color: "var(--text-3)", lineHeight: 1.45, marginTop: 4 }}>
+              Email khách hàng — TH khách cần hóa đơn → Thông tin này sẽ được tổng hợp vào mục &quot;Thông tin xuất hóa đơn&quot; trong tab &quot;Xuất hóa đơn&quot;
+            </div>
           </div>
 
           <div className="field">
