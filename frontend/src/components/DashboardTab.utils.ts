@@ -1,4 +1,5 @@
 import type { RevenueLedgerRow } from "../types/revenue";
+import type { GamificationTopSale } from "../types/dashboard";
 
 export interface DashboardSaleRow {
   rank: number;
@@ -69,6 +70,17 @@ export function buildDashboardSalesData(rows: RevenueLikeRow[], todayIso: string
     today: toRankRows(rows, (date) => date === todayIso),
     month: toRankRows(rows, (date) => date.startsWith(monthKey)),
   };
+}
+
+export function buildDashboardSalesRowsFromGamification(rows: GamificationTopSale[]) {
+  return rows.map((row, index) => ({
+    rank: index + 1,
+    sale_crm_name: row.name,
+    team: "",
+    gmv_vnd: Number(row.revenue) || 0,
+    order_count: 0,
+    initials: getInitials(row.name),
+  }));
 }
 
 export function getInitials(name: string) {
