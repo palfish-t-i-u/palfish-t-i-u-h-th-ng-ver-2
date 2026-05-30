@@ -30,7 +30,7 @@ services:
     dockerfilePath: ./backend/Dockerfile
     dockerContext: .
     plan: free
-    branch: main
+    branch: sandbox
     envVars:
       - key: APP_ENV
         value: sandbox
