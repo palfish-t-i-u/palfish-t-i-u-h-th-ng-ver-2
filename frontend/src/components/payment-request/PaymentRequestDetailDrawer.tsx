@@ -662,7 +662,7 @@ function ActiveRequestMiniCardV2({
       </div>
       {!editing && !editFullyLocked && summary.courseCount > 0 && (
         <div className="ar-edit-hint">
-          <Icons.Pencil size={12} /> Bấm nút <strong>bút chì</strong> bên trên để sửa thông tin gói học
+          Bấm nút <Icons.Pencil size={12} style={{ verticalAlign: "middle", margin: "0 2px" }} /> bên trên để sửa thông tin / thêm gói học
         </div>
       )}
       {missingRequiredCount > 0 && (
