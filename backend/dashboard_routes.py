@@ -75,52 +75,88 @@ class DashboardSummary(BaseModel):
     commission: Commission
 
 
-def _mock_gamification_summary() -> DashboardSummary:
+STATIC_TASKS: list[TaskItem] = [
+    TaskItem(
+        id="task-1",
+        title="Team đạt 100% KPI",
+        description="Toàn team chạm mốc KPI tháng",
+        reward="+1.000.000đ",
+    ),
+    TaskItem(
+        id="task-2",
+        title="Team đạt 110% KPI",
+        description="Vượt 10% KPI tháng — thưởng kép",
+        reward="+2.000.000đ",
+    ),
+    TaskItem(
+        id="task-3",
+        title="Doanh số cá nhân tuần đạt 100 triệu",
+        description="Mốc tuần · cá nhân",
+        reward="+200.000đ",
+    ),
+    TaskItem(
+        id="task-4",
+        title="Doanh số cá nhân tuần đạt 115 triệu",
+        description="Mốc tuần · cá nhân",
+        reward="+300.000đ",
+    ),
+    TaskItem(
+        id="task-5",
+        title="Doanh số cá nhân tuần đạt 130 triệu",
+        description="Mốc tuần · cá nhân",
+        reward="+500.000đ",
+    ),
+]
+
+STATIC_EVENTS: list[EventItem] = [
+    EventItem(
+        id="event-1",
+        title='Đua Sprint "Bứt Tốc Tháng 6"',
+        date="2026-06-30",
+        description="Thưởng nóng 50 triệu cho team dẫn đầu doanh số",
+    ),
+]
+
+
+def _query_top_sales(sb, d_start: str, d_end: str) -> list[TopSale]:
+    """Query so_doanh_thu, group by sale_crm_name, return sorted by total VND desc."""
+    sale_map: dict[str, int] = {}
+    try:
+        q = (
+            sb.table("so_doanh_thu")
+            .select("sale_crm_name, so_tien_vnd")
+            .gte("ngay_tien_ve", d_start)
+            .lte("ngay_tien_ve", d_end)
+        )
+        for r in q.execute().data or []:
+            sname = _sale_key(r.get("sale_crm_name"))
+            if not sname or sname == "(Chưa gán sale)":
+                continue
+            vnd = int(float(r.get("so_tien_vnd") or 0))
+            if vnd > 0:
+                sale_map[sname] = sale_map.get(sname, 0) + vnd
+    except Exception as exc:
+        print(f"[Dashboard] so_doanh_thu top sales query failed: {exc}")
+    ranked = sorted(sale_map.items(), key=lambda x: x[1], reverse=True)
+    return [
+        TopSale(id=f"sale-{i+1}", name=name, revenue=revenue)
+        for i, (name, revenue) in enumerate(ranked)
+    ]
+
+
+def _build_gamification_summary(sb) -> DashboardSummary:
+    today = date.today()
+    today_str = today.isoformat()
+    month_start = today.replace(day=1).isoformat()
+
+    top_today = _query_top_sales(sb, today_str, today_str)
+    top_month = _query_top_sales(sb, month_start, today_str)
+
     return DashboardSummary(
-        top_today=[
-            TopSale(id="sale-today-1", name="Trần Mỹ Linh", revenue=86_000_000),
-            TopSale(id="sale-today-2", name="Phạm Quốc Anh", revenue=72_500_000),
-            TopSale(id="sale-today-3", name="Lê Thị Thảo", revenue=45_000_000),
-        ],
-        top_month=[
-            TopSale(id="sale-month-1", name="Trần Mỹ Linh", revenue=320_000_000),
-            TopSale(id="sale-month-2", name="Hoàng Viết Đức", revenue=280_000_000),
-            TopSale(id="sale-month-3", name="Phạm Quốc Anh", revenue=210_000_000),
-        ],
-        tasks=[
-            TaskItem(
-                id="task-1",
-                title="Chốt 5 hợp đồng UPSCALE",
-                description="Hoàn thành 5 hợp đồng gói UPSCALE trong tuần này",
-                reward="+500.000đ",
-            ),
-            TaskItem(
-                id="task-2",
-                title="Đạt mốc 50tr GMV tuần",
-                description="Tổng GMV tuần đạt ít nhất 50.000.000 VND",
-                reward="+200.000đ",
-            ),
-            TaskItem(
-                id="task-3",
-                title="Team đạt 100% KPI tuần",
-                description="Cả team hoàn thành KPI tuần được giao",
-                reward="+1.000.000đ",
-            ),
-        ],
-        events=[
-            EventItem(
-                id="event-1",
-                title="Team Building Tháng 6",
-                date="2026-06-15",
-                description="Hoạt động gắn kết team — chi tiết sẽ cập nhật trên DingTalk",
-            ),
-            EventItem(
-                id="event-2",
-                title="Workshop Kỹ năng Chốt sale",
-                date="2026-06-08",
-                description="Buổi training nội bộ — case study chốt sale hiệu quả",
-            ),
-        ],
+        top_today=top_today,
+        top_month=top_month,
+        tasks=STATIC_TASKS,
+        events=STATIC_EVENTS,
         commission=Commission(status="coming_soon", amount=0),
     )
 
@@ -397,11 +433,13 @@ def register_dashboard_routes(app, supabase_factory):
         "/api/v1/dashboard/summary",
         tags=["Dashboard"],
         response_model=DashboardSummary,
-        summary="Bảng thông tin — gamification (mock)",
+        summary="Bảng thông tin — gamification (real data from so_doanh_thu)",
     )
     def gamification_dashboard_summary():
-        """Mock data phase — unblock FE Bảng thông tin."""
-        return _mock_gamification_summary()
+        sb = supabase_factory()
+        if not sb:
+            raise HTTPException(503, "Supabase chưa cấu hình")
+        return _build_gamification_summary(sb)
 
     @app.get("/dashboard/filters", tags=["Dashboard"])
     def dashboard_filters():
