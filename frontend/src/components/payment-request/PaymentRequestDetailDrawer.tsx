@@ -937,7 +937,7 @@ function ActiveRequestMiniCardV2({
           </div>
         ))}
       </div>
-      <div style={{ display: "flex", justifyContent: "flex-end", paddingBottom: 4 }}>
+      <div style={{ display: "flex", justifyContent: "flex-end", paddingTop: 12, paddingBottom: 4 }}>
         <button type="button" className="btn btn-outline btn-sm" disabled={!canAddMore} onClick={addUidGroup}
           title={!canAddMore ? "Đã phân bổ hết tiền đã nhận — không thể thêm UID" : "Thêm UID mới"}>
           <Icons.Plus size={12} /> Thêm UID
