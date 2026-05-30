@@ -5,8 +5,10 @@ from __future__ import annotations
 from datetime import date, timedelta
 from typing import Any
 
-from fastapi import HTTPException, Query
+from fastapi import HTTPException, Query, Header
 from pydantic import BaseModel, Field
+
+from rbac import resolve_actor
 
 from crm_metrics import (
     INVALID_TEAM_LABELS,
@@ -391,6 +393,66 @@ def _split_record_types(rows: list[dict]) -> tuple[list[dict], list[dict], list[
     return summary, daily, legacy
 
 
+def _gap_to_above(top_sales: list[dict], user_idx: int, user_gmv: int) -> dict | None:
+    if user_idx <= 0:
+        return None
+    above = top_sales[user_idx - 1]
+    above_gmv = int(above.get("gmv_rmb") or 0)
+    user_collected = int(top_sales[user_idx].get("collected_vnd") or 0) if user_idx < len(top_sales) else 0
+    above_collected = int(above.get("collected_vnd") or 0)
+    return {
+        "amount_rmb": max(0, above_gmv - user_gmv + 1),
+        "amount_vnd": max(0, above_collected - user_collected),
+        "target_sale_name": above.get("sale_name") or "—",
+        "target_rank": user_idx,
+        "target_gmv_rmb": above_gmv,
+        "target_collected_vnd": above_collected,
+    }
+
+
+def _personalize_ranking(top_sales: list[dict], actor_crm_name: str | None, actor_team: str | None) -> dict | None:
+    if not actor_crm_name or not top_sales:
+        return None
+
+    user_idx = None
+    for i, entry in enumerate(top_sales):
+        sale = str(entry.get("sale_name") or "").strip()
+        if sale == actor_crm_name:
+            user_idx = i
+            break
+
+    if user_idx is None:
+        return {
+            "rank": len(top_sales) + 1,
+            "sale_name": actor_crm_name,
+            "team": actor_team or "—",
+            "gmv_rmb": 0,
+            "collected_vnd": 0,
+            "orders": 0,
+            "total_sales_count": len(top_sales),
+            "gap_to_above": _gap_to_above(top_sales, len(top_sales), 0),
+            "is_in_top5": False,
+            "rank_change": 0,
+        }
+
+    rank = user_idx + 1
+    user_entry = top_sales[user_idx]
+    user_gmv = int(user_entry.get("gmv_rmb") or 0)
+
+    return {
+        "rank": rank,
+        "sale_name": actor_crm_name,
+        "team": user_entry.get("team") or actor_team or "—",
+        "gmv_rmb": user_gmv,
+        "collected_vnd": int(user_entry.get("collected_vnd") or 0),
+        "orders": int(user_entry.get("orders") or 0),
+        "total_sales_count": len(top_sales),
+        "gap_to_above": _gap_to_above(top_sales, user_idx, user_gmv),
+        "is_in_top5": rank <= 5,
+        "rank_change": 0,
+    }
+
+
 def register_dashboard_routes(app, supabase_factory):
 
     @app.get(
@@ -498,11 +560,23 @@ def register_dashboard_routes(app, supabase_factory):
         team: str | None = Query(None),
         sale: str | None = Query(None),
         department: str | None = Query(None),
+        authorization: str | None = Header(None),
     ):
         """Chậm — PalFish live 1 request, join don_hang, KHÔNG lưu DB."""
         sb = supabase_factory()
         if not sb:
             raise HTTPException(503, "Supabase chưa cấu hình")
+
+        actor_crm_name = None
+        actor_team = None
+        if authorization and sb:
+            try:
+                actor = resolve_actor(sb, authorization)
+                if actor.staff:
+                    actor_crm_name = actor.staff.get("crm_name")
+                    actor_team = actor.staff.get("team")
+            except Exception:
+                pass
 
         d_start, d_end = start_date[:10], end_date[:10]
         _validate_custom_range(d_start, d_end)
@@ -573,6 +647,26 @@ def register_dashboard_routes(app, supabase_factory):
 
         top_sales = _build_top_sales(kpi_rows, collected_by_sale)
 
+        my_rank = _personalize_ranking(top_sales, actor_crm_name, actor_team)
+        if my_rank and not my_rank.get("is_in_top5") and actor_crm_name:
+            for entry in top_sales:
+                if str(entry.get("sale_name") or "").strip() == actor_crm_name:
+                    entry["is_current_user"] = True
+                    entry["user_rank"] = my_rank["rank"]
+                    break
+            else:
+                top_sales.append({
+                    "sale_name": actor_crm_name,
+                    "team": actor_team or "—",
+                    "department": actor_team or "—",
+                    "gmv_rmb": 0,
+                    "orders": 0,
+                    "collected_vnd": 0,
+                    "collected": 0,
+                    "is_current_user": True,
+                    "user_rank": my_rank["rank"],
+                })
+
         l1, l3, l4 = int(tot["l1"]), int(tot["l3"]), int(tot["l4"])
 
         return {
@@ -597,6 +691,7 @@ def register_dashboard_routes(app, supabase_factory):
                 qr_created_count,
                 exchange_rate,
             ),
+            "my_rank": my_rank,
             "top_sales": top_sales,
             "conversion": conversion_rates(l1, l3, l4, crm_l8),
             "today": {
@@ -618,10 +713,22 @@ def register_dashboard_routes(app, supabase_factory):
         team: str | None = Query(None),
         sale: str | None = Query(None),
         department: str | None = Query(None),
+        authorization: str | None = Header(None),
     ):
         sb = supabase_factory()
         if not sb:
             raise HTTPException(503, "Supabase chưa cấu hình")
+
+        actor_crm_name = None
+        actor_team = None
+        if authorization and sb:
+            try:
+                actor = resolve_actor(sb, authorization)
+                if actor.staff:
+                    actor_crm_name = actor.staff.get("crm_name")
+                    actor_team = actor.staff.get("team")
+            except Exception:
+                pass
 
         d_start, d_end = _date_range(range_key, start, end)
         team_filter = team or department
@@ -719,6 +826,26 @@ def register_dashboard_routes(app, supabase_factory):
             reverse=True,
         )
 
+        my_rank = _personalize_ranking(top_sales, actor_crm_name, actor_team)
+        if my_rank and not my_rank.get("is_in_top5") and actor_crm_name:
+            for entry in top_sales:
+                if str(entry.get("sale_name") or "").strip() == actor_crm_name:
+                    entry["is_current_user"] = True
+                    entry["user_rank"] = my_rank["rank"]
+                    break
+            else:
+                top_sales.append({
+                    "sale_name": actor_crm_name,
+                    "team": actor_team or "—",
+                    "department": actor_team or "—",
+                    "gmv_rmb": 0,
+                    "orders": 0,
+                    "collected_vnd": 0,
+                    "collected": 0,
+                    "is_current_user": True,
+                    "user_rank": my_rank["rank"],
+                })
+
         focus_day = today_str if d_start <= today_str <= d_end else d_end
         day_stats = _day_bucket(revenue_by_date, focus_day)
         # Panel ngày: dùng delta GMV (phần tăng thêm) + tiền về thực tế
@@ -752,6 +879,7 @@ def register_dashboard_routes(app, supabase_factory):
                 exchange_rate,
             ),
             "revenue_by_date": revenue_by_date,
+            "my_rank": my_rank,
             "top_sales": top_sales,
             "conversion": conversion_rates(l1, l3, l4, crm_l8),
             "today": {
@@ -764,4 +892,63 @@ def register_dashboard_routes(app, supabase_factory):
                 "amount": focus_gmv_delta,
                 "collected": day_stats["collected_vnd"],
             },
+        }
+
+    @app.get("/dashboard/today-honors", tags=["Dashboard"])
+    def dashboard_today_honors(
+        authorization: str | None = Header(None),
+    ):
+        sb = supabase_factory()
+        if not sb:
+            raise HTTPException(503, "Supabase chưa cấu hình")
+
+        today_str = date.today().isoformat()
+        
+        res = (
+            sb.table("so_doanh_thu")
+            .select("sale_crm_name, so_tien_vnd")
+            .eq("ngay_tien_ve", today_str)
+            .execute()
+        )
+        rows = res.data or []
+
+        sales_map = {}
+        for r in rows:
+            crm_name = (r.get("sale_crm_name") or "").strip()
+            if not crm_name:
+                continue
+            amt = int(r.get("so_tien_vnd") or 0)
+            if crm_name not in sales_map:
+                sales_map[crm_name] = {"collected_vnd": 0, "orders": 0}
+            sales_map[crm_name]["collected_vnd"] += amt
+            sales_map[crm_name]["orders"] += 1
+
+        top = sorted(
+            [{"sale_name": k, **v} for k, v in sales_map.items()],
+            key=lambda x: x["collected_vnd"],
+            reverse=True
+        )[:3]
+
+        if top:
+            names = [x["sale_name"] for x in top]
+            staff_res = (
+                sb.table("nhan_su_sale")
+                .select("crm_name, team, display_name")
+                .in_("crm_name", names)
+                .execute()
+            )
+            staff_map = {
+                (s.get("crm_name") or "").strip(): s
+                for s in (staff_res.data or [])
+            }
+            
+            for i, entry in enumerate(top):
+                entry["rank"] = i + 1
+                staff_info = staff_map.get(entry["sale_name"]) or {}
+                entry["team"] = staff_info.get("team") or "—"
+                entry["sale_name"] = staff_info.get("display_name") or entry["sale_name"]
+
+        return {
+            "date": today_str,
+            "honors": top,
         }
