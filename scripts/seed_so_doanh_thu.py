@@ -171,6 +171,17 @@ def import_xlsx(sb, path: Path, limit: int, dry_run: bool) -> int:
     return inserted
 
 
+def backfill_b3(sb) -> int:
+    from revenue_routes import backfill_ledger_from_active_requests
+
+    stats = backfill_ledger_from_active_requests(sb)
+    print(
+        f"Backfill B3 done: created={stats['created']}, "
+        f"already_had={stats['skipped']}, failed={stats['failed']}"
+    )
+    return stats["created"]
+
+
 def backfill_m3(sb) -> int:
     from revenue_routes import sync_ledger_from_m3_order
 
@@ -216,12 +227,17 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Seed so_doanh_thu from Excel or M3 backfill")
     parser.add_argument("--xlsx", type=Path, help="Path to HNxHCM GMV.xlsx")
     parser.add_argument("--backfill-m3", action="store_true", help="Sync đơn M3 đã approve vào Sổ")
+    parser.add_argument(
+        "--backfill-b3",
+        action="store_true",
+        help="Sync course đã kích hoạt (active_requests.order_id) vào Sổ",
+    )
     parser.add_argument("--limit", type=int, default=0, help="Max rows import xlsx (0 = all)")
     parser.add_argument("--dry-run", action="store_true", help="Chỉ in sample, không insert")
     args = parser.parse_args()
 
-    if not args.xlsx and not args.backfill_m3:
-        parser.error("Cần --xlsx hoặc --backfill-m3")
+    if not args.xlsx and not args.backfill_m3 and not args.backfill_b3:
+        parser.error("Cần --xlsx, --backfill-m3 hoặc --backfill-b3")
 
     url = os.getenv("SUPABASE_URL", "").strip()
     key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "").strip()
@@ -235,6 +251,9 @@ def main() -> int:
 
     if args.backfill_m3:
         backfill_m3(sb)
+
+    if args.backfill_b3:
+        backfill_b3(sb)
 
     if args.xlsx:
         if not args.xlsx.exists():
