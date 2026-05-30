@@ -424,6 +424,13 @@ function ActiveRequestMiniCardV2({
   const allocationWarning = allocation.isOver
     ? `Tổng gói học (${vnd(allocation.total)}) đang vượt tiền đã nhận (${vnd(allocation.received)}) — vượt ${vnd(allocation.overAmount)}.`
     : "";
+  const allCourses = ar.uids.flatMap((u) => u.courses);
+  const allCoursesLocked = allCourses.length > 0 && allCourses.every((c) => !!(c.orderId?.trim()) || !!c.invoiced);
+  const hasUnfilledCourse = allCourses.some((c) => {
+    const locked = !!(c.orderId?.trim()) || !!c.invoiced;
+    return !locked && (c.amount || 0) <= 0;
+  });
+  const canAddMore = allocation.remaining > 0 && !hasUnfilledCourse;
   const missingRequiredCount = ar.uids.reduce((sum, u) => {
     const uidMissing = u.uid.trim() ? 0 : 1;
     const phoneMissing = u.phone.trim() ? 0 : 1;
@@ -444,7 +451,12 @@ function ActiveRequestMiniCardV2({
       setAllocationError(allocationWarning);
       return;
     }
+    if (hasUnfilledCourse) {
+      setAllocationError("Có gói học chưa điền số tiền (0 đ). Hãy điền số tiền hoặc xóa gói trước khi lưu.");
+      return;
+    }
     setSaving(true);
+    setAllocationError("");
     await onActiveRequestSave(ar);
     setSaving(false);
     setEditing(false);
@@ -614,11 +626,12 @@ function ActiveRequestMiniCardV2({
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
           <button
             type="button"
-            className="btn btn-outline btn-sm"
-            title="Sửa thông tin gói học"
+            className={`btn btn-sm ${!editing && !allCoursesLocked ? "btn-edit-hint" : "btn-outline"}`}
+            title={allCoursesLocked ? "Tất cả gói học đã được kích hoạt — không thể sửa" : "Sửa thông tin gói học"}
             aria-label="Sửa thông tin gói học"
+            disabled={allCoursesLocked}
             onClick={() => setEditing(true)}
-            style={{ width: 32, padding: 0 }}
+            style={{ width: 32, padding: 0, opacity: allCoursesLocked ? 0.35 : 1 }}
           >
             <Icons.Pencil size={13} />
           </button>
@@ -627,7 +640,7 @@ function ActiveRequestMiniCardV2({
             className="btn btn-success btn-sm"
             title="Lưu thông tin Active Request"
             aria-label="Lưu thông tin Active Request"
-            disabled={!editing || saving || allocation.isOver}
+            disabled={!editing || saving || allocation.isOver || hasUnfilledCourse}
             onClick={() => void save()}
             style={{ width: 32, padding: 0 }}
           >
@@ -646,6 +659,11 @@ function ActiveRequestMiniCardV2({
           </button>
         </div>
       </div>
+      {!editing && !allCoursesLocked && summary.courseCount > 0 && (
+        <div className="ar-edit-hint">
+          <Icons.Pencil size={12} /> Bấm nút <strong>bút chì</strong> bên trên để sửa thông tin gói học
+        </div>
+      )}
       {missingRequiredCount > 0 && (
         <div className="match-warning" style={{ marginBottom: 10 }}>
           <Icons.AlertCircle size={14} />
@@ -732,7 +750,8 @@ function ActiveRequestMiniCardV2({
                   background: "white",
                 }}
               />
-              <button type="button" className="btn btn-outline btn-sm" onClick={() => addCourseForUid(uIdx)}>
+              <button type="button" className="btn btn-outline btn-sm" disabled={!canAddMore} onClick={() => addCourseForUid(uIdx)}
+                title={!canAddMore ? "Đã phân bổ hết tiền đã nhận — không thể thêm gói" : "Thêm gói khoá học"}>
                 <Icons.Plus size={12} /> Thêm gói
               </button>
             </div>
@@ -894,7 +913,8 @@ function ActiveRequestMiniCardV2({
         ))}
       </div>
       <div style={{ display: "flex", justifyContent: "flex-end", paddingBottom: 4 }}>
-        <button type="button" className="btn btn-outline btn-sm" onClick={addUidGroup}>
+        <button type="button" className="btn btn-outline btn-sm" disabled={!canAddMore} onClick={addUidGroup}
+          title={!canAddMore ? "Đã phân bổ hết tiền đã nhận — không thể thêm UID" : "Thêm UID mới"}>
           <Icons.Plus size={12} /> Thêm UID
         </button>
       </div>

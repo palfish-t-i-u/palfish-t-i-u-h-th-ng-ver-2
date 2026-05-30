@@ -1575,6 +1575,28 @@
   padding: 1px 5px;
   border-radius: 4px;
 }
+/* Edit hint — guide users to the pencil button */
+.gmv-prototype .ar-edit-hint {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: #6c5ce7;
+  background: #f3f1fe;
+  border: 1px dashed #c4b5fd;
+  border-radius: 8px;
+  padding: 8px 12px;
+  margin-bottom: 10px;
+}
+/* Highlighted edit button when not editing */
+.gmv-prototype .btn-edit-hint {
+  background: #f3f1fe;
+  border: 1.5px solid #6c5ce7;
+  color: #6c5ce7;
+}
+.gmv-prototype .btn-edit-hint:hover {
+  background: #ebe7fd;
+}
 /* Course amount (orange) */
 .gmv-prototype .ar-course-amount {
   text-align: right;
