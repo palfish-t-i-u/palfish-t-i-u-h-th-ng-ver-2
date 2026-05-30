@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from fastapi import HTTPException, Query, Header
 from pydantic import BaseModel, Field
@@ -36,6 +37,23 @@ from crm_routes import MAX_DAYS, fetch_live_crm_rows
 from report_routes import _load_ledger_revenue, _sale_key
 
 DEFAULT_EXCHANGE_RATE = 3700
+VN_TIMEZONE = ZoneInfo("Asia/Ho_Chi_Minh")
+
+
+class RpcTopSale(BaseModel):
+    sale_email: str
+    sale_name: str
+    avatar_url: str | None = None
+    total_revenue: int
+
+
+class GamificationDashboardSummary(BaseModel):
+    top_today: list[RpcTopSale]
+    top_month: list[RpcTopSale]
+    tasks: list[dict[str, Any]]
+    events: list[dict[str, Any]]
+    commission: dict[str, Any]
+    meta: dict[str, Any]
 
 
 # --- Bảng thông tin (gamification) — mock contract for FE ---
@@ -125,6 +143,12 @@ def _mock_gamification_summary() -> DashboardSummary:
         ],
         commission=Commission(status="coming_soon", amount=0),
     )
+
+
+def _dump_model(model: BaseModel) -> dict[str, Any]:
+    if hasattr(model, "model_dump"):
+        return model.model_dump()
+    return model.dict()
 
 
 def _date_range(range_key: str, start: str | None, end: str | None) -> tuple[str, str]:
@@ -393,6 +417,7 @@ def _split_record_types(rows: list[dict]) -> tuple[list[dict], list[dict], list[
     return summary, daily, legacy
 
 
+
 def _gap_to_above(top_sales: list[dict], user_idx: int, user_gmv: int) -> dict | None:
     if user_idx <= 0:
         return None
@@ -452,18 +477,103 @@ def _personalize_ranking(top_sales: list[dict], actor_crm_name: str | None, acto
         "rank_change": 0,
     }
 
+def _coerce_vn_datetime(now: datetime | None = None) -> datetime:
+    if now is None:
+        return datetime.now(VN_TIMEZONE)
+    if now.tzinfo is None:
+        return now.replace(tzinfo=VN_TIMEZONE)
+    return now.astimezone(VN_TIMEZONE)
+
+
+def _vn_day_bounds_utc(now: datetime | None = None) -> tuple[datetime, datetime]:
+    now_vn = _coerce_vn_datetime(now)
+    start_vn = now_vn.replace(hour=0, minute=0, second=0, microsecond=0)
+    end_vn = start_vn + timedelta(days=1)
+    return start_vn.astimezone(timezone.utc), end_vn.astimezone(timezone.utc)
+
+
+def _vn_month_bounds_utc(now: datetime | None = None) -> tuple[datetime, datetime]:
+    now_vn = _coerce_vn_datetime(now)
+    start_vn = now_vn.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    if start_vn.month == 12:
+        end_vn = start_vn.replace(year=start_vn.year + 1, month=1)
+    else:
+        end_vn = start_vn.replace(month=start_vn.month + 1)
+    return start_vn.astimezone(timezone.utc), end_vn.astimezone(timezone.utc)
+
+
+def _load_top_sales_rpc(
+    sb,
+    start_utc: datetime,
+    end_utc: datetime,
+    limit: int = 5,
+) -> list[RpcTopSale]:
+    try:
+        res = sb.rpc(
+            "get_top_sales",
+            {
+                "p_start": start_utc.isoformat(),
+                "p_end": end_utc.isoformat(),
+                "p_limit": limit,
+            },
+        ).execute()
+    except Exception as exc:
+        raise HTTPException(500, f"Query get_top_sales RPC that bai: {exc}") from exc
+
+    out: list[RpcTopSale] = []
+    for row in res.data or []:
+        sale_email = str(row.get("sale_email") or "").strip()
+        fallback_name = sale_email.split("@", 1)[0] if sale_email else "Unknown"
+        out.append(
+            RpcTopSale(
+                sale_email=sale_email,
+                sale_name=str(row.get("sale_name") or fallback_name).strip() or fallback_name,
+                avatar_url=row.get("avatar_url") or None,
+                total_revenue=int(row.get("total_revenue") or 0),
+            )
+        )
+    return out
+
+
 
 def register_dashboard_routes(app, supabase_factory):
 
     @app.get(
         "/api/v1/dashboard/summary",
         tags=["Dashboard"],
-        response_model=DashboardSummary,
+        response_model=GamificationDashboardSummary,
         summary="Bảng thông tin — gamification (mock)",
     )
     def gamification_dashboard_summary():
         """Mock data phase — unblock FE Bảng thông tin."""
-        return _mock_gamification_summary()
+        sb = supabase_factory()
+        if not sb:
+            raise HTTPException(503, "Supabase chua cau hinh")
+
+        now_vn = datetime.now(VN_TIMEZONE)
+        today_start_utc, today_end_utc = _vn_day_bounds_utc(now_vn)
+        month_start_utc, month_end_utc = _vn_month_bounds_utc(now_vn)
+
+        top_today = _load_top_sales_rpc(sb, today_start_utc, today_end_utc, 5)
+        top_month = _load_top_sales_rpc(sb, month_start_utc, month_end_utc, 5)
+        mock = _mock_gamification_summary()
+
+        return GamificationDashboardSummary(
+            top_today=top_today,
+            top_month=top_month,
+            tasks=[_dump_model(item) for item in mock.tasks],
+            events=[_dump_model(item) for item in mock.events],
+            commission=_dump_model(mock.commission),
+            meta={
+                "timezone": "Asia/Ho_Chi_Minh",
+                "today_start_utc": today_start_utc.isoformat(),
+                "today_end_utc": today_end_utc.isoformat(),
+                "month_start_utc": month_start_utc.isoformat(),
+                "month_end_utc": month_end_utc.isoformat(),
+                "today_vn": now_vn.date().isoformat(),
+                "month_vn": now_vn.strftime("%Y-%m"),
+            },
+        )
 
     @app.get("/dashboard/filters", tags=["Dashboard"])
     def dashboard_filters():
