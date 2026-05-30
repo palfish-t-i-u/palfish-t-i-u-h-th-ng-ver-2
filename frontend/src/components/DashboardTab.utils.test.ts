@@ -75,7 +75,7 @@ describe("DashboardTab utilities", () => {
     expect(formatVndCompact(1_200_000_000)).toBe("1,2 tỷ");
     expect(formatVndCompact(86_000_000)).toBe("86 tr");
     expect(getInitials("Trần Mỹ Linh")).toBe("LM");
-    expect(monthDateRange(new Date("2026-05-30T00:00:00+07:00"))).toEqual({
+    expect(monthDateRange(new Date(2026, 4, 30))).toEqual({
       from: "2026-05-01",
       to: "2026-05-30",
     });

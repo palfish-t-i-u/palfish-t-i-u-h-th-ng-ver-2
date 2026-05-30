@@ -71,7 +71,7 @@ describe("DashboardTab", () => {
     await waitFor(() => {
       expect(screen.getAllByText("Trần Mỹ Linh").length).toBeGreaterThan(0);
     });
-    expect(screen.getByText("Xếp hạng tháng của bạn")).toBeInTheDocument();
+    expect(screen.getByText("Vị trí của bạn")).toBeInTheDocument();
     expect(screen.getByText("#2")).toBeInTheDocument();
     expect(screen.getByText(/\/ 168 sales/)).toBeInTheDocument();
     expect(screen.getByText(/để vượt Đặng Hoàng Sơn/)).toBeInTheDocument();
