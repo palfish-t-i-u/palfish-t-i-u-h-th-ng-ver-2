@@ -6,6 +6,7 @@ from datetime import date, timedelta
 from typing import Any
 
 from fastapi import HTTPException, Query
+from pydantic import BaseModel, Field
 
 from crm_metrics import (
     INVALID_TEAM_LABELS,
@@ -23,6 +24,7 @@ from crm_metrics import (
     parse_metric,
     rows_for_kpi,
     safe_divide,
+    sale_label,
     select_crm_rows,
     sum_metrics,
     sync_coverage_meta,
@@ -32,6 +34,95 @@ from crm_routes import MAX_DAYS, fetch_live_crm_rows
 from report_routes import _load_ledger_revenue, _sale_key
 
 DEFAULT_EXCHANGE_RATE = 3700
+
+
+# --- Bảng thông tin (gamification) — mock contract for FE ---
+
+
+class TopSale(BaseModel):
+    id: str
+    name: str
+    revenue: int
+    avatar_url: str | None = None
+
+
+class TaskItem(BaseModel):
+    id: str
+    title: str
+    description: str
+    reward: str
+
+
+class EventItem(BaseModel):
+    id: str
+    title: str
+    date: str
+    description: str
+
+
+class Commission(BaseModel):
+    status: str = Field(..., description='e.g. "coming_soon"')
+    amount: int
+
+
+class DashboardSummary(BaseModel):
+    """Mock-phase Bảng thông tin — GET /api/v1/dashboard/summary."""
+
+    top_today: list[TopSale]
+    top_month: list[TopSale]
+    tasks: list[TaskItem]
+    events: list[EventItem]
+    commission: Commission
+
+
+def _mock_gamification_summary() -> DashboardSummary:
+    return DashboardSummary(
+        top_today=[
+            TopSale(id="sale-today-1", name="Trần Mỹ Linh", revenue=86_000_000),
+            TopSale(id="sale-today-2", name="Phạm Quốc Anh", revenue=72_500_000),
+            TopSale(id="sale-today-3", name="Lê Thị Thảo", revenue=45_000_000),
+        ],
+        top_month=[
+            TopSale(id="sale-month-1", name="Trần Mỹ Linh", revenue=320_000_000),
+            TopSale(id="sale-month-2", name="Hoàng Viết Đức", revenue=280_000_000),
+            TopSale(id="sale-month-3", name="Phạm Quốc Anh", revenue=210_000_000),
+        ],
+        tasks=[
+            TaskItem(
+                id="task-1",
+                title="Chốt 5 hợp đồng UPSCALE",
+                description="Hoàn thành 5 hợp đồng gói UPSCALE trong tuần này",
+                reward="+500.000đ",
+            ),
+            TaskItem(
+                id="task-2",
+                title="Đạt mốc 50tr GMV tuần",
+                description="Tổng GMV tuần đạt ít nhất 50.000.000 VND",
+                reward="+200.000đ",
+            ),
+            TaskItem(
+                id="task-3",
+                title="Team đạt 100% KPI tuần",
+                description="Cả team hoàn thành KPI tuần được giao",
+                reward="+1.000.000đ",
+            ),
+        ],
+        events=[
+            EventItem(
+                id="event-1",
+                title="Team Building Tháng 6",
+                date="2026-06-15",
+                description="Hoạt động gắn kết team — chi tiết sẽ cập nhật trên DingTalk",
+            ),
+            EventItem(
+                id="event-2",
+                title="Workshop Kỹ năng Chốt sale",
+                date="2026-06-08",
+                description="Buổi training nội bộ — case study chốt sale hiệu quả",
+            ),
+        ],
+        commission=Commission(status="coming_soon", amount=0),
+    )
 
 
 def _date_range(range_key: str, start: str | None, end: str | None) -> tuple[str, str]:
@@ -301,6 +392,16 @@ def _split_record_types(rows: list[dict]) -> tuple[list[dict], list[dict], list[
 
 
 def register_dashboard_routes(app, supabase_factory):
+
+    @app.get(
+        "/api/v1/dashboard/summary",
+        tags=["Dashboard"],
+        response_model=DashboardSummary,
+        summary="Bảng thông tin — gamification (mock)",
+    )
+    def gamification_dashboard_summary():
+        """Mock data phase — unblock FE Bảng thông tin."""
+        return _mock_gamification_summary()
 
     @app.get("/dashboard/filters", tags=["Dashboard"])
     def dashboard_filters():

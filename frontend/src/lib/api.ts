@@ -2,6 +2,7 @@ import axios from "axios";
 import { resolveApiBaseUrl } from "./apiBaseUrl";
 import { supabase } from "./supabase";
 import type { Bc03Report, Bc03MonthlySettings, Bc03StaffOption, CreateOrderPayload, DashboardDailyTrends, DashboardLiveSummary, DashboardSummary, InvoiceOrder, Order } from "../types/order";
+import type { GamificationDashboardSummary } from "../types/dashboard";
 import type {
   ActiveRequestApiRow,
   AddPaymentAttemptPayload,
@@ -257,6 +258,8 @@ export const endpoints = {
       }),
   },
   dashboard: {
+    gamificationSummary: () =>
+      api.get<GamificationDashboardSummary>("/api/v1/dashboard/summary"),
     summary: (params?: {
       range_key?: string;
       start?: string;

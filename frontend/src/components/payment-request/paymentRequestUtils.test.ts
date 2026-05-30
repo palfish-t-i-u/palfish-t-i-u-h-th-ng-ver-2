@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
-import type { ActiveRequest } from "../../types/paymentRequest";
+import type { ActiveRequest, PaymentRequest } from "../../types/paymentRequest";
 import {
   activationSummary,
+  activeRequestAllocation,
+  buildCreateActiveRequestPayload,
   formatCoursePhone,
   toActiveRequestPatchUidsData,
   updateActiveCoursePackage,
@@ -86,5 +88,67 @@ describe("active request course package updates", () => {
   it("formats active request phones with country dial prefix", () => {
     expect(formatCoursePhone("VN", "9323232333")).toBe("+84 9323 232 333");
     expect(formatCoursePhone("US", "(415) 555-0131")).toBe("+1 4155 550 131");
+  });
+
+  it("creates linked active request courses from received money, not target money", () => {
+    const pr: PaymentRequest = {
+      id: "PR-2026-0065",
+      name: "Hieu TEST01",
+      uid: "123213213",
+      phone: "934428192",
+      country: "VN",
+      address: "Hanoi",
+      target: 6000,
+      source: "manual",
+      createdAt: "2026-05-29T14:56:16.000Z",
+      received: 2000,
+      doneCount: 2,
+      totalCount: 2,
+      delta: -4000,
+      state: "short",
+      payments: [],
+    };
+
+    expect(buildCreateActiveRequestPayload(pr).uids[0].courses[0].amount).toBe(2000);
+  });
+
+  it("detects when active request courses exceed linked payment request received money", () => {
+    const pr: PaymentRequest = {
+      id: "PR-2026-0065",
+      name: "Hieu TEST01",
+      uid: "123213213",
+      phone: "934428192",
+      country: "VN",
+      address: "Hanoi",
+      target: 6000,
+      source: "manual",
+      createdAt: "2026-05-29T14:56:16.000Z",
+      received: 2000,
+      doneCount: 2,
+      totalCount: 2,
+      delta: -4000,
+      state: "short",
+      payments: [],
+    };
+    const overAllocated: ActiveRequest = {
+      ...ar,
+      uids: [
+        {
+          ...ar.uids[0],
+          courses: [
+            { ...ar.uids[0].courses[0], amount: 2000 },
+            { ...ar.uids[0].courses[0], courseCode: "CC-0044-002", amount: 4000 },
+          ],
+        },
+      ],
+    };
+
+    expect(activeRequestAllocation(overAllocated, pr)).toMatchObject({
+      total: 6000,
+      received: 2000,
+      remaining: 0,
+      overAmount: 4000,
+      isOver: true,
+    });
   });
 });
