@@ -1248,10 +1248,6 @@
   display: flex;
   flex-direction: column;
   gap: 14px;
-  max-height: min(56vh, 620px);
-  overflow: auto;
-  overscroll-behavior: contain;
-  padding-right: 4px;
 }
 .gmv-prototype .uid-group {
   background: white; border: 1px solid var(--border);
@@ -1418,6 +1414,249 @@
 .gmv-prototype .match-ok > svg { flex: 0 0 16px; }
 .gmv-prototype .match-ok > span { flex: 1; min-width: 0; }
 .gmv-prototype .uid-group-head .spacer { flex: 1; }
+
+/* ── Pulse design: ActiveRequestMiniCardV2 ── */
+.gmv-prototype .ar-mini-card {
+  border-radius: 16px;
+  padding: 18px;
+}
+.gmv-prototype .ar-mini-card.is-over-allocated {
+  border-color: #f6d36b;
+  box-shadow: 0 0 0 1px rgba(246, 211, 107, 0.35);
+}
+.gmv-prototype .ar-mini-head {
+  margin-bottom: 12px;
+}
+.gmv-prototype .ar-mini-head h4 {
+  font-size: 17px;
+}
+/* Pulse progress bar — count-based "X/Y gói đã kích hoạt" + TỔNG TIỀN */
+.gmv-prototype .pulse-progress {
+  background: #e7f6ed;
+  border-radius: 12px;
+  padding: 12px 14px;
+  margin-bottom: 12px;
+}
+.gmv-prototype .pulse-progress.is-over {
+  background: #fef3cd;
+}
+.gmv-prototype .pulse-progress-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+.gmv-prototype .pulse-progress-count {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+.gmv-prototype .pulse-count-num {
+  font-size: 26px;
+  font-weight: 800;
+  line-height: 1;
+  color: #22b45f;
+}
+.gmv-prototype .pulse-progress.is-over .pulse-count-num {
+  color: #e5810d;
+}
+.gmv-prototype .pulse-count-label {
+  font-size: 13px;
+  color: var(--text-2);
+  font-weight: 500;
+}
+.gmv-prototype .pulse-progress-total {
+  text-align: right;
+  line-height: 1.2;
+}
+.gmv-prototype .pulse-total-label {
+  display: block;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--text-3);
+  text-transform: uppercase;
+}
+.gmv-prototype .pulse-total-amount {
+  font-size: 18px;
+  font-weight: 800;
+  color: #e5810d;
+}
+.gmv-prototype .pulse-progress-warn {
+  margin-top: 6px;
+  font-size: 11.5px;
+  color: #b45309;
+  font-weight: 500;
+}
+.gmv-prototype .ar-mini-body {
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 360px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: #c4b5fd transparent;
+  padding-right: 4px;
+}
+/* UID group card */
+.gmv-prototype .ar-mini-uid {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px;
+  background: var(--surface-2);
+}
+.gmv-prototype .ar-mini-uid-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+/* Avatar circle */
+.gmv-prototype .ar-avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  background: #eceafb;
+  color: #6c5ce7;
+  font-weight: 700;
+  font-size: 13px;
+  flex-shrink: 0;
+  letter-spacing: -0.02em;
+}
+.gmv-prototype .ar-uid-info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.gmv-prototype .ar-uid-name {
+  font-weight: 700;
+  font-size: 13.5px;
+  color: var(--text-1);
+}
+.gmv-prototype .ar-uid-phone {
+  font-size: 12px;
+  color: var(--text-3);
+}
+.gmv-prototype .ar-mini-uid-edit {
+  grid-template-columns: minmax(0, 1fr) minmax(140px, 1fr) auto;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+/* Course card list */
+.gmv-prototype .ar-mini-course-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.gmv-prototype .ar-mini-course {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 10px;
+  align-items: center;
+  padding: 8px 10px;
+  background: white;
+  border: 1px solid var(--border);
+  border-left: 3px solid #6c5ce7;
+  border-radius: 10px;
+  font-size: 12.5px;
+}
+.gmv-prototype .ar-mini-course.is-editing {
+  grid-template-columns: minmax(0, 1fr) 130px auto auto;
+  border-left-color: var(--border);
+}
+/* Course code monospace */
+.gmv-prototype .ar-course-code {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 10.5px;
+  background: #f0f0f5;
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+/* Edit hint — guide users to the pencil button */
+.gmv-prototype .ar-edit-hint {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: #6c5ce7;
+  background: #f3f1fe;
+  border: 1px dashed #c4b5fd;
+  border-radius: 8px;
+  padding: 8px 12px;
+  margin-bottom: 10px;
+}
+/* Highlighted edit button when not editing */
+.gmv-prototype .btn-edit-hint {
+  background: #f3f1fe;
+  border: 1.5px solid #6c5ce7;
+  color: #6c5ce7;
+}
+.gmv-prototype .btn-edit-hint:hover {
+  background: #ebe7fd;
+}
+/* Course amount (orange) */
+.gmv-prototype .ar-course-amount {
+  text-align: right;
+  font-weight: 700;
+  font-size: 13px;
+  color: #e5810d;
+  white-space: nowrap;
+}
+/* Toggle switch */
+.gmv-prototype .ar-toggle-cell {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  justify-content: flex-end;
+  white-space: nowrap;
+}
+.gmv-prototype .ar-toggle-label {
+  font-size: 11px;
+  color: var(--text-3);
+  font-weight: 500;
+}
+.gmv-prototype .ar-toggle-label.is-active {
+  color: #22b45f;
+}
+.gmv-prototype .ar-toggle {
+  display: inline-flex;
+  align-items: center;
+  width: 36px;
+  height: 20px;
+  border-radius: 10px;
+  background: #ccc;
+  padding: 2px;
+  transition: background 0.2s;
+  cursor: default;
+  flex-shrink: 0;
+}
+.gmv-prototype .ar-toggle.is-on {
+  background: #22b45f;
+}
+.gmv-prototype .ar-toggle-knob {
+  display: block;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: white;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.18);
+  transition: transform 0.2s;
+}
+.gmv-prototype .ar-toggle.is-on .ar-toggle-knob {
+  transform: translateX(16px);
+}
+@media (max-width: 720px) {
+  .gmv-prototype .ar-mini-uid-edit,
+  .gmv-prototype .ar-mini-course,
+  .gmv-prototype .ar-mini-course.is-editing {
+    grid-template-columns: 1fr;
+  }
+}
 
 /* Transaction reconciliation drawer */
 .gmv-prototype .txn-drawer-body {

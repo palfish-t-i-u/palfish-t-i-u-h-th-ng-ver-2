@@ -127,11 +127,11 @@ export default function AppShell({
     <div className="flex min-w-0 flex-1 bg-gmv-bg font-sans text-gmv-text">
       <aside className="hidden w-60 shrink-0 flex-col border-r border-gmv-border bg-gmv-canvas md:flex">
         <div className="flex h-16 items-center gap-2 border-b border-gmv-border px-5">
-          <div className="flex h-8 w-8 items-center justify-center rounded-gmv-md bg-gmv-primary text-white">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-              <path d="M3 3h7v7H3zM14 3h7v7h-7zM14 14h7v7h-7zM3 14h7v7H3z" />
-            </svg>
-          </div>
+          <img
+            src="/app-logo.png"
+            alt="PalFish GMV"
+            className="h-8 w-8 shrink-0 rounded-gmv-md object-cover"
+          />
           <div className="leading-tight">
             <div className="text-sm font-semibold text-gmv-text-strong">PalFish GMV</div>
             <div className="text-[11px] text-gmv-muted">Reconciliation</div>

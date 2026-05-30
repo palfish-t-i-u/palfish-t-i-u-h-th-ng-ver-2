@@ -18,6 +18,7 @@ from invoice_routes import (
     _build_excel_orders,
     _build_excel_products,
 )
+from revenue_routes import sync_ledger_from_ar_course
 
 # Parent PR must be fully paid (100% or overpaid) before course activation.
 ALLOWED_PR_STATES = frozenset({"done", "over"})
@@ -202,16 +203,35 @@ def _assign_course_codes(uids_in: list[Any], pr_id: str) -> list[dict[str, Any]]
 
 
 def _derive_status(uids_data: list[dict[str, Any]]) -> str:
+    """Tính AR status từ uids_data.
+
+    Hai luồng nghiệp vụ TÁCH BIỆT:
+    - Kích hoạt CRM: cần order_id trên từng course.
+    - Xuất hoá đơn: CHỈ cần invoice_requested_at, KHÔNG phụ thuộc order_id.
+
+    Status machine:
+      pending_order  → chưa course nào có order_id VÀ chưa ai yêu cầu xuất HĐ
+      partial_order  → một số course có order_id, chưa yêu cầu xuất HĐ
+      ready_invoice  → ít nhất 1 course đã yêu cầu xuất HĐ (có invoice_requested_at)
+      activated      → tất cả course có order_id, chưa ai yêu cầu xuất HĐ
+      invoiced       → tất cả course đã xuất HĐ (invoiced=True)
+    """
     courses = [c for u in uids_data for c in (u.get("courses") or [])]
     if not courses:
         return "pending_order"
     if all(_course_is_invoiced(c) for c in courses):
         return "invoiced"
-    if any(not _course_order_id(c) for c in courses):
-        return "pending_order"
+    # Luồng xuất hoá đơn: ưu tiên kiểm tra trước order_id
     if any(_course_invoice_requested_at(c) for c in courses):
         return "ready_invoice"
-    return "activated"
+    # Luồng kích hoạt CRM
+    all_have_order = all(_course_order_id(c) for c in courses)
+    some_have_order = any(_course_order_id(c) for c in courses)
+    if all_have_order:
+        return "activated"
+    if some_have_order:
+        return "partial_order"
+    return "pending_order"
 
 
 def _serialize_ar(row: dict[str, Any], pr: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -250,6 +270,7 @@ def _serialize_ar(row: dict[str, Any], pr: dict[str, Any] | None = None) -> dict
     }
     if pr is not None:
         target, received = _pr_amounts(pr)
+        budget = max(target, received)
         out["payment_request"] = {
             "id": pr.get("id"),
             "name": pr.get("name") or pr.get("ten_khach") or "",
@@ -258,6 +279,7 @@ def _serialize_ar(row: dict[str, Any], pr: dict[str, Any] | None = None) -> dict
             "email": pr.get("email") or "",
             "target": target,
             "received": received,
+            "budget": budget,  # max(target, received) — dùng cho progress bar FE
             "state": _pr_payment_state(pr),
         }
     return out
@@ -391,6 +413,67 @@ def _assert_pr_paid(pr: dict[str, Any]) -> None:
         f"Payment Request chưa thanh toán đủ — trang_thai={pr.get('trang_thai')!r}, "
         f"da_thu={received}/{target}, cần đủ 100% tiền",
     )
+
+
+def _validate_course_amounts(
+    sb,
+    pr: dict[str, Any],
+    new_uids_data: list[dict[str, Any]],
+    exclude_ar_id: str | None = None,
+) -> None:
+    """Kiểm tra tổng tiền gói học không vượt quá số tiền thực nhận của PR.
+
+    Budget = max(target, received) — cho phép trường hợp overpay.
+    Tính tổng từ TẤT CẢ AR đang gắn cùng PR (trừ AR đang update nếu có).
+    Standalone AR (pr_id=None) bỏ qua validation này.
+    """
+    pr_id = str(pr.get("id") or "")
+    if not pr_id:
+        return  # standalone AR, không gắn PR → skip
+
+    target, received = _pr_amounts(pr)
+    budget = max(target, received)
+    if budget <= 0:
+        return  # PR target = 0 → skip (edge case)
+
+    # Tổng tiền gói học trong request mới
+    new_total = sum(
+        _course_amount(c)
+        for u in new_uids_data
+        for c in (u.get("courses") or [])
+    )
+
+    # Tổng tiền gói học đã có trong các AR khác cùng PR
+    existing_total = 0.0
+    try:
+        res = sb.table("active_requests").select("id,uids_data").eq("pr_id", pr_id).execute()
+        for ar in (res.data or []):
+            if exclude_ar_id and str(ar.get("id") or "") == exclude_ar_id:
+                continue  # AR đang update → bỏ qua (sẽ dùng new_uids_data thay)
+            for u in (ar.get("uids_data") or []):
+                for c in (u.get("courses") or []):
+                    existing_total += _course_amount(c)
+    except Exception:
+        pass  # Fail-open: nếu không đọc được AR khác thì không block
+
+    grand_total = new_total + existing_total
+    if grand_total > budget:
+        remaining = max(0.0, budget - existing_total)
+        raise HTTPException(
+            422,
+            {
+                "error": "COURSE_AMOUNT_EXCEEDED",
+                "message": (
+                    f"Tổng tiền gói học ({int(grand_total):,} VND) vượt quá "
+                    f"số tiền thực nhận ({int(budget):,} VND). "
+                    f"Ngân sách còn lại: {int(remaining):,} VND."
+                ),
+                "budget": int(budget),
+                "used": int(existing_total),
+                "remaining": int(remaining),
+                "requested": int(new_total),
+            },
+        )
 
 
 def _patch_course_python(
@@ -597,6 +680,11 @@ def _save_active_request(
 
     ar_id = _next_ar_id(sb)
     uids_data = _assign_course_codes(uids_in, pr_id or ar_id)
+
+    # Validate: tổng tiền gói học không được vượt số tiền thực nhận
+    if pr is not None:
+        _validate_course_amounts(sb, pr, uids_data)
+
     status = _derive_status(uids_data)
     row: dict[str, Any] = {
         "id": ar_id,
@@ -850,6 +938,49 @@ def register_activation_routes(app, supabase_factory):
         pr = _fetch_payment_request(sb, str(row.get("pr_id") or "")) if row.get("pr_id") else None
         return _serialize_ar(row, pr)
 
+    @app.get("/api/v1/payment-requests/{pr_id}/course-budget", tags=["Activation"])
+    def get_pr_course_budget(pr_id: str):
+        """Ngân sách gói học của PR — FE dùng để vẽ progress bar.
+
+        Trả về:
+        - budget: max(target, received) — tổng ngân sách khả dụng
+        - used: tổng tiền đã phân bổ vào các gói học (từ tất cả AR gắn PR này)
+        - remaining: budget - used
+        - active_requests: list [{ar_id, amount}] breakdown theo từng AR
+        """
+        sb = supabase_factory()
+        if not sb:
+            raise HTTPException(503, "Supabase chưa cấu hình")
+
+        pr = _fetch_payment_request(sb, pr_id)
+        target, received = _pr_amounts(pr)
+        budget = max(target, received)
+
+        used = 0.0
+        ar_list: list[dict[str, Any]] = []
+        try:
+            res = sb.table("active_requests").select("id,uids_data").eq("pr_id", pr_id).execute()
+            for ar in (res.data or []):
+                ar_total = sum(
+                    _course_amount(c)
+                    for u in (ar.get("uids_data") or [])
+                    for c in (u.get("courses") or [])
+                )
+                used += ar_total
+                ar_list.append({"ar_id": ar.get("id"), "amount": int(ar_total)})
+        except Exception as exc:
+            raise HTTPException(500, f"Không đọc active_requests: {exc}") from exc
+
+        return {
+            "pr_id": pr_id,
+            "budget": int(budget),
+            "target": int(target),
+            "received": int(received),
+            "used": int(used),
+            "remaining": int(max(0.0, budget - used)),
+            "active_requests": ar_list,
+        }
+
     @app.delete("/api/v1/active-requests/{ar_id}", tags=["Activation"])
     def delete_active_request(ar_id: str):
         """Delete Active Request when no course has been invoiced."""
@@ -915,6 +1046,11 @@ def register_activation_routes(app, supabase_factory):
             if not body.uids_data:
                 raise HTTPException(400, "uids_data phai co it nhat mot uid")
             uids_data = [uid.model_dump() for uid in body.uids_data]
+            # Validate: tổng tiền gói học không được vượt số tiền thực nhận
+            current_pr_id = str(current.get("pr_id") or "")
+            if current_pr_id:
+                patch_pr = _fetch_payment_request(sb, current_pr_id)
+                _validate_course_amounts(sb, patch_pr, uids_data, exclude_ar_id=ar_id)
             patch["uids_data"] = uids_data
             patch["status"] = _derive_status(uids_data)
 
@@ -1047,6 +1183,8 @@ def register_activation_routes(app, supabase_factory):
 
         saved = (upd.data or [{"id": ar_id, "pr_id": row.get("pr_id"), "uids_data": uids_data, "status": status}])[0]
         merged = {**row, **saved, "uids_data": uids_data, "status": status}
+        if order_id:
+            sync_ledger_from_ar_course(sb, ar_id, course_code)
         pr_map = _fetch_prs_by_ids(sb, [str(merged.get("pr_id") or "")])
         return _serialize_ar(merged, pr_map.get(str(merged.get("pr_id") or "")))
 
@@ -1074,9 +1212,10 @@ def register_activation_routes(app, supabase_factory):
         updated = False
         for uid_block in uids_data:
             for course in uid_block.get("courses") or []:
-                order_id = _course_order_id(course)
                 is_invoiced = _course_is_invoiced(course)
-                if order_id and not is_invoiced:
+                # Fix: Cho phép request invoice kể cả khi chưa có order_id.
+                # Kích hoạt CRM (order_id) và xuất hoá đơn là 2 luồng độc lập.
+                if not is_invoiced:
                     if not _course_invoice_requested_at(course):
                         course["invoice_requested_at"] = current_time
                         updated = True
