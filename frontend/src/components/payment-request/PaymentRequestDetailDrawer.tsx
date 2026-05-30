@@ -426,6 +426,7 @@ function ActiveRequestMiniCardV2({
     : "";
   const allCourses = ar.uids.flatMap((u) => u.courses);
   const allCoursesLocked = allCourses.length > 0 && allCourses.every((c) => !!(c.orderId?.trim()) || !!c.invoiced);
+  const editFullyLocked = allCoursesLocked && allocation.remaining <= 0;
   const hasUnfilledCourse = allCourses.some((c) => {
     const locked = !!(c.orderId?.trim()) || !!c.invoiced;
     return !locked && (c.amount || 0) <= 0;
@@ -626,12 +627,12 @@ function ActiveRequestMiniCardV2({
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
           <button
             type="button"
-            className={`btn btn-sm ${!editing && !allCoursesLocked ? "btn-edit-hint" : "btn-outline"}`}
-            title={allCoursesLocked ? "Tất cả gói học đã được kích hoạt — không thể sửa" : "Sửa thông tin gói học"}
+            className={`btn btn-sm ${!editing && !editFullyLocked ? "btn-edit-hint" : "btn-outline"}`}
+            title={editFullyLocked ? "Tất cả gói học đã được kích hoạt và đã dùng hết tiền" : "Sửa thông tin gói học"}
             aria-label="Sửa thông tin gói học"
-            disabled={allCoursesLocked}
+            disabled={editFullyLocked}
             onClick={() => setEditing(true)}
-            style={{ width: 32, padding: 0, opacity: allCoursesLocked ? 0.35 : 1 }}
+            style={{ width: 32, padding: 0, opacity: editFullyLocked ? 0.35 : 1 }}
           >
             <Icons.Pencil size={13} />
           </button>
@@ -659,7 +660,7 @@ function ActiveRequestMiniCardV2({
           </button>
         </div>
       </div>
-      {!editing && !allCoursesLocked && summary.courseCount > 0 && (
+      {!editing && !editFullyLocked && summary.courseCount > 0 && (
         <div className="ar-edit-hint">
           <Icons.Pencil size={12} /> Bấm nút <strong>bút chì</strong> bên trên để sửa thông tin gói học
         </div>
