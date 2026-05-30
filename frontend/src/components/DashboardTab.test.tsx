@@ -34,6 +34,15 @@ describe("DashboardTab", () => {
             },
           ],
           commission: { status: "coming_soon", amount: 0 },
+          current_user: {
+            rank: 2,
+            name: "Trần Mỹ Linh",
+            revenue: 280_000_000,
+            total_sales: 168,
+            next_rank_name: "Đặng Hoàng Sơn",
+            next_rank_revenue: 320_000_000,
+            gap: 40_000_000,
+          },
         })
       ),
       http.get("http://localhost:8000/revenue/ledger", () =>
@@ -62,6 +71,10 @@ describe("DashboardTab", () => {
     await waitFor(() => {
       expect(screen.getAllByText("Trần Mỹ Linh").length).toBeGreaterThan(0);
     });
+    expect(screen.getByText("Xếp hạng tháng của bạn")).toBeInTheDocument();
+    expect(screen.getByText("#2")).toBeInTheDocument();
+    expect(screen.getByText(/\/ 168 sales/)).toBeInTheDocument();
+    expect(screen.getByText(/để vượt Đặng Hoàng Sơn/)).toBeInTheDocument();
     expect(screen.getByText("Team đạt 100% KPI")).toBeInTheDocument();
     expect(screen.getByText("Team Building Tháng 6")).toBeInTheDocument();
     expect(screen.getAllByText("86 tr").length).toBeGreaterThan(0);
