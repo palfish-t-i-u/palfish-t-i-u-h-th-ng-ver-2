@@ -248,9 +248,8 @@ export default function PaymentRequestsTab() {
   const handleAddPayment = async (payload: AddPaymentAttemptPayload) => {
     if (!selected) return;
     const confirmed = await ctxAddPayment(selected.id, payload);
-    if (payload.method === "qr" && confirmed && confirmed.status !== "paid") {
-      const fresh = requests.find((r) => r.id === selected.id) || selected;
-      setQrView({ qr: confirmed, request: fresh });
+    if (payload.method === "qr" && confirmed && confirmed.payment.status !== "paid") {
+      setQrView({ qr: confirmed.payment, request: confirmed.request });
     }
   };
 
