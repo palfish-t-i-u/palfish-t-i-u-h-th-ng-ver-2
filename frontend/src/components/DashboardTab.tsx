@@ -552,17 +552,17 @@ export default function DashboardTab() {
       setUsingFallback(false);
 
       try {
-        const summaryRes = await endpoints.dashboard.gamificationSummary();
-        if (!cancelled) {
-          setSummary(summaryRes.data);
-          setRows([]);
+        try {
+          const summaryRes = await endpoints.dashboard.gamificationSummary();
+          if (!cancelled) {
+            setSummary(summaryRes.data);
+            setRows([]);
+          }
+          return;
+        } catch {
+          // Fall through to ledger-based fallback.
         }
-        return;
-      } catch {
-        // Fall through to ledger-based fallback.
-      }
 
-      try {
         const range = monthDateRange();
         const allRows: RevenueLedgerRow[] = [];
         let offset = 0;
