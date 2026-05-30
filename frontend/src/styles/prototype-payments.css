@@ -1497,6 +1497,12 @@
   display: flex;
   flex-direction: column;
   gap: 10px;
+  max-height: 360px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: #c4b5fd transparent;
+  padding-right: 4px;
 }
 /* UID group card */
 .gmv-prototype .ar-mini-uid {

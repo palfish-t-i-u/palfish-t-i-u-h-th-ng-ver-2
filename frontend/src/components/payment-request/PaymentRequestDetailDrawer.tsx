@@ -579,6 +579,21 @@ function ActiveRequestMiniCardV2({
     }));
   };
 
+  const removeUidGroup = (uidIdx: number) => {
+    const u = ar.uids[uidIdx];
+    if (!u) return;
+    const hasLocked = u.courses.some((c) => !!(c.orderId?.trim()) || !!c.invoiced);
+    if (hasLocked) {
+      window.alert("UID này có gói học đã kích hoạt — không thể xóa.");
+      return;
+    }
+    if (!window.confirm(`Xóa UID "${u.uid || "(trống)"}" và tất cả gói học của nó?`)) return;
+    mutate((next) => ({
+      ...next,
+      uids: next.uids.filter((_, idx) => idx !== uidIdx),
+    }));
+  };
+
   const addUidGroup = () => {
     setAllocationError("");
     mutate((next) => {
@@ -755,6 +770,15 @@ function ActiveRequestMiniCardV2({
                 title={!canAddMore ? "Đã phân bổ hết tiền đã nhận — không thể thêm gói" : "Thêm gói khoá học"}>
                 <Icons.Plus size={12} /> Thêm gói
               </button>
+              {ar.uids.length > 1 && (
+                <button type="button" className="btn btn-outline btn-sm"
+                  disabled={u.courses.some((c) => !!(c.orderId?.trim()) || !!c.invoiced)}
+                  title={u.courses.some((c) => !!(c.orderId?.trim()) || !!c.invoiced) ? "UID có gói đã kích hoạt — không thể xóa" : "Xóa UID này"}
+                  onClick={() => removeUidGroup(uIdx)}
+                  style={{ color: "var(--danger)" }}>
+                  <Icons.Close size={12} /> Xóa UID
+                </button>
+              )}
             </div>
             {u.courses.length === 0 ? (
               <div style={{ fontSize: 12, color: "var(--text-3)", fontStyle: "italic" }}>
