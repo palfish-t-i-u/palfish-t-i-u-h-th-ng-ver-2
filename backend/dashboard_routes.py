@@ -132,9 +132,27 @@ STATIC_TASKS: list[TaskItem] = [
 STATIC_EVENTS: list[EventItem] = [
     EventItem(
         id="event-1",
+        title="Gala Vinh Danh Quý II / 2026",
+        date="2026-06-14",
+        description="Đêm tôn vinh Top Sales · 14/06 · Khách sạn Lotte Hà Nội",
+    ),
+    EventItem(
+        id="event-2",
         title='Đua Sprint "Bứt Tốc Tháng 6"',
         date="2026-06-30",
         description="Thưởng nóng 50 triệu cho team dẫn đầu doanh số",
+    ),
+    EventItem(
+        id="event-3",
+        title="Hành Trình Đà Nẵng 2026",
+        date="2026-07-15",
+        description="Top 30 toàn quốc · 3 ngày 2 đêm · All-inclusive",
+    ),
+    EventItem(
+        id="event-4",
+        title='Workshop "Chốt Đơn Đỉnh Cao"',
+        date="2026-06-07",
+        description="Chia sẻ từ Top 1 Đặng Hoàng Sơn · Thứ 6 hàng tuần",
     ),
 ]
 

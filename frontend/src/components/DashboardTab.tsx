@@ -83,9 +83,27 @@ const SAMPLE_GAMIFICATION_SUMMARY: GamificationDashboardSummary = {
   events: [
     {
       id: "event-1",
+      title: "Gala Vinh Danh Quý II / 2026",
+      date: "2026-06-14",
+      description: "Đêm tôn vinh Top Sales · 14/06 · Khách sạn Lotte Hà Nội",
+    },
+    {
+      id: "event-2",
       title: 'Đua Sprint "Bứt Tốc Tháng 6"',
       date: "2026-06-30",
       description: "Thưởng nóng 50 triệu cho team dẫn đầu doanh số",
+    },
+    {
+      id: "event-3",
+      title: "Hành Trình Đà Nẵng 2026",
+      date: "2026-07-15",
+      description: "Top 30 toàn quốc · 3 ngày 2 đêm · All-inclusive",
+    },
+    {
+      id: "event-4",
+      title: 'Workshop "Chốt Đơn Đỉnh Cao"',
+      date: "2026-06-07",
+      description: "Chia sẻ từ Top 1 Đặng Hoàng Sơn · Thứ 6 hàng tuần",
     },
   ],
   commission: {
@@ -488,6 +506,13 @@ function WeeklyRewards({ tasks }: { tasks: GamificationTaskItem[] }) {
   );
 }
 
+const EVENT_STYLE: Record<string, { tag: string; emoji: string; bg: string; accent: string }> = {
+  "event-1": { tag: "SỰ KIỆN", emoji: "🏆", bg: "#1B1464", accent: "#15104E" },
+  "event-2": { tag: "PHONG TRÀO", emoji: "🚀", bg: "#108D7E", accent: "#0E756B" },
+  "event-3": { tag: "TEAM BUILDING", emoji: "🏖️", bg: "#D97706", accent: "#B45309" },
+  "event-4": { tag: "ĐÀO TẠO", emoji: "🎯", bg: "#DC2626", accent: "#B91C1C" },
+};
+
 function InternalEvents({ events }: { events?: GamificationEventItem[] }) {
   const allEvents = events?.length ? events : SAMPLE_GAMIFICATION_SUMMARY.events;
   const [activeIdx, setActiveIdx] = useState(0);
@@ -504,20 +529,28 @@ function InternalEvents({ events }: { events?: GamificationEventItem[] }) {
 
   if (!ev) return null;
 
+  const style = EVENT_STYLE[ev.id] ?? EVENT_STYLE["event-2"];
+
   return (
     <Card className="shrink-0">
       <SectionHeader icon={<EventIcon />} title="Bảng sự kiện nội bộ" />
-      <div className="relative overflow-hidden bg-[#108D7E] px-5 py-4 text-white sm:px-7 sm:py-5">
+      <div
+        className="relative overflow-hidden px-5 py-4 text-white transition-colors duration-500 sm:px-7 sm:py-5"
+        style={{ backgroundColor: style.bg }}
+      >
         <div className="absolute -right-8 -top-6 h-36 w-36 rounded-full bg-white/10" />
         <div className="relative z-10">
-          <span className="inline-flex rounded-full bg-white/20 px-2.5 py-0.5 text-[10px] font-extrabold uppercase">Phong trào</span>
+          <span className="inline-flex rounded-full bg-white/20 px-2.5 py-0.5 text-[10px] font-extrabold uppercase">{style.tag}</span>
           <div className="mt-2.5 flex items-end justify-between gap-4">
             <div>
               <h3 className="text-xl font-extrabold tracking-normal sm:text-2xl">{ev.title}</h3>
               <p className="mt-1 text-xs font-semibold text-white/90 sm:text-sm">{ev.description}</p>
             </div>
-            <div className="hidden h-[56px] w-[72px] shrink-0 items-center justify-center rounded-[14px] bg-[#0E756B] text-3xl sm:flex">
-              🚀
+            <div
+              className="hidden h-[56px] w-[72px] shrink-0 items-center justify-center rounded-[14px] text-3xl sm:flex"
+              style={{ backgroundColor: style.accent }}
+            >
+              {style.emoji}
             </div>
           </div>
           <div className="mt-3 flex gap-2">
