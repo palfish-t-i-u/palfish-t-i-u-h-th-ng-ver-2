@@ -1,63 +1,122 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { endpoints } from "../lib/api";
 import { cn } from "../lib/cn";
+import type {
+  GamificationCommission,
+  GamificationDashboardSummary,
+  GamificationEventItem,
+  GamificationTaskItem,
+} from "../types/dashboard";
 import type { RevenueLedgerRow } from "../types/revenue";
 import {
   buildDashboardSalesData,
+  buildDashboardSalesRowsFromGamification,
   formatVndCompact,
   monthDateRange,
   todayIso,
   type DashboardSaleRow,
 } from "./DashboardTab.utils";
 
+type RewardTone = "purple" | "amber";
+
+type RewardCard = GamificationTaskItem & {
+  tone: RewardTone;
+  label: string;
+};
+
 const SAMPLE_LEDGER_ROWS: RevenueLedgerRow[] = [
-  sampleRow("sample-1", "Trần Mỹ Linh", "Cá Gánh Team", 86_000_000),
-  sampleRow("sample-2", "Phạm Quốc Anh", "Cá Chăm Chỉ", 72_500_000),
-  sampleRow("sample-3", "Lê Thu Trang", "Cá Học Giỏi", 64_000_000),
-  sampleRow("sample-4", "Đặng Hoàng Sơn", "Cá Thủ Lĩnh", 1_200_000_000, monthDateRange().from),
-  sampleRow("sample-5", "Vũ Khánh Vy", "Cá Nóng Nảy", 1_100_000_000, monthDateRange().from),
-  sampleRow("sample-6", "Trương Mỹ Duyên", "HCM 02", 612_000_000, monthDateRange().from),
+  sampleRow("sample-1", "Tran My Linh", "Ca Ganh Team", 86_000_000),
+  sampleRow("sample-2", "Pham Quoc Anh", "Ca Cham Chi", 72_500_000),
+  sampleRow("sample-3", "Le Thu Trang", "Ca Hoc Gioi", 64_000_000),
+  sampleRow("sample-4", "Dang Hoang Son", "Ca Thu Linh", 1_200_000_000, monthDateRange().from),
+  sampleRow("sample-5", "Vu Khanh Vy", "Ca Nong Nay", 1_100_000_000, monthDateRange().from),
+  sampleRow("sample-6", "Truong My Duyen", "HCM 02", 612_000_000, monthDateRange().from),
 ];
 
-const WEEK_REWARDS = [
+const SAMPLE_TASKS: RewardCard[] = [
   {
+    id: "task-1",
     title: "Team đạt 100% KPI",
-    label: "THEO TEAM",
-    detail: "Toàn team chạm mốc KPI tháng",
+    description: "Toàn team chạm mốc KPI tháng",
     reward: "+1.000.000đ",
     tone: "purple",
+    label: "THEO TEAM",
   },
   {
+    id: "task-2",
     title: "Team đạt 110% KPI",
-    label: "THEO TEAM",
-    detail: "Vượt 10% KPI tháng - thưởng kép",
+    description: "Vượt 10% KPI tháng - thưởng kép",
     reward: "+2.000.000đ",
     tone: "purple",
+    label: "THEO TEAM",
   },
   {
+    id: "task-3",
     title: "Doanh số cá nhân tuần đạt 100 triệu",
-    label: "CÁ NHÂN",
-    detail: "Mốc tuần - cá nhân",
+    description: "Mốc tuần - cá nhân",
     reward: "+200.000đ",
     tone: "amber",
+    label: "CÁ NHÂN",
   },
   {
+    id: "task-4",
     title: "Doanh số cá nhân tuần đạt 115 triệu",
-    label: "CÁ NHÂN",
-    detail: "Mốc tuần - cá nhân",
+    description: "Mốc tuần - cá nhân",
     reward: "+300.000đ",
     tone: "amber",
+    label: "CÁ NHÂN",
   },
   {
+    id: "task-5",
     title: "Doanh số cá nhân tuần đạt 130 triệu",
-    label: "CÁ NHÂN",
-    detail: "Mốc tuần - cá nhân",
+    description: "Mốc tuần - cá nhân",
     reward: "+500.000đ",
     tone: "amber",
+    label: "CÁ NHÂN",
   },
 ];
 
-function sampleRow(id: string, saleCrmName: string, team: string, soTienVnd: number, ngayTienVe = todayIso()): RevenueLedgerRow {
+const SAMPLE_GAMIFICATION_SUMMARY: GamificationDashboardSummary = {
+  top_today: [
+    { id: "sale-today-1", name: "Tran My Linh", revenue: 86_000_000 },
+    { id: "sale-today-2", name: "Pham Quoc Anh", revenue: 72_500_000 },
+    { id: "sale-today-3", name: "Le Thu Trang", revenue: 64_000_000 },
+  ],
+  top_month: [
+    { id: "sale-month-1", name: "Dang Hoang Son", revenue: 1_200_000_000 },
+    { id: "sale-month-2", name: "Vu Khanh Vy", revenue: 1_100_000_000 },
+    { id: "sale-month-3", name: "Truong My Duyen", revenue: 612_000_000 },
+    { id: "sale-month-4", name: "Tran My Linh", revenue: 86_000_000 },
+    { id: "sale-month-5", name: "Pham Quoc Anh", revenue: 72_500_000 },
+    { id: "sale-month-6", name: "Le Thu Trang", revenue: 64_000_000 },
+  ],
+  tasks: SAMPLE_TASKS.map(({ id, title, description, reward }) => ({
+    id,
+    title,
+    description,
+    reward,
+  })),
+  events: [
+    {
+      id: "event-1",
+      title: "Hanh Trinh Da Nang 2026",
+      date: "2026-06-15",
+      description: "Top 30 toan quoc · 3 ngay 2 dem · All-inclusive",
+    },
+  ],
+  commission: {
+    status: "coming_soon",
+    amount: 0,
+  },
+};
+
+function sampleRow(
+  id: string,
+  saleCrmName: string,
+  team: string,
+  soTienVnd: number,
+  ngayTienVe = todayIso()
+): RevenueLedgerRow {
   return {
     id,
     ngayTienVe,
@@ -125,13 +184,7 @@ function EventIcon() {
   );
 }
 
-function Card({
-  children,
-  className,
-}: {
-  children: ReactNode;
-  className?: string;
-}) {
+function Card({ children, className }: { children: ReactNode; className?: string }) {
   return (
     <section className={cn("overflow-hidden rounded-[18px] border border-[#E3E6EF] bg-white shadow-[0_10px_28px_rgba(31,35,48,0.08)]", className)}>
       {children}
@@ -161,6 +214,7 @@ function SectionHeader({
 
 function AvatarBadge({ row, rank, selected }: { row: DashboardSaleRow; rank: number; selected?: boolean }) {
   const colors = ["bg-[#FFF0B8] text-[#9C6A00]", "bg-[#EFE9FF] text-[#6A55E8]", "bg-[#FFE5E5] text-[#DA3B3B]", "bg-[#E2F7F3] text-[#009981]"];
+
   return (
     <div className="relative">
       <span
@@ -172,16 +226,18 @@ function AvatarBadge({ row, rank, selected }: { row: DashboardSaleRow; rank: num
       >
         {row.initials}
       </span>
-      {rank <= 3 && (
+      {rank <= 3 ? (
         <span className="absolute -left-2 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-[#F2A900] px-1 text-[11px] font-extrabold text-white shadow-sm">
           {rank}
         </span>
-      )}
+      ) : null}
     </div>
   );
 }
 
-function CommissionCard() {
+function CommissionCard({ commission }: { commission?: GamificationCommission | null }) {
+  const isComingSoon = commission?.status === "coming_soon" || !commission?.status;
+
   return (
     <div className="relative min-h-[168px] overflow-hidden rounded-[18px] bg-[#6C5CE7] p-5 text-white shadow-[0_16px_36px_rgba(108,92,231,0.24)] sm:min-h-[218px] sm:p-7">
       <div className="absolute -right-10 -top-12 h-36 w-36 rounded-full bg-white/10" />
@@ -193,8 +249,12 @@ function CommissionCard() {
         </div>
         <div className="flex flex-1 items-center justify-center">
           <div className="rounded-[16px] border border-white/20 bg-white/10 px-5 py-4 text-center backdrop-blur sm:px-8 sm:py-5">
-            <div className="text-2xl font-extrabold tracking-normal sm:text-3xl">Đang phát triển</div>
-            <div className="mt-2 text-sm font-medium text-white/75">Công thức hoa hồng sẽ được cập nhật sau</div>
+            <div className="text-2xl font-extrabold tracking-normal sm:text-3xl">
+              {isComingSoon ? "Đang phát triển" : formatVndCompact(commission?.amount ?? 0)}
+            </div>
+            <div className="mt-2 text-sm font-medium text-white/75">
+              {isComingSoon ? "Công thức hoa hồng sẽ được cập nhật sau" : "Dữ liệu hoa hồng đang được cập nhật"}
+            </div>
           </div>
         </div>
       </div>
@@ -223,7 +283,7 @@ function RankPositionCard({ ranking }: { ranking: DashboardSaleRow[] }) {
       </div>
       <p className="mt-5 text-sm font-semibold text-white">
         {top ? `${top.sale_crm_name} đang dẫn bảng với ` : "Chưa có dữ liệu doanh thu tháng."}
-        {top && <span className="text-[#FFD66B]">{gmv}</span>}
+        {top ? <span className="text-[#FFD66B]">{gmv}</span> : null}
       </p>
       <div className="mt-4 h-2 overflow-hidden rounded-full bg-white/15">
         <div className="h-full rounded-full bg-[#FFD66B]" style={{ width: top ? "78%" : "8%" }} />
@@ -238,20 +298,21 @@ function RankPositionCard({ ranking }: { ranking: DashboardSaleRow[] }) {
 
 function TodayHonors({ rows, loading }: { rows: DashboardSaleRow[]; loading: boolean }) {
   const visible = rows.slice(0, 3);
+  const dateBadge = `${todayIso().slice(8, 10)}/${todayIso().slice(5, 7)}`;
 
   return (
     <Card>
       <SectionHeader
         icon={<MedalIcon />}
         title="Vinh danh hôm nay"
-        action={<span className="rounded-full bg-[#FFF0F2] px-3 py-1 text-xs font-bold text-[#FF4D5F]">{todayIso().slice(8, 10)}/{todayIso().slice(5, 7)}</span>}
+        action={<span className="rounded-full bg-[#FFF0F2] px-3 py-1 text-xs font-bold text-[#FF4D5F]">{dateBadge}</span>}
       />
       <div className="space-y-2 p-5">
-        {loading && visible.length === 0 && <div className="py-8 text-center text-sm text-gmv-muted">Đang tải dữ liệu...</div>}
-        {!loading && visible.length === 0 && <div className="py-8 text-center text-sm text-gmv-muted">Chưa có doanh thu hôm nay.</div>}
+        {loading && visible.length === 0 ? <div className="py-8 text-center text-sm text-gmv-muted">Đang tải dữ liệu...</div> : null}
+        {!loading && visible.length === 0 ? <div className="py-8 text-center text-sm text-gmv-muted">Chưa có doanh thu hôm nay.</div> : null}
         {visible.map((row, index) => (
           <div
-            key={row.sale_crm_name}
+            key={`${row.sale_crm_name}-${row.rank}`}
             className={cn(
               "flex items-center gap-3 rounded-[14px] border px-3 py-2.5",
               index === 0 ? "border-[#F3C545] bg-[#FFF3CF]" : "border-[#E8EAF2] bg-[#F8F8FB]"
@@ -260,11 +321,15 @@ function TodayHonors({ rows, loading }: { rows: DashboardSaleRow[]; loading: boo
             <AvatarBadge row={row} rank={index + 1} selected={index === 0} />
             <div className="min-w-0 flex-1">
               <div className="truncate text-sm font-extrabold text-[#101426]">{row.sale_crm_name}</div>
-              <div className={cn("truncate text-xs font-bold", index === 0 ? "text-[#B87400]" : "text-[#5F6678]")}>{row.team || "Chưa gán team"}</div>
+              {row.team ? (
+                <div className={cn("truncate text-xs font-bold", index === 0 ? "text-[#B87400]" : "text-[#5F6678]")}>
+                  {row.team}
+                </div>
+              ) : null}
             </div>
             <div className="text-right">
               <div className="text-base font-extrabold text-[#101426]">{formatVndCompact(row.gmv_vnd)}</div>
-              <div className="text-xs text-[#8A92A6]">{row.order_count} đơn</div>
+              {row.order_count > 0 ? <div className="text-xs text-[#8A92A6]">{row.order_count} đơn</div> : null}
             </div>
           </div>
         ))}
@@ -290,11 +355,11 @@ function MonthRanking({ rows, loading }: { rows: DashboardSaleRow[]; loading: bo
         <span className="text-right">Đơn b.động</span>
       </div>
       <div className="divide-y divide-[#E8EAF2]">
-        {loading && visible.length === 0 && <div className="py-10 text-center text-sm text-gmv-muted">Đang tải bảng xếp hạng...</div>}
-        {!loading && visible.length === 0 && <div className="py-10 text-center text-sm text-gmv-muted">Chưa có dữ liệu tháng này.</div>}
+        {loading && visible.length === 0 ? <div className="py-10 text-center text-sm text-gmv-muted">Đang tải bảng xếp hạng...</div> : null}
+        {!loading && visible.length === 0 ? <div className="py-10 text-center text-sm text-gmv-muted">Chưa có dữ liệu tháng này.</div> : null}
         {visible.map((row, index) => (
           <div
-            key={row.sale_crm_name}
+            key={`${row.sale_crm_name}-${row.rank}`}
             className={cn(
               "grid min-h-[45px] grid-cols-[52px_minmax(0,1fr)_96px_72px] items-center gap-2 px-5 text-sm",
               index === 0 && "bg-[#FFF9EC]",
@@ -313,14 +378,16 @@ function MonthRanking({ rows, loading }: { rows: DashboardSaleRow[]; loading: bo
               </span>
             </div>
             <div className="flex min-w-0 items-center gap-3">
-              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#F0EBFF] text-[10px] font-extrabold text-[#6C5CE7]">{row.initials}</span>
+              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#F0EBFF] text-[10px] font-extrabold text-[#6C5CE7]">
+                {row.initials}
+              </span>
               <div className="min-w-0">
                 <div className="truncate font-extrabold text-[#101426]">{row.sale_crm_name}</div>
-                <div className="truncate text-[11px] text-[#8A92A6]">{row.team || "Chưa gán team"}</div>
+                {row.team ? <div className="truncate text-[11px] text-[#8A92A6]">{row.team}</div> : null}
               </div>
             </div>
             <div className="text-right font-extrabold text-[#101426]">{formatVndCompact(row.gmv_vnd)}</div>
-            <div className="text-right font-semibold text-[#4B5572]">{row.order_count}</div>
+            <div className="text-right font-semibold text-[#4B5572]">{row.order_count > 0 ? row.order_count : "—"}</div>
           </div>
         ))}
       </div>
@@ -328,7 +395,18 @@ function MonthRanking({ rows, loading }: { rows: DashboardSaleRow[]; loading: bo
   );
 }
 
-function WeeklyRewards() {
+function mapTaskToReward(task: GamificationTaskItem, index: number): RewardCard {
+  const isTeam = task.title.toLowerCase().includes("team");
+  return {
+    ...task,
+    tone: isTeam || index < 2 ? "purple" : "amber",
+    label: isTeam ? "THEO TEAM" : "CÁ NHÂN",
+  };
+}
+
+function WeeklyRewards({ tasks }: { tasks: GamificationTaskItem[] }) {
+  const visibleTasks = (tasks.length ? tasks.map(mapTaskToReward) : SAMPLE_TASKS).slice(0, 5);
+
   return (
     <Card>
       <SectionHeader
@@ -337,8 +415,8 @@ function WeeklyRewards() {
         action={<span className="rounded-full bg-[#FFF4D9] px-3 py-1 text-xs font-bold text-[#C77800]">Còn 3 ngày</span>}
       />
       <div className="divide-y divide-[#E8EAF2]">
-        {WEEK_REWARDS.map((item) => (
-          <div key={item.title} className="flex min-h-[146px] items-center gap-5 px-6 py-5">
+        {visibleTasks.map((item) => (
+          <div key={item.id} className="flex min-h-[146px] items-center gap-5 px-6 py-5">
             <span
               className={cn(
                 "flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px]",
@@ -358,7 +436,7 @@ function WeeklyRewards() {
                 >
                   {item.label}
                 </span>
-                <span className="text-xs text-[#8A92A6]">{item.detail}</span>
+                <span className="text-xs text-[#8A92A6]">{item.description}</span>
               </div>
             </div>
             <div className="shrink-0 text-right text-lg font-extrabold text-[#E56B00]">{item.reward}</div>
@@ -369,7 +447,9 @@ function WeeklyRewards() {
   );
 }
 
-function InternalEvents() {
+function InternalEvents({ event }: { event?: GamificationEventItem }) {
+  const activeEvent = event ?? SAMPLE_GAMIFICATION_SUMMARY.events[0];
+
   return (
     <Card>
       <SectionHeader icon={<EventIcon />} title="Bảng sự kiện nội bộ" />
@@ -379,8 +459,8 @@ function InternalEvents() {
           <span className="inline-flex rounded-full bg-white/20 px-3 py-1 text-xs font-extrabold uppercase">Team building</span>
           <div className="mt-4 flex items-end justify-between gap-4">
             <div>
-              <h3 className="text-2xl font-extrabold tracking-normal">Hành Trình Đà Nẵng 2026</h3>
-              <p className="mt-1 text-sm font-semibold text-white/90">Top 30 toàn quốc · 3 ngày 2 đêm · All-inclusive</p>
+              <h3 className="text-2xl font-extrabold tracking-normal">{activeEvent.title}</h3>
+              <p className="mt-1 text-sm font-semibold text-white/90">{activeEvent.description}</p>
             </div>
             <div className="hidden h-[72px] w-[92px] shrink-0 items-center justify-center rounded-[18px] bg-[#0E756B] text-white sm:flex">
               <EventIcon />
@@ -399,6 +479,7 @@ function InternalEvents() {
 
 export default function DashboardTab() {
   const [rows, setRows] = useState<RevenueLedgerRow[]>([]);
+  const [summary, setSummary] = useState<GamificationDashboardSummary | null>(null);
   const [loading, setLoading] = useState(false);
   const [usingFallback, setUsingFallback] = useState(false);
 
@@ -407,6 +488,18 @@ export default function DashboardTab() {
     const timer = window.setTimeout(async () => {
       setLoading(true);
       setUsingFallback(false);
+
+      try {
+        const summaryRes = await endpoints.dashboard.gamificationSummary();
+        if (!cancelled) {
+          setSummary(summaryRes.data);
+          setRows([]);
+        }
+        return;
+      } catch {
+        // Fall through to ledger-based fallback.
+      }
+
       try {
         const range = monthDateRange();
         const allRows: RevenueLedgerRow[] = [];
@@ -426,10 +519,14 @@ export default function DashboardTab() {
           offset += limit;
         }
 
-        if (!cancelled) setRows(allRows);
+        if (!cancelled) {
+          setRows(allRows);
+          setSummary(null);
+        }
       } catch {
         if (!cancelled) {
           setRows(SAMPLE_LEDGER_ROWS);
+          setSummary(SAMPLE_GAMIFICATION_SUMMARY);
           setUsingFallback(true);
         }
       } finally {
@@ -443,25 +540,33 @@ export default function DashboardTab() {
     };
   }, []);
 
-  const data = useMemo(() => buildDashboardSalesData(rows, todayIso()), [rows]);
+  const salesData = useMemo(() => {
+    if (summary) {
+      return {
+        today: buildDashboardSalesRowsFromGamification(summary.top_today),
+        month: buildDashboardSalesRowsFromGamification(summary.top_month),
+      };
+    }
+    return buildDashboardSalesData(rows, todayIso());
+  }, [rows, summary]);
 
   return (
     <div className="min-w-0 bg-[#F4F5F8] p-0 text-[#101426] md:p-1">
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1.05fr)_minmax(420px,0.9fr)]">
         <div className="min-w-0 space-y-4">
-          <CommissionCard />
-          {usingFallback && (
+          <CommissionCard commission={summary?.commission} />
+          {usingFallback ? (
             <div className="rounded-[12px] border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800">
-              Backend dashboard chưa sẵn sàng, đang hiển thị dữ liệu mẫu theo cấu trúc snake_case.
+              API dashboard chưa sẵn sàng, đang hiển thị dữ liệu mẫu dự phòng.
             </div>
-          )}
-          <TodayHonors rows={data.today} loading={loading} />
-          <MonthRanking rows={data.month} loading={loading} />
+          ) : null}
+          <TodayHonors rows={salesData.today} loading={loading} />
+          <MonthRanking rows={salesData.month} loading={loading} />
         </div>
         <div className="min-w-0 space-y-4">
-          <RankPositionCard ranking={data.month} />
-          <WeeklyRewards />
-          <InternalEvents />
+          <RankPositionCard ranking={salesData.month} />
+          <WeeklyRewards tasks={summary?.tasks ?? []} />
+          <InternalEvents event={summary?.events?.[0]} />
         </div>
       </div>
     </div>

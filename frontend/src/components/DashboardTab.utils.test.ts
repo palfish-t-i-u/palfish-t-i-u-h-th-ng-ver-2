@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { RevenueLedgerRow } from "../types/revenue";
 import {
   buildDashboardSalesData,
+  buildDashboardSalesRowsFromGamification,
   formatVndCompact,
   getInitials,
   monthDateRange,
@@ -77,6 +78,21 @@ describe("DashboardTab utilities", () => {
     expect(monthDateRange(new Date("2026-05-30T00:00:00+07:00"))).toEqual({
       from: "2026-05-01",
       to: "2026-05-30",
+    });
+  });
+
+  it("maps gamification API ranking into dashboard sale rows", () => {
+    const data = buildDashboardSalesRowsFromGamification([
+      { id: "1", name: "Trần Mỹ Linh", revenue: 86_000_000 },
+      { id: "2", name: "Phạm Quốc Anh", revenue: 72_500_000 },
+    ]);
+
+    expect(data[0]).toMatchObject({
+      rank: 1,
+      sale_crm_name: "Trần Mỹ Linh",
+      gmv_vnd: 86_000_000,
+      order_count: 0,
+      initials: "LM",
     });
   });
 });
