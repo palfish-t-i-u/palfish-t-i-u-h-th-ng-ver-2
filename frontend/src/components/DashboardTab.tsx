@@ -3,6 +3,7 @@ import { endpoints } from "../lib/api";
 import { cn } from "../lib/cn";
 import type {
   GamificationCommission,
+  GamificationCurrentUser,
   GamificationDashboardSummary,
   GamificationEventItem,
   GamificationTaskItem,
@@ -12,6 +13,7 @@ import {
   buildDashboardSalesData,
   buildDashboardSalesRowsFromGamification,
   formatVndCompact,
+  getInitials,
   monthDateRange,
   todayIso,
   type DashboardSaleRow,
@@ -231,9 +233,83 @@ function CommissionCard({ commission }: { commission?: GamificationCommission | 
   );
 }
 
-function RankPositionCard({ ranking }: { ranking: DashboardSaleRow[] }) {
+function rankProgressWidth(currentUser: GamificationCurrentUser) {
+  if (currentUser.rank === 1) return "100%";
+  if (currentUser.next_rank_revenue && currentUser.next_rank_revenue > 0) {
+    const pct = Math.min(95, Math.max(8, (currentUser.revenue / currentUser.next_rank_revenue) * 100));
+    return `${pct}%`;
+  }
+  return currentUser.revenue > 0 ? "35%" : "8%";
+}
+
+function RankPositionCard({
+  currentUser,
+  ranking,
+}: {
+  currentUser?: GamificationCurrentUser | null;
+  ranking: DashboardSaleRow[];
+}) {
   const top = ranking[0];
-  const totalSales = ranking.length || 1;
+  const totalSales = currentUser?.total_sales ?? (ranking.length || 1);
+
+  if (currentUser) {
+    const gmv = formatVndCompact(currentUser.revenue);
+    const aboveRank = currentUser.rank > 1 ? currentUser.rank - 1 : null;
+    const aboveGmv =
+      currentUser.next_rank_revenue != null ? formatVndCompact(currentUser.next_rank_revenue) : null;
+
+    return (
+      <div className="min-h-[192px] rounded-[18px] bg-[#242B3A] p-7 text-white shadow-[0_16px_36px_rgba(20,24,36,0.18)]">
+        <div className="flex items-center gap-5">
+          <div className="flex h-[72px] w-[72px] items-center justify-center rounded-full border-[4px] border-[#9EA4B8] bg-[#F2F1FF] text-xl font-extrabold text-[#6C5CE7] shadow-inner">
+            {getInitials(currentUser.name)}
+          </div>
+          <div>
+            <div className="text-xs font-extrabold uppercase tracking-wide text-white/55">Xếp hạng tháng của bạn</div>
+            <div className="mt-1 flex items-end gap-3">
+              <span className="text-5xl font-extrabold leading-none text-white">#{currentUser.rank}</span>
+              <span className="mb-1 rounded-full bg-[#1BAA6F] px-2 py-1 text-xs font-bold text-white">
+                / {totalSales} sales
+              </span>
+            </div>
+          </div>
+        </div>
+        <p className="mt-5 text-sm font-semibold text-white">
+          {currentUser.rank === 1 ? (
+            <>
+              Bạn đang dẫn bảng với <span className="text-[#FFD66B]">{gmv}</span>
+            </>
+          ) : currentUser.revenue > 0 && currentUser.gap && currentUser.gap > 0 ? (
+            <>
+              Còn <span className="text-[#FFD66B]">{formatVndCompact(currentUser.gap)}</span>
+              {currentUser.next_rank_name ? ` để vượt ${currentUser.next_rank_name}` : " để lên hạng"}
+            </>
+          ) : (
+            <>
+              Chưa có doanh thu tháng này
+              {currentUser.gap && currentUser.gap > 0 ? (
+                <>
+                  {" "}
+                  — còn <span className="text-[#FFD66B]">{formatVndCompact(currentUser.gap)}</span> để chạm top{" "}
+                  {totalSales}
+                </>
+              ) : null}
+            </>
+          )}
+        </p>
+        <div className="mt-4 h-2 overflow-hidden rounded-full bg-white/15">
+          <div className="h-full rounded-full bg-[#FFD66B]" style={{ width: rankProgressWidth(currentUser) }} />
+        </div>
+        <div className="mt-2 flex justify-between text-xs font-semibold text-white/50">
+          <span>{`#${currentUser.rank} - ${gmv}`}</span>
+          <span>
+            {aboveRank && aboveGmv ? `#${aboveRank} - ${aboveGmv}` : currentUser.rank === 1 && ranking[1] ? `#2 - ${formatVndCompact(ranking[1].gmv_vnd)}` : `#${Math.max(1, currentUser.rank - 1)}`}
+          </span>
+        </div>
+      </div>
+    );
+  }
+
   const gmv = top ? formatVndCompact(top.gmv_vnd) : "0";
 
   return (
@@ -535,7 +611,7 @@ export default function DashboardTab() {
           <MonthRanking rows={salesData.month} loading={loading} />
         </div>
         <div className="min-w-0 space-y-4">
-          <RankPositionCard ranking={salesData.month} />
+          <RankPositionCard currentUser={summary?.current_user} ranking={salesData.month} />
           <WeeklyRewards tasks={summary?.tasks ?? []} />
           <InternalEvents events={summary?.events} />
         </div>
