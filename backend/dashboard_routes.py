@@ -48,6 +48,18 @@ class TopSale(BaseModel):
     name: str
     revenue: int
     avatar_url: str | None = None
+    team: str | None = None
+    sub_team: str | None = None
+
+
+class GamificationCurrentUser(BaseModel):
+    rank: int
+    name: str
+    revenue: int
+    total_sales: int
+    next_rank_name: str | None = None
+    next_rank_revenue: int | None = None
+    gap: int = 0
 
 
 class TaskItem(BaseModel):
@@ -70,13 +82,18 @@ class Commission(BaseModel):
 
 
 class DashboardSummary(BaseModel):
-    """Mock-phase Bảng thông tin — GET /api/v1/dashboard/summary."""
+    """Bảng thông tin — GET /api/v1/dashboard/summary."""
 
     top_today: list[TopSale]
     top_month: list[TopSale]
     tasks: list[TaskItem]
     events: list[EventItem]
     commission: Commission
+    current_user: GamificationCurrentUser | None = None
+
+
+GAMIFICATION_TODAY_LIMIT = 5
+GAMIFICATION_MONTH_LIMIT = 999
 
 
 STATIC_TASKS: list[TaskItem] = [
@@ -148,12 +165,93 @@ def _query_top_sales(sb, d_start: str, d_end: str) -> list[TopSale]:
     ]
 
 
-def _build_gamification_summary(sb) -> DashboardSummary:
+def _load_staff_team_map(sb) -> dict[str, tuple[str, str]]:
+    staff_map: dict[str, tuple[str, str]] = {}
+    try:
+        res = sb.table("nhan_su_sale").select("email, team, sub_team").execute()
+        for row in res.data or []:
+            email = str(row.get("email") or "").strip().lower()
+            if not email:
+                continue
+            staff_map[email] = (
+                str(row.get("team") or "").strip(),
+                str(row.get("sub_team") or "").strip(),
+            )
+    except Exception as exc:
+        print(f"[Dashboard] nhan_su_sale team lookup failed: {exc}")
+    return staff_map
+
+
+def _build_gamification_current_user(
+    top_month: list[TopSale],
+    *,
+    actor_email: str | None,
+    actor_crm_name: str | None,
+) -> GamificationCurrentUser | None:
+    if not actor_email and not actor_crm_name:
+        return None
+
+    email_key = (actor_email or "").strip().lower()
+    crm_name = (actor_crm_name or "").strip()
+    user_idx: int | None = None
+
+    for i, sale in enumerate(top_month):
+        if email_key and sale.id.strip().lower() == email_key:
+            user_idx = i
+            break
+        if crm_name and sale.name.strip() == crm_name:
+            user_idx = i
+            break
+
+    total = len(top_month)
+    if user_idx is None:
+        last = top_month[-1] if top_month else None
+        fallback_name = crm_name or (email_key.split("@", 1)[0] if email_key else "Unknown")
+        return GamificationCurrentUser(
+            rank=total + 1,
+            name=fallback_name,
+            revenue=0,
+            total_sales=total,
+            next_rank_name=last.name if last else None,
+            next_rank_revenue=last.revenue if last else None,
+            gap=int(last.revenue) if last else 0,
+        )
+
+    rank = user_idx + 1
+    sale = top_month[user_idx]
+    above = top_month[user_idx - 1] if user_idx > 0 else None
+    return GamificationCurrentUser(
+        rank=rank,
+        name=sale.name,
+        revenue=sale.revenue,
+        total_sales=total,
+        next_rank_name=above.name if above else None,
+        next_rank_revenue=above.revenue if above else None,
+        gap=max(0, int(above.revenue - sale.revenue)) if above else 0,
+    )
+
+
+def _build_gamification_summary(
+    sb,
+    *,
+    actor_email: str | None = None,
+    actor_crm_name: str | None = None,
+) -> DashboardSummary:
     today_start_utc, today_end_utc = _vn_day_bounds_utc()
     month_start_utc, month_end_utc = _vn_month_bounds_utc()
+    staff_map = _load_staff_team_map(sb)
 
-    top_today = _load_top_sales_rpc(sb, today_start_utc, today_end_utc)
-    top_month = _load_top_sales_rpc(sb, month_start_utc, month_end_utc)
+    top_today = _load_top_sales_rpc(
+        sb, today_start_utc, today_end_utc, limit=GAMIFICATION_TODAY_LIMIT, staff_map=staff_map
+    )
+    top_month = _load_top_sales_rpc(
+        sb, month_start_utc, month_end_utc, limit=GAMIFICATION_MONTH_LIMIT, staff_map=staff_map
+    )
+    current_user = _build_gamification_current_user(
+        top_month,
+        actor_email=actor_email,
+        actor_crm_name=actor_crm_name,
+    )
 
     return DashboardSummary(
         top_today=top_today,
@@ -161,6 +259,7 @@ def _build_gamification_summary(sb) -> DashboardSummary:
         tasks=STATIC_TASKS,
         events=STATIC_EVENTS,
         commission=Commission(status="coming_soon", amount=0),
+        current_user=current_user,
     )
 
 
@@ -526,6 +625,7 @@ def _load_top_sales_rpc(
     start_utc: datetime,
     end_utc: datetime,
     limit: int = 5,
+    staff_map: dict[str, tuple[str, str]] | None = None,
 ) -> list[TopSale]:
     try:
         res = sb.rpc(
@@ -539,16 +639,21 @@ def _load_top_sales_rpc(
     except Exception as exc:
         raise HTTPException(500, f"Query get_top_sales RPC that bai: {exc}") from exc
 
+    teams = staff_map if staff_map is not None else _load_staff_team_map(sb)
     out: list[TopSale] = []
     for row in res.data or []:
         sale_email = str(row.get("sale_email") or "").strip()
+        email_key = sale_email.lower()
         fallback_name = sale_email.split("@", 1)[0] if sale_email else "Unknown"
+        team, sub_team = teams.get(email_key, ("", ""))
         out.append(
             TopSale(
                 id=sale_email,
                 name=str(row.get("sale_name") or fallback_name).strip() or fallback_name,
                 avatar_url=row.get("avatar_url") or None,
                 revenue=int(row.get("total_revenue") or 0),
+                team=team or None,
+                sub_team=sub_team or None,
             )
         )
     return out
@@ -561,13 +666,31 @@ def register_dashboard_routes(app, supabase_factory):
         "/api/v1/dashboard/summary",
         tags=["Dashboard"],
         response_model=DashboardSummary,
-        summary="Bảng thông tin — gamification (real data from so_doanh_thu)",
+        summary="Bảng thông tin — gamification (payment_lines RPC)",
     )
-    def gamification_dashboard_summary():
+    def gamification_dashboard_summary(authorization: str | None = Header(None)):
         sb = supabase_factory()
         if not sb:
             raise HTTPException(503, "Supabase chưa cấu hình")
-        return _build_gamification_summary(sb)
+
+        actor_email: str | None = None
+        actor_crm_name: str | None = None
+        if authorization:
+            try:
+                actor = resolve_actor(sb, authorization)
+                actor_email = (actor.email or "").strip().lower() or None
+                staff = actor.staff or {}
+                actor_crm_name = str(staff.get("crm_name") or "").strip() or None
+            except HTTPException:
+                raise
+            except Exception:
+                pass
+
+        return _build_gamification_summary(
+            sb,
+            actor_email=actor_email,
+            actor_crm_name=actor_crm_name,
+        )
 
     @app.get("/dashboard/filters", tags=["Dashboard"])
     def dashboard_filters():
