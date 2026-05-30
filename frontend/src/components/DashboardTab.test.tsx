@@ -10,12 +10,12 @@ describe("DashboardTab", () => {
       http.get("http://localhost:8000/api/v1/dashboard/summary", () =>
         HttpResponse.json({
           top_today: [
-            { id: "1", name: "Trần Mỹ Linh", revenue: 86_000_000 },
-            { id: "2", name: "Phạm Quốc Anh", revenue: 72_500_000 },
+            { id: "1", name: "Trần Mỹ Linh", revenue: 86_000_000, team: "Team A", sub_team: "Subteam 1" },
+            { id: "2", name: "Phạm Quốc Anh", revenue: 72_500_000, team: "Team B", sub_team: "Subteam 2" },
           ],
           top_month: [
-            { id: "1", name: "Đặng Hoàng Sơn", revenue: 320_000_000 },
-            { id: "2", name: "Trần Mỹ Linh", revenue: 280_000_000 },
+            { id: "1", name: "Đặng Hoàng Sơn", revenue: 320_000_000, team: "Team Lead", sub_team: "Subteam North" },
+            { id: "2", name: "Trần Mỹ Linh", revenue: 280_000_000, team: "Team A", sub_team: "Subteam 1" },
           ],
           tasks: [
             {
@@ -77,6 +77,9 @@ describe("DashboardTab", () => {
     expect(screen.getByText(/để vượt Đặng Hoàng Sơn/)).toBeInTheDocument();
     expect(screen.getByText("Team đạt 100% KPI")).toBeInTheDocument();
     expect(screen.getByText("Team Building Tháng 6")).toBeInTheDocument();
+    expect(screen.getByText("Subteam")).toBeInTheDocument();
+    expect(screen.getByText("Team Lead")).toBeInTheDocument();
+    expect(screen.getByText("Subteam North")).toBeInTheDocument();
     expect(screen.getAllByText("86 tr").length).toBeGreaterThan(0);
   });
 });

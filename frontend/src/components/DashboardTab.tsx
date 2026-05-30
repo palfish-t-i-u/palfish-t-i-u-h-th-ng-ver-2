@@ -408,9 +408,11 @@ function MonthRanking({ rows, loading }: { rows: DashboardSaleRow[]; loading: bo
         title={`Bảng xếp hạng tháng ${new Date().getMonth() + 1}`}
         action={<span className="rounded-full bg-[#F0EBFF] px-3 py-1 text-xs font-bold text-[#6C5CE7]">{rows.length} sales</span>}
       />
-      <div className="grid grid-cols-[44px_minmax(0,1fr)_80px_64px] gap-2 border-b border-[#E8EAF2] px-4 py-1.5 text-[10px] font-extrabold uppercase tracking-wide text-[#9AA1B3]">
+      <div className="grid grid-cols-[44px_minmax(140px,1.4fr)_minmax(88px,0.8fr)_minmax(88px,0.8fr)_80px_64px] gap-2 border-b border-[#E8EAF2] px-4 py-1.5 text-[10px] font-extrabold uppercase tracking-wide text-[#9AA1B3]">
         <span>Hạng</span>
         <span>Nhân viên</span>
+        <span>Team</span>
+        <span>Subteam</span>
         <span className="text-right">Doanh thu</span>
         <span className="text-right">Đơn b.động</span>
       </div>
@@ -421,7 +423,7 @@ function MonthRanking({ rows, loading }: { rows: DashboardSaleRow[]; loading: bo
           <div
             key={`${row.sale_crm_name}-${row.rank}`}
             className={cn(
-              "grid min-h-[38px] grid-cols-[44px_minmax(0,1fr)_80px_64px] items-center gap-2 px-4 text-[13px]",
+              "grid min-h-[38px] grid-cols-[44px_minmax(140px,1.4fr)_minmax(88px,0.8fr)_minmax(88px,0.8fr)_80px_64px] items-center gap-2 px-4 text-[13px]",
               index === 0 && "bg-[#FFF9EC]",
               index === 1 && "bg-[#F8FAFF]",
               index === 2 && "bg-[#FFF6F1]"
@@ -445,6 +447,8 @@ function MonthRanking({ rows, loading }: { rows: DashboardSaleRow[]; loading: bo
                 <div className="truncate font-extrabold text-[#101426]">{row.sale_crm_name}</div>
               </div>
             </div>
+            <div className="truncate text-[#4B5572]">{row.team || "—"}</div>
+            <div className="truncate text-[#4B5572]">{row.sub_team || "—"}</div>
             <div className="text-right font-extrabold text-[#101426]">{formatVndCompact(row.gmv_vnd)}</div>
             <div className="text-right font-semibold text-[#4B5572]">{row.order_count > 0 ? row.order_count : "—"}</div>
           </div>
