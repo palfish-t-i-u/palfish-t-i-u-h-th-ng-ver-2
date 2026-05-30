@@ -157,8 +157,24 @@ STATIC_EVENTS: list[EventItem] = [
 ]
 
 
-def _query_top_sales(sb, d_start: str, d_end: str) -> list[TopSale]:
-    """Query so_doanh_thu, group by sale_crm_name, return sorted by total VND desc."""
+def _vn_today_iso(now: datetime | None = None) -> str:
+    return _coerce_vn_datetime(now).date().isoformat()
+
+
+def _vn_month_start_iso(now: datetime | None = None) -> str:
+    return _coerce_vn_datetime(now).replace(day=1).date().isoformat()
+
+
+def _query_top_sales(
+    sb,
+    d_start: str,
+    d_end: str,
+    *,
+    limit: int | None = None,
+    staff_map: dict[str, tuple[str, str]] | None = None,
+    staff_crm_map: dict[str, tuple[str, str, str]] | None = None,
+) -> list[TopSale]:
+    """BXH tháng — query so_doanh_thu, group by sale_crm_name, sorted by total VND desc."""
     sale_map: dict[str, int] = {}
     try:
         q = (
@@ -176,28 +192,66 @@ def _query_top_sales(sb, d_start: str, d_end: str) -> list[TopSale]:
                 sale_map[sname] = sale_map.get(sname, 0) + vnd
     except Exception as exc:
         print(f"[Dashboard] so_doanh_thu top sales query failed: {exc}")
+
+    if staff_map is None or staff_crm_map is None:
+        staff_map, staff_crm_map = _load_staff_maps(sb)
+
     ranked = sorted(sale_map.items(), key=lambda x: x[1], reverse=True)
-    return [
-        TopSale(id=f"sale-{i+1}", name=name, revenue=revenue)
-        for i, (name, revenue) in enumerate(ranked)
-    ]
+    if limit is not None:
+        ranked = ranked[:limit]
+
+    out: list[TopSale] = []
+    for name, revenue in ranked:
+        crm_info = staff_crm_map.get(name.strip())
+        if crm_info:
+            email, team, sub_team = crm_info
+            out.append(
+                TopSale(
+                    id=email or f"sale-{name}",
+                    name=name,
+                    revenue=revenue,
+                    team=team or None,
+                    sub_team=sub_team or None,
+                )
+            )
+        else:
+            team, sub_team = ("", "")
+            out.append(
+                TopSale(
+                    id=f"sale-{name}",
+                    name=name,
+                    revenue=revenue,
+                    team=team or None,
+                    sub_team=sub_team or None,
+                )
+            )
+    return out
+
+
+def _load_staff_maps(sb) -> tuple[dict[str, tuple[str, str]], dict[str, tuple[str, str, str]]]:
+    """email -> (team, sub_team); crm_name -> (email, team, sub_team)."""
+    by_email: dict[str, tuple[str, str]] = {}
+    by_crm: dict[str, tuple[str, str, str]] = {}
+    try:
+        res = sb.table("nhan_su_sale").select("email, crm_name, team, sub_team").execute()
+        for row in res.data or []:
+            email = str(row.get("email") or "").strip()
+            crm_name = str(row.get("crm_name") or "").strip()
+            team = str(row.get("team") or "").strip()
+            sub_team = str(row.get("sub_team") or "").strip()
+            if email:
+                by_email[email.lower()] = (team, sub_team)
+            if crm_name:
+                key = _sale_key(crm_name)
+                by_crm[key] = (email, team, sub_team)
+    except Exception as exc:
+        print(f"[Dashboard] nhan_su_sale lookup failed: {exc}")
+    return by_email, by_crm
 
 
 def _load_staff_team_map(sb) -> dict[str, tuple[str, str]]:
-    staff_map: dict[str, tuple[str, str]] = {}
-    try:
-        res = sb.table("nhan_su_sale").select("email, team, sub_team").execute()
-        for row in res.data or []:
-            email = str(row.get("email") or "").strip().lower()
-            if not email:
-                continue
-            staff_map[email] = (
-                str(row.get("team") or "").strip(),
-                str(row.get("sub_team") or "").strip(),
-            )
-    except Exception as exc:
-        print(f"[Dashboard] nhan_su_sale team lookup failed: {exc}")
-    return staff_map
+    by_email, _ = _load_staff_maps(sb)
+    return by_email
 
 
 def _build_gamification_current_user(
@@ -256,14 +310,18 @@ def _build_gamification_summary(
     actor_crm_name: str | None = None,
 ) -> DashboardSummary:
     today_start_utc, today_end_utc = _vn_day_bounds_utc()
-    month_start_utc, month_end_utc = _vn_month_bounds_utc()
-    staff_map = _load_staff_team_map(sb)
+    staff_map, staff_crm_map = _load_staff_maps(sb)
 
     top_today = _load_top_sales_rpc(
         sb, today_start_utc, today_end_utc, limit=GAMIFICATION_TODAY_LIMIT, staff_map=staff_map
     )
-    top_month = _load_top_sales_rpc(
-        sb, month_start_utc, month_end_utc, limit=GAMIFICATION_MONTH_LIMIT, staff_map=staff_map
+    top_month = _query_top_sales(
+        sb,
+        _vn_month_start_iso(),
+        _vn_today_iso(),
+        limit=GAMIFICATION_MONTH_LIMIT,
+        staff_map=staff_map,
+        staff_crm_map=staff_crm_map,
     )
     current_user = _build_gamification_current_user(
         top_month,
