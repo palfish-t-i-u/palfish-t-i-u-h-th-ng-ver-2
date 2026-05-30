@@ -210,20 +210,20 @@ function CommissionCard({ commission }: { commission?: GamificationCommission | 
   const isComingSoon = commission?.status === "coming_soon" || !commission?.status;
 
   return (
-    <div className="relative min-h-[168px] overflow-hidden rounded-[18px] bg-[#6C5CE7] p-5 text-white shadow-[0_16px_36px_rgba(108,92,231,0.24)] sm:min-h-[218px] sm:p-7">
+    <div className="relative shrink-0 overflow-hidden rounded-[18px] bg-[#6C5CE7] px-5 py-4 text-white shadow-[0_16px_36px_rgba(108,92,231,0.24)] sm:px-7 sm:py-5">
       <div className="absolute -right-10 -top-12 h-36 w-36 rounded-full bg-white/10" />
       <div className="absolute bottom-0 right-0 h-full w-36 bg-[#5949D6]/35" />
-      <div className="relative z-10 flex h-full min-h-[164px] flex-col">
+      <div className="relative z-10">
         <div className="flex items-center gap-2 text-xs font-extrabold uppercase tracking-wide text-white/90">
           <TrophyIcon />
           Tính hoa hồng
         </div>
-        <div className="flex flex-1 items-center justify-center">
-          <div className="rounded-[16px] border border-white/20 bg-white/10 px-5 py-4 text-center backdrop-blur sm:px-8 sm:py-5">
-            <div className="text-2xl font-extrabold tracking-normal sm:text-3xl">
+        <div className="mt-3 flex items-center justify-center">
+          <div className="rounded-[16px] border border-white/20 bg-white/10 px-5 py-3 text-center backdrop-blur sm:px-8">
+            <div className="text-xl font-extrabold tracking-normal sm:text-2xl">
               {isComingSoon ? "Đang phát triển" : formatVndCompact(commission?.amount ?? 0)}
             </div>
-            <div className="mt-2 text-sm font-medium text-white/75">
+            <div className="mt-1 text-xs font-medium text-white/75">
               {isComingSoon ? "Công thức hoa hồng sẽ được cập nhật sau" : "Dữ liệu hoa hồng đang được cập nhật"}
             </div>
           </div>
@@ -259,22 +259,22 @@ function RankPositionCard({
       currentUser.next_rank_revenue != null ? formatVndCompact(currentUser.next_rank_revenue) : null;
 
     return (
-      <div className="min-h-[192px] rounded-[18px] bg-[#242B3A] p-7 text-white shadow-[0_16px_36px_rgba(20,24,36,0.18)]">
-        <div className="flex items-center gap-5">
-          <div className="flex h-[72px] w-[72px] items-center justify-center rounded-full border-[4px] border-[#9EA4B8] bg-[#F2F1FF] text-xl font-extrabold text-[#6C5CE7] shadow-inner">
+      <div className="shrink-0 rounded-[18px] bg-[#242B3A] px-5 py-4 text-white shadow-[0_16px_36px_rgba(20,24,36,0.18)] sm:px-7 sm:py-5">
+        <div className="flex items-center gap-4">
+          <div className="flex h-[56px] w-[56px] items-center justify-center rounded-full border-[3px] border-[#9EA4B8] bg-[#F2F1FF] text-lg font-extrabold text-[#6C5CE7] shadow-inner">
             {getInitials(currentUser.name)}
           </div>
           <div>
-            <div className="text-xs font-extrabold uppercase tracking-wide text-white/55">Xếp hạng tháng của bạn</div>
-            <div className="mt-1 flex items-end gap-3">
-              <span className="text-5xl font-extrabold leading-none text-white">#{currentUser.rank}</span>
-              <span className="mb-1 rounded-full bg-[#1BAA6F] px-2 py-1 text-xs font-bold text-white">
+            <div className="text-[10px] font-extrabold uppercase tracking-wide text-white/55">Vị trí của bạn</div>
+            <div className="mt-1 flex items-end gap-2">
+              <span className="text-4xl font-extrabold leading-none text-white">#{currentUser.rank}</span>
+              <span className="mb-0.5 rounded-full bg-[#1BAA6F] px-2 py-0.5 text-[11px] font-bold text-white">
                 / {totalSales} sales
               </span>
             </div>
           </div>
         </div>
-        <p className="mt-5 text-sm font-semibold text-white">
+        <p className="mt-3 text-[13px] font-semibold text-white">
           {currentUser.rank === 1 ? (
             <>
               Bạn đang dẫn bảng với <span className="text-[#FFD66B]">{gmv}</span>
@@ -289,18 +289,17 @@ function RankPositionCard({
               Chưa có doanh thu tháng này
               {currentUser.gap && currentUser.gap > 0 ? (
                 <>
-                  {" "}
-                  — còn <span className="text-[#FFD66B]">{formatVndCompact(currentUser.gap)}</span> để chạm top{" "}
+                  {" "}— còn <span className="text-[#FFD66B]">{formatVndCompact(currentUser.gap)}</span> để chạm top{" "}
                   {totalSales}
                 </>
               ) : null}
             </>
           )}
         </p>
-        <div className="mt-4 h-2 overflow-hidden rounded-full bg-white/15">
+        <div className="mt-2.5 h-1.5 overflow-hidden rounded-full bg-white/15">
           <div className="h-full rounded-full bg-[#FFD66B]" style={{ width: rankProgressWidth(currentUser) }} />
         </div>
-        <div className="mt-2 flex justify-between text-xs font-semibold text-white/50">
+        <div className="mt-1.5 flex justify-between text-[11px] font-semibold text-white/50">
           <span>{`#${currentUser.rank} - ${gmv}`}</span>
           <span>
             {aboveRank && aboveGmv ? `#${aboveRank} - ${aboveGmv}` : currentUser.rank === 1 && ranking[1] ? `#2 - ${formatVndCompact(ranking[1].gmv_vnd)}` : `#${Math.max(1, currentUser.rank - 1)}`}
@@ -313,27 +312,27 @@ function RankPositionCard({
   const gmv = top ? formatVndCompact(top.gmv_vnd) : "0";
 
   return (
-    <div className="min-h-[192px] rounded-[18px] bg-[#242B3A] p-7 text-white shadow-[0_16px_36px_rgba(20,24,36,0.18)]">
-      <div className="flex items-center gap-5">
-        <div className="flex h-[72px] w-[72px] items-center justify-center rounded-full border-[4px] border-[#9EA4B8] bg-[#F2F1FF] text-xl font-extrabold text-[#6C5CE7] shadow-inner">
+    <div className="shrink-0 rounded-[18px] bg-[#242B3A] px-5 py-4 text-white shadow-[0_16px_36px_rgba(20,24,36,0.18)] sm:px-7 sm:py-5">
+      <div className="flex items-center gap-4">
+        <div className="flex h-[56px] w-[56px] items-center justify-center rounded-full border-[3px] border-[#9EA4B8] bg-[#F2F1FF] text-lg font-extrabold text-[#6C5CE7] shadow-inner">
           {top?.initials ?? "--"}
         </div>
         <div>
-          <div className="text-xs font-extrabold uppercase tracking-wide text-white/55">Vị trí dẫn đầu tháng</div>
-          <div className="mt-1 flex items-end gap-3">
-            <span className="text-5xl font-extrabold leading-none text-white">#1</span>
-            <span className="mb-1 rounded-full bg-[#1BAA6F] px-2 py-1 text-xs font-bold text-white">Top {totalSales}</span>
+          <div className="text-[10px] font-extrabold uppercase tracking-wide text-white/55">Vị trí dẫn đầu tháng</div>
+          <div className="mt-1 flex items-end gap-2">
+            <span className="text-4xl font-extrabold leading-none text-white">#1</span>
+            <span className="mb-0.5 rounded-full bg-[#1BAA6F] px-2 py-0.5 text-[11px] font-bold text-white">Top {totalSales}</span>
           </div>
         </div>
       </div>
-      <p className="mt-5 text-sm font-semibold text-white">
+      <p className="mt-3 text-sm font-semibold text-white">
         {top ? `${top.sale_crm_name} đang dẫn bảng với ` : "Chưa có dữ liệu doanh thu tháng."}
         {top ? <span className="text-[#FFD66B]">{gmv}</span> : null}
       </p>
-      <div className="mt-4 h-2 overflow-hidden rounded-full bg-white/15">
+      <div className="mt-2.5 h-1.5 overflow-hidden rounded-full bg-white/15">
         <div className="h-full rounded-full bg-[#FFD66B]" style={{ width: top ? "78%" : "8%" }} />
       </div>
-      <div className="mt-2 flex justify-between text-xs font-semibold text-white/50">
+      <div className="mt-1.5 flex justify-between text-[11px] font-semibold text-white/50">
         <span>{top ? `#1 - ${gmv}` : "#1"}</span>
         <span>{ranking[1] ? `#2 - ${formatVndCompact(ranking[1].gmv_vnd)}` : "#2"}</span>
       </div>
@@ -346,15 +345,15 @@ function TodayHonors({ rows, loading }: { rows: DashboardSaleRow[]; loading: boo
   const dateBadge = `${todayIso().slice(8, 10)}/${todayIso().slice(5, 7)}`;
 
   return (
-    <Card>
+    <Card className="shrink-0">
       <SectionHeader
         icon={<MedalIcon />}
         title="Vinh danh hôm nay"
         action={<span className="rounded-full bg-[#FFF0F2] px-3 py-1 text-xs font-bold text-[#FF4D5F]">{dateBadge}</span>}
       />
-      <div className="space-y-2 p-5">
-        {loading && visible.length === 0 ? <div className="py-8 text-center text-sm text-gmv-muted">Đang tải dữ liệu...</div> : null}
-        {!loading && visible.length === 0 ? <div className="py-8 text-center text-sm text-gmv-muted">Chưa có doanh thu hôm nay.</div> : null}
+      <div className="space-y-1.5 p-4">
+        {loading && visible.length === 0 ? <div className="py-4 text-center text-sm text-gmv-muted">Đang tải dữ liệu...</div> : null}
+        {!loading && visible.length === 0 ? <div className="py-4 text-center text-sm text-gmv-muted">Chưa có doanh thu hôm nay.</div> : null}
         {visible.map((row, index) => (
           <div
             key={`${row.sale_crm_name}-${row.rank}`}
@@ -384,29 +383,27 @@ function TodayHonors({ rows, loading }: { rows: DashboardSaleRow[]; loading: boo
 }
 
 function MonthRanking({ rows, loading }: { rows: DashboardSaleRow[]; loading: boolean }) {
-  const visible = rows.slice(0, 15);
-
   return (
-    <Card>
+    <Card className="flex min-h-0 flex-1 flex-col">
       <SectionHeader
         icon={<TrophyIcon />}
         title={`Bảng xếp hạng tháng ${new Date().getMonth() + 1}`}
         action={<span className="rounded-full bg-[#F0EBFF] px-3 py-1 text-xs font-bold text-[#6C5CE7]">{rows.length} sales</span>}
       />
-      <div className="grid grid-cols-[52px_minmax(0,1fr)_96px_72px] gap-2 border-b border-[#E8EAF2] px-5 py-2 text-[11px] font-extrabold uppercase tracking-wide text-[#9AA1B3]">
+      <div className="grid grid-cols-[44px_minmax(0,1fr)_80px_64px] gap-2 border-b border-[#E8EAF2] px-4 py-1.5 text-[10px] font-extrabold uppercase tracking-wide text-[#9AA1B3]">
         <span>Hạng</span>
         <span>Nhân viên</span>
         <span className="text-right">Doanh thu</span>
         <span className="text-right">Đơn b.động</span>
       </div>
-      <div className="divide-y divide-[#E8EAF2]">
-        {loading && visible.length === 0 ? <div className="py-10 text-center text-sm text-gmv-muted">Đang tải bảng xếp hạng...</div> : null}
-        {!loading && visible.length === 0 ? <div className="py-10 text-center text-sm text-gmv-muted">Chưa có dữ liệu tháng này.</div> : null}
-        {visible.map((row, index) => (
+      <div className="min-h-0 flex-1 divide-y divide-[#E8EAF2] overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-[#c4b5fd]">
+        {loading && rows.length === 0 ? <div className="py-8 text-center text-sm text-gmv-muted">Đang tải bảng xếp hạng...</div> : null}
+        {!loading && rows.length === 0 ? <div className="py-8 text-center text-sm text-gmv-muted">Chưa có dữ liệu tháng này.</div> : null}
+        {rows.map((row, index) => (
           <div
             key={`${row.sale_crm_name}-${row.rank}`}
             className={cn(
-              "grid min-h-[45px] grid-cols-[52px_minmax(0,1fr)_96px_72px] items-center gap-2 px-5 text-sm",
+              "grid min-h-[38px] grid-cols-[44px_minmax(0,1fr)_80px_64px] items-center gap-2 px-4 text-[13px]",
               index === 0 && "bg-[#FFF9EC]",
               index === 1 && "bg-[#F8FAFF]",
               index === 2 && "bg-[#FFF6F1]"
@@ -415,20 +412,19 @@ function MonthRanking({ rows, loading }: { rows: DashboardSaleRow[]; loading: bo
             <div>
               <span
                 className={cn(
-                  "inline-flex h-7 min-w-7 items-center justify-center rounded-[8px] px-1 text-sm font-extrabold",
+                  "inline-flex h-6 min-w-6 items-center justify-center rounded-[6px] px-1 text-[13px] font-extrabold",
                   index < 3 ? "bg-[#F2A900] text-white" : "text-[#9AA1B3]"
                 )}
               >
                 {row.rank}
               </span>
             </div>
-            <div className="flex min-w-0 items-center gap-3">
-              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#F0EBFF] text-[10px] font-extrabold text-[#6C5CE7]">
+            <div className="flex min-w-0 items-center gap-2">
+              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#F0EBFF] text-[9px] font-extrabold text-[#6C5CE7]">
                 {row.initials}
               </span>
               <div className="min-w-0">
                 <div className="truncate font-extrabold text-[#101426]">{row.sale_crm_name}</div>
-                {row.team ? <div className="truncate text-[11px] text-[#8A92A6]">{row.team}</div> : null}
               </div>
             </div>
             <div className="text-right font-extrabold text-[#101426]">{formatVndCompact(row.gmv_vnd)}</div>
@@ -453,18 +449,18 @@ function WeeklyRewards({ tasks }: { tasks: GamificationTaskItem[] }) {
   const visibleTasks = (tasks.length ? tasks.map(mapTaskToReward) : SAMPLE_TASKS).slice(0, 5);
 
   return (
-    <Card>
+    <Card className="flex min-h-0 flex-1 flex-col">
       <SectionHeader
         icon={<BoardIcon />}
         title="Bảng nhiệm vụ & thưởng tuần"
         action={<span className="rounded-full bg-[#FFF4D9] px-3 py-1 text-xs font-bold text-[#C77800]">Còn 3 ngày</span>}
       />
-      <div className="divide-y divide-[#E8EAF2]">
+      <div className="min-h-0 flex-1 divide-y divide-[#E8EAF2] overflow-y-auto">
         {visibleTasks.map((item) => (
-          <div key={item.id} className="flex items-center gap-5 px-6 py-4">
+          <div key={item.id} className="flex items-center gap-4 px-5 py-3">
             <span
               className={cn(
-                "flex h-10 w-10 shrink-0 items-center justify-center rounded-[10px]",
+                "flex h-8 w-8 shrink-0 items-center justify-center rounded-[8px]",
                 item.tone === "purple" ? "bg-[#EEE9FF] text-[#6C5CE7]" : "bg-[#FFF0CF] text-[#D98200]"
               )}
             >
@@ -494,32 +490,51 @@ function WeeklyRewards({ tasks }: { tasks: GamificationTaskItem[] }) {
 
 function InternalEvents({ events }: { events?: GamificationEventItem[] }) {
   const allEvents = events?.length ? events : SAMPLE_GAMIFICATION_SUMMARY.events;
+  const [activeIdx, setActiveIdx] = useState(0);
+  const safeIdx = Math.min(activeIdx, allEvents.length - 1);
+  const ev = allEvents[safeIdx] ?? allEvents[0];
+
+  useEffect(() => {
+    if (allEvents.length <= 1) return;
+    const interval = setInterval(() => {
+      setActiveIdx((prev) => (prev + 1) % allEvents.length);
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [allEvents.length]);
+
+  if (!ev) return null;
 
   return (
-    <Card>
+    <Card className="shrink-0">
       <SectionHeader icon={<EventIcon />} title="Bảng sự kiện nội bộ" />
-      {allEvents.map((ev) => (
-        <div key={ev.id} className="relative min-h-[132px] overflow-hidden bg-[#108D7E] p-7 text-white">
-          <div className="absolute -right-8 -top-6 h-36 w-36 rounded-full bg-white/10" />
-          <div className="relative z-10">
-            <span className="inline-flex rounded-full bg-white/20 px-3 py-1 text-xs font-extrabold uppercase">Phong trào</span>
-            <div className="mt-4 flex items-end justify-between gap-4">
-              <div>
-                <h3 className="text-2xl font-extrabold tracking-normal">{ev.title}</h3>
-                <p className="mt-1 text-sm font-semibold text-white/90">{ev.description}</p>
-              </div>
-              <div className="hidden h-[72px] w-[92px] shrink-0 items-center justify-center rounded-[18px] bg-[#0E756B] text-white sm:flex">
-                <EventIcon />
-              </div>
+      <div className="relative overflow-hidden bg-[#108D7E] px-5 py-4 text-white sm:px-7 sm:py-5">
+        <div className="absolute -right-8 -top-6 h-36 w-36 rounded-full bg-white/10" />
+        <div className="relative z-10">
+          <span className="inline-flex rounded-full bg-white/20 px-2.5 py-0.5 text-[10px] font-extrabold uppercase">Phong trào</span>
+          <div className="mt-2.5 flex items-end justify-between gap-4">
+            <div>
+              <h3 className="text-xl font-extrabold tracking-normal sm:text-2xl">{ev.title}</h3>
+              <p className="mt-1 text-xs font-semibold text-white/90 sm:text-sm">{ev.description}</p>
             </div>
-            <div className="mt-5 flex gap-2">
-              <span className="h-1.5 w-8 rounded-full bg-white" />
-              <span className="h-1.5 w-1.5 rounded-full bg-white/60" />
-              <span className="h-1.5 w-1.5 rounded-full bg-white/60" />
+            <div className="hidden h-[56px] w-[72px] shrink-0 items-center justify-center rounded-[14px] bg-[#0E756B] text-white sm:flex">
+              <EventIcon />
             </div>
           </div>
+          <div className="mt-3 flex gap-2">
+            {allEvents.map((_, idx) => (
+              <button
+                key={idx}
+                type="button"
+                onClick={() => setActiveIdx(idx)}
+                className={cn(
+                  "rounded-full transition-all",
+                  idx === safeIdx ? "h-1.5 w-8 bg-white" : "h-1.5 w-1.5 bg-white/60 hover:bg-white/80"
+                )}
+              />
+            ))}
+          </div>
         </div>
-      ))}
+      </div>
     </Card>
   );
 }
@@ -598,19 +613,19 @@ export default function DashboardTab() {
   }, [rows, summary]);
 
   return (
-    <div className="min-w-0 bg-[#F4F5F8] p-0 text-[#101426] md:p-1">
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.05fr)_minmax(420px,0.9fr)]">
-        <div className="min-w-0 space-y-4">
+    <div className="min-w-0 bg-[#F4F5F8] p-0 text-[#101426] md:p-1 h-[calc(100vh-64px-48px)] overflow-hidden">
+      <div className="grid h-full gap-3 xl:grid-cols-[minmax(0,1.05fr)_minmax(380px,0.9fr)]">
+        <div className="flex min-w-0 flex-col gap-3 overflow-hidden">
           <CommissionCard commission={summary?.commission} />
           {usingFallback ? (
-            <div className="rounded-[12px] border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800">
+            <div className="shrink-0 rounded-[12px] border border-amber-200 bg-amber-50 px-4 py-2 text-sm font-medium text-amber-800">
               API dashboard chưa sẵn sàng, đang hiển thị dữ liệu mẫu dự phòng.
             </div>
           ) : null}
           <TodayHonors rows={salesData.today} loading={loading} />
           <MonthRanking rows={salesData.month} loading={loading} />
         </div>
-        <div className="min-w-0 space-y-4">
+        <div className="flex min-w-0 flex-col gap-3 overflow-hidden">
           <RankPositionCard currentUser={summary?.current_user} ranking={salesData.month} />
           <WeeklyRewards tasks={summary?.tasks ?? []} />
           <InternalEvents events={summary?.events} />
