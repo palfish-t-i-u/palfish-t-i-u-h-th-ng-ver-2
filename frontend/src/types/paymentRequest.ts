@@ -1,7 +1,7 @@
 export type PaymentRequestStatus = "pending" | "short" | "done" | "over" | "cancelled";
 export type PaymentMethod = "qr" | "cash" | "card" | "installment";
 export type PaymentAttemptStatus = "pending" | "paid" | "rejected";
-export type ActiveRequestStatus = "pending_order" | "partial_order" | "ready_invoice" | "invoiced";
+export type ActiveRequestStatus = "pending_order" | "activated" | "invoiced";
 
 export interface PaymentAttempt {
   id: string;

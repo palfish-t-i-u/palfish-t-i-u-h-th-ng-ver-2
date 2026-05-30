@@ -1,7 +1,6 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { BANK_INFO } from "../../constants/bank";
 import type { PaymentAttempt, PaymentRequest } from "../../types/paymentRequest";
-import BillUploadZone from "./BillUploadZone";
 import { findCountry } from "./CountryCombo";
 import { Icons } from "./Icons";
 import { fmtPhone, vnd } from "./paymentRequestUtils";
@@ -27,7 +26,6 @@ async function copyImageToClipboard(url: string): Promise<boolean> {
   try {
     const resp = await fetch(url);
     const blob = await resp.blob();
-    // Ensure PNG mime type for ClipboardItem
     const pngBlob = blob.type === "image/png" ? blob : new Blob([await blob.arrayBuffer()], { type: "image/png" });
     await navigator.clipboard.write([new ClipboardItem({ "image/png": pngBlob })]);
     return true;
@@ -48,6 +46,7 @@ function BankInfoRow({ label, value, onCopy }: { label: string; value: string; o
             className="btn btn-outline btn-sm"
             style={{ flexShrink: 0, padding: "2px 10px", fontSize: 12 }}
             onClick={onCopy}
+            data-qr-capture-hide="true"
           >
             Sao chép
           </button>
@@ -61,20 +60,14 @@ export default function QrViewModal({
   qr,
   request,
   onClose,
-  onBillFile,
-  onBillView,
-  uploadingBill,
-  deletingBill,
 }: {
   qr: PaymentAttempt | null;
   request: PaymentRequest | null;
   onClose: () => void;
-  onBillFile?: (file: File) => void;
-  onBillView?: () => void;
-  uploadingBill?: boolean;
-  deletingBill?: boolean;
 }) {
   const [copyQrState, setCopyQrState] = useState<"idle" | "copying" | "done" | "error">("idle");
+  const [captureState, setCaptureState] = useState<"idle" | "capturing" | "done" | "downloaded" | "error">("idle");
+  const captureRef = useRef<HTMLDivElement>(null);
 
   if (!qr || !request) return null;
 
@@ -92,6 +85,44 @@ export default function QrViewModal({
     setTimeout(() => setCopyQrState("idle"), 2500);
   };
 
+  const handleCaptureQr = async () => {
+    if (!captureRef.current) return;
+    setCaptureState("capturing");
+    try {
+      const { toBlob } = await import("html-to-image");
+      const blob = await toBlob(captureRef.current, {
+        backgroundColor: "#ffffff",
+        pixelRatio: 2,
+        filter: (node) =>
+          !(node instanceof HTMLElement && node.dataset.qrCaptureHide === "true"),
+      });
+      if (!blob) throw new Error("toBlob returned null");
+
+      let copied = false;
+      try {
+        await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
+        copied = true;
+      } catch {
+        // clipboard không hỗ trợ → fallback download
+      }
+
+      if (!copied) {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `QR-${transferCode}.png`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 5000);
+      }
+      setCaptureState(copied ? "done" : "downloaded");
+    } catch {
+      setCaptureState("error");
+    }
+    setTimeout(() => setCaptureState("idle"), 2500);
+  };
+
   const openCheckout = () => {
     if (qr.checkoutUrl) window.open(qr.checkoutUrl, "_blank", "noopener,noreferrer");
   };
@@ -104,9 +135,19 @@ export default function QrViewModal({
     ? "Không hỗ trợ — tải về"
     : "Copy mã QR";
 
+  const captureLabel = captureState === "capturing"
+    ? "Đang chụp…"
+    : captureState === "done"
+    ? "Đã copy ảnh — paste vào chat!"
+    : captureState === "downloaded"
+    ? "Clipboard lỗi — đã tải ảnh"
+    : captureState === "error"
+    ? "Lỗi — thử lại"
+    : "Chụp mã QR";
+
   return (
     <div className="gmv-prototype gmv-prototype-modal-scrim" onClick={onClose}>
-      <div className="modal" style={{ width: "min(580px, 100%)" }} onClick={(e) => e.stopPropagation()}>
+      <div className="modal" style={{ width: "min(720px, 100%)" }} onClick={(e) => e.stopPropagation()}>
         <div className="modal-head">
           <div>
             <h3>QR thanh toán · Lần #{qr.idx}</h3>
@@ -120,69 +161,81 @@ export default function QrViewModal({
         </div>
 
         <div className="modal-body" style={{ gap: 18 }}>
-          {/* QR + bank details side by side */}
-          <div className="qr-detail-card" style={{ alignItems: "flex-start", gap: 20 }}>
-            {/* QR image — compact2 template: QR chiếm toàn bộ, logo Napas+bank nhỏ ở góc */}
-            <div
-              style={{
-                flexShrink: 0,
-                border: "1px solid var(--border)",
-                borderRadius: 10,
-                overflow: "hidden",
-                background: "#fff",
-                width: 220,
-                minHeight: 220,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-            >
-              <img
-                src={qrImageUrl}
-                alt="VietQR"
+          {/* Capture target — phần này sẽ được chụp ảnh */}
+          <div
+            ref={captureRef}
+            style={{ background: "#fff", borderRadius: 12, padding: 16 }}
+          >
+            <div className="qr-detail-card" style={{ alignItems: "flex-start", gap: 24 }}>
+              {/* QR image */}
+              <div
                 style={{
-                  width: "100%",
-                  height: "100%",
-                  maxHeight: 320,
-                  display: "block",
-                  objectFit: "contain",
+                  flexShrink: 0,
+                  border: "1px solid #e5e7eb",
+                  borderRadius: 10,
+                  overflow: "hidden",
                   background: "#fff",
+                  width: 240,
+                  minHeight: 240,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
                 }}
-              />
-            </div>
-
-            {/* Bank info panel */}
-            <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 10 }}>
-              <div style={{ fontSize: 12, color: "var(--text-3)", marginBottom: 2 }}>
-                {country.flag} {country.dial} {fmtPhone(request.phone)} · {request.name}
+              >
+                <img
+                  src={qrImageUrl}
+                  alt="VietQR"
+                  style={{
+                    width: "100%",
+                    height: "100%",
+                    maxHeight: 360,
+                    display: "block",
+                    objectFit: "contain",
+                    background: "#fff",
+                  }}
+                />
               </div>
 
-              <BankInfoRow label="Ngân hàng" value={BANK_INFO.displayName} />
-              <BankInfoRow
-                label="Chủ tài khoản"
-                value={BANK_INFO.accountName}
-              />
-              <BankInfoRow
-                label="Số tài khoản"
-                value={BANK_INFO.accountNo}
-                onCopy={() => copy(BANK_INFO.accountNo)}
-              />
-              <BankInfoRow
-                label="Số tiền"
-                value={vnd(qr.amount)}
-                onCopy={() => copy(String(qr.amount))}
-              />
-              <BankInfoRow
-                label="Nội dung chuyển khoản"
-                value={transferCode}
-                onCopy={() => copy(transferCode)}
-              />
+              {/* Bank info panel */}
+              <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 10 }}>
+                <div style={{ fontSize: 12, color: "var(--text-3)", marginBottom: 2 }}>
+                  {country.flag} {country.dial} {fmtPhone(request.phone)} · {request.name}
+                </div>
+
+                <BankInfoRow label="Ngân hàng" value={BANK_INFO.displayName} />
+                <BankInfoRow label="Chủ tài khoản" value={BANK_INFO.accountName} />
+                <BankInfoRow
+                  label="Số tài khoản"
+                  value={BANK_INFO.accountNo}
+                  onCopy={() => copy(BANK_INFO.accountNo)}
+                />
+                <BankInfoRow
+                  label="Số tiền"
+                  value={vnd(qr.amount)}
+                  onCopy={() => copy(String(qr.amount))}
+                />
+                <BankInfoRow
+                  label="Nội dung chuyển khoản"
+                  value={transferCode}
+                  onCopy={() => copy(transferCode)}
+                />
+              </div>
             </div>
           </div>
 
           {/* Action buttons */}
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            {/* F2c: Copy ảnh QR */}
+            {/* Chụp toàn bộ card QR + thông tin CK */}
+            <button
+              className="btn btn-primary"
+              style={{ flex: 1, justifyContent: "center", minWidth: 140 }}
+              onClick={handleCaptureQr}
+              disabled={captureState === "capturing"}
+            >
+              <Icons.Download size={14} /> {captureLabel}
+            </button>
+
+            {/* Copy ảnh QR */}
             <button
               className="btn btn-outline"
               style={{ flex: 1, justifyContent: "center", minWidth: 140 }}
@@ -192,7 +245,7 @@ export default function QrViewModal({
               <Icons.QrCode size={14} /> {copyQrLabel}
             </button>
 
-            {/* F2b: Copy đầy đủ thông tin CK */}
+            {/* Copy đầy đủ thông tin CK */}
             <button
               className="btn btn-outline"
               style={{ flex: 1, justifyContent: "center", minWidth: 140 }}
@@ -211,19 +264,6 @@ export default function QrViewModal({
               </button>
             ) : null}
           </div>
-
-          {/* Bill upload */}
-          {onBillFile && (
-            <div style={{ display: "flex", justifyContent: "center" }}>
-              <BillUploadZone
-                hasBill={!!qr.billImage}
-                uploading={uploadingBill}
-                deleting={deletingBill}
-                onView={onBillView}
-                onFile={onBillFile}
-              />
-            </div>
-          )}
         </div>
 
         <div className="modal-foot">

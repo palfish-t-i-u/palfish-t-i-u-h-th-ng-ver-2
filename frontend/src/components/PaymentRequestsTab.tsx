@@ -682,10 +682,6 @@ export default function PaymentRequestsTab() {
         qr={qrView?.qr ?? null}
         request={qrView?.request ?? null}
         onClose={() => setQrView(null)}
-        onBillFile={qrView?.qr ? (file) => handleBillFile(qrView.qr, file) : undefined}
-        onBillView={qrView?.qr ? () => handleBillView(qrView.qr) : undefined}
-        uploadingBill={uploadingBillId === qrView?.qr?.id}
-        deletingBill={deletingBillId === qrView?.qr?.id}
       />
 
       <Modal
@@ -709,21 +705,15 @@ export default function PaymentRequestsTab() {
             <button
               type="button"
               className="btn btn-outline btn-sm"
-              style={{ pointerEvents: "auto", position: "relative", zIndex: 10000 }}
               disabled={
                 !billModal.lineId ||
-                !billModalLineIsBackend && billModal.images.length === 0 ||
+                (!billModalLineIsBackend && billModal.images.length === 0) ||
                 deletingBillId === billModal.lineId ||
                 billModal.images.length === 0 ||
                 downloadingAllBills ||
                 downloadingBillIndex !== null
               }
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                void handleDownloadAllBills();
-              }}
-              onMouseDown={(e) => e.stopPropagation()}
+              onClick={() => void handleDownloadAllBills()}
             >
               <Icons.Download size={13} /> {downloadingAllBills ? "Đang tải..." : "Tải tất cả"}
             </button>
@@ -743,7 +733,7 @@ export default function PaymentRequestsTab() {
                 await handleBillDelete(billModalQr, undefined, true);
               }}
             >
-              <Icons.XCircle size={13} /> Xóa tất cả
+              <Icons.XCircle size={13} /> Xoá tất cả
             </button>
           </div>
         </div>
@@ -770,7 +760,7 @@ export default function PaymentRequestsTab() {
             >
               <img
                 src={src}
-                alt={`Bien lai ${idx + 1}`}
+                alt={`Biên lai ${idx + 1}`}
                 style={{
                   width: "100%",
                   maxHeight: 260,
@@ -788,19 +778,13 @@ export default function PaymentRequestsTab() {
                   <button
                     type="button"
                     className="btn btn-outline btn-sm"
-                    style={{ pointerEvents: "auto", position: "relative", zIndex: 10000 }}
                     disabled={
                       !billModal.lineId ||
                       deletingBillId === billModal.lineId ||
                       downloadingAllBills ||
                       downloadingBillIndex !== null
                     }
-                    onClick={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      void handleDownloadSingleBill(idx);
-                    }}
-                    onMouseDown={(e) => e.stopPropagation()}
+                    onClick={() => void handleDownloadSingleBill(idx)}
                   >
                     <Icons.Download size={12} /> {downloadingBillIndex === idx ? "Đang tải..." : "Tải ảnh"}
                   </button>
@@ -814,7 +798,7 @@ export default function PaymentRequestsTab() {
                       await handleBillDelete(billModalQr, src);
                     }}
                   >
-                    <Icons.XCircle size={12} /> Xóa bill này
+                    <Icons.XCircle size={12} /> Xoá bill này
                   </button>
                 </div>
               </div>

@@ -761,6 +761,229 @@ def _month_key(d: date) -> str:
     return f"{d.year}/{d.month}"
 
 
+_PAYMENT_LINE_METHOD_LABELS: dict[str, str] = {
+    "qr": "QR",
+    "cash": "Cash",
+    "card": "Card",
+    "installment": "Installment",
+}
+
+
+def _resolve_sale_from_pr_email(sb, pr: dict[str, Any]) -> tuple[str, str]:
+    """Return (sale_crm_name, sale_email) from payment_requests.sale_email."""
+    email = str(pr.get("sale_email") or "").strip().lower()
+    if not email:
+        return "", ""
+    try:
+        res = (
+            sb.table("nhan_su_sale")
+            .select("crm_name, email")
+            .ilike("email", email)
+            .limit(1)
+            .execute()
+        )
+        if res.data:
+            return str(res.data[0].get("crm_name") or "").strip(), email
+    except Exception:
+        pass
+    return "", email
+
+
+def _resolve_payment_date_from_pr(sb, pr_id: str) -> date:
+    try:
+        res = (
+            sb.table("payment_lines")
+            .select("paid_at, created_at")
+            .eq("payment_request_id", pr_id)
+            .eq("status", "paid")
+            .order("paid_at", desc=True)
+            .limit(1)
+            .execute()
+        )
+        if res.data:
+            for key in ("paid_at", "created_at"):
+                d = _parse_date(res.data[0].get(key))
+                if d:
+                    return d
+    except Exception:
+        pass
+    return datetime.now(timezone.utc).date()
+
+
+def _resolve_payment_method_from_pr(sb, pr_id: str) -> str:
+    try:
+        res = (
+            sb.table("payment_lines")
+            .select("method")
+            .eq("payment_request_id", pr_id)
+            .eq("status", "paid")
+            .order("paid_at", desc=True)
+            .limit(1)
+            .execute()
+        )
+        if res.data:
+            method = str(res.data[0].get("method") or "").strip().lower()
+            return _PAYMENT_LINE_METHOD_LABELS.get(method, method.upper() if method else "")
+    except Exception:
+        pass
+    return ""
+
+
+def sync_ledger_from_ar_course(
+    sb,
+    ar_id: str,
+    course_code: str,
+    actor_email: str = "b3-activation@auto",
+) -> str | None:
+    """Tạo dòng Sổ khi B3 gắn CRM order_id lên course. Idempotent theo crm_order_id / course code."""
+    try:
+        ar_res = (
+            sb.table("active_requests")
+            .select("*")
+            .eq("id", ar_id)
+            .limit(1)
+            .execute()
+        )
+        if not ar_res.data:
+            return None
+        ar_row = ar_res.data[0]
+
+        uid_block: dict[str, Any] | None = None
+        course: dict[str, Any] | None = None
+        for ub in ar_row.get("uids_data") or []:
+            if not isinstance(ub, dict):
+                continue
+            for c in ub.get("courses") or []:
+                if isinstance(c, dict) and c.get("code") == course_code:
+                    uid_block = ub
+                    course = c
+                    break
+            if course:
+                break
+        if not course:
+            return None
+
+        order_id = str(course.get("order_id") or course.get("orderId") or "").strip()
+        if not order_id:
+            return None
+
+        for field, val in (("crm_order_id", order_id), ("ma_don_hang", course_code)):
+            existing = (
+                sb.table("so_doanh_thu")
+                .select("id")
+                .eq("loai_nhap", "tu_dong")
+                .eq(field, val)
+                .limit(1)
+                .execute()
+            )
+            if existing.data:
+                return str(existing.data[0]["id"])
+
+        pr_id = str(ar_row.get("pr_id") or "").strip()
+        pr: dict[str, Any] | None = None
+        if pr_id:
+            pr_res = (
+                sb.table("payment_requests")
+                .select("*")
+                .eq("id", pr_id)
+                .limit(1)
+                .execute()
+            )
+            pr = pr_res.data[0] if pr_res.data else None
+
+        vnd = int(float(course.get("amount") or 0))
+        rate = DEFAULT_TY_GIA
+        sale, sale_email = _resolve_sale_from_pr_email(sb, pr or {})
+        team = _resolve_team(sb, sale or None, sale_email or actor_email)
+
+        if pr_id:
+            ngay = _resolve_payment_date_from_pr(sb, pr_id)
+            payment_method = _resolve_payment_method_from_pr(sb, pr_id)
+        else:
+            ngay = datetime.now(timezone.utc).date()
+            payment_method = ""
+
+        ten_khach = str(ar_row.get("customer_name") or "").strip()
+        if not ten_khach and pr:
+            ten_khach = str(pr.get("name") or "").strip()
+
+        uid = str((uid_block or {}).get("uid") or (pr.get("uid") if pr else "") or "")
+        phone = str((uid_block or {}).get("phone") or (pr.get("phone") if pr else "") or "")
+        goi_hoc = str(course.get("name") or course_code).strip()
+
+        payload = {
+            "ngay_tien_ve": ngay.isoformat(),
+            "pay_time": f"{ngay.isoformat()}T00:00:00",
+            "ten_khach": ten_khach,
+            "sdt": phone,
+            "uid": uid,
+            "goi_hoc": goi_hoc,
+            "so_tien_vnd": vnd,
+            "gmv_rmb": vnd_to_rmb(vnd, rate),
+            "ty_gia_vnd_rmb": float(rate),
+            "payment_method": payment_method or None,
+            "sale_crm_name": sale or None,
+            "team": team or None,
+            "team_pivot_label": team_to_pivot_label(team),
+            "loai_nhap": "tu_dong",
+            "don_hang_id": None,
+            "ma_don_hang": course_code,
+            "crm_order_id": order_id,
+            "note": f"AR {ar_id}",
+            "created_by_email": actor_email,
+            "updated_by_email": actor_email,
+        }
+        ins = sb.table("so_doanh_thu").insert(payload).execute()
+        if ins.data:
+            return str(ins.data[0]["id"])
+    except Exception as exc:
+        print(f"[revenue] sync B3 course → Sổ thất bại (non-fatal): {exc}")
+    return None
+
+
+def backfill_ledger_from_active_requests(sb, actor_email: str = "backfill@b3") -> dict[str, int]:
+    """Backfill Sổ từ các course đã có order_id trong active_requests."""
+    created = 0
+    skipped = 0
+    failed = 0
+    try:
+        res = sb.table("active_requests").select("id, uids_data").execute()
+    except Exception as exc:
+        print(f"[revenue] backfill B3 read AR failed: {exc}")
+        return {"created": 0, "skipped": 0, "failed": 0}
+
+    for ar_row in res.data or []:
+        ar_id = str(ar_row.get("id") or "")
+        for uid_block in ar_row.get("uids_data") or []:
+            if not isinstance(uid_block, dict):
+                continue
+            for course in uid_block.get("courses") or []:
+                if not isinstance(course, dict):
+                    continue
+                code = str(course.get("code") or "").strip()
+                order_id = str(course.get("order_id") or course.get("orderId") or "").strip()
+                if not code or not order_id:
+                    continue
+                before = (
+                    sb.table("so_doanh_thu")
+                    .select("id")
+                    .eq("loai_nhap", "tu_dong")
+                    .eq("crm_order_id", order_id)
+                    .limit(1)
+                    .execute()
+                )
+                had = bool(before.data)
+                rid = sync_ledger_from_ar_course(sb, ar_id, code, actor_email)
+                if rid and not had:
+                    created += 1
+                elif rid or had:
+                    skipped += 1
+                else:
+                    failed += 1
+
+    return {"created": created, "skipped": skipped, "failed": failed}
+
+
 def sync_ledger_from_m3_order(sb, don_hang_id: str, actor_email: str) -> str | None:
     """Tạo dòng Sổ từ đơn vừa M3 approve. Trả về id dòng hoặc None nếu đã có."""
     try:

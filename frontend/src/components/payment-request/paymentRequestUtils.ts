@@ -224,9 +224,26 @@ export function buildCreateActiveRequestPayload(pr: PaymentRequest): CreateActiv
         uid: pr.uid,
         phone: pr.phone,
         country: pr.country,
-        courses: [{ name: "", amount: pr.target }],
+        courses: [{ name: "", amount: Math.max(0, pr.received) }],
       },
     ],
+  };
+}
+
+export function activeRequestAllocation(ar: ActiveRequest, pr: PaymentRequest | null | undefined) {
+  const total = ar.uids.reduce(
+    (sum, uid) => sum + uid.courses.reduce((courseSum, course) => courseSum + Math.max(0, course.amount || 0), 0),
+    0
+  );
+  const received = Math.max(0, pr?.received ?? 0);
+  const overAmount = Math.max(0, total - received);
+  return {
+    total,
+    received,
+    remaining: Math.max(0, received - total),
+    overAmount,
+    percent: received > 0 ? Math.min(100, Math.round((total / received) * 100)) : 0,
+    isOver: !!pr && overAmount > 0,
   };
 }
 
@@ -285,7 +302,7 @@ export function createLocalActiveRequest(pr: PaymentRequest, existing: ActiveReq
           {
             courseCode: `CC-${numPart}-001`,
             packageName: "",
-            amount: pr.target,
+            amount: Math.max(0, pr.received),
             orderId: "",
             invoiced: false,
           },

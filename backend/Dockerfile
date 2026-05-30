@@ -8,6 +8,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY backend/ .
 COPY api_pipe/ /app/api_pipe/
+RUN mkdir -p /app/docs
+COPY docs/team_hierarchy.json /app/docs/team_hierarchy.json
 
 ENV PYTHONPATH=/app
 
