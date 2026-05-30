@@ -516,8 +516,8 @@ function InternalEvents({ events }: { events?: GamificationEventItem[] }) {
               <h3 className="text-xl font-extrabold tracking-normal sm:text-2xl">{ev.title}</h3>
               <p className="mt-1 text-xs font-semibold text-white/90 sm:text-sm">{ev.description}</p>
             </div>
-            <div className="hidden h-[56px] w-[72px] shrink-0 items-center justify-center rounded-[14px] bg-[#0E756B] text-white sm:flex">
-              <EventIcon />
+            <div className="hidden h-[56px] w-[72px] shrink-0 items-center justify-center rounded-[14px] bg-[#0E756B] text-3xl sm:flex">
+              🚀
             </div>
           </div>
           <div className="mt-3 flex gap-2">
@@ -557,6 +557,7 @@ export default function DashboardTab() {
           if (!cancelled) {
             setSummary(summaryRes.data);
             setRows([]);
+            setLoading(false);
           }
           return;
         } catch {
