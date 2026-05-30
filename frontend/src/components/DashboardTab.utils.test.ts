@@ -51,6 +51,7 @@ describe("DashboardTab utilities", () => {
     expect(data.today[0]).toMatchObject({
       sale_crm_name: "Trần Mỹ Linh",
       team: "Cá Gánh Team",
+      sub_team: "",
       gmv_vnd: 100_000_000,
       order_count: 2,
     });
@@ -83,16 +84,22 @@ describe("DashboardTab utilities", () => {
 
   it("maps gamification API ranking into dashboard sale rows", () => {
     const data = buildDashboardSalesRowsFromGamification([
-      { id: "1", name: "Trần Mỹ Linh", revenue: 86_000_000 },
-      { id: "2", name: "Phạm Quốc Anh", revenue: 72_500_000 },
+      { id: "1", name: "Trần Mỹ Linh", revenue: 86_000_000, team: "Team A", sub_team: "Subteam 1" },
+      { id: "2", name: "Phạm Quốc Anh", revenue: 72_500_000, team: "Team B" },
     ]);
 
     expect(data[0]).toMatchObject({
       rank: 1,
       sale_crm_name: "Trần Mỹ Linh",
+      team: "Team A",
+      sub_team: "Subteam 1",
       gmv_vnd: 86_000_000,
       order_count: 0,
       initials: "LM",
+    });
+    expect(data[1]).toMatchObject({
+      team: "Team B",
+      sub_team: "",
     });
   });
 });

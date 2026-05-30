@@ -5,6 +5,7 @@ export interface DashboardSaleRow {
   rank: number;
   sale_crm_name: string;
   team: string;
+  sub_team: string;
   gmv_vnd: number;
   order_count: number;
   initials: string;
@@ -43,6 +44,7 @@ function toRankRows(rows: RevenueLikeRow[], datePredicate: (date: string) => boo
     const current = map.get(saleName) ?? {
       sale_crm_name: saleName,
       team: readString(row, "team", "team") || readString(row, "teamPivotLabel", "team_pivot_label"),
+      sub_team: "",
       gmv_vnd: 0,
       order_count: 0,
     };
@@ -76,7 +78,8 @@ export function buildDashboardSalesRowsFromGamification(rows: GamificationTopSal
   return rows.map((row, index) => ({
     rank: index + 1,
     sale_crm_name: row.name,
-    team: row.sub_team || row.team || "",
+    team: row.team || "",
+    sub_team: row.sub_team || "",
     gmv_vnd: Number(row.revenue) || 0,
     order_count: 0,
     initials: getInitials(row.name),
