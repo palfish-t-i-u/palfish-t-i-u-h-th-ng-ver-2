@@ -15,7 +15,7 @@ import type {
   AddPaymentAttemptPayload,
   CreatePaymentRequestPayload,
   CreateActiveRequestPayload,
-  UpdatePaymentRequestPayload,
+  PatchPaymentRequestPayload,
   PaymentAttempt,
   PaymentRequest,
 } from "../types/paymentRequest";
@@ -28,7 +28,6 @@ import {
   isBackendLineId,
   mergeAddPaymentLineResponse,
   normalizeRequest,
-  nowStamp,
   toActiveRequestPatchUidsData,
   updateActiveCoursePackage,
 } from "../components/payment-request/paymentRequestUtils";
@@ -64,7 +63,7 @@ type PaymentFlowContextValue = {
   updateRequest: (id: string, updater: (r: PaymentRequest) => PaymentRequest) => void;
   updateActiveRequest: (id: string, updater: (ar: ActiveRequest) => ActiveRequest) => void;
   handleCreate: (payload: CreatePaymentRequestPayload) => Promise<PaymentRequest>;
-  handleUpdatePr: (id: string, payload: UpdatePaymentRequestPayload) => Promise<PaymentRequest>;
+  handleUpdatePr: (id: string, payload: PatchPaymentRequestPayload) => Promise<PaymentRequest>;
   handleAddPayment: (
     requestId: string,
     payload: AddPaymentAttemptPayload
@@ -207,7 +206,7 @@ export function PaymentFlowProvider({
   );
 
   const handleUpdatePr = useCallback(
-    async (id: string, payload: UpdatePaymentRequestPayload) => {
+    async (id: string, payload: PatchPaymentRequestPayload) => {
       const response = await endpoints.paymentRequests.update(id, payload);
       const saved = normalizeRequest(fromApiPaymentRequest(response.data.payment_request));
       setRequests((prev) => prev.map((r) => (r.id === id ? saved : r)));
@@ -235,9 +234,10 @@ export function PaymentFlowProvider({
           return merged;
         });
         if (!merged) return null;
+        const m = merged as PaymentRequest;
         const payment =
-          merged.payments.find((p) => p.id === res.payment_line.id) ??
-          merged.payments[merged.payments.length - 1] ??
+          m.payments.find((p: PaymentAttempt) => p.id === res.payment_line.id) ??
+          m.payments[m.payments.length - 1] ??
           null;
         if (!payment) return null;
         setApiNote("");
