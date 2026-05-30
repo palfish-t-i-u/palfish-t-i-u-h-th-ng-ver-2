@@ -24,14 +24,7 @@ type RewardCard = GamificationTaskItem & {
   label: string;
 };
 
-const SAMPLE_LEDGER_ROWS: RevenueLedgerRow[] = [
-  sampleRow("sample-1", "Tran My Linh", "Ca Ganh Team", 86_000_000),
-  sampleRow("sample-2", "Pham Quoc Anh", "Ca Cham Chi", 72_500_000),
-  sampleRow("sample-3", "Le Thu Trang", "Ca Hoc Gioi", 64_000_000),
-  sampleRow("sample-4", "Dang Hoang Son", "Ca Thu Linh", 1_200_000_000, monthDateRange().from),
-  sampleRow("sample-5", "Vu Khanh Vy", "Ca Nong Nay", 1_100_000_000, monthDateRange().from),
-  sampleRow("sample-6", "Truong My Duyen", "HCM 02", 612_000_000, monthDateRange().from),
-];
+const SAMPLE_LEDGER_ROWS: RevenueLedgerRow[] = [];
 
 const SAMPLE_TASKS: RewardCard[] = [
   {
@@ -45,7 +38,7 @@ const SAMPLE_TASKS: RewardCard[] = [
   {
     id: "task-2",
     title: "Team đạt 110% KPI",
-    description: "Vượt 10% KPI tháng - thưởng kép",
+    description: "Vượt 10% KPI tháng — thưởng kép",
     reward: "+2.000.000đ",
     tone: "purple",
     label: "THEO TEAM",
@@ -53,7 +46,7 @@ const SAMPLE_TASKS: RewardCard[] = [
   {
     id: "task-3",
     title: "Doanh số cá nhân tuần đạt 100 triệu",
-    description: "Mốc tuần - cá nhân",
+    description: "Mốc tuần · cá nhân",
     reward: "+200.000đ",
     tone: "amber",
     label: "CÁ NHÂN",
@@ -61,7 +54,7 @@ const SAMPLE_TASKS: RewardCard[] = [
   {
     id: "task-4",
     title: "Doanh số cá nhân tuần đạt 115 triệu",
-    description: "Mốc tuần - cá nhân",
+    description: "Mốc tuần · cá nhân",
     reward: "+300.000đ",
     tone: "amber",
     label: "CÁ NHÂN",
@@ -69,7 +62,7 @@ const SAMPLE_TASKS: RewardCard[] = [
   {
     id: "task-5",
     title: "Doanh số cá nhân tuần đạt 130 triệu",
-    description: "Mốc tuần - cá nhân",
+    description: "Mốc tuần · cá nhân",
     reward: "+500.000đ",
     tone: "amber",
     label: "CÁ NHÂN",
@@ -77,19 +70,8 @@ const SAMPLE_TASKS: RewardCard[] = [
 ];
 
 const SAMPLE_GAMIFICATION_SUMMARY: GamificationDashboardSummary = {
-  top_today: [
-    { id: "sale-today-1", name: "Tran My Linh", revenue: 86_000_000 },
-    { id: "sale-today-2", name: "Pham Quoc Anh", revenue: 72_500_000 },
-    { id: "sale-today-3", name: "Le Thu Trang", revenue: 64_000_000 },
-  ],
-  top_month: [
-    { id: "sale-month-1", name: "Dang Hoang Son", revenue: 1_200_000_000 },
-    { id: "sale-month-2", name: "Vu Khanh Vy", revenue: 1_100_000_000 },
-    { id: "sale-month-3", name: "Truong My Duyen", revenue: 612_000_000 },
-    { id: "sale-month-4", name: "Tran My Linh", revenue: 86_000_000 },
-    { id: "sale-month-5", name: "Pham Quoc Anh", revenue: 72_500_000 },
-    { id: "sale-month-6", name: "Le Thu Trang", revenue: 64_000_000 },
-  ],
+  top_today: [],
+  top_month: [],
   tasks: SAMPLE_TASKS.map(({ id, title, description, reward }) => ({
     id,
     title,
@@ -99,9 +81,9 @@ const SAMPLE_GAMIFICATION_SUMMARY: GamificationDashboardSummary = {
   events: [
     {
       id: "event-1",
-      title: "Hanh Trinh Da Nang 2026",
-      date: "2026-06-15",
-      description: "Top 30 toan quoc · 3 ngay 2 dem · All-inclusive",
+      title: 'Đua Sprint "Bứt Tốc Tháng 6"',
+      date: "2026-06-30",
+      description: "Thưởng nóng 50 triệu cho team dẫn đầu doanh số",
     },
   ],
   commission: {
@@ -109,40 +91,6 @@ const SAMPLE_GAMIFICATION_SUMMARY: GamificationDashboardSummary = {
     amount: 0,
   },
 };
-
-function sampleRow(
-  id: string,
-  saleCrmName: string,
-  team: string,
-  soTienVnd: number,
-  ngayTienVe = todayIso()
-): RevenueLedgerRow {
-  return {
-    id,
-    ngayTienVe,
-    payTime: ngayTienVe,
-    tenKhach: "",
-    sdt: "",
-    uid: "",
-    goiHoc: "",
-    soTienVnd,
-    gmvRmb: Math.round(soTienVnd / 3700),
-    tyGiaVndRmb: 3700,
-    paymentMethod: "",
-    loai: "",
-    loai2: "",
-    saleCrmName,
-    team,
-    teamPivotLabel: team,
-    note: "",
-    note2: "",
-    loaiNhap: "tu_dong",
-    donHangId: null,
-    maDonHang: "",
-    crmOrderId: "",
-    infoCode: "",
-  };
-}
 
 function TrophyIcon() {
   return (
@@ -170,6 +118,27 @@ function BoardIcon() {
   return (
     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
       <path d="m13 2-8 12h7l-1 8 8-12h-7l1-8Z" />
+    </svg>
+  );
+}
+
+function TeamIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+      <circle cx="9" cy="7" r="4" />
+      <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
+      <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+    </svg>
+  );
+}
+
+function TargetIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="10" />
+      <circle cx="12" cy="12" r="6" />
+      <circle cx="12" cy="12" r="2" />
     </svg>
   );
 }
@@ -416,14 +385,14 @@ function WeeklyRewards({ tasks }: { tasks: GamificationTaskItem[] }) {
       />
       <div className="divide-y divide-[#E8EAF2]">
         {visibleTasks.map((item) => (
-          <div key={item.id} className="flex min-h-[146px] items-center gap-5 px-6 py-5">
+          <div key={item.id} className="flex items-center gap-5 px-6 py-4">
             <span
               className={cn(
-                "flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px]",
+                "flex h-10 w-10 shrink-0 items-center justify-center rounded-[10px]",
                 item.tone === "purple" ? "bg-[#EEE9FF] text-[#6C5CE7]" : "bg-[#FFF0CF] text-[#D98200]"
               )}
             >
-              <BoardIcon />
+              {item.tone === "purple" ? <TeamIcon /> : <TargetIcon />}
             </span>
             <div className="min-w-0 flex-1">
               <div className="text-sm font-extrabold text-[#101426]">{item.title}</div>
@@ -447,32 +416,34 @@ function WeeklyRewards({ tasks }: { tasks: GamificationTaskItem[] }) {
   );
 }
 
-function InternalEvents({ event }: { event?: GamificationEventItem }) {
-  const activeEvent = event ?? SAMPLE_GAMIFICATION_SUMMARY.events[0];
+function InternalEvents({ events }: { events?: GamificationEventItem[] }) {
+  const allEvents = events?.length ? events : SAMPLE_GAMIFICATION_SUMMARY.events;
 
   return (
     <Card>
       <SectionHeader icon={<EventIcon />} title="Bảng sự kiện nội bộ" />
-      <div className="relative min-h-[132px] overflow-hidden bg-[#108D7E] p-7 text-white">
-        <div className="absolute -right-8 -top-6 h-36 w-36 rounded-full bg-white/10" />
-        <div className="relative z-10">
-          <span className="inline-flex rounded-full bg-white/20 px-3 py-1 text-xs font-extrabold uppercase">Team building</span>
-          <div className="mt-4 flex items-end justify-between gap-4">
-            <div>
-              <h3 className="text-2xl font-extrabold tracking-normal">{activeEvent.title}</h3>
-              <p className="mt-1 text-sm font-semibold text-white/90">{activeEvent.description}</p>
+      {allEvents.map((ev) => (
+        <div key={ev.id} className="relative min-h-[132px] overflow-hidden bg-[#108D7E] p-7 text-white">
+          <div className="absolute -right-8 -top-6 h-36 w-36 rounded-full bg-white/10" />
+          <div className="relative z-10">
+            <span className="inline-flex rounded-full bg-white/20 px-3 py-1 text-xs font-extrabold uppercase">Phong trào</span>
+            <div className="mt-4 flex items-end justify-between gap-4">
+              <div>
+                <h3 className="text-2xl font-extrabold tracking-normal">{ev.title}</h3>
+                <p className="mt-1 text-sm font-semibold text-white/90">{ev.description}</p>
+              </div>
+              <div className="hidden h-[72px] w-[92px] shrink-0 items-center justify-center rounded-[18px] bg-[#0E756B] text-white sm:flex">
+                <EventIcon />
+              </div>
             </div>
-            <div className="hidden h-[72px] w-[92px] shrink-0 items-center justify-center rounded-[18px] bg-[#0E756B] text-white sm:flex">
-              <EventIcon />
+            <div className="mt-5 flex gap-2">
+              <span className="h-1.5 w-8 rounded-full bg-white" />
+              <span className="h-1.5 w-1.5 rounded-full bg-white/60" />
+              <span className="h-1.5 w-1.5 rounded-full bg-white/60" />
             </div>
-          </div>
-          <div className="mt-5 flex gap-2">
-            <span className="h-1.5 w-8 rounded-full bg-white" />
-            <span className="h-1.5 w-1.5 rounded-full bg-white/60" />
-            <span className="h-1.5 w-1.5 rounded-full bg-white/60" />
           </div>
         </div>
-      </div>
+      ))}
     </Card>
   );
 }
@@ -566,7 +537,7 @@ export default function DashboardTab() {
         <div className="min-w-0 space-y-4">
           <RankPositionCard ranking={salesData.month} />
           <WeeklyRewards tasks={summary?.tasks ?? []} />
-          <InternalEvents event={summary?.events?.[0]} />
+          <InternalEvents events={summary?.events} />
         </div>
       </div>
     </div>
