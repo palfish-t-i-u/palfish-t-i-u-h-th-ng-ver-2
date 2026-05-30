@@ -18,6 +18,7 @@ from invoice_routes import (
     _build_excel_orders,
     _build_excel_products,
 )
+from revenue_routes import sync_ledger_from_ar_course
 
 # Parent PR must be fully paid (100% or overpaid) before course activation.
 ALLOWED_PR_STATES = frozenset({"done", "over"})
@@ -1182,6 +1183,8 @@ def register_activation_routes(app, supabase_factory):
 
         saved = (upd.data or [{"id": ar_id, "pr_id": row.get("pr_id"), "uids_data": uids_data, "status": status}])[0]
         merged = {**row, **saved, "uids_data": uids_data, "status": status}
+        if order_id:
+            sync_ledger_from_ar_course(sb, ar_id, course_code)
         pr_map = _fetch_prs_by_ids(sb, [str(merged.get("pr_id") or "")])
         return _serialize_ar(merged, pr_map.get(str(merged.get("pr_id") or "")))
 
