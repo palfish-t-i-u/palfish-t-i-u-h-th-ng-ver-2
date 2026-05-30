@@ -118,6 +118,32 @@ export function fromApiPaymentRequest(raw: any): PaymentRequest {
   };
 }
 
+/** Merge POST payment-lines response into a PR — append line if poll wiped optimistic state. */
+export function mergeAddPaymentLineResponse(
+  current: PaymentRequest,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  res: { payment_line: any; payment_request: any; payos?: any },
+  fallbackIdx: number
+): PaymentRequest {
+  const prRaw = res.payment_request;
+  if (Array.isArray(prRaw?.payments) && prRaw.payments.length > 0) {
+    return normalizeRequest(fromApiPaymentRequest(prRaw));
+  }
+  const line = fromApiAttempt(res.payment_line, fallbackIdx);
+  if (res.payos?.qr_code) {
+    line.qrCode = res.payos.qr_code;
+    line.checkoutUrl = res.payos.checkout_url;
+    line.paymentLinkId = res.payos.payment_link_id;
+    line.transferContent = res.payos.transfer_content || line.code;
+  }
+  const exists = current.payments.some((p) => p.id === line.id);
+  const payments = exists
+    ? current.payments.map((p) => (p.id === line.id ? { ...p, ...line } : p))
+    : [...current.payments, line];
+  const prFromBe = fromApiPaymentRequest(prRaw);
+  return normalizeRequest({ ...current, ...prFromBe, payments });
+}
+
 export function normalizeRequest(req: PaymentRequest): PaymentRequest {
   const payments = req.payments || [];
   const live = payments.filter((p) => !p.cancelled);
@@ -198,9 +224,26 @@ export function buildCreateActiveRequestPayload(pr: PaymentRequest): CreateActiv
         uid: pr.uid,
         phone: pr.phone,
         country: pr.country,
-        courses: [{ name: "", amount: pr.target }],
+        courses: [{ name: "", amount: Math.max(0, pr.received) }],
       },
     ],
+  };
+}
+
+export function activeRequestAllocation(ar: ActiveRequest, pr: PaymentRequest | null | undefined) {
+  const total = ar.uids.reduce(
+    (sum, uid) => sum + uid.courses.reduce((courseSum, course) => courseSum + Math.max(0, course.amount || 0), 0),
+    0
+  );
+  const received = Math.max(0, pr?.received ?? 0);
+  const overAmount = Math.max(0, total - received);
+  return {
+    total,
+    received,
+    remaining: Math.max(0, received - total),
+    overAmount,
+    percent: received > 0 ? Math.min(100, Math.round((total / received) * 100)) : 0,
+    isOver: !!pr && overAmount > 0,
   };
 }
 
@@ -259,7 +302,7 @@ export function createLocalActiveRequest(pr: PaymentRequest, existing: ActiveReq
           {
             courseCode: `CC-${numPart}-001`,
             packageName: "",
-            amount: pr.target,
+            amount: Math.max(0, pr.received),
             orderId: "",
             invoiced: false,
           },
