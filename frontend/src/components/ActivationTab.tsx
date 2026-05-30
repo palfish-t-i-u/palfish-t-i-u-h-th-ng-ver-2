@@ -1015,11 +1015,7 @@ function ActivationDetailDrawer({
             </div>
           )}
 
-          <div
-            className="ar-uid-list"
-            onWheel={(e) => e.stopPropagation()}
-            onScroll={(e) => e.stopPropagation()}
-          >
+          <div className="ar-uid-list">
             {ar.uids.map((uidObj, uidIdx) => {
               const uidKey = uidObj.uid.trim();
               const isUidFromPr = !!uidKey && (
