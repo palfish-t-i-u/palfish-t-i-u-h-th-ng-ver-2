@@ -40,22 +40,6 @@ DEFAULT_EXCHANGE_RATE = 3700
 VN_TIMEZONE = ZoneInfo("Asia/Ho_Chi_Minh")
 
 
-class RpcTopSale(BaseModel):
-    sale_email: str
-    sale_name: str
-    avatar_url: str | None = None
-    total_revenue: int
-
-
-class GamificationDashboardSummary(BaseModel):
-    top_today: list[RpcTopSale]
-    top_month: list[RpcTopSale]
-    tasks: list[dict[str, Any]]
-    events: list[dict[str, Any]]
-    commission: dict[str, Any]
-    meta: dict[str, Any]
-
-
 # --- Bảng thông tin (gamification) — mock contract for FE ---
 
 
@@ -165,12 +149,11 @@ def _query_top_sales(sb, d_start: str, d_end: str) -> list[TopSale]:
 
 
 def _build_gamification_summary(sb) -> DashboardSummary:
-    today = date.today()
-    today_str = today.isoformat()
-    month_start = today.replace(day=1).isoformat()
+    today_start_utc, today_end_utc = _vn_day_bounds_utc()
+    month_start_utc, month_end_utc = _vn_month_bounds_utc()
 
-    top_today = _query_top_sales(sb, today_str, today_str)
-    top_month = _query_top_sales(sb, month_start, today_str)
+    top_today = _load_top_sales_rpc(sb, today_start_utc, today_end_utc)
+    top_month = _load_top_sales_rpc(sb, month_start_utc, month_end_utc)
 
     return DashboardSummary(
         top_today=top_today,
@@ -543,7 +526,7 @@ def _load_top_sales_rpc(
     start_utc: datetime,
     end_utc: datetime,
     limit: int = 5,
-) -> list[RpcTopSale]:
+) -> list[TopSale]:
     try:
         res = sb.rpc(
             "get_top_sales",
@@ -556,16 +539,16 @@ def _load_top_sales_rpc(
     except Exception as exc:
         raise HTTPException(500, f"Query get_top_sales RPC that bai: {exc}") from exc
 
-    out: list[RpcTopSale] = []
+    out: list[TopSale] = []
     for row in res.data or []:
         sale_email = str(row.get("sale_email") or "").strip()
         fallback_name = sale_email.split("@", 1)[0] if sale_email else "Unknown"
         out.append(
-            RpcTopSale(
-                sale_email=sale_email,
-                sale_name=str(row.get("sale_name") or fallback_name).strip() or fallback_name,
+            TopSale(
+                id=sale_email,
+                name=str(row.get("sale_name") or fallback_name).strip() or fallback_name,
                 avatar_url=row.get("avatar_url") or None,
-                total_revenue=int(row.get("total_revenue") or 0),
+                revenue=int(row.get("total_revenue") or 0),
             )
         )
     return out
