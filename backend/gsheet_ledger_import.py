@@ -144,7 +144,18 @@ def _cell(row: list[Any], idx: int) -> Any:
     val = row[idx]
     if val is None or val == "":
         return None
+    if isinstance(val, float) and val != val:
+        return None
     return val
+
+
+def _serial_to_date(serial: int | float) -> date | None:
+    """Google Sheets serial number → date (epoch 1899-12-30)."""
+    from datetime import timedelta
+    n = int(serial)
+    if 1 <= n <= 100000:
+        return date(1899, 12, 30) + timedelta(days=n)
+    return None
 
 
 def _parse_date(value: Any) -> date | None:
@@ -154,6 +165,8 @@ def _parse_date(value: Any) -> date | None:
         return value.date()
     if isinstance(value, date):
         return value
+    if isinstance(value, (int, float)) and not isinstance(value, bool) and 40000 < value < 60000:
+        return _serial_to_date(value)
     s = str(value).strip()
     if not s:
         return None
@@ -180,6 +193,15 @@ def _parse_pay_time(value: Any, fallback_day: date | None) -> datetime | None:
         return value
     if isinstance(value, date):
         return datetime.combine(value, dt_time.min)
+    if isinstance(value, (int, float)) and not isinstance(value, bool) and value > 40000:
+        from datetime import timedelta
+        d = _serial_to_date(int(value))
+        if d:
+            frac = value - int(value)
+            total_sec = int(round(frac * 86400))
+            h, rem = divmod(total_sec, 3600)
+            mi, sec = divmod(rem, 60)
+            return datetime.combine(d, dt_time(h, mi, sec))
     d = _parse_date(value)
     if d:
         return datetime.combine(d, dt_time.min)
@@ -195,6 +217,11 @@ def _parse_time(value: Any) -> str | None:
         return value.isoformat()
     if isinstance(value, datetime):
         return value.time().isoformat()
+    if isinstance(value, float) and not isinstance(value, bool) and 0 < value < 1:
+        total_sec = int(round(value * 86400))
+        h, rem = divmod(total_sec, 3600)
+        mi, sec = divmod(rem, 60)
+        return f"{h:02d}:{mi:02d}:{sec:02d}"
     s = str(value).strip()
     if not s:
         return None
@@ -299,13 +326,20 @@ def _resolve_team_fields(
     return None, None
 
 
+def _fp_clean(val: Any) -> str:
+    if val is None or val == "":
+        return ""
+    s = str(val).strip()
+    return "" if s.lower() == "nan" else s
+
+
 def row_fingerprint(payload: dict[str, Any]) -> str:
     parts = [
-        str(payload.get("uid") or ""),
+        _fp_clean(payload.get("uid")),
         str(payload.get("pay_time") or "")[:10],
         str(payload.get("so_tien_vnd") or 0),
-        str(payload.get("sale_crm_name") or "").strip().lower(),
-        str(payload.get("sdt") or "").strip(),
+        _fp_clean(payload.get("sale_crm_name")).lower(),
+        _fp_clean(payload.get("sdt")),
     ]
     return hashlib.sha256("|".join(parts).encode()).hexdigest()[:32]
 
@@ -426,7 +460,12 @@ def fetch_gsheet_tab_values(
     # SM Hanoi tới AH (TEAM + Sales); HCM REV tới P
     col_end = "AH" if tab == "SM Hanoi" else "P"
     rng = f"'{tab}'!A:{col_end}"
-    result = service.spreadsheets().values().get(spreadsheetId=spreadsheet_id, range=rng).execute()
+    result = service.spreadsheets().values().get(
+        spreadsheetId=spreadsheet_id,
+        range=rng,
+        valueRenderOption='UNFORMATTED_VALUE',
+        dateTimeRenderOption='SERIAL_NUMBER',
+    ).execute()
     return result.get("values") or []
 
 
@@ -480,7 +519,7 @@ def _load_existing_import_fingerprints(sb, *, log: Callable[[str], None] = _log)
             lambda off=offset: (
                 sb.table("so_doanh_thu")
                 .select("uid, pay_time, so_tien_vnd, sale_crm_name, sdt")
-                .like("created_by_email", "import:gsheet:%")
+                .like("created_by_email", "import:%")
                 .range(off, off + 999)
                 .execute()
             ),
@@ -495,7 +534,7 @@ def _load_existing_import_fingerprints(sb, *, log: Callable[[str], None] = _log)
         if len(chunk) < 1000:
             break
         offset += 1000
-    log(f"  Đã có {len(fps)} fingerprint import:gsheet trong Sổ")
+    log(f"  Đã có {len(fps)} fingerprint import:* trong Sổ")
     return fps
 
 
@@ -527,11 +566,8 @@ def sync_gsheet_to_ledger(
     )
     log(f"Tổng {len(payloads)} dòng unique sau map")
 
-    if dry_run:
-        existing: set[str] = set()
-    else:
-        log("Kiểm tra dòng đã import…")
-        existing = _load_existing_import_fingerprints(sb, log=log)
+    log("Kiểm tra dòng đã import…")
+    existing = _load_existing_import_fingerprints(sb, log=log)
 
     to_insert: list[dict[str, Any]] = []
     skipped = 0

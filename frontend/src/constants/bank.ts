@@ -34,15 +34,21 @@ export const BANK_ACCOUNTS: BankAccount[] = [
     accountName: "CONG TY TNHH TRUONG QUOC TE PALFISH SINGAPORE - VIETNAM",
     displayName: "Ngân hàng TMCP Quân Đội (MB Bank)",
   },
-  // PalFish HCM — thêm vào đây khi có thông tin từ Hiếu
-  // {
-  //   alias: "PalFish HCM - MB Bank",
-  //   bin: "970422",
-  //   accountNo: "TODO",
-  //   accountName: "CONG TY TNHH TRUONG QUOC TE PALFISH SINGAPORE - VIETNAM",
-  //   displayName: "Ngân hàng TMCP Quân Đội (MB Bank)",
-  // },
+  {
+    alias: "PalFish HCM - Vietcombank",
+    bin: "970436",
+    accountNo: "1044914392",
+    accountName: "CONG TY TNHH PALFISH CLASS SAI GON",
+    displayName: "Ngân hàng TMCP Ngoại Thương Việt Nam (Vietcombank)",
+  },
 ];
+
+/** Trả về danh sách bank có thể chọn theo team của nhân sự.
+ *  HCM (Online) → cả 2 bank; tất cả team khác → chỉ HN MB Bank. */
+export function getAvailableBanks(team: string | null | undefined): BankAccount[] {
+  const isHcm = (team ?? "").toLowerCase().includes("hcm");
+  return isHcm ? BANK_ACCOUNTS : BANK_ACCOUNTS.filter((b) => b.alias !== "PalFish HCM - Vietcombank");
+}
 
 /** Tìm tài khoản theo alias, fallback về tài khoản đầu tiên */
 export function findBankAccount(alias: string): BankAccount {

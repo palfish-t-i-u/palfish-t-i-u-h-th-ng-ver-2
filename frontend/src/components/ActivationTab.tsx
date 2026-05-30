@@ -6,10 +6,11 @@ import type { ActiveRequest, ActiveCourse, ActiveUidGroup, PaymentRequest } from
 import type { ActiveRequestStatus } from "../types/paymentRequest";
 import {
   AR_STATUS_META,
+  canAllocateCourseAmount,
   enrichActiveRequest,
-  findInvoiceRowKey,
   flatCourses,
   nextCourseCode,
+  remainingReceivedAmount,
   vnd,
 } from "./payment-flow/paymentFlowUtils";
 import CountryCombo from "./payment-request/CountryCombo";
@@ -20,7 +21,7 @@ import { downloadTaxInvoiceZip } from "../utils/taxInvoiceXlsxExport";
 import type { InvoiceRow } from "./payment-flow/paymentFlowUtils";
 import "../styles/prototype-payments.css";
 
-type ArTabId = "pending_order" | "ready_invoice" | "all";
+type ArTabId = "pending_order" | "activated" | "all";
 
 function PrSearchCombo({
   prs,
@@ -171,7 +172,13 @@ function ARCreateModal({
 
   const linkedPr = linkedPrId ? prs.find((p) => p.id === linkedPrId) : null;
   const amountNum = parseInt(String(amount).replace(/\D/g, ""), 10) || 0;
-  const canSubmit = firstUid.trim() && pkgName.trim() && amountNum > 0 && (linkedPr ? true : customerName.trim());
+  const linkedPrOverAmount = linkedPr ? Math.max(0, amountNum - linkedPr.received) : 0;
+  const canSubmit =
+    firstUid.trim() &&
+    pkgName.trim() &&
+    amountNum > 0 &&
+    linkedPrOverAmount === 0 &&
+    (linkedPr ? true : customerName.trim());
 
   return (
     <div className="gmv-prototype-modal-scrim" onClick={onClose}>
@@ -202,7 +209,7 @@ function ARCreateModal({
                   if (p) {
                     setFirstUid(p.uid);
                     setCustomerName(p.name);
-                    if (!amount) setAmount(String(p.target));
+                    if (!amount) setAmount(String(p.received));
                   }
                 }
               }}
@@ -210,6 +217,11 @@ function ARCreateModal({
             {linkedPr && linkedPr.state !== "done" && linkedPr.state !== "over" && (
               <div style={{ marginTop: 8, fontSize: 12, color: "var(--warning-text)", display: "flex", gap: 6, alignItems: "center" }}>
                 <Icons.AlertCircle size={13} /> PR này chưa thanh toán đủ — thường chỉ kích hoạt khi đủ tiền.
+              </div>
+            )}
+            {linkedPrOverAmount > 0 && (
+              <div style={{ marginTop: 8, fontSize: 12, color: "var(--danger)", display: "flex", gap: 6, alignItems: "center" }}>
+                <Icons.AlertCircle size={13} /> Số tiền khóa học không được vượt tiền đã nhận ({vnd(linkedPr?.received ?? 0)}).
               </div>
             )}
           </div>
@@ -332,7 +344,7 @@ function ActivationDetailDrawer({
   onClose: () => void;
   onUpdate: (next: ActiveRequest) => void;
   onPersist: (next: ActiveRequest) => Promise<{ ok: boolean; saved?: ActiveRequest; error?: string }>;
-  onNavigateInvoice: () => void;
+  onNavigateInvoice: () => void | Promise<void>;
   onOpenPr?: () => void;
   onGoToInvoice: (courseCode: string) => void | Promise<void>;
 }) {
@@ -501,6 +513,15 @@ function ActivationDetailDrawer({
     };
   }, [open, ar?.id, ar?.uids.length]);
 
+  useEffect(() => {
+    if (!open) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [open]);
+
   if (!ar) {
     return (
       <>
@@ -516,6 +537,8 @@ function ActivationDetailDrawer({
   const invoicedCount = courses.filter((c) => c.invoiced).length;
   const total = enriched.total;
   const receivedGap = pr ? total - pr.received : 0;
+  const receivedRemaining = pr ? remainingReceivedAmount(ar, pr) : 0;
+  const receivedUsagePct = pr?.received ? Math.min(100, Math.round((total / pr.received) * 100)) : 0;
   const isStructureSaving = !!savingStructureKey;
   const setUidDraftField = (
     uidIdx: number,
@@ -585,7 +608,7 @@ function ActivationDetailDrawer({
   const addCourse = async (uidIdx: number) => {
     const newCode = nextCourseCode(ar);
     const u = ar.uids[uidIdx];
-    const remaining = pr ? Math.max(0, pr.target - total) : 0;
+    const remaining = pr ? receivedRemaining : 0;
     const nextUid: ActiveUidGroup = {
       ...u,
       courses: [
@@ -609,7 +632,7 @@ function ActivationDetailDrawer({
 
   const addUid = async (nextUidValue: string) => {
     const newCode = nextCourseCode(ar);
-    const remaining = pr ? Math.max(0, pr.target - total) : 0;
+    const remaining = pr ? receivedRemaining : 0;
     return await persistStructure("add-uid", {
       ...ar,
       uids: [
@@ -740,6 +763,13 @@ function ActivationDetailDrawer({
     const nextPackage = draft.packageName.trim();
     const nextAmount = parseInt(draft.amount.replace(/[^\d]/g, ""), 10) || 0;
     const nextOrderId = draft.orderId.trim();
+    if (!canAllocateCourseAmount(ar, pr, courseCode, nextAmount)) {
+      setCourseSaveErrors((prev) => ({
+        ...prev,
+        [courseCode]: `Tổng courses không được vượt số tiền đã nhận (${vnd(pr?.received || 0)}).`,
+      }));
+      return;
+    }
     if (
       nextPackage === (source.packageName || "") &&
       nextAmount === (source.amount || 0) &&
@@ -871,6 +901,29 @@ function ActivationDetailDrawer({
             </div>
           </div>
 
+          {pr && (
+            <div className={`allocation-progress ${receivedGap > 0 ? "is-over" : ""}`}>
+              <div className="allocation-progress-head">
+                <span>Phân bổ tiền đã nhận</span>
+                <strong>
+                  Đã dùng {vnd(total)} / Đã nhận {vnd(pr.received)}
+                </strong>
+              </div>
+              <div className="prog-bar" aria-label="Tiến độ phân bổ tiền đã nhận">
+                <div
+                  className={`prog-fill ${
+                    receivedGap === 0 && pr.received > 0 ? "is-done" : receivedGap > 0 ? "is-over" : "is-mid"
+                  }`}
+                  style={{ width: `${receivedUsagePct}%` }}
+                />
+              </div>
+              <div className="allocation-progress-meta">
+                <span>Còn lại {vnd(receivedRemaining)}</span>
+                {receivedGap > 0 ? <span className="danger">Vượt {vnd(receivedGap)}</span> : null}
+              </div>
+            </div>
+          )}
+
           {pr &&
             (receivedGap === 0 && pr.received > 0 ? (
               <div className="match-ok">
@@ -962,11 +1015,7 @@ function ActivationDetailDrawer({
             </div>
           )}
 
-          <div
-            className="ar-uid-list"
-            onWheel={(e) => e.stopPropagation()}
-            onScroll={(e) => e.stopPropagation()}
-          >
+          <div className="ar-uid-list">
             {ar.uids.map((uidObj, uidIdx) => {
               const uidKey = uidObj.uid.trim();
               const isUidFromPr = !!uidKey && (
@@ -1068,7 +1117,7 @@ function ActivationDetailDrawer({
                 <span>Course Code</span>
                 <span>Order ID</span>
                 <span>Lưu</span>
-                <span>Xuất HĐ</span>
+                <span>Yêu cầu xuất</span>
                 <span />
               </div>
               {uidObj.courses.map((course, courseIdx) => (
@@ -1189,15 +1238,18 @@ function ActivationDetailDrawer({
                           <Icons.Download size={12} /> Tải file thuế
                         </button>
                       </div>
+                    ) : course.invoiceRequestedAt ? (
+                      <button type="button" className="btn-invoice" disabled>
+                        <Icons.CheckCircle size={12} /> Đã yêu cầu
+                      </button>
                     ) : (
                       <button
                         type="button"
                         className="btn-invoice"
-                        disabled={!course.orderId?.trim()}
-                        title={course.orderId ? "Chuyển sang B4 xuất hoá đơn" : "Cần điền Order ID trước"}
+                        title="Yêu cầu xuất hoá đơn"
                         onClick={() => void onGoToInvoice(course.courseCode)}
                       >
-                        <Icons.Doc size={12} /> Xuất HĐ
+                        <Icons.Doc size={12} /> Yêu cầu xuất
                       </button>
                     )}
                   </div>
@@ -1344,7 +1396,7 @@ function ActivationDetailDrawer({
             <button type="button" className="btn btn-outline" onClick={requestCloseDrawer}>
               Đóng
             </button>
-            {enriched.status === "ready_invoice" && (
+            {enriched.status === "activated" && (
               <button type="button" className="btn btn-success" onClick={onNavigateInvoice}>
                 <Icons.Doc size={14} /> Yêu cầu xuất hoá đơn (B4)
               </button>
@@ -1387,29 +1439,22 @@ export default function ActivationTab() {
   const counts = useMemo(
     () => ({
       all: rows.length,
-      // Gộp pending_order + partial_order vào "Chờ điền Order ID" — forward-compatible với BE mới
-      // (BE mới sẽ chỉ trả pending_order; BE cũ vẫn có thể trả partial_order trong giai đoạn migrate).
-      pending_order: rows.filter((a) => a.status === "pending_order" || a.status === "partial_order").length,
-      ready_invoice: rows.filter((a) => a.status === "ready_invoice").length,
+      pending_order: rows.filter((a) => a.status === "pending_order").length,
+      activated: rows.filter((a) => a.status === "activated").length,
       invoiced: rows.filter((a) => a.status === "invoiced").length,
     }),
     [rows]
   );
 
   const sumReady = useMemo(
-    () => rows.filter((a) => a.status === "ready_invoice").reduce((s, a) => s + a.total, 0),
+    () => rows.filter((a) => a.status === "activated").reduce((s, a) => s + a.total, 0),
     [rows]
   );
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return rows.filter((a) => {
-      // Tab "Chờ điền Order ID" gộp cả pending_order và partial_order (giai đoạn migrate BE).
-      if (tab === "pending_order") {
-        if (a.status !== "pending_order" && a.status !== "partial_order") return false;
-      } else if (tab !== "all" && a.status !== tab) {
-        return false;
-      }
+      if (tab !== "all" && a.status !== tab) return false;
       if (!inDateRange(a.createdAt, dateRange)) return false;
       if (!q) return true;
       return [a.id, a.prId || "", a.customerName, a.uids[0]?.uid || ""].some((v) =>
@@ -1488,7 +1533,7 @@ export default function ActivationTab() {
               <Icons.CheckCircle size={16} />
             </div>
             <div className="kpi-label">Đã kích hoạt</div>
-            <div className="kpi-value">{counts.ready_invoice}</div>
+            <div className="kpi-value">{counts.activated}</div>
             <div className="kpi-sub">{vnd(sumReady)} sẵn sàng xuất HĐ</div>
           </div>
           <div className="kpi">
@@ -1521,7 +1566,7 @@ export default function ActivationTab() {
               {(
                 [
                   { id: "pending_order" as const, label: "Chờ điền Order ID", icon: "Clock" as const, count: counts.pending_order, attention: true },
-                  { id: "ready_invoice" as const, label: "Đã kích hoạt", icon: "CheckCircle" as const, count: counts.ready_invoice },
+                  { id: "activated" as const, label: "Đã kích hoạt", icon: "CheckCircle" as const, count: counts.activated },
                   { id: "all" as const, label: "Tất cả", icon: "Database" as const, count: counts.all },
                 ] as const
               ).map((tc) => {
@@ -1646,7 +1691,17 @@ export default function ActivationTab() {
         onClose={() => setOpenArId(null)}
         onUpdate={(next) => updateActiveRequest(next.id, () => next)}
         onPersist={persistActiveRequest}
-        onNavigateInvoice={() => navigate("module4", { invoiceTab: "pending" })}
+        onNavigateInvoice={async () => {
+          if (!openAr) return;
+          try {
+            const res = await endpoints.activeRequests.requestInvoice(openAr.id);
+            const saved = fromApiActiveRequest(res.data);
+            updateActiveRequest(openAr.id, () => saved);
+            setApiNote("Đã yêu cầu xuất hoá đơn cho tất cả gói học trong AR này.");
+          } catch {
+            setApiNote("Không gửi được yêu cầu xuất hoá đơn, thử lại sau.");
+          }
+        }}
         onOpenPr={
           openAr?.prId
             ? () => navigate("paymentRequests", { openPrId: openAr.prId })
@@ -1655,9 +1710,6 @@ export default function ActivationTab() {
         onGoToInvoice={async (courseCode) => {
           if (!openAr) return;
           await requestInvoiceForCourse(openAr.id, courseCode);
-          const key = findInvoiceRowKey(openAr, courseCode);
-          setOpenArId(null);
-          navigate("module4", { invoiceTab: "pending", openInvoiceKey: key ?? undefined });
         }}
       />
 
