@@ -18,8 +18,10 @@ const ReconciliationTab = lazy(() => import("../components/ReconciliationTab"));
 const ActivationTab = lazy(() => import("../components/ActivationTab"));
 const InvoiceRequestTab = lazy(() => import("../components/InvoiceRequestTab"));
 const SoDoanhThuTab = lazy(() => import("../components/SoDoanhThuTab"));
+const DashboardTab = lazy(() => import("../components/DashboardTab"));
 
 type ViewId =
+  | "dashboard"
   | "paymentRequests"
   | "reconciliation"
   | "profile"
@@ -124,6 +126,10 @@ const I = {
 };
 
 const TITLES: Record<ViewId, { title: string; subtitle?: string }> = {
+  dashboard: {
+    title: "Bảng thông tin",
+    subtitle: "Vinh danh, xếp hạng doanh thu, nhiệm vụ thưởng tuần và sự kiện nội bộ",
+  },
   paymentRequests: {
     title: "Quản lý thanh toán",
     subtitle: "Theo dõi Payment Requests, biên lai & tiến độ chuyển khoản của khách",
@@ -168,7 +174,7 @@ function MainPageInner({
 }) {
   const { user, signOut, isDevMode } = useAuth();
   const { profile } = useMe();
-  const [activeView, setActiveView] = useState<ViewId>("paymentRequests");
+  const [activeView, setActiveView] = useState<ViewId>("dashboard");
 
   const { badgeCounts } = usePaymentFlow();
 
@@ -191,10 +197,15 @@ function MainPageInner({
   const items: NavItem[] = useMemo(() => {
     const list: NavItem[] = [
       {
+        id: "dashboard",
+        label: "Bảng thông tin",
+        icon: I.chart,
+        section: "Khách hàng & Đơn hàng",
+      },
+      {
         id: "paymentRequests",
         label: "Quản lý thanh toán",
         icon: I.invoice,
-        section: "Khách hàng & Đơn hàng",
       },
     ];
 
@@ -293,6 +304,7 @@ function MainPageInner({
 
   const head = TITLES[activeView as keyof typeof TITLES] ?? TITLES.paymentRequests;
   const wideContent =
+    activeView === "dashboard" ||
     activeView === "paymentRequests" ||
     activeView === "reconciliation" ||
     activeView === "module3" ||
@@ -303,6 +315,8 @@ function MainPageInner({
 
   const renderActiveView = () => {
     switch (activeView) {
+      case "dashboard":
+        return <DashboardTab />;
       case "paymentRequests":
         return <PaymentRequestsTab />;
       case "reconciliation":
