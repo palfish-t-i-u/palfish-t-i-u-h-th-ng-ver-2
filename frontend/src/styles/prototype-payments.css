@@ -1248,10 +1248,11 @@
   display: flex;
   flex-direction: column;
   gap: 14px;
-  max-height: min(56vh, 620px);
+  max-height: min(72vh, 900px);
   overflow: auto;
   overscroll-behavior: contain;
   padding-right: 4px;
+  scrollbar-width: thin;
 }
 .gmv-prototype .uid-group {
   background: white; border: 1px solid var(--border);
