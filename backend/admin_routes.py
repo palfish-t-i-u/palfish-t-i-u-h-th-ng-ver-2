@@ -44,8 +44,11 @@ class SalePatchBody(BaseModel):
 
 class AuthUserPatchBody(BaseModel):
     banned: bool | None = None
+    is_banned: bool | None = None
     role: str | None = None
     crmName: str | None = None
+    crm_name: str | None = None
+    is_activated: bool | None = None
 
 
 def _sb_or_503(get_sb):
@@ -118,19 +121,77 @@ def _deactivate_non_vn_staff(sb) -> None:
     ).execute()
 
 
+def _model_to_dict(value: Any) -> dict[str, Any]:
+    if value is None:
+        return {}
+    if isinstance(value, dict):
+        return value
+    if hasattr(value, "model_dump"):
+        return value.model_dump()
+    if hasattr(value, "dict"):
+        return value.dict()
+    return {
+        "id": getattr(value, "id", None),
+        "email": getattr(value, "email", None),
+        "created_at": getattr(value, "created_at", None),
+        "last_sign_in_at": getattr(value, "last_sign_in_at", None),
+        "banned_until": getattr(value, "banned_until", None),
+        "user_metadata": getattr(value, "user_metadata", {}) or {},
+        "app_metadata": getattr(value, "app_metadata", {}) or {},
+    }
+
+
+def _auth_user_to_dict(value: Any) -> dict[str, Any]:
+    user = getattr(value, "user", None)
+    if user is not None:
+        return _model_to_dict(user)
+
+    data = _model_to_dict(value)
+    nested = data.get("user") if isinstance(data, dict) else None
+    if nested is not None and not data.get("id"):
+        return _model_to_dict(nested)
+    return data
+
+
+def _metadata_crm_name(meta: dict[str, Any]) -> str | None:
+    crm = meta.get("crmName")
+    if crm is None:
+        crm = meta.get("crm_name")
+    crm = str(crm or "").strip()
+    return crm or None
+
+
+def _metadata_bool(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "y", "on"}
+    return bool(value)
+
+
+def _patch_crm_name(body: AuthUserPatchBody) -> str | None:
+    crm = body.crm_name if body.crm_name is not None else body.crmName
+    crm = str(crm or "").strip()
+    return crm or None
+
+
+def _patch_banned(body: AuthUserPatchBody) -> bool | None:
+    return body.is_banned if body.is_banned is not None else body.banned
+
+
 def register_admin_routes(app, get_supabase):
     """Attach routes to FastAPI app."""
 
     @app.get("/me")
     def get_me(authorization: str | None = Header(None)):
         sb = _sb_or_503(get_supabase)
-        actor = resolve_actor(sb, authorization)
+        actor = resolve_actor(sb, authorization, allow_unactivated=True)
         return staff_to_profile(actor)
 
     @app.patch("/me")
     def patch_me(body: MePatchBody, authorization: str | None = Header(None)):
         sb = _sb_or_503(get_supabase)
-        actor = resolve_actor(sb, authorization)
+        actor = resolve_actor(sb, authorization, allow_unactivated=True)
         patch: dict[str, Any] = {}
         if body.phone is not None:
             patch["sdt"] = body.phone.strip()
@@ -170,7 +231,7 @@ def register_admin_routes(app, get_supabase):
             if patch:
                 raise HTTPException(400, "Chưa có hồ sơ nhân sự — cần ghép CRM trước")
 
-        actor = resolve_actor(sb, authorization)
+        actor = resolve_actor(sb, authorization, allow_unactivated=True)
         return staff_to_profile(actor)
 
     @app.get("/admin/sales")
@@ -344,7 +405,11 @@ def register_admin_routes(app, get_supabase):
         except Exception as exc:
             raise HTTPException(500, f"Không liệt kê được auth users: {exc}") from exc
 
-        staff_res = sb.table("nhan_su_sale").select("crm_name, email, role").execute()
+        staff_res = (
+            sb.table("nhan_su_sale")
+            .select("crm_name, email, role, team, sdt, display_name")
+            .execute()
+        )
         by_email = {
             (r.get("email") or "").lower(): r
             for r in (staff_res.data or [])
@@ -353,18 +418,7 @@ def register_admin_routes(app, get_supabase):
 
         out = []
         for u in users:
-            if hasattr(u, "model_dump"):
-                u = u.model_dump()
-            elif not isinstance(u, dict):
-                u = {
-                    "id": getattr(u, "id", None),
-                    "email": getattr(u, "email", None),
-                    "created_at": getattr(u, "created_at", None),
-                    "last_sign_in_at": getattr(u, "last_sign_in_at", None),
-                    "banned_until": getattr(u, "banned_until", None),
-                    "user_metadata": getattr(u, "user_metadata", {}) or {},
-                    "app_metadata": getattr(u, "app_metadata", {}) or {},
-                }
+            u = _auth_user_to_dict(u)
             email = (u.get("email") or "").lower()
             meta = u.get("user_metadata") or {}
             app_meta = u.get("app_metadata") or {}
@@ -372,6 +426,8 @@ def register_admin_routes(app, get_supabase):
             if not providers and app_meta.get("provider"):
                 providers = [app_meta.get("provider")]
             linked = by_email.get(email)
+            crm_name = linked.get("crm_name") if linked else _metadata_crm_name(meta)
+            full_name = meta.get("full_name") or meta.get("fullName")
             out.append(
                 {
                     "id": u.get("id"),
@@ -380,9 +436,14 @@ def register_admin_routes(app, get_supabase):
                     "lastSignIn": u.get("last_sign_in_at"),
                     "createdAt": u.get("created_at"),
                     "bannedUntil": u.get("banned_until"),
-                    "crmName": linked.get("crm_name") if linked else meta.get("full_name"),
+                    "crmName": crm_name,
                     "staffRole": linked.get("role") if linked else meta.get("role"),
                     "isBanned": bool(u.get("banned_until")),
+                    "isActivated": _metadata_bool(meta.get("is_activated", False)),
+                    "department": meta.get("department"),
+                    "team": meta.get("team") or (linked.get("team") if linked else None),
+                    "fullName": full_name,
+                    "phone": meta.get("phone") or (linked.get("sdt") if linked else None),
                 }
             )
         return {"users": out}
@@ -397,26 +458,91 @@ def register_admin_routes(app, get_supabase):
         actor = resolve_actor(sb, authorization)
         require_min_role(actor, "system")
 
+        try:
+            target_res = sb.auth.admin.get_user_by_id(user_id)
+            target_user = _auth_user_to_dict(target_res)
+        except Exception as exc:
+            raise HTTPException(500, f"Không đọc được auth user: {exc}") from exc
+
+        if not target_user or not target_user.get("id"):
+            raise HTTPException(404, "Không tìm thấy tài khoản Auth")
+
+        target_email = str(target_user.get("email") or "").strip().lower()
+        if not target_email:
+            raise HTTPException(400, "Tài khoản Auth không có email")
+
+        current_metadata = dict(target_user.get("user_metadata") or {})
+        crm_name = _patch_crm_name(body)
+
+        if crm_name:
+            staff_res = (
+                sb.table("nhan_su_sale")
+                .select("email, crm_name")
+                .eq("crm_name", crm_name)
+                .limit(1)
+                .execute()
+            )
+            if not staff_res.data:
+                raise HTTPException(404, "Không tìm thấy nhân sự trên CRM")
+
+            target_staff = staff_res.data[0]
+            linked_email = str(target_staff.get("email") or "").strip().lower()
+            if linked_email and linked_email != target_email:
+                raise HTTPException(409, "crmName đã được liên kết với tài khoản khác")
+
+        existing_staff_res = (
+            sb.table("nhan_su_sale")
+            .select("crm_name")
+            .eq("email", target_email)
+            .limit(1)
+            .execute()
+        )
+        existing_staff_crm = (
+            str((existing_staff_res.data or [{}])[0].get("crm_name") or "").strip()
+            if existing_staff_res.data
+            else ""
+        )
+        existing_crm_name = _metadata_crm_name(current_metadata) or existing_staff_crm or None
+
+        if body.is_activated is True and not (crm_name or existing_crm_name):
+            raise HTTPException(400, "Cần liên kết CRM trước khi kích hoạt")
+
         attrs: dict[str, Any] = {}
-        if body.banned is True:
+        banned = _patch_banned(body)
+        if banned is True:
             attrs["ban_duration"] = "876000h"
-        elif body.banned is False:
+        elif banned is False:
             attrs["ban_duration"] = "none"
 
-        meta_patch: dict[str, Any] = {}
-        if body.role is not None:
-            meta_patch["role"] = body.role
-        if body.crmName is not None:
-            meta_patch["full_name"] = body.crmName
-        if meta_patch:
-            attrs["user_metadata"] = meta_patch
+        role_value = body.role.strip().lower() if body.role is not None else None
+        updated_metadata = dict(current_metadata)
+        if role_value is not None:
+            updated_metadata["role"] = role_value
+        if crm_name:
+            updated_metadata["crmName"] = crm_name
+        if body.is_activated is not None:
+            updated_metadata["is_activated"] = body.is_activated
+
+        if updated_metadata != current_metadata:
+            attrs["user_metadata"] = updated_metadata
+
+        if not attrs and not crm_name:
+            raise HTTPException(400, "Không có trường cần cập nhật")
 
         try:
             if attrs:
                 sb.auth.admin.update_user_by_id(user_id, attrs)
+            staff_crm_to_update = crm_name or existing_crm_name
+            staff_patch: dict[str, Any] = {}
+            if crm_name:
+                staff_patch["email"] = target_email
+            if role_value is not None and staff_crm_to_update:
+                staff_patch["role"] = role_value
+            if staff_patch and staff_crm_to_update:
+                sb.table("nhan_su_sale").update(staff_patch).eq(
+                    "crm_name", staff_crm_to_update
+                ).execute()
         except Exception as exc:
             raise HTTPException(500, str(exc)) from exc
 
-        if body.crmName and body.role is None:
-            pass
         return {"ok": True, "userId": user_id}
