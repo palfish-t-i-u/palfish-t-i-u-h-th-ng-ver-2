@@ -97,6 +97,9 @@ Lỗi `Unsupported provider: provider is not enabled` → chưa Enable Google tr
 | Google provider not enabled | Supabase → Providers → Google → Enable + Client ID/Secret |
 | `/me` fail, UI role `(sale)` | Render thiếu `SUPABASE_SERVICE_ROLE_KEY` — xem `DEPLOY.md` §3.1 |
 | `Error sending confirmation email` | Confirm email vẫn bật hoặc SMTP chưa verify | §0: tắt Confirm email; ưu tiên Google signup |
+| Reset MK email có link, không có OTP | Template Reset Password chưa đổi sang `{{ .Token }}` | §5: sửa template, xóa `ConfirmationURL` |
+| Bấm link reset → về trang login | Route `/reset-password` thiếu hoặc GuestRoute redirect | Đã fix FE: route + `AuthFlowRoute` |
+| Gửi OTP / gửi lại không thấy mail | Rate limit SMTP, email chưa đăng ký password, spam | §1 Resend SMTP; dùng email đã signup Email+Password |
 
 **Session (Supabase Free):** không cấu hình Time-box / Inactivity timeout (chỉ Pro). Session giữ qua refresh token + browser; đăng xuất thủ công hoặc xóa site data.
 
@@ -125,6 +128,27 @@ Lỗi `Unsupported provider: provider is not enabled` → chưa Enable Google tr
 | Google OAuth | **Bật** (vẫn qua gate `is_activated`) |
 | Confirm email (signup) | **Tắt** — user chờ admin kích hoạt, không cần confirm thêm |
 
+### Quên mật khẩu — OTP (khớp FE)
+
+FE dùng **3 bước OTP nhập tay** (`ForgotPasswordPage` + `verifyOtp type: recovery`).
+
+**Bắt buộc** sửa template **Reset Password** trên Supabase — template mặc định chỉ có **link** (`ConfirmationURL`), không có mã OTP:
+
+Supabase → Authentication → **Email Templates** → **Reset Password**:
+
+1. **Xóa** mọi thẻ `<a href="{{ .ConfirmationURL }}">` — nếu giữ link, user bấm vào sẽ nhảy trang web thay vì nhập OTP.
+2. **Subject:** `Mã đặt lại mật khẩu PalFish GMV`
+3. **Body** (chỉ OTP, không link):
+
+```html
+<h2>Đặt lại mật khẩu PalFish GMV</h2>
+<p>Mã xác minh của bạn (hết hạn sau 1 giờ):</p>
+<p style="font-size:28px;font-weight:bold;letter-spacing:6px">{{ .Token }}</p>
+<p>Nhập mã này tại trang Quên mật khẩu trong app. Nếu bạn không yêu cầu, bỏ qua email.</p>
+```
+
+> `{{ .Token }}` = mã 6 chữ số. Không dùng `{{ .ConfirmationURL }}` nếu muốn luồng OTP.
+
 ### Redirect URLs (URL Configuration)
 
 Thêm cùng Site URL production:
@@ -132,25 +156,15 @@ Thêm cùng Site URL production:
 ```
 https://palfish-gmv-manager.vercel.app/**
 https://palfish-gmv-manager.vercel.app/forgot-password
+https://palfish-gmv-manager.vercel.app/reset-password
 http://localhost:5173/**
 http://localhost:5173/forgot-password
+http://localhost:5173/reset-password
 ```
 
 Site URL: `https://palfish-gmv-manager.vercel.app`
 
-### Quên mật khẩu — OTP (khớp FE)
-
-FE dùng **3 bước OTP nhập tay** (`ForgotPasswordPage` + `verifyOtp type: recovery`).
-
-Supabase → Authentication → Email Templates → **Reset Password** — dùng mã 6 số:
-
-```html
-<p>Mã xác minh PalFish GMV của bạn:</p>
-<p style="font-size:24px;font-weight:bold;letter-spacing:4px">{{ .Token }}</p>
-<p>Mã hết hạn sau 1 giờ. Nếu bạn không yêu cầu, bỏ qua email này.</p>
-```
-
-Không cần route `/reset-password` nếu giữ luồng OTP.
+FE gọi `resetPasswordForEmail` với `redirectTo: /forgot-password` (fallback khi template vẫn còn link cũ).
 
 ### Migration user cũ (chạy 1 lần trên prod)
 
