@@ -4,7 +4,8 @@ import { endpoints } from "../lib/api";
 import type { AuthUserRow } from "../types/profile";
 import { Button, Input, Select } from "./ui";
 import { TableWrap } from "./ui/Table";
-import CrmLinkModal from "./auth/CrmLinkModal";
+import CreateAccountModal from "./auth/CreateAccountModal";
+import AccountDetailDrawer from "./auth/AccountDetailDrawer";
 import "./auth/auth-accounts.css";
 
 const ROLE_OPTIONS = [
@@ -54,7 +55,7 @@ function deptClass(u: AuthUserRow): string {
   if (DEPARTMENTS[2].match(u)) return "hr";
   if (DEPARTMENTS[3].match(u)) return "marketing";
   if (DEPARTMENTS[4].match(u)) return "cs";
-  return "sale";
+  return "";
 }
 
 function deptLabel(u: AuthUserRow): string {
@@ -136,9 +137,11 @@ export default function AuthAccountsTab() {
   const [statusFilter, setStatusFilter] = useState("");
   const [deptTab, setDeptTab] = useState("all");
 
-  // CRM link modal
-  const [linkModalOpen, setLinkModalOpen] = useState(false);
-  const [linkTarget, setLinkTarget] = useState<AuthUserRow | null>(null);
+  // Create account modal
+  const [createModalOpen, setCreateModalOpen] = useState(false);
+
+  // Detail drawer
+  const [drawerUser, setDrawerUser] = useState<AuthUserRow | null>(null);
 
   const loadAuthUsers = useCallback(async () => {
     if (!canManage) return;
@@ -157,6 +160,14 @@ export default function AuthAccountsTab() {
   useEffect(() => {
     loadAuthUsers();
   }, [loadAuthUsers]);
+
+  // Keep drawer user in sync with latest data after reload
+  useEffect(() => {
+    if (drawerUser) {
+      const fresh = authUsers.find((u) => u.id === drawerUser.id);
+      if (fresh && fresh !== drawerUser) setDrawerUser(fresh);
+    }
+  }, [authUsers]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Derived data ──
   const linkedCrmNames = useMemo(
@@ -225,45 +236,7 @@ export default function AuthAccountsTab() {
     return counts;
   }, [authUsers]);
 
-  // ── Actions ──
-  async function handleToggleActivation(user: AuthUserRow) {
-    try {
-      await endpoints.admin.patchAuthUser(user.id, { is_activated: !user.isActivated });
-      await loadAuthUsers();
-    } catch {
-      setError("Không cập nhật trạng thái kích hoạt.");
-    }
-  }
-
-  async function handleToggleBan(user: AuthUserRow) {
-    try {
-      await endpoints.admin.patchAuthUser(user.id, { banned: !user.isBanned });
-      await loadAuthUsers();
-    } catch {
-      setError("Không cập nhật trạng thái tài khoản.");
-    }
-  }
-
-  async function handleRoleChange(user: AuthUserRow, newRole: string) {
-    try {
-      await endpoints.admin.patchAuthUser(user.id, { role: newRole });
-      await loadAuthUsers();
-    } catch {
-      setError("Không cập nhật vai trò.");
-    }
-  }
-
-  async function handleCrmLink(crmName: string) {
-    if (!linkTarget) return;
-    try {
-      await endpoints.admin.patchAuthUser(linkTarget.id, { crmName });
-      setLinkModalOpen(false);
-      setLinkTarget(null);
-      await loadAuthUsers();
-    } catch {
-      setError("Không liên kết CRM. Có thể nhân sự này đã được liên kết.");
-    }
-  }
+  // Actions are handled inside AccountDetailDrawer now
 
   if (!canManage) {
     return (
@@ -275,6 +248,13 @@ export default function AuthAccountsTab() {
 
   return (
     <div>
+      {/* Header with add button */}
+      <div className="aa-header-bar">
+        <Button variant="primary" onClick={() => setCreateModalOpen(true)}>
+          + Thêm tài khoản
+        </Button>
+      </div>
+
       {/* Banner */}
       <div className="aa-banner">
         <span>ℹ️</span>
@@ -396,7 +376,6 @@ export default function AuthAccountsTab() {
                 <th className="px-4 py-3">Đăng nhập cuối</th>
                 <th className="px-4 py-3">Vai trò</th>
                 <th className="px-4 py-3">Trạng thái</th>
-                <th className="px-4 py-3">Thao tác</th>
               </tr>
             </thead>
             <tbody>
@@ -405,7 +384,8 @@ export default function AuthAccountsTab() {
                 return (
                   <tr
                     key={u.id}
-                    className="border-b border-gmv-border last:border-0 hover:bg-gmv-row-hover"
+                    className="border-b border-gmv-border last:border-0 hover:bg-gmv-row-hover aa-row-clickable"
+                    onClick={() => setDrawerUser(u)}
                   >
                     <td className="px-4 py-2 font-medium text-gmv-text-strong">{u.email}</td>
                     <td className="px-4 py-2 text-gmv-text">{u.fullName || u.crmName || "—"}</td>
@@ -439,71 +419,16 @@ export default function AuthAccountsTab() {
                         : "—"}
                     </td>
                     <td className="px-4 py-2">
-                      {canManage ? (
-                        <Select
-                          value={roleClass(u.staffRole)}
-                          onChange={(e) => handleRoleChange(u, e.target.value)}
-                          className="w-auto py-1 text-xs"
-                        >
-                          {ROLE_OPTIONS.map((r) => (
-                            <option key={r.value} value={r.value}>{r.label}</option>
-                          ))}
-                        </Select>
-                      ) : (
-                        <span className={`aa-role-badge ${roleClass(u.staffRole)}`}>
-                          <span className="aa-role-dot" />
-                          {roleLabel(u.staffRole)}
-                        </span>
-                      )}
+                      <span className={`aa-role-badge ${roleClass(u.staffRole)}`}>
+                        <span className="aa-role-dot" />
+                        {roleLabel(u.staffRole)}
+                      </span>
                     </td>
                     <td className="px-4 py-2">
                       <span className={`aa-status ${st}`}>
                         <span className="aa-status-dot" />
                         {statusLabel(st)}
                       </span>
-                    </td>
-                    <td className="px-4 py-2">
-                      <div className="aa-actions">
-                        {!u.crmName && (
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => {
-                              setLinkTarget(u);
-                              setLinkModalOpen(true);
-                            }}
-                          >
-                            Liên kết
-                          </Button>
-                        )}
-                        {!u.isActivated && !u.isBanned && (
-                          <Button
-                            size="sm"
-                            variant="ok"
-                            onClick={() => handleToggleActivation(u)}
-                          >
-                            Kích hoạt
-                          </Button>
-                        )}
-                        {u.isActivated && !u.isBanned && (
-                          <Button
-                            size="sm"
-                            variant="danger"
-                            onClick={() => handleToggleBan(u)}
-                          >
-                            Khoá
-                          </Button>
-                        )}
-                        {u.isBanned && (
-                          <Button
-                            size="sm"
-                            variant="secondary"
-                            onClick={() => handleToggleBan(u)}
-                          >
-                            Mở khoá
-                          </Button>
-                        )}
-                      </div>
                     </td>
                   </tr>
                 );
@@ -516,14 +441,21 @@ export default function AuthAccountsTab() {
         </TableWrap>
       )}
 
-      {/* CRM Link Modal */}
-      <CrmLinkModal
-        open={linkModalOpen}
-        onClose={() => {
-          setLinkModalOpen(false);
-          setLinkTarget(null);
+      {/* Create Account Modal */}
+      <CreateAccountModal
+        open={createModalOpen}
+        onClose={() => setCreateModalOpen(false)}
+        onCreated={loadAuthUsers}
+      />
+
+      {/* Account Detail Drawer */}
+      <AccountDetailDrawer
+        user={drawerUser}
+        onClose={() => setDrawerUser(null)}
+        onUpdated={async () => {
+          await loadAuthUsers();
+          // drawer will re-render with fresh user via useEffect below
         }}
-        onConfirm={handleCrmLink}
         linkedCrmNames={linkedCrmNames}
       />
     </div>
