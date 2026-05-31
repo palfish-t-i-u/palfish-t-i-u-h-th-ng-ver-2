@@ -370,5 +370,16 @@ export const endpoints = {
         is_activated?: boolean;
       }
     ) => api.patch(`/admin/auth-users/${userId}`, body),
+    createAuthUser: (body: {
+      email: string;
+      password: string;
+      full_name?: string;
+      phone?: string;
+      department?: string;
+      team?: string;
+      crmName?: string;
+      role?: string;
+      is_activated?: boolean;
+    }) => api.post("/admin/auth-users", body),
   },
 };
