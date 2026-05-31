@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth";
 import { Button, Input } from "../components/ui";
@@ -27,7 +27,7 @@ function StepIndicator({ current }: { current: Step }) {
 const OTP_LENGTH = 6;
 
 export default function ForgotPasswordPage() {
-  const { sendPasswordReset, verifyOtp, updatePassword } = useAuth();
+  const { sendPasswordReset, verifyOtp, updatePassword, passwordRecovery, user, signOut } = useAuth();
   const navigate = useNavigate();
 
   const [step, setStep] = useState<Step>("email");
@@ -37,22 +37,51 @@ export default function ForgotPasswordPage() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [info, setInfo] = useState("");
 
   const otpRefs = useRef<(HTMLInputElement | null)[]>([]);
+
+  // Magic link từ email (template còn ConfirmationURL) → Supabase bắn PASSWORD_RECOVERY
+  useEffect(() => {
+    if (passwordRecovery) {
+      setStep("reset");
+      if (user?.email && !email) setEmail(user.email);
+    }
+  }, [passwordRecovery, user?.email, email]);
+
+  async function dispatchPasswordReset(targetEmail: string) {
+    setLoading(true);
+    setError("");
+    setInfo("");
+    const { error: resetError } = await sendPasswordReset(targetEmail.trim());
+    setLoading(false);
+    if (resetError) {
+      const msg = resetError.message;
+      if (/rate limit|too many/i.test(msg)) {
+        setError("Gửi email quá nhanh. Vui lòng đợi 1 phút rồi thử lại.");
+      } else {
+        setError(msg);
+      }
+      return false;
+    }
+    setInfo(
+      "Nếu email đã đăng ký, mã OTP 6 số sẽ được gửi trong vài phút. Kiểm tra cả hộp thư spam."
+    );
+    return true;
+  }
 
   // ── Step 1: Send OTP ──
   async function handleSendOtp(e: React.FormEvent) {
     e.preventDefault();
     if (!email) return;
-    setLoading(true);
-    setError("");
-    const { error } = await sendPasswordReset(email.trim());
-    setLoading(false);
-    if (error) {
-      setError(error.message);
-      return;
-    }
-    setStep("otp");
+    const ok = await dispatchPasswordReset(email);
+    if (ok) setStep("otp");
+  }
+
+  async function handleResendOtp() {
+    if (!email || loading) return;
+    setOtp(Array(OTP_LENGTH).fill(""));
+    await dispatchPasswordReset(email);
   }
 
   // ── Step 2: Verify OTP ──
@@ -120,6 +149,7 @@ export default function ForgotPasswordPage() {
       setError(error.message);
       return;
     }
+    await signOut();
     navigate("/login", { state: { passwordReset: true } });
   }
 
@@ -159,6 +189,7 @@ export default function ForgotPasswordPage() {
             />
           </div>
           {error && <div className="auth-error">{error}</div>}
+          {info && <div className="auth-info">{info}</div>}
           <Button type="submit" disabled={loading} fullWidth variant="primary">
             {loading ? "Đang gửi..." : "Gửi mã OTP"}
           </Button>
@@ -184,6 +215,7 @@ export default function ForgotPasswordPage() {
             ))}
           </div>
           {error && <div className="auth-error">{error}</div>}
+          {info && <div className="auth-info">{info}</div>}
           <Button type="submit" disabled={loading} fullWidth variant="primary">
             {loading ? "Đang xác minh..." : "Xác minh"}
           </Button>
@@ -192,13 +224,9 @@ export default function ForgotPasswordPage() {
               type="button"
               className="auth-link"
               disabled={loading}
-              onClick={() => {
-                setOtp(Array(OTP_LENGTH).fill(""));
-                setError("");
-                handleSendOtp({ preventDefault: () => {} } as React.FormEvent);
-              }}
+              onClick={handleResendOtp}
             >
-              Gửi lại mã OTP
+              {loading ? "Đang gửi lại..." : "Gửi lại mã OTP"}
             </button>
           </div>
         </form>

@@ -183,7 +183,18 @@ def _query_top_sales(
             .gte("ngay_tien_ve", d_start)
             .lte("ngay_tien_ve", d_end)
         )
-        for r in q.execute().data or []:
+        all_data = []
+        offset = 0
+        page_size = 1000
+        while True:
+            res = q.range(offset, offset + page_size - 1).execute()
+            data = res.data or []
+            all_data.extend(data)
+            if len(data) < page_size:
+                break
+            offset += page_size
+            
+        for r in all_data:
             sname = _sale_key(r.get("sale_crm_name"))
             if not sname or sname == "(Chưa gán sale)":
                 continue
@@ -223,6 +234,79 @@ def _query_top_sales(
                     revenue=revenue,
                     team=team or None,
                     sub_team=sub_team or None,
+                )
+            )
+    return out
+
+
+def _query_today_honors(
+    sb,
+    d_date: str,
+    *,
+    limit: int | None = None,
+    staff_crm_map: dict[str, tuple[str, str, str]] | None = None,
+) -> list[TopSale]:
+    """Vinh danh hôm nay — query giao_dich WHERE trang_thai_doi_soat='da_xac_nhan', join don_hang."""
+    sale_map: dict[str, int] = {}
+    try:
+        q = (
+            sb.table("giao_dich")
+            .select("so_tien_nhan, don_hang!inner(sale_crm_name)")
+            .eq("trang_thai_doi_soat", "da_xac_nhan")
+            .gte("thoi_gian_giao_dich", f"{d_date}T00:00:00")
+            .lte("thoi_gian_giao_dich", f"{d_date}T23:59:59")
+        )
+        all_data = []
+        offset = 0
+        page_size = 1000
+        while True:
+            res = q.range(offset, offset + page_size - 1).execute()
+            data = res.data or []
+            all_data.extend(data)
+            if len(data) < page_size:
+                break
+            offset += page_size
+            
+        for r in all_data:
+            don_hang = r.get("don_hang") or {}
+            sname = _sale_key(don_hang.get("sale_crm_name"))
+            if not sname or sname == "(Chưa gán sale)":
+                continue
+            vnd = int(float(r.get("so_tien_nhan") or 0))
+            if vnd > 0:
+                sale_map[sname] = sale_map.get(sname, 0) + vnd
+    except Exception as exc:
+        print(f"[Dashboard] giao_dich today honors query failed: {exc}")
+
+    if staff_crm_map is None:
+        _, staff_crm_map = _load_staff_maps(sb)
+
+    ranked = sorted(sale_map.items(), key=lambda x: x[1], reverse=True)
+    if limit is not None:
+        ranked = ranked[:limit]
+
+    out: list[TopSale] = []
+    for name, revenue in ranked:
+        crm_info = staff_crm_map.get(name.strip())
+        if crm_info:
+            email, team, sub_team = crm_info
+            out.append(
+                TopSale(
+                    id=email or f"sale-{name}",
+                    name=name,
+                    revenue=revenue,
+                    team=team or None,
+                    sub_team=sub_team or None,
+                )
+            )
+        else:
+            out.append(
+                TopSale(
+                    id=f"sale-{name}",
+                    name=name,
+                    revenue=revenue,
+                    team=None,
+                    sub_team=None,
                 )
             )
     return out
@@ -312,8 +396,8 @@ def _build_gamification_summary(
     today_start_utc, today_end_utc = _vn_day_bounds_utc()
     staff_map, staff_crm_map = _load_staff_maps(sb)
 
-    top_today = _load_top_sales_rpc(
-        sb, today_start_utc, today_end_utc, limit=GAMIFICATION_TODAY_LIMIT, staff_map=staff_map
+    top_today = _query_today_honors(
+        sb, _vn_today_iso(), limit=GAMIFICATION_TODAY_LIMIT, staff_crm_map=staff_crm_map
     )
     top_month = _query_top_sales(
         sb,
@@ -1205,32 +1289,18 @@ def register_dashboard_routes(app, supabase_factory):
         if not sb:
             raise HTTPException(503, "Supabase chưa cấu hình")
 
-        today_str = date.today().isoformat()
+        today_str = _vn_today_iso()
         
-        res = (
-            sb.table("so_doanh_thu")
-            .select("sale_crm_name, so_tien_vnd")
-            .eq("ngay_tien_ve", today_str)
-            .execute()
-        )
-        rows = res.data or []
-
-        sales_map = {}
-        for r in rows:
-            crm_name = (r.get("sale_crm_name") or "").strip()
-            if not crm_name:
-                continue
-            amt = int(r.get("so_tien_vnd") or 0)
-            if crm_name not in sales_map:
-                sales_map[crm_name] = {"collected_vnd": 0, "orders": 0}
-            sales_map[crm_name]["collected_vnd"] += amt
-            sales_map[crm_name]["orders"] += 1
-
-        top = sorted(
-            [{"sale_name": k, **v} for k, v in sales_map.items()],
-            key=lambda x: x["collected_vnd"],
-            reverse=True
-        )[:3]
+        top_sales = _query_today_honors(sb, today_str, limit=3)
+        
+        top = [
+            {
+                "sale_name": ts.name,
+                "collected_vnd": ts.revenue,
+                "orders": 1,
+            }
+            for ts in top_sales
+        ]
 
         if top:
             names = [x["sale_name"] for x in top]

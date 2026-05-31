@@ -32,6 +32,8 @@ interface AuthContextValue {
   session: Session | null;
   loading: boolean;
   isDevMode: boolean;
+  /** True after magic-link recovery or verifyOtp(recovery) — user may set a new password */
+  passwordRecovery: boolean;
   signInWithPassword: (email: string, password: string) => Promise<{ error: Error | null }>;
   signInWithGoogle: () => Promise<{ error: Error | null } | void>;
   signUpWithPassword: (
@@ -42,6 +44,7 @@ interface AuthContextValue {
   sendPasswordReset: (email: string) => Promise<{ error: Error | null }>;
   verifyOtp: (email: string, token: string) => Promise<{ error: Error | null }>;
   updatePassword: (newPassword: string) => Promise<{ error: Error | null }>;
+  clearPasswordRecovery: () => void;
   signOut: () => Promise<void>;
 }
 
@@ -51,10 +54,15 @@ function authRedirectUrl() {
   return `${window.location.origin}/`;
 }
 
+function passwordResetRedirectUrl() {
+  return `${window.location.origin}/forgot-password`;
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
+  const [passwordRecovery, setPasswordRecovery] = useState(false);
 
   useEffect(() => {
     if (IS_DEV_MODE) {
@@ -68,9 +76,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setLoading(false);
     });
 
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, s) => {
+    const { data: listener } = supabase.auth.onAuthStateChange((event, s) => {
       setSession(s);
       setUser(s?.user ?? null);
+      if (event === "PASSWORD_RECOVERY") {
+        setPasswordRecovery(true);
+      }
     });
 
     return () => listener.subscription.unsubscribe();
@@ -114,7 +125,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       email,
       password,
       options: {
-        data: meta,
+        data: { ...meta, is_activated: false },
         emailRedirectTo: authRedirectUrl(),
       },
     });
@@ -125,7 +136,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   async function sendPasswordReset(email: string) {
     if (IS_DEV_MODE) return { error: null };
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${window.location.origin}/reset-password`,
+      redirectTo: passwordResetRedirectUrl(),
     });
     if (error) return { error: new Error(error.message) };
     return { error: null };
@@ -142,6 +153,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (data.session) {
       setSession(data.session);
       setUser(data.session.user);
+      setPasswordRecovery(true);
     }
     return { error: null };
   }
@@ -150,17 +162,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (IS_DEV_MODE) return { error: null };
     const { error } = await supabase.auth.updateUser({ password: newPassword });
     if (error) return { error: new Error(error.message) };
+    setPasswordRecovery(false);
     return { error: null };
+  }
+
+  function clearPasswordRecovery() {
+    setPasswordRecovery(false);
   }
 
   async function signOut() {
     if (IS_DEV_MODE) {
       setUser(null);
+      setPasswordRecovery(false);
       return;
     }
     await supabase.auth.signOut();
     setUser(null);
     setSession(null);
+    setPasswordRecovery(false);
   }
 
   return (
@@ -170,12 +189,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         session,
         loading,
         isDevMode: IS_DEV_MODE,
+        passwordRecovery,
         signInWithPassword,
         signInWithGoogle,
         signUpWithPassword,
         sendPasswordReset,
         verifyOtp,
         updatePassword,
+        clearPasswordRecovery,
         signOut,
       }}
     >

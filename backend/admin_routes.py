@@ -51,6 +51,18 @@ class AuthUserPatchBody(BaseModel):
     is_activated: bool | None = None
 
 
+class AuthUserCreateBody(BaseModel):
+    email: str
+    password: str
+    full_name: str | None = None
+    phone: str | None = None
+    department: str | None = None
+    team: str | None = None
+    crmName: str | None = None
+    role: str | None = None
+    is_activated: bool = False
+
+
 def _sb_or_503(get_sb):
     sb = get_sb()
     if not sb:
@@ -145,7 +157,6 @@ def _auth_user_to_dict(value: Any) -> dict[str, Any]:
     user = getattr(value, "user", None)
     if user is not None:
         return _model_to_dict(user)
-
     data = _model_to_dict(value)
     nested = data.get("user") if isinstance(data, dict) else None
     if nested is not None and not data.get("id"):
@@ -173,6 +184,15 @@ def _patch_crm_name(body: AuthUserPatchBody) -> str | None:
     crm = body.crm_name if body.crm_name is not None else body.crmName
     crm = str(crm or "").strip()
     return crm or None
+
+
+def _wants_unlink_crm(body: AuthUserPatchBody) -> bool:
+    """True when client explicitly sends empty crmName/crm_name to clear the link."""
+    if body.crm_name is not None:
+        return not str(body.crm_name).strip()
+    if body.crmName is not None:
+        return not str(body.crmName).strip()
+    return False
 
 
 def _patch_banned(body: AuthUserPatchBody) -> bool | None:
@@ -472,6 +492,7 @@ def register_admin_routes(app, get_supabase):
             raise HTTPException(400, "Tài khoản Auth không có email")
 
         current_metadata = dict(target_user.get("user_metadata") or {})
+        unlink_crm = _wants_unlink_crm(body)
         crm_name = _patch_crm_name(body)
 
         if crm_name:
@@ -483,12 +504,14 @@ def register_admin_routes(app, get_supabase):
                 .execute()
             )
             if not staff_res.data:
-                raise HTTPException(404, "Không tìm thấy nhân sự trên CRM")
+                raise HTTPException(404, f"Không tìm thấy nhân sự CRM '{crm_name}'")
 
-            target_staff = staff_res.data[0]
-            linked_email = str(target_staff.get("email") or "").strip().lower()
+            linked_email = str(staff_res.data[0].get("email") or "").strip().lower()
             if linked_email and linked_email != target_email:
-                raise HTTPException(409, "crmName đã được liên kết với tài khoản khác")
+                raise HTTPException(
+                    409,
+                    f"Nhân sự CRM '{crm_name}' đã liên kết với tài khoản '{linked_email}'",
+                )
 
         existing_staff_res = (
             sb.table("nhan_su_sale")
@@ -504,8 +527,8 @@ def register_admin_routes(app, get_supabase):
         )
         existing_crm_name = _metadata_crm_name(current_metadata) or existing_staff_crm or None
 
-        if body.is_activated is True and not (crm_name or existing_crm_name):
-            raise HTTPException(400, "Cần liên kết CRM trước khi kích hoạt")
+        if body.is_activated is True and not unlink_crm and not (crm_name or existing_crm_name):
+            raise HTTPException(400, "Cần liên kết CRM trước khi kích hoạt tài khoản")
 
         attrs: dict[str, Any] = {}
         banned = _patch_banned(body)
@@ -518,7 +541,10 @@ def register_admin_routes(app, get_supabase):
         updated_metadata = dict(current_metadata)
         if role_value is not None:
             updated_metadata["role"] = role_value
-        if crm_name:
+        if unlink_crm:
+            updated_metadata.pop("crmName", None)
+            updated_metadata.pop("crm_name", None)
+        elif crm_name:
             updated_metadata["crmName"] = crm_name
         if body.is_activated is not None:
             updated_metadata["is_activated"] = body.is_activated
@@ -526,23 +552,103 @@ def register_admin_routes(app, get_supabase):
         if updated_metadata != current_metadata:
             attrs["user_metadata"] = updated_metadata
 
-        if not attrs and not crm_name:
+        if not attrs and not crm_name and not unlink_crm:
             raise HTTPException(400, "Không có trường cần cập nhật")
 
         try:
             if attrs:
                 sb.auth.admin.update_user_by_id(user_id, attrs)
-            staff_crm_to_update = crm_name or existing_crm_name
-            staff_patch: dict[str, Any] = {}
-            if crm_name:
-                staff_patch["email"] = target_email
-            if role_value is not None and staff_crm_to_update:
-                staff_patch["role"] = role_value
-            if staff_patch and staff_crm_to_update:
-                sb.table("nhan_su_sale").update(staff_patch).eq(
-                    "crm_name", staff_crm_to_update
-                ).execute()
+            if unlink_crm:
+                crm_to_clear = existing_crm_name
+                if crm_to_clear:
+                    sb.table("nhan_su_sale").update({"email": None}).eq(
+                        "crm_name", crm_to_clear
+                    ).execute()
+            else:
+                staff_crm_to_update = crm_name or existing_crm_name
+                staff_patch: dict[str, Any] = {}
+                if crm_name:
+                    staff_patch["email"] = target_email
+                if role_value is not None and staff_crm_to_update:
+                    staff_patch["role"] = role_value
+                if staff_patch and staff_crm_to_update:
+                    sb.table("nhan_su_sale").update(staff_patch).eq(
+                        "crm_name", staff_crm_to_update
+                    ).execute()
         except Exception as exc:
             raise HTTPException(500, str(exc)) from exc
 
         return {"ok": True, "userId": user_id}
+
+    @app.post("/admin/auth-users")
+    def create_auth_user(
+        body: AuthUserCreateBody,
+        authorization: str | None = Header(None),
+    ):
+        """Admin tạo tài khoản mới trực tiếp (không cần user tự đăng ký)."""
+        sb = _sb_or_503(get_supabase)
+        actor = resolve_actor(sb, authorization)
+        require_min_role(actor, "system")
+
+        user_meta: dict[str, Any] = {
+            "is_activated": body.is_activated,
+        }
+        if body.full_name:
+            user_meta["full_name"] = body.full_name.strip()
+        if body.phone:
+            user_meta["phone"] = body.phone.strip()
+        if body.department:
+            user_meta["department"] = body.department.strip()
+        if body.team:
+            user_meta["team"] = body.team.strip()
+        if body.role:
+            user_meta["role"] = body.role.strip()
+
+        # Validate CRM link nếu admin truyền crmName
+        if body.crmName:
+            crm_clean = body.crmName.strip()
+            crm_res = (
+                sb.table("nhan_su_sale")
+                .select("id, email")
+                .eq("crm_name", crm_clean)
+                .limit(1)
+                .execute()
+            )
+            if not crm_res.data:
+                raise HTTPException(404, f"Không tìm thấy nhân sự CRM '{crm_clean}'")
+            existing_email = (crm_res.data[0].get("email") or "").strip().lower()
+            target_email_lower = body.email.strip().lower()
+            if existing_email and existing_email != target_email_lower:
+                raise HTTPException(
+                    409,
+                    f"Nhân sự CRM '{crm_clean}' đã liên kết với tài khoản '{existing_email}'",
+                )
+            user_meta["crmName"] = crm_clean
+            user_meta["full_name"] = user_meta.get("full_name") or crm_clean
+
+        try:
+            result = sb.auth.admin.create_user(
+                {
+                    "email": body.email.strip(),
+                    "password": body.password,
+                    "user_metadata": user_meta,
+                    "email_confirm": True,  # admin tạo → skip email verification
+                }
+            )
+            new_user = result.user if hasattr(result, "user") else result
+            new_id = (
+                new_user.id if hasattr(new_user, "id") else new_user.get("id")
+            )
+        except Exception as exc:
+            raise HTTPException(500, f"Không tạo được tài khoản: {exc}") from exc
+
+        # Link CRM nếu có
+        if body.crmName:
+            try:
+                sb.table("nhan_su_sale").update({"email": body.email.strip()}).eq(
+                    "crm_name", body.crmName.strip()
+                ).execute()
+            except Exception as exc:
+                print(f"[admin] create_user CRM link failed: {exc}")
+
+        return {"ok": True, "userId": new_id}
