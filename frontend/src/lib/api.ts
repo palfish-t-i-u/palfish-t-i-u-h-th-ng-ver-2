@@ -368,6 +368,10 @@ export const endpoints = {
         role?: string;
         crmName?: string;
         is_activated?: boolean;
+        full_name?: string;
+        phone?: string;
+        department?: string;
+        team?: string;
       }
     ) => api.patch(`/admin/auth-users/${userId}`, body),
     createAuthUser: (body: {
@@ -382,6 +386,7 @@ export const endpoints = {
       is_activated?: boolean;
     }) => api.post("/admin/auth-users", body),
     permissions: () => api.get("/admin/permissions"),
+    seedPermissions: () => api.post("/admin/permissions/seed"),
     patchPermission: (body: {
       department: string;
       module_key: string;
