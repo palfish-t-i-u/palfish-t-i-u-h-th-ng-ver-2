@@ -1,0 +1,377 @@
+/* ── Info banner ── */
+.aa-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 14px 18px;
+  border-radius: var(--gmv-radius-md);
+  border: 1px solid var(--gmv-primary);
+  background: var(--gmv-primary-soft);
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--gmv-text-strong);
+  margin-bottom: 20px;
+}
+
+.aa-banner strong {
+  color: var(--gmv-primary);
+}
+
+/* ── KPI cards row ── */
+.aa-kpis {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 14px;
+  margin-bottom: 20px;
+}
+
+@media (max-width: 900px) {
+  .aa-kpis {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+.aa-kpi {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 18px 20px;
+  border-radius: var(--gmv-radius-md);
+  border: 1px solid var(--gmv-border);
+  background: var(--gmv-canvas);
+}
+
+.aa-kpi-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.aa-kpi-label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--gmv-muted);
+  margin-bottom: 4px;
+}
+
+.aa-kpi-value {
+  font-size: 28px;
+  font-weight: 800;
+  color: var(--gmv-text-strong);
+  line-height: 1;
+}
+
+.aa-kpi-sub {
+  font-size: 12px;
+  color: var(--gmv-muted);
+  margin-top: 4px;
+}
+
+.aa-kpi-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.aa-kpi-icon.blue {
+  background: #e8f0fe;
+  color: #4285f4;
+}
+
+.aa-kpi-icon.green {
+  background: var(--gmv-ok-soft);
+  color: var(--gmv-ok);
+}
+
+.aa-kpi-icon.purple {
+  background: var(--gmv-primary-soft);
+  color: var(--gmv-primary);
+}
+
+.aa-kpi-icon.amber {
+  background: var(--gmv-warn-soft);
+  color: var(--gmv-warn);
+}
+
+/* ── Filter bar ── */
+.aa-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.aa-search {
+  flex: 1;
+  min-width: 200px;
+  max-width: 360px;
+}
+
+.aa-filter-select {
+  min-width: 140px;
+}
+
+/* ── Department tabs ── */
+.aa-tabs {
+  display: flex;
+  gap: 0;
+  border-bottom: 2px solid var(--gmv-border);
+  margin-bottom: 12px;
+  overflow-x: auto;
+}
+
+.aa-tab {
+  padding: 10px 18px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--gmv-muted);
+  background: none;
+  border: none;
+  cursor: pointer;
+  white-space: nowrap;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -2px;
+  transition: color 0.15s, border-color 0.15s;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.aa-tab:hover {
+  color: var(--gmv-text-strong);
+}
+
+.aa-tab.active {
+  color: var(--gmv-primary);
+  border-bottom-color: var(--gmv-primary);
+}
+
+.aa-tab-count {
+  font-size: 11px;
+  font-weight: 700;
+  background: var(--gmv-bg);
+  color: var(--gmv-muted);
+  border-radius: 10px;
+  padding: 1px 7px;
+  min-width: 20px;
+  text-align: center;
+}
+
+.aa-tab.active .aa-tab-count {
+  background: var(--gmv-primary-soft);
+  color: var(--gmv-primary);
+}
+
+/* ── Department badge ── */
+.aa-dept-badge {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 10px;
+  border-radius: 12px;
+  white-space: nowrap;
+}
+
+.aa-dept-badge.sale {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
+.aa-dept-badge.hr {
+  background: #ede9fe;
+  color: #6d28d9;
+}
+
+.aa-dept-badge.marketing {
+  background: #ffedd5;
+  color: #c2410c;
+}
+
+.aa-dept-badge.cs {
+  background: #d1fae5;
+  color: #047857;
+}
+
+/* ── Role badge ── */
+.aa-role-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.aa-role-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.aa-role-badge.user .aa-role-dot {
+  background: #4285f4;
+}
+
+.aa-role-badge.leader .aa-role-dot {
+  background: #f08c00;
+}
+
+.aa-role-badge.admin .aa-role-dot {
+  background: #7c3aed;
+}
+
+/* ── Status badge ── */
+.aa-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.aa-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.aa-status.activated .aa-status-dot {
+  background: var(--gmv-ok);
+}
+
+.aa-status.activated {
+  color: var(--gmv-ok);
+}
+
+.aa-status.pending .aa-status-dot {
+  background: var(--gmv-warn);
+}
+
+.aa-status.pending {
+  color: var(--gmv-warn);
+}
+
+.aa-status.banned .aa-status-dot {
+  background: var(--gmv-danger);
+}
+
+.aa-status.banned {
+  color: var(--gmv-danger);
+}
+
+/* ── CRM link indicator ── */
+.aa-crm-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+}
+
+.aa-crm-link.linked {
+  color: var(--gmv-ok);
+  font-weight: 600;
+}
+
+.aa-crm-link.unlinked {
+  color: var(--gmv-muted);
+}
+
+/* ── Results count ── */
+.aa-results-count {
+  font-size: 12px;
+  color: var(--gmv-muted);
+  text-align: right;
+  margin-bottom: 8px;
+}
+
+/* ── CRM modal staff list ── */
+.aa-crm-modal-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.aa-crm-modal-header .aa-search {
+  flex: 1;
+  max-width: none;
+}
+
+.aa-crm-staff-list {
+  max-height: 360px;
+  overflow-y: auto;
+  border: 1px solid var(--gmv-border);
+  border-radius: var(--gmv-radius-md);
+}
+
+.aa-crm-staff-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--gmv-border);
+  cursor: pointer;
+  transition: background 0.1s;
+  font-size: 13px;
+}
+
+.aa-crm-staff-row:last-child {
+  border-bottom: none;
+}
+
+.aa-crm-staff-row:hover {
+  background: var(--gmv-row-hover);
+}
+
+.aa-crm-staff-row.selected {
+  background: var(--gmv-primary-soft);
+  border-color: var(--gmv-primary);
+}
+
+.aa-crm-staff-row.already-linked {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.aa-crm-staff-name {
+  font-weight: 600;
+  color: var(--gmv-text-strong);
+  flex: 1;
+  min-width: 0;
+}
+
+.aa-crm-staff-team {
+  color: var(--gmv-muted);
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+.aa-crm-staff-linked-tag {
+  font-size: 11px;
+  color: var(--gmv-ok);
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+/* ── Action buttons in table ── */
+.aa-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+/* ── Header bar with title + add button ── */
+.aa-header-bar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  margin-bottom: 16px;
+}

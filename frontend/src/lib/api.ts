@@ -363,7 +363,12 @@ export const endpoints = {
     authUsers: () => api.get("/admin/auth-users"),
     patchAuthUser: (
       userId: string,
-      body: { banned?: boolean; role?: string; crmName?: string }
+      body: {
+        banned?: boolean;
+        role?: string;
+        crmName?: string;
+        is_activated?: boolean;
+      }
     ) => api.patch(`/admin/auth-users/${userId}`, body),
   },
 };

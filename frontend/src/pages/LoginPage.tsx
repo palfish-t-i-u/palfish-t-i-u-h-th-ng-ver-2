@@ -2,38 +2,40 @@ import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth";
 import { Button, Input } from "../components/ui";
-import { Card, CardBody } from "../components/ui/Card";
 import Badge from "../components/ui/Badge";
+import AuthLayout from "../components/auth/AuthLayout";
+import GoogleIcon from "../components/auth/GoogleIcon";
+import "../components/auth/auth.css";
 
 export default function LoginPage() {
-  const { signInWithEmail, signInWithGoogle, isDevMode } = useAuth();
+  const { signInWithPassword, signInWithGoogle, isDevMode } = useAuth();
   const navigate = useNavigate();
   const [email, setEmail] = useState("");
-  const [sent, setSent] = useState(false);
+  const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  async function handleEmailLogin(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!email) return;
+    if (!email || !password) return;
     setLoading(true);
     setError("");
-    if (isDevMode) {
-      await signInWithEmail(email);
-      setLoading(false);
-      navigate("/");
-      return;
-    }
-    const { error } = await signInWithEmail(email);
+    const { error } = await signInWithPassword(email, password);
     setLoading(false);
     if (error) {
-      setError(error.message);
+      setError(
+        /invalid.*credential|invalid.*password/i.test(error.message)
+          ? "Email hoặc mật khẩu không đúng."
+          : error.message
+      );
       return;
     }
-    setSent(true);
+    navigate("/");
   }
 
   async function handleGoogle() {
+    setError("");
     if (isDevMode) {
       await signInWithGoogle();
       navigate("/");
@@ -44,79 +46,97 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gmv-bg p-4">
-      <Card className="w-full max-w-sm">
-        <CardBody>
-          {isDevMode && (
-            <div className="mb-4 flex justify-center">
-              <Badge tone="warn">Dev mode — bypass auth</Badge>
-            </div>
-          )}
+    <AuthLayout title="Đăng nhập" subtitle="Đăng nhập vào hệ thống quản lý doanh thu">
+      {isDevMode && (
+        <div className="mb-4 flex justify-center">
+          <Badge tone="warn">Dev mode — bypass auth</Badge>
+        </div>
+      )}
 
-          <h1 className="mb-1 text-center text-2xl font-semibold text-gmv-primary">Đăng nhập</h1>
-          <p className="mb-6 text-center text-sm text-gmv-muted">Bạn là ai?</p>
+      <form className="auth-form" onSubmit={handleSubmit}>
+        <div className="auth-field">
+          <label className="auth-label">
+            Email <span className="required">*</span>
+          </label>
+          <Input
+            type="email"
+            placeholder="Nhập email của bạn"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            required
+            autoComplete="email"
+          />
+        </div>
 
-          {sent ? (
-            <div className="py-4 text-center font-medium text-gmv-ok">
-              ✓ Email đã gửi! Kiểm tra hộp thư để đăng nhập.
-            </div>
-          ) : (
-            <form onSubmit={handleEmailLogin} className="space-y-3">
-              <Input
-                type="email"
-                placeholder="Nhập email của bạn..."
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-              />
-
-              {error && <p className="text-xs text-gmv-danger">{error}</p>}
-
-              <Button type="submit" disabled={loading} fullWidth variant="primary">
-                {loading ? "Đang gửi..." : "Đăng nhập bằng Email"}
-              </Button>
-            </form>
-          )}
-
-          <div className="my-4 flex items-center gap-2">
-            <div className="h-px flex-1 bg-gmv-border" />
-            <span className="text-xs text-gmv-muted">hoặc</span>
-            <div className="h-px flex-1 bg-gmv-border" />
-          </div>
-
-          <Button variant="secondary" fullWidth onClick={handleGoogle} className="font-semibold">
-            <svg className="h-4 w-4" viewBox="0 0 48 48" aria-hidden>
-              <path
-                fill="#EA4335"
-                d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"
-              />
-              <path
-                fill="#4285F4"
-                d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"
-              />
-              <path
-                fill="#FBBC05"
-                d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"
-              />
-              <path
-                fill="#34A853"
-                d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.18 1.48-4.97 2.31-8.16 2.31-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"
-              />
-            </svg>
-            Đăng nhập bằng Google
-          </Button>
-
-          <div className="mt-6 border-t border-gmv-border pt-5 text-center">
-            <p className="mb-2 text-xs text-gmv-muted">Nếu bạn chưa có tài khoản</p>
-            <Link
-              to="/signup"
-              className="inline-block rounded-gmv-md border border-gmv-border px-4 py-2 text-sm font-medium text-gmv-text-strong transition hover:bg-gmv-bg"
+        <div className="auth-field">
+          <label className="auth-label">
+            Mật khẩu <span className="required">*</span>
+          </label>
+          <div className="auth-password-wrap">
+            <Input
+              type={showPassword ? "text" : "password"}
+              placeholder="Nhập mật khẩu"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              autoComplete="current-password"
+            />
+            <button
+              type="button"
+              className="auth-password-toggle"
+              onClick={() => setShowPassword((v) => !v)}
+              tabIndex={-1}
             >
-              Đăng ký tài khoản
-            </Link>
+              {showPassword ? (
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94" />
+                  <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19" />
+                  <line x1="1" y1="1" x2="23" y2="23" />
+                </svg>
+              ) : (
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                  <circle cx="12" cy="12" r="3" />
+                </svg>
+              )}
+            </button>
           </div>
-        </CardBody>
-      </Card>
-    </div>
+        </div>
+
+        <div className="auth-row">
+          <span />
+          <Link to="/forgot-password" className="auth-link">
+            Quên mật khẩu?
+          </Link>
+        </div>
+
+        {error && <div className="auth-error">{error}</div>}
+
+        <Button type="submit" disabled={loading} fullWidth variant="primary">
+          {loading ? "Đang đăng nhập..." : "Đăng nhập"}
+        </Button>
+      </form>
+
+      <div className="auth-divider">
+        <span>hoặc</span>
+      </div>
+
+      <button
+        type="button"
+        className="auth-google-btn"
+        onClick={handleGoogle}
+        disabled={loading}
+      >
+        <GoogleIcon />
+        Đăng nhập bằng Google
+      </button>
+
+      <div className="auth-footer">
+        <p>Chưa có tài khoản?</p>
+        <Link to="/signup" className="auth-footer-link">
+          Đăng ký tài khoản mới
+        </Link>
+      </div>
+    </AuthLayout>
   );
 }
