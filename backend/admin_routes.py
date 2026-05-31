@@ -706,8 +706,8 @@ def register_admin_routes(app, get_supabase):
         if role_value is not None:
             updated_metadata["role"] = role_value
         if unlink_crm:
-            updated_metadata.pop("crmName", None)
-            updated_metadata.pop("crm_name", None)
+            updated_metadata["crmName"] = None
+            updated_metadata["crm_name"] = None
             updated_metadata["is_activated"] = False
         elif crm_name:
             updated_metadata["crmName"] = crm_name
