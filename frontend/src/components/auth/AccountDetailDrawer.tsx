@@ -118,15 +118,7 @@ export default function AccountDetailDrawer({ user, onClose, onUpdated, linkedCr
     }
   }
 
-  async function handleUnlinkCrm() {
-    setError("");
-    try {
-      await endpoints.admin.patchAuthUser(user!.id, { crmName: "" });
-      onUpdated();
-    } catch {
-      setError("Không huỷ liên kết CRM.");
-    }
-  }
+  // TODO: handleUnlinkCrm — BE chưa hỗ trợ unlink (crmName="" bị ignore)
 
   function handleCopyId() {
     const id = user!.email;
