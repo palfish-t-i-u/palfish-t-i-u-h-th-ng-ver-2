@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import os
+import unicodedata
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -73,6 +75,105 @@ class PermissionOverrideBody(BaseModel):
     email: str
     module_key: str
     access_level: str
+
+
+MODULE_LIST = [
+    "dashboard",
+    "paymentRequests",
+    "reconciliation",
+    "module3",
+    "module4",
+    "revenueLedger",
+    "bc01",
+    "bc02",
+    "bc03",
+    "module5",
+    "module6",
+    "authAccounts",
+    "profile",
+    "permissions",
+]
+VALID_DEPARTMENTS = {"sale", "hr", "marketing", "cs"}
+ACCESS_LEVELS = {"full", "read", "none"}
+DEPARTMENT_ALIASES = {
+    "sale": "sale",
+    "sales": "sale",
+    "ban hang": "sale",
+    "hr": "hr",
+    "human resources": "hr",
+    "nhan su": "hr",
+    "marketing": "marketing",
+    "mkt": "marketing",
+    "cs": "cs",
+    "customer service": "cs",
+    "cskh": "cs",
+}
+
+
+def _system_admin_emails() -> set[str]:
+    return {
+        e.strip().lower()
+        for e in (os.getenv("SYSTEM_ADMIN_EMAILS") or "").split(",")
+        if e.strip()
+    }
+
+
+def _permissions_with_level(level: str) -> dict[str, str]:
+    return {module: level for module in MODULE_LIST}
+
+
+def _normalize_department(value: Any) -> str | None:
+    raw = str(value or "").strip()
+    if not raw:
+        return None
+    normalized = unicodedata.normalize("NFKD", raw.lower())
+    normalized = "".join(ch for ch in normalized if not unicodedata.combining(ch))
+    normalized = " ".join(normalized.replace("_", " ").replace("-", " ").split())
+    if normalized in VALID_DEPARTMENTS:
+        return normalized
+    return DEPARTMENT_ALIASES.get(normalized)
+
+
+def _actor_department(actor) -> str | None:
+    staff = actor.staff or {}
+    candidates = [
+        actor.department,
+        staff.get("department"),
+        staff.get("depart6_name"),
+        staff.get("team"),
+    ]
+    for candidate in candidates:
+        department = _normalize_department(candidate)
+        if department:
+            return department
+    return None
+
+
+def _compute_permissions(sb, actor) -> dict[str, str]:
+    if actor.role == "system" or actor.email.lower() in _system_admin_emails():
+        return _permissions_with_level("full")
+
+    department = _actor_department(actor)
+    if not department:
+        return _permissions_with_level("none")
+
+    permissions = _permissions_with_level("none")
+    try:
+        res = (
+            sb.table("department_permissions")
+            .select("module_key, access_level")
+            .eq("department", department)
+            .execute()
+        )
+    except Exception as exc:
+        raise HTTPException(500, f"Khong tai duoc phan quyen: {exc}") from exc
+
+    for row in res.data or []:
+        module_key = row.get("module_key")
+        access_level = row.get("access_level")
+        if module_key in permissions and access_level in ACCESS_LEVELS:
+            permissions[module_key] = access_level
+    return permissions
 
 
 def _sb_or_503(get_sb):
@@ -227,7 +328,10 @@ def register_admin_routes(app, get_supabase):
     def get_me(authorization: str | None = Header(None)):
         sb = _sb_or_503(get_supabase)
         actor = resolve_actor(sb, authorization, allow_unactivated=True)
-        return staff_to_profile(actor)
+        profile = staff_to_profile(actor)
+        profile["department"] = _actor_department(actor)
+        profile["permissions"] = _compute_permissions(sb, actor)
+        return profile
 
     @app.patch("/me")
     def patch_me(body: MePatchBody, authorization: str | None = Header(None)):
