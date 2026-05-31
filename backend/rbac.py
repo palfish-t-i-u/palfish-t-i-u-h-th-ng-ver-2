@@ -19,6 +19,7 @@ class Actor:
     user_id: str | None
     role: str
     staff: dict[str, Any] | None
+    department: str | None = None
     is_activated: bool = False
 
 
@@ -160,6 +161,7 @@ def resolve_actor(sb, authorization: str | None, *, allow_unactivated: bool = Fa
         user_id=user.get("id"),
         role=role,
         staff=staff,
+        department=meta.get("department"),
         is_activated=is_activated,
     )
 

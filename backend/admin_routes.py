@@ -63,6 +63,18 @@ class AuthUserCreateBody(BaseModel):
     is_activated: bool = False
 
 
+class PermissionPatchBody(BaseModel):
+    department: str
+    module_key: str
+    access_level: str
+
+
+class PermissionOverrideBody(BaseModel):
+    email: str
+    module_key: str
+    access_level: str
+
+
 def _sb_or_503(get_sb):
     sb = get_sb()
     if not sb:
@@ -664,3 +676,79 @@ def register_admin_routes(app, get_supabase):
                 print(f"[admin] create_user CRM link failed: {exc}")
 
         return {"ok": True, "userId": new_id}
+
+    @app.get("/admin/permissions")
+    def get_admin_permissions(authorization: str | None = Header(None)):
+        sb = _sb_or_503(get_supabase)
+        actor = resolve_actor(sb, authorization)
+        require_min_role(actor, "system")
+
+        res = sb.table("department_permissions").select("*").execute()
+        matrix = {}
+        for r in res.data or []:
+            dept = r["department"]
+            if dept not in matrix:
+                matrix[dept] = {}
+            matrix[dept][r["module_key"]] = r["access_level"]
+        return {"matrix": matrix}
+
+    @app.patch("/admin/permissions")
+    def patch_admin_permissions(body: PermissionPatchBody, authorization: str | None = Header(None)):
+        sb = _sb_or_503(get_supabase)
+        actor = resolve_actor(sb, authorization)
+        require_min_role(actor, "system")
+
+        if body.access_level not in ("none", "read", "full"):
+            raise HTTPException(400, "Invalid access level")
+
+        sb.table("department_permissions").upsert({
+            "department": body.department.strip(),
+            "module_key": body.module_key.strip(),
+            "access_level": body.access_level
+        }, on_conflict="department, module_key").execute()
+
+        return {"ok": True}
+
+    @app.get("/admin/permission-overrides")
+    def get_permission_overrides(authorization: str | None = Header(None)):
+        sb = _sb_or_503(get_supabase)
+        actor = resolve_actor(sb, authorization)
+        require_min_role(actor, "system")
+
+        res = sb.table("permission_overrides").select("*").order("created_at", desc=True).execute()
+        out = []
+        for r in res.data or []:
+            out.append({
+                "email": r["user_email"],
+                "moduleKey": r["module_key"],
+                "accessLevel": r["access_level"],
+            })
+        return {"overrides": out}
+
+    @app.post("/admin/permission-overrides")
+    def post_permission_override(body: PermissionOverrideBody, authorization: str | None = Header(None)):
+        sb = _sb_or_503(get_supabase)
+        actor = resolve_actor(sb, authorization)
+        require_min_role(actor, "system")
+
+        if body.access_level not in ("none", "read", "full"):
+            raise HTTPException(400, "Invalid access level")
+
+        sb.table("permission_overrides").upsert({
+            "user_email": body.email.strip().lower(),
+            "module_key": body.module_key.strip(),
+            "access_level": body.access_level
+        }, on_conflict="user_email, module_key").execute()
+
+        return {"ok": True}
+
+    @app.delete("/admin/permission-overrides")
+    def delete_permission_override(email: str, module_key: str, authorization: str | None = Header(None)):
+        sb = _sb_or_503(get_supabase)
+        actor = resolve_actor(sb, authorization)
+        require_min_role(actor, "system")
+
+        sb.table("permission_overrides").delete().eq("user_email", email.strip().lower()).eq("module_key", module_key.strip()).execute()
+        return {"ok": True}
+
+
