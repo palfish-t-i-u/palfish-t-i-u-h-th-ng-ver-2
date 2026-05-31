@@ -19,6 +19,7 @@ class Actor:
     user_id: str | None
     role: str
     staff: dict[str, Any] | None
+    is_activated: bool = False
 
 
 def _normalize_role(raw: str | None) -> str:
@@ -32,6 +33,14 @@ def _normalize_role(raw: str | None) -> str:
 
 def _rank(role: str) -> int:
     return ROLE_RANK.get(_normalize_role(role), 1)
+
+
+def _is_truthy(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "y", "on"}
+    return bool(value)
 
 
 def require_min_role(actor: Actor, minimum: str) -> None:
@@ -103,7 +112,7 @@ def _lookup_staff(sb, email: str) -> dict[str, Any] | None:
         return None
 
 
-def resolve_actor(sb, authorization: str | None) -> Actor:
+def resolve_actor(sb, authorization: str | None, *, allow_unactivated: bool = False) -> Actor:
     token = _extract_bearer(authorization)
     if not token:
         raise HTTPException(401, "Thiếu token đăng nhập")
@@ -116,30 +125,34 @@ def resolve_actor(sb, authorization: str | None) -> Actor:
     if not email:
         raise HTTPException(401, "Email không có trong token")
 
-    meta = user.get("user_metadata") or {}
-    role = _normalize_role(meta.get("role"))
-    staff = _lookup_staff(sb, email) if sb else None
-
     admin_emails = {
         e.strip().lower()
         for e in (os.getenv("SYSTEM_ADMIN_EMAILS") or "").split(",")
         if e.strip()
     }
+    is_system_admin_email = email.lower() in admin_emails
+
+    meta = user.get("user_metadata") or {}
+    role = _normalize_role(meta.get("role"))
+    staff = _lookup_staff(sb, email) if sb else None
+    is_activated = _is_truthy(meta.get("is_activated", False))
+
     if staff:
         role = _normalize_role(staff.get("role") or role)
-    elif email.lower() in admin_emails:
+    elif is_system_admin_email:
         role = "system"
     elif meta.get("role"):
         role = _normalize_role(meta.get("role"))
 
-    # ── Activation gate ──
-    # Chặn tài khoản chưa được admin kích hoạt (is_activated != True).
-    # System admin (SYSTEM_ADMIN_EMAILS) luôn được bypass để không tự khoá mình.
-    is_activated = meta.get("is_activated", False)
-    if not is_activated and email.lower() not in admin_emails:
+    if (
+        not allow_unactivated
+        and not is_activated
+        and not is_system_admin_email
+        and role != "system"
+    ):
         raise HTTPException(
             403,
-            "Tài khoản chưa được kích hoạt. Vui lòng liên hệ admin để được duyệt.",
+            "Tài khoản chưa được kích hoạt. Vui lòng liên hệ admin.",
         )
 
     return Actor(
@@ -147,6 +160,7 @@ def resolve_actor(sb, authorization: str | None) -> Actor:
         user_id=user.get("id"),
         role=role,
         staff=staff,
+        is_activated=is_activated,
     )
 
 
@@ -168,6 +182,7 @@ def staff_to_profile(actor: Actor) -> dict[str, Any]:
         "canConfirmPayment": can_confirm_payment(actor),
         "canAccessAdmin": _rank(actor.role) >= _rank("manager"),
         "canManageStaff": _rank(actor.role) >= _rank("system"),
+        "isActivated": actor.is_activated,
     }
 
 

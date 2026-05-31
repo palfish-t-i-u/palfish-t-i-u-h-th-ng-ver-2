@@ -114,7 +114,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       email,
       password,
       options: {
-        data: meta,
+        data: { ...meta, is_activated: false },
         emailRedirectTo: authRedirectUrl(),
       },
     });

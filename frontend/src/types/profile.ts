@@ -16,6 +16,7 @@ export interface MeProfile {
   canConfirmPayment: boolean;
   canAccessAdmin: boolean;
   canManageStaff: boolean;
+  isActivated: boolean;
 }
 
 export interface SaleStaffRow {

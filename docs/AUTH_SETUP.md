@@ -112,3 +112,67 @@ Lỗi `Unsupported provider: provider is not enabled` → chưa Enable Google tr
 [ ] Tắt Confirm email trên Supabase (khuyến nghị — §0)
 [ ] Verify domain Resend (thay onboarding@resend.dev) — chỉ khi vẫn bật Confirm email
 ```
+
+---
+
+## 5. Login mới + kích hoạt tài khoản (2026-05-31)
+
+### Supabase Authentication
+
+| Mục | Khuyến nghị |
+|-----|-------------|
+| Email + Password | **Bật** |
+| Google OAuth | **Bật** (vẫn qua gate `is_activated`) |
+| Confirm email (signup) | **Tắt** — user chờ admin kích hoạt, không cần confirm thêm |
+
+### Redirect URLs (URL Configuration)
+
+Thêm cùng Site URL production:
+
+```
+https://palfish-gmv-manager.vercel.app/**
+https://palfish-gmv-manager.vercel.app/forgot-password
+http://localhost:5173/**
+http://localhost:5173/forgot-password
+```
+
+Site URL: `https://palfish-gmv-manager.vercel.app`
+
+### Quên mật khẩu — OTP (khớp FE)
+
+FE dùng **3 bước OTP nhập tay** (`ForgotPasswordPage` + `verifyOtp type: recovery`).
+
+Supabase → Authentication → Email Templates → **Reset Password** — dùng mã 6 số:
+
+```html
+<p>Mã xác minh PalFish GMV của bạn:</p>
+<p style="font-size:24px;font-weight:bold;letter-spacing:4px">{{ .Token }}</p>
+<p>Mã hết hạn sau 1 giờ. Nếu bạn không yêu cầu, bỏ qua email này.</p>
+```
+
+Không cần route `/reset-password` nếu giữ luồng OTP.
+
+### Migration user cũ (chạy 1 lần trên prod)
+
+```bash
+cd backend
+python migrate_activate_existing_users.py          # dry-run
+python migrate_activate_existing_users.py --apply  # sau khi duyệt list
+```
+
+- **Tier A:** `SYSTEM_ADMIN_EMAILS` → `is_activated=true`
+- **Tier B:** email đã link `nhan_su_sale` + có `crm_name` → `is_activated=true`
+- **Tier C:** còn lại → `is_activated=false`
+
+Script **merge** `user_metadata` (không ghi đè field khác).
+
+### Checklist login v2
+
+```
+[ ] Email+Password provider bật
+[ ] Confirm email signup tắt
+[ ] Reset password template dùng {{ .Token }}
+[ ] Redirect URLs có localhost + Vercel
+[ ] migrate_activate_existing_users.py --apply trên prod
+[ ] Test: signup → PendingActivationPage → admin link CRM + activate → login OK
+```
