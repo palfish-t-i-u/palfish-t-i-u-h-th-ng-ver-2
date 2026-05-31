@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useState } from "react";
 import "../styles/prototype-payments.css";
 import { usePaymentFlow } from "../contexts/PaymentFlowContext";
+import { usePermission } from "../hooks/usePermission";
 import { endpoints } from "../lib/api";
 import { compressImageFile } from "../lib/imageCompress";
 import type {
@@ -36,6 +37,7 @@ import {
 } from "./payment-request/paymentRequestUtils";
 
 export default function PaymentRequestsTab() {
+  const { readOnly } = usePermission("paymentRequests");
   const {
     requests,
     activeRequests,
@@ -599,9 +601,11 @@ export default function PaymentRequestsTab() {
             Mỗi <strong style={{ color: "var(--text-2)" }}>Payment Request</strong> đại diện cho một thương vụ. Một PR có thể gồm{" "}
             <strong style={{ color: "var(--text-2)" }}>nhiều lần thanh toán</strong> (chuyển khoản nhiều lần hoặc 1 lần CK cho nhiều đơn). Khi đủ 100% sẽ chuyển sang bước Active Request.
           </div>
-          <button className="btn btn-primary" onClick={() => setCreateOpen(true)}>
-            <Icons.Plus size={15} strokeWidth={2.3} /> Tạo Payment Request
-          </button>
+          {!readOnly && (
+            <button className="btn btn-primary" onClick={() => setCreateOpen(true)}>
+              <Icons.Plus size={15} strokeWidth={2.3} /> Tạo Payment Request
+            </button>
+          )}
         </div>
 
         {tab !== "cancelled" && <PaymentRequestKpiCards requests={trackingRequests} />}

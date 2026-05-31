@@ -31,6 +31,7 @@ export default function PermissionsTab() {
     () => structuredClone(DEFAULT_PERMISSIONS)
   );
   const [, setLoaded] = useState(false);
+  const [overrideCount, setOverrideCount] = useState(0);
 
   const loadMatrix = useCallback(async () => {
     try {
@@ -47,6 +48,12 @@ export default function PermissionsTab() {
   }, []);
 
   useEffect(() => { loadMatrix(); }, [loadMatrix]);
+
+  useEffect(() => {
+    endpoints.admin.permissionOverrides()
+      .then((res) => setOverrideCount((res.data.overrides || []).length))
+      .catch(() => {});
+  }, []);
 
   async function handleCycle(dept: string, moduleKey: string) {
     if (!canManage) return;
@@ -84,7 +91,7 @@ export default function PermissionsTab() {
         if (level === "none") noneCount++;
       }
     }
-    return { totalModules, fullCount, noneCount, overrideCount: 0 };
+    return { totalModules, fullCount, noneCount };
   }, [matrix]);
 
   // ── Group modules by section ──
@@ -145,7 +152,7 @@ export default function PermissionsTab() {
           <div className="pm-kpi-icon amber">👤</div>
           <div className="pm-kpi-body">
             <div className="pm-kpi-label">Override cá nhân</div>
-            <div className="pm-kpi-value">{kpi.overrideCount}</div>
+            <div className="pm-kpi-value">{overrideCount}</div>
             <div className="pm-kpi-sub">quyền được chỉnh riêng</div>
           </div>
         </div>
@@ -186,7 +193,7 @@ export default function PermissionsTab() {
           onClick={() => setTab("override")}
         >
           Override cá nhân
-          <span className="pm-tab-count">{kpi.overrideCount}</span>
+          <span className="pm-tab-count">{overrideCount}</span>
         </button>
       </div>
 
@@ -241,11 +248,170 @@ export default function PermissionsTab() {
       )}
 
       {tab === "override" && (
-        <div className="pm-override-empty">
-          <p style={{ fontSize: 16, marginBottom: 8 }}>🚧</p>
-          <p>Tính năng Override cá nhân sẽ được phát triển sau khi BE hoàn thành bảng <code>permission_overrides</code>.</p>
-          <p style={{ marginTop: 8, fontSize: 12 }}>Hiện tại, các quyền đặc biệt vẫn được quản lý thông qua vai trò trong Tài khoản Auth.</p>
+        <OverrideTab />
+      )}
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════
+   Override Tab — sub-component
+   ═══════════════════════════════════════ */
+
+interface OverrideRow { email: string; moduleKey: string; accessLevel: AccessLevel }
+
+function OverrideTab() {
+  const [overrides, setOverrides] = useState<OverrideRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  // Add form
+  const [newEmail, setNewEmail] = useState("");
+  const [newModule, setNewModule] = useState("");
+  const [newLevel, setNewLevel] = useState<AccessLevel>("full");
+  const [adding, setAdding] = useState(false);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await endpoints.admin.permissionOverrides();
+      setOverrides(res.data.overrides || []);
+    } catch {
+      setError("Không tải được danh sách override.");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  async function handleAdd(e: React.FormEvent) {
+    e.preventDefault();
+    if (!newEmail || !newModule) return;
+    setAdding(true);
+    setError("");
+    try {
+      await endpoints.admin.createPermissionOverride({
+        email: newEmail.trim(),
+        module_key: newModule,
+        access_level: newLevel,
+      });
+      setNewEmail("");
+      setNewModule("");
+      setNewLevel("full");
+      await load();
+    } catch {
+      setError("Không thêm được override.");
+    } finally {
+      setAdding(false);
+    }
+  }
+
+  async function handleDelete(email: string, moduleKey: string) {
+    try {
+      await endpoints.admin.deletePermissionOverride(email, moduleKey);
+      await load();
+    } catch {
+      setError("Không xoá được override.");
+    }
+  }
+
+  const moduleLabel = (key: string) =>
+    MODULE_LIST.find((m) => m.key === key)?.label ?? key;
+
+  return (
+    <div>
+      {/* Add form */}
+      <form onSubmit={handleAdd} className="flex flex-wrap items-end gap-3 mb-4">
+        <div className="flex flex-col gap-1">
+          <label className="text-xs font-semibold text-gmv-muted">Email</label>
+          <input
+            type="email"
+            className="gmv-field px-2.5 py-2 border border-gmv-border rounded-gmv-md text-sm bg-gmv-canvas min-w-[220px]"
+            placeholder="user@company.com"
+            value={newEmail}
+            onChange={(e) => setNewEmail(e.target.value)}
+            required
+          />
         </div>
+        <div className="flex flex-col gap-1">
+          <label className="text-xs font-semibold text-gmv-muted">Module</label>
+          <select
+            className="gmv-field px-2.5 py-2 border border-gmv-border rounded-gmv-md text-sm bg-gmv-canvas min-w-[180px]"
+            value={newModule}
+            onChange={(e) => setNewModule(e.target.value)}
+            required
+          >
+            <option value="">— Chọn module —</option>
+            {MODULE_LIST.map((m) => (
+              <option key={m.key} value={m.key}>{m.label}</option>
+            ))}
+          </select>
+        </div>
+        <div className="flex flex-col gap-1">
+          <label className="text-xs font-semibold text-gmv-muted">Quyền</label>
+          <select
+            className="gmv-field px-2.5 py-2 border border-gmv-border rounded-gmv-md text-sm bg-gmv-canvas"
+            value={newLevel}
+            onChange={(e) => setNewLevel(e.target.value as AccessLevel)}
+          >
+            <option value="full">{ACCESS_LABELS.full}</option>
+            <option value="read">{ACCESS_LABELS.read}</option>
+            <option value="none">{ACCESS_LABELS.none}</option>
+          </select>
+        </div>
+        <button
+          type="submit"
+          disabled={adding}
+          className="px-4 py-2 text-sm font-semibold text-white bg-gmv-primary rounded-gmv-md hover:bg-gmv-primary-hover disabled:opacity-50"
+        >
+          {adding ? "Đang thêm..." : "+ Thêm override"}
+        </button>
+      </form>
+
+      {error && <p className="text-sm text-gmv-danger mb-3">{error}</p>}
+
+      {loading ? (
+        <p className="text-sm text-gmv-muted py-6 text-center">Đang tải...</p>
+      ) : overrides.length === 0 ? (
+        <div className="pm-override-empty">
+          <p>Chưa có override nào. Thêm override để cấp quyền đặc biệt cho cá nhân vượt quyền bộ phận.</p>
+        </div>
+      ) : (
+        <TableWrap>
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-gmv-border bg-gmv-table-head text-left text-xs font-semibold uppercase tracking-wide text-gmv-muted">
+                <th className="px-4 py-3">Email</th>
+                <th className="px-4 py-3">Module</th>
+                <th className="px-4 py-3">Quyền</th>
+                <th className="px-4 py-3">Thao tác</th>
+              </tr>
+            </thead>
+            <tbody>
+              {overrides.map((o) => (
+                <tr key={`${o.email}-${o.moduleKey}`} className="border-b border-gmv-border last:border-0 hover:bg-gmv-row-hover">
+                  <td className="px-4 py-2 font-medium text-gmv-text-strong">{o.email}</td>
+                  <td className="px-4 py-2 text-gmv-text">{moduleLabel(o.moduleKey)}</td>
+                  <td className="px-4 py-2">
+                    <span className={`pm-access-badge ${o.accessLevel}`} style={{ cursor: "default" }}>
+                      <AccessIcon level={o.accessLevel} />
+                      {ACCESS_LABELS[o.accessLevel]}
+                    </span>
+                  </td>
+                  <td className="px-4 py-2">
+                    <button
+                      onClick={() => handleDelete(o.email, o.moduleKey)}
+                      className="text-xs text-gmv-danger hover:underline"
+                    >
+                      Xoá
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </TableWrap>
       )}
     </div>
   );

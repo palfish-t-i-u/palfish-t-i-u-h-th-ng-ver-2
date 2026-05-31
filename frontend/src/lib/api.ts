@@ -387,5 +387,13 @@ export const endpoints = {
       module_key: string;
       access_level: string;
     }) => api.patch("/admin/permissions", body),
+    permissionOverrides: () => api.get("/admin/permission-overrides"),
+    createPermissionOverride: (body: {
+      email: string;
+      module_key: string;
+      access_level: string;
+    }) => api.post("/admin/permission-overrides", body),
+    deletePermissionOverride: (email: string, moduleKey: string) =>
+      api.delete("/admin/permission-overrides", { params: { email, module_key: moduleKey } }),
   },
 };
