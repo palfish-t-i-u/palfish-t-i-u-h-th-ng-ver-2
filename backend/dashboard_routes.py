@@ -247,14 +247,20 @@ def _query_today_honors(
     staff_crm_map: dict[str, tuple[str, str, str]] | None = None,
 ) -> list[TopSale]:
     """Vinh danh hôm nay — query giao_dich WHERE trang_thai_doi_soat='da_xac_nhan', join don_hang."""
+    # Convert Vietnam date to UTC bounds for timestamptz comparison
+    day_start_vn = datetime.strptime(d_date, "%Y-%m-%d").replace(tzinfo=VN_TIMEZONE)
+    day_end_vn = day_start_vn + timedelta(days=1)
+    start_utc = day_start_vn.astimezone(timezone.utc).isoformat()
+    end_utc = day_end_vn.astimezone(timezone.utc).isoformat()
+
     sale_map: dict[str, int] = {}
     try:
         q = (
             sb.table("giao_dich")
             .select("so_tien_nhan, don_hang!inner(sale_crm_name)")
             .eq("trang_thai_doi_soat", "da_xac_nhan")
-            .gte("thoi_gian_giao_dich", f"{d_date}T00:00:00")
-            .lte("thoi_gian_giao_dich", f"{d_date}T23:59:59")
+            .gte("thoi_gian_giao_dich", start_utc)
+            .lt("thoi_gian_giao_dich", end_utc)
         )
         all_data = []
         offset = 0
