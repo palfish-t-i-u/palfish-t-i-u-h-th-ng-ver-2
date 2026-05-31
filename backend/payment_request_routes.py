@@ -188,6 +188,7 @@ def _serialize_payment_request(row: dict[str, Any]) -> dict[str, Any]:
         "delta": received - target,
         "created_at": row.get("created_at") or "",
         "updated_at": row.get("updated_at") or "",
+        "sale_email": row.get("sale_email") or "",
     }
 
 

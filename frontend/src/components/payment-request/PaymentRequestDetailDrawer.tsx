@@ -1080,7 +1080,7 @@ export default function PaymentRequestDetailDrawer({
             <div>
               <div style={{ fontWeight: 700, fontSize: 16 }}>{request.name}</div>
               <div style={{ fontSize: 12, color: "var(--text-3)", marginTop: 2 }}>
-                Tạo bởi <strong style={{ color: "var(--text-2)" }}>hieuhn.mplanner</strong> · {request.createdAt}
+                Tạo bởi <strong style={{ color: "var(--text-2)" }}>{request.saleEmail ? request.saleEmail.split("@")[0] : "—"}</strong> · {request.createdAt}
               </div>
             </div>
           </div>
