@@ -180,18 +180,27 @@ def _metadata_bool(value: Any) -> bool:
     return bool(value)
 
 
-def _patch_crm_name(body: AuthUserPatchBody) -> str | None:
-    crm = body.crm_name if body.crm_name is not None else body.crmName
+def _payload_dict(model: BaseModel) -> dict[str, Any]:
+    if hasattr(model, "model_dump"):
+        return model.model_dump(exclude_unset=True)
+    return model.dict(exclude_unset=True)
+
+
+def _payload_crm_value(payload: dict[str, Any]) -> str | None:
+    crm = payload.get("crm_name") if "crm_name" in payload else payload.get("crmName")
     crm = str(crm or "").strip()
     return crm or None
 
 
-def _wants_unlink_crm(body: AuthUserPatchBody) -> bool:
-    """True when client explicitly sends empty crmName/crm_name to clear the link."""
-    if body.crm_name is not None:
-        return not str(body.crm_name).strip()
-    if body.crmName is not None:
-        return not str(body.crmName).strip()
+def _payload_has_crm(payload: dict[str, Any]) -> bool:
+    return "crm_name" in payload or "crmName" in payload
+
+
+def _payload_wants_unlink_crm(payload: dict[str, Any]) -> bool:
+    if "crm_name" in payload:
+        return not str(payload.get("crm_name") or "").strip()
+    if "crmName" in payload:
+        return not str(payload.get("crmName") or "").strip()
     return False
 
 
@@ -477,6 +486,7 @@ def register_admin_routes(app, get_supabase):
         sb = _sb_or_503(get_supabase)
         actor = resolve_actor(sb, authorization)
         require_min_role(actor, "system")
+        payload = _payload_dict(body)
 
         try:
             target_res = sb.auth.admin.get_user_by_id(user_id)
@@ -492,8 +502,10 @@ def register_admin_routes(app, get_supabase):
             raise HTTPException(400, "Tài khoản Auth không có email")
 
         current_metadata = dict(target_user.get("user_metadata") or {})
-        unlink_crm = _wants_unlink_crm(body)
-        crm_name = _patch_crm_name(body)
+        has_crm_payload = _payload_has_crm(payload)
+        unlink_crm = _payload_wants_unlink_crm(payload)
+        crm_name = _payload_crm_value(payload) if has_crm_payload else None
+        old_crm_name = _metadata_crm_name(current_metadata)
 
         if crm_name:
             staff_res = (
@@ -525,7 +537,7 @@ def register_admin_routes(app, get_supabase):
             if existing_staff_res.data
             else ""
         )
-        existing_crm_name = _metadata_crm_name(current_metadata) or existing_staff_crm or None
+        existing_crm_name = old_crm_name or existing_staff_crm or None
 
         if body.is_activated is True and not unlink_crm and not (crm_name or existing_crm_name):
             raise HTTPException(400, "Cần liên kết CRM trước khi kích hoạt tài khoản")
@@ -544,9 +556,10 @@ def register_admin_routes(app, get_supabase):
         if unlink_crm:
             updated_metadata.pop("crmName", None)
             updated_metadata.pop("crm_name", None)
+            updated_metadata["is_activated"] = False
         elif crm_name:
             updated_metadata["crmName"] = crm_name
-        if body.is_activated is not None:
+        if body.is_activated is not None and not unlink_crm:
             updated_metadata["is_activated"] = body.is_activated
 
         if updated_metadata != current_metadata:
@@ -559,10 +572,9 @@ def register_admin_routes(app, get_supabase):
             if attrs:
                 sb.auth.admin.update_user_by_id(user_id, attrs)
             if unlink_crm:
-                crm_to_clear = existing_crm_name
-                if crm_to_clear:
+                if old_crm_name:
                     sb.table("nhan_su_sale").update({"email": None}).eq(
-                        "crm_name", crm_to_clear
+                        "crm_name", old_crm_name
                     ).execute()
             else:
                 staff_crm_to_update = crm_name or existing_crm_name
