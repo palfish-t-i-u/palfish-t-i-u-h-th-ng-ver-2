@@ -2,6 +2,7 @@ import { Navigate, Route, Routes } from "react-router-dom";
 import { useAuth } from "./hooks/useAuth";
 import LoginPage from "./pages/LoginPage";
 import SignUpPage from "./pages/SignUpPage";
+import ForgotPasswordPage from "./pages/ForgotPasswordPage";
 import MainPage from "./pages/MainPage";
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -47,6 +48,14 @@ export default function App() {
         element={
           <GuestRoute>
             <SignUpPage />
+          </GuestRoute>
+        }
+      />
+      <Route
+        path="/forgot-password"
+        element={
+          <GuestRoute>
+            <ForgotPasswordPage />
           </GuestRoute>
         }
       />

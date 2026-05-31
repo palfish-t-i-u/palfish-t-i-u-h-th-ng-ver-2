@@ -20,23 +20,33 @@ const IS_DEV_MODE =
   KEY_PLACEHOLDER ||
   (!JWT_LIKE && !PUBLISHABLE_LIKE);
 
+export interface SignUpMeta {
+  full_name: string;
+  phone: string;
+  department: string;
+  team: string;
+}
+
 interface AuthContextValue {
   user: User | null;
   session: Session | null;
   loading: boolean;
   isDevMode: boolean;
-  signInWithEmail: (email: string) => Promise<{ error: Error | null }>;
+  signInWithPassword: (email: string, password: string) => Promise<{ error: Error | null }>;
   signInWithGoogle: () => Promise<{ error: Error | null } | void>;
-  signUp: (
+  signUpWithPassword: (
     email: string,
-    meta: { full_name: string; phone: string; team: string }
-  ) => Promise<{ error: Error | null; sessionReady?: boolean }>;
+    password: string,
+    meta: SignUpMeta
+  ) => Promise<{ error: Error | null }>;
+  sendPasswordReset: (email: string) => Promise<{ error: Error | null }>;
+  verifyOtp: (email: string, token: string) => Promise<{ error: Error | null }>;
+  updatePassword: (newPassword: string) => Promise<{ error: Error | null }>;
   signOut: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
-/** OAuth / magic link must return to current origin (localhost vs Vercel). */
 function authRedirectUrl() {
   return `${window.location.origin}/`;
 }
@@ -66,19 +76,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => listener.subscription.unsubscribe();
   }, []);
 
-  async function signInWithEmail(email: string) {
+  async function signInWithPassword(email: string, password: string) {
     if (IS_DEV_MODE) {
       setUser({ email } as unknown as User);
       return { error: null };
     }
-    const { error } = await supabase.auth.signInWithOtp({
-      email,
-      options: {
-        shouldCreateUser: false,
-        emailRedirectTo: authRedirectUrl(),
-      },
-    });
-    return { error: error ? new Error(error.message) : null };
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) return { error: new Error(error.message) };
+    return { error: null };
   }
 
   async function signInWithGoogle() {
@@ -96,44 +101,56 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return { error: error ? new Error(error.message) : null };
   }
 
-  async function signUp(
+  async function signUpWithPassword(
     email: string,
-    meta: { full_name: string; phone: string; team: string }
+    password: string,
+    meta: SignUpMeta
   ) {
     if (IS_DEV_MODE) {
       setUser({ email, user_metadata: meta } as unknown as User);
-      return { error: null, sessionReady: true };
+      return { error: null };
     }
-    try {
-      const { data, error } = await supabase.auth.signInWithOtp({
-        email,
-        options: {
-          shouldCreateUser: true,
-          data: meta,
-          emailRedirectTo: authRedirectUrl(),
-        },
-      });
-      if (error) {
-        const raw = error.message || "";
-        let msg = raw;
-        if (/rate.?limit|too many/i.test(raw)) {
-          msg = "Hệ thống đang giới hạn gửi email. Vui lòng thử lại sau ít phút hoặc dùng nút Google ở trên.";
-        } else if (/smtp|send|deliver|confirmation|email/i.test(raw)) {
-          msg = "Không gửi được email xác thực. Vui lòng dùng nút Đăng ký bằng Google ở trên.";
-        }
-        return { error: new Error(msg) };
-      }
-      const session = (data as { session?: Session | null }).session;
-      if (session?.user) {
-        setSession(session);
-        setUser(session.user);
-        return { error: null, sessionReady: true };
-      }
-      return { error: null, sessionReady: false };
-    } catch (e) {
-      const m = e instanceof Error ? e.message : String(e);
-      return { error: new Error(`Lỗi đăng ký: ${m}. Hãy thử Google.`) };
+    const { error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        data: meta,
+        emailRedirectTo: authRedirectUrl(),
+      },
+    });
+    if (error) return { error: new Error(error.message) };
+    return { error: null };
+  }
+
+  async function sendPasswordReset(email: string) {
+    if (IS_DEV_MODE) return { error: null };
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: `${window.location.origin}/reset-password`,
+    });
+    if (error) return { error: new Error(error.message) };
+    return { error: null };
+  }
+
+  async function verifyOtp(email: string, token: string) {
+    if (IS_DEV_MODE) return { error: null };
+    const { data, error } = await supabase.auth.verifyOtp({
+      email,
+      token,
+      type: "recovery",
+    });
+    if (error) return { error: new Error(error.message) };
+    if (data.session) {
+      setSession(data.session);
+      setUser(data.session.user);
     }
+    return { error: null };
+  }
+
+  async function updatePassword(newPassword: string) {
+    if (IS_DEV_MODE) return { error: null };
+    const { error } = await supabase.auth.updateUser({ password: newPassword });
+    if (error) return { error: new Error(error.message) };
+    return { error: null };
   }
 
   async function signOut() {
@@ -153,9 +170,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         session,
         loading,
         isDevMode: IS_DEV_MODE,
-        signInWithEmail,
+        signInWithPassword,
         signInWithGoogle,
-        signUp,
+        signUpWithPassword,
+        sendPasswordReset,
+        verifyOtp,
+        updatePassword,
         signOut,
       }}
     >

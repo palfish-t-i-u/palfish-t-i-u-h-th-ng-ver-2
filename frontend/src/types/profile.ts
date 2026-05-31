@@ -42,4 +42,9 @@ export interface AuthUserRow {
   crmName: string | null;
   staffRole: string | null;
   isBanned: boolean;
+  isActivated: boolean;
+  department: string | null;
+  team: string | null;
+  fullName: string | null;
+  phone: string | null;
 }

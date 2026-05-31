@@ -1,156 +1,283 @@
 import { useState } from "react";
-import { useNavigate, Link } from "react-router-dom";
+import { Link } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth";
 import { Button, Input, Select } from "../components/ui";
-import { Card, CardBody } from "../components/ui/Card";
 import Badge from "../components/ui/Badge";
+import AuthLayout from "../components/auth/AuthLayout";
+import GoogleIcon from "../components/auth/GoogleIcon";
+import "../components/auth/auth.css";
 
-const TEAMS = ["Inhouse 1", "Inhouse 2", "HCM", "Offline Linh Đan"];
+const DEPARTMENTS = [
+  { value: "sale", label: "Đội Sale" },
+  { value: "cs", label: "Đội CS" },
+  { value: "hr", label: "Đội HR" },
+  { value: "marketing", label: "Marketing" },
+];
+
+const TEAMS_BY_DEPT: Record<string, string[]> = {
+  sale: ["Inhouse 1", "Inhouse 2", "HCM", "Offline Linh Đan"],
+};
+
+interface FormState {
+  email: string;
+  password: string;
+  confirmPassword: string;
+  full_name: string;
+  phone: string;
+  department: string;
+  team: string;
+}
+
+const INITIAL: FormState = {
+  email: "",
+  password: "",
+  confirmPassword: "",
+  full_name: "",
+  phone: "",
+  department: "",
+  team: "",
+};
 
 export default function SignUpPage() {
-  const { signUp, signInWithGoogle, isDevMode } = useAuth();
-  const navigate = useNavigate();
-  const [form, setForm] = useState({ email: "", full_name: "", phone: "", team: "" });
-  const [showEmailForm, setShowEmailForm] = useState(false);
-  const [sent, setSent] = useState(false);
+  const { signUpWithPassword, signInWithGoogle, isDevMode } = useAuth();
+  const [form, setForm] = useState<FormState>(INITIAL);
+  const [submitted, setSubmitted] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  function set(field: keyof typeof form) {
-    return (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
-      setForm((f) => ({ ...f, [field]: e.target.value }));
+  const teams = TEAMS_BY_DEPT[form.department] ?? [];
+  const showTeam = teams.length > 0;
+
+  function set<K extends keyof FormState>(field: K) {
+    return (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+      const val = e.target.value;
+      setForm((f) => {
+        const next = { ...f, [field]: val };
+        if (field === "department") next.team = "";
+        return next;
+      });
+    };
   }
 
-  async function handleGoogle() {
-    setError("");
-    setLoading(true);
-    const result = await signInWithGoogle();
-    setLoading(false);
-    if (result && "error" in result && result.error) {
-      setError(result.error.message);
+  function validate(): string | null {
+    if (!form.email || !form.password || !form.full_name || !form.department) {
+      return "Vui lòng điền đầy đủ các trường bắt buộc.";
     }
+    if (form.password.length < 6) {
+      return "Mật khẩu phải có ít nhất 6 ký tự.";
+    }
+    if (form.password !== form.confirmPassword) {
+      return "Mật khẩu xác nhận không khớp.";
+    }
+    if (showTeam && !form.team) {
+      return "Vui lòng chọn team.";
+    }
+    return null;
   }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    const { email, full_name, phone, team } = form;
-    if (!email || !full_name || !team) {
-      setError("Vui lòng điền đầy đủ các trường bắt buộc.");
+    const err = validate();
+    if (err) {
+      setError(err);
       return;
     }
     setLoading(true);
     setError("");
 
-    if (isDevMode) {
-      await signUp(email, { full_name, phone, team });
-      setLoading(false);
-      navigate("/");
-      return;
-    }
+    const dept = DEPARTMENTS.find((d) => d.value === form.department);
+    const meta = {
+      full_name: form.full_name.trim(),
+      phone: form.phone.trim(),
+      department: dept?.label ?? form.department,
+      team: form.team,
+    };
 
-    const result = await signUp(email, { full_name, phone, team });
+    const result = await signUpWithPassword(form.email.trim(), form.password, meta);
     setLoading(false);
     if (result.error) {
       setError(result.error.message);
       return;
     }
-    if (result.sessionReady) {
-      navigate("/");
-      return;
-    }
-    setSent(true);
+    setSubmitted(true);
+  }
+
+  async function handleGoogle() {
+    setError("");
+    const result = await signInWithGoogle();
+    if (result && "error" in result && result.error) setError(result.error.message);
+  }
+
+  if (submitted) {
+    return (
+      <AuthLayout title="Đăng ký thành công">
+        <div className="auth-pending">
+          <div className="auth-pending-icon">⏳</div>
+          <h3>Tài khoản đang chờ kích hoạt</h3>
+          <p>
+            Tài khoản <strong>{form.email}</strong> đã được tạo thành công.
+          </p>
+          <p>
+            Vui lòng chờ quản trị viên xác nhận và kích hoạt tài khoản của bạn
+            trước khi đăng nhập.
+          </p>
+          <p style={{ marginTop: 8, fontSize: 12, color: "var(--gmv-muted)" }}>
+            Bạn sẽ được thông báo qua email khi tài khoản được kích hoạt.
+          </p>
+        </div>
+        <div className="auth-footer">
+          <Link to="/login" className="auth-footer-link">
+            Quay lại đăng nhập
+          </Link>
+        </div>
+      </AuthLayout>
+    );
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gmv-bg p-4">
-      <Card className="w-full max-w-md">
-        <CardBody>
-          {isDevMode && (
-            <div className="mb-4 flex justify-center">
-              <Badge tone="warn">Dev mode — bypass auth</Badge>
-            </div>
-          )}
+    <AuthLayout
+      title="Đăng ký tài khoản"
+      subtitle="Khuyến nghị: sử dụng Gmail công ty"
+    >
+      {isDevMode && (
+        <div className="mb-4 flex justify-center">
+          <Badge tone="warn">Dev mode — bypass auth</Badge>
+        </div>
+      )}
 
-          <h1 className="mb-1 text-center text-2xl font-semibold text-gmv-text-strong">Đăng ký tài khoản</h1>
-          <p className="mb-6 text-center text-xs text-gmv-muted">Khuyến nghị: đăng ký bằng Gmail công ty</p>
-
-          {sent ? (
-            <div className="py-4 text-center font-medium text-gmv-ok">
-              ✓ Kiểm tra email để hoàn tất đăng ký (magic link).
-            </div>
-          ) : (
-            <>
-              <Button type="button" disabled={loading} onClick={handleGoogle} fullWidth variant="primary">
-                Đăng ký / Đăng nhập bằng Google
-              </Button>
-
-              <p className="my-3 text-center text-xs text-gmv-muted">— hoặc —</p>
-
-              {!showEmailForm ? (
-                <button
-                  type="button"
-                  onClick={() => setShowEmailForm(true)}
-                  className="mb-2 w-full text-sm text-gmv-link underline"
-                >
-                  Đăng ký bằng email
-                </button>
-              ) : (
-                <form onSubmit={handleSubmit} className="space-y-4">
-                  <div>
-                    <label className="mb-1 block text-sm font-medium text-gmv-text-strong">
-                      Email dùng để đăng nhập <span className="text-gmv-danger">*</span>
-                    </label>
-                    <Input type="email" placeholder="Gmail của bạn" value={form.email} onChange={set("email")} required />
-                  </div>
-
-                  <div>
-                    <label className="mb-1 block text-sm font-medium text-gmv-text-strong">
-                      Họ và tên trên CRM <span className="text-gmv-danger">*</span>
-                    </label>
-                    <Input type="text" value={form.full_name} onChange={set("full_name")} required />
-                  </div>
-
-                  <div>
-                    <label className="mb-1 block text-sm font-medium text-gmv-text-strong">
-                      Số điện thoại đăng nhập trên CRM
-                    </label>
-                    <Input type="tel" value={form.phone} onChange={set("phone")} />
-                  </div>
-
-                  <div>
-                    <label className="mb-1 block text-sm font-medium text-gmv-text-strong">
-                      Chọn team của bạn <span className="text-gmv-danger">*</span>
-                    </label>
-                    <Select value={form.team} onChange={set("team")} required>
-                      <option value="" disabled>
-                        -- Chọn team --
-                      </option>
-                      {TEAMS.map((t) => (
-                        <option key={t} value={t}>
-                          {t}
-                        </option>
-                      ))}
-                    </Select>
-                  </div>
-
-                  {error && <p className="text-xs text-gmv-danger">{error}</p>}
-
-                  <Button type="submit" disabled={loading} fullWidth variant="secondary">
-                    {loading ? "Đang xử lý..." : "Hoàn thành đăng ký"}
-                  </Button>
-                </form>
-              )}
-              {error && !showEmailForm && <p className="mt-2 text-xs text-gmv-danger">{error}</p>}
-            </>
-          )}
-
-          <div className="mt-5 text-center">
-            <Link to="/login" className="text-xs text-gmv-link hover:underline">
-              ← Quay lại đăng nhập
-            </Link>
+      <form className="auth-form" onSubmit={handleSubmit}>
+        {/* ── Department & Team ── */}
+        <div className={showTeam ? "auth-field-row" : undefined}>
+          <div className="auth-field">
+            <label className="auth-label">
+              Bộ phận <span className="required">*</span>
+            </label>
+            <Select value={form.department} onChange={set("department")} required>
+              <option value="" disabled>
+                -- Chọn bộ phận --
+              </option>
+              {DEPARTMENTS.map((d) => (
+                <option key={d.value} value={d.value}>
+                  {d.label}
+                </option>
+              ))}
+            </Select>
           </div>
-        </CardBody>
-      </Card>
-    </div>
+
+          {showTeam && (
+            <div className="auth-field">
+              <label className="auth-label">
+                Team <span className="required">*</span>
+              </label>
+              <Select value={form.team} onChange={set("team")} required>
+                <option value="" disabled>
+                  -- Chọn team --
+                </option>
+                {teams.map((t) => (
+                  <option key={t} value={t}>
+                    {t}
+                  </option>
+                ))}
+              </Select>
+            </div>
+          )}
+        </div>
+
+        {/* ── Credentials ── */}
+        <div className="auth-field">
+          <label className="auth-label">
+            Email đăng nhập <span className="required">*</span>
+          </label>
+          <Input
+            type="email"
+            placeholder="Gmail của bạn"
+            value={form.email}
+            onChange={set("email")}
+            required
+            autoComplete="email"
+          />
+        </div>
+
+        <div className="auth-field">
+          <label className="auth-label">
+            Mật khẩu <span className="required">*</span>
+          </label>
+          <Input
+            type="password"
+            placeholder="Tối thiểu 6 ký tự"
+            value={form.password}
+            onChange={set("password")}
+            required
+            minLength={6}
+            autoComplete="new-password"
+          />
+        </div>
+
+        <div className="auth-field">
+          <label className="auth-label">
+            Xác nhận mật khẩu <span className="required">*</span>
+          </label>
+          <Input
+            type="password"
+            placeholder="Nhập lại mật khẩu"
+            value={form.confirmPassword}
+            onChange={set("confirmPassword")}
+            required
+            autoComplete="new-password"
+          />
+        </div>
+
+        {/* ── Personal info ── */}
+        <div className="auth-field">
+          <label className="auth-label">
+            Họ và tên (trên CRM) <span className="required">*</span>
+          </label>
+          <Input
+            type="text"
+            placeholder="Nguyễn Văn A"
+            value={form.full_name}
+            onChange={set("full_name")}
+            required
+          />
+        </div>
+
+        <div className="auth-field">
+          <label className="auth-label">Số điện thoại</label>
+          <Input
+            type="tel"
+            placeholder="0912 345 678"
+            value={form.phone}
+            onChange={set("phone")}
+          />
+        </div>
+
+        {error && <div className="auth-error">{error}</div>}
+
+        <Button type="submit" disabled={loading} fullWidth variant="primary">
+          {loading ? "Đang xử lý..." : "Đăng ký tài khoản"}
+        </Button>
+      </form>
+
+      <div className="auth-divider">
+        <span>hoặc</span>
+      </div>
+
+      <button
+        type="button"
+        className="auth-google-btn"
+        onClick={handleGoogle}
+        disabled={loading}
+      >
+        <GoogleIcon />
+        Đăng ký bằng Google
+      </button>
+
+      <div className="auth-footer">
+        <p>Đã có tài khoản?</p>
+        <Link to="/login" className="auth-footer-link">
+          Đăng nhập
+        </Link>
+      </div>
+    </AuthLayout>
   );
 }

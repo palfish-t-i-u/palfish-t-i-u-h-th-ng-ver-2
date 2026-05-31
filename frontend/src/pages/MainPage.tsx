@@ -1,5 +1,4 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
-import StaffCRMTab from "../components/StaffCRMTab";
 import AuthAccountsTab from "../components/AuthAccountsTab";
 import Module5Tab from "../components/Module5Tab";
 import Module6Tab from "../components/Module6Tab";
@@ -33,7 +32,6 @@ type ViewId =
   | "bc03"
   | "module5"
   | "module6"
-  | "staffCrm"
   | "authAccounts";
 
 const FLOW_VIEW_MAP: Record<PaymentFlowView, ViewId> = {
@@ -153,8 +151,10 @@ const TITLES: Record<ViewId, { title: string; subtitle?: string }> = {
   bc03: { title: "BC03 — Báo cáo tổng bộ", subtitle: "KPI thủ công + doanh thu / trial / referral tự động" },
   module5: { title: "Đồng bộ CRM", subtitle: "M5 — 1-Click sync & xuất Master Data CRM PalFish" },
   module6: { title: "Dashboard Sale", subtitle: "M6 — Tổng quan hiệu suất theo team & cá nhân" },
-  staffCrm: { title: "Nhân sự Sale", subtitle: "Master data Metabase — gán role / team" },
-  authAccounts: { title: "Tài khoản Auth", subtitle: "Supabase Auth — khoá/mở account" },
+  authAccounts: {
+    title: "Tài khoản Auth",
+    subtitle: "Quản lý tài khoản đăng nhập — liên kết CRM & phân quyền vai trò",
+  },
 };
 
 export default function MainPage() {
@@ -184,7 +184,6 @@ function MainPageInner({
 
   const showReconciliation = profile?.canConfirmPayment ?? isDevMode;
   const showInvoice = profile?.canConfirmPayment ?? isDevMode;
-  const showStaffCrm = profile?.canAccessAdmin ?? isDevMode;
   const showAuthAccounts = profile?.canManageStaff ?? isDevMode;
 
   // Nếu sale/leader đang ở tab bị ẩn, chuyển về paymentRequests
@@ -286,9 +285,6 @@ function MainPageInner({
     }
 
     const accountItems: NavItem[] = [];
-    if (showStaffCrm) {
-      accountItems.push({ id: "staffCrm", label: "Nhân sự Sale", icon: I.team });
-    }
     if (showAuthAccounts) {
       accountItems.push({ id: "authAccounts", label: "Tài khoản Auth", icon: I.shield });
     }
@@ -300,7 +296,7 @@ function MainPageInner({
     }
 
     return list;
-  }, [badgeCounts, showReconciliation, showInvoice, showStaffCrm, showAuthAccounts]);
+  }, [badgeCounts, showReconciliation, showInvoice, showAuthAccounts]);
 
   const head = TITLES[activeView as keyof typeof TITLES] ?? TITLES.paymentRequests;
   const wideContent =
@@ -339,8 +335,6 @@ function MainPageInner({
         return showInvoice ? <Module5Tab /> : null;
       case "module6":
         return showInvoice ? <Module6Tab /> : null;
-      case "staffCrm":
-        return showStaffCrm ? <StaffCRMTab /> : null;
       case "authAccounts":
         return showAuthAccounts ? <AuthAccountsTab /> : null;
       default:
