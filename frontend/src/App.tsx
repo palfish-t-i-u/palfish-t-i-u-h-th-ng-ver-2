@@ -51,6 +51,19 @@ function GuestRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+/** Login recovery pages — không redirect dù đã có session (OTP / magic link recovery). */
+function AuthFlowRoute({ children }: { children: React.ReactNode }) {
+  const { loading } = useAuth();
+  if (loading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center text-sm text-gmv-muted">
+        Đang tải...
+      </div>
+    );
+  }
+  return <>{children}</>;
+}
+
 export default function App() {
   return (
     <div className="gmv-light-ui min-h-screen">
@@ -74,9 +87,17 @@ export default function App() {
       <Route
         path="/forgot-password"
         element={
-          <GuestRoute>
+          <AuthFlowRoute>
             <ForgotPasswordPage />
-          </GuestRoute>
+          </AuthFlowRoute>
+        }
+      />
+      <Route
+        path="/reset-password"
+        element={
+          <AuthFlowRoute>
+            <ForgotPasswordPage />
+          </AuthFlowRoute>
         }
       />
       <Route
