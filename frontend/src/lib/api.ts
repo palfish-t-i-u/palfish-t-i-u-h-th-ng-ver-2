@@ -381,5 +381,11 @@ export const endpoints = {
       role?: string;
       is_activated?: boolean;
     }) => api.post("/admin/auth-users", body),
+    permissions: () => api.get("/admin/permissions"),
+    patchPermission: (body: {
+      department: string;
+      module_key: string;
+      access_level: string;
+    }) => api.patch("/admin/permissions", body),
   },
 };
