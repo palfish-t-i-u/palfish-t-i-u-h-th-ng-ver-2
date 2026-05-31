@@ -20,6 +20,8 @@ const DEV_PROFILE: MeProfile = {
   canAccessAdmin: true,
   canManageStaff: true,
   isActivated: true,
+  department: null,
+  permissions: {},
 };
 
 export function useMe() {
@@ -68,6 +70,8 @@ export function useMe() {
         canAccessAdmin: false,
         canManageStaff: false,
         isActivated: Boolean(user.user_metadata?.is_activated),
+        department: null,
+        permissions: {},
       });
     } finally {
       setLoading(false);

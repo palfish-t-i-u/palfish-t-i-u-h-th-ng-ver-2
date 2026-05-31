@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   MODULE_LIST,
   MODULE_SECTIONS,
@@ -9,6 +9,7 @@ import {
   type AccessLevel,
 } from "../../types/permissions";
 import { useMe } from "../../hooks/useMe";
+import { endpoints } from "../../lib/api";
 import { TableWrap } from "../ui/Table";
 import "./permissions.css";
 
@@ -26,20 +27,49 @@ export default function PermissionsTab() {
   const canManage = profile?.canManageStaff ?? false;
 
   const [tab, setTab] = useState<TabId>("byGroup");
-
-  // Local state — will be replaced by API when BE is ready
   const [matrix, setMatrix] = useState<Record<string, Record<string, AccessLevel>>>(
     () => structuredClone(DEFAULT_PERMISSIONS)
   );
+  const [, setLoaded] = useState(false);
 
-  function handleCycle(dept: string, moduleKey: string) {
+  const loadMatrix = useCallback(async () => {
+    try {
+      const res = await endpoints.admin.permissions();
+      const remote = res.data.matrix as Record<string, Record<string, AccessLevel>>;
+      if (remote && Object.keys(remote).length > 0) {
+        setMatrix(remote);
+      }
+    } catch {
+      // API chưa có data → dùng DEFAULT_PERMISSIONS
+    } finally {
+      setLoaded(true);
+    }
+  }, []);
+
+  useEffect(() => { loadMatrix(); }, [loadMatrix]);
+
+  async function handleCycle(dept: string, moduleKey: string) {
     if (!canManage) return;
+    const current = matrix[dept]?.[moduleKey] ?? "none";
+    const next = cycleAccessLevel(current);
     setMatrix((prev) => {
-      const next = structuredClone(prev);
-      const current = next[dept]?.[moduleKey] ?? "none";
-      next[dept] = { ...next[dept], [moduleKey]: cycleAccessLevel(current) };
-      return next;
+      const updated = structuredClone(prev);
+      updated[dept] = { ...updated[dept], [moduleKey]: next };
+      return updated;
     });
+    try {
+      await endpoints.admin.patchPermission({
+        department: dept,
+        module_key: moduleKey,
+        access_level: next,
+      });
+    } catch {
+      setMatrix((prev) => {
+        const reverted = structuredClone(prev);
+        reverted[dept] = { ...reverted[dept], [moduleKey]: current };
+        return reverted;
+      });
+    }
   }
 
   // ── KPI stats ──

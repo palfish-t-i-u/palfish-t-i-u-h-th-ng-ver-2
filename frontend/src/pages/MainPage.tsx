@@ -188,114 +188,69 @@ function MainPageInner({
     flowNavRef.current = (view) => setActiveView(FLOW_VIEW_MAP[view]);
   }, [flowNavRef]);
 
-  const showReconciliation = profile?.canConfirmPayment ?? isDevMode;
-  const showInvoice = profile?.canConfirmPayment ?? isDevMode;
-  const showAuthAccounts = profile?.canManageStaff ?? isDevMode;
+  const perms = profile?.permissions ?? {};
+  const can = (key: string) => isDevMode || (perms[key] ?? "none") !== "none";
 
-  // Nếu sale/leader đang ở tab bị ẩn, chuyển về paymentRequests
+  const showReconciliation = can("reconciliation");
+  const showAuthAccounts = can("authAccounts");
+
+  // Nếu user đang ở tab bị ẩn bởi permission, chuyển về dashboard
   useEffect(() => {
-    if (!showReconciliation && activeView === "reconciliation") {
-      setActiveView("paymentRequests");
+    if (activeView !== "profile" && !can(activeView)) {
+      setActiveView("dashboard");
     }
-  }, [showReconciliation, activeView]);
+  }, [perms, activeView]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const items: NavItem[] = useMemo(() => {
-    const list: NavItem[] = [
-      {
-        id: "dashboard",
-        label: "Bảng thông tin",
-        icon: I.chart,
-        section: "Khách hàng & Đơn hàng",
-      },
-      {
-        id: "paymentRequests",
-        label: "Quản lý thanh toán",
-        icon: I.invoice,
-      },
-    ];
+    const list: NavItem[] = [];
 
-    if (showReconciliation) {
-      list.push({
-        id: "reconciliation",
-        label: "Đối soát giao dịch",
-        icon: I.history,
-        section: "Đối soát & Hóa đơn",
-        badge:
-          badgeCounts.reconciliation > 0 ? (
-            <Badge tone="warn">{badgeCounts.reconciliation}</Badge>
-          ) : null,
-      });
-    }
+    // ── Khách hàng & Đơn hàng ──
+    if (can("dashboard"))
+      list.push({ id: "dashboard", label: "Bảng thông tin", icon: I.chart, section: "Khách hàng & Đơn hàng" });
+    if (can("paymentRequests"))
+      list.push({ id: "paymentRequests", label: "Quản lý thanh toán", icon: I.invoice, ...(!can("dashboard") ? { section: "Khách hàng & Đơn hàng" } : {}) });
 
-    if (showInvoice) {
-      list.push(
-        {
-          id: "module3",
-          label: "Kích hoạt khóa học",
-          icon: I.check,
-          badge:
-            badgeCounts.activation > 0 ? <Badge tone="warn">{badgeCounts.activation}</Badge> : null,
-        },
-        {
-          id: "module4",
-          label: "Xuất hóa đơn",
-          icon: I.invoice,
-          badge:
-            badgeCounts.invoice > 0 ? <Badge tone="warn">{badgeCounts.invoice}</Badge> : null,
-        }
-      );
-    }
+    // ── Đối soát & Hóa đơn ──
+    const reconItem: NavItem | null = showReconciliation
+      ? { id: "reconciliation", label: "Đối soát giao dịch", icon: I.history, section: "Đối soát & Hóa đơn",
+          badge: badgeCounts.reconciliation > 0 ? <Badge tone="warn">{badgeCounts.reconciliation}</Badge> : null }
+      : null;
+    if (reconItem) list.push(reconItem);
 
-    if (showInvoice) {
-      list.push(
-        {
-          id: "revenueLedger",
-          label: "Sổ doanh thu",
-          icon: I.ledger,
-          section: "Báo cáo",
-        },
-        {
-          id: "reports",
-          label: "Báo cáo",
-          icon: I.chart,
-          children: [
-            {
-              id: "bc01",
-              label: "BC01: Sales performance",
-              subtitle: "GMV theo team × sale × tháng",
-            },
-            {
-              id: "bc02",
-              label: "BC02: Key Data",
-              subtitle: "Then chốt quy trình bán",
-            },
-            {
-              id: "bc03",
-              label: "BC03 — Báo cáo tổng bộ",
-              subtitle: "KPI + doanh thu / trial / referral",
-            },
-          ],
-        },
-        {
-          id: "module5",
-          label: "Đồng bộ CRM",
-          icon: I.database,
-          section: "Dữ liệu",
-        },
-        {
-          id: "module6",
-          label: "Dashboard Sale",
-          icon: I.chart,
-        }
-      );
-    }
+    if (can("module3"))
+      list.push({ id: "module3", label: "Kích hoạt khóa học", icon: I.check,
+        ...(!reconItem ? { section: "Đối soát & Hóa đơn" } : {}),
+        badge: badgeCounts.activation > 0 ? <Badge tone="warn">{badgeCounts.activation}</Badge> : null });
+    if (can("module4"))
+      list.push({ id: "module4", label: "Xuất hóa đơn", icon: I.invoice,
+        badge: badgeCounts.invoice > 0 ? <Badge tone="warn">{badgeCounts.invoice}</Badge> : null });
 
+    // ── Báo cáo ──
+    if (can("revenueLedger"))
+      list.push({ id: "revenueLedger", label: "Sổ doanh thu", icon: I.ledger, section: "Báo cáo" });
+
+    const reportChildren: { id: string; label: string; subtitle?: string }[] = [];
+    if (can("bc01")) reportChildren.push({ id: "bc01", label: "BC01: Sales performance", subtitle: "GMV theo team × sale × tháng" });
+    if (can("bc02")) reportChildren.push({ id: "bc02", label: "BC02: Key Data", subtitle: "Then chốt quy trình bán" });
+    if (can("bc03")) reportChildren.push({ id: "bc03", label: "BC03 — Báo cáo tổng bộ", subtitle: "KPI + doanh thu / trial / referral" });
+    if (reportChildren.length > 0)
+      list.push({ id: "reports", label: "Báo cáo", icon: I.chart, children: reportChildren,
+        ...(!can("revenueLedger") ? { section: "Báo cáo" } : {}) });
+
+    // ── Dữ liệu ──
+    if (can("module5"))
+      list.push({ id: "module5", label: "Đồng bộ CRM", icon: I.database, section: "Dữ liệu" });
+    if (can("module6"))
+      list.push({ id: "module6", label: "Dashboard Sale", icon: I.chart, ...(!can("module5") ? { section: "Dữ liệu" } : {}) });
+
+    // ── Tài khoản & Quyền ──
     const accountItems: NavItem[] = [];
-    if (showAuthAccounts) {
+    if (showAuthAccounts)
       accountItems.push({ id: "authAccounts", label: "Tài khoản Auth", icon: I.shield });
+    if (can("permissions"))
       accountItems.push({ id: "permissions", label: "Phân quyền sử dụng", icon: I.check });
-    }
-    accountItems.push({ id: "profile", label: "Thông tin cá nhân", icon: I.user });
+    if (can("profile"))
+      accountItems.push({ id: "profile", label: "Thông tin cá nhân", icon: I.user });
 
     if (accountItems.length > 0) {
       accountItems[0] = { ...accountItems[0], section: "Tài khoản & Quyền" };
@@ -303,7 +258,7 @@ function MainPageInner({
     }
 
     return list;
-  }, [badgeCounts, showReconciliation, showInvoice, showAuthAccounts]);
+  }, [badgeCounts, perms, isDevMode]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const head = TITLES[activeView as keyof typeof TITLES] ?? TITLES.paymentRequests;
   const wideContent =
@@ -318,37 +273,23 @@ function MainPageInner({
     activeView === "permissions";
 
   const renderActiveView = () => {
+    if (!can(activeView) && activeView !== "profile") return null;
     switch (activeView) {
-      case "dashboard":
-        return <DashboardTab />;
-      case "paymentRequests":
-        return <PaymentRequestsTab />;
-      case "reconciliation":
-        return showReconciliation ? <ReconciliationTab /> : null;
-      case "module3":
-        return showInvoice ? <ActivationTab /> : null;
-      case "module4":
-        return showInvoice ? <InvoiceRequestTab /> : null;
-      case "profile":
-        return <ProfilePage />;
-      case "revenueLedger":
-        return showInvoice ? <SoDoanhThuTab /> : null;
-      case "bc01":
-        return showInvoice ? <BC01SalesPerformance /> : null;
-      case "bc02":
-        return showInvoice ? <BC02KeyDataReport /> : null;
-      case "bc03":
-        return showInvoice ? <ReportBC03Tab /> : null;
-      case "module5":
-        return showInvoice ? <Module5Tab /> : null;
-      case "module6":
-        return showInvoice ? <Module6Tab /> : null;
-      case "authAccounts":
-        return showAuthAccounts ? <AuthAccountsTab /> : null;
-      case "permissions":
-        return showAuthAccounts ? <PermissionsTab /> : null;
-      default:
-        return <PaymentRequestsTab />;
+      case "dashboard": return <DashboardTab />;
+      case "paymentRequests": return <PaymentRequestsTab />;
+      case "reconciliation": return <ReconciliationTab />;
+      case "module3": return <ActivationTab />;
+      case "module4": return <InvoiceRequestTab />;
+      case "profile": return <ProfilePage />;
+      case "revenueLedger": return <SoDoanhThuTab />;
+      case "bc01": return <BC01SalesPerformance />;
+      case "bc02": return <BC02KeyDataReport />;
+      case "bc03": return <ReportBC03Tab />;
+      case "module5": return <Module5Tab />;
+      case "module6": return <Module6Tab />;
+      case "authAccounts": return <AuthAccountsTab />;
+      case "permissions": return <PermissionsTab />;
+      default: return <PaymentRequestsTab />;
     }
   };
 
