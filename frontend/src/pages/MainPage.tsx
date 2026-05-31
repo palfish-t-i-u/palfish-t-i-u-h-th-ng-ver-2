@@ -1,5 +1,6 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import AuthAccountsTab from "../components/AuthAccountsTab";
+import PermissionsTab from "../components/permissions/PermissionsTab";
 import Module5Tab from "../components/Module5Tab";
 import Module6Tab from "../components/Module6Tab";
 import { PaymentFlowProvider, usePaymentFlow, type PaymentFlowView } from "../contexts/PaymentFlowContext";
@@ -32,7 +33,8 @@ type ViewId =
   | "bc03"
   | "module5"
   | "module6"
-  | "authAccounts";
+  | "authAccounts"
+  | "permissions";
 
 const FLOW_VIEW_MAP: Record<PaymentFlowView, ViewId> = {
   paymentRequests: "paymentRequests",
@@ -154,6 +156,10 @@ const TITLES: Record<ViewId, { title: string; subtitle?: string }> = {
   authAccounts: {
     title: "Tài khoản Auth",
     subtitle: "Quản lý tài khoản đăng nhập — liên kết CRM & phân quyền vai trò",
+  },
+  permissions: {
+    title: "Phân quyền sử dụng",
+    subtitle: "Quản lý quyền truy cập module theo nhóm và cá nhân",
   },
 };
 
@@ -287,6 +293,7 @@ function MainPageInner({
     const accountItems: NavItem[] = [];
     if (showAuthAccounts) {
       accountItems.push({ id: "authAccounts", label: "Tài khoản Auth", icon: I.shield });
+      accountItems.push({ id: "permissions", label: "Phân quyền sử dụng", icon: I.check });
     }
     accountItems.push({ id: "profile", label: "Thông tin cá nhân", icon: I.user });
 
@@ -307,7 +314,8 @@ function MainPageInner({
     activeView === "module4" ||
     activeView === "bc01" ||
     activeView === "bc02" ||
-    activeView === "bc03";
+    activeView === "bc03" ||
+    activeView === "permissions";
 
   const renderActiveView = () => {
     switch (activeView) {
@@ -337,6 +345,8 @@ function MainPageInner({
         return showInvoice ? <Module6Tab /> : null;
       case "authAccounts":
         return showAuthAccounts ? <AuthAccountsTab /> : null;
+      case "permissions":
+        return showAuthAccounts ? <PermissionsTab /> : null;
       default:
         return <PaymentRequestsTab />;
     }
