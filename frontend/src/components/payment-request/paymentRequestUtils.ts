@@ -106,6 +106,7 @@ export function fromApiPaymentRequest(raw: any): PaymentRequest {
     email: raw.email ?? "",
     target: raw.target ?? 0,
     source: raw.source ?? "",
+    saleEmail: raw.sale_email ?? raw.saleEmail ?? "",
     createdAt: raw.created_at ?? raw.createdAt ?? "",
     cancelledAt: raw.cancelled_at ?? raw.cancelledAt ?? null,
     cancelledReason: raw.cancelled_reason ?? raw.cancelledReason ?? null,

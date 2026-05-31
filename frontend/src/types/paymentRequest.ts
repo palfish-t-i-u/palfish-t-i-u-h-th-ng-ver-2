@@ -85,6 +85,7 @@ export interface PaymentRequest {
   doneCount: number;
   totalCount: number;
   delta: number;
+  saleEmail?: string;
   state: PaymentRequestStatus;
   payments: PaymentAttempt[];
 }
