@@ -186,6 +186,15 @@ def _patch_crm_name(body: AuthUserPatchBody) -> str | None:
     return crm or None
 
 
+def _wants_unlink_crm(body: AuthUserPatchBody) -> bool:
+    """True when client explicitly sends empty crmName/crm_name to clear the link."""
+    if body.crm_name is not None:
+        return not str(body.crm_name).strip()
+    if body.crmName is not None:
+        return not str(body.crmName).strip()
+    return False
+
+
 def _patch_banned(body: AuthUserPatchBody) -> bool | None:
     return body.is_banned if body.is_banned is not None else body.banned
 
@@ -483,6 +492,7 @@ def register_admin_routes(app, get_supabase):
             raise HTTPException(400, "Tài khoản Auth không có email")
 
         current_metadata = dict(target_user.get("user_metadata") or {})
+        unlink_crm = _wants_unlink_crm(body)
         crm_name = _patch_crm_name(body)
 
         if crm_name:
@@ -517,7 +527,7 @@ def register_admin_routes(app, get_supabase):
         )
         existing_crm_name = _metadata_crm_name(current_metadata) or existing_staff_crm or None
 
-        if body.is_activated is True and not (crm_name or existing_crm_name):
+        if body.is_activated is True and not unlink_crm and not (crm_name or existing_crm_name):
             raise HTTPException(400, "Cần liên kết CRM trước khi kích hoạt tài khoản")
 
         attrs: dict[str, Any] = {}
@@ -531,7 +541,10 @@ def register_admin_routes(app, get_supabase):
         updated_metadata = dict(current_metadata)
         if role_value is not None:
             updated_metadata["role"] = role_value
-        if crm_name:
+        if unlink_crm:
+            updated_metadata.pop("crmName", None)
+            updated_metadata.pop("crm_name", None)
+        elif crm_name:
             updated_metadata["crmName"] = crm_name
         if body.is_activated is not None:
             updated_metadata["is_activated"] = body.is_activated
@@ -539,22 +552,29 @@ def register_admin_routes(app, get_supabase):
         if updated_metadata != current_metadata:
             attrs["user_metadata"] = updated_metadata
 
-        if not attrs and not crm_name:
+        if not attrs and not crm_name and not unlink_crm:
             raise HTTPException(400, "Không có trường cần cập nhật")
 
         try:
             if attrs:
                 sb.auth.admin.update_user_by_id(user_id, attrs)
-            staff_crm_to_update = crm_name or existing_crm_name
-            staff_patch: dict[str, Any] = {}
-            if crm_name:
-                staff_patch["email"] = target_email
-            if role_value is not None and staff_crm_to_update:
-                staff_patch["role"] = role_value
-            if staff_patch and staff_crm_to_update:
-                sb.table("nhan_su_sale").update(staff_patch).eq(
-                    "crm_name", staff_crm_to_update
-                ).execute()
+            if unlink_crm:
+                crm_to_clear = existing_crm_name
+                if crm_to_clear:
+                    sb.table("nhan_su_sale").update({"email": None}).eq(
+                        "crm_name", crm_to_clear
+                    ).execute()
+            else:
+                staff_crm_to_update = crm_name or existing_crm_name
+                staff_patch: dict[str, Any] = {}
+                if crm_name:
+                    staff_patch["email"] = target_email
+                if role_value is not None and staff_crm_to_update:
+                    staff_patch["role"] = role_value
+                if staff_patch and staff_crm_to_update:
+                    sb.table("nhan_su_sale").update(staff_patch).eq(
+                        "crm_name", staff_crm_to_update
+                    ).execute()
         except Exception as exc:
             raise HTTPException(500, str(exc)) from exc
 
