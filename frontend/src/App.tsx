@@ -11,7 +11,8 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading, isDevMode } = useAuth();
   const { profile, loading: meLoading } = useMe();
 
-  if (loading || (user && !isDevMode && meLoading)) {
+  // Lần đầu load: chờ auth xong
+  if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center text-sm text-gmv-muted">
         Đang tải...
@@ -19,6 +20,16 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
     );
   }
   if (!user) return <Navigate to="/login" replace />;
+
+  // Lần đầu load profile: chờ /me (chỉ khi chưa có profile)
+  // Khi token refresh (chuyển tab quay lại), profile đã có → không hiện loading
+  if (!isDevMode && meLoading && !profile) {
+    return (
+      <div className="flex min-h-screen items-center justify-center text-sm text-gmv-muted">
+        Đang tải...
+      </div>
+    );
+  }
 
   if (!isDevMode && profile && !profile.isActivated && profile.role !== "system") {
     return <PendingActivationPage />;
