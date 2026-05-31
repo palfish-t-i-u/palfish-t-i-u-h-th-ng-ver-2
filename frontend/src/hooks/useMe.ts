@@ -19,6 +19,7 @@ const DEV_PROFILE: MeProfile = {
   canConfirmPayment: true,
   canAccessAdmin: true,
   canManageStaff: true,
+  isActivated: true,
 };
 
 export function useMe() {
@@ -66,6 +67,7 @@ export function useMe() {
         canConfirmPayment: false,
         canAccessAdmin: false,
         canManageStaff: false,
+        isActivated: Boolean(user.user_metadata?.is_activated),
       });
     } finally {
       setLoading(false);

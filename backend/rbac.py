@@ -19,6 +19,7 @@ class Actor:
     user_id: str | None
     role: str
     staff: dict[str, Any] | None
+    is_activated: bool = False
 
 
 def _normalize_role(raw: str | None) -> str:
@@ -134,6 +135,7 @@ def resolve_actor(sb, authorization: str | None, *, allow_unactivated: bool = Fa
     meta = user.get("user_metadata") or {}
     role = _normalize_role(meta.get("role"))
     staff = _lookup_staff(sb, email) if sb else None
+    is_activated = _is_truthy(meta.get("is_activated", False))
 
     if staff:
         role = _normalize_role(staff.get("role") or role)
@@ -144,7 +146,7 @@ def resolve_actor(sb, authorization: str | None, *, allow_unactivated: bool = Fa
 
     if (
         not allow_unactivated
-        and not _is_truthy(meta.get("is_activated", False))
+        and not is_activated
         and not is_system_admin_email
         and role != "system"
     ):
@@ -158,6 +160,7 @@ def resolve_actor(sb, authorization: str | None, *, allow_unactivated: bool = Fa
         user_id=user.get("id"),
         role=role,
         staff=staff,
+        is_activated=is_activated,
     )
 
 
@@ -179,6 +182,7 @@ def staff_to_profile(actor: Actor) -> dict[str, Any]:
         "canConfirmPayment": can_confirm_payment(actor),
         "canAccessAdmin": _rank(actor.role) >= _rank("manager"),
         "canManageStaff": _rank(actor.role) >= _rank("system"),
+        "isActivated": actor.is_activated,
     }
 
 

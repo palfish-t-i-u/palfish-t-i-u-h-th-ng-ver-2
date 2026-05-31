@@ -144,6 +144,16 @@
   text-align: center;
 }
 
+.auth-info {
+  font-size: 12px;
+  color: var(--gmv-text);
+  background: var(--gmv-primary-soft, #f0edff);
+  border-radius: var(--gmv-radius-sm);
+  padding: 8px 12px;
+  text-align: center;
+  line-height: 1.5;
+}
+
 .auth-success {
   font-size: 13px;
   color: var(--gmv-ok);
