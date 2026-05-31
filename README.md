@@ -280,16 +280,6 @@ VITE_BANK_ACCOUNT=1680011668899
 
 ---
 
-## Việc đang ưu tiên (P0)
-
-1. Re-seed Sổ doanh thu từ DingTalk — sửa lệch ~5% báo cáo
-2. BE persist PATCH Active Request (`uids_data`, `invoice_requested_at`)
-3. Hoàn thiện integration PR flow trên `test-integration-final` → promote `main`
-4. Nghiệm thu CK thật PayOS + bank app
-5. Phase A2 FE fixes (reject reason, QR copy, date format)
-
----
-
 ## License & ghi chú
 
 Dự án nội bộ PalFish — không public. Không commit `.env`, service role key, hoặc PayOS secrets.
