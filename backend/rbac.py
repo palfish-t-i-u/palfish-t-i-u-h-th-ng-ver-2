@@ -132,6 +132,16 @@ def resolve_actor(sb, authorization: str | None) -> Actor:
     elif meta.get("role"):
         role = _normalize_role(meta.get("role"))
 
+    # ── Activation gate ──
+    # Chặn tài khoản chưa được admin kích hoạt (is_activated != True).
+    # System admin (SYSTEM_ADMIN_EMAILS) luôn được bypass để không tự khoá mình.
+    is_activated = meta.get("is_activated", False)
+    if not is_activated and email.lower() not in admin_emails:
+        raise HTTPException(
+            403,
+            "Tài khoản chưa được kích hoạt. Vui lòng liên hệ admin để được duyệt.",
+        )
+
     return Actor(
         email=email,
         user_id=user.get("id"),
