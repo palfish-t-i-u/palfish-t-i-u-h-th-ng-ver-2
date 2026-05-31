@@ -163,6 +163,20 @@ export default function AccountDetailDrawer({ user, onClose, onUpdated, linkedCr
     }
   }
 
+  async function handleUnlinkCrm() {
+    setError("");
+    try {
+      await endpoints.admin.patchAuthUser(user!.id, { crmName: "" });
+      onUpdated();
+    } catch (err: unknown) {
+      const msg =
+        err && typeof err === "object" && "response" in err
+          ? ((err as { response?: { data?: { detail?: string } } }).response?.data?.detail ?? "Không huỷ liên kết CRM.")
+          : "Không huỷ liên kết CRM.";
+      setError(msg);
+    }
+  }
+
   function handleCopyId() {
     navigator.clipboard.writeText(user!.email).catch(() => {});
   }
@@ -375,10 +389,20 @@ export default function AccountDetailDrawer({ user, onClose, onUpdated, linkedCr
                 <span>🔗</span> Liên kết Nhân sự Sale
               </div>
               <div className="flex gap-2">
-                {/* TODO: Huỷ liên kết — BE chưa hỗ trợ unlink */}
-                <Button size="sm" variant="ghost" onClick={() => setCrmLinkOpen(true)}>
-                  {user.crmName ? "Thay đổi" : "Liên kết"}
-                </Button>
+                {user.crmName ? (
+                  <>
+                    <Button size="sm" variant="danger" onClick={handleUnlinkCrm}>
+                      ✕ Huỷ liên kết
+                    </Button>
+                    <Button size="sm" variant="ghost" onClick={() => setCrmLinkOpen(true)}>
+                      Thay đổi
+                    </Button>
+                  </>
+                ) : (
+                  <Button size="sm" variant="primary" onClick={() => setCrmLinkOpen(true)}>
+                    + Liên kết
+                  </Button>
+                )}
               </div>
             </div>
             <div className="aa-section-body">
@@ -395,7 +419,8 @@ export default function AccountDetailDrawer({ user, onClose, onUpdated, linkedCr
                 </div>
               ) : (
                 <div className="aa-crm-card-empty">
-                  Chưa liên kết nhân sự CRM. Bấm "Liên kết" để chọn.
+                  <span>Chưa liên kết nhân sự CRM. Nhấp "+ Liên kết" để chọn định danh thật.</span>
+                  <span style={{ marginLeft: 8, color: "var(--gmv-primary)" }}>🔗</span>
                 </div>
               )}
             </div>
