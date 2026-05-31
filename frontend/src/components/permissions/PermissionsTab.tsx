@@ -37,11 +37,18 @@ export default function PermissionsTab() {
     try {
       const res = await endpoints.admin.permissions();
       const remote = res.data.matrix as Record<string, Record<string, AccessLevel>>;
-      if (remote && Object.keys(remote).length > 0) {
+      const isEmpty = !remote || Object.values(remote).every(
+        (mods) => Object.values(mods).every((l) => l === "none")
+      );
+      if (isEmpty) {
+        await endpoints.admin.seedPermissions();
+        const seeded = await endpoints.admin.permissions();
+        setMatrix(seeded.data.matrix as Record<string, Record<string, AccessLevel>>);
+      } else {
         setMatrix(remote);
       }
     } catch {
-      // API chưa có data → dùng DEFAULT_PERMISSIONS
+      // API lỗi → dùng DEFAULT_PERMISSIONS
     } finally {
       setLoaded(true);
     }
