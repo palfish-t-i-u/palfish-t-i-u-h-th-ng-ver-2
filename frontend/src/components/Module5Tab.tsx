@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { endpoints } from "../lib/api";
 import { supabase } from "../lib/supabase";
+import { usePermission } from "../hooks/usePermission";
 import Button from "./ui/Button";
 
 function todayStr() {
@@ -65,6 +66,7 @@ function Toast({ message, onClose }: { message: string; onClose: () => void }) {
 }
 
 export default function Module5Tab() {
+  const { readOnly } = usePermission("module5");
   const [syncDate, setSyncDate] = useState(yesterdayStr());
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -199,7 +201,7 @@ export default function Module5Tab() {
       )}
 
       <div className="flex items-center gap-4">
-        <Button
+        {!readOnly && <Button
           size="md"
           variant="primary"
           disabled={loading || hasToken === false}
@@ -219,7 +221,7 @@ export default function Module5Tab() {
               LẤY DỮ LIỆU
             </span>
           )}
-        </Button>
+        </Button>}
         {loading && (
           <p className="text-xs text-slate-400">
             Đang cào dữ liệu từng ngày, vui lòng chờ…

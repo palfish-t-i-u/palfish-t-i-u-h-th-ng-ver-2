@@ -970,6 +970,7 @@ export default function PaymentRequestDetailDrawer({
   onShowQr,
   uploadingBillId,
   deletingBillId,
+  readOnly = false,
 }: {
   request: PaymentRequest | null;
   open: boolean;
@@ -990,6 +991,7 @@ export default function PaymentRequestDetailDrawer({
   onShowQr: (qr: PaymentAttempt) => void;
   uploadingBillId?: string | null;
   deletingBillId?: string | null;
+  readOnly?: boolean;
 }) {
   const [showAdd, setShowAdd] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -1131,7 +1133,7 @@ export default function PaymentRequestDetailDrawer({
               <h4>
                 <Icons.User size={15} /> Thông tin khách hàng (B1)
               </h4>
-              {!editing ? (
+              {!editing && !readOnly ? (
                 <button
                   className="btn btn-outline btn-sm"
                   onClick={() => {
@@ -1396,7 +1398,7 @@ export default function PaymentRequestDetailDrawer({
                 <Icons.Wallet size={15} /> Các lần thanh toán
                 <span className="num-pill">{request.payments.length}</span>
               </h4>
-              {!showAdd && request.state !== "cancelled" && (
+              {!showAdd && !readOnly && request.state !== "cancelled" && (
                 <button className="btn btn-secondary btn-sm" onClick={() => setShowAdd(true)}>
                   <Icons.Plus size={13} /> Tạo lần thanh toán
                 </button>
@@ -1511,26 +1513,26 @@ export default function PaymentRequestDetailDrawer({
             >
               <Icons.Copy size={13} /> Copy PR-ID
             </button>
-            {canCancel && (
+            {canCancel && !readOnly && (
               <button className="btn btn-outline btn-sm" style={{ color: "var(--danger)" }} onClick={onCancelRequest}>
                 <Icons.XCircle size={13} /> Huỷ Payment Request
               </button>
             )}
           </div>
           <div className="quick-create">
-            {request.state !== "cancelled" && (
+            {!readOnly && request.state !== "cancelled" && (
               <button className="btn btn-primary" onClick={() => setShowAdd(true)} disabled={showAdd}>
                 <Icons.Plus size={14} /> Tạo lần thanh toán
               </button>
             )}
-            <button
+            {!readOnly && <button
               className={`btn ${ready && !hasActiveRequest ? "btn-success" : "btn-outline"}`}
               disabled={!ready || hasActiveRequest}
               title={!ready ? "Cần thu đủ 100% số tiền trước khi kích hoạt" : hasActiveRequest ? activeSummary.buttonLabel : "Tạo Active Request và chọn gói khoá học"}
               onClick={onCreateActiveRequest}
             >
               <Icons.CheckSquare size={14} /> {hasActiveRequest ? activeSummary.buttonLabel : "Kích hoạt khoá học"}
-            </button>
+            </button>}
           </div>
         </div>
       </aside>

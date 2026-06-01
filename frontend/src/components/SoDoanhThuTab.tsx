@@ -16,6 +16,7 @@ import LedgerFormModal, {
   type LedgerFormState,
 } from "./LedgerFormModal";
 import LedgerSummaryCards from "./LedgerSummaryCards";
+import { usePermission } from "../hooks/usePermission";
 import Button from "./ui/Button";
 import Badge from "./ui/Badge";
 import Tooltip from "./ui/Tooltip";
@@ -110,6 +111,7 @@ function filterParams(from: string, to: string, loaiFilter: string, teamFilter: 
 }
 
 export default function SoDoanhThuTab() {
+  const { readOnly } = usePermission("revenueLedger");
   const [rows, setRows] = useState<RevenueLedgerRow[]>([]);
   const [summary, setSummary] = useState<LedgerSummaryResponse | null>(null);
   const [totalCount, setTotalCount] = useState(0);
@@ -411,16 +413,18 @@ export default function SoDoanhThuTab() {
         <Button variant="ghost" onClick={resetFilters} disabled={!hasActiveFilter && !draftDirty}>
           Reset bộ lọc
         </Button>
-        <Tooltip content={GSHEET_SYNC_TOOLTIP} align="end" panelClassName="max-w-md">
-          <Button
-            variant="secondary"
-            onClick={handleSyncGsheet}
-            disabled={syncing || loading}
-          >
-            {syncing ? "Đang sync…" : "Sync Data"}
-          </Button>
-        </Tooltip>
-        <Button onClick={openCreate}>+ Thêm dòng</Button>
+        {!readOnly && (
+          <Tooltip content={GSHEET_SYNC_TOOLTIP} align="end" panelClassName="max-w-md">
+            <Button
+              variant="secondary"
+              onClick={handleSyncGsheet}
+              disabled={syncing || loading}
+            >
+              {syncing ? "Đang sync…" : "Sync Data"}
+            </Button>
+          </Tooltip>
+        )}
+        {!readOnly && <Button onClick={openCreate}>+ Thêm dòng</Button>}
       </div>
 
       {syncing && (
@@ -528,24 +532,26 @@ export default function SoDoanhThuTab() {
                 </Td>
                 <Td className="text-left text-sm">{row.saleCrmName || "—"}</Td>
                 <Td className="text-left text-sm">{row.team || "—"}</Td>
-                <Td>
-                  <div className="flex flex-wrap justify-center gap-1.5">
-                    <Button type="button" size="sm" variant="ghost" onClick={() => openEdit(row)}>
-                      Chỉnh sửa
-                    </Button>
-                    {row.loaiNhap === "tay" && (
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="danger"
-                        disabled={deletingId === row.id}
-                        onClick={() => handleDelete(row)}
-                      >
-                        {deletingId === row.id ? "…" : "Xóa"}
+                {!readOnly && (
+                  <Td>
+                    <div className="flex flex-wrap justify-center gap-1.5">
+                      <Button type="button" size="sm" variant="ghost" onClick={() => openEdit(row)}>
+                        Chỉnh sửa
                       </Button>
-                    )}
-                  </div>
-                </Td>
+                      {row.loaiNhap === "tay" && (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="danger"
+                          disabled={deletingId === row.id}
+                          onClick={() => handleDelete(row)}
+                        >
+                          {deletingId === row.id ? "…" : "Xóa"}
+                        </Button>
+                      )}
+                    </div>
+                  </Td>
+                )}
               </Tr>
             ))}
             {hasMore && (
