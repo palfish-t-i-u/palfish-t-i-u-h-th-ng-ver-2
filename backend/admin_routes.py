@@ -81,6 +81,11 @@ class PermissionOverrideBody(BaseModel):
     access_level: str
 
 
+class BulkOverrideBody(BaseModel):
+    email: str
+    overrides: dict[str, str]  # module_key -> access_level ("full"/"read"/"none"/"reset")
+
+
 MODULE_LIST = [
     "dashboard",
     "paymentRequests",
@@ -936,5 +941,46 @@ def register_admin_routes(app, get_supabase):
 
         sb.table("permission_overrides").delete().eq("user_email", email.strip().lower()).eq("module_key", module_key.strip()).execute()
         return {"ok": True}
+
+    @app.put("/admin/permission-overrides/bulk")
+    def bulk_override(body: BulkOverrideBody, authorization: str | None = Header(None)):
+        """Set/reset all overrides for one user in a single call.
+
+        body.overrides is a dict: module_key -> access_level.
+        Use "reset" as the access_level to delete an override (revert to dept default).
+        Only modules present in the dict are touched; others are left unchanged.
+        """
+        sb = _sb_or_503(get_supabase)
+        actor = resolve_actor(sb, authorization)
+        require_min_role(actor, "system")
+
+        email = body.email.strip().lower()
+        upserts: list[dict] = []
+        deletes: list[str] = []
+
+        for mk, al in body.overrides.items():
+            mk = mk.strip()
+            if mk not in MODULE_LIST:
+                continue
+            if al == "reset":
+                deletes.append(mk)
+            elif al in ACCESS_LEVELS:
+                upserts.append({
+                    "user_email": email,
+                    "module_key": mk,
+                    "access_level": al,
+                })
+
+        if upserts:
+            sb.table("permission_overrides").upsert(
+                upserts, on_conflict="user_email, module_key"
+            ).execute()
+
+        for mk in deletes:
+            sb.table("permission_overrides").delete().eq(
+                "user_email", email
+            ).eq("module_key", mk).execute()
+
+        return {"ok": True, "upserted": len(upserts), "deleted": len(deletes)}
 
 

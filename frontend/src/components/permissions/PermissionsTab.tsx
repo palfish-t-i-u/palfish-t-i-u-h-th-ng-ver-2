@@ -8,9 +8,12 @@ import {
   cycleAccessLevel,
   type AccessLevel,
 } from "../../types/permissions";
+import type { AuthUserRow } from "../../types/profile";
 import { useMe } from "../../hooks/useMe";
 import { endpoints } from "../../lib/api";
 import { TableWrap } from "../ui/Table";
+import StaffPickerModal from "./StaffPickerModal";
+import OverrideDrawer from "./OverrideDrawer";
 import "./permissions.css";
 
 type TabId = "byGroup" | "override";
@@ -255,163 +258,182 @@ export default function PermissionsTab() {
       )}
 
       {tab === "override" && (
-        <OverrideTab />
+        <OverrideTab matrix={matrix} onCountChange={setOverrideCount} />
       )}
     </div>
   );
 }
 
 /* ═══════════════════════════════════════
-   Override Tab — sub-component
+   Override Tab — sub-component (staff-grouped)
    ═══════════════════════════════════════ */
 
 interface OverrideRow { email: string; moduleKey: string; accessLevel: AccessLevel }
 
-function OverrideTab() {
-  const [overrides, setOverrides] = useState<OverrideRow[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+interface StaffOverrideSummary {
+  user: AuthUserRow;
+  overrides: Record<string, AccessLevel>;
+  count: number;
+}
 
-  // Add form
-  const [newEmail, setNewEmail] = useState("");
-  const [newModule, setNewModule] = useState("");
-  const [newLevel, setNewLevel] = useState<AccessLevel>("full");
-  const [adding, setAdding] = useState(false);
+function OverrideTab({
+  matrix,
+  onCountChange,
+}: {
+  matrix: Record<string, Record<string, AccessLevel>>;
+  onCountChange: (n: number) => void;
+}) {
+  const [allOverrides, setAllOverrides] = useState<OverrideRow[]>([]);
+  const [authUsers, setAuthUsers] = useState<AuthUserRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [drawerUser, setDrawerUser] = useState<AuthUserRow | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await endpoints.admin.permissionOverrides();
-      setOverrides(res.data.overrides || []);
+      const [ovRes, usersRes] = await Promise.all([
+        endpoints.admin.permissionOverrides(),
+        endpoints.admin.authUsers(),
+      ]);
+      const ov = ovRes.data.overrides || [];
+      setAllOverrides(ov);
+      setAuthUsers(usersRes.data.users || []);
+      onCountChange(ov.length);
     } catch {
-      setError("Không tải được danh sách override.");
+      /* ignore */
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [onCountChange]);
 
   useEffect(() => { load(); }, [load]);
 
-  async function handleAdd(e: React.FormEvent) {
-    e.preventDefault();
-    if (!newEmail || !newModule) return;
-    setAdding(true);
-    setError("");
-    try {
-      await endpoints.admin.createPermissionOverride({
-        email: newEmail.trim(),
-        module_key: newModule,
-        access_level: newLevel,
-      });
-      setNewEmail("");
-      setNewModule("");
-      setNewLevel("full");
-      await load();
-    } catch {
-      setError("Không thêm được override.");
-    } finally {
-      setAdding(false);
+  const staffList = useMemo<StaffOverrideSummary[]>(() => {
+    const byEmail = new Map<string, Record<string, AccessLevel>>();
+    for (const o of allOverrides) {
+      const key = o.email.toLowerCase();
+      if (!byEmail.has(key)) byEmail.set(key, {});
+      byEmail.get(key)![o.moduleKey] = o.accessLevel;
     }
+
+    const result: StaffOverrideSummary[] = [];
+    for (const [email, overrides] of byEmail) {
+      const user = authUsers.find((u) => u.email.toLowerCase() === email);
+      const stub: AuthUserRow = user ?? {
+        id: email,
+        email,
+        providers: [],
+        lastSignIn: null,
+        createdAt: null,
+        bannedUntil: null,
+        crmName: null,
+        staffRole: null,
+        isBanned: false,
+        isActivated: false,
+        department: null,
+        team: null,
+        fullName: null,
+        phone: null,
+      };
+      result.push({ user: stub, overrides, count: Object.keys(overrides).length });
+    }
+    return result;
+  }, [allOverrides, authUsers]);
+
+  const existingEmails = useMemo(
+    () => new Set(staffList.map((s) => s.user.email.toLowerCase())),
+    [staffList]
+  );
+
+  function openDrawerForUser(user: AuthUserRow) {
+    setDrawerUser(user);
+    setPickerOpen(false);
   }
 
-  async function handleDelete(email: string, moduleKey: string) {
-    try {
-      await endpoints.admin.deletePermissionOverride(email, moduleKey);
-      await load();
-    } catch {
-      setError("Không xoá được override.");
-    }
+  function deptBadgeClass(dept: string | null): string {
+    if (!dept) return "";
+    const key = DEPARTMENT_LIST.find(
+      (d) => dept.toLowerCase().includes(d.key) || dept.toLowerCase().includes(d.label.toLowerCase())
+    )?.key;
+    return key ? `pm-dept-badge ${key}` : "pm-dept-badge";
   }
 
-  const moduleLabel = (key: string) =>
-    MODULE_LIST.find((m) => m.key === key)?.label ?? key;
+  const drawerOverrides = useMemo(() => {
+    if (!drawerUser) return {};
+    const email = drawerUser.email.toLowerCase();
+    const map: Record<string, AccessLevel> = {};
+    for (const o of allOverrides) {
+      if (o.email.toLowerCase() === email) map[o.moduleKey] = o.accessLevel;
+    }
+    return map;
+  }, [drawerUser, allOverrides]);
 
   return (
     <div>
-      {/* Add form */}
-      <form onSubmit={handleAdd} className="flex flex-wrap items-end gap-3 mb-4">
-        <div className="flex flex-col gap-1">
-          <label className="text-xs font-semibold text-gmv-muted">Email</label>
-          <input
-            type="email"
-            className="gmv-field px-2.5 py-2 border border-gmv-border rounded-gmv-md text-sm bg-gmv-canvas min-w-[220px]"
-            placeholder="user@company.com"
-            value={newEmail}
-            onChange={(e) => setNewEmail(e.target.value)}
-            required
-          />
-        </div>
-        <div className="flex flex-col gap-1">
-          <label className="text-xs font-semibold text-gmv-muted">Module</label>
-          <select
-            className="gmv-field px-2.5 py-2 border border-gmv-border rounded-gmv-md text-sm bg-gmv-canvas min-w-[180px]"
-            value={newModule}
-            onChange={(e) => setNewModule(e.target.value)}
-            required
-          >
-            <option value="">— Chọn module —</option>
-            {MODULE_LIST.map((m) => (
-              <option key={m.key} value={m.key}>{m.label}</option>
-            ))}
-          </select>
-        </div>
-        <div className="flex flex-col gap-1">
-          <label className="text-xs font-semibold text-gmv-muted">Quyền</label>
-          <select
-            className="gmv-field px-2.5 py-2 border border-gmv-border rounded-gmv-md text-sm bg-gmv-canvas"
-            value={newLevel}
-            onChange={(e) => setNewLevel(e.target.value as AccessLevel)}
-          >
-            <option value="full">{ACCESS_LABELS.full}</option>
-            <option value="read">{ACCESS_LABELS.read}</option>
-            <option value="none">{ACCESS_LABELS.none}</option>
-          </select>
+      <div className="pm-override-header">
+        <div>
+          <h3>Override cá nhân</h3>
+          <p>Ghi đè quyền nhóm cho từng người cụ thể</p>
         </div>
         <button
-          type="submit"
-          disabled={adding}
-          className="px-4 py-2 text-sm font-semibold text-white bg-gmv-primary rounded-gmv-md hover:bg-gmv-primary-hover disabled:opacity-50"
+          type="button"
+          className="px-4 py-2 text-sm font-semibold text-white bg-gmv-primary rounded-gmv-md hover:bg-gmv-primary-hover"
+          onClick={() => setPickerOpen(true)}
         >
-          {adding ? "Đang thêm..." : "+ Thêm override"}
+          + Thêm override
         </button>
-      </form>
-
-      {error && <p className="text-sm text-gmv-danger mb-3">{error}</p>}
+      </div>
 
       {loading ? (
         <p className="text-sm text-gmv-muted py-6 text-center">Đang tải...</p>
-      ) : overrides.length === 0 ? (
+      ) : staffList.length === 0 ? (
         <div className="pm-override-empty">
-          <p>Chưa có override nào. Thêm override để cấp quyền đặc biệt cho cá nhân vượt quyền bộ phận.</p>
+          <p>Chưa có override nào. Bấm &quot;Thêm override&quot; để cấp quyền đặc biệt cho cá nhân vượt quyền bộ phận.</p>
         </div>
       ) : (
         <TableWrap>
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-gmv-border bg-gmv-table-head text-left text-xs font-semibold uppercase tracking-wide text-gmv-muted">
-                <th className="px-4 py-3">Email</th>
-                <th className="px-4 py-3">Module</th>
-                <th className="px-4 py-3">Quyền</th>
-                <th className="px-4 py-3">Thao tác</th>
+                <th className="px-4 py-3">Nhân viên</th>
+                <th className="px-4 py-3">Nhóm</th>
+                <th className="px-4 py-3">Vai trò</th>
+                <th className="px-4 py-3">Override đang có</th>
+                <th className="px-4 py-3" />
               </tr>
             </thead>
             <tbody>
-              {overrides.map((o) => (
-                <tr key={`${o.email}-${o.moduleKey}`} className="border-b border-gmv-border last:border-0 hover:bg-gmv-row-hover">
-                  <td className="px-4 py-2 font-medium text-gmv-text-strong">{o.email}</td>
-                  <td className="px-4 py-2 text-gmv-text">{moduleLabel(o.moduleKey)}</td>
-                  <td className="px-4 py-2">
-                    <span className={`pm-access-badge ${o.accessLevel}`} style={{ cursor: "default" }}>
-                      <AccessIcon level={o.accessLevel} />
-                      {ACCESS_LABELS[o.accessLevel]}
-                    </span>
+              {staffList.map((s) => (
+                <tr key={s.user.email} className="border-b border-gmv-border last:border-0 hover:bg-gmv-row-hover">
+                  <td className="px-4 py-3">
+                    <div className="font-semibold text-gmv-text-strong">{s.user.fullName || s.user.email}</div>
+                    {s.user.fullName && (
+                      <div className="text-xs text-gmv-muted mt-0.5">{s.user.email}</div>
+                    )}
                   </td>
-                  <td className="px-4 py-2">
+                  <td className="px-4 py-3">
+                    {s.user.department ? (
+                      <span className={deptBadgeClass(s.user.department)}>{s.user.department}</span>
+                    ) : (
+                      <span className="text-gmv-muted">—</span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3 capitalize">{s.user.staffRole || "User"}</td>
+                  <td className="px-4 py-3">
+                    {s.count > 0 ? (
+                      <span className="pm-module-count-badge">{s.count} module</span>
+                    ) : (
+                      <span className="text-gmv-muted">Dùng quyền nhóm</span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3 text-right">
                     <button
-                      onClick={() => handleDelete(o.email, o.moduleKey)}
-                      className="text-xs text-gmv-danger hover:underline"
+                      type="button"
+                      className="px-3 py-1.5 text-xs font-semibold rounded-gmv-md border border-gmv-border text-gmv-text hover:bg-gmv-bg"
+                      onClick={() => openDrawerForUser(s.user)}
                     >
-                      Xoá
+                      Chỉnh sửa
                     </button>
                   </td>
                 </tr>
@@ -419,6 +441,28 @@ function OverrideTab() {
             </tbody>
           </table>
         </TableWrap>
+      )}
+
+      {/* Staff picker modal */}
+      <StaffPickerModal
+        open={pickerOpen}
+        onClose={() => setPickerOpen(false)}
+        onSelect={openDrawerForUser}
+        existingEmails={existingEmails}
+      />
+
+      {/* Override drawer */}
+      {drawerUser && (
+        <OverrideDrawer
+          user={drawerUser}
+          matrix={matrix}
+          existingOverrides={drawerOverrides}
+          onClose={() => setDrawerUser(null)}
+          onSaved={() => {
+            setDrawerUser(null);
+            load();
+          }}
+        />
       )}
     </div>
   );

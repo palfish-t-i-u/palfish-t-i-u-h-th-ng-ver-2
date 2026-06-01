@@ -26,7 +26,7 @@ export default function Modal({ open, onClose, title, children, className, overl
 
   return (
     <div
-      className={cn("fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4", overlayClassName)}
+      className={cn("fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4", overlayClassName)}
       onClick={onClose}
       role="presentation"
     >
