@@ -374,10 +374,6 @@ export function parsePaymentDate(dateStr: string): Date | null {
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
-function pad2(n: number) {
-  return String(n).padStart(2, "0");
-}
-
 const VN_TZ = "Asia/Ho_Chi_Minh";
 
 /** Display parts for table cells — always in Vietnam timezone (UTC+7). */
