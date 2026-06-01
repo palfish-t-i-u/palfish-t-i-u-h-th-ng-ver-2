@@ -984,6 +984,63 @@ def backfill_ledger_from_active_requests(sb, actor_email: str = "backfill@b3") -
     return {"created": created, "skipped": skipped, "failed": failed}
 
 
+def sync_ledger_for_pr(
+    sb,
+    pr_id: str,
+    actor_email: str = "pr-paid@auto",
+) -> dict[str, int]:
+    """Khi PR đủ tiền — sync mọi course có Order ID trong AR gắn PR (idempotent)."""
+    created = 0
+    skipped = 0
+    failed = 0
+    pr_id = str(pr_id or "").strip()
+    if not pr_id:
+        return {"created": 0, "skipped": 0, "failed": 0}
+    try:
+        ar_res = (
+            sb.table("active_requests")
+            .select("id, uids_data")
+            .eq("pr_id", pr_id)
+            .execute()
+        )
+    except Exception as exc:
+        print(f"[revenue] sync PR {pr_id} read AR failed: {exc}")
+        return {"created": 0, "skipped": 0, "failed": 0}
+
+    for ar_row in ar_res.data or []:
+        ar_id = str(ar_row.get("id") or "")
+        for uid_block in ar_row.get("uids_data") or []:
+            if not isinstance(uid_block, dict):
+                continue
+            for course in uid_block.get("courses") or []:
+                if not isinstance(course, dict):
+                    continue
+                code = str(course.get("code") or "").strip()
+                order_id = str(course.get("order_id") or course.get("orderId") or "").strip()
+                if not code or not order_id:
+                    continue
+                before = (
+                    sb.table("so_doanh_thu")
+                    .select("id")
+                    .eq("loai_nhap", "tu_dong")
+                    .eq("crm_order_id", order_id)
+                    .limit(1)
+                    .execute()
+                )
+                had = bool(before.data)
+                rid = sync_ledger_from_ar_course(sb, ar_id, code, actor_email)
+                if rid and not had:
+                    created += 1
+                elif rid or had:
+                    skipped += 1
+                else:
+                    failed += 1
+
+    if created:
+        print(f"[revenue] PR {pr_id} → Sổ: created={created}, skipped={skipped}, failed={failed}")
+    return {"created": created, "skipped": skipped, "failed": failed}
+
+
 def sync_ledger_from_m3_order(sb, don_hang_id: str, actor_email: str) -> str | None:
     """Tạo dòng Sổ từ đơn vừa M3 approve. Trả về id dòng hoặc None nếu đã có."""
     try:
@@ -1464,6 +1521,15 @@ def register_revenue_routes(app, get_supabase) -> None:
             raise
         except Exception as exc:
             raise HTTPException(500, f"Lỗi pivot Doanh thu Sale: {exc}") from exc
+
+    @app.post("/revenue/ledger/backfill-b3")
+    def backfill_ledger_b3(authorization: str | None = Header(None)):
+        """Tạo dòng Sổ thiếu từ active_requests đã có Order ID (ops)."""
+        sb = _sb()
+        actor = resolve_actor(sb, authorization)
+        _require_ops(actor)
+        stats = backfill_ledger_from_active_requests(sb, actor.email or "backfill@b3")
+        return {"ok": True, **stats}
 
     @app.post("/revenue/ledger/sync-gsheet")
     def sync_ledger_from_gsheet(body: GsheetSyncBody, authorization: str | None = Header(None)):
