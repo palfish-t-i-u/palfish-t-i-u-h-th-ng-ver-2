@@ -1,4 +1,5 @@
-import type { ReactNode } from "react";
+import { type ReactNode, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { cn } from "../../lib/cn";
 
 interface Props {
@@ -9,13 +10,7 @@ interface Props {
   align?: "start" | "center" | "end";
 }
 
-const alignCls = {
-  start: "left-0 translate-x-0",
-  center: "left-1/2 -translate-x-1/2",
-  end: "left-auto right-0 translate-x-0",
-} as const;
-
-/** Hover tooltip — desktop. */
+/** Hover tooltip — renders via portal to escape overflow/stacking contexts. */
 export default function Tooltip({
   content,
   children,
@@ -23,22 +18,58 @@ export default function Tooltip({
   panelClassName,
   align = "center",
 }: Props) {
+  const triggerRef = useRef<HTMLSpanElement>(null);
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+
+  function handleMouseEnter() {
+    if (!triggerRef.current) return;
+    const r = triggerRef.current.getBoundingClientRect();
+    let left: number;
+    if (align === "start") left = r.left;
+    else if (align === "end") left = r.right;
+    else left = r.left + r.width / 2;
+    setPos({ top: r.top + window.scrollY, left: left + window.scrollX });
+  }
+
+  function handleMouseLeave() {
+    setPos(null);
+  }
+
   return (
-    <span className={cn("group/tip relative inline-flex", className)}>
+    <span
+      ref={triggerRef}
+      className={cn("inline-flex", className)}
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
+    >
       {children}
-      <span
-        role="tooltip"
-        className={cn(
-          "pointer-events-none absolute bottom-full z-50 mb-2 w-max max-w-sm",
-          alignCls[align],
-          "rounded-gmv-md border border-gmv-border bg-gmv-canvas px-3 py-2.5 text-left text-xs leading-relaxed text-gmv-text shadow-gmv-2",
-          "opacity-0 transition-opacity duration-150 group-hover/tip:opacity-100",
-          "invisible group-hover/tip:visible",
-          panelClassName
+      {pos &&
+        createPortal(
+          <span
+            role="tooltip"
+            style={{
+              position: "absolute",
+              top: pos.top - 8,
+              left: pos.left,
+              transform: align === "center"
+                ? "translate(-50%, -100%)"
+                : align === "end"
+                ? "translate(-100%, -100%)"
+                : "translateY(-100%)",
+              zIndex: 9999,
+              pointerEvents: "none",
+              marginBottom: 8,
+            }}
+            className={cn(
+              "w-max max-w-sm",
+              "rounded-gmv-md border border-gmv-border bg-gmv-canvas px-3 py-2.5 text-left text-xs leading-relaxed text-gmv-text shadow-gmv-2",
+              panelClassName
+            )}
+          >
+            {content}
+          </span>,
+          document.body
         )}
-      >
-        {content}
-      </span>
     </span>
   );
 }

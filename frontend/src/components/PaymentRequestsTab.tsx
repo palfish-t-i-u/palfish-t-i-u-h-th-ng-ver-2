@@ -62,6 +62,7 @@ export default function PaymentRequestsTab() {
   const [status, setStatus] = useState<StatusFilter>("all");
   const [dateRange, setDateRange] = useState<DateRange>(EMPTY_RANGE);
   const [tab, setTab] = useState<RequestBucket>("tracking");
+  const [hideTest, setHideTest] = useState(true);
   const [createOpen, setCreateOpen] = useState(false);
   const [cancelTarget, setCancelTarget] = useState<PaymentRequest | null>(null);
   const [qrView, setQrView] = useState<{ qr: PaymentAttempt; request: PaymentRequest } | null>(null);
@@ -132,6 +133,7 @@ export default function PaymentRequestsTab() {
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return requests.filter((r) => {
+      if (hideTest && r.isTest) return false;
       if (tab === "cancelled") {
         if (r.state !== "cancelled") return false;
       } else {
@@ -143,7 +145,7 @@ export default function PaymentRequestsTab() {
       if (!q) return true;
       return [r.id, r.name, r.uid, r.phone].some((v) => v.toLowerCase().includes(q));
     });
-  }, [requests, tab, status, dateRange, search, arByPrId]);
+  }, [requests, tab, status, dateRange, search, arByPrId, hideTest]);
 
   const chips = useMemo(
     () => [
@@ -616,9 +618,11 @@ export default function PaymentRequestsTab() {
           dateRange={dateRange}
           chips={chips}
           showChips={tab !== "cancelled"}
+          hideTest={hideTest}
           onSearch={setSearch}
           onStatus={setStatus}
           onDateRange={setDateRange}
+          onHideTestChange={setHideTest}
         />
 
         {apiNote && (
