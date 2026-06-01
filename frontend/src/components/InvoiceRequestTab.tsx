@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { usePaymentFlow } from "../contexts/PaymentFlowContext";
+import { usePermission } from "../hooks/usePermission";
 import {
   deriveInvoiceRows,
   formatAddress,
@@ -63,12 +64,14 @@ function InvoiceDetailDrawer({
   onClose,
   onIssue,
   onOpenAr,
+  readOnly = false,
 }: {
   row: InvoiceRow | null;
   open: boolean;
   onClose: () => void;
   onIssue: () => void;
   onOpenAr: (arId: string) => void;
+  readOnly?: boolean;
 }) {
   if (!row) {
     return (
@@ -190,7 +193,7 @@ function InvoiceDetailDrawer({
             )}
           </div>
           <div style={{ display: "flex", gap: 8 }}>
-            {!isIssued && (
+            {!isIssued && !readOnly && (
               <button type="button" className="btn btn-primary" onClick={onIssue} disabled={!isRowComplete(row)}>
                 <Icons.Doc size={14} /> Xuất hoá đơn
               </button>
@@ -203,6 +206,7 @@ function InvoiceDetailDrawer({
 }
 
 export default function InvoiceRequestTab() {
+  const { readOnly } = usePermission("module4");
   const { activeRequests, requests, issueInvoiceForCourse, navigate, nav, setNav, apiNote } =
     usePaymentFlow();
   const [tab, setTab] = useState<"pending" | "issued">("pending");
@@ -370,7 +374,7 @@ export default function InvoiceRequestTab() {
           </div>
         )}
 
-        {confirmBulkIssue && (
+        {confirmBulkIssue && !readOnly && (
           <div
             className="panel"
             style={{
@@ -680,6 +684,7 @@ export default function InvoiceRequestTab() {
         row={openRow}
         open={!!openKey}
         onClose={() => setOpenKey(null)}
+        readOnly={readOnly}
         onIssue={() => {
           if (openRow) {
             issueInvoiceForCourse(openRow.ar.id, openRow.course.courseCode);
