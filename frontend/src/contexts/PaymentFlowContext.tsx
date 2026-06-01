@@ -10,6 +10,7 @@ import {
   type ReactNode,
 } from "react";
 import { endpoints } from "../lib/api";
+import { notifyLedgerChanged } from "../lib/ledgerEvents";
 import type {
   ActiveRequest,
   AddPaymentAttemptPayload,
@@ -417,6 +418,9 @@ export function PaymentFlowProvider({
       const saved = fromApiActiveRequest(res.data);
       setActiveRequests((prev) => prev.map((x) => (x.id === next.id ? saved : x)));
       setApiNote("");
+      if (saved.uids.some((u) => u.courses.some((c) => c.orderId?.trim()))) {
+        notifyLedgerChanged();
+      }
     } catch {
       setApiNote("Đã đổi tạm trên giao diện; máy chủ chưa lưu được thay đổi Kích hoạt khóa học.");
     }
@@ -474,6 +478,7 @@ export function PaymentFlowProvider({
         }
         setActiveRequests((prev) => prev.map((x) => (x.id === arId ? ar : x)));
         setApiNote("");
+        if (trimmed) notifyLedgerChanged();
         return { ok: true };
       } catch {
         try {
@@ -489,6 +494,7 @@ export function PaymentFlowProvider({
           }
           setActiveRequests((prev) => prev.map((x) => (x.id === arId ? ar : x)));
           setApiNote("");
+          if (trimmed) notifyLedgerChanged();
           return { ok: true };
         } catch {
           const error = "Khong luu duoc Order ID len may chu.";

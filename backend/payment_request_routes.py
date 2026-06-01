@@ -760,6 +760,13 @@ def recompute_payment_request_totals(sb, payment_request_id: str) -> dict[str, A
         .execute()
     )
     updated = update_res.data[0] if update_res.data else {**pr_row, "received": received, "state": state}
+    if state in ("done", "over"):
+        try:
+            from revenue_routes import sync_ledger_for_pr
+
+            sync_ledger_for_pr(sb, payment_request_id)
+        except Exception as exc:
+            print(f"[payment_requests] ledger sync after PR paid skipped: {exc}")
     return {
         "payment_request_id": payment_request_id,
         "received": received,

@@ -10,6 +10,7 @@ import {
   typeDisplayLabel,
 } from "../lib/ledgerCellStyle";
 import { LEDGER_VND_RMB_RATE } from "../lib/loaiLabel";
+import { LEDGER_CHANGED } from "../lib/ledgerEvents";
 import type { LedgerPatchPayload, LedgerSummaryResponse, RevenueLedgerRow } from "../types/revenue";
 import LedgerFormModal, {
   emptyLedgerForm,
@@ -120,10 +121,10 @@ export default function SoDoanhThuTab() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState("");
 
-  const [draftFrom, setDraftFrom] = useState(() => todayIso());
-  const [draftTo, setDraftTo] = useState(() => todayIso());
-  const [appliedFrom, setAppliedFrom] = useState(() => todayIso());
-  const [appliedTo, setAppliedTo] = useState(() => todayIso());
+  const [draftFrom, setDraftFrom] = useState("");
+  const [draftTo, setDraftTo] = useState("");
+  const [appliedFrom, setAppliedFrom] = useState("");
+  const [appliedTo, setAppliedTo] = useState("");
   const [draftLoai, setDraftLoai] = useState("");
   const [appliedLoai, setAppliedLoai] = useState("");
   const [draftTeam, setDraftTeam] = useState("");
@@ -181,6 +182,14 @@ export default function SoDoanhThuTab() {
 
   useEffect(() => {
     reloadAll();
+  }, [reloadAll]);
+
+  useEffect(() => {
+    const onLedgerChanged = () => {
+      reloadAll();
+    };
+    window.addEventListener(LEDGER_CHANGED, onLedgerChanged);
+    return () => window.removeEventListener(LEDGER_CHANGED, onLedgerChanged);
   }, [reloadAll]);
 
   const loadMore = useCallback(async () => {
@@ -352,7 +361,9 @@ export default function SoDoanhThuTab() {
   return (
     <div className="min-w-0 space-y-4 overflow-x-hidden">
       <p className="text-xs text-gmv-muted">
-        Sổ doanh thu: lọc theo <span className="font-medium text-gmv-text">Pay Time</span> (ngày tiền về).
+        Sổ doanh thu: lọc theo <span className="font-medium text-gmv-text">Pay Time</span> (ngày tiền về PR,
+        không phải ngày kích hoạt). Dòng tự động từ B3 chỉ xuất hiện sau khi{" "}
+        <span className="font-medium text-gmv-text">lưu Order ID</span> — tab tự làm mới khi có thay đổi.
         Quy đổi RMB mặc định:{" "}
         <span className="font-medium text-gmv-text">
           GMV (RMB) = VND ÷ {LEDGER_VND_RMB_RATE.toLocaleString("vi-VN")}
