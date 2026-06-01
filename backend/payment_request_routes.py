@@ -17,6 +17,7 @@ from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
 from rbac import resolve_actor, visible_creator_emails
+from admin_routes import require_module_write
 
 from payos_qr import create_payos_payment_link, fetch_payos_payment, payos_payment_is_paid
 
@@ -1038,6 +1039,7 @@ def register_payment_request_routes(app, get_supabase) -> None:
     ):
         sb = _sb_or_503(get_supabase)
         actor = resolve_actor(sb, authorization)
+        require_module_write(sb, actor, "paymentRequests")
         request_res = (
             sb.table("payment_requests")
             .select("*")
@@ -1095,6 +1097,7 @@ def register_payment_request_routes(app, get_supabase) -> None:
     ):
         sb = _sb_or_503(get_supabase)
         actor = resolve_actor(sb, authorization)
+        require_module_write(sb, actor, "paymentRequests")
         request_res = (
             sb.table("payment_requests")
             .select("*")
@@ -1186,6 +1189,7 @@ def register_payment_request_routes(app, get_supabase) -> None:
     ):
         sb = _sb_or_503(get_supabase)
         actor = resolve_actor(sb, authorization)
+        require_module_write(sb, actor, "paymentRequests")
         row = _payment_request_insert_row(body)
         row["sale_email"] = actor.email.lower()
         try:
@@ -1207,6 +1211,7 @@ def register_payment_request_routes(app, get_supabase) -> None:
     ):
         sb = _sb_or_503(get_supabase)
         actor = resolve_actor(sb, authorization)
+        require_module_write(sb, actor, "paymentRequests")
         request_res = (
             sb.table("payment_requests")
             .select("*")
