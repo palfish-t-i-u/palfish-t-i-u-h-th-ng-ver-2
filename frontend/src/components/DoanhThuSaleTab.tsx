@@ -1,5 +1,7 @@
 import { Fragment, useCallback, useEffect, useState } from "react";
 import { endpoints } from "../lib/api";
+import { useRefetchOnFocus } from "../hooks/useRefetchOnFocus";
+import { useRealtimeTable } from "../hooks/useRealtimeTable";
 import type { RevenuePivotResponse } from "../types/revenue";
 import Button from "./ui/Button";
 import { Input } from "./ui/Input";
@@ -40,6 +42,9 @@ export default function DoanhThuSaleTab() {
   useEffect(() => {
     load();
   }, [load]);
+
+  useRealtimeTable(["so_doanh_thu"], load);
+  useRefetchOnFocus(load);
 
   const months = data?.months ?? [];
 

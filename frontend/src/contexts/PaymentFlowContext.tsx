@@ -11,6 +11,8 @@ import {
 } from "react";
 import { endpoints } from "../lib/api";
 import { notifyLedgerChanged } from "../lib/ledgerEvents";
+import { useRefetchOnFocus } from "../hooks/useRefetchOnFocus";
+import { useRealtimeTable } from "../hooks/useRealtimeTable";
 import type {
   ActiveRequest,
   AddPaymentAttemptPayload,
@@ -186,6 +188,17 @@ export function PaymentFlowProvider({
     }, POLL_MS);
     return () => window.clearInterval(timer);
   }, [pendingQr, loadData]);
+
+  const silentRefetch = useCallback(() => {
+    void loadData({ silent: true });
+  }, [loadData]);
+
+  useRealtimeTable(
+    ["payment_requests", "payment_lines", "active_requests"],
+    silentRefetch,
+  );
+
+  useRefetchOnFocus(silentRefetch);
 
   const updateRequest = useCallback((id: string, updater: (r: PaymentRequest) => PaymentRequest) => {
     setRequests((prev) => prev.map((r) => (r.id === id ? normalizeRequest(updater(r)) : r)));

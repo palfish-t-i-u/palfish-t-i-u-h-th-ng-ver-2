@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { endpoints } from "../lib/api";
+import { useRefetchOnFocus } from "../hooks/useRefetchOnFocus";
+import { useRealtimeTable } from "../hooks/useRealtimeTable";
 import type { InvoiceOrder } from "../types/order";
 import { usePermission } from "../hooks/usePermission";
 import Button from "./ui/Button";
@@ -76,6 +78,9 @@ export default function Module3Tab() {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  useRealtimeTable(["active_requests"], load);
+  useRefetchOnFocus(load);
 
   async function handleSaveCrm(order: InvoiceOrder) {
     setSaving((p) => ({ ...p, [order.id]: true }));

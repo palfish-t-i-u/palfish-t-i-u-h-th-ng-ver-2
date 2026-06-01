@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { endpoints } from "../lib/api";
 import { formatApiError } from "../lib/apiErrors";
+import { useRefetchOnFocus } from "../hooks/useRefetchOnFocus";
+import { useRealtimeTable } from "../hooks/useRealtimeTable";
 import { cn } from "../lib/cn";
 import { formatVndNumber } from "../lib/vndFormat";
 import {
@@ -191,6 +193,9 @@ export default function SoDoanhThuTab() {
     window.addEventListener(LEDGER_CHANGED, onLedgerChanged);
     return () => window.removeEventListener(LEDGER_CHANGED, onLedgerChanged);
   }, [reloadAll]);
+
+  useRealtimeTable(["so_doanh_thu"], reloadAll);
+  useRefetchOnFocus(reloadAll);
 
   const loadMore = useCallback(async () => {
     if (loadingMoreRef.current || !hasMore || loading) return;
