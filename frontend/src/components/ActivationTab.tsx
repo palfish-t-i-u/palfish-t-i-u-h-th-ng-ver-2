@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { COURSE_PACKAGES } from "../constants/coursePackages";
 import { usePaymentFlow } from "../contexts/PaymentFlowContext";
+import { usePermission } from "../hooks/usePermission";
 import { endpoints } from "../lib/api";
 import type { ActiveRequest, ActiveCourse, ActiveUidGroup, PaymentRequest } from "../types/paymentRequest";
 import type { ActiveRequestStatus } from "../types/paymentRequest";
@@ -336,6 +337,7 @@ function ActivationDetailDrawer({
   onNavigateInvoice,
   onOpenPr,
   onGoToInvoice,
+  readOnly = false,
 }: {
   ar: ActiveRequest | null;
   pr: ReturnType<typeof usePaymentFlow>["requests"][0] | null;
@@ -347,6 +349,7 @@ function ActivationDetailDrawer({
   onNavigateInvoice: () => void | Promise<void>;
   onOpenPr?: () => void;
   onGoToInvoice: (courseCode: string) => void | Promise<void>;
+  readOnly?: boolean;
 }) {
   const [courseDrafts, setCourseDrafts] = useState<
     Record<string, { packageName: string; amount: string; orderId: string }>
@@ -540,6 +543,7 @@ function ActivationDetailDrawer({
   const receivedRemaining = pr ? remainingReceivedAmount(ar, pr) : 0;
   const receivedUsagePct = pr?.received ? Math.min(100, Math.round((total / pr.received) * 100)) : 0;
   const isStructureSaving = !!savingStructureKey;
+  const locked = readOnly || isStructureSaving;
   const setUidDraftField = (
     uidIdx: number,
     field: "uid" | "phone" | "country",
@@ -648,7 +652,7 @@ function ActivationDetailDrawer({
   };
 
   const openAddUidDialog = () => {
-    if (isStructureSaving) return;
+    if (locked) return;
     setNewUidValue("");
     setNewUidError("");
     setAddUidDialogOpen(true);
@@ -1091,19 +1095,19 @@ function ActivationDetailDrawer({
                   type="button"
                   className="btn btn-outline btn-sm"
                   onClick={() => void saveUidHeader(uidIdx)}
-                  disabled={!isUidDirty || isStructureSaving}
+                  disabled={!isUidDirty || locked}
                   title={isUidDirty ? "Lưu UID/SĐT/quốc gia lên Supabase" : "Chưa có thay đổi"}
                 >
                   <Icons.Check size={12} strokeWidth={2.5} /> Lưu
                 </button>
                 <span className="spacer" />
                 <span className="num-pill">{uidObj.courses.length} khoá</span>
-                {ar.uids.length > 1 && (
+                {ar.uids.length > 1 && !readOnly && (
                   <button
                     type="button"
                     className="btn btn-outline btn-sm"
                     style={{ color: "var(--danger)" }}
-                    disabled={isStructureSaving}
+                    disabled={locked}
                     onClick={() => void removeUid(uidIdx)}
                   >
                     <Icons.XCircle size={13} /> Xoá UID
@@ -1188,7 +1192,7 @@ function ActivationDetailDrawer({
                     <button
                       type="button"
                       className="btn btn-outline btn-sm"
-                      disabled={isStructureSaving || !isCourseDirty(course.courseCode) || !!savingCourse[course.courseCode]}
+                      disabled={locked || !isCourseDirty(course.courseCode) || !!savingCourse[course.courseCode]}
                       onClick={() => void saveCourseRow(uidIdx, courseIdx, course.courseCode)}
                       title={
                         isCourseDirty(course.courseCode)
@@ -1253,19 +1257,21 @@ function ActivationDetailDrawer({
                       </button>
                     )}
                   </div>
-                  <button
-                    type="button"
-                    className="remove-btn"
-                    disabled={isStructureSaving || (ar.uids.length === 1 && uidObj.courses.length === 1)}
-                    onClick={() => void removeCourse(uidIdx, courseIdx)}
-                    title={
-                      ar.uids.length === 1 && uidObj.courses.length === 1
-                        ? "Không thể xoá khoá học cuối cùng"
-                        : "Xoá khoá học"
-                    }
-                  >
-                    <Icons.Close size={14} />
-                  </button>
+                  {!readOnly && (
+                    <button
+                      type="button"
+                      className="remove-btn"
+                      disabled={locked || (ar.uids.length === 1 && uidObj.courses.length === 1)}
+                      onClick={() => void removeCourse(uidIdx, courseIdx)}
+                      title={
+                        ar.uids.length === 1 && uidObj.courses.length === 1
+                          ? "Không thể xoá khoá học cuối cùng"
+                          : "Xoá khoá học"
+                      }
+                    >
+                      <Icons.Close size={14} />
+                    </button>
+                  )}
                 </div>
               ))}
               <datalist id={`packages-${ar.id}`}>
@@ -1274,9 +1280,11 @@ function ActivationDetailDrawer({
                 ))}
               </datalist>
               <div className="uid-group-foot">
-                <button type="button" className="uid-add-link" onClick={() => void addCourse(uidIdx)} disabled={isStructureSaving}>
-                  <Icons.Plus size={13} /> {isStructureSaving ? "Đang lưu..." : "Thêm gói học cho UID này"}
-                </button>
+                {!readOnly && (
+                  <button type="button" className="uid-add-link" onClick={() => void addCourse(uidIdx)} disabled={locked}>
+                    <Icons.Plus size={13} /> {isStructureSaving ? "Đang lưu..." : "Thêm gói học cho UID này"}
+                  </button>
+                )}
                 <span style={{ color: "var(--text-3)" }}>
                   Tổng UID này:{" "}
                   <strong style={{ color: "var(--text)" }}>
@@ -1294,13 +1302,15 @@ function ActivationDetailDrawer({
             </div>
           )}
 
-          <button type="button" className="add-uid-card" onClick={openAddUidDialog} disabled={isStructureSaving}>
-            <Icons.Plus size={14} style={{ verticalAlign: "middle", marginRight: 6 }} />
-            {isStructureSaving ? "Đang lưu..." : "Thêm UID khác (cho phép 1 PR mua nhiều khoá cho nhiều người)"}
-          </button>
+          {!readOnly && (
+            <button type="button" className="add-uid-card" onClick={openAddUidDialog} disabled={locked}>
+              <Icons.Plus size={14} style={{ verticalAlign: "middle", marginRight: 6 }} />
+              {isStructureSaving ? "Đang lưu..." : "Thêm UID khác (cho phép 1 PR mua nhiều khoá cho nhiều người)"}
+            </button>
+          )}
 
-          {addUidDialogOpen && (
-            <div className="gmv-prototype-modal-scrim" onClick={() => !isStructureSaving && setAddUidDialogOpen(false)}>
+          {addUidDialogOpen && !readOnly && (
+            <div className="gmv-prototype-modal-scrim" onClick={() => !locked && setAddUidDialogOpen(false)}>
               <div
                 className="modal"
                 style={{ width: "min(420px, 92vw)" }}
@@ -1311,8 +1321,8 @@ function ActivationDetailDrawer({
                   <button
                     type="button"
                     className="drawer-close"
-                    onClick={() => !isStructureSaving && setAddUidDialogOpen(false)}
-                    disabled={isStructureSaving}
+                    onClick={() => !locked && setAddUidDialogOpen(false)}
+                    disabled={locked}
                   >
                     <Icons.Close size={16} />
                   </button>
@@ -1344,7 +1354,7 @@ function ActivationDetailDrawer({
                     type="button"
                     className="btn btn-outline"
                     onClick={() => setAddUidDialogOpen(false)}
-                    disabled={isStructureSaving}
+                    disabled={locked}
                   >
                     Hủy
                   </button>
@@ -1352,7 +1362,7 @@ function ActivationDetailDrawer({
                     type="button"
                     className="btn btn-primary"
                     onClick={() => void submitAddUid()}
-                    disabled={isStructureSaving}
+                    disabled={locked}
                   >
                     {isStructureSaving ? "Đang lưu..." : "Thêm UID"}
                   </button>
@@ -1409,6 +1419,7 @@ function ActivationDetailDrawer({
 }
 
 export default function ActivationTab() {
+  const { readOnly } = usePermission("module3");
   const {
     activeRequests,
     requests,
@@ -1490,9 +1501,11 @@ export default function ActivationTab() {
             <strong style={{ color: "var(--text-2)" }}>Order ID CRM</strong> cho từng Course Code. Khi đủ Order ID →
             sang B4 xuất hoá đơn.
           </div>
-          <button type="button" className="btn btn-primary" onClick={() => setCreateOpen(true)}>
-            <Icons.Plus size={15} strokeWidth={2.3} /> Tạo Active Request
-          </button>
+          {!readOnly && (
+            <button type="button" className="btn btn-primary" onClick={() => setCreateOpen(true)}>
+              <Icons.Plus size={15} strokeWidth={2.3} /> Tạo Active Request
+            </button>
+          )}
         </div>
 
         {apiNote && (
@@ -1688,6 +1701,7 @@ export default function ActivationTab() {
         pr={openPr}
         requestsForAutofill={requests}
         open={!!openArId}
+        readOnly={readOnly}
         onClose={() => setOpenArId(null)}
         onUpdate={(next) => updateActiveRequest(next.id, () => next)}
         onPersist={persistActiveRequest}

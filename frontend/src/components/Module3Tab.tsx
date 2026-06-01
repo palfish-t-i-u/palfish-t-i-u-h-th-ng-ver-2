@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { endpoints } from "../lib/api";
 import type { InvoiceOrder } from "../types/order";
+import { usePermission } from "../hooks/usePermission";
 import Button from "./ui/Button";
 import Badge from "./ui/Badge";
 import { Table, TableWrap, Td, Th, Tr } from "./ui/Table";
@@ -39,6 +40,7 @@ function StatusBadge({ status }: { status: string }) {
 }
 
 export default function Module3Tab() {
+  const { readOnly } = usePermission("module3");
   const [orders, setOrders] = useState<InvoiceOrder[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -220,59 +222,63 @@ export default function Module3Tab() {
           <Button variant="secondary" size="sm" onClick={load} disabled={loading || exportingBatch || savingBulk}>
             {loading ? "Đang tải…" : "Làm mới"}
           </Button>
-          <Button
-            variant="secondary"
-            size="md"
-            disabled={saveable.length === 0 || savingBulk || exportingBatch || loading}
-            onClick={() => setConfirmBulkSave(true)}
-          >
-            {savingBulk ? (
-              <>
-                <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M21 12a9 9 0 1 1-6.219-8.56" />
-                </svg>
-                Đang lưu…
-              </>
-            ) : (
-              <>
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v14a2 2 0 0 1-2 2z" />
-                  <polyline points="17 21 17 13 7 13 7 21" />
-                  <polyline points="7 3 7 8 15 8" />
-                </svg>
-                Lưu hàng loạt
-                {saveable.length > 0 && (
-                  <Badge tone="primary" className="ml-1">{saveable.length}</Badge>
+          {!readOnly && (
+            <>
+              <Button
+                variant="secondary"
+                size="md"
+                disabled={saveable.length === 0 || savingBulk || exportingBatch || loading}
+                onClick={() => setConfirmBulkSave(true)}
+              >
+                {savingBulk ? (
+                  <>
+                    <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+                    </svg>
+                    Đang lưu…
+                  </>
+                ) : (
+                  <>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v14a2 2 0 0 1-2 2z" />
+                      <polyline points="17 21 17 13 7 13 7 21" />
+                      <polyline points="7 3 7 8 15 8" />
+                    </svg>
+                    Lưu hàng loạt
+                    {saveable.length > 0 && (
+                      <Badge tone="primary" className="ml-1">{saveable.length}</Badge>
+                    )}
+                  </>
                 )}
-              </>
-            )}
-          </Button>
-          <Button
-            variant="primary"
-            size="md"
-            disabled={pending.length === 0 || exportingBatch || loading}
-            onClick={() => setConfirmBatchExport(true)}
-            className="font-bold"
-          >
-            {exportingBatch ? (
-              <>
-                <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M21 12a9 9 0 1 1-6.219-8.56" />
-                </svg>
-                Đang xuất…
-              </>
-            ) : (
-              <>
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M5 12h14M12 5l7 7-7 7" />
-                </svg>
-                Xuất hàng loạt
-                {pending.length > 0 && (
-                  <Badge tone="ok" className="ml-1">{pending.length}</Badge>
+              </Button>
+              <Button
+                variant="primary"
+                size="md"
+                disabled={pending.length === 0 || exportingBatch || loading}
+                onClick={() => setConfirmBatchExport(true)}
+                className="font-bold"
+              >
+                {exportingBatch ? (
+                  <>
+                    <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+                    </svg>
+                    Đang xuất…
+                  </>
+                ) : (
+                  <>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M5 12h14M12 5l7 7-7 7" />
+                    </svg>
+                    Xuất hàng loạt
+                    {pending.length > 0 && (
+                      <Badge tone="ok" className="ml-1">{pending.length}</Badge>
+                    )}
+                  </>
                 )}
-              </>
-            )}
-          </Button>
+              </Button>
+            </>
+          )}
         </div>
       </div>
 
@@ -386,7 +392,8 @@ export default function Module3Tab() {
                           }}
                           placeholder="Điền ID từ CRM"
                           className="w-full min-w-[140px] rounded-gmv-md border border-gmv-border bg-gmv-bg px-2 py-1.5 text-xs text-gmv-text-strong placeholder:text-gmv-muted/60 focus:border-gmv-primary focus:outline-none"
-                          disabled={isBusy}
+                          disabled={isBusy || readOnly}
+                          readOnly={readOnly}
                         />
                       )}
                     </Td>
@@ -414,9 +421,9 @@ export default function Module3Tab() {
                       {fmtMoney(o.tongTien)}
                     </Td>
 
-                    {/* Thao tác — Lưu thông tin (ẩn khi DA_XUAT_HD) */}
+                    {/* Thao tác — Lưu thông tin (ẩn khi DA_XUAT_HD hoặc readOnly) */}
                     <Td className="text-center">
-                      {isFullyDone ? null : (
+                      {isFullyDone || readOnly ? null : (
                         <Button
                           size="sm"
                           variant={didSave ? "secondary" : isDirty ? "primary" : "secondary"}
@@ -436,7 +443,7 @@ export default function Module3Tab() {
                           {isBatchConfirming ? <span className="animate-spin text-xs text-gmv-muted">âŸ³</span> : null}
                           <StatusBadge status={o.trangThaiThuTuc} />
                         </span>
-                      ) : (
+                      ) : readOnly ? null : (
                         <button
                           onClick={() => handleExport(o)}
                           disabled={isBusy}
