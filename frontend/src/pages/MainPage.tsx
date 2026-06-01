@@ -9,6 +9,7 @@ import { useMe } from "../hooks/useMe";
 import ProfilePage from "./ProfilePage";
 import AppShell, { type NavItem } from "../layouts/AppShell";
 import Badge from "../components/ui/Badge";
+import { DEPARTMENT_LIST } from "../types/permissions";
 
 const BC01SalesPerformance = lazy(() => import("../components/reports/BC01SalesPerformance"));
 const BC02KeyDataReport = lazy(() => import("../components/reports/BC02KeyDataReport"));
@@ -302,7 +303,7 @@ function MainPageInner({
       title={head.title}
       subtitle={head.subtitle}
       userEmail={user?.email || undefined}
-      userRole={profile?.role}
+      userRole={DEPARTMENT_LIST.find((d) => d.key === profile?.department)?.label ?? profile?.role}
       isDevMode={isDevMode}
       onSignOut={signOut}
     >
