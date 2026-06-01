@@ -140,14 +140,21 @@ DEPARTMENT_ALIASES = {
     "sale": "sale",
     "sales": "sale",
     "ban hang": "sale",
+    "doi sale": "sale",
+    "doi ban hang": "sale",
+    "team sale": "sale",
+    "sales team": "sale",
     "hr": "hr",
     "human resources": "hr",
     "nhan su": "hr",
+    "doi nhan su": "hr",
+    "nhan su & quan tri": "hr",
     "marketing": "marketing",
     "mkt": "marketing",
     "cs": "cs",
     "customer service": "cs",
     "cskh": "cs",
+    "doi cs": "cs",
 }
 
 
@@ -169,6 +176,7 @@ def _normalize_department(value: Any) -> str | None:
         return None
     normalized = unicodedata.normalize("NFKD", raw.lower())
     normalized = "".join(ch for ch in normalized if not unicodedata.combining(ch))
+    normalized = normalized.replace("đ", "d")
     normalized = " ".join(normalized.replace("_", " ").replace("-", " ").split())
     if normalized in VALID_DEPARTMENTS:
         return normalized
@@ -181,12 +189,14 @@ def _actor_department(actor) -> str | None:
         actor.department,
         staff.get("department"),
         staff.get("depart6_name"),
-        staff.get("team"),
     ]
     for candidate in candidates:
         department = _normalize_department(candidate)
         if department:
             return department
+    # Sale/leader đã link CRM nhưng metadata kiểu "Đội Sale" chưa map được
+    if (getattr(actor, "role", None) or "sale") in ("sale", "leader") and staff:
+        return "sale"
     return None
 
 
@@ -199,6 +209,11 @@ def _compute_permissions(sb, actor) -> dict[str, str]:
         return _permissions_with_level("none")
 
     permissions = _permissions_with_level("none")
+    defaults = DEFAULT_DEPT_PERMISSIONS.get(department, {})
+    for module_key, access_level in defaults.items():
+        if module_key in permissions and access_level in ACCESS_LEVELS:
+            permissions[module_key] = access_level
+
     try:
         res = (
             sb.table("department_permissions")
