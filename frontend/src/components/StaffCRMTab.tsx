@@ -91,7 +91,7 @@ export default function StaffCRMTab() {
         <TableWrap>
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-gmv-border bg-gmv-table-head text-left text-xs font-semibold uppercase tracking-wide text-gmv-muted">
+              <tr className="border-b border-gmv-border bg-gmv-table-head text-left text-xs font-semibold uppercase tracking-wide text-gmv-text-strong">
                 <th className="px-4 py-3">CRM name</th>
                 <th className="px-4 py-3">Email link</th>
                 <th className="px-4 py-3">Team</th>
@@ -108,7 +108,7 @@ export default function StaffCRMTab() {
                 >
                   <td className="px-4 py-2 font-medium text-gmv-text-strong">{s.crmName}</td>
                   <td className="px-4 py-2 text-gmv-text">
-                    {s.email || <span className="text-gmv-muted">chưa link</span>}
+                    {s.email || <span className="italic text-gmv-text-secondary">chưa link</span>}
                   </td>
                   <td className="px-4 py-2 text-gmv-text">{s.team || "—"}</td>
                   <td className="px-4 py-2 text-gmv-text">{s.subTeam || "—"}</td>
