@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { usePaymentFlow } from "../contexts/PaymentFlowContext";
+import { usePermission } from "../hooks/usePermission";
 import { endpoints } from "../lib/api";
 import {
   type FlatTransaction,
@@ -309,6 +310,7 @@ function TxnStatusBadge({ status }: { status: TxnDisplayStatus }) {
 }
 
 export default function ReconciliationTab() {
+  const { readOnly } = usePermission("reconciliation");
   const { requests, confirmTransaction, rejectTransaction, navigate, apiNote } = usePaymentFlow();
   const [tab, setTab] = useState<TabId>("awaiting");
   const [search, setSearch] = useState("");
@@ -643,7 +645,7 @@ export default function ReconciliationTab() {
             <span className="right-meta">{filtered.length} kết quả</span>
           </div>
 
-          {selectedIds.size > 0 && (
+          {selectedIds.size > 0 && !readOnly && (
             <div className="bulk-bar">
               <Icons.CheckCircle size={16} />
               <span>
@@ -839,7 +841,7 @@ export default function ReconciliationTab() {
                         <TxnStatusBadge status={status} />
                       </td>
                       <td style={{ textAlign: "center" }} onClick={(e) => e.stopPropagation()}>
-                        {status === "awaiting" ? (
+                        {status === "awaiting" && !readOnly ? (
                           <div className="row-quick-actions">
                             <button
                               type="button"
@@ -1127,7 +1129,7 @@ export default function ReconciliationTab() {
                   <strong style={{ color: "var(--success-text)" }}>Đã xác nhận</strong> trên Payment Request.
                 </div>
                 <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", flexWrap: "wrap" }}>
-                  {status === "awaiting" && (
+                  {status === "awaiting" && !readOnly && (
                     <>
                       <button
                         type="button"
@@ -1142,12 +1144,12 @@ export default function ReconciliationTab() {
                       </button>
                     </>
                   )}
-                  {status === "rejected" && (
+                  {status === "rejected" && !readOnly && (
                     <button type="button" className="btn btn-outline" onClick={() => void handleConfirm(drawerTxn)}>
                       <Icons.Clock size={14} /> Mở lại — Xác nhận
                     </button>
                   )}
-                  {status === "confirmed" && (
+                  {status === "confirmed" && !readOnly && (
                     <button
                       type="button"
                       className="btn btn-outline"

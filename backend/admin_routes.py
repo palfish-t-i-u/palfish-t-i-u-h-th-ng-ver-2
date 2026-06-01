@@ -209,6 +209,23 @@ def _compute_permissions(sb, actor) -> dict[str, str]:
         access_level = row.get("access_level")
         if module_key in permissions and access_level in ACCESS_LEVELS:
             permissions[module_key] = access_level
+
+    # Personal overrides take priority over department permissions
+    try:
+        overrides = (
+            sb.table("permission_overrides")
+            .select("module_key, access_level")
+            .eq("user_email", actor.email.lower())
+            .execute()
+        )
+        for row in overrides.data or []:
+            mk = row.get("module_key")
+            al = row.get("access_level")
+            if mk in permissions and al in ACCESS_LEVELS:
+                permissions[mk] = al
+    except Exception:
+        pass  # override lookup failure should not block login
+
     return permissions
 
 
