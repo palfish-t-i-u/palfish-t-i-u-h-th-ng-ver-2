@@ -85,7 +85,6 @@ export default function SignUpPage() {
     setLoading(true);
     setError("");
 
-    const dept = DEPARTMENTS.find((d) => d.value === form.department);
     const meta = {
       full_name: form.full_name.trim(),
       phone: form.phone.trim(),
