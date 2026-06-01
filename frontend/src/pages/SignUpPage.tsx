@@ -89,7 +89,7 @@ export default function SignUpPage() {
     const meta = {
       full_name: form.full_name.trim(),
       phone: form.phone.trim(),
-      department: dept?.label ?? form.department,
+      department: form.department,
       team: form.team,
     };
 

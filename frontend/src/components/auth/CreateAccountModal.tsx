@@ -4,14 +4,14 @@ import { Button, Input, Select } from "../ui";
 import Modal from "../ui/Modal";
 
 const DEPARTMENTS = [
-  { value: "Đội Sale", label: "Đội Sale" },
-  { value: "Đội CS", label: "Đội CS" },
-  { value: "Đội HR", label: "Đội HR" },
-  { value: "Marketing", label: "Marketing" },
+  { value: "sale", label: "Đội Sale" },
+  { value: "cs", label: "Đội CS" },
+  { value: "hr", label: "Đội HR" },
+  { value: "marketing", label: "Marketing" },
 ];
 
 const TEAMS_BY_DEPT: Record<string, string[]> = {
-  "Đội Sale": ["Inhouse 1", "Inhouse 2", "HCM", "Offline Linh Đan"],
+  sale: ["Inhouse 1", "Inhouse 2", "HCM", "Offline Linh Đan"],
 };
 
 const ROLES = [
