@@ -14,6 +14,6 @@ export function usePermission(moduleKey: string): {
     level,
     loading,
     canView: !loading && level !== "none",
-    readOnly: level === "read",
+    readOnly: loading || level === "read",
   };
 }
