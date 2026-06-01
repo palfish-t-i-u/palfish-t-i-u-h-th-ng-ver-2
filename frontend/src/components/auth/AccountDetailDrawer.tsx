@@ -52,15 +52,24 @@ function deptBadgeClass(u: AuthUserRow): string {
 }
 
 const DEPARTMENTS = [
-  { value: "Đội Sale", label: "Đội Sale" },
-  { value: "Đội CS", label: "Đội CS" },
-  { value: "Đội HR", label: "Đội HR" },
-  { value: "Marketing", label: "Marketing" },
+  { value: "sale", label: "Đội Sale" },
+  { value: "cs", label: "Đội CS" },
+  { value: "hr", label: "Đội HR" },
+  { value: "marketing", label: "Marketing" },
 ];
 
 const TEAMS_BY_DEPT: Record<string, string[]> = {
-  "Đội Sale": ["Inhouse 1", "Inhouse 2", "HCM", "Offline Linh Đan"],
+  sale: ["Inhouse 1", "Inhouse 2", "HCM", "Offline Linh Đan"],
 };
+
+function normalizeDeptKey(raw: string | null | undefined): string {
+  const d = (raw || "").toLowerCase();
+  if (d.includes("sale") || d.includes("bán hàng")) return "sale";
+  if (d.includes("hr") || d.includes("nhân sự") || d.includes("quản trị")) return "hr";
+  if (d.includes("marketing") || d.includes("mkt")) return "marketing";
+  if (d.includes("cs")) return "cs";
+  return raw || "";
+}
 
 const ROLE_CARDS: { key: "User" | "Leader" | "Admin"; desc: string }[] = [
   { key: "User", desc: "Chỉ xem thông tin cá nhân và dữ liệu liên quan đến tài khoản của chính họ." },
@@ -96,7 +105,7 @@ export default function AccountDetailDrawer({ user, onClose, onUpdated, linkedCr
       setSelectedRole(roleLabel(user.staffRole));
       setEditName(user.fullName || user.crmName || "");
       setEditPhone(user.phone || "");
-      setEditDept(user.department || "");
+      setEditDept(normalizeDeptKey(user.department));
       setEditTeam(user.team || "");
       setEditing(false);
       setError("");
