@@ -400,5 +400,9 @@ export const endpoints = {
     }) => api.post("/admin/permission-overrides", body),
     deletePermissionOverride: (email: string, moduleKey: string) =>
       api.delete("/admin/permission-overrides", { params: { email, module_key: moduleKey } }),
+    bulkOverride: (body: {
+      email: string;
+      overrides: Record<string, string>;
+    }) => api.put("/admin/permission-overrides/bulk", body),
   },
 };
