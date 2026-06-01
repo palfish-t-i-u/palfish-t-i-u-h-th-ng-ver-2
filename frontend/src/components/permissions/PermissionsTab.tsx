@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   MODULE_LIST,
   MODULE_SECTIONS,
@@ -8,8 +8,12 @@ import {
   cycleAccessLevel,
   type AccessLevel,
 } from "../../types/permissions";
+import type { AuthUserRow } from "../../types/profile";
 import { useMe } from "../../hooks/useMe";
+import { endpoints } from "../../lib/api";
 import { TableWrap } from "../ui/Table";
+import StaffPickerModal from "./StaffPickerModal";
+import OverrideDrawer from "./OverrideDrawer";
 import "./permissions.css";
 
 type TabId = "byGroup" | "override";
@@ -26,20 +30,63 @@ export default function PermissionsTab() {
   const canManage = profile?.canManageStaff ?? false;
 
   const [tab, setTab] = useState<TabId>("byGroup");
-
-  // Local state — will be replaced by API when BE is ready
   const [matrix, setMatrix] = useState<Record<string, Record<string, AccessLevel>>>(
     () => structuredClone(DEFAULT_PERMISSIONS)
   );
+  const [, setLoaded] = useState(false);
+  const [overrideCount, setOverrideCount] = useState(0);
 
-  function handleCycle(dept: string, moduleKey: string) {
+  const loadMatrix = useCallback(async () => {
+    try {
+      const res = await endpoints.admin.permissions();
+      const remote = res.data.matrix as Record<string, Record<string, AccessLevel>>;
+      const isEmpty = !remote || Object.values(remote).every(
+        (mods) => Object.values(mods).every((l) => l === "none")
+      );
+      if (isEmpty) {
+        await endpoints.admin.seedPermissions();
+        const seeded = await endpoints.admin.permissions();
+        setMatrix(seeded.data.matrix as Record<string, Record<string, AccessLevel>>);
+      } else {
+        setMatrix(remote);
+      }
+    } catch {
+      // API lỗi → dùng DEFAULT_PERMISSIONS
+    } finally {
+      setLoaded(true);
+    }
+  }, []);
+
+  useEffect(() => { loadMatrix(); }, [loadMatrix]);
+
+  useEffect(() => {
+    endpoints.admin.permissionOverrides()
+      .then((res) => setOverrideCount((res.data.overrides || []).length))
+      .catch(() => {});
+  }, []);
+
+  async function handleCycle(dept: string, moduleKey: string) {
     if (!canManage) return;
+    const current = matrix[dept]?.[moduleKey] ?? "none";
+    const next = cycleAccessLevel(current);
     setMatrix((prev) => {
-      const next = structuredClone(prev);
-      const current = next[dept]?.[moduleKey] ?? "none";
-      next[dept] = { ...next[dept], [moduleKey]: cycleAccessLevel(current) };
-      return next;
+      const updated = structuredClone(prev);
+      updated[dept] = { ...updated[dept], [moduleKey]: next };
+      return updated;
     });
+    try {
+      await endpoints.admin.patchPermission({
+        department: dept,
+        module_key: moduleKey,
+        access_level: next,
+      });
+    } catch {
+      setMatrix((prev) => {
+        const reverted = structuredClone(prev);
+        reverted[dept] = { ...reverted[dept], [moduleKey]: current };
+        return reverted;
+      });
+    }
   }
 
   // ── KPI stats ──
@@ -54,7 +101,7 @@ export default function PermissionsTab() {
         if (level === "none") noneCount++;
       }
     }
-    return { totalModules, fullCount, noneCount, overrideCount: 0 };
+    return { totalModules, fullCount, noneCount };
   }, [matrix]);
 
   // ── Group modules by section ──
@@ -115,7 +162,7 @@ export default function PermissionsTab() {
           <div className="pm-kpi-icon amber">👤</div>
           <div className="pm-kpi-body">
             <div className="pm-kpi-label">Override cá nhân</div>
-            <div className="pm-kpi-value">{kpi.overrideCount}</div>
+            <div className="pm-kpi-value">{overrideCount}</div>
             <div className="pm-kpi-sub">quyền được chỉnh riêng</div>
           </div>
         </div>
@@ -156,7 +203,7 @@ export default function PermissionsTab() {
           onClick={() => setTab("override")}
         >
           Override cá nhân
-          <span className="pm-tab-count">{kpi.overrideCount}</span>
+          <span className="pm-tab-count">{overrideCount}</span>
         </button>
       </div>
 
@@ -211,11 +258,211 @@ export default function PermissionsTab() {
       )}
 
       {tab === "override" && (
-        <div className="pm-override-empty">
-          <p style={{ fontSize: 16, marginBottom: 8 }}>🚧</p>
-          <p>Tính năng Override cá nhân sẽ được phát triển sau khi BE hoàn thành bảng <code>permission_overrides</code>.</p>
-          <p style={{ marginTop: 8, fontSize: 12 }}>Hiện tại, các quyền đặc biệt vẫn được quản lý thông qua vai trò trong Tài khoản Auth.</p>
+        <OverrideTab matrix={matrix} onCountChange={setOverrideCount} />
+      )}
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════
+   Override Tab — sub-component (staff-grouped)
+   ═══════════════════════════════════════ */
+
+interface OverrideRow { email: string; moduleKey: string; accessLevel: AccessLevel }
+
+interface StaffOverrideSummary {
+  user: AuthUserRow;
+  overrides: Record<string, AccessLevel>;
+  count: number;
+}
+
+function OverrideTab({
+  matrix,
+  onCountChange,
+}: {
+  matrix: Record<string, Record<string, AccessLevel>>;
+  onCountChange: (n: number) => void;
+}) {
+  const [allOverrides, setAllOverrides] = useState<OverrideRow[]>([]);
+  const [authUsers, setAuthUsers] = useState<AuthUserRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [drawerUser, setDrawerUser] = useState<AuthUserRow | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [ovRes, usersRes] = await Promise.all([
+        endpoints.admin.permissionOverrides(),
+        endpoints.admin.authUsers(),
+      ]);
+      const ov = ovRes.data.overrides || [];
+      setAllOverrides(ov);
+      setAuthUsers(usersRes.data.users || []);
+      onCountChange(ov.length);
+    } catch {
+      /* ignore */
+    } finally {
+      setLoading(false);
+    }
+  }, [onCountChange]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const staffList = useMemo<StaffOverrideSummary[]>(() => {
+    const byEmail = new Map<string, Record<string, AccessLevel>>();
+    for (const o of allOverrides) {
+      const key = o.email.toLowerCase();
+      if (!byEmail.has(key)) byEmail.set(key, {});
+      byEmail.get(key)![o.moduleKey] = o.accessLevel;
+    }
+
+    const result: StaffOverrideSummary[] = [];
+    for (const [email, overrides] of byEmail) {
+      const user = authUsers.find((u) => u.email.toLowerCase() === email);
+      const stub: AuthUserRow = user ?? {
+        id: email,
+        email,
+        providers: [],
+        lastSignIn: null,
+        createdAt: null,
+        bannedUntil: null,
+        crmName: null,
+        staffRole: null,
+        isBanned: false,
+        isActivated: false,
+        department: null,
+        team: null,
+        fullName: null,
+        phone: null,
+      };
+      result.push({ user: stub, overrides, count: Object.keys(overrides).length });
+    }
+    return result;
+  }, [allOverrides, authUsers]);
+
+  const existingEmails = useMemo(
+    () => new Set(staffList.map((s) => s.user.email.toLowerCase())),
+    [staffList]
+  );
+
+  function openDrawerForUser(user: AuthUserRow) {
+    setDrawerUser(user);
+    setPickerOpen(false);
+  }
+
+  function deptBadgeClass(dept: string | null): string {
+    if (!dept) return "";
+    const key = DEPARTMENT_LIST.find(
+      (d) => dept.toLowerCase().includes(d.key) || dept.toLowerCase().includes(d.label.toLowerCase())
+    )?.key;
+    return key ? `pm-dept-badge ${key}` : "pm-dept-badge";
+  }
+
+  const drawerOverrides = useMemo(() => {
+    if (!drawerUser) return {};
+    const email = drawerUser.email.toLowerCase();
+    const map: Record<string, AccessLevel> = {};
+    for (const o of allOverrides) {
+      if (o.email.toLowerCase() === email) map[o.moduleKey] = o.accessLevel;
+    }
+    return map;
+  }, [drawerUser, allOverrides]);
+
+  return (
+    <div>
+      <div className="pm-override-header">
+        <div>
+          <h3>Override cá nhân</h3>
+          <p>Ghi đè quyền nhóm cho từng người cụ thể</p>
         </div>
+        <button
+          type="button"
+          className="px-4 py-2 text-sm font-semibold text-white bg-gmv-primary rounded-gmv-md hover:bg-gmv-primary-hover"
+          onClick={() => setPickerOpen(true)}
+        >
+          + Thêm override
+        </button>
+      </div>
+
+      {loading ? (
+        <p className="text-sm text-gmv-muted py-6 text-center">Đang tải...</p>
+      ) : staffList.length === 0 ? (
+        <div className="pm-override-empty">
+          <p>Chưa có override nào. Bấm &quot;Thêm override&quot; để cấp quyền đặc biệt cho cá nhân vượt quyền bộ phận.</p>
+        </div>
+      ) : (
+        <TableWrap>
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-gmv-border bg-gmv-table-head text-left text-xs font-semibold uppercase tracking-wide text-gmv-muted">
+                <th className="px-4 py-3">Nhân viên</th>
+                <th className="px-4 py-3">Nhóm</th>
+                <th className="px-4 py-3">Vai trò</th>
+                <th className="px-4 py-3">Override đang có</th>
+                <th className="px-4 py-3" />
+              </tr>
+            </thead>
+            <tbody>
+              {staffList.map((s) => (
+                <tr key={s.user.email} className="border-b border-gmv-border last:border-0 hover:bg-gmv-row-hover">
+                  <td className="px-4 py-3">
+                    <div className="font-semibold text-gmv-text-strong">{s.user.fullName || s.user.email}</div>
+                    {s.user.fullName && (
+                      <div className="text-xs text-gmv-muted mt-0.5">{s.user.email}</div>
+                    )}
+                  </td>
+                  <td className="px-4 py-3">
+                    {s.user.department ? (
+                      <span className={deptBadgeClass(s.user.department)}>{s.user.department}</span>
+                    ) : (
+                      <span className="text-gmv-muted">—</span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3 capitalize">{s.user.staffRole || "User"}</td>
+                  <td className="px-4 py-3">
+                    {s.count > 0 ? (
+                      <span className="pm-module-count-badge">{s.count} module</span>
+                    ) : (
+                      <span className="text-gmv-muted">Dùng quyền nhóm</span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3 text-right">
+                    <button
+                      type="button"
+                      className="px-3 py-1.5 text-xs font-semibold rounded-gmv-md border border-gmv-border text-gmv-text hover:bg-gmv-bg"
+                      onClick={() => openDrawerForUser(s.user)}
+                    >
+                      Chỉnh sửa
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </TableWrap>
+      )}
+
+      {/* Staff picker modal */}
+      <StaffPickerModal
+        open={pickerOpen}
+        onClose={() => setPickerOpen(false)}
+        onSelect={openDrawerForUser}
+        existingEmails={existingEmails}
+      />
+
+      {/* Override drawer */}
+      {drawerUser && (
+        <OverrideDrawer
+          user={drawerUser}
+          matrix={matrix}
+          existingOverrides={drawerOverrides}
+          onClose={() => setDrawerUser(null)}
+          onSaved={() => {
+            setDrawerUser(null);
+            load();
+          }}
+        />
       )}
     </div>
   );

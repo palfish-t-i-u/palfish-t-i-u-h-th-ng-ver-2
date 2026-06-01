@@ -368,6 +368,10 @@ export const endpoints = {
         role?: string;
         crmName?: string;
         is_activated?: boolean;
+        full_name?: string;
+        phone?: string;
+        department?: string;
+        team?: string;
       }
     ) => api.patch(`/admin/auth-users/${userId}`, body),
     createAuthUser: (body: {
@@ -381,5 +385,24 @@ export const endpoints = {
       role?: string;
       is_activated?: boolean;
     }) => api.post("/admin/auth-users", body),
+    permissions: () => api.get("/admin/permissions"),
+    seedPermissions: () => api.post("/admin/permissions/seed"),
+    patchPermission: (body: {
+      department: string;
+      module_key: string;
+      access_level: string;
+    }) => api.patch("/admin/permissions", body),
+    permissionOverrides: () => api.get("/admin/permission-overrides"),
+    createPermissionOverride: (body: {
+      email: string;
+      module_key: string;
+      access_level: string;
+    }) => api.post("/admin/permission-overrides", body),
+    deletePermissionOverride: (email: string, moduleKey: string) =>
+      api.delete("/admin/permission-overrides", { params: { email, module_key: moduleKey } }),
+    bulkOverride: (body: {
+      email: string;
+      overrides: Record<string, string>;
+    }) => api.put("/admin/permission-overrides/bulk", body),
   },
 };

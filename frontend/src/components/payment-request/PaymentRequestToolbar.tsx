@@ -15,18 +15,22 @@ export default function PaymentRequestToolbar({
   dateRange,
   chips,
   showChips,
+  hideTest,
   onSearch,
   onStatus,
   onDateRange,
+  onHideTestChange,
 }: {
   search: string;
   status: StatusFilter;
   dateRange: DateRange;
   chips: FilterChip[];
   showChips: boolean;
+  hideTest?: boolean;
   onSearch: (value: string) => void;
   onStatus: (value: StatusFilter) => void;
   onDateRange: (value: DateRange) => void;
+  onHideTestChange?: (value: boolean) => void;
 }) {
   return (
     <div className="toolbar">
@@ -63,7 +67,18 @@ export default function PaymentRequestToolbar({
             </span>
           </button>
         ))}
-      <div style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
+      <div style={{ marginLeft: "auto", display: "flex", gap: 6, alignItems: "center" }}>
+        {onHideTestChange && (
+          <label style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12, color: "var(--text-2)", cursor: "pointer", userSelect: "none" }}>
+            <input
+              type="checkbox"
+              checked={!!hideTest}
+              onChange={(e) => onHideTestChange(e.target.checked)}
+              style={{ accentColor: "var(--primary)", cursor: "pointer" }}
+            />
+            Ẩn data test
+          </label>
+        )}
         <DateRangeFilter value={dateRange} onChange={onDateRange} />
       </div>
     </div>

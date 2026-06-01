@@ -180,7 +180,24 @@ export default function PaymentRequestTable({
                     </span>
                   </td>
                   <td>
-                    <div className="cell-name">{p.name}</div>
+                    <div className="cell-name">
+                      {p.name}
+                      {p.isTest && (
+                        <span style={{
+                          marginLeft: 6,
+                          padding: "1px 5px",
+                          fontSize: 10,
+                          fontWeight: 700,
+                          letterSpacing: "0.04em",
+                          borderRadius: 4,
+                          background: "var(--warn-100, #fef3c7)",
+                          color: "var(--warn-700, #b45309)",
+                          verticalAlign: "middle",
+                        }}>
+                          TEST
+                        </span>
+                      )}
+                    </div>
                     <div className="cell-sub" title={`${p.address}, ${p.ward || ""}, ${p.province || ""}`}>
                       {addrSub.slice(0, 38) || "—"}
                     </div>

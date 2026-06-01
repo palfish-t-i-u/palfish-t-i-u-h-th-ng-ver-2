@@ -17,6 +17,8 @@ export interface MeProfile {
   canAccessAdmin: boolean;
   canManageStaff: boolean;
   isActivated: boolean;
+  department: string | null;
+  permissions: Record<string, "full" | "read" | "none">;
 }
 
 export interface SaleStaffRow {

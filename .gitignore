@@ -6,6 +6,9 @@ _prototype_ref/
 docs/Brief_Module3_Module4_xuat_hoa_don.pdf
 scripts/gen_module34_brief_pdf.py
 
+# Backup/artifact từ cleanup scripts
+docs/artifacts/
+
 # Node modules (root level)
 node_modules/
 
