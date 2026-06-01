@@ -534,7 +534,7 @@ def _ledger_query(
         q = sb.table("so_doanh_thu").select(select, count=count)
     else:
         q = sb.table("so_doanh_thu").select(select)
-    q = q.order("pay_time", desc=True).order("id", desc=True)
+    q = q.order("pay_time", desc=True).order("created_at", desc=True)
     if from_date:
         q = q.gte("pay_time", f"{from_date[:10]}T00:00:00")
     if to_date:
@@ -667,7 +667,7 @@ def _fetch_so_doanh_thu(
     rows: list[dict[str, Any]] = []
     offset = 0
     while True:
-        q = sb.table("so_doanh_thu").select(select_cols).order("pay_time", desc=True).order("id", desc=True)
+        q = sb.table("so_doanh_thu").select(select_cols).order("pay_time", desc=True).order("created_at", desc=True)
         if from_date:
             q = q.gte("pay_time", f"{from_date[:10]}T00:00:00")
         if to_date:

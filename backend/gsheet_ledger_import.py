@@ -6,7 +6,7 @@ import hashlib
 import os
 import re
 import time
-from datetime import date, datetime
+from datetime import date, datetime, timedelta, timezone
 from datetime import time as dt_time
 from decimal import Decimal, ROUND_HALF_UP
 from typing import Any, Callable
@@ -583,6 +583,9 @@ def sync_gsheet_to_ledger(
 
     inserted = 0
     if not dry_run and to_insert:
+        base_ts = datetime.now(timezone.utc)
+        for idx, p in enumerate(to_insert):
+            p["created_at"] = (base_ts + timedelta(milliseconds=idx)).isoformat()
         log(f"Insert {len(to_insert)} dòng mới (batch {INSERT_BATCH})…")
         client = sb
         for i in range(0, len(to_insert), INSERT_BATCH):
