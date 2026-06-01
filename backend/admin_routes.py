@@ -249,6 +249,14 @@ def _compute_permissions(sb, actor) -> dict[str, str]:
     return permissions
 
 
+def require_module_write(sb, actor, module_key: str) -> None:
+    perms = _compute_permissions(sb, actor)
+    if perms.get(module_key, "none") != "full":
+        raise HTTPException(
+            403, "Bạn chỉ có quyền xem module này, không được phép thao tác"
+        )
+
+
 def _sb_or_503(get_sb):
     sb = get_sb()
     if not sb:
