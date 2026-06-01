@@ -83,22 +83,23 @@ export default function AccountDetailDrawer({ user, onClose, onUpdated, linkedCr
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
-  // Editable info fields
   const [editing, setEditing] = useState(false);
   const [editName, setEditName] = useState("");
   const [editPhone, setEditPhone] = useState("");
   const [editDept, setEditDept] = useState("");
   const [editTeam, setEditTeam] = useState("");
 
+  const editTeams = TEAMS_BY_DEPT[editDept] || [];
+
   useEffect(() => {
     if (user) {
       setSelectedRole(roleLabel(user.staffRole));
-      setError("");
-      setEditing(false);
       setEditName(user.fullName || user.crmName || "");
       setEditPhone(user.phone || "");
       setEditDept(user.department || "");
       setEditTeam(user.team || "");
+      setEditing(false);
+      setError("");
     }
   }, [user]);
 
@@ -107,15 +108,11 @@ export default function AccountDetailDrawer({ user, onClose, onUpdated, linkedCr
   const st = statusOf(user);
   const currentRole = roleLabel(user.staffRole);
   const roleChanged = selectedRole !== currentRole;
-  const infoChanged =
-    editing &&
-    (editName !== (user.fullName || user.crmName || "") ||
-      editPhone !== (user.phone || "") ||
-      editDept !== (user.department || "") ||
-      editTeam !== (user.team || ""));
-  const hasChanges = roleChanged || infoChanged;
-
-  const editTeams = TEAMS_BY_DEPT[editDept] ?? [];
+  const nameChanged = editing && editName !== (user.fullName || user.crmName || "");
+  const phoneChanged = editing && editPhone !== (user.phone || "");
+  const deptChanged = editing && editDept !== (user.department || "");
+  const teamChanged = editing && editTeam !== (user.team || "");
+  const hasChanges = roleChanged || nameChanged || phoneChanged || deptChanged || teamChanged;
 
   /* ── actions ── */
 
@@ -124,11 +121,13 @@ export default function AccountDetailDrawer({ user, onClose, onUpdated, linkedCr
     setSaving(true);
     setError("");
     try {
-      const patch: Record<string, unknown> = {};
+      const patch: Record<string, string> = {};
       if (roleChanged) patch.role = roleApiValue(selectedRole);
-      // Info fields are stored in user_metadata — PATCH endpoint may need BE support
-      // For now we send role change which is supported
-      await endpoints.admin.patchAuthUser(user!.id, patch as { role?: string });
+      if (nameChanged) patch.full_name = editName.trim();
+      if (phoneChanged) patch.phone = editPhone.trim();
+      if (deptChanged) patch.department = editDept.trim();
+      if (teamChanged) patch.team = editTeam.trim();
+      await endpoints.admin.patchAuthUser(user!.id, patch);
       setEditing(false);
       onUpdated();
     } catch {
@@ -181,17 +180,6 @@ export default function AccountDetailDrawer({ user, onClose, onUpdated, linkedCr
     navigator.clipboard.writeText(user!.email).catch(() => {});
   }
 
-  function handleStartEdit() {
-    setEditName(user!.fullName || user!.crmName || "");
-    setEditPhone(user!.phone || "");
-    setEditDept(user!.department || "");
-    setEditTeam(user!.team || "");
-    setEditing(true);
-  }
-
-  function handleCancelEdit() {
-    setEditing(false);
-  }
 
   return (
     <>
@@ -278,15 +266,13 @@ export default function AccountDetailDrawer({ user, onClose, onUpdated, linkedCr
               <div className="aa-section-title">
                 <span>👤</span> Thông tin tài khoản
               </div>
-              {!editing ? (
-                <Button size="sm" variant="secondary" onClick={handleStartEdit}>
-                  ✏️ Chỉnh sửa
-                </Button>
-              ) : (
-                <Button size="sm" variant="secondary" onClick={handleCancelEdit}>
-                  Huỷ sửa
-                </Button>
-              )}
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => setEditing(!editing)}
+              >
+                {editing ? "Huỷ sửa" : "Chỉnh sửa"}
+              </Button>
             </div>
             <div className="aa-section-body">
               {editing ? (

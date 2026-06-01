@@ -378,16 +378,28 @@ function pad2(n: number) {
   return String(n).padStart(2, "0");
 }
 
-/** Display parts for table cells — handles ISO and legacy `YYYY-MM-DD HH:mm`. */
+const VN_TZ = "Asia/Ho_Chi_Minh";
+
+/** Display parts for table cells — always in Vietnam timezone (UTC+7). */
 export function formatPaymentDateTime(dateStr: string): { date: string; time: string } {
   const d = parsePaymentDate(dateStr);
   if (!d) {
     const [date = dateStr, time = ""] = dateStr.split(" ");
     return { date, time };
   }
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: VN_TZ,
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).formatToParts(d);
+  const get = (type: string) => parts.find((p) => p.type === type)?.value ?? "00";
   return {
-    date: `${pad2(d.getDate())}/${pad2(d.getMonth() + 1)}/${d.getFullYear()}`,
-    time: `${pad2(d.getHours())}:${pad2(d.getMinutes())}`,
+    date: `${get("day")}/${get("month")}/${get("year")}`,
+    time: `${get("hour")}:${get("minute")}`,
   };
 }
 

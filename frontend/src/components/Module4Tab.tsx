@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { endpoints } from "../lib/api";
 import type { InvoiceOrder } from "../types/order";
+import { usePermission } from "../hooks/usePermission";
 import Badge from "./ui/Badge";
 import Button from "./ui/Button";
 import { Table, TableWrap, Td, Th, Tr } from "./ui/Table";
@@ -38,6 +39,7 @@ function downloadBlob(blob: Blob, filename: string) {
 }
 
 export default function Module4Tab() {
+  const { readOnly } = usePermission("module4");
   const [activeTab, setActiveTab] = useState<InvoiceTab>("pending");
   const [pendingOrders, setPendingOrders] = useState<InvoiceOrder[]>([]);
   const [issuedOrders, setIssuedOrders] = useState<InvoiceOrder[]>([]);
@@ -130,15 +132,17 @@ export default function Module4Tab() {
           <Button variant="secondary" size="sm" onClick={load} disabled={loading || exporting}>
             {loading ? "Dang tai..." : "Lam moi"}
           </Button>
-          <Button
-            variant="primary"
-            size="md"
-            disabled={activeTab !== "pending" || pendingOrders.length === 0 || loading || exporting}
-            onClick={() => setConfirmExport(true)}
-            className="font-bold"
-          >
-            {exporting ? "Dang xuat..." : "Tai hoa don"}
-          </Button>
+          {!readOnly && (
+            <Button
+              variant="primary"
+              size="md"
+              disabled={activeTab !== "pending" || pendingOrders.length === 0 || loading || exporting}
+              onClick={() => setConfirmExport(true)}
+              className="font-bold"
+            >
+              {exporting ? "Dang xuat..." : "Tai hoa don"}
+            </Button>
+          )}
         </div>
       </div>
 
@@ -251,7 +255,7 @@ export default function Module4Tab() {
                     <Td className="whitespace-nowrap font-medium text-gmv-ok">{fmt(o.tongTien)}</Td>
                     <Td className="whitespace-nowrap text-xs text-gmv-muted">{fmtDate(o.m3ApprovedAt)}</Td>
                     <Td>
-                      {activeTab === "pending" ? (
+                      {activeTab === "pending" && !readOnly ? (
                         <Button
                           variant="danger"
                           size="sm"

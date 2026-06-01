@@ -51,6 +51,10 @@ class AuthUserPatchBody(BaseModel):
     crmName: str | None = None
     crm_name: str | None = None
     is_activated: bool | None = None
+    full_name: str | None = None
+    phone: str | None = None
+    department: str | None = None
+    team: str | None = None
 
 
 class AuthUserCreateBody(BaseModel):
@@ -77,6 +81,11 @@ class PermissionOverrideBody(BaseModel):
     access_level: str
 
 
+class BulkOverrideBody(BaseModel):
+    email: str
+    overrides: dict[str, str]  # module_key -> access_level ("full"/"read"/"none"/"reset")
+
+
 MODULE_LIST = [
     "dashboard",
     "paymentRequests",
@@ -95,6 +104,38 @@ MODULE_LIST = [
 ]
 VALID_DEPARTMENTS = {"sale", "hr", "marketing", "cs"}
 ACCESS_LEVELS = {"full", "read", "none"}
+
+DEFAULT_DEPT_PERMISSIONS: dict[str, dict[str, str]] = {
+    "sale": {
+        "dashboard": "full", "paymentRequests": "full",
+        "reconciliation": "full", "module3": "full", "module4": "read",
+        "revenueLedger": "read", "bc01": "read", "bc02": "read", "bc03": "read",
+        "module5": "none", "module6": "full",
+        "authAccounts": "none", "profile": "full", "permissions": "none",
+    },
+    "hr": {
+        "dashboard": "full", "paymentRequests": "full",
+        "reconciliation": "full", "module3": "full", "module4": "full",
+        "revenueLedger": "full", "bc01": "full", "bc02": "full", "bc03": "full",
+        "module5": "full", "module6": "full",
+        "authAccounts": "full", "profile": "full", "permissions": "full",
+    },
+    "marketing": {
+        "dashboard": "read", "paymentRequests": "none",
+        "reconciliation": "none", "module3": "none", "module4": "none",
+        "revenueLedger": "full", "bc01": "read", "bc02": "read", "bc03": "read",
+        "module5": "none", "module6": "none",
+        "authAccounts": "none", "profile": "full", "permissions": "none",
+    },
+    "cs": {
+        "dashboard": "read", "paymentRequests": "none",
+        "reconciliation": "none", "module3": "full", "module4": "none",
+        "revenueLedger": "none", "bc01": "none", "bc02": "none", "bc03": "none",
+        "module5": "none", "module6": "none",
+        "authAccounts": "none", "profile": "full", "permissions": "none",
+    },
+}
+
 DEPARTMENT_ALIASES = {
     "sale": "sale",
     "sales": "sale",
@@ -173,6 +214,23 @@ def _compute_permissions(sb, actor) -> dict[str, str]:
         access_level = row.get("access_level")
         if module_key in permissions and access_level in ACCESS_LEVELS:
             permissions[module_key] = access_level
+
+    # Personal overrides take priority over department permissions
+    try:
+        overrides = (
+            sb.table("permission_overrides")
+            .select("module_key, access_level")
+            .eq("user_email", actor.email.lower())
+            .execute()
+        )
+        for row in overrides.data or []:
+            mk = row.get("module_key")
+            al = row.get("access_level")
+            if mk in permissions and al in ACCESS_LEVELS:
+                permissions[mk] = al
+    except Exception:
+        pass  # override lookup failure should not block login
+
     return permissions
 
 
@@ -670,13 +728,21 @@ def register_admin_routes(app, get_supabase):
         if role_value is not None:
             updated_metadata["role"] = role_value
         if unlink_crm:
-            updated_metadata.pop("crmName", None)
-            updated_metadata.pop("crm_name", None)
+            updated_metadata["crmName"] = None
+            updated_metadata["crm_name"] = None
             updated_metadata["is_activated"] = False
         elif crm_name:
             updated_metadata["crmName"] = crm_name
         if body.is_activated is not None and not unlink_crm:
             updated_metadata["is_activated"] = body.is_activated
+        if body.full_name is not None:
+            updated_metadata["full_name"] = body.full_name.strip() or None
+        if body.phone is not None:
+            updated_metadata["phone"] = body.phone.strip() or None
+        if body.department is not None:
+            updated_metadata["department"] = body.department.strip() or None
+        if body.team is not None:
+            updated_metadata["team"] = body.team.strip() or None
 
         if updated_metadata != current_metadata:
             attrs["user_metadata"] = updated_metadata
@@ -788,12 +854,13 @@ def register_admin_routes(app, get_supabase):
         require_min_role(actor, "system")
 
         res = sb.table("department_permissions").select("*").execute()
-        matrix = {}
+        matrix: dict[str, dict[str, str]] = {}
+        for dept in VALID_DEPARTMENTS:
+            matrix[dept] = {mod: "none" for mod in MODULE_LIST}
         for r in res.data or []:
             dept = r["department"]
-            if dept not in matrix:
-                matrix[dept] = {}
-            matrix[dept][r["module_key"]] = r["access_level"]
+            if dept in matrix:
+                matrix[dept][r["module_key"]] = r["access_level"]
         return {"matrix": matrix}
 
     @app.patch("/admin/permissions")
@@ -812,6 +879,26 @@ def register_admin_routes(app, get_supabase):
         }, on_conflict="department, module_key").execute()
 
         return {"ok": True}
+
+    @app.post("/admin/permissions/seed")
+    def seed_admin_permissions(authorization: str | None = Header(None)):
+        sb = _sb_or_503(get_supabase)
+        actor = resolve_actor(sb, authorization)
+        require_min_role(actor, "system")
+
+        existing = sb.table("department_permissions").select("department, module_key").execute()
+        existing_keys = {(r["department"], r["module_key"]) for r in existing.data or []}
+
+        rows = []
+        for dept, modules in DEFAULT_DEPT_PERMISSIONS.items():
+            for mod, level in modules.items():
+                if (dept, mod) not in existing_keys:
+                    rows.append({"department": dept, "module_key": mod, "access_level": level})
+
+        if rows:
+            sb.table("department_permissions").insert(rows).execute()
+
+        return {"seeded": len(rows)}
 
     @app.get("/admin/permission-overrides")
     def get_permission_overrides(authorization: str | None = Header(None)):
@@ -854,5 +941,46 @@ def register_admin_routes(app, get_supabase):
 
         sb.table("permission_overrides").delete().eq("user_email", email.strip().lower()).eq("module_key", module_key.strip()).execute()
         return {"ok": True}
+
+    @app.put("/admin/permission-overrides/bulk")
+    def bulk_override(body: BulkOverrideBody, authorization: str | None = Header(None)):
+        """Set/reset all overrides for one user in a single call.
+
+        body.overrides is a dict: module_key -> access_level.
+        Use "reset" as the access_level to delete an override (revert to dept default).
+        Only modules present in the dict are touched; others are left unchanged.
+        """
+        sb = _sb_or_503(get_supabase)
+        actor = resolve_actor(sb, authorization)
+        require_min_role(actor, "system")
+
+        email = body.email.strip().lower()
+        upserts: list[dict] = []
+        deletes: list[str] = []
+
+        for mk, al in body.overrides.items():
+            mk = mk.strip()
+            if mk not in MODULE_LIST:
+                continue
+            if al == "reset":
+                deletes.append(mk)
+            elif al in ACCESS_LEVELS:
+                upserts.append({
+                    "user_email": email,
+                    "module_key": mk,
+                    "access_level": al,
+                })
+
+        if upserts:
+            sb.table("permission_overrides").upsert(
+                upserts, on_conflict="user_email, module_key"
+            ).execute()
+
+        for mk in deletes:
+            sb.table("permission_overrides").delete().eq(
+                "user_email", email
+            ).eq("module_key", mk).execute()
+
+        return {"ok": True, "upserted": len(upserts), "deleted": len(deletes)}
 
 

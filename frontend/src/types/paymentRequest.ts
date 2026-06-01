@@ -88,6 +88,7 @@ export interface PaymentRequest {
   saleEmail?: string;
   state: PaymentRequestStatus;
   payments: PaymentAttempt[];
+  isTest?: boolean;
 }
 
 export interface ActiveCourse {

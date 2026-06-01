@@ -193,6 +193,11 @@ def main() -> int:
         help="Comma-separated keyword list",
     )
     parser.add_argument(
+        "--pr-ids",
+        default="",
+        help="Comma-separated PR IDs to force-include (e.g. PR-2026-0007,PR-2026-0003). Bypasses keyword filter.",
+    )
+    parser.add_argument(
         "--backup-file",
         default="",
         help="Optional backup JSON path (default: docs/artifacts/task3_cleanup_backup_<ts>.json)",
@@ -201,6 +206,7 @@ def main() -> int:
 
     since = (args.since or "").strip() or None
     keyword_list = [k.strip() for k in (args.keywords or "").split(",") if k.strip()]
+    force_pr_ids = {p.strip() for p in (args.pr_ids or "").split(",") if p.strip()}
     if not keyword_list:
         print("Keyword list is empty.", file=sys.stderr)
         return 1
@@ -225,11 +231,14 @@ def main() -> int:
     pr_candidates = [
         row
         for row in payment_requests
-        if _is_on_or_after(row.get("created_at"), since)
-        and (
-            bool(pattern.search(_normalize_text(_blob_pr(row))))
-            or str(row.get("email") or "").lower().endswith("@example.com")
-            or str(row.get("sale_email") or "").lower().endswith("@example.com")
+        if str(row.get("id") or "") in force_pr_ids
+        or (
+            _is_on_or_after(row.get("created_at"), since)
+            and (
+                bool(pattern.search(_normalize_text(_blob_pr(row))))
+                or str(row.get("email") or "").lower().endswith("@example.com")
+                or str(row.get("sale_email") or "").lower().endswith("@example.com")
+            )
         )
     ]
     pr_ids = {str(row.get("id")) for row in pr_candidates if row.get("id")}
