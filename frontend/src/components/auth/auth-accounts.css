@@ -368,11 +368,12 @@
   flex-wrap: wrap;
 }
 
-/* ── Header bar with title + add button ── */
+/* ── Header bar with action buttons ── */
 .aa-header-bar {
   display: flex;
   align-items: center;
   justify-content: flex-end;
+  gap: 10px;
   margin-bottom: 16px;
 }
 
@@ -764,4 +765,237 @@
 .aa-crm-modal-footer-info strong {
   color: var(--gmv-primary);
   font-weight: 700;
+}
+
+/* ═══════════════════════════════════════════
+   DELETE ACCOUNTS MODAL
+   ═══════════════════════════════════════════ */
+
+.aa-delete-list {
+  border: 1px solid var(--gmv-border);
+  border-radius: var(--gmv-radius-md);
+  overflow: hidden;
+  margin-bottom: 14px;
+}
+
+.aa-delete-list-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  background: var(--gmv-table-head);
+  border-bottom: 1px solid var(--gmv-border);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--gmv-muted);
+}
+
+.aa-delete-list-body {
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.aa-delete-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 14px;
+  border-bottom: 1px solid var(--gmv-border);
+  cursor: pointer;
+  transition: background 0.1s;
+  font-size: 13px;
+}
+
+.aa-delete-row:last-child {
+  border-bottom: none;
+}
+
+.aa-delete-row:hover {
+  background: var(--gmv-row-hover);
+}
+
+.aa-delete-row.selected {
+  background: var(--gmv-danger-soft);
+}
+
+.aa-delete-empty {
+  padding: 20px;
+  text-align: center;
+  color: var(--gmv-muted);
+  font-size: 13px;
+}
+
+.aa-delete-checkbox-wrap {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.aa-delete-checkbox {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--gmv-danger);
+  cursor: pointer;
+}
+
+.aa-delete-col-email {
+  flex: 2;
+  min-width: 0;
+  font-weight: 500;
+  color: var(--gmv-text-strong);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.aa-delete-col-crm {
+  flex: 1.5;
+  min-width: 0;
+  color: var(--gmv-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.aa-delete-col-status {
+  flex: 1;
+  min-width: 110px;
+}
+
+.aa-delete-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.aa-delete-footer-info {
+  font-size: 13px;
+  color: var(--gmv-muted);
+}
+
+.aa-delete-footer-info strong {
+  color: var(--gmv-danger);
+  font-weight: 700;
+}
+
+/* ── Confirmation step ── */
+
+.aa-delete-confirm {
+  text-align: center;
+  padding: 8px 0 16px;
+}
+
+.aa-delete-confirm-icon {
+  font-size: 40px;
+  line-height: 1;
+  margin-bottom: 12px;
+}
+
+.aa-delete-confirm-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--gmv-text-strong);
+  margin-bottom: 8px;
+}
+
+.aa-delete-confirm-desc {
+  font-size: 13px;
+  color: var(--gmv-muted);
+  margin-bottom: 16px;
+}
+
+.aa-delete-confirm-desc strong {
+  color: var(--gmv-danger);
+}
+
+.aa-delete-confirm-list {
+  max-height: 200px;
+  overflow-y: auto;
+  border: 1px solid var(--gmv-border);
+  border-radius: var(--gmv-radius-md);
+  background: var(--gmv-danger-soft);
+  padding: 8px 14px;
+  text-align: left;
+}
+
+.aa-delete-confirm-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--gmv-border);
+  font-size: 13px;
+}
+
+.aa-delete-confirm-item:last-child {
+  border-bottom: none;
+}
+
+.aa-delete-confirm-email {
+  font-weight: 600;
+  color: var(--gmv-text-strong);
+}
+
+.aa-delete-confirm-crm {
+  color: var(--gmv-muted);
+  font-size: 12px;
+}
+
+/* ── Error banner + danh sách lỗi sau khi xóa hụt ── */
+
+.aa-delete-error-banner {
+  margin: 12px 0 8px;
+  padding: 10px 14px;
+  border: 1px solid var(--gmv-danger);
+  background: var(--gmv-danger-soft);
+  color: var(--gmv-danger);
+  border-radius: var(--gmv-radius-md);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.aa-delete-error-list {
+  margin-bottom: 12px;
+  padding: 10px 14px;
+  border: 1px solid var(--gmv-border);
+  background: var(--gmv-bg);
+  border-radius: var(--gmv-radius-md);
+  max-height: 160px;
+  overflow-y: auto;
+}
+
+.aa-delete-error-list-title {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--gmv-muted);
+  margin-bottom: 6px;
+}
+
+.aa-delete-error-item {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 4px 0;
+  font-size: 12px;
+  border-bottom: 1px dashed var(--gmv-border);
+}
+
+.aa-delete-error-item:last-child {
+  border-bottom: none;
+}
+
+.aa-delete-error-email {
+  font-weight: 600;
+  color: var(--gmv-text-strong);
+  flex-shrink: 0;
+}
+
+.aa-delete-error-reason {
+  color: var(--gmv-danger);
+  word-break: break-word;
 }
