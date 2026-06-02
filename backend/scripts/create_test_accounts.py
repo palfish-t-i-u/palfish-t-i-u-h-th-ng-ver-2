@@ -1,4 +1,4 @@
-"""One-shot script: create test.user@dev and test.leader@dev accounts.
+"""One-shot script: create test.user@dev, test.leader@dev, test.admin@dev accounts.
 
 Usage:
   cd backend
@@ -32,6 +32,16 @@ ACCOUNTS = [
             "role": "leader",
             "department": "ban_hang",
             "team": "Inhouse 1",
+            "is_activated": True,
+        },
+    },
+    {
+        "email": "test.admin@dev",
+        "password": "123456",
+        "user_metadata": {
+            "full_name": "Test Admin",
+            "role": "system",
+            "department": "nhan_su_quan_tri",
             "is_activated": True,
         },
     },
@@ -71,6 +81,8 @@ def main():
     print("\nDone. You can now log in with:")
     print("  test.user@dev   / 123456  (role: sale)")
     print("  test.leader@dev / 123456  (role: leader)")
+    print("  test.admin@dev  / 123456  (role: system/admin)")
+    print("\nDọn dữ liệu test: tìm PR/giao dịch có sale_email chứa '@dev'")
 
 
 if __name__ == "__main__":

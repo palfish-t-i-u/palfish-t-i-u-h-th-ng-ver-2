@@ -703,6 +703,7 @@ def _save_active_request(
         "pr_id": pr_id,
         "uids_data": uids_data,
         "status": status,
+        "is_test": bool(pr.get("is_test")) if pr else False,
     }
     if customer_name:
         row["customer_name"] = customer_name

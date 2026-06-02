@@ -116,6 +116,7 @@ export function fromApiPaymentRequest(raw: any): PaymentRequest {
     delta: raw.delta ?? 0,
     state: raw.state ?? "pending",
     payments: Array.isArray(raw.payments) ? raw.payments.map(fromApiAttempt) : [],
+    isTest: Boolean(raw.is_test ?? raw.isTest),
   };
 }
 
