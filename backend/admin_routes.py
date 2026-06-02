@@ -70,6 +70,10 @@ class AuthUserCreateBody(BaseModel):
     is_activated: bool = False
 
 
+class BulkDeleteAuthUsersBody(BaseModel):
+    user_ids: list[str]
+
+
 class PermissionPatchBody(BaseModel):
     department: str
     module_key: str
@@ -873,6 +877,92 @@ def register_admin_routes(app, get_supabase):
                 print(f"[admin] create_user CRM link failed: {exc}")
 
         return {"ok": True, "userId": new_id}
+
+    @app.post("/admin/auth-users/bulk-delete")
+    def bulk_delete_auth_users(
+        body: BulkDeleteAuthUsersBody,
+        authorization: str | None = Header(None),
+    ):
+        """Admin xóa nhiều tài khoản auth cùng lúc. Tự động gỡ liên kết CRM trước khi xóa.
+
+        An toàn:
+        - Cấm xóa chính mình (tránh tự khóa quyền truy cập).
+        - Cấm xóa các tài khoản trong SYSTEM_ADMIN_EMAILS (Hiếu/Kem/Minh…).
+        """
+        sb = _sb_or_503(get_supabase)
+        actor = resolve_actor(sb, authorization)
+        require_min_role(actor, "system")
+
+        if not body.user_ids:
+            raise HTTPException(400, "Danh sách user_ids không được rỗng")
+
+        actor_email = (getattr(actor, "email", "") or "").strip().lower()
+        protected_emails = _system_admin_emails()
+
+        deleted: list[str] = []
+        errors: list[dict[str, str]] = []
+
+        for uid in body.user_ids:
+            email = ""
+            try:
+                # Lấy thông tin user để biết email và CRM
+                try:
+                    user_res = sb.auth.admin.get_user_by_id(uid)
+                    user = _auth_user_to_dict(user_res)
+                except Exception:
+                    user = {}
+
+                email = str(user.get("email") or "").strip().lower()
+
+                # Chặn tự xóa chính mình
+                if email and actor_email and email == actor_email:
+                    errors.append({
+                        "userId": uid,
+                        "email": email,
+                        "error": "Không thể tự xóa tài khoản đang đăng nhập",
+                    })
+                    continue
+
+                # Chặn xóa system admin được bảo vệ
+                if email and email in protected_emails:
+                    errors.append({
+                        "userId": uid,
+                        "email": email,
+                        "error": "Tài khoản System Admin được bảo vệ, không thể xóa",
+                    })
+                    continue
+
+                # Gỡ liên kết CRM (nếu có) trước khi xóa
+                if email:
+                    meta = user.get("user_metadata") or {}
+                    crm_name = _metadata_crm_name(meta)
+                    if crm_name:
+                        sb.table("nhan_su_sale").update({"email": None}).eq(
+                            "crm_name", crm_name
+                        ).execute()
+                    else:
+                        # Thử tìm theo email trong bảng nhân sự
+                        sb.table("nhan_su_sale").update({"email": None}).eq(
+                            "email", email
+                        ).execute()
+
+                # Xóa auth user
+                sb.auth.admin.delete_user(uid)
+                deleted.append(uid)
+
+            except Exception as exc:
+                errors.append({
+                    "userId": uid,
+                    "email": email or None,
+                    "error": str(exc),
+                })
+
+        return {
+            "ok": len(errors) == 0,
+            "deleted": len(deleted),
+            "deletedIds": deleted,
+            "errors": errors,
+        }
 
     @app.get("/admin/permissions")
     def get_admin_permissions(authorization: str | None = Header(None)):

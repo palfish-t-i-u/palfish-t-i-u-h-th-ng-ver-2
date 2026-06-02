@@ -6,6 +6,7 @@ import { Button, Input, Select } from "./ui";
 import { TableWrap } from "./ui/Table";
 import CreateAccountModal from "./auth/CreateAccountModal";
 import AccountDetailDrawer from "./auth/AccountDetailDrawer";
+import DeleteAccountsModal from "./auth/DeleteAccountsModal";
 import "./auth/auth-accounts.css";
 
 const ROLE_OPTIONS = [
@@ -140,6 +141,9 @@ export default function AuthAccountsTab() {
   // Create account modal
   const [createModalOpen, setCreateModalOpen] = useState(false);
 
+  // Delete accounts modal
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+
   // Detail drawer
   const [drawerUser, setDrawerUser] = useState<AuthUserRow | null>(null);
 
@@ -248,8 +252,11 @@ export default function AuthAccountsTab() {
 
   return (
     <div>
-      {/* Header with add button */}
+      {/* Header with action buttons */}
       <div className="aa-header-bar">
+        <Button variant="danger" onClick={() => setDeleteModalOpen(true)}>
+          🗑 Xóa tài khoản
+        </Button>
         <Button variant="primary" onClick={() => setCreateModalOpen(true)}>
           + Thêm tài khoản
         </Button>
@@ -446,6 +453,14 @@ export default function AuthAccountsTab() {
         open={createModalOpen}
         onClose={() => setCreateModalOpen(false)}
         onCreated={loadAuthUsers}
+      />
+
+      {/* Delete Accounts Modal */}
+      <DeleteAccountsModal
+        open={deleteModalOpen}
+        onClose={() => setDeleteModalOpen(false)}
+        onDeleted={loadAuthUsers}
+        users={authUsers}
       />
 
       {/* Account Detail Drawer */}
