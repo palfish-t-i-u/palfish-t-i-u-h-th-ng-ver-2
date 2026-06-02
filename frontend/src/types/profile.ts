@@ -48,6 +48,7 @@ export interface AuthUserRow {
   isActivated: boolean;
   department: string | null;
   team: string | null;
+  subTeam: string | null;
   fullName: string | null;
   phone: string | null;
 }

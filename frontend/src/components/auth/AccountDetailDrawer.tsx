@@ -238,7 +238,7 @@ export default function AccountDetailDrawer({ user, onClose, onUpdated, linkedCr
             </div>
             <div className="aa-summary-cell">
               <div className="aa-summary-label">Team</div>
-              <div className="aa-summary-value">{user.team || "—"}</div>
+              <div className="aa-summary-value">{user.team || "—"}{user.subTeam ? ` · ${user.subTeam}` : ""}</div>
             </div>
             <div className="aa-summary-cell">
               <div className="aa-summary-label">CRM</div>
@@ -405,7 +405,7 @@ export default function AccountDetailDrawer({ user, onClose, onUpdated, linkedCr
                 <div className="aa-crm-card">
                   <div>
                     <div className="aa-crm-card-name">{user.crmName}</div>
-                    <div className="aa-crm-card-team">{user.team || "—"}</div>
+                    <div className="aa-crm-card-team">{user.team || "—"}{user.subTeam ? ` · ${user.subTeam}` : ""}</div>
                   </div>
                   <span className="aa-crm-link linked">
                     <span className="aa-status-dot" style={{ background: "var(--gmv-ok)" }} />
