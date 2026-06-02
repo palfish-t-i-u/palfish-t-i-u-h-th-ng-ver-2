@@ -639,18 +639,18 @@ function ActiveRequestMiniCardV2({
           {summary.allActivated ? <Icons.Check size={11} strokeWidth={2.5} /> : <Icons.Clock size={11} />}{" "}
           {summary.buttonLabel}
         </span>
-        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <div className="ar-cue-wrap">
             <button
               type="button"
-              className={`btn btn-sm ${!editing && !editFullyLocked ? "btn-edit-hint" : "btn-outline"}`}
+              className={`btn btn-sm btn-ar-action ${!editing && !editFullyLocked ? "btn-edit-hint" : "btn-outline"}`}
               title={editFullyLocked ? "Tất cả gói học đã được kích hoạt và đã dùng hết tiền" : "Sửa thông tin gói học"}
               aria-label="Sửa thông tin gói học"
               disabled={editFullyLocked}
               onClick={() => setEditing(true)}
-              style={{ width: 32, padding: 0, opacity: editFullyLocked ? 0.35 : 1 }}
+              style={{ opacity: editFullyLocked ? 0.35 : 1 }}
             >
-              <Icons.Pencil size={13} />
+              <Icons.Pencil size={14} /> Sửa
             </button>
             {!editing && !editFullyLocked && (
               <div className="ar-cue-tooltip">Bấm để sửa thông tin / thêm gói học</div>
@@ -659,14 +659,13 @@ function ActiveRequestMiniCardV2({
           <div className="ar-cue-wrap">
             <button
               type="button"
-              className={`btn btn-success btn-sm ${editing ? "btn-save-hint" : ""}`}
+              className={`btn btn-sm btn-ar-action ${editing ? "btn-save-hint" : "btn-outline"}`}
               title="Lưu thông tin Active Request"
               aria-label="Lưu thông tin Active Request"
               disabled={!editing || saving || allocation.isOver || hasUnfilledCourse}
               onClick={() => void save()}
-              style={{ width: 32, padding: 0 }}
             >
-              <Icons.Check size={14} strokeWidth={2.6} />
+              <Icons.Check size={15} strokeWidth={2.6} /> Lưu
             </button>
             {editing && (
               <div className="ar-cue-tooltip is-save">Bấm để lưu thông tin</div>
