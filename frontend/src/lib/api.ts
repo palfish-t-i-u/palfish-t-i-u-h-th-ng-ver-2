@@ -372,6 +372,7 @@ export const endpoints = {
         phone?: string;
         department?: string;
         team?: string;
+        sub_team?: string;
       }
     ) => api.patch(`/admin/auth-users/${userId}`, body),
     createAuthUser: (body: {
