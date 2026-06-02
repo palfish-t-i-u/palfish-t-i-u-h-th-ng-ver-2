@@ -1625,24 +1625,39 @@
 .gmv-prototype .ar-cue-tooltip.is-save::before {
   border-bottom-color: #1e7e46;
 }
-/* Highlighted edit button — pulse */
+/* Shared sizing for edit / save action buttons */
+.gmv-prototype .btn-ar-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  border-radius: 8px;
+  white-space: nowrap;
+}
+/* Highlighted edit button — gradient + pulse */
 .gmv-prototype .btn-edit-hint {
-  background: #f3f1fe;
-  border: 1.5px solid #6c5ce7;
-  color: #6c5ce7;
+  background: linear-gradient(135deg, #6c5ce7, #a855f7);
+  border: none;
+  color: #fff;
   animation: ar-btn-pulse 1.8s infinite;
   z-index: 1;
 }
 .gmv-prototype .btn-edit-hint:hover {
-  background: #ebe7fd;
+  background: linear-gradient(135deg, #5a4bd6, #9333ea);
   animation: none;
 }
-/* Highlighted save button — pulse */
+/* Highlighted save button — solid green + pulse */
 .gmv-prototype .btn-save-hint {
+  background: #16a34a;
+  border: none;
+  color: #fff;
   animation: ar-btn-pulse-save 1.8s infinite;
   z-index: 1;
 }
 .gmv-prototype .btn-save-hint:hover {
+  background: #15803d;
   animation: none;
 }
 /* Course amount (orange) */
