@@ -333,6 +333,7 @@ function OverrideTab({
         isActivated: false,
         department: null,
         team: null,
+        subTeam: null,
         fullName: null,
         phone: null,
       };
