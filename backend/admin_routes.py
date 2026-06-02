@@ -633,7 +633,7 @@ def register_admin_routes(app, get_supabase):
 
         staff_res = (
             sb.table("nhan_su_sale")
-            .select("crm_name, email, role, team, sdt, display_name")
+            .select("crm_name, email, role, team, sub_team, sdt, display_name")
             .execute()
         )
         by_email = {
@@ -668,6 +668,7 @@ def register_admin_routes(app, get_supabase):
                     "isActivated": _metadata_bool(meta.get("is_activated", False)),
                     "department": meta.get("department"),
                     "team": meta.get("team") or (linked.get("team") if linked else None),
+                    "subTeam": meta.get("sub_team") or (linked.get("sub_team") if linked else None),
                     "fullName": full_name,
                     "phone": meta.get("phone") or (linked.get("sdt") if linked else None),
                 }

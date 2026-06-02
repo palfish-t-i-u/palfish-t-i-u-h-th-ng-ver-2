@@ -1213,7 +1213,7 @@ export default function ReportBC03Tab() {
                     % GMV
                   </th>
                   <th {...bc03StickyHeadCell(5, REV_COL_W, "bg-gmv-table-head", "px-2 py-2.5 text-right font-medium whitespace-nowrap")}>
-                    Tổng ĐT
+                    Tổng DT
                   </th>
                   <th {...bc03StickyHeadCell(6, REV_COL_W, "bg-gmv-table-head", "px-2 py-2.5 text-right font-medium whitespace-nowrap")}>
                     Tổng đơn
