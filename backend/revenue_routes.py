@@ -161,6 +161,10 @@ def team_to_pivot_label(team: str | None) -> str:
     return TEAM_PIVOT_LABELS.get(t, t)
 
 
+def _is_test_email(email: str) -> bool:
+    return email.strip().lower().endswith("@dev")
+
+
 def team_to_canonical(team: str | None, team_pivot_label: str | None = None) -> str:
     t = (team or "").strip()
     if t in TEAM_TO_CANONICAL:
@@ -932,6 +936,7 @@ def sync_ledger_from_ar_course(
             "note": f"AR {ar_id}",
             "created_by_email": actor_email,
             "updated_by_email": actor_email,
+            "is_test": bool(pr.get("is_test")) if pr else False,
         }
         ins = sb.table("so_doanh_thu").insert(payload).execute()
         if ins.data:
@@ -1101,6 +1106,7 @@ def sync_ledger_from_m3_order(sb, don_hang_id: str, actor_email: str) -> str | N
             "crm_order_id": row.get("crm_order_id"),
             "created_by_email": actor_email,
             "updated_by_email": actor_email,
+            "is_test": _is_test_email(actor_email),
         }
         ins = sb.table("so_doanh_thu").insert(payload).execute()
         if ins.data:
@@ -1310,6 +1316,7 @@ def register_revenue_routes(app, get_supabase) -> None:
             "loai_nhap": "tay",
             "created_by_email": actor.email,
             "updated_by_email": actor.email,
+            "is_test": _is_test_email(actor.email),
         }
         try:
             res = sb.table("so_doanh_thu").insert(payload).execute()

@@ -190,7 +190,12 @@ def _serialize_payment_request(row: dict[str, Any]) -> dict[str, Any]:
         "created_at": row.get("created_at") or "",
         "updated_at": row.get("updated_at") or "",
         "sale_email": row.get("sale_email") or "",
+        "is_test": bool(row.get("is_test")),
     }
+
+
+def _is_test_email(email: str) -> bool:
+    return email.strip().lower().endswith("@dev")
 
 
 def _storage_public_url(bucket, object_path: str) -> str:
@@ -1199,6 +1204,7 @@ def register_payment_request_routes(app, get_supabase) -> None:
         require_module_write(sb, actor, "paymentRequests")
         row = _payment_request_insert_row(body)
         row["sale_email"] = actor.email.lower()
+        row["is_test"] = _is_test_email(actor.email)
         try:
             row["id"] = _allocate_pr_id(sb)
             res = sb.table("payment_requests").insert(row).execute()
@@ -1258,6 +1264,7 @@ def register_payment_request_routes(app, get_supabase) -> None:
             "amount": amount,
             "status": "pending",
             "transfer_code": transfer_code,
+            "is_test": bool(pr_row.get("is_test")),
         }
 
         if method == "qr":
