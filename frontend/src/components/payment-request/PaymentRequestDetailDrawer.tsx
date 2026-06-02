@@ -432,16 +432,19 @@ function ActiveRequestMiniCardV2({
     return !locked && (c.amount || 0) <= 0;
   });
   const canAddMore = allocation.remaining > 0 && !hasUnfilledCourse;
-  const missingRequiredCount = ar.uids.reduce((sum, u) => {
-    const uidMissing = u.uid.trim() ? 0 : 1;
-    const phoneMissing = u.phone.trim() ? 0 : 1;
-    const courseMissing = u.courses.reduce((acc, c) => {
-      const hasPackage = !!(c.packageName || c.name || "").trim();
-      const hasAmount = (c.amount || 0) > 0;
-      return acc + (hasPackage ? 0 : 1) + (hasAmount ? 0 : 1);
-    }, 0);
-    return sum + uidMissing + phoneMissing + courseMissing;
-  }, 0);
+  const missingFields: string[] = [];
+  ar.uids.forEach((u, uIdx) => {
+    const label = u.uid.trim() || `UID #${uIdx + 1}`;
+    if (!u.uid.trim()) missingFields.push("UID");
+    if (!u.phone.trim()) missingFields.push("SĐT");
+    u.courses.forEach((c) => {
+      const locked = !!(c.orderId?.trim()) || !!c.invoiced;
+      if (locked) return;
+      if (!(c.packageName || c.name || "").trim()) missingFields.push(`gói học (${label})`);
+      if ((c.amount || 0) <= 0) missingFields.push(`số tiền (${label})`);
+    });
+  });
+  const missingRequiredCount = missingFields.length;
 
   const mutate = (updater: (next: ActiveRequest) => ActiveRequest) => {
     onActiveRequestMutate(ar.id, updater);
@@ -687,7 +690,7 @@ function ActiveRequestMiniCardV2({
       {missingRequiredCount > 0 && (
         <div className="match-warning" style={{ marginBottom: 10 }}>
           <Icons.AlertCircle size={14} />
-          <span>Thiếu {missingRequiredCount} trường bắt buộc (UID, SĐT, gói học, số tiền).</span>
+          <span>Cần bổ sung: {[...new Set(missingFields)].join(", ")}.</span>
         </div>
       )}
       <div className={`pulse-progress ${allocation.isOver ? "is-over" : ""}`}>
