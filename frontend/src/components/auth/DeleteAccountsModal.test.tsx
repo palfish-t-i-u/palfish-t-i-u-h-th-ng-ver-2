@@ -170,8 +170,7 @@ describe("DeleteAccountsModal", () => {
     const onClose = vi.fn();
 
     server.use(
-      http.post(`${BASE}/admin/auth-users/bulk-delete`, async ({ request }) => {
-        const body = (await request.json()) as { user_ids: string[] };
+      http.post(`${BASE}/admin/auth-users/bulk-delete`, async () => {
         // Giả lập: alpha bị chặn (tự xóa), bravo thành công
         return HttpResponse.json({
           ok: false,
