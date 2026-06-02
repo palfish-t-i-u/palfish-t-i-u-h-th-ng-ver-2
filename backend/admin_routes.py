@@ -55,6 +55,7 @@ class AuthUserPatchBody(BaseModel):
     phone: str | None = None
     department: str | None = None
     team: str | None = None
+    sub_team: str | None = None
 
 
 class AuthUserCreateBody(BaseModel):
@@ -767,6 +768,8 @@ def register_admin_routes(app, get_supabase):
             updated_metadata["department"] = body.department.strip() or None
         if body.team is not None:
             updated_metadata["team"] = body.team.strip() or None
+        if body.sub_team is not None:
+            updated_metadata["sub_team"] = body.sub_team.strip() or None
 
         if updated_metadata != current_metadata:
             attrs["user_metadata"] = updated_metadata

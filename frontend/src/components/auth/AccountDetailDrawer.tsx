@@ -62,6 +62,13 @@ const TEAMS_BY_DEPT: Record<string, string[]> = {
   sale: ["Inhouse 1", "Inhouse 2", "HCM", "Offline Linh Đan"],
 };
 
+const SUBTEAMS_BY_TEAM: Record<string, string[]> = {
+  "Inhouse 1": ["Team 1", "Team 2", "Team 3", "Team 4", "Team 5", "Sales"],
+  "Tele sale": ["Area 2", "Team Au"],
+  "P'AU Group": ["Team Lookkaew", "Team Aon"],
+  "P'TEE Group": ["Team James"],
+};
+
 function normalizeDeptKey(raw: string | null | undefined): string {
   const d = (raw || "").toLowerCase();
   if (d.includes("sale") || d.includes("bán hàng")) return "sale";
@@ -97,8 +104,10 @@ export default function AccountDetailDrawer({ user, onClose, onUpdated, linkedCr
   const [editPhone, setEditPhone] = useState("");
   const [editDept, setEditDept] = useState("");
   const [editTeam, setEditTeam] = useState("");
+  const [editSubTeam, setEditSubTeam] = useState("");
 
   const editTeams = TEAMS_BY_DEPT[editDept] || [];
+  const editSubTeams = SUBTEAMS_BY_TEAM[editTeam] || [];
 
   useEffect(() => {
     if (user) {
@@ -107,6 +116,7 @@ export default function AccountDetailDrawer({ user, onClose, onUpdated, linkedCr
       setEditPhone(user.phone || "");
       setEditDept(normalizeDeptKey(user.department));
       setEditTeam(user.team || "");
+      setEditSubTeam(user.subTeam || "");
       setEditing(false);
       setError("");
     }
@@ -121,7 +131,8 @@ export default function AccountDetailDrawer({ user, onClose, onUpdated, linkedCr
   const phoneChanged = editing && editPhone !== (user.phone || "");
   const deptChanged = editing && editDept !== (user.department || "");
   const teamChanged = editing && editTeam !== (user.team || "");
-  const hasChanges = roleChanged || nameChanged || phoneChanged || deptChanged || teamChanged;
+  const subTeamChanged = editing && editSubTeam !== (user.subTeam || "");
+  const hasChanges = roleChanged || nameChanged || phoneChanged || deptChanged || teamChanged || subTeamChanged;
 
   /* ── actions ── */
 
@@ -136,6 +147,7 @@ export default function AccountDetailDrawer({ user, onClose, onUpdated, linkedCr
       if (phoneChanged) patch.phone = editPhone.trim();
       if (deptChanged) patch.department = editDept.trim();
       if (teamChanged) patch.team = editTeam.trim();
+      if (subTeamChanged) patch.sub_team = editSubTeam.trim();
       await endpoints.admin.patchAuthUser(user!.id, patch);
       setEditing(false);
       onUpdated();
@@ -314,7 +326,7 @@ export default function AccountDetailDrawer({ user, onClose, onUpdated, linkedCr
                     <label>Đội</label>
                     <Select
                       value={editDept}
-                      onChange={(e) => { setEditDept(e.target.value); setEditTeam(""); }}
+                      onChange={(e) => { setEditDept(e.target.value); setEditTeam(""); setEditSubTeam(""); }}
                     >
                       <option value="">— Chọn —</option>
                       {DEPARTMENTS.map((d) => (
@@ -325,9 +337,22 @@ export default function AccountDetailDrawer({ user, onClose, onUpdated, linkedCr
                   <div className="aa-info-item">
                     <label>Chọn team</label>
                     {editTeams.length > 0 ? (
-                      <Select value={editTeam} onChange={(e) => setEditTeam(e.target.value)}>
+                      <Select value={editTeam} onChange={(e) => { setEditTeam(e.target.value); setEditSubTeam(""); }}>
                         <option value="">— Chọn —</option>
                         {editTeams.map((t) => (
+                          <option key={t} value={t}>{t}</option>
+                        ))}
+                      </Select>
+                    ) : (
+                      <span style={{ fontSize: 13, color: "var(--gmv-muted)" }}>—</span>
+                    )}
+                  </div>
+                  <div className="aa-info-item">
+                    <label>Sub-team</label>
+                    {editSubTeams.length > 0 ? (
+                      <Select value={editSubTeam} onChange={(e) => setEditSubTeam(e.target.value)}>
+                        <option value="">— Chọn —</option>
+                        {editSubTeams.map((t) => (
                           <option key={t} value={t}>{t}</option>
                         ))}
                       </Select>
@@ -367,6 +392,10 @@ export default function AccountDetailDrawer({ user, onClose, onUpdated, linkedCr
                   <div className="aa-info-item">
                     <label>Chọn team</label>
                     <span>{user.team || "—"}</span>
+                  </div>
+                  <div className="aa-info-item">
+                    <label>Sub-team</label>
+                    <span>{user.subTeam || "—"}</span>
                   </div>
                   <div className="aa-info-item">
                     <label>Provider</label>
