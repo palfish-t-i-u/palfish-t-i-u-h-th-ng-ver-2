@@ -67,6 +67,21 @@ def parse_transfer_content_from_qr(qr_code: str) -> str | None:
 
 async def create_payos_payment_link(amount: int, description_hint: str) -> dict[str, Any]:
     """Create a PayOS v2 payment link and return QR + order metadata."""
+    if os.getenv("APP_ENV", "development") != "production":
+        print("[MOCK] Bỏ qua gọi API bên ngoài do đang ở môi trường dev.")
+        order_code = (int(time.time() * 1000) * 1000 + random.randint(0, 999)) % 9_007_199_254_740_991
+        description = re.sub(r"[^a-zA-Z0-9 ]", "", description_hint or "Thanh toan")[:25].strip() or "Thanh toan"
+        return {
+            "status": "success",
+            "mocked": True,
+            "checkout_url": "https://mock.payos.vn/test-link",
+            "qr_code": "mock_qr_code_string",
+            "order_code": str(order_code),
+            "description": description,
+            "transfer_content": description,
+            "payment_link_id": "mock_payment_link_id",
+        }
+
     client_id = os.getenv("PAYOS_CLIENT_ID", "").strip()
     api_key = os.getenv("PAYOS_API_KEY", "").strip()
     checksum_key = os.getenv("PAYOS_CHECKSUM_KEY", "").strip()
