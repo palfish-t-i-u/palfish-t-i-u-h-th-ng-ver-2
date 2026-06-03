@@ -52,15 +52,31 @@ function deptBadgeClass(u: AuthUserRow): string {
 }
 
 const DEPARTMENTS = [
-  { value: "Đội Sale", label: "Đội Sale" },
-  { value: "Đội CS", label: "Đội CS" },
-  { value: "Đội HR", label: "Đội HR" },
-  { value: "Marketing", label: "Marketing" },
+  { value: "sale", label: "Đội Sale" },
+  { value: "cs", label: "Đội CS" },
+  { value: "hr", label: "Đội HR" },
+  { value: "marketing", label: "Marketing" },
 ];
 
 const TEAMS_BY_DEPT: Record<string, string[]> = {
-  "Đội Sale": ["Inhouse 1", "Inhouse 2", "HCM", "Offline Linh Đan"],
+  sale: ["Inhouse 1", "Inhouse 2", "HCM", "Offline Linh Đan"],
 };
+
+const SUBTEAMS_BY_TEAM: Record<string, string[]> = {
+  "Inhouse 1": ["Team 1", "Team 2", "Team 3", "Team 4", "Team 5", "Sales"],
+  "Tele sale": ["Area 2", "Team Au"],
+  "P'AU Group": ["Team Lookkaew", "Team Aon"],
+  "P'TEE Group": ["Team James"],
+};
+
+function normalizeDeptKey(raw: string | null | undefined): string {
+  const d = (raw || "").toLowerCase();
+  if (d.includes("sale") || d.includes("bán hàng")) return "sale";
+  if (d.includes("hr") || d.includes("nhân sự") || d.includes("quản trị")) return "hr";
+  if (d.includes("marketing") || d.includes("mkt")) return "marketing";
+  if (d.includes("cs")) return "cs";
+  return raw || "";
+}
 
 const ROLE_CARDS: { key: "User" | "Leader" | "Admin"; desc: string }[] = [
   { key: "User", desc: "Chỉ xem thông tin cá nhân và dữ liệu liên quan đến tài khoản của chính họ." },
@@ -88,16 +104,19 @@ export default function AccountDetailDrawer({ user, onClose, onUpdated, linkedCr
   const [editPhone, setEditPhone] = useState("");
   const [editDept, setEditDept] = useState("");
   const [editTeam, setEditTeam] = useState("");
+  const [editSubTeam, setEditSubTeam] = useState("");
 
   const editTeams = TEAMS_BY_DEPT[editDept] || [];
+  const editSubTeams = SUBTEAMS_BY_TEAM[editTeam] || [];
 
   useEffect(() => {
     if (user) {
       setSelectedRole(roleLabel(user.staffRole));
       setEditName(user.fullName || user.crmName || "");
       setEditPhone(user.phone || "");
-      setEditDept(user.department || "");
+      setEditDept(normalizeDeptKey(user.department));
       setEditTeam(user.team || "");
+      setEditSubTeam(user.subTeam || "");
       setEditing(false);
       setError("");
     }
@@ -112,7 +131,8 @@ export default function AccountDetailDrawer({ user, onClose, onUpdated, linkedCr
   const phoneChanged = editing && editPhone !== (user.phone || "");
   const deptChanged = editing && editDept !== (user.department || "");
   const teamChanged = editing && editTeam !== (user.team || "");
-  const hasChanges = roleChanged || nameChanged || phoneChanged || deptChanged || teamChanged;
+  const subTeamChanged = editing && editSubTeam !== (user.subTeam || "");
+  const hasChanges = roleChanged || nameChanged || phoneChanged || deptChanged || teamChanged || subTeamChanged;
 
   /* ── actions ── */
 
@@ -127,6 +147,7 @@ export default function AccountDetailDrawer({ user, onClose, onUpdated, linkedCr
       if (phoneChanged) patch.phone = editPhone.trim();
       if (deptChanged) patch.department = editDept.trim();
       if (teamChanged) patch.team = editTeam.trim();
+      if (subTeamChanged) patch.sub_team = editSubTeam.trim();
       await endpoints.admin.patchAuthUser(user!.id, patch);
       setEditing(false);
       onUpdated();
@@ -229,7 +250,7 @@ export default function AccountDetailDrawer({ user, onClose, onUpdated, linkedCr
             </div>
             <div className="aa-summary-cell">
               <div className="aa-summary-label">Team</div>
-              <div className="aa-summary-value">{user.team || "—"}</div>
+              <div className="aa-summary-value">{user.team || "—"}{user.subTeam ? ` · ${user.subTeam}` : ""}</div>
             </div>
             <div className="aa-summary-cell">
               <div className="aa-summary-label">CRM</div>
@@ -305,7 +326,7 @@ export default function AccountDetailDrawer({ user, onClose, onUpdated, linkedCr
                     <label>Đội</label>
                     <Select
                       value={editDept}
-                      onChange={(e) => { setEditDept(e.target.value); setEditTeam(""); }}
+                      onChange={(e) => { setEditDept(e.target.value); setEditTeam(""); setEditSubTeam(""); }}
                     >
                       <option value="">— Chọn —</option>
                       {DEPARTMENTS.map((d) => (
@@ -316,9 +337,22 @@ export default function AccountDetailDrawer({ user, onClose, onUpdated, linkedCr
                   <div className="aa-info-item">
                     <label>Chọn team</label>
                     {editTeams.length > 0 ? (
-                      <Select value={editTeam} onChange={(e) => setEditTeam(e.target.value)}>
+                      <Select value={editTeam} onChange={(e) => { setEditTeam(e.target.value); setEditSubTeam(""); }}>
                         <option value="">— Chọn —</option>
                         {editTeams.map((t) => (
+                          <option key={t} value={t}>{t}</option>
+                        ))}
+                      </Select>
+                    ) : (
+                      <span style={{ fontSize: 13, color: "var(--gmv-muted)" }}>—</span>
+                    )}
+                  </div>
+                  <div className="aa-info-item">
+                    <label>Sub-team</label>
+                    {editSubTeams.length > 0 ? (
+                      <Select value={editSubTeam} onChange={(e) => setEditSubTeam(e.target.value)}>
+                        <option value="">— Chọn —</option>
+                        {editSubTeams.map((t) => (
                           <option key={t} value={t}>{t}</option>
                         ))}
                       </Select>
@@ -360,6 +394,10 @@ export default function AccountDetailDrawer({ user, onClose, onUpdated, linkedCr
                     <span>{user.team || "—"}</span>
                   </div>
                   <div className="aa-info-item">
+                    <label>Sub-team</label>
+                    <span>{user.subTeam || "—"}</span>
+                  </div>
+                  <div className="aa-info-item">
                     <label>Provider</label>
                     <span>{(user.providers || []).join(", ") || "email"}</span>
                   </div>
@@ -396,7 +434,7 @@ export default function AccountDetailDrawer({ user, onClose, onUpdated, linkedCr
                 <div className="aa-crm-card">
                   <div>
                     <div className="aa-crm-card-name">{user.crmName}</div>
-                    <div className="aa-crm-card-team">{user.team || "—"}</div>
+                    <div className="aa-crm-card-team">{user.team || "—"}{user.subTeam ? ` · ${user.subTeam}` : ""}</div>
                   </div>
                   <span className="aa-crm-link linked">
                     <span className="aa-status-dot" style={{ background: "var(--gmv-ok)" }} />

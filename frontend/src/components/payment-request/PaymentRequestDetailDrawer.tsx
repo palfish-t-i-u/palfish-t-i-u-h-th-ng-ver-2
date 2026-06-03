@@ -432,16 +432,19 @@ function ActiveRequestMiniCardV2({
     return !locked && (c.amount || 0) <= 0;
   });
   const canAddMore = allocation.remaining > 0 && !hasUnfilledCourse;
-  const missingRequiredCount = ar.uids.reduce((sum, u) => {
-    const uidMissing = u.uid.trim() ? 0 : 1;
-    const phoneMissing = u.phone.trim() ? 0 : 1;
-    const courseMissing = u.courses.reduce((acc, c) => {
-      const hasPackage = !!(c.packageName || c.name || "").trim();
-      const hasAmount = (c.amount || 0) > 0;
-      return acc + (hasPackage ? 0 : 1) + (hasAmount ? 0 : 1);
-    }, 0);
-    return sum + uidMissing + phoneMissing + courseMissing;
-  }, 0);
+  const missingFields: string[] = [];
+  ar.uids.forEach((u, uIdx) => {
+    const label = u.uid.trim() || `UID #${uIdx + 1}`;
+    if (!u.uid.trim()) missingFields.push("UID");
+    if (!u.phone.trim()) missingFields.push("SĐT");
+    u.courses.forEach((c) => {
+      const locked = !!(c.orderId?.trim()) || !!c.invoiced;
+      if (locked) return;
+      if (!(c.packageName || c.name || "").trim()) missingFields.push(`gói học (${label})`);
+      if ((c.amount || 0) <= 0) missingFields.push(`số tiền (${label})`);
+    });
+  });
+  const missingRequiredCount = missingFields.length;
 
   const mutate = (updater: (next: ActiveRequest) => ActiveRequest) => {
     onActiveRequestMutate(ar.id, updater);
@@ -639,29 +642,38 @@ function ActiveRequestMiniCardV2({
           {summary.allActivated ? <Icons.Check size={11} strokeWidth={2.5} /> : <Icons.Clock size={11} />}{" "}
           {summary.buttonLabel}
         </span>
-        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          <button
-            type="button"
-            className={`btn btn-sm ${!editing && !editFullyLocked ? "btn-edit-hint" : "btn-outline"}`}
-            title={editFullyLocked ? "Tất cả gói học đã được kích hoạt và đã dùng hết tiền" : "Sửa thông tin gói học"}
-            aria-label="Sửa thông tin gói học"
-            disabled={editFullyLocked}
-            onClick={() => setEditing(true)}
-            style={{ width: 32, padding: 0, opacity: editFullyLocked ? 0.35 : 1 }}
-          >
-            <Icons.Pencil size={13} />
-          </button>
-          <button
-            type="button"
-            className="btn btn-success btn-sm"
-            title="Lưu thông tin Active Request"
-            aria-label="Lưu thông tin Active Request"
-            disabled={!editing || saving || allocation.isOver || hasUnfilledCourse}
-            onClick={() => void save()}
-            style={{ width: 32, padding: 0 }}
-          >
-            <Icons.Check size={14} strokeWidth={2.6} />
-          </button>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <div className="ar-cue-wrap">
+            <button
+              type="button"
+              className={`btn btn-sm btn-ar-action ${!editing && !editFullyLocked ? "btn-edit-hint" : "btn-outline"}`}
+              title={editFullyLocked ? "Tất cả gói học đã được kích hoạt và đã dùng hết tiền" : "Sửa thông tin gói học"}
+              aria-label="Sửa thông tin gói học"
+              disabled={editFullyLocked}
+              onClick={() => setEditing(true)}
+              style={{ opacity: editFullyLocked ? 0.35 : 1 }}
+            >
+              <Icons.Pencil size={14} /> Sửa
+            </button>
+            {!editing && !editFullyLocked && (
+              <div className="ar-cue-tooltip">Bấm để sửa thông tin / thêm gói học</div>
+            )}
+          </div>
+          <div className="ar-cue-wrap">
+            <button
+              type="button"
+              className={`btn btn-sm btn-ar-action ${editing ? "btn-save-hint" : "btn-outline"}`}
+              title="Lưu thông tin Active Request"
+              aria-label="Lưu thông tin Active Request"
+              disabled={!editing || saving || allocation.isOver || hasUnfilledCourse}
+              onClick={() => void save()}
+            >
+              <Icons.Check size={15} strokeWidth={2.6} /> Lưu
+            </button>
+            {editing && (
+              <div className="ar-cue-tooltip is-save">Bấm để lưu thông tin</div>
+            )}
+          </div>
           <button
             type="button"
             className="btn btn-outline btn-sm"
@@ -675,15 +687,10 @@ function ActiveRequestMiniCardV2({
           </button>
         </div>
       </div>
-      {!editing && !editFullyLocked && summary.courseCount > 0 && (
-        <div className="ar-edit-hint">
-          Bấm nút <Icons.Pencil size={12} style={{ verticalAlign: "middle", margin: "0 2px" }} /> bên trên để sửa thông tin / thêm gói học
-        </div>
-      )}
       {missingRequiredCount > 0 && (
         <div className="match-warning" style={{ marginBottom: 10 }}>
           <Icons.AlertCircle size={14} />
-          <span>Thiếu {missingRequiredCount} trường bắt buộc (UID, SĐT, gói học, số tiền).</span>
+          <span>Cần bổ sung: {[...new Set(missingFields)].join(", ")}.</span>
         </div>
       )}
       <div className={`pulse-progress ${allocation.isOver ? "is-over" : ""}`}>
@@ -970,6 +977,7 @@ export default function PaymentRequestDetailDrawer({
   onShowQr,
   uploadingBillId,
   deletingBillId,
+  readOnly = false,
 }: {
   request: PaymentRequest | null;
   open: boolean;
@@ -990,6 +998,7 @@ export default function PaymentRequestDetailDrawer({
   onShowQr: (qr: PaymentAttempt) => void;
   uploadingBillId?: string | null;
   deletingBillId?: string | null;
+  readOnly?: boolean;
 }) {
   const [showAdd, setShowAdd] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -1131,7 +1140,7 @@ export default function PaymentRequestDetailDrawer({
               <h4>
                 <Icons.User size={15} /> Thông tin khách hàng (B1)
               </h4>
-              {!editing ? (
+              {!editing && !readOnly ? (
                 <button
                   className="btn btn-outline btn-sm"
                   onClick={() => {
@@ -1396,7 +1405,7 @@ export default function PaymentRequestDetailDrawer({
                 <Icons.Wallet size={15} /> Các lần thanh toán
                 <span className="num-pill">{request.payments.length}</span>
               </h4>
-              {!showAdd && request.state !== "cancelled" && (
+              {!showAdd && !readOnly && request.state !== "cancelled" && (
                 <button className="btn btn-secondary btn-sm" onClick={() => setShowAdd(true)}>
                   <Icons.Plus size={13} /> Tạo lần thanh toán
                 </button>
@@ -1511,26 +1520,26 @@ export default function PaymentRequestDetailDrawer({
             >
               <Icons.Copy size={13} /> Copy PR-ID
             </button>
-            {canCancel && (
+            {canCancel && !readOnly && (
               <button className="btn btn-outline btn-sm" style={{ color: "var(--danger)" }} onClick={onCancelRequest}>
                 <Icons.XCircle size={13} /> Huỷ Payment Request
               </button>
             )}
           </div>
           <div className="quick-create">
-            {request.state !== "cancelled" && (
+            {!readOnly && request.state !== "cancelled" && (
               <button className="btn btn-primary" onClick={() => setShowAdd(true)} disabled={showAdd}>
                 <Icons.Plus size={14} /> Tạo lần thanh toán
               </button>
             )}
-            <button
+            {!readOnly && <button
               className={`btn ${ready && !hasActiveRequest ? "btn-success" : "btn-outline"}`}
               disabled={!ready || hasActiveRequest}
               title={!ready ? "Cần thu đủ 100% số tiền trước khi kích hoạt" : hasActiveRequest ? activeSummary.buttonLabel : "Tạo Active Request và chọn gói khoá học"}
               onClick={onCreateActiveRequest}
             >
               <Icons.CheckSquare size={14} /> {hasActiveRequest ? activeSummary.buttonLabel : "Kích hoạt khoá học"}
-            </button>
+            </button>}
           </div>
         </div>
       </aside>

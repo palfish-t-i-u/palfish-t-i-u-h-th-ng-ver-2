@@ -12,7 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from activation_routes import register_activation_routes
-from admin_routes import register_admin_routes
+from admin_routes import register_admin_routes, require_module_write
 from crm_routes import register_crm_routes
 from dashboard_routes import register_dashboard_routes
 from invoice_routes import register_invoice_routes
@@ -721,6 +721,7 @@ def patch_order(
         if sb_check and authorization:
             try:
                 actor = resolve_actor(sb_check, authorization)
+                require_module_write(sb_check, actor, "dashboard")
                 if not can_confirm_payment(actor):
                     raise HTTPException(403, "Chỉ bộ phận hệ thống được xác nhận tiền về thủ công")
             except HTTPException:
@@ -797,6 +798,7 @@ def cancel_order(
     if authorization:
         try:
             actor = resolve_actor(sb, authorization)
+            require_module_write(sb, actor, "dashboard")
             actor_role = actor.role.lower()
             actor_email = (actor.email or "").lower()
         except HTTPException:

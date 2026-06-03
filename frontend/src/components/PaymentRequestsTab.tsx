@@ -680,6 +680,7 @@ export default function PaymentRequestsTab() {
         onActiveRequestSave={saveActiveRequest}
         onActiveRequestDelete={deleteActiveRequest}
         onShowQr={(qr) => selected && setQrView({ qr, request: selected })}
+        readOnly={readOnly}
       />
 
       <CreatePaymentRequestModal open={createOpen} onClose={() => setCreateOpen(false)} onSubmit={handleCreate} />

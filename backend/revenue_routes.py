@@ -161,6 +161,10 @@ def team_to_pivot_label(team: str | None) -> str:
     return TEAM_PIVOT_LABELS.get(t, t)
 
 
+def _is_test_email(email: str) -> bool:
+    return email.strip().lower().endswith("@dev")
+
+
 def team_to_canonical(team: str | None, team_pivot_label: str | None = None) -> str:
     t = (team or "").strip()
     if t in TEAM_TO_CANONICAL:
@@ -534,7 +538,7 @@ def _ledger_query(
         q = sb.table("so_doanh_thu").select(select, count=count)
     else:
         q = sb.table("so_doanh_thu").select(select)
-    q = q.order("pay_time", desc=True).order("id", desc=True)
+    q = q.order("pay_time", desc=True).order("created_at", desc=True)
     if from_date:
         q = q.gte("pay_time", f"{from_date[:10]}T00:00:00")
     if to_date:
@@ -667,7 +671,7 @@ def _fetch_so_doanh_thu(
     rows: list[dict[str, Any]] = []
     offset = 0
     while True:
-        q = sb.table("so_doanh_thu").select(select_cols).order("pay_time", desc=True).order("id", desc=True)
+        q = sb.table("so_doanh_thu").select(select_cols).order("pay_time", desc=True).order("created_at", desc=True)
         if from_date:
             q = q.gte("pay_time", f"{from_date[:10]}T00:00:00")
         if to_date:
@@ -932,6 +936,7 @@ def sync_ledger_from_ar_course(
             "note": f"AR {ar_id}",
             "created_by_email": actor_email,
             "updated_by_email": actor_email,
+            "is_test": bool(pr.get("is_test")) if pr else False,
         }
         ins = sb.table("so_doanh_thu").insert(payload).execute()
         if ins.data:
@@ -981,6 +986,63 @@ def backfill_ledger_from_active_requests(sb, actor_email: str = "backfill@b3") -
                 else:
                     failed += 1
 
+    return {"created": created, "skipped": skipped, "failed": failed}
+
+
+def sync_ledger_for_pr(
+    sb,
+    pr_id: str,
+    actor_email: str = "pr-paid@auto",
+) -> dict[str, int]:
+    """Khi PR đủ tiền — sync mọi course có Order ID trong AR gắn PR (idempotent)."""
+    created = 0
+    skipped = 0
+    failed = 0
+    pr_id = str(pr_id or "").strip()
+    if not pr_id:
+        return {"created": 0, "skipped": 0, "failed": 0}
+    try:
+        ar_res = (
+            sb.table("active_requests")
+            .select("id, uids_data")
+            .eq("pr_id", pr_id)
+            .execute()
+        )
+    except Exception as exc:
+        print(f"[revenue] sync PR {pr_id} read AR failed: {exc}")
+        return {"created": 0, "skipped": 0, "failed": 0}
+
+    for ar_row in ar_res.data or []:
+        ar_id = str(ar_row.get("id") or "")
+        for uid_block in ar_row.get("uids_data") or []:
+            if not isinstance(uid_block, dict):
+                continue
+            for course in uid_block.get("courses") or []:
+                if not isinstance(course, dict):
+                    continue
+                code = str(course.get("code") or "").strip()
+                order_id = str(course.get("order_id") or course.get("orderId") or "").strip()
+                if not code or not order_id:
+                    continue
+                before = (
+                    sb.table("so_doanh_thu")
+                    .select("id")
+                    .eq("loai_nhap", "tu_dong")
+                    .eq("crm_order_id", order_id)
+                    .limit(1)
+                    .execute()
+                )
+                had = bool(before.data)
+                rid = sync_ledger_from_ar_course(sb, ar_id, code, actor_email)
+                if rid and not had:
+                    created += 1
+                elif rid or had:
+                    skipped += 1
+                else:
+                    failed += 1
+
+    if created:
+        print(f"[revenue] PR {pr_id} → Sổ: created={created}, skipped={skipped}, failed={failed}")
     return {"created": created, "skipped": skipped, "failed": failed}
 
 
@@ -1044,6 +1106,7 @@ def sync_ledger_from_m3_order(sb, don_hang_id: str, actor_email: str) -> str | N
             "crm_order_id": row.get("crm_order_id"),
             "created_by_email": actor_email,
             "updated_by_email": actor_email,
+            "is_test": _is_test_email(actor_email),
         }
         ins = sb.table("so_doanh_thu").insert(payload).execute()
         if ins.data:
@@ -1253,6 +1316,7 @@ def register_revenue_routes(app, get_supabase) -> None:
             "loai_nhap": "tay",
             "created_by_email": actor.email,
             "updated_by_email": actor.email,
+            "is_test": _is_test_email(actor.email),
         }
         try:
             res = sb.table("so_doanh_thu").insert(payload).execute()
@@ -1464,6 +1528,15 @@ def register_revenue_routes(app, get_supabase) -> None:
             raise
         except Exception as exc:
             raise HTTPException(500, f"Lỗi pivot Doanh thu Sale: {exc}") from exc
+
+    @app.post("/revenue/ledger/backfill-b3")
+    def backfill_ledger_b3(authorization: str | None = Header(None)):
+        """Tạo dòng Sổ thiếu từ active_requests đã có Order ID (ops)."""
+        sb = _sb()
+        actor = resolve_actor(sb, authorization)
+        _require_ops(actor)
+        stats = backfill_ledger_from_active_requests(sb, actor.email or "backfill@b3")
+        return {"ok": True, **stats}
 
     @app.post("/revenue/ledger/sync-gsheet")
     def sync_ledger_from_gsheet(body: GsheetSyncBody, authorization: str | None = Header(None)):

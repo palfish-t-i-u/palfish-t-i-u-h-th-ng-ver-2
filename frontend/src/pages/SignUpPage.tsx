@@ -18,6 +18,13 @@ const TEAMS_BY_DEPT: Record<string, string[]> = {
   sale: ["Inhouse 1", "Inhouse 2", "HCM", "Offline Linh Đan"],
 };
 
+const SUBTEAMS_BY_TEAM: Record<string, string[]> = {
+  "Inhouse 1": ["Team 1", "Team 2", "Team 3", "Team 4", "Team 5", "Sales"],
+  "Tele sale": ["Area 2", "Team Au"],
+  "P'AU Group": ["Team Lookkaew", "Team Aon"],
+  "P'TEE Group": ["Team James"],
+};
+
 interface FormState {
   email: string;
   password: string;
@@ -26,6 +33,7 @@ interface FormState {
   phone: string;
   department: string;
   team: string;
+  sub_team: string;
 }
 
 const INITIAL: FormState = {
@@ -36,6 +44,7 @@ const INITIAL: FormState = {
   phone: "",
   department: "",
   team: "",
+  sub_team: "",
 };
 
 export default function SignUpPage() {
@@ -47,13 +56,16 @@ export default function SignUpPage() {
 
   const teams = TEAMS_BY_DEPT[form.department] ?? [];
   const showTeam = teams.length > 0;
+  const subTeams = SUBTEAMS_BY_TEAM[form.team] ?? [];
+  const showSubTeam = subTeams.length > 0;
 
   function set<K extends keyof FormState>(field: K) {
     return (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
       const val = e.target.value;
       setForm((f) => {
         const next = { ...f, [field]: val };
-        if (field === "department") next.team = "";
+        if (field === "department") { next.team = ""; next.sub_team = ""; }
+        if (field === "team") { next.sub_team = ""; }
         return next;
       });
     };
@@ -85,12 +97,12 @@ export default function SignUpPage() {
     setLoading(true);
     setError("");
 
-    const dept = DEPARTMENTS.find((d) => d.value === form.department);
     const meta = {
       full_name: form.full_name.trim(),
       phone: form.phone.trim(),
-      department: dept?.label ?? form.department,
+      department: form.department,
       team: form.team,
+      sub_team: form.sub_team || undefined,
     };
 
     const result = await signUpWithPassword(form.email.trim(), form.password, meta);
@@ -182,6 +194,20 @@ export default function SignUpPage() {
             </div>
           )}
         </div>
+
+        {showSubTeam && (
+          <div className="auth-field">
+            <label className="auth-label">Sub-team</label>
+            <Select value={form.sub_team} onChange={set("sub_team")}>
+              <option value="">-- Chọn sub-team --</option>
+              {subTeams.map((t) => (
+                <option key={t} value={t}>
+                  {t}
+                </option>
+              ))}
+            </Select>
+          </div>
+        )}
 
         {/* ── Credentials ── */}
         <div className="auth-field">

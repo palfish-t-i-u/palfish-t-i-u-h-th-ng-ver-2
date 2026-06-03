@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { endpoints } from "../lib/api";
 import { supabase } from "../lib/supabase";
+import { usePermission } from "../hooks/usePermission";
 import Button from "./ui/Button";
 
 function todayStr() {
@@ -16,18 +17,18 @@ function yesterdayStr() {
 function TokenStatus({ hasToken, updatedAt }: { hasToken: boolean | null; updatedAt?: string | null }) {
   if (hasToken === null) {
     return (
-      <div className="flex items-center gap-2 rounded-lg bg-slate-800 px-4 py-3 text-sm text-slate-400">
-        <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-slate-500" />
+      <div className="flex items-center gap-2 rounded-lg bg-gmv-bg px-4 py-3 text-sm text-gmv-muted">
+        <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-gmv-muted" />
         Đang kiểm tra token…
       </div>
     );
   }
   if (!hasToken) {
     return (
-      <div className="flex items-center gap-2 rounded-lg bg-red-950/60 px-4 py-3 text-sm text-red-300 ring-1 ring-red-800">
+      <div className="flex items-center gap-2 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700 ring-1 ring-red-200">
         <span className="h-2.5 w-2.5 rounded-full bg-red-500" />
         <span>
-          <strong className="text-red-200">Chưa có token CRM.</strong> Hãy cài Extension và truy cập trang CRM.
+          <strong className="text-red-800">Chưa có token CRM.</strong> Hãy cài Extension và truy cập trang CRM.
         </span>
       </div>
     );
@@ -39,10 +40,10 @@ function TokenStatus({ hasToken, updatedAt }: { hasToken: boolean | null; update
       })
     : "vừa rồi";
   return (
-    <div className="flex items-center gap-2 rounded-lg bg-emerald-950/60 px-4 py-3 text-sm text-emerald-300 ring-1 ring-emerald-800">
-      <span className="h-2.5 w-2.5 rounded-full bg-emerald-400 shadow-[0_0_6px_#4ade80]" />
+    <div className="flex items-center gap-2 rounded-lg bg-emerald-50 px-4 py-3 text-sm text-emerald-700 ring-1 ring-emerald-200">
+      <span className="h-2.5 w-2.5 rounded-full bg-emerald-500" />
       <span>
-        <strong className="text-emerald-200">Token CRM đang hoạt động</strong> — cập nhật lần cuối: {fmtTime}
+        <strong className="text-emerald-800">Token CRM đang hoạt động</strong> — cập nhật lần cuối: {fmtTime}
       </span>
     </div>
   );
@@ -65,6 +66,7 @@ function Toast({ message, onClose }: { message: string; onClose: () => void }) {
 }
 
 export default function Module5Tab() {
+  const { readOnly } = usePermission("module5");
   const [syncDate, setSyncDate] = useState(yesterdayStr());
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -130,26 +132,21 @@ export default function Module5Tab() {
   }
 
   return (
-    <div className="space-y-6 p-6">
+    <div className="space-y-6">
       {toast && <Toast message={toast} onClose={() => setToast("")} />}
 
-      <div>
-        <h2 className="text-xl font-bold text-slate-100">
-          Module 5 — Đồng bộ dữ liệu CRM
-        </h2>
-        <p className="mt-1 text-sm text-slate-400">
-          Chỉ cần mở CRM để extension lấy token — bấm LẤY DỮ LIỆU tại đây, không cần Export trên PalFish.
-        </p>
-      </div>
+      <p className="text-sm text-gmv-text">
+        Chỉ cần mở CRM để extension lấy token — bấm LẤY DỮ LIỆU tại đây, không cần Export trên PalFish.
+      </p>
 
       <div className="space-y-2">
         <div className="flex items-center justify-between">
-          <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+          <span className="text-xs font-semibold uppercase tracking-wider text-gmv-text-strong">
             Trạng thái kết nối CRM
           </span>
           <button
             onClick={checkToken}
-            className="text-xs text-blue-400 hover:text-blue-300 transition"
+            className="text-xs text-gmv-primary hover:underline transition"
           >
             Làm mới
           </button>
@@ -157,20 +154,20 @@ export default function Module5Tab() {
         <TokenStatus hasToken={hasToken} updatedAt={tokenUpdatedAt} />
       </div>
 
-      <div className="rounded-xl bg-slate-800/60 p-5 ring-1 ring-slate-700">
-        <p className="mb-4 text-sm font-semibold text-slate-300">
+      <div className="rounded-xl border border-gmv-border bg-gmv-bg p-5">
+        <p className="mb-4 text-sm font-semibold text-gmv-text-strong">
           Incremental sync — đúng 1 ngày / lần (cron hoặc thủ công)
         </p>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <label className="block sm:col-span-2 max-w-xs">
-            <span className="mb-1.5 block text-xs font-medium text-slate-400">Ngày cần đồng bộ</span>
+            <span className="mb-1.5 block text-xs font-medium text-gmv-muted">Ngày cần đồng bộ</span>
             <input
               type="date"
               value={syncDate}
               max={todayStr()}
               onChange={(e) => setSyncDate(e.target.value)}
-              className="w-full rounded-lg border border-slate-600 bg-slate-900 px-3 py-2 text-sm text-slate-100
-                         focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              className="gmv-field w-full rounded-gmv-md border border-gmv-border bg-gmv-canvas px-3 py-2 text-sm text-gmv-text-strong
+                         focus:border-gmv-primary focus:outline-none focus:ring-1 focus:ring-gmv-primary"
             />
           </label>
         </div>
@@ -183,8 +180,8 @@ export default function Module5Tab() {
             <button
               key={label}
               onClick={fn}
-              className="rounded-md bg-slate-700 px-3 py-1.5 text-xs font-medium text-slate-300
-                         hover:bg-slate-600 transition"
+              className="rounded-md border border-gmv-border bg-gmv-canvas px-3 py-1.5 text-xs font-medium text-gmv-text-strong
+                         hover:bg-gmv-row-hover transition"
             >
               {label}
             </button>
@@ -193,13 +190,13 @@ export default function Module5Tab() {
       </div>
 
       {error && (
-        <div className="rounded-lg bg-red-950/60 px-4 py-3 text-sm text-red-300 ring-1 ring-red-800">
+        <div className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700 ring-1 ring-red-200">
           {error}
         </div>
       )}
 
       <div className="flex items-center gap-4">
-        <Button
+        {!readOnly && <Button
           size="md"
           variant="primary"
           disabled={loading || hasToken === false}
@@ -219,47 +216,47 @@ export default function Module5Tab() {
               LẤY DỮ LIỆU
             </span>
           )}
-        </Button>
+        </Button>}
         {loading && (
-          <p className="text-xs text-slate-400">
+          <p className="text-xs text-gmv-muted">
             Đang cào dữ liệu từng ngày, vui lòng chờ…
           </p>
         )}
       </div>
 
-      <div className="rounded-xl bg-slate-800/40 p-5 ring-1 ring-slate-700/50">
-        <p className="mb-3 text-sm font-semibold text-slate-300">
+      <div className="rounded-xl border border-gmv-border bg-gmv-bg p-5">
+        <p className="mb-3 text-sm font-semibold text-gmv-text-strong">
           Hướng dẫn cài Chrome Extension
         </p>
-        <ol className="space-y-2 text-sm text-slate-400">
+        <ol className="space-y-2 text-sm text-gmv-text">
           <li>
-            <span className="font-medium text-slate-300">1.</span> Mở Chrome → vào{" "}
-            <code className="rounded bg-slate-700 px-1 text-xs text-slate-200">chrome://extensions</code>
+            <span className="font-medium text-gmv-text-strong">1.</span> Mở Chrome → vào{" "}
+            <code className="rounded bg-gmv-bg px-1 text-xs text-gmv-text-strong ring-1 ring-gmv-border">chrome://extensions</code>
           </li>
           <li>
-            <span className="font-medium text-slate-300">2.</span> Bật{" "}
-            <span className="font-medium text-slate-200">Developer mode</span> ở góc phải
+            <span className="font-medium text-gmv-text-strong">2.</span> Bật{" "}
+            <span className="font-medium text-gmv-text-strong">Developer mode</span> ở góc phải
           </li>
           <li>
-            <span className="font-medium text-slate-300">3.</span> Bấm{" "}
-            <span className="font-medium text-slate-200">Load unpacked</span> → chọn thư mục{" "}
-            <code className="rounded bg-slate-700 px-1 text-xs text-slate-200">crm-token-extension/</code>
+            <span className="font-medium text-gmv-text-strong">3.</span> Bấm{" "}
+            <span className="font-medium text-gmv-text-strong">Load unpacked</span> → chọn thư mục{" "}
+            <code className="rounded bg-gmv-bg px-1 text-xs text-gmv-text-strong ring-1 ring-gmv-border">crm-token-extension/</code>
           </li>
           <li>
-            <span className="font-medium text-slate-300">4.</span> Truy cập{" "}
+            <span className="font-medium text-gmv-text-strong">4.</span> Truy cập{" "}
             <a
               href="https://sea.pri.ibanyu.com"
               target="_blank"
               rel="noopener noreferrer"
-              className="text-blue-400 hover:underline"
+              className="text-gmv-primary hover:underline"
             >
               sea.pri.ibanyu.com
             </a>{" "}
-            → đăng nhập (extension tự lấy token — <strong className="text-slate-200">không cần Export</strong>)
+            → đăng nhập (extension tự lấy token — <strong className="text-gmv-text-strong">không cần Export</strong>)
           </li>
           <li>
-            <span className="font-medium text-slate-300">5.</span> Quay lại tab này → chọn kỳ ngày → bấm{" "}
-            <span className="font-medium text-slate-200">LẤY DỮ LIỆU</span>
+            <span className="font-medium text-gmv-text-strong">5.</span> Quay lại tab này → chọn kỳ ngày → bấm{" "}
+            <span className="font-medium text-gmv-text-strong">LẤY DỮ LIỆU</span>
           </li>
         </ol>
       </div>

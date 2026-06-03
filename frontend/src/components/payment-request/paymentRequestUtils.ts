@@ -116,6 +116,7 @@ export function fromApiPaymentRequest(raw: any): PaymentRequest {
     delta: raw.delta ?? 0,
     state: raw.state ?? "pending",
     payments: Array.isArray(raw.payments) ? raw.payments.map(fromApiAttempt) : [],
+    isTest: Boolean(raw.is_test ?? raw.isTest),
   };
 }
 
@@ -372,10 +373,6 @@ export function parsePaymentDate(dateStr: string): Date | null {
   const normalized = dateStr.includes("T") ? dateStr : dateStr.replace(" ", "T");
   const d = new Date(normalized);
   return Number.isNaN(d.getTime()) ? null : d;
-}
-
-function pad2(n: number) {
-  return String(n).padStart(2, "0");
 }
 
 const VN_TZ = "Asia/Ho_Chi_Minh";

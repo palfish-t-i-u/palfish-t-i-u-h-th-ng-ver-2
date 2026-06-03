@@ -4,6 +4,8 @@ import {
   CartesianGrid, Tooltip, ResponsiveContainer, Cell,
 } from "recharts";
 import { endpoints } from "../lib/api";
+import { useRefetchOnFocus } from "../hooks/useRefetchOnFocus";
+import { useRealtimeTable } from "../hooks/useRealtimeTable";
 import { fmtRate, isValidSaleName, pctOf, safeDivide } from "../lib/metrics";
 import type { DashboardDailyTrends, DashboardLiveSummary } from "../types/order";
 
@@ -238,6 +240,9 @@ export default function Module6Tab() {
   }, [rangeKey, customStart, customEnd, teamFilter, saleFilter]);
 
   useEffect(() => { load(); }, [load]);
+
+  useRealtimeTable(["so_doanh_thu", "payment_lines"], load);
+  useRefetchOnFocus(load);
 
   const period = live?.period ?? trends?.period;
   const kpi = live?.kpi;

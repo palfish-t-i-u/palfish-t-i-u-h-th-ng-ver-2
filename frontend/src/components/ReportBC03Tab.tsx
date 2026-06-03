@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { endpoints } from "../lib/api";
+import { useRefetchOnFocus } from "../hooks/useRefetchOnFocus";
+import { useRealtimeTable } from "../hooks/useRealtimeTable";
 import { isValidSaleName } from "../lib/metrics";
 import { cn } from "../lib/cn";
 import type { Bc03DailyRevenue, Bc03Report, Bc03StaffOption, DashboardLiveSummary } from "../types/order";
@@ -700,6 +702,9 @@ export default function ReportBC03Tab() {
     loadMonthly();
   }, [loadMonthly]);
 
+  useRealtimeTable(["so_doanh_thu", "payment_lines"], loadReport);
+  useRefetchOnFocus(loadReport);
+
   function getKpi(saleName: string): KpiDraft {
     return kpiDraft[saleName] ?? { b2Orders: 0, b4Gmv: 0 };
   }
@@ -1208,7 +1213,7 @@ export default function ReportBC03Tab() {
                     % GMV
                   </th>
                   <th {...bc03StickyHeadCell(5, REV_COL_W, "bg-gmv-table-head", "px-2 py-2.5 text-right font-medium whitespace-nowrap")}>
-                    Tổng ĐT
+                    Tổng DT
                   </th>
                   <th {...bc03StickyHeadCell(6, REV_COL_W, "bg-gmv-table-head", "px-2 py-2.5 text-right font-medium whitespace-nowrap")}>
                     Tổng đơn

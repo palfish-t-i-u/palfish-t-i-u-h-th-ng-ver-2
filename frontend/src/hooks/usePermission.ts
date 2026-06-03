@@ -3,15 +3,17 @@ import type { AccessLevel } from "../types/permissions";
 
 export function usePermission(moduleKey: string): {
   level: AccessLevel;
+  loading: boolean;
   canView: boolean;
   readOnly: boolean;
 } {
-  const { profile } = useMe();
+  const { profile, loading } = useMe();
   const perms = profile?.permissions ?? {};
-  const level = (perms[moduleKey] ?? "full") as AccessLevel;
+  const level = (perms[moduleKey] ?? "none") as AccessLevel;
   return {
     level,
-    canView: level !== "none",
-    readOnly: level === "read",
+    loading,
+    canView: !loading && level !== "none",
+    readOnly: loading || level === "read",
   };
 }

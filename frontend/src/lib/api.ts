@@ -372,6 +372,7 @@ export const endpoints = {
         phone?: string;
         department?: string;
         team?: string;
+        sub_team?: string;
       }
     ) => api.patch(`/admin/auth-users/${userId}`, body),
     createAuthUser: (body: {
@@ -385,6 +386,13 @@ export const endpoints = {
       role?: string;
       is_activated?: boolean;
     }) => api.post("/admin/auth-users", body),
+    bulkDeleteAuthUsers: (userIds: string[]) =>
+      api.post<{
+        ok: boolean;
+        deleted: number;
+        deletedIds: string[];
+        errors: { userId: string; email: string | null; error: string }[];
+      }>("/admin/auth-users/bulk-delete", { user_ids: userIds }),
     permissions: () => api.get("/admin/permissions"),
     seedPermissions: () => api.post("/admin/permissions/seed"),
     patchPermission: (body: {
