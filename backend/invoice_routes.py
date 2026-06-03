@@ -673,15 +673,16 @@ def register_invoice_routes(app, get_supabase) -> None:
     # ------------------------------------------------------------------
     @app.post("/invoice/export-batch")
     def export_batch(body: ExportBatchBody, authorization: str | None = Header(None)):
-        """Xuất hóa đơn thuế: cấp mã M.../PF..., cập nhật DB, trả ZIP 3 file Excel.
+        """Xuất hóa đơn thuế.
 
-        Luồng:
-          1. Lock-read tất cả đơn CHO_XUAT_HD
-          2. Batch-allocate sequences từ tax_sequences
-          3. Gán mã + update từng đơn → DA_XUAT_HD
-          4. Insert bản ghi export_batches
-          5. Tạo 3 file Excel trong memory
-          6. Nén ZIP → StreamingResponse
+        Mô tả luồng:
+          - Lấy đơn hàng
+          - Cấp sequences
+          - Gán mã trong bộ nhớ
+          - Tạo file Excel và nén ZIP
+          - Cập nhật trạng thái trong cơ sở dữ liệu
+          - Ghi lịch sử batch
+          - Trả kết quả
         """
         sb = _sb()
         actor = resolve_actor(sb, authorization)
@@ -727,49 +728,66 @@ def register_invoice_routes(app, get_supabase) -> None:
         except Exception as exc:
             raise HTTPException(500, f"Lỗi cấp sequence hóa đơn: {exc}") from exc
 
-        # 3. Gán mã + cập nhật DB
+        # 3. Gán mã IN-MEMORY (chưa update DB — OTHER-05)
         enriched: list[dict[str, Any]] = []
-        order_ids: list[str] = []
+        pending_updates: list[dict[str, Any]] = []
 
         for i, row in enumerate(raw_orders):
             kh = row.pop("khach_hang", None) if isinstance(row, dict) else None
             tax_invoice_code = f"M{date_key}{inv_start + i + 1:03d}"
             tax_product_code = f"PF{prod_start + i + 1:06d}"
 
-            try:
-                upd = (
-                    sb.table("don_hang")
-                    .update(
-                        {
-                            "tax_invoice_code": tax_invoice_code,
-                            "tax_product_code": tax_product_code,
-                            "trang_thai_thu_tuc": TRANG_THAI_DA_XUAT_HD,
-                        }
-                    )
-                    .eq("id", row["id"])
-                    .eq("trang_thai_thu_tuc", TRANG_THAI_CHO_XUAT_HD)
-                    .execute()
-                )
-                if not upd.data:
-                    raise HTTPException(
-                        500, f"Không cập nhật được đơn {row.get('ma_don_hang')} — id={row['id']}"
-                    )
-                updated_row = upd.data[0]
-            except HTTPException:
-                raise
-            except Exception as exc:
-                raise HTTPException(
-                    500, f"Lỗi cập nhật đơn {row.get('ma_don_hang')}: {exc}"
-                ) from exc
-
-            order_data = _row_to_invoice_order(updated_row, kh)
-            # Overwrite with freshly allocated codes (row may not return them in all Supabase versions)
+            order_data = _row_to_invoice_order(row, kh)
             order_data["taxInvoiceCode"] = tax_invoice_code
             order_data["taxProductCode"] = tax_product_code
             enriched.append(order_data)
-            order_ids.append(row["id"])
+            pending_updates.append({
+                "id": row["id"],
+                "tax_invoice_code": tax_invoice_code,
+                "tax_product_code": tax_product_code,
+            })
 
-        # 4. Ghi lịch sử batch (non-fatal nếu bảng chưa tồn tại)
+        # 4. Tạo 3 file Excel trong bộ nhớ
+        try:
+            excel_orders = _build_excel_orders(enriched)
+            excel_customers = _build_excel_customers(enriched)
+            excel_products = _build_excel_products(enriched)
+        except HTTPException:
+            raise
+        except Exception as exc:
+            raise HTTPException(500, f"Lỗi tạo file Excel: {exc}") from exc
+
+        # 5. Nén ZIP trong memory
+        batch_label = today.strftime("%Y%m%d")
+        zip_buf = io.BytesIO()
+        with zipfile.ZipFile(zip_buf, "w", zipfile.ZIP_DEFLATED) as zf:
+            zf.writestr(f"01_1don_hang_{batch_label}.xlsx", excel_orders)
+            zf.writestr(f"02_khach_hang1_{batch_label}.xlsx", excel_customers)
+            zf.writestr(f"03_sanpham1_{batch_label}.xlsx", excel_products)
+        zip_buf.seek(0)
+
+        # 6. ZIP thành công → BULK UPDATE DB (Atomic Transaction)
+        try:
+            bulk_data = [
+                {
+                    "id": pu["id"],
+                    "tax_invoice_code": pu["tax_invoice_code"],
+                    "tax_product_code": pu["tax_product_code"],
+                    "trang_thai_thu_tuc": TRANG_THAI_DA_XUAT_HD,
+                }
+                for pu in pending_updates
+            ]
+            upd_res = sb.table("don_hang").upsert(bulk_data).execute()
+            if not upd_res.data:
+                raise HTTPException(500, "Không lưu được trạng thái xuất hóa đơn.")
+        except HTTPException:
+            raise
+        except Exception as exc:
+            raise HTTPException(500, f"Lỗi cập nhật CSDL: {exc}") from exc
+
+        order_ids = [pu["id"] for pu in pending_updates]
+
+        # 7. Ghi lịch sử batch (non-fatal)
         try:
             sb.table("export_batches").insert(
                 {
@@ -782,25 +800,7 @@ def register_invoice_routes(app, get_supabase) -> None:
         except Exception as exc:
             print(f"[invoice] Ghi export_batches thất bại (non-fatal): {exc}")
 
-        # 5. Tạo 3 file Excel trong bộ nhớ
-        try:
-            excel_orders = _build_excel_orders(enriched)
-            excel_customers = _build_excel_customers(enriched)
-            excel_products = _build_excel_products(enriched)
-        except HTTPException:
-            raise
-        except Exception as exc:
-            raise HTTPException(500, f"Lỗi tạo file Excel: {exc}") from exc
-
-        # 6. Nén ZIP + trả StreamingResponse
-        batch_label = today.strftime("%Y%m%d")
-        zip_buf = io.BytesIO()
-        with zipfile.ZipFile(zip_buf, "w", zipfile.ZIP_DEFLATED) as zf:
-            zf.writestr(f"01_1don_hang_{batch_label}.xlsx", excel_orders)
-            zf.writestr(f"02_khach_hang1_{batch_label}.xlsx", excel_customers)
-            zf.writestr(f"03_sanpham1_{batch_label}.xlsx", excel_products)
-        zip_buf.seek(0)
-
+        # 8. Trả ZIP
         filename = f"hoa_don_thue_{batch_label}_{n}don.zip"
         return StreamingResponse(
             zip_buf,
