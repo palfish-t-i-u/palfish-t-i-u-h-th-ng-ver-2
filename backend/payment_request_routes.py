@@ -16,7 +16,7 @@ from fastapi import APIRouter, File, Header, HTTPException, Query, UploadFile
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
-from rbac import resolve_actor, visible_creator_emails
+from rbac import resolve_actor, visible_creator_emails, can_confirm_payment
 from admin_routes import require_module_write
 
 from payos_qr import create_payos_payment_link, fetch_payos_payment, payos_payment_is_paid
@@ -705,21 +705,12 @@ def _payment_request_patch_row(body: PaymentRequestPatch, current_row: dict[str,
 
 
 def _allocate_pr_id(sb, year: int | None = None) -> str:
-    year_key = str(year or datetime.now(timezone.utc).year)
-    res = (
-        sb.table("payment_request_sequences")
-        .select("current_val")
-        .eq("year_key", year_key)
-        .limit(1)
-        .execute()
-    )
-    if res.data:
-        seq = int(res.data[0].get("current_val") or 0) + 1
-        sb.table("payment_request_sequences").update({"current_val": seq}).eq("year_key", year_key).execute()
-    else:
-        seq = 1
-        sb.table("payment_request_sequences").insert({"year_key": year_key, "current_val": seq}).execute()
-    return f"PR-{year_key}-{seq:04d}"
+    from rpc_helpers import rpc_next_payment_request_id
+
+    pr_id = rpc_next_payment_request_id(sb, year).strip()
+    if not pr_id:
+        raise HTTPException(500, "RPC next_payment_request_id không trả mã PR")
+    return pr_id
 
 
 def _transfer_code_hint(payment_request_id: str, line_count: int) -> str:
@@ -1176,9 +1167,10 @@ def register_payment_request_routes(app, get_supabase) -> None:
         }
 
     @router.post("/payment-requests/sync-pending-payos")
-    async def sync_pending_payos_payments():
+    async def sync_pending_payos_payments(authorization: str | None = Header(None)):
         """Poll PayOS cho mọi QR pending — dùng khi webhook chưa tới (local/prod)."""
         sb = _sb_or_503(get_supabase)
+        resolve_actor(sb, authorization)
         return await sync_all_pending_payos_lines(sb)
 
     @router.post("/payment-lines/{line_id}/sync-payos")
@@ -1317,8 +1309,15 @@ def register_payment_request_routes(app, get_supabase) -> None:
         return result
 
     @router.patch("/transactions/{transaction_id}/status")
-    def patch_transaction_status(transaction_id: str, body: TransactionStatusPatch):
+    def patch_transaction_status(
+        transaction_id: str,
+        body: TransactionStatusPatch,
+        authorization: str | None = Header(None),
+    ):
         sb = _sb_or_503(get_supabase)
+        actor = resolve_actor(sb, authorization)
+        if not can_confirm_payment(actor):
+            raise HTTPException(403, "Khong co quyen xac nhan thanh toan")
         status = _normalize_line_status(body.status)
 
         line_res = (
@@ -1372,19 +1371,21 @@ def register_payment_request_routes(app, get_supabase) -> None:
     ):
         """Upload bill multipart → Supabase Storage bucket 'bills' → payment_lines.bill_image."""
         sb = _sb_or_503(get_supabase)
-        if authorization:
-            try:
-                resolve_actor(sb, authorization)
-            except HTTPException:
-                pass
-            except Exception as exc:
-                print(f"payment line bill upload auth: {exc}")
+        actor = resolve_actor(sb, authorization)
 
         line_res = sb.table("payment_lines").select("*").eq("id", line_id).limit(1).execute()
         if not line_res.data:
             raise HTTPException(404, "Khong tim thay payment_line")
 
         line = line_res.data[0]
+        pr_id = line.get("payment_request_id")
+        if not pr_id:
+            raise HTTPException(400, "payment_line thieu payment_request_id")
+        pr_res = sb.table("payment_requests").select("*").eq("id", pr_id).limit(1).execute()
+        if not pr_res.data:
+            raise HTTPException(404, "Khong tim thay payment_request lien quan")
+        if not _can_access_request(sb, actor, pr_res.data[0]):
+            raise HTTPException(403, "Khong co quyen upload bill cho phieu nay")
         content = await file.read()
         if not content:
             raise HTTPException(400, "File rong")
@@ -1441,14 +1442,23 @@ def register_payment_request_routes(app, get_supabase) -> None:
         }
 
     @router.delete("/payment-lines/{line_id}/bills/latest")
-    def delete_latest_uploaded_bill(line_id: str):
+    def delete_latest_uploaded_bill(line_id: str, authorization: str | None = Header(None)):
         """Delete latest uploaded bill, but keep the original first bill."""
         sb = _sb_or_503(get_supabase)
+        actor = resolve_actor(sb, authorization)
         line_res = sb.table("payment_lines").select("*").eq("id", line_id).limit(1).execute()
         if not line_res.data:
             raise HTTPException(404, "Khong tim thay payment_line")
 
         line = line_res.data[0]
+        pr_id = line.get("payment_request_id")
+        if not pr_id:
+            raise HTTPException(400, "payment_line thieu payment_request_id")
+        pr_res = sb.table("payment_requests").select("*").eq("id", pr_id).limit(1).execute()
+        if not pr_res.data:
+            raise HTTPException(404, "Khong tim thay payment_request lien quan")
+        if not _can_access_request(sb, actor, pr_res.data[0]):
+            raise HTTPException(403, "Khong co quyen xoa bill cua phieu nay")
         assets = _fetch_bill_assets_fast(sb, [line_id]).get(line_id, [])
         if len(assets) <= 1:
             raise HTTPException(400, "Khong the xoa bill ban dau")
@@ -1481,7 +1491,11 @@ def register_payment_request_routes(app, get_supabase) -> None:
         }
 
     @router.post("/payment-lines/{line_id}/bills/delete")
-    def delete_payment_line_bill(line_id: str, body: PaymentLineBillDeleteBody):
+    def delete_payment_line_bill(
+        line_id: str,
+        body: PaymentLineBillDeleteBody,
+        authorization: str | None = Header(None),
+    ):
         """
         Delete bill image(s) for a payment line.
         - delete_all=true  -> remove all bills
@@ -1490,11 +1504,20 @@ def register_payment_request_routes(app, get_supabase) -> None:
         - otherwise -> remove latest bill
         """
         sb = _sb_or_503(get_supabase)
+        actor = resolve_actor(sb, authorization)
         line_res = sb.table("payment_lines").select("*").eq("id", line_id).limit(1).execute()
         if not line_res.data:
             raise HTTPException(404, "Khong tim thay payment_line")
 
         line = line_res.data[0]
+        pr_id = line.get("payment_request_id")
+        if not pr_id:
+            raise HTTPException(400, "payment_line thieu payment_request_id")
+        pr_res = sb.table("payment_requests").select("*").eq("id", pr_id).limit(1).execute()
+        if not pr_res.data:
+            raise HTTPException(404, "Khong tim thay payment_request lien quan")
+        if not _can_access_request(sb, actor, pr_res.data[0]):
+            raise HTTPException(403, "Khong co quyen xoa bill cua phieu nay")
         bill_images = line.get("bill_images") or []
         if not isinstance(bill_images, list):
             bill_images = []
@@ -1583,11 +1606,26 @@ def register_payment_request_routes(app, get_supabase) -> None:
         }
 
     @router.get("/payment-lines/{line_id}/bills/download")
-    def download_payment_line_bill(line_id: str, bill_index: int | None = Query(None, ge=0)):
+    def download_payment_line_bill(
+        line_id: str,
+        bill_index: int | None = Query(None, ge=0),
+        authorization: str | None = Header(None),
+    ):
         sb = _sb_or_503(get_supabase)
-        line_res = sb.table("payment_lines").select("id").eq("id", line_id).limit(1).execute()
+        actor = resolve_actor(sb, authorization)
+        line_res = sb.table("payment_lines").select("*").eq("id", line_id).limit(1).execute()
         if not line_res.data:
             raise HTTPException(404, "Khong tim thay payment_line")
+
+        line = line_res.data[0]
+        pr_id = line.get("payment_request_id")
+        if not pr_id:
+            raise HTTPException(400, "payment_line thieu payment_request_id")
+        pr_res = sb.table("payment_requests").select("*").eq("id", pr_id).limit(1).execute()
+        if not pr_res.data:
+            raise HTTPException(404, "Khong tim thay payment_request lien quan")
+        if not _can_access_request(sb, actor, pr_res.data[0]):
+            raise HTTPException(403, "Khong co quyen tai bill cua phieu nay")
 
         assets = _fetch_bill_assets_fast(sb, [line_id]).get(line_id, [])
         if not assets:
@@ -1615,11 +1653,22 @@ def register_payment_request_routes(app, get_supabase) -> None:
         )
 
     @router.get("/payment-lines/{line_id}/bills/download-all")
-    def download_all_payment_line_bills(line_id: str):
+    def download_all_payment_line_bills(line_id: str, authorization: str | None = Header(None)):
         sb = _sb_or_503(get_supabase)
-        line_res = sb.table("payment_lines").select("id").eq("id", line_id).limit(1).execute()
+        actor = resolve_actor(sb, authorization)
+        line_res = sb.table("payment_lines").select("*").eq("id", line_id).limit(1).execute()
         if not line_res.data:
             raise HTTPException(404, "Khong tim thay payment_line")
+
+        line = line_res.data[0]
+        pr_id = line.get("payment_request_id")
+        if not pr_id:
+            raise HTTPException(400, "payment_line thieu payment_request_id")
+        pr_res = sb.table("payment_requests").select("*").eq("id", pr_id).limit(1).execute()
+        if not pr_res.data:
+            raise HTTPException(404, "Khong tim thay payment_request lien quan")
+        if not _can_access_request(sb, actor, pr_res.data[0]):
+            raise HTTPException(403, "Khong co quyen tai bill cua phieu nay")
 
         assets = _fetch_bill_assets_fast(sb, [line_id]).get(line_id, [])
         if not assets:

@@ -100,48 +100,9 @@ def _alloc_sequences(sb, n: int, date_key: str) -> tuple[int, int]:
       invoice code i  →  f"M{date_key}{inv_start+i+1:03d}"
       product code i  →  f"PF{prod_start+i+1:06d}"
     """
-    now_iso = datetime.now(timezone.utc).isoformat()
-    seq_id_inv = f"invoice_{date_key}"
+    from rpc_helpers import rpc_allocate_tax_sequences
 
-    # --- daily invoice sequence ---
-    res_inv = (
-        sb.table("tax_sequences")
-        .select("current_val")
-        .eq("id", seq_id_inv)
-        .limit(1)
-        .execute()
-    )
-    if res_inv.data:
-        inv_start = int(res_inv.data[0]["current_val"])
-        sb.table("tax_sequences").update(
-            {"current_val": inv_start + n, "updated_at": now_iso}
-        ).eq("id", seq_id_inv).execute()
-    else:
-        inv_start = 0
-        sb.table("tax_sequences").insert(
-            {"id": seq_id_inv, "current_val": n, "updated_at": now_iso}
-        ).execute()
-
-    # --- global product sequence ---
-    res_prod = (
-        sb.table("tax_sequences")
-        .select("current_val")
-        .eq("id", "product_code")
-        .limit(1)
-        .execute()
-    )
-    if res_prod.data:
-        prod_start = int(res_prod.data[0]["current_val"])
-        sb.table("tax_sequences").update(
-            {"current_val": prod_start + n, "updated_at": now_iso}
-        ).eq("id", "product_code").execute()
-    else:
-        prod_start = 0
-        sb.table("tax_sequences").insert(
-            {"id": "product_code", "current_val": n, "updated_at": now_iso}
-        ).execute()
-
-    return inv_start, prod_start
+    return rpc_allocate_tax_sequences(sb, n, date_key)
 
 
 # ---------------------------------------------------------------------------
