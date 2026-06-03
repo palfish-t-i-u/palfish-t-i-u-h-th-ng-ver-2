@@ -1,4 +1,8 @@
+import hashlib
+import hmac
+import json
 import os
+import random
 import re
 import uuid
 from pathlib import Path
@@ -7,7 +11,7 @@ from typing import Any
 
 import httpx
 from dotenv import load_dotenv
-from fastapi import FastAPI, File, Header, HTTPException, Query, UploadFile
+from fastapi import FastAPI, File, Header, HTTPException, Query, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -27,6 +31,7 @@ from payos_qr import parse_transfer_content_from_qr
 from env_utils import app_env, is_sandbox_env
 
 CANCEL_ANY_ROLES = {"manager", "system", "ops"}
+PAYOS_MAX_SAFE_ORDER_CODE = 9_007_199_254_740_991
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 # fix: uvicorn --reload trên Windows spawn subprocess với __file__ không ổn định
@@ -926,6 +931,72 @@ def crm_activate(body: CrmBody):
     return {"infoCode": body.infoCode, "activated": False}
 
 
+def _payos_signature_value(value: Any) -> str:
+    if value in (None, "null", "NULL", "undefined"):
+        return ""
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, (int, float)):
+        return str(value)
+    if isinstance(value, list):
+        sorted_items = [
+            dict(sorted(item.items())) if isinstance(item, dict) else item
+            for item in value
+        ]
+        return json.dumps(sorted_items, ensure_ascii=False, separators=(",", ":"))
+    if isinstance(value, dict):
+        return json.dumps(
+            dict(sorted(value.items())),
+            ensure_ascii=False,
+            separators=(",", ":"),
+        )
+    return str(value)
+
+
+def _payos_signature_payload(data: dict[str, Any]) -> str:
+    return "&".join(
+        f"{key}={_payos_signature_value(data.get(key))}"
+        for key in sorted(data)
+    )
+
+
+def _normalize_payos_signature(signature: str | None) -> str:
+    sig = str(signature or "").strip()
+    if not sig:
+        return ""
+    if "=" in sig:
+        parts = [part.strip() for part in sig.replace(",", " ").split() if part.strip()]
+        for part in parts:
+            if part.startswith("v1="):
+                return part.split("=", 1)[1].strip()
+    return sig
+
+
+def _verify_payos_webhook_signature(payload: dict[str, Any], request: Request) -> None:
+    checksum_key = os.getenv("PAYOS_CHECKSUM_KEY", "").strip()
+    if not checksum_key:
+        raise HTTPException(503, "PayOS checksum key not configured")
+
+    data = payload.get("data")
+    if not isinstance(data, dict):
+        raise HTTPException(400, "Invalid signature")
+
+    received = _normalize_payos_signature(
+        payload.get("signature") or request.headers.get("x-payos-signature")
+    )
+    if not received:
+        raise HTTPException(400, "Invalid signature")
+
+    signed_data = _payos_signature_payload(data)
+    expected = hmac.new(
+        checksum_key.encode("utf-8"),
+        signed_data.encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()
+    if not hmac.compare_digest(expected.lower(), received.lower()):
+        raise HTTPException(400, "Invalid signature")
+
+
 @app.post("/payos/create-link")
 async def payos_create_link(body: dict):
     """Tạo PayOS payment link từ amount + infoCode.
@@ -953,8 +1024,8 @@ async def payos_create_link(body: dict):
     raw_desc = str(body.get("infoCode") or body.get("maDonHang") or "Thanh toan")
     description = _re.sub(r"[^a-zA-Z0-9 ]", "", raw_desc)[:25].strip()
 
-    # orderCode: số nguyên dương, lấy millisecond timestamp (unique trong thực tế)
-    order_code = int(time.time() * 1000) % 9_007_199_254_740_991
+    # Add a random suffix to avoid same-millisecond PayOS orderCode collisions.
+    order_code = (int(time.time() * 1000) * 1000 + random.randint(0, 999)) % PAYOS_MAX_SAFE_ORDER_CODE
 
     frontend_url = (os.getenv("FRONTEND_URL") or "http://localhost:5174").rstrip("/")
     return_url = f"{frontend_url}/"
@@ -1016,8 +1087,18 @@ async def payos_create_link(body: dict):
 
 
 @app.post("/webhook/payos")
-async def payos_webhook(payload: dict):
+async def payos_webhook(request: Request):
     """PayOS webhook: payment_lines first, then deprecated don_hang fallback."""
+    raw_body = await request.body()
+    try:
+        payload = json.loads(raw_body)
+    except json.JSONDecodeError as exc:
+        raise HTTPException(400, "Invalid JSON payload") from exc
+    if not isinstance(payload, dict):
+        raise HTTPException(400, "Invalid JSON payload")
+
+    _verify_payos_webhook_signature(payload, request)
+
     sb = _supabase()
     if sb:
         line_result = reconcile_payment_line_webhook(sb, payload)
