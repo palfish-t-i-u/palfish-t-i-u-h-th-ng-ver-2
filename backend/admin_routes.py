@@ -957,11 +957,12 @@ def register_admin_routes(app, get_supabase):
                     "error": str(exc),
                 })
 
+        # Return partial success tracking
         return {
-            "ok": len(errors) == 0,
-            "deleted": len(deleted),
-            "deletedIds": deleted,
-            "errors": errors,
+            "status": "success",
+            "deleted_count": len(deleted),
+            "deleted": deleted,
+            "failed_items": [{"id": e["userId"], "reason": e["error"]} for e in errors],
         }
 
     @app.get("/admin/permissions")
