@@ -26,11 +26,12 @@ from datetime import date, datetime, timedelta, timezone
 from typing import Any
 
 import httpx
-from fastapi import HTTPException, Query
+from fastapi import Header, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from crm_metrics import extract_row_metrics, is_valid_sale_name, parse_rate, sale_label, team_label
+from rbac import resolve_actor, require_min_role
 
 try:
     import numpy as np
@@ -1289,7 +1290,7 @@ async def _fetch_crm_response_df(client: httpx.AsyncClient, resp: httpx.Response
 def register_crm_routes(app, supabase_factory):
 
     @app.post("/system/update-crm-token", tags=["CRM"])
-    async def update_crm_token(body: CrmTokenBody):
+    async def update_crm_token(body: CrmTokenBody, authorization: str | None = Header(None)):
         """Nhận cookie từ Chrome Extension và lưu vào bảng crm_tokens."""
         cookie = body.cookie_str.strip()
         if not cookie:
@@ -1297,6 +1298,9 @@ def register_crm_routes(app, supabase_factory):
 
         now_iso = datetime.now(timezone.utc).isoformat()
         sb = supabase_factory()
+
+        actor = resolve_actor(sb, authorization)
+        require_min_role(actor, "manager")
 
         if sb:
             try:

@@ -183,17 +183,16 @@ def _query_top_sales(
             .gte("ngay_tien_ve", d_start)
             .lte("ngay_tien_ve", d_end)
         )
-        all_data = []
-        offset = 0
-        page_size = 1000
-        while True:
-            res = q.range(offset, offset + page_size - 1).execute()
-            data = res.data or []
-            all_data.extend(data)
-            if len(data) < page_size:
-                break
-            offset += page_size
-            
+        from analytics_limits import fetch_rows_capped
+
+        def fetch_page(offset: int, limit: int) -> list[dict]:
+            res = q.range(offset, offset + limit - 1).execute()
+            return res.data or []
+
+        all_data, _ = fetch_rows_capped(
+            fetch_page, log_prefix="[Dashboard] top sales"
+        )
+
         for r in all_data:
             sname = _sale_key(r.get("sale_crm_name"))
             if not sname or sname == "(Chưa gán sale)":
@@ -262,17 +261,16 @@ def _query_today_honors(
             .gte("thoi_gian_giao_dich", start_utc)
             .lt("thoi_gian_giao_dich", end_utc)
         )
-        all_data = []
-        offset = 0
-        page_size = 1000
-        while True:
-            res = q.range(offset, offset + page_size - 1).execute()
-            data = res.data or []
-            all_data.extend(data)
-            if len(data) < page_size:
-                break
-            offset += page_size
-            
+        from analytics_limits import fetch_rows_capped
+
+        def fetch_page(offset: int, limit: int) -> list[dict]:
+            res = q.range(offset, offset + limit - 1).execute()
+            return res.data or []
+
+        all_data, _ = fetch_rows_capped(
+            fetch_page, log_prefix="[Dashboard] today honors"
+        )
+
         for r in all_data:
             don_hang = r.get("don_hang") or {}
             sname = _sale_key(don_hang.get("sale_crm_name"))
@@ -839,18 +837,10 @@ def register_dashboard_routes(app, supabase_factory):
         if not sb:
             raise HTTPException(503, "Supabase chưa cấu hình")
 
-        actor_email: str | None = None
-        actor_crm_name: str | None = None
-        if authorization:
-            try:
-                actor = resolve_actor(sb, authorization)
-                actor_email = (actor.email or "").strip().lower() or None
-                staff = actor.staff or {}
-                actor_crm_name = str(staff.get("crm_name") or "").strip() or None
-            except HTTPException:
-                raise
-            except Exception:
-                pass
+        actor = resolve_actor(sb, authorization)
+        actor_email = (actor.email or "").strip().lower() or None
+        staff = actor.staff or {}
+        actor_crm_name = str(staff.get("crm_name") or "").strip() or None
 
         return _build_gamification_summary(
             sb,
@@ -859,10 +849,12 @@ def register_dashboard_routes(app, supabase_factory):
         )
 
     @app.get("/dashboard/filters", tags=["Dashboard"])
-    def dashboard_filters():
+    def dashboard_filters(authorization: str | None = Header(None)):
         sb = supabase_factory()
         if not sb:
             return {"teams": [], "sales": [], "departments": []}
+        
+        resolve_actor(sb, authorization)
         try:
             res = sb.table("crm_sales_data").select(
                 "team, sale_name, department, raw_data, record_type"
@@ -905,11 +897,14 @@ def register_dashboard_routes(app, supabase_factory):
         team: str | None = Query(None),
         sale: str | None = Query(None),
         department: str | None = Query(None),
+        authorization: str | None = Header(None),
     ):
         """Nhanh — query crm_sales_data (incremental daily) cho biểu đồ & BC03."""
         sb = supabase_factory()
         if not sb:
             raise HTTPException(503, "Supabase chưa cấu hình")
+        
+        resolve_actor(sb, authorization)
 
         d_start, d_end = start_date[:10], end_date[:10]
         _validate_custom_range(d_start, d_end)
@@ -962,14 +957,10 @@ def register_dashboard_routes(app, supabase_factory):
 
         actor_crm_name = None
         actor_team = None
-        if authorization and sb:
-            try:
-                actor = resolve_actor(sb, authorization)
-                if actor.staff:
-                    actor_crm_name = actor.staff.get("crm_name")
-                    actor_team = actor.staff.get("team")
-            except Exception:
-                pass
+        actor = resolve_actor(sb, authorization)
+        if actor.staff:
+            actor_crm_name = actor.staff.get("crm_name")
+            actor_team = actor.staff.get("team")
 
         d_start, d_end = start_date[:10], end_date[:10]
         _validate_custom_range(d_start, d_end)
@@ -1114,14 +1105,10 @@ def register_dashboard_routes(app, supabase_factory):
 
         actor_crm_name = None
         actor_team = None
-        if authorization and sb:
-            try:
-                actor = resolve_actor(sb, authorization)
-                if actor.staff:
-                    actor_crm_name = actor.staff.get("crm_name")
-                    actor_team = actor.staff.get("team")
-            except Exception:
-                pass
+        actor = resolve_actor(sb, authorization)
+        if actor.staff:
+            actor_crm_name = actor.staff.get("crm_name")
+            actor_team = actor.staff.get("team")
 
         d_start, d_end = _date_range(range_key, start, end)
         team_filter = team or department
@@ -1294,6 +1281,8 @@ def register_dashboard_routes(app, supabase_factory):
         sb = supabase_factory()
         if not sb:
             raise HTTPException(503, "Supabase chưa cấu hình")
+
+        resolve_actor(sb, authorization)
 
         today_str = _vn_today_iso()
         

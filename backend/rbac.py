@@ -99,14 +99,6 @@ def _lookup_staff(sb, email: str) -> dict[str, Any] | None:
         )
         if res.data:
             return res.data[0]
-        res2 = (
-            sb.table("nhan_su_sale")
-            .select("*")
-            .is_("email", "null")
-            .limit(500)
-            .execute()
-        )
-        # no fuzzy match without email — caller may link later
         return None
     except Exception as exc:
         print(f"staff lookup: {exc}")
