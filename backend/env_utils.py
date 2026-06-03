@@ -6,7 +6,7 @@ import os
 
 
 def app_env() -> str:
-    return (os.getenv("APP_ENV") or "production").strip().lower()
+    return (os.getenv("APP_ENV") or "development").strip().lower()
 
 
 def is_sandbox_env() -> bool:
