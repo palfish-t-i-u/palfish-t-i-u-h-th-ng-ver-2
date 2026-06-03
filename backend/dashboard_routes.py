@@ -839,18 +839,10 @@ def register_dashboard_routes(app, supabase_factory):
         if not sb:
             raise HTTPException(503, "Supabase chưa cấu hình")
 
-        actor_email: str | None = None
-        actor_crm_name: str | None = None
-        if authorization:
-            try:
-                actor = resolve_actor(sb, authorization)
-                actor_email = (actor.email or "").strip().lower() or None
-                staff = actor.staff or {}
-                actor_crm_name = str(staff.get("crm_name") or "").strip() or None
-            except HTTPException:
-                raise
-            except Exception:
-                pass
+        actor = resolve_actor(sb, authorization)
+        actor_email = (actor.email or "").strip().lower() or None
+        staff = actor.staff or {}
+        actor_crm_name = str(staff.get("crm_name") or "").strip() or None
 
         return _build_gamification_summary(
             sb,
@@ -859,10 +851,12 @@ def register_dashboard_routes(app, supabase_factory):
         )
 
     @app.get("/dashboard/filters", tags=["Dashboard"])
-    def dashboard_filters():
+    def dashboard_filters(authorization: str | None = Header(None)):
         sb = supabase_factory()
         if not sb:
             return {"teams": [], "sales": [], "departments": []}
+        
+        resolve_actor(sb, authorization)
         try:
             res = sb.table("crm_sales_data").select(
                 "team, sale_name, department, raw_data, record_type"
@@ -905,11 +899,14 @@ def register_dashboard_routes(app, supabase_factory):
         team: str | None = Query(None),
         sale: str | None = Query(None),
         department: str | None = Query(None),
+        authorization: str | None = Header(None),
     ):
         """Nhanh — query crm_sales_data (incremental daily) cho biểu đồ & BC03."""
         sb = supabase_factory()
         if not sb:
             raise HTTPException(503, "Supabase chưa cấu hình")
+        
+        resolve_actor(sb, authorization)
 
         d_start, d_end = start_date[:10], end_date[:10]
         _validate_custom_range(d_start, d_end)
@@ -962,14 +959,10 @@ def register_dashboard_routes(app, supabase_factory):
 
         actor_crm_name = None
         actor_team = None
-        if authorization and sb:
-            try:
-                actor = resolve_actor(sb, authorization)
-                if actor.staff:
-                    actor_crm_name = actor.staff.get("crm_name")
-                    actor_team = actor.staff.get("team")
-            except Exception:
-                pass
+        actor = resolve_actor(sb, authorization)
+        if actor.staff:
+            actor_crm_name = actor.staff.get("crm_name")
+            actor_team = actor.staff.get("team")
 
         d_start, d_end = start_date[:10], end_date[:10]
         _validate_custom_range(d_start, d_end)
@@ -1114,14 +1107,10 @@ def register_dashboard_routes(app, supabase_factory):
 
         actor_crm_name = None
         actor_team = None
-        if authorization and sb:
-            try:
-                actor = resolve_actor(sb, authorization)
-                if actor.staff:
-                    actor_crm_name = actor.staff.get("crm_name")
-                    actor_team = actor.staff.get("team")
-            except Exception:
-                pass
+        actor = resolve_actor(sb, authorization)
+        if actor.staff:
+            actor_crm_name = actor.staff.get("crm_name")
+            actor_team = actor.staff.get("team")
 
         d_start, d_end = _date_range(range_key, start, end)
         team_filter = team or department
@@ -1294,6 +1283,8 @@ def register_dashboard_routes(app, supabase_factory):
         sb = supabase_factory()
         if not sb:
             raise HTTPException(503, "Supabase chưa cấu hình")
+
+        resolve_actor(sb, authorization)
 
         today_str = _vn_today_iso()
         

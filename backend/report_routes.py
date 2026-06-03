@@ -435,10 +435,14 @@ def register_report_routes(app, supabase_factory):
         end: str | None = Query(None),
         team: str | None = Query(None),
         department: str | None = Query(None),
+        authorization: str | None = Header(None),
     ):
         sb = supabase_factory()
         if not sb:
             raise HTTPException(503, "Supabase chưa cấu hình")
+
+        actor = resolve_actor(sb, authorization)
+        _require_bc03_actor(actor)
 
         d_start, d_end = _date_range(range_key, start, end)
         dates = _list_dates(d_start, d_end)
@@ -508,12 +512,9 @@ def register_report_routes(app, supabase_factory):
         sb = supabase_factory()
         if not sb:
             raise HTTPException(503, "Supabase chưa cấu hình")
-        if authorization:
-            try:
-                actor = resolve_actor(sb, authorization)
-                _require_bc03_actor(actor)
-            except HTTPException:
-                raise
+        
+        actor = resolve_actor(sb, authorization)
+        _require_bc03_actor(actor)
         try:
             res = (
                 sb.table("nhan_su_sale")
@@ -543,11 +544,18 @@ def register_report_routes(app, supabase_factory):
             raise HTTPException(500, f"Lỗi tải danh sách nhân sự: {exc}") from exc
 
     @app.get("/reports/bc03/monthly", tags=["Reports"])
-    def get_bc03_monthly(month: str = Query(..., description="YYYY-MM")):
+    def get_bc03_monthly(
+        month: str = Query(..., description="YYYY-MM"),
+        authorization: str | None = Header(None),
+    ):
         """Tỷ giá + KPI đã lưu cho tháng."""
         sb = supabase_factory()
         if not sb:
             raise HTTPException(503, "Supabase chưa cấu hình")
+        
+        actor = resolve_actor(sb, authorization)
+        _require_bc03_actor(actor)
+        
         month_key = _validate_month_key(month)
         try:
             return _load_monthly(sb, month_key)
@@ -572,15 +580,9 @@ def register_report_routes(app, supabase_factory):
         if not sb:
             raise HTTPException(503, "Supabase chưa cấu hình")
 
-        actor_email: str | None = None
-        if authorization:
-            try:
-                actor = resolve_actor(sb, authorization)
-                actor_email = actor.email
-                if not can_confirm_payment(actor) and actor.role.lower() not in ("manager", "leader"):
-                    raise HTTPException(403, "Chỉ Leader/Manager/Ops được lưu KPI tháng")
-            except HTTPException:
-                raise
+        actor = resolve_actor(sb, authorization)
+        _require_bc03_actor(actor)
+        actor_email = actor.email
 
         try:
             return _save_monthly(sb, body, actor_email)

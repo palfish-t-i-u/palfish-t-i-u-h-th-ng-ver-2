@@ -56,6 +56,7 @@ _default_origins = [
     "http://localhost:5173",
     "http://127.0.0.1:5173",
     "https://palfish-gmv-manager.vercel.app",
+    "https://pf-gmv-reconciliation.vercel.app",
 ]
 _origins = list(
     {
@@ -68,7 +69,7 @@ _origins = list(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_origins,
-    allow_origin_regex=r"https://.*\.vercel\.app|http://(localhost|127\.0\.0\.1):\d+",
+    allow_origin_regex=r"https://(pf-gmv|palfish).*\.vercel\.app|http://(localhost|127\.0\.0\.1):\d+",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
