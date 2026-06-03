@@ -27,7 +27,9 @@ frontend/.env.e2e
 
 # Backend
 backend/__pycache__/
+backend/**/__pycache__/
 backend/*.py[cod]
+**/*.pyc
 backend/.venv/
 backend/venv/
 backend/.env

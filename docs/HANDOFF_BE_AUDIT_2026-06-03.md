@@ -489,6 +489,31 @@ def is_vn_staff(team: str) -> bool:
 
 ---
 
+## Bộ test kiểm tra tự động
+
+Đã có bộ test pytest tại `backend/tests/` — 31 test cases cover toàn bộ 22 tasks.
+
+**Chạy nhanh**:
+```bash
+cd backend && pip install pytest && python -m pytest tests/ -q
+```
+
+**Chạy theo người phụ trách**:
+```bash
+python -m pytest tests/test_audit_auth.py -q    # Đạt
+python -m pytest tests/test_audit_db.py -q       # Đức
+python -m pytest tests/test_audit_other.py -q    # Giang
+```
+
+**Cách verify commit của team BE**:
+1. Checkout commit/branch cần kiểm tra
+2. Chạy `cd backend && python -m pytest tests/ -q`
+3. Test PASS = fix đã đúng. Test FAIL = chưa fix hoặc fix chưa đúng.
+
+Trạng thái baseline (commit `8531f62`): **29 FAIL, 2 PASS** — đúng (chưa fix gì).
+
+---
+
 ## Hướng dẫn giao cho Claude
 
 Nếu team BE không có thời gian, giao lại cho Minh → Minh bảo Claude fix.
@@ -504,4 +529,4 @@ Ví dụ:
 - "Đọc handoff rồi fix DB-01, DB-02, DB-03" → Claude sẽ tạo Postgres sequences
 - "Đọc handoff rồi fix tất cả P0" → Claude sẽ fix toàn bộ P0 theo thứ tự
 
-**Lưu ý cho Claude**: Mỗi task fix xong → chạy `cd frontend && npm run test` để verify không break gì. Với DB tasks → tạo SQL migration file trong `docs/` trước khi apply.
+**Lưu ý cho Claude**: Mỗi task fix xong → chạy `cd backend && python -m pytest tests/ -q` để verify fix đã đúng. Với DB tasks → tạo SQL migration file trong `docs/` trước khi apply.
