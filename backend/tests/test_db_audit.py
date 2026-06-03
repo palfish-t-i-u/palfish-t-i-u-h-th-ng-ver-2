@@ -75,11 +75,17 @@ class TestRpcCallersSource(unittest.TestCase):
         self.assertGreaterEqual(src.count("fetch_rows_capped"), 2)
         self.assertNotIn("while True:", src)
 
-    def test_activation_guarded_rpc(self):
+    def test_activation_db04_atomic_rpcs(self):
         src = (BACKEND / "activation_routes.py").read_text(encoding="utf-8")
+        self.assertIn("jsonb_set", src)
         self.assertIn("expected_updated_at", src)
         self.assertIn("replace_active_request_uids_data_guarded", src)
-        self.assertNotIn("# Python fallback (non-atomic)", src)
+        self.assertNotIn("def _patch_course_python", src)
+        self.assertNotIn("def _issue_course_invoice_python", src)
+        self.assertIn("issue_course_invoice_atomic", src)
+        self.assertIn("revoke_course_invoice_atomic", src)
+        self.assertIn("clear_course_order_id_atomic", src)
+        self.assertIn("rpc_active_request_row", src)
 
 
 if __name__ == "__main__":

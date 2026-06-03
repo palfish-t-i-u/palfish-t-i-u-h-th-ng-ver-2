@@ -1,4 +1,7 @@
-"""B3 — Active Request / course activation & CRM order matching (Hiếu layout)."""
+"""B3 — Active Request / course activation & CRM order matching (Hiếu layout).
+
+Per-course JSONB updates use Postgres jsonb_set via Supabase RPC (DB-04).
+"""
 
 from __future__ import annotations
 
@@ -478,20 +481,6 @@ def _validate_course_amounts(
         )
 
 
-def _patch_course_python(
-    uids_data: list[dict[str, Any]], course_code: str, order_id: str
-) -> list[dict[str, Any]]:
-    found = False
-    for uid_block in uids_data:
-        for course in uid_block.get("courses") or []:
-            if course.get("code") == course_code:
-                course["order_id"] = order_id.strip()
-                found = True
-    if not found:
-        raise HTTPException(404, f"Không tìm thấy course code {course_code}")
-    return uids_data
-
-
 def _sync_ledger_courses_from_uids(sb, ar_id: str, uids_data: list) -> None:
     for ub in uids_data or []:
         if not isinstance(ub, dict):
@@ -545,7 +534,7 @@ def _allocate_invoice_id(sb, year: int | None = None) -> str:
     return f"INV-{year_key}-1{seq:03d}"
 
 
-def _merge_invoice_customer_fields(
+def _build_invoice_course_patch(
     course: dict[str, Any],
     pr: dict[str, Any] | None,
     body: IssueCourseInvoiceBody | None,
@@ -583,90 +572,84 @@ def _merge_invoice_customer_fields(
         patch.setdefault("province", _clean_text(pr.get("province")))
     patch.setdefault("customer_type", _clean_text(course.get("customer_type")) or "individual")
 
-    name = _clean_text(patch.get("name") or course.get("name"))
-    phone = _clean_text(patch.get("phone") or course.get("phone"))
-    address = _clean_text(patch.get("address") or course.get("address"))
-    ward = _clean_text(patch.get("ward") or course.get("ward"))
-    province = _clean_text(patch.get("province") or course.get("province"))
+    preview = {**course, **patch}
+    name = _clean_text(preview.get("name"))
+    phone = _clean_text(preview.get("phone"))
+    address = _clean_text(preview.get("address"))
+    ward = _clean_text(preview.get("ward"))
+    province = _clean_text(preview.get("province"))
     if not name or not phone or not (address or ward or province):
         raise HTTPException(
             400,
             "Thiếu thông tin xuất hoá đơn — cần tên, SĐT và ít nhất một trường địa chỉ",
         )
 
-    course.update({k: v for k, v in patch.items() if v not in (None, "")})
-    return course
+    return {k: v for k, v in patch.items() if v not in (None, "")}
 
 
-def _issue_course_invoice_python(
+def _issue_course_invoice_atomic(
     sb,
     ar_id: str,
     course_code: str,
     body: IssueCourseInvoiceBody | None = None,
 ) -> dict[str, Any]:
+    from rpc_helpers import rpc_active_request_row
+
     res = sb.table("active_requests").select("*").eq("id", ar_id).limit(1).execute()
     if not res.data:
         raise HTTPException(404, f"Active Request {ar_id} không tồn tại")
 
     row = res.data[0]
-    uids_data = list(row.get("uids_data") or [])
-    course = _find_course(uids_data, course_code)
-
-    if course.get("invoiced"):
-        raise HTTPException(400, f"Course {course_code} đã xuất hoá đơn {course.get('invoice_id')}")
+    course = _find_course(row.get("uids_data") or [], course_code)
+    if _course_is_invoiced(course):
+        raise HTTPException(
+            400,
+            f"Course {course_code} đã xuất hoá đơn {course.get('invoice_id')}",
+        )
 
     pr = _fetch_payment_request(sb, str(row.get("pr_id") or "")) if row.get("pr_id") else None
-    _merge_invoice_customer_fields(course, pr, body)
-
+    course_patch = _build_invoice_course_patch(course, pr, body)
     invoice_id = _allocate_invoice_id(sb)
     invoiced_at = _format_invoiced_at()
-    course["invoiced"] = True
-    course["invoice_id"] = invoice_id
-    course["invoiced_at"] = invoiced_at
 
-    status = _derive_status(uids_data)
-    upd = (
-        sb.table("active_requests")
-        .update({"uids_data": uids_data, "status": status})
-        .eq("id", ar_id)
-        .execute()
+    merged_row = rpc_active_request_row(
+        sb,
+        "issue_course_invoice_atomic",
+        {
+            "p_ar_id": ar_id,
+            "p_course_code": course_code,
+            "p_invoice_id": invoice_id,
+            "p_invoiced_at": invoiced_at,
+            "p_course_patch": course_patch,
+        },
     )
-    saved = (upd.data or [{**row, "uids_data": uids_data, "status": status}])[0]
-    merged = {**row, **saved, "uids_data": uids_data, "status": status}
     return {
-        "active_request": _serialize_ar(merged, pr),
+        "active_request": _serialize_ar(merged_row, pr),
         "course_code": course_code,
         "invoice_id": invoice_id,
         "invoiced_at": invoiced_at,
     }
 
 
-def _revoke_course_invoice_python(sb, ar_id: str, course_code: str) -> dict[str, Any]:
+def _revoke_course_invoice_atomic(sb, ar_id: str, course_code: str) -> dict[str, Any]:
+    from rpc_helpers import rpc_active_request_row
+
     res = sb.table("active_requests").select("*").eq("id", ar_id).limit(1).execute()
     if not res.data:
         raise HTTPException(404, f"Active Request {ar_id} không tồn tại")
 
     row = res.data[0]
-    uids_data = list(row.get("uids_data") or [])
-    course = _find_course(uids_data, course_code)
-    if not course.get("invoiced"):
+    course = _find_course(row.get("uids_data") or [], course_code)
+    if not _course_is_invoiced(course):
         raise HTTPException(400, f"Course {course_code} chưa xuất hoá đơn")
 
-    course["invoiced"] = False
-    course["invoice_id"] = ""
-    course["invoiced_at"] = ""
-
-    status = _derive_status(uids_data)
-    upd = (
-        sb.table("active_requests")
-        .update({"uids_data": uids_data, "status": status})
-        .eq("id", ar_id)
-        .execute()
+    merged_row = rpc_active_request_row(
+        sb,
+        "revoke_course_invoice_atomic",
+        {"p_ar_id": ar_id, "p_course_code": course_code},
     )
-    saved = (upd.data or [{**row, "uids_data": uids_data, "status": status}])[0]
-    merged = {**row, **saved, "uids_data": uids_data, "status": status}
-    pr = _fetch_payment_request(sb, str(row.get("pr_id") or "")) if row.get("pr_id") else None
-    return {"active_request": _serialize_ar(merged, pr), "course_code": course_code}
+    pr = _fetch_payment_request(sb, str(merged_row.get("pr_id") or "")) if merged_row.get("pr_id") else None
+    return {"active_request": _serialize_ar(merged_row, pr), "course_code": course_code}
 
 
 def _parse_create_ar_payload(raw: Any) -> tuple[str | None, str | None, list[Any]]:
@@ -865,14 +848,23 @@ def _export_b4_tax_batch(sb, items: list[ExportBatchItem] | None) -> StreamingRe
         mutated_ar_ids.add(str(ar_row.get("id") or ""))
         enriched.append(_course_to_tax_order(course, uid_block, ar_row, pr, tax_invoice_code, tax_product_code))
 
+    from rpc_helpers import rpc_active_request_row
+
     for ar_id in mutated_ar_ids:
         ar_row = ar_map.get(ar_id)
         if not ar_row:
             continue
-        uids_data = ar_row.get("uids_data") or []
-        status = _derive_status(uids_data)
         try:
-            sb.table("active_requests").update({"uids_data": uids_data, "status": status}).eq("id", ar_id).execute()
+            rpc_active_request_row(
+                sb,
+                "replace_active_request_uids_snapshot",
+                {
+                    "p_ar_id": ar_id,
+                    "p_uids_data": ar_row.get("uids_data") or [],
+                },
+            )
+        except HTTPException:
+            raise
         except Exception as exc:
             raise HTTPException(500, f"Không lưu mã thuế cho {ar_id}: {exc}") from exc
 
@@ -1257,67 +1249,33 @@ def register_activation_routes(app, supabase_factory):
         order_id = str(body.order_id or "").strip()
 
         # RPC path for non-empty Order ID (atomic JSONB patch)
-        if order_id:
-            try:
-                rpc = sb.rpc(
-                    "patch_active_request_course_order",
-                    {
-                        "p_ar_id": ar_id,
-                        "p_course_code": course_code,
-                        "p_order_id": order_id,
-                    },
-                ).execute()
-                if rpc.data:
-                    row = rpc.data[0] if isinstance(rpc.data, list) else rpc.data
-                    ledger_id = sync_ledger_from_ar_course(sb, ar_id, course_code)
-                    if ledger_id:
-                        print(f"[activation] B3 → Sổ: AR {ar_id} course {course_code} → {ledger_id}")
-                    else:
-                        print(f"[activation] B3 → Sổ: skip/fail AR {ar_id} course {course_code}")
-                    pr_map = _fetch_prs_by_ids(sb, [str(row.get("pr_id") or "")])
-                    return _serialize_ar(row, pr_map.get(str(row.get("pr_id") or "")))
-            except Exception as exc:
-                from rpc_helpers import MIGRATION_HINT
-
-                msg = str(exc).lower()
-                if "active_request_not_found" in msg or "p0002" in msg and "active" in msg:
-                    raise HTTPException(404, f"Active Request {ar_id} không tồn tại") from exc
-                if "course_code_not_found" in msg:
-                    raise HTTPException(404, f"Không tìm thấy course code {course_code}") from exc
-                if "could not find the function" in msg or "patch_active_request_course_order" in msg:
-                    raise HTTPException(503, MIGRATION_HINT) from exc
-                raise HTTPException(
-                    500, f"RPC patch_active_request_course_order lỗi: {exc}"
-                ) from exc
+        from rpc_helpers import rpc_active_request_row
 
         if order_id:
-            raise HTTPException(500, "RPC patch_active_request_course_order khong tra du lieu")
-
-        # Chi xoa Order ID — khong co RPC atomic; cap nhat truc tiep (it xay ra dong thoi)
-        try:
-            res = sb.table("active_requests").select("*").eq("id", ar_id).limit(1).execute()
-        except Exception as exc:
-            raise HTTPException(500, f"Không đọc active_requests: {exc}") from exc
-        if not res.data:
-            raise HTTPException(404, f"Active Request {ar_id} không tồn tại")
-
-        row = res.data[0]
-        uids_data = _patch_course_python(list(row.get("uids_data") or []), course_code, order_id)
-        status = _derive_status(uids_data)
-        try:
-            upd = (
-                sb.table("active_requests")
-                .update({"uids_data": uids_data, "status": status})
-                .eq("id", ar_id)
-                .execute()
+            row = rpc_active_request_row(
+                sb,
+                "patch_active_request_course_order",
+                {
+                    "p_ar_id": ar_id,
+                    "p_course_code": course_code,
+                    "p_order_id": order_id,
+                },
             )
-        except Exception as exc:
-            raise HTTPException(500, f"Không cập nhật active_requests: {exc}") from exc
+            ledger_id = sync_ledger_from_ar_course(sb, ar_id, course_code)
+            if ledger_id:
+                print(f"[activation] B3 → Sổ: AR {ar_id} course {course_code} → {ledger_id}")
+            else:
+                print(f"[activation] B3 → Sổ: skip/fail AR {ar_id} course {course_code}")
+            pr_map = _fetch_prs_by_ids(sb, [str(row.get("pr_id") or "")])
+            return _serialize_ar(row, pr_map.get(str(row.get("pr_id") or "")))
 
-        saved = (upd.data or [{"id": ar_id, "pr_id": row.get("pr_id"), "uids_data": uids_data, "status": status}])[0]
-        merged = {**row, **saved, "uids_data": uids_data, "status": status}
-        pr_map = _fetch_prs_by_ids(sb, [str(merged.get("pr_id") or "")])
-        return _serialize_ar(merged, pr_map.get(str(merged.get("pr_id") or "")))
+        row = rpc_active_request_row(
+            sb,
+            "clear_course_order_id_atomic",
+            {"p_ar_id": ar_id, "p_course_code": course_code},
+        )
+        pr_map = _fetch_prs_by_ids(sb, [str(row.get("pr_id") or "")])
+        return _serialize_ar(row, pr_map.get(str(row.get("pr_id") or "")))
 
     @app.post(
         "/api/v1/active-requests/{ar_id}/request-invoice",
@@ -1338,44 +1296,21 @@ def register_activation_routes(app, supabase_factory):
         if not res.data:
             raise HTTPException(404, f"Active Request {ar_id} không tồn tại")
 
+        from rpc_helpers import rpc_active_request_row
+
         row = res.data[0]
-        uids_data = list(row.get("uids_data") or [])
         current_time = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M")
-
-        updated = False
-        for uid_block in uids_data:
-            for course in uid_block.get("courses") or []:
-                is_invoiced = _course_is_invoiced(course)
-                # Fix: Cho phép request invoice kể cả khi chưa có order_id.
-                # Kích hoạt CRM (order_id) và xuất hoá đơn là 2 luồng độc lập.
-                if not is_invoiced:
-                    if not _course_invoice_requested_at(course):
-                        course["invoice_requested_at"] = current_time
-                        updated = True
-
-        if not updated:
-            pr = _fetch_payment_request(sb, str(row.get("pr_id") or "")) if row.get("pr_id") else None
-            return _serialize_ar(row, pr)
-
-        status = _derive_status(uids_data)
-        try:
-            upd = (
-                sb.table("active_requests")
-                .update({
-                    "uids_data": uids_data,
-                    "status": status,
-                    "updated_at": datetime.now(timezone.utc).isoformat()
-                })
-                .eq("id", ar_id)
-                .execute()
-            )
-        except Exception as exc:
-            raise HTTPException(500, f"Không cập nhật active_requests: {exc}") from exc
-
-        saved = (upd.data or [{**row, "uids_data": uids_data, "status": status}])[0]
-        merged = {**row, **saved, "uids_data": uids_data, "status": status}
-        pr = _fetch_payment_request(sb, str(merged.get("pr_id") or "")) if merged.get("pr_id") else None
-        return _serialize_ar(merged, pr)
+        merged_row = rpc_active_request_row(
+            sb,
+            "request_ar_invoice_atomic",
+            {"p_ar_id": ar_id, "p_requested_at": current_time},
+        )
+        pr = (
+            _fetch_payment_request(sb, str(merged_row.get("pr_id") or ""))
+            if merged_row.get("pr_id")
+            else None
+        )
+        return _serialize_ar(merged_row, pr)
 
     @app.post(
         "/api/v1/active-requests/{ar_id}/courses/{course_code}/issue-invoice",
@@ -1393,7 +1328,7 @@ def register_activation_routes(app, supabase_factory):
             raise HTTPException(503, "Supabase chưa cấu hình")
         
         actor = resolve_actor(sb, authorization)
-        return _issue_course_invoice_python(sb, ar_id, course_code, body)
+        return _issue_course_invoice_atomic(sb, ar_id, course_code, body)
 
     @app.post(
         "/api/v1/active-requests/{ar_id}/courses/{course_code}/revoke-invoice",
@@ -1410,7 +1345,7 @@ def register_activation_routes(app, supabase_factory):
             raise HTTPException(503, "Supabase chưa cấu hình")
         
         actor = resolve_actor(sb, authorization)
-        return _revoke_course_invoice_python(sb, ar_id, course_code)
+        return _revoke_course_invoice_atomic(sb, ar_id, course_code)
 
     @app.post("/api/v1/invoice-courses/bulk-issue", tags=["Activation"])
     def bulk_issue_course_invoices(
@@ -1428,7 +1363,7 @@ def register_activation_routes(app, supabase_factory):
         errors: list[dict[str, Any]] = []
         for item in body.items:
             try:
-                result = _issue_course_invoice_python(sb, item.ar_id, item.course_code)
+                result = _issue_course_invoice_atomic(sb, item.ar_id, item.course_code)
                 issued.append(
                     {
                         "ar_id": item.ar_id,
