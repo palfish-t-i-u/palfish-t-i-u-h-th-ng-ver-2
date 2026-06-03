@@ -1396,6 +1396,7 @@ def register_revenue_routes(app, get_supabase) -> None:
             row = cur.data[0]
             if row.get("loai_nhap") != "tay":
                 raise HTTPException(403, "Chỉ được xóa dòng điền tay")
+            _write_audit(sb, row_id, actor, "delete", None, row, None)
             sb.table("so_doanh_thu").delete().eq("id", row_id).execute()
             return {"ok": True, "id": row_id}
         except HTTPException:

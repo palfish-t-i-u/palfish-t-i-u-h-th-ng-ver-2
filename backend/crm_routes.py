@@ -33,6 +33,21 @@ from pydantic import BaseModel
 from crm_metrics import extract_row_metrics, is_valid_sale_name, parse_rate, sale_label, team_label
 from rbac import resolve_actor, require_min_role
 
+# Encryption — CRM token at rest (OTHER-03)
+try:
+    from cryptography.fernet import Fernet
+except ImportError:
+    Fernet = None  # type: ignore
+
+_FERNET_KEY = os.getenv("CRM_ENCRYPT_KEY")
+_cipher = None
+if Fernet and _FERNET_KEY:
+    try:
+        _cipher = Fernet(_FERNET_KEY.encode())
+    except Exception as exc:
+        print(f"[CRM] WARNING: Invalid CRM_ENCRYPT_KEY, Fernet encryption disabled: {exc}")
+
+
 try:
     import numpy as np
     import pandas as pd
@@ -1107,7 +1122,7 @@ def _parse_auth_bundle(raw: str) -> dict[str, Any]:
 
 
 def _get_auth_bundle(sb) -> dict[str, Any]:
-    """Lấy auth bundle từ Supabase hoặc bộ nhớ."""
+    """Lấy auth bundle từ Supabase hoặc bộ nhớ. Decrypt nếu có cipher."""
     raw = ""
     if sb:
         try:
@@ -1116,6 +1131,13 @@ def _get_auth_bundle(sb) -> dict[str, Any]:
                 raw = res.data[0].get("cookie_value", "")
         except Exception as exc:
             print(f"crm_tokens get failed: {exc}")
+    # Decrypt token từ DB (OTHER-03)
+    if raw and _cipher:
+        try:
+            raw = _cipher.decrypt(raw.encode()).decode()
+        except Exception:
+            print("[CRM] Token trong DB không giải mã được — yêu cầu cập nhật lại token")
+            raw = ""  # coi như không có → FE sẽ báo "chưa có token"
     if not raw:
         raw = _crm_token_mem.get("cookie_value", "")
     return _parse_auth_bundle(raw)
@@ -1302,10 +1324,15 @@ def register_crm_routes(app, supabase_factory):
         actor = resolve_actor(sb, authorization)
         require_min_role(actor, "manager")
 
+        # Encrypt trước khi lưu DB (OTHER-03)
+        store_value = cookie
+        if _cipher:
+            store_value = _cipher.encrypt(cookie.encode()).decode()
+
         if sb:
             try:
                 sb.table("crm_tokens").upsert(
-                    {"id": 1, "cookie_value": cookie, "updated_at": now_iso}
+                    {"id": 1, "cookie_value": store_value, "updated_at": now_iso}
                 ).execute()
             except Exception as exc:
                 print(f"crm_tokens upsert failed (fallback to mem): {exc}")
