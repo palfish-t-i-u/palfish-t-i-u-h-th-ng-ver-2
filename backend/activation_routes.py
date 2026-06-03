@@ -74,6 +74,7 @@ class ActiveRequestPatchBody(BaseModel):
     customer_name: str | None = None
     info_confirmed: bool | None = None
     uids_data: list[ActiveRequestPatchUidPayload] | None = None
+    expected_updated_at: str | None = None
 
 
 class IssueCourseInvoiceBody(BaseModel):
@@ -1071,17 +1072,94 @@ def register_activation_routes(app, supabase_factory):
                 raise HTTPException(400, "customer_name khong duoc rong")
             patch["customer_name"] = customer_name
 
+        guarded_uids: list[dict[str, Any]] | None = None
+        guarded_status: str | None = None
         if body.uids_data is not None:
             if not body.uids_data:
                 raise HTTPException(400, "uids_data phai co it nhat mot uid")
             uids_data = [uid.model_dump() for uid in body.uids_data]
-            # Validate: tổng tiền gói học không được vượt số tiền thực nhận
             current_pr_id = str(current.get("pr_id") or "")
             if current_pr_id:
                 patch_pr = _fetch_payment_request(sb, current_pr_id)
                 _validate_course_amounts(sb, patch_pr, uids_data, exclude_ar_id=ar_id)
+            guarded_status = _derive_status(uids_data)
+            if body.expected_updated_at:
+                from rpc_helpers import MIGRATION_HINT, rpc_first_row
+
+                expected = str(body.expected_updated_at).strip()
+                if not expected:
+                    raise HTTPException(400, "expected_updated_at khong hop le")
+                try:
+                    rpc_out = rpc_first_row(
+                        sb,
+                        "replace_active_request_uids_data_guarded",
+                        {
+                            "p_ar_id": ar_id,
+                            "p_expected_updated_at": expected,
+                            "p_uids_data": uids_data,
+                            "p_status": guarded_status,
+                        },
+                    )
+                except HTTPException:
+                    raise
+                except Exception as exc:
+                    raise HTTPException(
+                        500,
+                        f"RPC replace_active_request_uids_data_guarded loi: {exc}. {MIGRATION_HINT}",
+                    ) from exc
+                if not isinstance(rpc_out, dict):
+                    raise HTTPException(503, MIGRATION_HINT)
+                if rpc_out.get("conflict"):
+                    cur_row = rpc_out.get("row") or current
+                    pr_map = _fetch_prs_by_ids(sb, [str(cur_row.get("pr_id") or "")])
+                    current_ar = _serialize_ar(
+                        cur_row if isinstance(cur_row, dict) else current,
+                        pr_map.get(str(cur_row.get("pr_id") or "") if isinstance(cur_row, dict) else ""),
+                    )
+                    raise HTTPException(
+                        409,
+                        detail={
+                            "detail": "Active Request da duoc cap nhat boi nguoi khac",
+                            "current": current_ar,
+                        },
+                    )
+                row = rpc_out.get("row") or {}
+                merged = {**current, **row}
+                _sync_ledger_courses_from_uids(sb, ar_id, merged.get("uids_data") or [])
+                extra: dict[str, Any] = {}
+                if body.customer_name is not None:
+                    customer_name = str(body.customer_name or "").strip()
+                    if not customer_name:
+                        raise HTTPException(400, "customer_name khong duoc rong")
+                    extra["customer_name"] = customer_name
+                if body.info_confirmed is not None:
+                    extra["info_confirmed_at"] = (
+                        datetime.now(timezone.utc).isoformat()
+                        if body.info_confirmed
+                        else None
+                    )
+                if extra:
+                    extra["updated_at"] = datetime.now(timezone.utc).isoformat()
+                    try:
+                        upd = (
+                            sb.table("active_requests")
+                            .update(extra)
+                            .eq("id", ar_id)
+                            .execute()
+                        )
+                        if upd.data:
+                            merged = {**merged, **upd.data[0]}
+                        else:
+                            merged = {**merged, **extra}
+                    except Exception as exc:
+                        raise HTTPException(
+                            500, f"Khong cap nhat active_requests: {exc}"
+                        ) from exc
+                pr_map = _fetch_prs_by_ids(sb, [str(merged.get("pr_id") or "")])
+                return _serialize_ar(merged, pr_map.get(str(merged.get("pr_id") or "")))
             patch["uids_data"] = uids_data
-            patch["status"] = _derive_status(uids_data)
+            patch["status"] = guarded_status
+            guarded_uids = uids_data
 
         if body.info_confirmed is not None:
             patch["info_confirmed_at"] = (
@@ -1100,8 +1178,8 @@ def register_activation_routes(app, supabase_factory):
 
         saved = (upd.data or [{**current, **patch}])[0]
         merged = {**current, **saved, **patch}
-        if body.uids_data is not None:
-            _sync_ledger_courses_from_uids(sb, ar_id, merged.get("uids_data") or [])
+        if guarded_uids is not None:
+            _sync_ledger_courses_from_uids(sb, ar_id, merged.get("uids_data") or guarded_uids)
         pr_map = _fetch_prs_by_ids(sb, [str(merged.get("pr_id") or "")])
         return _serialize_ar(merged, pr_map.get(str(merged.get("pr_id") or "")))
 
@@ -1199,16 +1277,23 @@ def register_activation_routes(app, supabase_factory):
                     pr_map = _fetch_prs_by_ids(sb, [str(row.get("pr_id") or "")])
                     return _serialize_ar(row, pr_map.get(str(row.get("pr_id") or "")))
             except Exception as exc:
+                from rpc_helpers import MIGRATION_HINT
+
                 msg = str(exc).lower()
                 if "active_request_not_found" in msg or "p0002" in msg and "active" in msg:
                     raise HTTPException(404, f"Active Request {ar_id} không tồn tại") from exc
                 if "course_code_not_found" in msg:
                     raise HTTPException(404, f"Không tìm thấy course code {course_code}") from exc
-                # Fallback when RPC not deployed yet
-                if "patch_active_request_course_order" not in msg:
-                    raise HTTPException(500, f"RPC patch_active_request_course_order lỗi: {exc}") from exc
+                if "could not find the function" in msg or "patch_active_request_course_order" in msg:
+                    raise HTTPException(503, MIGRATION_HINT) from exc
+                raise HTTPException(
+                    500, f"RPC patch_active_request_course_order lỗi: {exc}"
+                ) from exc
 
-        # Python fallback (non-atomic) if SQL function missing
+        if order_id:
+            raise HTTPException(500, "RPC patch_active_request_course_order khong tra du lieu")
+
+        # Chi xoa Order ID — khong co RPC atomic; cap nhat truc tiep (it xay ra dong thoi)
         try:
             res = sb.table("active_requests").select("*").eq("id", ar_id).limit(1).execute()
         except Exception as exc:
@@ -1217,10 +1302,8 @@ def register_activation_routes(app, supabase_factory):
             raise HTTPException(404, f"Active Request {ar_id} không tồn tại")
 
         row = res.data[0]
-        uids_data = list(row.get("uids_data") or [])
-        uids_data = _patch_course_python(uids_data, course_code, order_id)
+        uids_data = _patch_course_python(list(row.get("uids_data") or []), course_code, order_id)
         status = _derive_status(uids_data)
-
         try:
             upd = (
                 sb.table("active_requests")
@@ -1233,8 +1316,6 @@ def register_activation_routes(app, supabase_factory):
 
         saved = (upd.data or [{"id": ar_id, "pr_id": row.get("pr_id"), "uids_data": uids_data, "status": status}])[0]
         merged = {**row, **saved, "uids_data": uids_data, "status": status}
-        if order_id:
-            sync_ledger_from_ar_course(sb, ar_id, course_code)
         pr_map = _fetch_prs_by_ids(sb, [str(merged.get("pr_id") or "")])
         return _serialize_ar(merged, pr_map.get(str(merged.get("pr_id") or "")))
 
