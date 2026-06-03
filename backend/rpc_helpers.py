@@ -52,6 +52,35 @@ def rpc_next_payment_request_id(sb, year: int | None = None) -> str:
     return str(row or "")
 
 
+def _raise_ar_rpc_error(exc: Exception, fn: str) -> None:
+    msg = str(exc).lower()
+    if "active_request_not_found" in msg:
+        raise HTTPException(404, "Active Request không tồn tại") from exc
+    if "course_code_not_found" in msg:
+        raise HTTPException(404, "Không tìm thấy course code") from exc
+    if "course_already_invoiced" in msg:
+        raise HTTPException(400, "Course đã xuất hoá đơn") from exc
+    if "course_not_invoiced" in msg:
+        raise HTTPException(400, "Course chưa xuất hoá đơn") from exc
+    if "could not find the function" in msg or fn.lower() in msg:
+        raise HTTPException(503, MIGRATION_HINT) from exc
+
+
+def rpc_active_request_row(
+    sb, fn: str, params: dict[str, Any] | None = None
+) -> dict[str, Any]:
+    try:
+        row = rpc_first_row(sb, fn, params)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        _raise_ar_rpc_error(exc, fn)
+        raise HTTPException(500, f"RPC {fn} lỗi: {exc}") from exc
+    if isinstance(row, dict) and row.get("id"):
+        return row
+    raise HTTPException(500, f"RPC {fn} không trả active_requests")
+
+
 def rpc_allocate_tax_sequences(sb, n: int, date_key: str) -> tuple[int, int]:
     row = rpc_first_row(
         sb,
