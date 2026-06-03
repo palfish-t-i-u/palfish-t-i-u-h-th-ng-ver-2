@@ -4,8 +4,12 @@ from __future__ import annotations
 
 from typing import Any
 
-# Teams ngoài phạm vi GMV VN (wireframes / team_hierarchy.md)
-NON_VN_TEAMS = frozenset({"Tele sale", "P'AU Group", "P'TEE Group"})
+import os
+
+_fallback_teams = "tele sale,thái,úc"
+NON_VN_TEAMS = frozenset(
+    t.strip().lower() for t in os.getenv("NON_VN_TEAMS", _fallback_teams).split(",") if t.strip()
+)
 
 
 def _depart6_str(row: dict[str, Any]) -> str:
@@ -19,7 +23,7 @@ def is_vn_sale_row(row: dict[str, Any]) -> bool:
     """True if sale belongs in GMV VN personnel lists."""
     if "thailand" in _depart6_str(row).lower():
         return False
-    team = (row.get("team") or "").strip()
+    team = (row.get("team") or "").strip().lower()
     if team in NON_VN_TEAMS:
         return False
     return True
