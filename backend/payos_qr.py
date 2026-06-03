@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import os
+import random
 import re
 import time
 from typing import Any
@@ -76,7 +77,7 @@ async def create_payos_payment_link(amount: int, description_hint: str) -> dict[
     if not description:
         description = "Thanh toan"
 
-    order_code = int(time.time() * 1000) % 9_007_199_254_740_991
+    order_code = (int(time.time() * 1000) * 1000 + random.randint(0, 999)) % 9_007_199_254_740_991
     frontend_url = (os.getenv("FRONTEND_URL") or "http://localhost:5173").rstrip("/")
     return_url = f"{frontend_url}/"
     cancel_url = f"{frontend_url}/"
