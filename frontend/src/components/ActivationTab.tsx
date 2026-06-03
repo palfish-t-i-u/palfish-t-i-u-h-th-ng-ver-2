@@ -3,6 +3,7 @@ import { COURSE_PACKAGES } from "../constants/coursePackages";
 import { usePaymentFlow } from "../contexts/PaymentFlowContext";
 import { usePermission } from "../hooks/usePermission";
 import { endpoints } from "../lib/api";
+import { notifyLedgerChanged } from "../lib/ledgerEvents";
 import type { ActiveRequest, ActiveCourse, ActiveUidGroup, PaymentRequest } from "../types/paymentRequest";
 import type { ActiveRequestStatus } from "../types/paymentRequest";
 import {
@@ -1209,7 +1210,11 @@ function ActivationDetailDrawer({
                     ) : isCourseDirty(course.courseCode) ? (
                       <span style={{ fontSize: 10.5, color: "var(--warning-text)", whiteSpace: "nowrap" }}>Chưa lưu</span>
                     ) : courseSavedAt[course.courseCode] ? (
-                      <span style={{ fontSize: 10.5, color: "var(--success-text)", whiteSpace: "nowrap" }}>Đã lưu</span>
+                      <span style={{ fontSize: 10.5, color: "var(--success-text)", whiteSpace: "nowrap" }}>
+                        {(courseDrafts[course.courseCode]?.orderId ?? course.orderId ?? "").trim()
+                          ? "Đã lưu · Sổ DT"
+                          : "Đã lưu"}
+                      </span>
                     ) : null}
                   </div>
                   <div className="invoice-cell">
@@ -1484,6 +1489,9 @@ export default function ActivationTab() {
       const saved = fromApiActiveRequest(res.data);
       updateActiveRequest(next.id, () => saved);
       setApiNote("");
+      if (saved.uids.some((u) => u.courses.some((c) => c.orderId?.trim()))) {
+        notifyLedgerChanged();
+      }
       return { ok: true as const, saved };
     } catch {
       const error = "Không lưu được thay đổi Active Request lên máy chủ.";
@@ -1498,7 +1506,9 @@ export default function ActivationTab() {
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, marginBottom: 4 }}>
           <div style={{ fontSize: 12.5, color: "var(--text-3)", maxWidth: 720, lineHeight: 1.55 }}>
             Sau khi PR đủ tiền, tạo <strong style={{ color: "var(--text-2)" }}>Active Request</strong> và điền{" "}
-            <strong style={{ color: "var(--text-2)" }}>Order ID CRM</strong> cho từng Course Code. Khi đủ Order ID →
+            <strong style={{ color: "var(--text-2)" }}>Order ID CRM</strong> cho từng Course Code.{" "}
+            <strong style={{ color: "var(--text-2)" }}>Lưu Order ID</strong> → ghi ngay vào{" "}
+            <strong style={{ color: "var(--text-2)" }}>Sổ doanh thu</strong> (tab Báo cáo, lọc theo Pay Time PR). Khi đủ Order ID →
             sang B4 xuất hoá đơn.
           </div>
           {!readOnly && (

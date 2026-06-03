@@ -17,6 +17,7 @@ from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
 from rbac import resolve_actor, visible_creator_emails
+from admin_routes import require_module_write
 
 from payos_qr import create_payos_payment_link, fetch_payos_payment, payos_payment_is_paid
 
@@ -189,7 +190,12 @@ def _serialize_payment_request(row: dict[str, Any]) -> dict[str, Any]:
         "created_at": row.get("created_at") or "",
         "updated_at": row.get("updated_at") or "",
         "sale_email": row.get("sale_email") or "",
+        "is_test": bool(row.get("is_test")),
     }
+
+
+def _is_test_email(email: str) -> bool:
+    return email.strip().lower().endswith("@dev")
 
 
 def _storage_public_url(bucket, object_path: str) -> str:
@@ -759,6 +765,13 @@ def recompute_payment_request_totals(sb, payment_request_id: str) -> dict[str, A
         .execute()
     )
     updated = update_res.data[0] if update_res.data else {**pr_row, "received": received, "state": state}
+    if state in ("done", "over"):
+        try:
+            from revenue_routes import sync_ledger_for_pr
+
+            sync_ledger_for_pr(sb, payment_request_id)
+        except Exception as exc:
+            print(f"[payment_requests] ledger sync after PR paid skipped: {exc}")
     return {
         "payment_request_id": payment_request_id,
         "received": received,
@@ -1038,6 +1051,7 @@ def register_payment_request_routes(app, get_supabase) -> None:
     ):
         sb = _sb_or_503(get_supabase)
         actor = resolve_actor(sb, authorization)
+        require_module_write(sb, actor, "paymentRequests")
         request_res = (
             sb.table("payment_requests")
             .select("*")
@@ -1095,6 +1109,7 @@ def register_payment_request_routes(app, get_supabase) -> None:
     ):
         sb = _sb_or_503(get_supabase)
         actor = resolve_actor(sb, authorization)
+        require_module_write(sb, actor, "paymentRequests")
         request_res = (
             sb.table("payment_requests")
             .select("*")
@@ -1186,8 +1201,10 @@ def register_payment_request_routes(app, get_supabase) -> None:
     ):
         sb = _sb_or_503(get_supabase)
         actor = resolve_actor(sb, authorization)
+        require_module_write(sb, actor, "paymentRequests")
         row = _payment_request_insert_row(body)
         row["sale_email"] = actor.email.lower()
+        row["is_test"] = _is_test_email(actor.email)
         try:
             row["id"] = _allocate_pr_id(sb)
             res = sb.table("payment_requests").insert(row).execute()
@@ -1207,6 +1224,7 @@ def register_payment_request_routes(app, get_supabase) -> None:
     ):
         sb = _sb_or_503(get_supabase)
         actor = resolve_actor(sb, authorization)
+        require_module_write(sb, actor, "paymentRequests")
         request_res = (
             sb.table("payment_requests")
             .select("*")
@@ -1246,6 +1264,7 @@ def register_payment_request_routes(app, get_supabase) -> None:
             "amount": amount,
             "status": "pending",
             "transfer_code": transfer_code,
+            "is_test": bool(pr_row.get("is_test")),
         }
 
         if method == "qr":

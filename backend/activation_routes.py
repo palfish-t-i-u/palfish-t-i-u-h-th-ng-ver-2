@@ -490,6 +490,18 @@ def _patch_course_python(
     return uids_data
 
 
+def _sync_ledger_courses_from_uids(sb, ar_id: str, uids_data: list) -> None:
+    for ub in uids_data or []:
+        if not isinstance(ub, dict):
+            continue
+        for c in ub.get("courses") or []:
+            if not isinstance(c, dict):
+                continue
+            code = str(c.get("code") or "").strip()
+            if code and _course_order_id(c):
+                sync_ledger_from_ar_course(sb, ar_id, code)
+
+
 def _clean_text(value: Any) -> str:
     return str(value or "").strip()
 
@@ -691,6 +703,7 @@ def _save_active_request(
         "pr_id": pr_id,
         "uids_data": uids_data,
         "status": status,
+        "is_test": bool(pr.get("is_test")) if pr else False,
     }
     if customer_name:
         row["customer_name"] = customer_name
@@ -1071,6 +1084,8 @@ def register_activation_routes(app, supabase_factory):
 
         saved = (upd.data or [{**current, **patch}])[0]
         merged = {**current, **saved, **patch}
+        if body.uids_data is not None:
+            _sync_ledger_courses_from_uids(sb, ar_id, merged.get("uids_data") or [])
         pr_map = _fetch_prs_by_ids(sb, [str(merged.get("pr_id") or "")])
         return _serialize_ar(merged, pr_map.get(str(merged.get("pr_id") or "")))
 
@@ -1146,6 +1161,11 @@ def register_activation_routes(app, supabase_factory):
                 ).execute()
                 if rpc.data:
                     row = rpc.data[0] if isinstance(rpc.data, list) else rpc.data
+                    ledger_id = sync_ledger_from_ar_course(sb, ar_id, course_code)
+                    if ledger_id:
+                        print(f"[activation] B3 → Sổ: AR {ar_id} course {course_code} → {ledger_id}")
+                    else:
+                        print(f"[activation] B3 → Sổ: skip/fail AR {ar_id} course {course_code}")
                     pr_map = _fetch_prs_by_ids(sb, [str(row.get("pr_id") or "")])
                     return _serialize_ar(row, pr_map.get(str(row.get("pr_id") or "")))
             except Exception as exc:

@@ -10,6 +10,9 @@ import {
   type ReactNode,
 } from "react";
 import { endpoints } from "../lib/api";
+import { notifyLedgerChanged } from "../lib/ledgerEvents";
+import { useRefetchOnFocus } from "../hooks/useRefetchOnFocus";
+import { useRealtimeTable } from "../hooks/useRealtimeTable";
 import type {
   ActiveRequest,
   AddPaymentAttemptPayload,
@@ -185,6 +188,17 @@ export function PaymentFlowProvider({
     }, POLL_MS);
     return () => window.clearInterval(timer);
   }, [pendingQr, loadData]);
+
+  const silentRefetch = useCallback(() => {
+    void loadData({ silent: true });
+  }, [loadData]);
+
+  useRealtimeTable(
+    ["payment_requests", "payment_lines", "active_requests"],
+    silentRefetch,
+  );
+
+  useRefetchOnFocus(silentRefetch);
 
   const updateRequest = useCallback((id: string, updater: (r: PaymentRequest) => PaymentRequest) => {
     setRequests((prev) => prev.map((r) => (r.id === id ? normalizeRequest(updater(r)) : r)));
@@ -417,6 +431,9 @@ export function PaymentFlowProvider({
       const saved = fromApiActiveRequest(res.data);
       setActiveRequests((prev) => prev.map((x) => (x.id === next.id ? saved : x)));
       setApiNote("");
+      if (saved.uids.some((u) => u.courses.some((c) => c.orderId?.trim()))) {
+        notifyLedgerChanged();
+      }
     } catch {
       setApiNote("Đã đổi tạm trên giao diện; máy chủ chưa lưu được thay đổi Kích hoạt khóa học.");
     }
@@ -474,6 +491,7 @@ export function PaymentFlowProvider({
         }
         setActiveRequests((prev) => prev.map((x) => (x.id === arId ? ar : x)));
         setApiNote("");
+        if (trimmed) notifyLedgerChanged();
         return { ok: true };
       } catch {
         try {
@@ -489,6 +507,7 @@ export function PaymentFlowProvider({
           }
           setActiveRequests((prev) => prev.map((x) => (x.id === arId ? ar : x)));
           setApiNote("");
+          if (trimmed) notifyLedgerChanged();
           return { ok: true };
         } catch {
           const error = "Khong luu duoc Order ID len may chu.";

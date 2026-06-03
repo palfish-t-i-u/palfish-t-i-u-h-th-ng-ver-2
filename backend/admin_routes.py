@@ -55,6 +55,7 @@ class AuthUserPatchBody(BaseModel):
     phone: str | None = None
     department: str | None = None
     team: str | None = None
+    sub_team: str | None = None
 
 
 class AuthUserCreateBody(BaseModel):
@@ -67,6 +68,10 @@ class AuthUserCreateBody(BaseModel):
     crmName: str | None = None
     role: str | None = None
     is_activated: bool = False
+
+
+class BulkDeleteAuthUsersBody(BaseModel):
+    user_ids: list[str]
 
 
 class PermissionPatchBody(BaseModel):
@@ -140,14 +145,21 @@ DEPARTMENT_ALIASES = {
     "sale": "sale",
     "sales": "sale",
     "ban hang": "sale",
+    "doi sale": "sale",
+    "doi ban hang": "sale",
+    "team sale": "sale",
+    "sales team": "sale",
     "hr": "hr",
     "human resources": "hr",
     "nhan su": "hr",
+    "doi nhan su": "hr",
+    "nhan su & quan tri": "hr",
     "marketing": "marketing",
     "mkt": "marketing",
     "cs": "cs",
     "customer service": "cs",
     "cskh": "cs",
+    "doi cs": "cs",
 }
 
 
@@ -169,6 +181,7 @@ def _normalize_department(value: Any) -> str | None:
         return None
     normalized = unicodedata.normalize("NFKD", raw.lower())
     normalized = "".join(ch for ch in normalized if not unicodedata.combining(ch))
+    normalized = normalized.replace("đ", "d")
     normalized = " ".join(normalized.replace("_", " ").replace("-", " ").split())
     if normalized in VALID_DEPARTMENTS:
         return normalized
@@ -181,12 +194,14 @@ def _actor_department(actor) -> str | None:
         actor.department,
         staff.get("department"),
         staff.get("depart6_name"),
-        staff.get("team"),
     ]
     for candidate in candidates:
         department = _normalize_department(candidate)
         if department:
             return department
+    # Sale/leader đã link CRM nhưng metadata kiểu "Đội Sale" chưa map được
+    if (getattr(actor, "role", None) or "sale") in ("sale", "leader") and staff:
+        return "sale"
     return None
 
 
@@ -199,6 +214,11 @@ def _compute_permissions(sb, actor) -> dict[str, str]:
         return _permissions_with_level("none")
 
     permissions = _permissions_with_level("none")
+    defaults = DEFAULT_DEPT_PERMISSIONS.get(department, {})
+    for module_key, access_level in defaults.items():
+        if module_key in permissions and access_level in ACCESS_LEVELS:
+            permissions[module_key] = access_level
+
     try:
         res = (
             sb.table("department_permissions")
@@ -232,6 +252,14 @@ def _compute_permissions(sb, actor) -> dict[str, str]:
         pass  # override lookup failure should not block login
 
     return permissions
+
+
+def require_module_write(sb, actor, module_key: str) -> None:
+    perms = _compute_permissions(sb, actor)
+    if perms.get(module_key, "none") != "full":
+        raise HTTPException(
+            403, "Bạn chỉ có quyền xem module này, không được phép thao tác"
+        )
 
 
 def _sb_or_503(get_sb):
@@ -610,7 +638,7 @@ def register_admin_routes(app, get_supabase):
 
         staff_res = (
             sb.table("nhan_su_sale")
-            .select("crm_name, email, role, team, sdt, display_name")
+            .select("crm_name, email, role, team, sub_team, sdt, display_name")
             .execute()
         )
         by_email = {
@@ -645,6 +673,7 @@ def register_admin_routes(app, get_supabase):
                     "isActivated": _metadata_bool(meta.get("is_activated", False)),
                     "department": meta.get("department"),
                     "team": meta.get("team") or (linked.get("team") if linked else None),
+                    "subTeam": meta.get("sub_team") or (linked.get("sub_team") if linked else None),
                     "fullName": full_name,
                     "phone": meta.get("phone") or (linked.get("sdt") if linked else None),
                 }
@@ -743,6 +772,8 @@ def register_admin_routes(app, get_supabase):
             updated_metadata["department"] = body.department.strip() or None
         if body.team is not None:
             updated_metadata["team"] = body.team.strip() or None
+        if body.sub_team is not None:
+            updated_metadata["sub_team"] = body.sub_team.strip() or None
 
         if updated_metadata != current_metadata:
             attrs["user_metadata"] = updated_metadata
@@ -846,6 +877,92 @@ def register_admin_routes(app, get_supabase):
                 print(f"[admin] create_user CRM link failed: {exc}")
 
         return {"ok": True, "userId": new_id}
+
+    @app.post("/admin/auth-users/bulk-delete")
+    def bulk_delete_auth_users(
+        body: BulkDeleteAuthUsersBody,
+        authorization: str | None = Header(None),
+    ):
+        """Admin xóa nhiều tài khoản auth cùng lúc. Tự động gỡ liên kết CRM trước khi xóa.
+
+        An toàn:
+        - Cấm xóa chính mình (tránh tự khóa quyền truy cập).
+        - Cấm xóa các tài khoản trong SYSTEM_ADMIN_EMAILS (Hiếu/Kem/Minh…).
+        """
+        sb = _sb_or_503(get_supabase)
+        actor = resolve_actor(sb, authorization)
+        require_min_role(actor, "system")
+
+        if not body.user_ids:
+            raise HTTPException(400, "Danh sách user_ids không được rỗng")
+
+        actor_email = (getattr(actor, "email", "") or "").strip().lower()
+        protected_emails = _system_admin_emails()
+
+        deleted: list[str] = []
+        errors: list[dict[str, str]] = []
+
+        for uid in body.user_ids:
+            email = ""
+            try:
+                # Lấy thông tin user để biết email và CRM
+                try:
+                    user_res = sb.auth.admin.get_user_by_id(uid)
+                    user = _auth_user_to_dict(user_res)
+                except Exception:
+                    user = {}
+
+                email = str(user.get("email") or "").strip().lower()
+
+                # Chặn tự xóa chính mình
+                if email and actor_email and email == actor_email:
+                    errors.append({
+                        "userId": uid,
+                        "email": email,
+                        "error": "Không thể tự xóa tài khoản đang đăng nhập",
+                    })
+                    continue
+
+                # Chặn xóa system admin được bảo vệ
+                if email and email in protected_emails:
+                    errors.append({
+                        "userId": uid,
+                        "email": email,
+                        "error": "Tài khoản System Admin được bảo vệ, không thể xóa",
+                    })
+                    continue
+
+                # Gỡ liên kết CRM (nếu có) trước khi xóa
+                if email:
+                    meta = user.get("user_metadata") or {}
+                    crm_name = _metadata_crm_name(meta)
+                    if crm_name:
+                        sb.table("nhan_su_sale").update({"email": None}).eq(
+                            "crm_name", crm_name
+                        ).execute()
+                    else:
+                        # Thử tìm theo email trong bảng nhân sự
+                        sb.table("nhan_su_sale").update({"email": None}).eq(
+                            "email", email
+                        ).execute()
+
+                # Xóa auth user
+                sb.auth.admin.delete_user(uid)
+                deleted.append(uid)
+
+            except Exception as exc:
+                errors.append({
+                    "userId": uid,
+                    "email": email or None,
+                    "error": str(exc),
+                })
+
+        return {
+            "ok": len(errors) == 0,
+            "deleted": len(deleted),
+            "deletedIds": deleted,
+            "errors": errors,
+        }
 
     @app.get("/admin/permissions")
     def get_admin_permissions(authorization: str | None = Header(None)):

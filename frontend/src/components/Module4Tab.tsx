@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { endpoints } from "../lib/api";
+import { useRefetchOnFocus } from "../hooks/useRefetchOnFocus";
+import { useRealtimeTable } from "../hooks/useRealtimeTable";
 import type { InvoiceOrder } from "../types/order";
 import { usePermission } from "../hooks/usePermission";
 import Badge from "./ui/Badge";
@@ -70,6 +72,9 @@ export default function Module4Tab() {
   useEffect(() => {
     load();
   }, [load]);
+
+  useRealtimeTable(["active_requests"], load);
+  useRefetchOnFocus(load);
 
   const rows = activeTab === "pending" ? pendingOrders : issuedOrders;
   const pendingTotal = useMemo(

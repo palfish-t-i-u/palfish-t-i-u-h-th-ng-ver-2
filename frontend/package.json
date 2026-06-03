@@ -12,7 +12,12 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:ui": "vitest --ui",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "e2e": "npx playwright test",
+    "e2e:headed": "npx playwright test --headed",
+    "e2e:ui": "npx playwright test --ui",
+    "e2e:report": "npx playwright show-report e2e-report",
+    "e2e:codegen": "npx playwright codegen http://localhost:5173"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.106.0",
@@ -28,6 +33,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@playwright/test": "^1.60.0",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
     "@testing-library/user-event": "^14.6.1",

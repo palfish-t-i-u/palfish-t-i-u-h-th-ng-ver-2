@@ -291,6 +291,12 @@ def insert_ledger_payloads(
         log(f"Không có dòng mới (skip {skipped} đã có)")
         return 0
 
+    from datetime import datetime, timedelta, timezone
+
+    base_ts = datetime.now(timezone.utc)
+    for idx, p in enumerate(to_insert):
+        p["created_at"] = (base_ts + timedelta(milliseconds=idx)).isoformat()
+
     inserted = 0
     client = sb
     for i in range(0, len(to_insert), INSERT_BATCH):

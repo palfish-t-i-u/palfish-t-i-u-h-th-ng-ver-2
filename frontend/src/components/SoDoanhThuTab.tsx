@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { endpoints } from "../lib/api";
 import { formatApiError } from "../lib/apiErrors";
+import { useRefetchOnFocus } from "../hooks/useRefetchOnFocus";
+import { useRealtimeTable } from "../hooks/useRealtimeTable";
 import { cn } from "../lib/cn";
 import { formatVndNumber } from "../lib/vndFormat";
 import {
@@ -10,12 +12,14 @@ import {
   typeDisplayLabel,
 } from "../lib/ledgerCellStyle";
 import { LEDGER_VND_RMB_RATE } from "../lib/loaiLabel";
+import { LEDGER_CHANGED } from "../lib/ledgerEvents";
 import type { LedgerPatchPayload, LedgerSummaryResponse, RevenueLedgerRow } from "../types/revenue";
 import LedgerFormModal, {
   emptyLedgerForm,
   type LedgerFormState,
 } from "./LedgerFormModal";
 import LedgerSummaryCards from "./LedgerSummaryCards";
+import { usePermission } from "../hooks/usePermission";
 import Button from "./ui/Button";
 import Badge from "./ui/Badge";
 import Tooltip from "./ui/Tooltip";
@@ -110,6 +114,7 @@ function filterParams(from: string, to: string, loaiFilter: string, teamFilter: 
 }
 
 export default function SoDoanhThuTab() {
+  const { readOnly } = usePermission("revenueLedger");
   const [rows, setRows] = useState<RevenueLedgerRow[]>([]);
   const [summary, setSummary] = useState<LedgerSummaryResponse | null>(null);
   const [totalCount, setTotalCount] = useState(0);
@@ -118,10 +123,10 @@ export default function SoDoanhThuTab() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState("");
 
-  const [draftFrom, setDraftFrom] = useState(() => todayIso());
-  const [draftTo, setDraftTo] = useState(() => todayIso());
-  const [appliedFrom, setAppliedFrom] = useState(() => todayIso());
-  const [appliedTo, setAppliedTo] = useState(() => todayIso());
+  const [draftFrom, setDraftFrom] = useState("");
+  const [draftTo, setDraftTo] = useState("");
+  const [appliedFrom, setAppliedFrom] = useState("");
+  const [appliedTo, setAppliedTo] = useState("");
   const [draftLoai, setDraftLoai] = useState("");
   const [appliedLoai, setAppliedLoai] = useState("");
   const [draftTeam, setDraftTeam] = useState("");
@@ -180,6 +185,17 @@ export default function SoDoanhThuTab() {
   useEffect(() => {
     reloadAll();
   }, [reloadAll]);
+
+  useEffect(() => {
+    const onLedgerChanged = () => {
+      reloadAll();
+    };
+    window.addEventListener(LEDGER_CHANGED, onLedgerChanged);
+    return () => window.removeEventListener(LEDGER_CHANGED, onLedgerChanged);
+  }, [reloadAll]);
+
+  useRealtimeTable(["so_doanh_thu"], reloadAll);
+  useRefetchOnFocus(reloadAll);
 
   const loadMore = useCallback(async () => {
     if (loadingMoreRef.current || !hasMore || loading) return;
@@ -350,7 +366,9 @@ export default function SoDoanhThuTab() {
   return (
     <div className="min-w-0 space-y-4 overflow-x-hidden">
       <p className="text-xs text-gmv-muted">
-        Sổ doanh thu: lọc theo <span className="font-medium text-gmv-text">Pay Time</span> (ngày tiền về).
+        Sổ doanh thu: lọc theo <span className="font-medium text-gmv-text">Pay Time</span> (ngày tiền về PR,
+        không phải ngày kích hoạt). Dòng tự động từ B3 chỉ xuất hiện sau khi{" "}
+        <span className="font-medium text-gmv-text">lưu Order ID</span> — tab tự làm mới khi có thay đổi.
         Quy đổi RMB mặc định:{" "}
         <span className="font-medium text-gmv-text">
           GMV (RMB) = VND ÷ {LEDGER_VND_RMB_RATE.toLocaleString("vi-VN")}
@@ -411,16 +429,18 @@ export default function SoDoanhThuTab() {
         <Button variant="ghost" onClick={resetFilters} disabled={!hasActiveFilter && !draftDirty}>
           Reset bộ lọc
         </Button>
-        <Tooltip content={GSHEET_SYNC_TOOLTIP} align="end" panelClassName="max-w-md">
-          <Button
-            variant="secondary"
-            onClick={handleSyncGsheet}
-            disabled={syncing || loading}
-          >
-            {syncing ? "Đang sync…" : "Sync Data"}
-          </Button>
-        </Tooltip>
-        <Button onClick={openCreate}>+ Thêm dòng</Button>
+        {!readOnly && (
+          <Tooltip content={GSHEET_SYNC_TOOLTIP} align="end" panelClassName="max-w-md">
+            <Button
+              variant="secondary"
+              onClick={handleSyncGsheet}
+              disabled={syncing || loading}
+            >
+              {syncing ? "Đang sync…" : "Sync Data"}
+            </Button>
+          </Tooltip>
+        )}
+        {!readOnly && <Button onClick={openCreate}>+ Thêm dòng</Button>}
       </div>
 
       {syncing && (
@@ -528,24 +548,26 @@ export default function SoDoanhThuTab() {
                 </Td>
                 <Td className="text-left text-sm">{row.saleCrmName || "—"}</Td>
                 <Td className="text-left text-sm">{row.team || "—"}</Td>
-                <Td>
-                  <div className="flex flex-wrap justify-center gap-1.5">
-                    <Button type="button" size="sm" variant="ghost" onClick={() => openEdit(row)}>
-                      Chỉnh sửa
-                    </Button>
-                    {row.loaiNhap === "tay" && (
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="danger"
-                        disabled={deletingId === row.id}
-                        onClick={() => handleDelete(row)}
-                      >
-                        {deletingId === row.id ? "…" : "Xóa"}
+                {!readOnly && (
+                  <Td>
+                    <div className="flex flex-wrap justify-center gap-1.5">
+                      <Button type="button" size="sm" variant="ghost" onClick={() => openEdit(row)}>
+                        Chỉnh sửa
                       </Button>
-                    )}
-                  </div>
-                </Td>
+                      {row.loaiNhap === "tay" && (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="danger"
+                          disabled={deletingId === row.id}
+                          onClick={() => handleDelete(row)}
+                        >
+                          {deletingId === row.id ? "…" : "Xóa"}
+                        </Button>
+                      )}
+                    </div>
+                  </Td>
+                )}
               </Tr>
             ))}
             {hasMore && (

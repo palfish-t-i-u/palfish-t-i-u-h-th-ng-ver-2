@@ -1,6 +1,8 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { endpoints } from "../lib/api";
 import { cn } from "../lib/cn";
+import { useRefetchOnFocus } from "../hooks/useRefetchOnFocus";
+import { useRealtimeTable } from "../hooks/useRealtimeTable";
 import type {
   GamificationCommission,
   GamificationCurrentUser,
@@ -581,6 +583,11 @@ export default function DashboardTab() {
   const [summary, setSummary] = useState<GamificationDashboardSummary | null>(null);
   const [loading, setLoading] = useState(false);
   const [usingFallback, setUsingFallback] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  const refresh = useCallback(() => setRefreshKey((k) => k + 1), []);
+  useRealtimeTable(["so_doanh_thu", "payment_lines"], refresh);
+  useRefetchOnFocus(refresh);
 
   useEffect(() => {
     let cancelled = false;
@@ -638,7 +645,7 @@ export default function DashboardTab() {
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, []);
+  }, [refreshKey]);
 
   const salesData = useMemo(() => {
     if (summary) {
