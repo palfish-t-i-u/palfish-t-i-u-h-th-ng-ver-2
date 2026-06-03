@@ -183,17 +183,16 @@ def _query_top_sales(
             .gte("ngay_tien_ve", d_start)
             .lte("ngay_tien_ve", d_end)
         )
-        all_data = []
-        offset = 0
-        page_size = 1000
-        while True:
-            res = q.range(offset, offset + page_size - 1).execute()
-            data = res.data or []
-            all_data.extend(data)
-            if len(data) < page_size:
-                break
-            offset += page_size
-            
+        from analytics_limits import fetch_rows_capped
+
+        def fetch_page(offset: int, limit: int) -> list[dict]:
+            res = q.range(offset, offset + limit - 1).execute()
+            return res.data or []
+
+        all_data, _ = fetch_rows_capped(
+            fetch_page, log_prefix="[Dashboard] top sales"
+        )
+
         for r in all_data:
             sname = _sale_key(r.get("sale_crm_name"))
             if not sname or sname == "(Chưa gán sale)":
@@ -262,17 +261,16 @@ def _query_today_honors(
             .gte("thoi_gian_giao_dich", start_utc)
             .lt("thoi_gian_giao_dich", end_utc)
         )
-        all_data = []
-        offset = 0
-        page_size = 1000
-        while True:
-            res = q.range(offset, offset + page_size - 1).execute()
-            data = res.data or []
-            all_data.extend(data)
-            if len(data) < page_size:
-                break
-            offset += page_size
-            
+        from analytics_limits import fetch_rows_capped
+
+        def fetch_page(offset: int, limit: int) -> list[dict]:
+            res = q.range(offset, offset + limit - 1).execute()
+            return res.data or []
+
+        all_data, _ = fetch_rows_capped(
+            fetch_page, log_prefix="[Dashboard] today honors"
+        )
+
         for r in all_data:
             don_hang = r.get("don_hang") or {}
             sname = _sale_key(don_hang.get("sale_crm_name"))

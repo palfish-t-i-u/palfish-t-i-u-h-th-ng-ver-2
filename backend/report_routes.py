@@ -88,38 +88,34 @@ def _load_monthly(sb, month_key: str) -> dict:
 
 
 def _save_monthly(sb, body: Bc03MonthlySaveBody, actor_email: str | None) -> dict:
+    from rpc_helpers import MIGRATION_HINT, rpc_first_row
+
     month_key = _validate_month_key(body.month)
-    now_iso = datetime.now(timezone.utc).isoformat()
-
-    sb.table("bc03_month_settings").upsert(
+    rows_payload = [
         {
-            "month_key": month_key,
-            "exchange_rate": body.exchange_rate,
-            "updated_at": now_iso,
-            "updated_by": actor_email,
+            "sale_name": (row.sale_name or "").strip(),
+            "b2_orders": row.b2_orders,
+            "b4_gmv_vnd": row.b4_gmv_vnd,
+            "sort_order": i,
         }
-    ).execute()
-
-    sb.table("bc03_kpi_rows").delete().eq("month_key", month_key).execute()
-
-    to_insert: list[dict] = []
-    for i, row in enumerate(body.kpi_rows):
-        sale = (row.sale_name or "").strip()
-        if not sale:
-            continue
-        to_insert.append(
+        for i, row in enumerate(body.kpi_rows)
+        if (row.sale_name or "").strip()
+    ]
+    try:
+        rpc_first_row(
+            sb,
+            "save_bc03_monthly",
             {
-                "month_key": month_key,
-                "sale_name": sale,
-                "b2_orders": row.b2_orders,
-                "b4_gmv_vnd": row.b4_gmv_vnd,
-                "sort_order": i,
-                "updated_at": now_iso,
-            }
+                "p_month_key": month_key,
+                "p_exchange_rate": body.exchange_rate,
+                "p_actor": actor_email,
+                "p_rows": rows_payload,
+            },
         )
-
-    if to_insert:
-        sb.table("bc03_kpi_rows").insert(to_insert).execute()
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(500, f"Lưu BC03 thất bại: {exc}. {MIGRATION_HINT}") from exc
 
     return _load_monthly(sb, month_key)
 
