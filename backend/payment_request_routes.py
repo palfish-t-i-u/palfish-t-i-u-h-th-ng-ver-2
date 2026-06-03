@@ -705,21 +705,12 @@ def _payment_request_patch_row(body: PaymentRequestPatch, current_row: dict[str,
 
 
 def _allocate_pr_id(sb, year: int | None = None) -> str:
-    year_key = str(year or datetime.now(timezone.utc).year)
-    res = (
-        sb.table("payment_request_sequences")
-        .select("current_val")
-        .eq("year_key", year_key)
-        .limit(1)
-        .execute()
-    )
-    if res.data:
-        seq = int(res.data[0].get("current_val") or 0) + 1
-        sb.table("payment_request_sequences").update({"current_val": seq}).eq("year_key", year_key).execute()
-    else:
-        seq = 1
-        sb.table("payment_request_sequences").insert({"year_key": year_key, "current_val": seq}).execute()
-    return f"PR-{year_key}-{seq:04d}"
+    from rpc_helpers import rpc_next_payment_request_id
+
+    pr_id = rpc_next_payment_request_id(sb, year).strip()
+    if not pr_id:
+        raise HTTPException(500, "RPC next_payment_request_id không trả mã PR")
+    return pr_id
 
 
 def _transfer_code_hint(payment_request_id: str, line_count: int) -> str:

@@ -226,23 +226,14 @@ def _supabase():
 
 
 def _next_ma_don(sb=None) -> str:
-    global _order_seq
     if sb:
-        try:
-            res = (
-                sb.table("don_hang")
-                .select("ma_don_hang")
-                .order("created_at", desc=True)
-                .limit(1)
-                .execute()
-            )
-            if res.data:
-                last = res.data[0].get("ma_don_hang") or ""
-                m = re.match(r"KH(\d+)", last, re.I)
-                if m:
-                    return f"KH{int(m.group(1)) + 1:03d}"
-        except Exception as exc:
-            print(f"ma_don sequence from Supabase failed: {exc}")
+        from rpc_helpers import rpc_next_ma_don
+
+        ma = rpc_next_ma_don(sb).strip()
+        if ma:
+            return ma
+        raise HTTPException(500, "RPC next_ma_don không trả mã đơn")
+    global _order_seq
     _order_seq += 1
     return f"KH{str(_order_seq).zfill(3)}"
 

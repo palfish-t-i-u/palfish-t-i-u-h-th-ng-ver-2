@@ -637,24 +637,22 @@ def _fetch_ledger_summary_rows(
     loai_nhap: str | None = None,
 ) -> list[dict[str, Any]]:
     """Chỉ cột cần cho thẻ tổng hợp — paginate, không enrich."""
-    rows: list[dict[str, Any]] = []
-    offset = 0
-    while True:
-        chunk = _fetch_so_doanh_thu_page(
+    from analytics_limits import fetch_rows_capped
+
+    def fetch_page(offset: int, limit: int) -> list[dict[str, Any]]:
+        return _fetch_so_doanh_thu_page(
             sb,
             "so_tien_vnd, loai, loai_2, team, team_pivot_label",
             from_date=from_date,
             to_date=to_date,
             loai_nhap=loai_nhap,
-            limit=_SUPABASE_PAGE,
+            limit=limit,
             offset=offset,
         )
-        if not chunk:
-            break
-        rows.extend(chunk)
-        if len(chunk) < _SUPABASE_PAGE:
-            break
-        offset += _SUPABASE_PAGE
+
+    rows, _ = fetch_rows_capped(
+        fetch_page, page_size=_SUPABASE_PAGE, log_prefix="[revenue] ledger summary"
+    )
     return rows
 
 
@@ -666,26 +664,30 @@ def _fetch_so_doanh_thu(
     to_date: str | None = None,
     loai_nhap: str | None = None,
 ) -> list[dict[str, Any]]:
-    """PostgREST trả tối đa 1000 dòng/lần — paginate hết kết quả."""
+    """PostgREST trả tối đa 1000 dòng/lần — paginate có giới hạn MAX_ANALYTICS_ROWS."""
+    from analytics_limits import fetch_rows_capped
+
     select_cols = select if "id" in select else f"id, {select}"
-    rows: list[dict[str, Any]] = []
-    offset = 0
-    while True:
-        q = sb.table("so_doanh_thu").select(select_cols).order("pay_time", desc=True).order("created_at", desc=True)
+
+    def fetch_page(offset: int, limit: int) -> list[dict[str, Any]]:
+        q = (
+            sb.table("so_doanh_thu")
+            .select(select_cols)
+            .order("pay_time", desc=True)
+            .order("created_at", desc=True)
+        )
         if from_date:
             q = q.gte("pay_time", f"{from_date[:10]}T00:00:00")
         if to_date:
             q = q.lte("pay_time", f"{to_date[:10]}T23:59:59")
         if loai_nhap in ("tu_dong", "tay"):
             q = q.eq("loai_nhap", loai_nhap)
-        res = q.range(offset, offset + _SUPABASE_PAGE - 1).execute()
-        chunk = res.data or []
-        if not chunk:
-            break
-        rows.extend(chunk)
-        if len(chunk) < _SUPABASE_PAGE:
-            break
-        offset += _SUPABASE_PAGE
+        res = q.range(offset, offset + limit - 1).execute()
+        return res.data or []
+
+    rows, _ = fetch_rows_capped(
+        fetch_page, page_size=_SUPABASE_PAGE, log_prefix="[revenue] so_doanh_thu"
+    )
     return _dedupe_rows_by_id(rows)
 
 
