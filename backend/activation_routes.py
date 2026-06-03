@@ -8,7 +8,7 @@ import zipfile
 from datetime import date, datetime, timezone
 from typing import Any
 
-from fastapi import Body, HTTPException, Query
+from fastapi import Body, HTTPException, Query, Header
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
@@ -19,6 +19,7 @@ from invoice_routes import (
     _build_excel_products,
 )
 from revenue_routes import sync_ledger_from_ar_course
+from rbac import resolve_actor
 
 # Parent PR must be fully paid (100% or overpaid) before course activation.
 ALLOWED_PR_STATES = frozenset({"done", "over"})
@@ -906,11 +907,14 @@ def register_activation_routes(app, supabase_factory):
             None,
             description="Lọc theo status: pending_order | partial_order | ready_invoice | invoiced | activated",
         ),
+        authorization: str | None = Header(None),
     ):
         """Danh sách AR — snake_case, kèm payment_request snippet cho FE Activation/Invoice."""
         sb = supabase_factory()
         if not sb:
             raise HTTPException(503, "Supabase chưa cấu hình")
+
+        actor = resolve_actor(sb, authorization)
 
         status_filter: str | None = None
         if status is not None and str(status).strip():
@@ -934,11 +938,13 @@ def register_activation_routes(app, supabase_factory):
         return [_serialize_ar(r, pr_map.get(str(r.get("pr_id") or ""))) for r in rows]
 
     @app.get("/api/v1/active-requests/{ar_id}", tags=["Activation"])
-    def get_active_request(ar_id: str):
+    def get_active_request(ar_id: str, authorization: str | None = Header(None)):
         """Chi tiết một AR + payment_request."""
         sb = supabase_factory()
         if not sb:
             raise HTTPException(503, "Supabase chưa cấu hình")
+
+        actor = resolve_actor(sb, authorization)
 
         try:
             res = sb.table("active_requests").select("*").eq("id", ar_id).limit(1).execute()
@@ -952,7 +958,7 @@ def register_activation_routes(app, supabase_factory):
         return _serialize_ar(row, pr)
 
     @app.get("/api/v1/payment-requests/{pr_id}/course-budget", tags=["Activation"])
-    def get_pr_course_budget(pr_id: str):
+    def get_pr_course_budget(pr_id: str, authorization: str | None = Header(None)):
         """Ngân sách gói học của PR — FE dùng để vẽ progress bar.
 
         Trả về:
@@ -964,6 +970,8 @@ def register_activation_routes(app, supabase_factory):
         sb = supabase_factory()
         if not sb:
             raise HTTPException(503, "Supabase chưa cấu hình")
+
+        actor = resolve_actor(sb, authorization)
 
         pr = _fetch_payment_request(sb, pr_id)
         target, received = _pr_amounts(pr)
@@ -995,11 +1003,13 @@ def register_activation_routes(app, supabase_factory):
         }
 
     @app.delete("/api/v1/active-requests/{ar_id}", tags=["Activation"])
-    def delete_active_request(ar_id: str):
+    def delete_active_request(ar_id: str, authorization: str | None = Header(None)):
         """Delete Active Request when no course has been invoiced."""
         sb = supabase_factory()
         if not sb:
             raise HTTPException(503, "Supabase chua cau hinh")
+
+        actor = resolve_actor(sb, authorization)
 
         try:
             res = sb.table("active_requests").select("*").eq("id", ar_id).limit(1).execute()
@@ -1027,7 +1037,11 @@ def register_activation_routes(app, supabase_factory):
         return {"ok": True, "id": ar_id}
 
     @app.patch("/api/v1/active-requests/{ar_id}", tags=["Activation"])
-    def patch_active_request(ar_id: str, body: ActiveRequestPatchBody):
+    def patch_active_request(
+        ar_id: str,
+        body: ActiveRequestPatchBody,
+        authorization: str | None = Header(None),
+    ):
         """
         Patch Active Request at AR-level.
         Supports:
@@ -1038,6 +1052,8 @@ def register_activation_routes(app, supabase_factory):
         sb = supabase_factory()
         if not sb:
             raise HTTPException(503, "Supabase chua cau hinh")
+
+        actor = resolve_actor(sb, authorization)
 
         try:
             res = sb.table("active_requests").select("*").eq("id", ar_id).limit(1).execute()
@@ -1090,7 +1106,10 @@ def register_activation_routes(app, supabase_factory):
         return _serialize_ar(merged, pr_map.get(str(merged.get("pr_id") or "")))
 
     @app.post("/api/v1/active-requests", tags=["Activation"])
-    def create_standalone_active_request(payload: Any = Body(...)):
+    def create_standalone_active_request(
+        payload: Any = Body(...),
+        authorization: str | None = Header(None),
+    ):
         """
         Tạo Active Request — có thể không gắn PR (pr_id null).
         Body: `{ customer_name?, pr_id?, uids: [...] }` hoặc mảng uids.
@@ -1098,6 +1117,8 @@ def register_activation_routes(app, supabase_factory):
         sb = supabase_factory()
         if not sb:
             raise HTTPException(503, "Supabase chưa cấu hình")
+
+        actor = resolve_actor(sb, authorization)
 
         pr_id, customer_name, uids_in = _parse_create_ar_payload(payload)
         saved, pr = _save_active_request(
@@ -1113,7 +1134,11 @@ def register_activation_routes(app, supabase_factory):
         "/api/v1/payment-requests/{pr_id}/active-requests",
         tags=["Activation"],
     )
-    def create_active_request(pr_id: str, payload: Any = Body(...)):
+    def create_active_request(
+        pr_id: str,
+        payload: Any = Body(...),
+        authorization: str | None = Header(None),
+    ):
         """
         Tạo Active Request gắn PR đã thanh toán đủ.
         Body: mảng uids hoặc `{ "uids": [ { uid, courses: [{ name, amount }] } ] }`.
@@ -1121,6 +1146,8 @@ def register_activation_routes(app, supabase_factory):
         sb = supabase_factory()
         if not sb:
             raise HTTPException(503, "Supabase chưa cấu hình")
+
+        actor = resolve_actor(sb, authorization)
 
         _, customer_name, uids_in = _parse_create_ar_payload(payload)
         saved, pr = _save_active_request(
@@ -1140,11 +1167,14 @@ def register_activation_routes(app, supabase_factory):
         ar_id: str,
         course_code: str,
         body: PatchCourseOrderBody,
+        authorization: str | None = Header(None),
     ):
         """Thu Hiền — gắn CRM order_id lên course có code khớp (JSONB atomic via RPC)."""
         sb = supabase_factory()
         if not sb:
             raise HTTPException(503, "Supabase chưa cấu hình")
+
+        actor = resolve_actor(sb, authorization)
 
         order_id = str(body.order_id or "").strip()
 
@@ -1212,11 +1242,13 @@ def register_activation_routes(app, supabase_factory):
         "/api/v1/active-requests/{ar_id}/request-invoice",
         tags=["Activation"],
     )
-    def request_active_request_invoice(ar_id: str):
+    def request_active_request_invoice(ar_id: str, authorization: str | None = Header(None)):
         """Bấm nút Xuất HĐ màu tím — yêu cầu xuất hoá đơn cho tất cả course có Order ID trong AR."""
         sb = supabase_factory()
         if not sb:
             raise HTTPException(503, "Supabase chưa cấu hình")
+
+        actor = resolve_actor(sb, authorization)
 
         try:
             res = sb.table("active_requests").select("*").eq("id", ar_id).limit(1).execute()
@@ -1272,30 +1304,44 @@ def register_activation_routes(app, supabase_factory):
         ar_id: str,
         course_code: str,
         body: IssueCourseInvoiceBody | None = None,
+        authorization: str | None = Header(None),
     ):
         """B4 — phát hành INV cho một Course Code đã có Order ID."""
         sb = supabase_factory()
         if not sb:
             raise HTTPException(503, "Supabase chưa cấu hình")
+        
+        actor = resolve_actor(sb, authorization)
         return _issue_course_invoice_python(sb, ar_id, course_code, body)
 
     @app.post(
         "/api/v1/active-requests/{ar_id}/courses/{course_code}/revoke-invoice",
         tags=["Activation"],
     )
-    def revoke_active_request_course_invoice(ar_id: str, course_code: str):
+    def revoke_active_request_course_invoice(
+        ar_id: str,
+        course_code: str,
+        authorization: str | None = Header(None),
+    ):
         """B4 — thu hồi INV (demo / sửa sai)."""
         sb = supabase_factory()
         if not sb:
             raise HTTPException(503, "Supabase chưa cấu hình")
+        
+        actor = resolve_actor(sb, authorization)
         return _revoke_course_invoice_python(sb, ar_id, course_code)
 
     @app.post("/api/v1/invoice-courses/bulk-issue", tags=["Activation"])
-    def bulk_issue_course_invoices(body: BulkIssueCourseBody):
+    def bulk_issue_course_invoices(
+        body: BulkIssueCourseBody,
+        authorization: str | None = Header(None),
+    ):
         """B4 — xuất nhiều INV trong một request."""
         sb = supabase_factory()
         if not sb:
             raise HTTPException(503, "Supabase chưa cấu hình")
+
+        actor = resolve_actor(sb, authorization)
 
         issued: list[dict[str, Any]] = []
         errors: list[dict[str, Any]] = []
@@ -1328,10 +1374,15 @@ def register_activation_routes(app, supabase_factory):
         }
 
     @app.post("/api/v1/invoice-courses/export-batch", tags=["Activation"])
-    def export_invoice_courses_batch(body: ExportBatchBody | None = None):
+    def export_invoice_courses_batch(
+        body: ExportBatchBody | None = None,
+        authorization: str | None = Header(None),
+    ):
         """B4 — xuất ZIP 3 file Excel kê khai thuế; cấp + lưu mã M.../PF... vào course JSONB."""
         sb = supabase_factory()
         if not sb:
             raise HTTPException(503, "Supabase chưa cấu hình")
+        
+        actor = resolve_actor(sb, authorization)
         items = body.items if body else None
         return _export_b4_tax_batch(sb, items)
