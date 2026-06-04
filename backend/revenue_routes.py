@@ -582,6 +582,7 @@ def _count_so_doanh_thu(
     to_date: str | None = None,
     loai_nhap: str | None = None,
     team_filter: str | None = None,
+    search: str | None = None,
 ) -> int:
     if team_filter:
         rows = _fetch_so_doanh_thu(
@@ -590,6 +591,7 @@ def _count_so_doanh_thu(
             from_date=from_date,
             to_date=to_date,
             loai_nhap=loai_nhap,
+            search=search,
         )
         return len(_filter_rows_by_team(rows, team_filter))
     res = _ledger_query(
@@ -598,6 +600,7 @@ def _count_so_doanh_thu(
         from_date=from_date,
         to_date=to_date,
         loai_nhap=loai_nhap,
+        search=search,
         count="exact",
     ).limit(0).execute()
     return int(res.count or 0)
@@ -610,11 +613,12 @@ def _fetch_so_doanh_thu_page(
     from_date: str | None = None,
     to_date: str | None = None,
     loai_nhap: str | None = None,
+    search: str | None = None,
     limit: int = LEDGER_TABLE_PAGE,
     offset: int = 0,
 ) -> list[dict[str, Any]]:
     res = (
-        _ledger_query(sb, select, from_date=from_date, to_date=to_date, loai_nhap=loai_nhap)
+        _ledger_query(sb, select, from_date=from_date, to_date=to_date, loai_nhap=loai_nhap, search=search)
         .range(offset, offset + max(limit, 1) - 1)
         .execute()
     )
@@ -675,6 +679,7 @@ def _fetch_so_doanh_thu(
     from_date: str | None = None,
     to_date: str | None = None,
     loai_nhap: str | None = None,
+    search: str | None = None,
 ) -> list[dict[str, Any]]:
     """PostgREST trả tối đa 1000 dòng/lần — paginate có giới hạn MAX_ANALYTICS_ROWS."""
     from analytics_limits import fetch_rows_capped
@@ -694,6 +699,17 @@ def _fetch_so_doanh_thu(
             q = q.lte("pay_time", f"{to_date[:10]}T23:59:59")
         if loai_nhap in ("tu_dong", "tay"):
             q = q.eq("loai_nhap", loai_nhap)
+        if search and search.strip():
+            term = search.strip()
+            pattern = f"%{term}%"
+            or_clauses = ",".join(
+                f"{col}.ilike.{pattern}"
+                for col in (
+                    "ten_khach", "sdt", "uid", "sale_crm_name",
+                    "crm_order_id", "ma_don_hang", "info_code",
+                )
+            )
+            q = q.or_(or_clauses)
         res = q.range(offset, offset + limit - 1).execute()
         return res.data or []
 
@@ -1223,6 +1239,7 @@ def register_revenue_routes(app, get_supabase) -> None:
         to_date: str | None = Query(None, alias="to"),
         loai_nhap: str | None = Query(None),
         team_filter: str | None = Query(None, alias="team"),
+        search: str | None = Query(None),
         limit: int = Query(LEDGER_TABLE_PAGE, ge=1, le=200),
         offset: int = Query(0, ge=0),
     ):
@@ -1231,6 +1248,7 @@ def register_revenue_routes(app, get_supabase) -> None:
         _require_ops(actor)
         try:
             team = (team_filter or "").strip() or None
+            search_term = (search or "").strip() or None
             if team:
                 all_rows = _fetch_so_doanh_thu(
                     sb,
@@ -1238,6 +1256,7 @@ def register_revenue_routes(app, get_supabase) -> None:
                     from_date=from_date or None,
                     to_date=to_date or None,
                     loai_nhap=loai_nhap,
+                    search=search_term,
                 )
                 filtered = _filter_rows_by_team(all_rows, team)
                 total = len(filtered)
@@ -1249,6 +1268,7 @@ def register_revenue_routes(app, get_supabase) -> None:
                     from_date=from_date or None,
                     to_date=to_date or None,
                     loai_nhap=loai_nhap,
+                    search=search_term,
                 )
                 db_rows = _fetch_so_doanh_thu_page(
                     sb,
@@ -1256,6 +1276,7 @@ def register_revenue_routes(app, get_supabase) -> None:
                     from_date=from_date or None,
                     to_date=to_date or None,
                     loai_nhap=loai_nhap,
+                    search=search_term,
                     limit=limit,
                     offset=offset,
                 )
