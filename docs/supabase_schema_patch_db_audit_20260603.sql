@@ -46,16 +46,16 @@ SECURITY DEFINER
 SET search_path = public
 AS $$
 DECLARE
-  year_key text;
+  v_year_key text;
   seq bigint;
 BEGIN
-  year_key := COALESCE(p_year::text, to_char(now() AT TIME ZONE 'UTC', 'YYYY'));
+  v_year_key := COALESCE(p_year::text, to_char(now() AT TIME ZONE 'UTC', 'YYYY'));
   INSERT INTO payment_request_sequences (year_key, current_val)
-  VALUES (year_key, 1)
+  VALUES (v_year_key, 1)
   ON CONFLICT (year_key) DO UPDATE
     SET current_val = payment_request_sequences.current_val + 1
   RETURNING current_val INTO seq;
-  RETURN format('PR-%s-%s', year_key, lpad(seq::text, 4, '0'));
+  RETURN format('PR-%s-%s', v_year_key, lpad(seq::text, 4, '0'));
 END;
 $$;
 
