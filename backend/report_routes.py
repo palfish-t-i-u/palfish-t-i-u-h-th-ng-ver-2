@@ -21,6 +21,7 @@ from crm_metrics import (
     team_label,
 )
 from rbac import can_confirm_payment, resolve_actor
+from revenue_routes import load_team_map
 from vn_staff import is_vn_sale_row
 
 _MONTH_RE = re.compile(r"^\d{4}-\d{2}$")
@@ -267,6 +268,7 @@ def _load_m2_revenue(
     """Module 2 — don_hang tien_ve=true (bổ sung đơn chưa có trên Sổ)."""
     out: dict[str, dict] = {}
     try:
+        team_map = load_team_map(sb) if team else {}
         q = (
             sb.table("don_hang")
             .select("id, sale_crm_name, so_tien_can_thu, updated_at")
@@ -279,23 +281,11 @@ def _load_m2_revenue(
             if oid in skip_don_ids:
                 continue
             sname = _sale_key(r.get("sale_crm_name"))
-            # Lọc team: tra nhan_su_sale nếu cần
             sale_team = "—"
             if team and sname != "(Chưa gán sale)":
-                try:
-                    ns = (
-                        sb.table("nhan_su_sale")
-                        .select("team")
-                        .eq("crm_name", sname)
-                        .limit(1)
-                        .execute()
-                    )
-                    if ns.data:
-                        sale_team = str(ns.data[0].get("team") or "—")
-                        if sale_team != team:
-                            continue
-                except Exception:
-                    pass
+                sale_team = team_map.get(sname, "—")
+                if sale_team != team:
+                    continue
             entry = _ensure_rev(out, sname, sale_team)
             vnd = parse_metric(r.get("so_tien_can_thu"))
             day = str(r.get("updated_at") or "")[:10]
