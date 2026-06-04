@@ -520,3 +520,134 @@
 - Đổi Sales wording: AR mới hiển thị “Chờ kích hoạt khóa học”; course badge “Chờ kích hoạt” / “Đã kích hoạt”.
 - B4 gating FE: tab hóa đơn chỉ nhận course có `invoiceRequestedAt`; nút “Xuất HĐ” ở Active Request set `invoice_requested_at` qua PATCH `uids_data`.
 - Cập nhật `docs/TODO.md` và handoff Giang/Đức cho BE blockers: delete/cancel AR, persist `invoice_requested_at`.
+
+---
+
+## 2026-05-29 — Activation routes + idempotent import + sandbox
+
+**Backend**
+- `activation_routes.py` — module quản lý course activation và CRM order matching logic.
+- `gsheet_ledger_import.py` / `xlsx_ledger_import.py` — idempotent import: `UNFORMATTED_VALUE`, dedup `import:%`, nan fingerprint.
+
+**Frontend**
+- Lazy load main page views (`perf: lazy load`).
+- Sandbox environment bootstrap: banner đọc `VITE_APP_ENV`.
+
+**Docs**
+- `PLAN_30-05-2026.md` — kế hoạch 30/05, trạng thái cuối ngày 29/05.
+- UAT cleanup scripts + sale_email schema patch docs.
+
+---
+
+## 2026-05-30 — Dashboard gamification + PalFish branding
+
+**Frontend**
+- `DashboardTab.tsx` — gamification summary, today-honors, personalization logic, event carousel, current_user rank card.
+- PalFish app logo và favicon (`feat(branding)`).
+- Active Request PR drawer mở rộng kích thước.
+
+**Backend**
+- `dashboard_routes.py` — `GET /api/v1/dashboard/summary` mock gamification API, today-honors API.
+- `get_top_sales` RPC cho vinh danh dashboard.
+
+**Git**
+- Feature branches: `feature-duc` (dashboard gamification handoff), `feature-kem` (vinh danh RPC), `feature-dat` (dashboard real data).
+- Sandbox branch merge workflow.
+
+---
+
+## 2026-05-30..06-01 — Task 5/9: Active Request mini card + allocation guard
+
+**Frontend**
+- `ActiveRequestMiniCardV2` — Pulse redesign, allocation guard, remove-UID button, scrollable mini card body, inline pencil icon thay text "bút chì".
+- Fix close allocation loopholes: chặn sửa khi tất cả courses đã khoá trừ khi `remaining > 0`.
+- Fix scroll trap AR UID list — let drawer body scroll naturally.
+
+**Backend**
+- `activation_routes.py` — cap activation allocation by received amount.
+- Sync Sổ doanh thu khi B3 course gets CRM `order_id`.
+
+**Docs**
+- `CODEX_PROMPT_2026-05-30.md` — consolidated handoff: branch audit, task status, Codex prompt.
+
+---
+
+## 2026-06-01..02 — Permissions dynamic RBAC + auth accounts upgrade
+
+**Frontend**
+- `permissions/PermissionsTab.tsx` — department×module matrix UI, personal overrides.
+- `permissions/OverrideDrawer.tsx`, `permissions/StaffPickerModal.tsx` — override tab UI + readOnly mode hook.
+- `auth/AccountDetailDrawer.tsx`, `auth/CrmLinkModal.tsx`, `auth/CreateAccountModal.tsx`, `auth/DeleteAccountsModal.tsx` — auth accounts upgrade: detail drawer, CRM linking/unlinking, bulk delete.
+- `AuthAccountsTab.tsx` — unlink CRM button, empty state matching prototype.
+- Sidebar wired to dynamic permissions from API.
+- Fix permissions blank page for sale users; fix action button flash; enforce readOnly across all tabs with write actions.
+- Fix department label thay role trong header badge; store canonical department keys thay Vietnamese labels.
+- Fix auth tab refocus causing full-page reload (`useMe` loading gate).
+
+**Backend**
+- `admin_routes.py` — dynamic RBAC matrix, personal overrides, bulk delete auth users, CRM unlink logic.
+- `rbac.py` — dynamic me permissions endpoint.
+- RBAC scope enforced on payment request APIs.
+- Password recovery flow + OTP setup.
+
+**Docs**
+- `supabase_schema_patch_db_audit_20260603.sql` — DB audit SQL migration.
+
+---
+
+## 2026-06-02 — Dashboard refactor + sub-team + test accounts
+
+**Frontend**
+- `DashboardTab.tsx` — refactor today-honors + monthly ranking pagination; 4 events from prototype + per-event styling; compact layout; timezone fix.
+- `SignUpPage.tsx` — sub-team selection dropdown.
+- Profile, permissions, dashboard — add `subTeam` field.
+- Real-time data fetching + refetch on focus cho multiple components.
+- Test data visibility toggle cho payment requests.
+
+**Backend**
+- `dashboard_routes.py` — team/subteam details; Vietnam date → UTC for accurate transaction queries; monthly ranking from `so_doanh_thu`.
+- `scripts/create_test_accounts.py` — script tạo 2 designated testing accounts trên Supabase.
+- `is_test` flag across routes.
+- `gsheet_ledger_import.py` / `xlsx_ledger_import.py` — thêm `created_at` timestamp khi insert.
+
+---
+
+## 2026-06-03 — Backend audit handoff + DB atomic fixes
+
+**Docs**
+- `HANDOFF_BE_AUDIT_2026-06-03.md` — kiểm tra 13 module backend, 22 issues (7 DB + 7 AUTH + 8 OTHER), phân công Đức/Đạt/Giang.
+- `backend/tests/` — 31 test cases verify toàn bộ 22 audit tasks.
+
+**Backend (audit fixes — sandbox branch)**
+- `activation_routes.py` — secure endpoints: thêm `resolve_actor()` cho GET/POST/DELETE/PATCH active-requests (AUTH-01).
+- `report_routes.py` — auth check BC03 (AUTH-02).
+- `crm_routes.py` — auth CRM token update (AUTH-03).
+- `payment_request_routes.py` — auth PATCH status + sync-pending + delete bill (AUTH-04).
+- `dashboard_routes.py` — auth team/nhân sự list (AUTH-05); row cap analytics (DB-06).
+- `main.py` — verify PayOS webhook signature (OTHER-01).
+- `rpc_helpers.py` — atomic JSONB RPCs cho AR course patches (DB-04); Postgres sequence allocators cho mã đơn/hoá đơn/PR (DB-01..03).
+- `revenue_routes.py` — bounded query BC01/BC02 (DB-07).
+- `admin_routes.py` — partial result bulk delete (OTHER-06).
+- `env_utils.py` — default `APP_ENV=development` (OTHER-07).
+- `vn_staff.py` — case-insensitive team filter + env config (OTHER-08).
+
+**SQL**
+- `supabase_schema_patch_db_audit_20260603.sql` — Postgres sequences `don_hang_seq`, `invoice_code_seq`, `product_code_seq`, `payment_request_seq`; atomic RPC functions.
+
+---
+
+## 2026-06-03..04 — Module 5 CRM sync + BC03 + sandbox merges
+
+**Backend**
+- `crm_routes.py` — hybrid CRM sync, CRM token encryption (`Fernet`), autonomous sync.
+- `report_routes.py` — BC03 daily backfill, monthly report.
+- `dashboard_routes.py` — Dashboard Sale VN table, split APIs.
+- `crm_metrics.py` — CRM sales data upsert after export.
+- `Module5Tab.tsx` — update styles, improve token status display.
+
+**SQL**
+- `supabase_schema_patch_crm_*.sql` — CRM hybrid, record type, sales data, period, sale_date, tokens.
+- `supabase_schema_patch_bc03_monthly.sql` — BC03 monthly report table.
+
+**Git**
+- Feature branch merges into `sandbox`: `feature-kem` (OTHER-01..08), `feature-duc` (DB audit RPC), `feature-dat` (auth secure).

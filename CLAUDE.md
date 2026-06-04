@@ -72,9 +72,28 @@ Frontend `.env.local` points `VITE_API_BASE_URL` to either localhost:8000 (local
 
 ## Project Structure
 
+### Frontend key components
+- `frontend/src/components/DashboardTab.tsx` — Bảng thông tin (gamification, BXH, events)
 - `frontend/src/components/Module5Tab.tsx` — M5: Đồng bộ CRM
 - `frontend/src/components/Module6Tab.tsx` — M6: Dashboard Sale (hiệu suất)
-- `frontend/src/components/DashboardTab.tsx` — Bảng thông tin (gamification)
+- `frontend/src/components/SoDoanhThuTab.tsx` — Sổ doanh thu
+- `frontend/src/components/DoanhThuSaleTab.tsx` — Sales Performance pivot
+- `frontend/src/components/PaymentRequestsTab.tsx` — B1: Phiếu thu
+- `frontend/src/components/ReconciliationTab.tsx` — B2: Đối soát
+- `frontend/src/components/ActivationTab.tsx` — B3: Kích hoạt khóa học
+- `frontend/src/components/InvoiceRequestTab.tsx` — B4: Xuất hóa đơn
+- `frontend/src/components/permissions/PermissionsTab.tsx` — Dynamic RBAC matrix
+- `frontend/src/components/auth/` — Auth accounts management
+- `frontend/src/components/reports/` — BC01, BC02, BC03 reports
 - `frontend/src/lib/api.ts` — All API endpoints
-- `backend/crm_routes.py` — CRM sync backend
-- `backend/dashboard_routes.py` — Dashboard backend
+
+### Backend key modules
+- `backend/main.py` — FastAPI entry + PayOS webhook (signature verify)
+- `backend/rbac.py` — Dynamic RBAC + JWT
+- `backend/activation_routes.py` — B3: Active Request, course activation
+- `backend/payment_request_routes.py` — B1: PR CRUD, payment lines
+- `backend/revenue_routes.py` — M5: Sổ doanh thu, BC01/BC02
+- `backend/crm_routes.py` — CRM hybrid/autonomous sync
+- `backend/dashboard_routes.py` — Gamification, BXH, team/subteam
+- `backend/report_routes.py` — BC03 daily/monthly
+- `backend/rpc_helpers.py` — Atomic RPCs, Postgres sequences

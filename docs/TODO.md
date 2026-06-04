@@ -335,3 +335,88 @@
 | F2805-P1-01 | Tab Kích hoạt khóa học: AR mới không tự nhảy "Sẵn sàng xuất HĐ" | done | Minh | FE derive status: chưa Order ID = `pending_order`; có Order ID nhưng chưa bấm Xuất HĐ = `partial_order` |
 | F2805-P1-02 | Active Request drawer: thêm nút Lưu Order ID cho Ops | done | Minh | Bỏ save-on-blur; Ops nhập draft rồi bấm Lưu mới PATCH |
 | F2805-P1-03 | Tách "Đã kích hoạt" khỏi "Sẵn sàng xuất HĐ" | partial | Minh + Giang/Đức | FE dùng `invoiceRequestedAt` trong JSONB; cần BE chấp nhận/persist `invoice_requested_at` |
+
+---
+
+## Permissions & Auth Accounts (2026-06-01..02)
+
+| ID | Task | Status | Owner | Ghi chú |
+|----|------|--------|-------|---------|
+| PERM-01 | Dynamic RBAC matrix: department×module permissions | done | Minh + Giang/Đức | `PermissionsTab.tsx`, `admin_routes.py` |
+| PERM-02 | Personal permission overrides (OverrideDrawer) | done | Minh | `OverrideDrawer.tsx`, `StaffPickerModal.tsx` |
+| PERM-03 | ReadOnly mode across all tabs with write actions | done | Minh | `usePermissions` hook; fix action button flash |
+| PERM-04 | Sidebar dynamic permissions from API | done | Minh + Giang/Đức | Replace hardcoded role checks |
+| AUTH-ACCT-01 | Auth accounts detail drawer + CRM linking | done | Minh | `AccountDetailDrawer.tsx`, `CrmLinkModal.tsx` |
+| AUTH-ACCT-02 | Bulk delete auth users | done | Minh | `DeleteAccountsModal.tsx` |
+| AUTH-ACCT-03 | CRM unlink button + empty state | done | Minh | `AuthAccountsTab.tsx` |
+| AUTH-ACCT-04 | Sub-team field trong profile/permissions/signup | done | Minh | `subTeam` field across components |
+| AUTH-ACCT-05 | Password recovery flow + OTP setup | done | Giang/Đức | Backend routes + docs |
+
+---
+
+## Dashboard Gamification (2026-05-30..06-02)
+
+| ID | Task | Status | Owner | Ghi chú |
+|----|------|--------|-------|---------|
+| DASH-01 | Gamification summary API + FE | done | Đạt + Minh | `GET /api/v1/dashboard/summary`; today-honors |
+| DASH-02 | `get_top_sales` RPC — vinh danh BXH | done | Kem | Supabase RPC; merge `feature-kem` |
+| DASH-03 | Current user rank card + monthly ranking | done | Đức + Minh | `feature-duc` handoff; paginated |
+| DASH-04 | 4 events from prototype + per-event styling | done | Minh | Event carousel; compact layout |
+| DASH-05 | PalFish branding: logo + favicon | done | Minh | Commit `4fb1442` |
+| DASH-06 | Team/subteam details trong dashboard | done | Giang/Đức | `dashboard_routes.py` |
+
+---
+
+## Backend Audit (2026-06-03) — `HANDOFF_BE_AUDIT_2026-06-03.md`
+
+> Phân công: Đức (DB-01..07), Đạt (AUTH-01..07), Giang (OTHER-01..08).  
+> Test suite: `backend/tests/` — 31 test cases.  
+> Branch: `sandbox` (merge từ `feature-duc`, `feature-dat`, `feature-kem`).
+
+| ID | Task | Status | Owner | Ghi chú |
+|----|------|--------|-------|---------|
+| DB-01 | Trùng mã đơn hàng — Postgres sequence | done | Đức | `rpc_helpers.py`, `supabase_schema_patch_db_audit_20260603.sql` |
+| DB-02 | Trùng mã hoá đơn thuế — sequence | done | Đức | Commit `f1dec31` |
+| DB-03 | Trùng mã phiếu thu — sequence | done | Đức | Commit `f1dec31` |
+| DB-04 | Atomic JSONB RPCs cho AR course patches | done | Đức | Commit `9ed7505` |
+| DB-05 | Transaction wrap KPI save | pending | Đức | |
+| DB-06 | Dashboard BXH row cap | done | Đức | `analytics_limits.py` |
+| DB-07 | Bounded query BC01/BC02 | done | Đức | `revenue_routes.py` |
+| AUTH-01 | Auth activation routes | done | Đạt | Commit `d5530c7` |
+| AUTH-02 | Auth BC03 report | done | Đạt | Commit `d5530c7` |
+| AUTH-03 | Auth CRM token update | done | Đạt | Commit `d5530c7` |
+| AUTH-04 | Auth payment status + bill delete | done | Đạt | Commit `d5530c7` |
+| AUTH-05 | Auth team/nhân sự list | done | Đạt | Commit `d5530c7` |
+| AUTH-06 | Siết CORS Vercel regex | pending | Đạt | Cần test Vercel preview URLs |
+| AUTH-07 | Bỏ query thừa 500 dòng | done | Đạt | Commit `d5530c7` |
+| OTHER-01 | Verify PayOS webhook signature | done | Giang | Commit `6719438` |
+| OTHER-02 | Trùng mã QR PayOS | pending | Giang | Cần sequence hoặc random suffix |
+| OTHER-03 | Encrypt CRM token (Fernet) | done | Giang | Commit `cfda886` |
+| OTHER-04 | Audit log xoá doanh thu | done | Giang | Commit `cfda886` |
+| OTHER-05 | Idempotent export batch | done | Giang | Commit `cfda886` |
+| OTHER-06 | Partial result bulk delete user | done | Giang | Commit `e8672ec` |
+| OTHER-07 | Default `APP_ENV=development` | done | Giang | Commit `e8672ec` |
+| OTHER-08 | Case-insensitive team filter + env config | done | Giang | Commit `e8672ec` |
+
+---
+
+## E2E Testing (2026-06-02)
+
+| ID | Task | Status | Owner | Ghi chú |
+|----|------|--------|-------|---------|
+| E2E-01 | Playwright setup + auth setup | done | Minh | `e2e/auth.setup.ts` |
+| E2E-02 | CRM Sync tests (6 tests) | done | Minh | `e2e/crm-sync.spec.ts` |
+| E2E-03 | Dashboard Sales tests (8 tests) | done | Minh | `e2e/dashboard-sales.spec.ts` |
+| E2E-04 | Test account creation script | done | Minh | `scripts/create_test_accounts.py` |
+
+---
+
+## Module 5 CRM Sync & BC03 (2026-06-03..04)
+
+| ID | Task | Status | Owner | Ghi chú |
+|----|------|--------|-------|---------|
+| CRM-01 | Hybrid CRM sync + autonomous sync | done | Giang | `crm_routes.py` |
+| CRM-02 | CRM sales data upsert after export | done | Giang | `crm_metrics.py` |
+| CRM-03 | BC03 daily backfill + monthly report | done | Giang | `report_routes.py` |
+| CRM-04 | Dashboard Sale VN table | done | Giang | `dashboard_routes.py` |
+| CRM-05 | Module5Tab token status display | done | Minh | `Module5Tab.tsx` |
