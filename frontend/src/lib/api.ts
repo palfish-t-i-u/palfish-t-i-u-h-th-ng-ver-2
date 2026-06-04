@@ -235,6 +235,7 @@ export const endpoints = {
       to?: string;
       loai_nhap?: string;
       team?: string;
+      search?: string;
       limit?: number;
       offset?: number;
     }) => api.get<RevenueLedgerListResponse>("/revenue/ledger", { params }),
