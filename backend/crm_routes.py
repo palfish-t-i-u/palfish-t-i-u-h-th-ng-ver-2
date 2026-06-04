@@ -33,19 +33,31 @@ from pydantic import BaseModel
 from crm_metrics import extract_row_metrics, is_valid_sale_name, parse_rate, sale_label, team_label
 from rbac import resolve_actor, require_min_role
 
-# Encryption — CRM token at rest (OTHER-03)
+import base64
 try:
-    from cryptography.fernet import Fernet
+    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 except ImportError:
-    Fernet = None  # type: ignore
+    AESGCM = None  # type: ignore
 
-_FERNET_KEY = os.getenv("CRM_ENCRYPT_KEY")
-_cipher = None
-if Fernet and _FERNET_KEY:
+def _decrypt_token(raw_str: str) -> str:
+    if not raw_str or ":" not in raw_str:
+        return raw_str  # Fallback 1: Not encrypted or legacy plaintext
     try:
-        _cipher = Fernet(_FERNET_KEY.encode())
-    except Exception as exc:
-        print(f"[CRM] WARNING: Invalid CRM_ENCRYPT_KEY, Fernet encryption disabled: {exc}")
+        key_b64 = os.getenv("CRM_ENCRYPT_KEY")
+        if not key_b64 or not AESGCM:
+            return raw_str # Fallback 2: Missing env variable or lib
+        
+        key = base64.b64decode(key_b64)
+        iv_b64, cipher_b64 = raw_str.split(":", 1)
+        
+        iv = base64.b64decode(iv_b64)
+        ciphertext = base64.b64decode(cipher_b64)
+        
+        aesgcm = AESGCM(key)
+        plaintext = aesgcm.decrypt(iv, ciphertext, None)
+        return plaintext.decode('utf-8')
+    except Exception:
+        return raw_str # Fallback 3: Wrong key or corrupted data
 
 
 try:
@@ -289,6 +301,8 @@ def _resolve_order_id(
     digest = hashlib.md5("|".join(parts).encode("utf-8")).hexdigest()[:12]
     return f"crm-{report_date}-{idx}-{digest}"
 
+
+_ENGLISH_HEADER_MARKERS = ("ad leads", "referral leads", "total leads", "gmv", "orders", "preview rate")
 
 def _columns_look_english(cols) -> bool:
     lower = {str(c).strip().lower() for c in cols if c is not None and str(c).strip()}
@@ -925,7 +939,6 @@ async def _run_backfill_range(
     sem = asyncio.Semaphore(conc)
 
     async def _sync_one(day: date) -> None:
-        nonlocal days_ok, days_failed
         day_iso = day.isoformat()
         async with sem:
             try:
@@ -1122,7 +1135,7 @@ def _parse_auth_bundle(raw: str) -> dict[str, Any]:
 
 
 def _get_auth_bundle(sb) -> dict[str, Any]:
-    """Lấy auth bundle từ Supabase hoặc bộ nhớ. Decrypt nếu có cipher."""
+    """Lấy auth bundle từ Supabase hoặc bộ nhớ. Giải mã token (Shift-Left)."""
     raw = ""
     if sb:
         try:
@@ -1131,15 +1144,11 @@ def _get_auth_bundle(sb) -> dict[str, Any]:
                 raw = res.data[0].get("cookie_value", "")
         except Exception as exc:
             print(f"crm_tokens get failed: {exc}")
-    # Decrypt token từ DB (OTHER-03)
-    if raw and _cipher:
-        try:
-            raw = _cipher.decrypt(raw.encode()).decode()
-        except Exception:
-            print("[CRM] Token trong DB không giải mã được — yêu cầu cập nhật lại token")
-            raw = ""  # coi như không có → FE sẽ báo "chưa có token"
+
     if not raw:
         raw = _crm_token_mem.get("cookie_value", "")
+        
+    raw = _decrypt_token(raw)
     return _parse_auth_bundle(raw)
 
 
@@ -1324,15 +1333,10 @@ def register_crm_routes(app, supabase_factory):
         actor = resolve_actor(sb, authorization)
         require_min_role(actor, "manager")
 
-        # Encrypt trước khi lưu DB (OTHER-03)
-        store_value = cookie
-        if _cipher:
-            store_value = _cipher.encrypt(cookie.encode()).decode()
-
         if sb:
             try:
                 sb.table("crm_tokens").upsert(
-                    {"id": 1, "cookie_value": store_value, "updated_at": now_iso}
+                    {"id": 1, "cookie_value": cookie, "updated_at": now_iso}
                 ).execute()
             except Exception as exc:
                 print(f"crm_tokens upsert failed (fallback to mem): {exc}")
