@@ -1,5 +1,4 @@
 """Tests for ledger search OR-filter construction."""
-import types
 from unittest.mock import MagicMock
 
 
