@@ -104,12 +104,13 @@ function orderIdDisplay(row: RevenueLedgerRow) {
   return row.crmOrderId || row.maDonHang || "—";
 }
 
-function filterParams(from: string, to: string, loaiFilter: string, teamFilter: string) {
+function filterParams(from: string, to: string, loaiFilter: string, teamFilter: string, search?: string) {
   return {
     from: from || undefined,
     to: to || undefined,
     loai_nhap: loaiFilter || undefined,
     team: teamFilter || undefined,
+    search: search || undefined,
   };
 }
 
@@ -131,6 +132,9 @@ export default function SoDoanhThuTab() {
   const [appliedLoai, setAppliedLoai] = useState("");
   const [draftTeam, setDraftTeam] = useState("");
   const [appliedTeam, setAppliedTeam] = useState("");
+  const [searchTerm, setSearchTerm] = useState("");
+  const [appliedSearch, setAppliedSearch] = useState("");
+  const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
@@ -150,7 +154,7 @@ export default function SoDoanhThuTab() {
   const fetchPage = useCallback(
     async (offset: number, replace: boolean) => {
       const params = {
-        ...filterParams(appliedFrom, appliedTo, appliedLoai, appliedTeam),
+        ...filterParams(appliedFrom, appliedTo, appliedLoai, appliedTeam, appliedSearch),
         limit: PAGE_SIZE,
         offset,
       };
@@ -160,7 +164,7 @@ export default function SoDoanhThuTab() {
       setRows((prev) => (replace ? res.data.rows : [...prev, ...res.data.rows]));
       return res.data;
     },
-    [appliedFrom, appliedTo, appliedLoai, appliedTeam]
+    [appliedFrom, appliedTo, appliedLoai, appliedTeam, appliedSearch]
   );
 
   const reloadAll = useCallback(async () => {
@@ -180,7 +184,7 @@ export default function SoDoanhThuTab() {
     } finally {
       setLoading(false);
     }
-  }, [appliedFrom, appliedTo, appliedLoai, appliedTeam, fetchPage]);
+  }, [appliedFrom, appliedTo, appliedLoai, appliedTeam, appliedSearch, fetchPage]);
 
   useEffect(() => {
     reloadAll();
@@ -225,6 +229,14 @@ export default function SoDoanhThuTab() {
     return () => observer.disconnect();
   }, [hasMore, loadMore, rows.length]);
 
+  useEffect(() => {
+    if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
+    searchTimerRef.current = setTimeout(() => {
+      setAppliedSearch(searchTerm.trim());
+    }, 400);
+    return () => { if (searchTimerRef.current) clearTimeout(searchTimerRef.current); };
+  }, [searchTerm]);
+
   function applyFilters() {
     const unchanged =
       draftFrom === appliedFrom &&
@@ -247,6 +259,8 @@ export default function SoDoanhThuTab() {
     setAppliedTo("");
     setAppliedLoai("");
     setAppliedTeam("");
+    setSearchTerm("");
+    setAppliedSearch("");
   }
 
   function setTodayFilter() {
@@ -257,7 +271,7 @@ export default function SoDoanhThuTab() {
     setAppliedTo(t);
   }
 
-  const hasActiveFilter = Boolean(appliedFrom || appliedTo || appliedLoai || appliedTeam);
+  const hasActiveFilter = Boolean(appliedFrom || appliedTo || appliedLoai || appliedTeam || appliedSearch);
   const draftDirty =
     draftFrom !== appliedFrom ||
     draftTo !== appliedTo ||
@@ -471,9 +485,41 @@ export default function SoDoanhThuTab() {
 
       {error && <p className="text-sm text-red-600">{error}</p>}
 
+      {/* ── SEARCH BAR ── */}
+      <div className="relative">
+        <svg
+          className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gmv-muted"
+          fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
+        </svg>
+        <input
+          type="text"
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          placeholder="Tìm theo tên khách, SĐT, UID, sale, mã đơn..."
+          className="w-full rounded-lg border border-gmv-border bg-gmv-canvas py-2.5 pl-10 pr-10 text-sm text-gmv-text-strong placeholder:text-gmv-muted focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400"
+        />
+        {searchTerm && (
+          <button
+            type="button"
+            onClick={() => { setSearchTerm(""); setAppliedSearch(""); }}
+            className="absolute right-3 top-1/2 -translate-y-1/2 rounded p-0.5 text-gmv-muted hover:text-gmv-text"
+          >
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        )}
+      </div>
+
       <p className="text-xs text-gmv-muted">
-        Hiển thị {rows.length.toLocaleString("vi-VN")} / {totalCount.toLocaleString("vi-VN")} dòng
-        {loadingMore && " · đang tải thêm…"}
+        {appliedSearch
+          ? totalCount > 0
+            ? <>Tìm thấy {totalCount.toLocaleString("vi-VN")} dòng cho "<span className="font-medium text-gmv-text">{appliedSearch}</span>"{loadingMore && " · đang tải thêm…"}</>
+            : <>Không tìm thấy dòng nào cho "<span className="font-medium text-gmv-text">{appliedSearch}</span>"</>
+          : <>Hiển thị {rows.length.toLocaleString("vi-VN")} / {totalCount.toLocaleString("vi-VN")} dòng{loadingMore && " · đang tải thêm…"}</>
+        }
       </p>
 
       <TableScrollWrap>
