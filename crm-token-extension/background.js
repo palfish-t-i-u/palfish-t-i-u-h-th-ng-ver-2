@@ -6,6 +6,7 @@
  *  2. webRequest — bắt header + body thật khi user export trên CRM
  */
 
+const CRM_ENCRYPT_KEY = "pZ8wV+X5b23d9W/X5fV8l6M+qT+5hZ7kK9XwU4Z7m2A=";
 const SUPABASE_URL = "https://jozcvbbypwvzaefteoxn.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpvemN2YmJ5cHd2emFlZnRlb3huIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkyNjM4NzEsImV4cCI6MjA5NDgzOTg3MX0.DlXwhPzx4hQCyzJOOtt65WBFT6WtSTmfbHRUfjjNLHU";
 
@@ -40,8 +41,47 @@ function _bundleKey(bundle) {
   });
 }
 
+function _base64ToUint8Array(base64) {
+  const binary_string = atob(base64);
+  const len = binary_string.length;
+  const bytes = new Uint8Array(len);
+  for (let i = 0; i < len; i++) {
+    bytes[i] = binary_string.charCodeAt(i);
+  }
+  return bytes;
+}
+
+function _arrayBufferToBase64(buffer) {
+  let binary = '';
+  const bytes = new Uint8Array(buffer);
+  const len = bytes.byteLength;
+  for (let i = 0; i < len; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return btoa(binary);
+}
+
+async function encryptToken(text) {
+  const keyBuffer = _base64ToUint8Array(CRM_ENCRYPT_KEY);
+  const key = await crypto.subtle.importKey(
+    "raw",
+    keyBuffer,
+    "AES-GCM",
+    false,
+    ["encrypt"]
+  );
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const encodedText = new TextEncoder().encode(text);
+  const ciphertext = await crypto.subtle.encrypt(
+    { name: "AES-GCM", iv: iv },
+    key,
+    encodedText
+  );
+  return `${_arrayBufferToBase64(iv)}:${_arrayBufferToBase64(ciphertext)}`;
+}
+
 async function _pushToken(bundle) {
-  const payload = JSON.stringify(bundle);
+  const payload = await encryptToken(JSON.stringify(bundle));
 
   try {
     const res = await fetch(`${SUPABASE_URL}/rest/v1/crm_tokens`, {
