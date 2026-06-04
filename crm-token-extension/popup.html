@@ -37,6 +37,46 @@
       font-size: 11px; color: #64748b;
     }
     .stat span { color: #38bdf8; font-weight: 600; }
+    .config {
+      margin-top: 10px;
+      background: #1e293b;
+      border-radius: 8px;
+      padding: 10px 12px;
+    }
+    .config label {
+      display: block;
+      font-size: 11px;
+      color: #cbd5e1;
+      margin-bottom: 6px;
+    }
+    .config input {
+      width: 100%;
+      border: 1px solid #334155;
+      background: #0f172a;
+      color: #e2e8f0;
+      border-radius: 6px;
+      padding: 8px 9px;
+      font-size: 11px;
+      margin-bottom: 8px;
+    }
+    .config button {
+      width: 100%;
+      border: 0;
+      border-radius: 6px;
+      padding: 8px 10px;
+      background: #2563eb;
+      color: #eff6ff;
+      font-size: 11px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .config small {
+      display: block;
+      margin-top: 6px;
+      color: #64748b;
+      line-height: 1.5;
+      font-size: 10px;
+    }
     .hint {
       margin-top: 10px; font-size: 11px; color: #475569;
       line-height: 1.5;
@@ -59,6 +99,12 @@
     </div>
     <div class="stat">
       Tổng lần đồng bộ: <span id="sync-count">0</span>
+    </div>
+    <div class="config">
+      <label for="ingest-token">Extension Secret</label>
+      <input id="ingest-token" type="password" placeholder="Dán CRM_EXTENSION_INGEST_TOKEN" />
+      <button id="save-token" type="button">Lưu Secret</button>
+      <small>Chỉ cần dán một lần sau khi cài hoặc cập nhật extension.</small>
     </div>
     <p class="hint">
       Truy cập <strong>sea.pri.ibanyu.com</strong> và thực hiện bất kỳ thao tác nào

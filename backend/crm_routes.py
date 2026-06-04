@@ -1,7 +1,7 @@
 """CRM routes — Module 5: Đồng bộ & xuất dữ liệu CRM PalFish.
 
 Luồng (Hybrid):
-  Extension → POST /system/update-crm-token  (cookie + headers — không bắt Export)
+  Extension → POST /system/update-crm-token/extension  (cookie + headers — không bắt Export)
   Frontend  → POST /crm/sync               (incremental 1 ngày → upsert crm_sales_data)
   Dashboard → fetch_live_crm_rows()        (PalFish live — không lưu DB)
   Frontend  → GET  /crm/export-master      (cào dữ liệu + trả file Excel — legacy)
@@ -39,13 +39,44 @@ try:
 except ImportError:
     Fernet = None  # type: ignore
 
-_FERNET_KEY = os.getenv("CRM_ENCRYPT_KEY")
-_cipher = None
-if Fernet and _FERNET_KEY:
+CRM_EXTENSION_INGEST_HEADER = "X-CRM-EXT-TOKEN"
+
+
+def _get_cipher():
+    key = (os.getenv("CRM_ENCRYPT_KEY") or "").strip()
+    if not Fernet or not key:
+        return None
     try:
-        _cipher = Fernet(_FERNET_KEY.encode())
+        return Fernet(key.encode())
     except Exception as exc:
         print(f"[CRM] WARNING: Invalid CRM_ENCRYPT_KEY, Fernet encryption disabled: {exc}")
+        return None
+
+
+def _encrypt_token(raw: str) -> str:
+    cipher = _get_cipher()
+    if not cipher:
+        raise HTTPException(503, "CRM token encryption key not configured")
+    return cipher.encrypt(raw.encode()).decode()
+
+
+def _decrypt_token(raw: str) -> str:
+    cipher = _get_cipher()
+    if not cipher or not raw:
+        return raw
+    try:
+        return cipher.decrypt(raw.encode()).decode()
+    except Exception:
+        return raw
+
+
+def _require_extension_ingest_token(header_value: str | None) -> None:
+    expected = (os.getenv("CRM_EXTENSION_INGEST_TOKEN") or "").strip()
+    provided = (header_value or "").strip()
+    if not expected:
+        raise HTTPException(503, "CRM extension ingest token not configured")
+    if not provided or provided != expected:
+        raise HTTPException(401, "Extension ingest token is invalid")
 
 
 try:
@@ -1122,7 +1153,7 @@ def _parse_auth_bundle(raw: str) -> dict[str, Any]:
 
 
 def _get_auth_bundle(sb) -> dict[str, Any]:
-    """Lấy auth bundle từ Supabase hoặc bộ nhớ. Decrypt nếu có cipher."""
+    """Lấy auth bundle từ Supabase hoặc bộ nhớ."""
     raw = ""
     if sb:
         try:
@@ -1131,15 +1162,9 @@ def _get_auth_bundle(sb) -> dict[str, Any]:
                 raw = res.data[0].get("cookie_value", "")
         except Exception as exc:
             print(f"crm_tokens get failed: {exc}")
-    # Decrypt token từ DB (OTHER-03)
-    if raw and _cipher:
-        try:
-            raw = _cipher.decrypt(raw.encode()).decode()
-        except Exception:
-            print("[CRM] Token trong DB không giải mã được — yêu cầu cập nhật lại token")
-            raw = ""  # coi như không có → FE sẽ báo "chưa có token"
     if not raw:
         raw = _crm_token_mem.get("cookie_value", "")
+    raw = _decrypt_token(raw)
     return _parse_auth_bundle(raw)
 
 
@@ -1311,23 +1336,10 @@ async def _fetch_crm_response_df(client: httpx.AsyncClient, resp: httpx.Response
 # ---------------------------------------------------------------------------
 def register_crm_routes(app, supabase_factory):
 
-    @app.post("/system/update-crm-token", tags=["CRM"])
-    async def update_crm_token(body: CrmTokenBody, authorization: str | None = Header(None)):
-        """Nhận cookie từ Chrome Extension và lưu vào bảng crm_tokens."""
-        cookie = body.cookie_str.strip()
-        if not cookie:
-            raise HTTPException(400, "cookie_str không được rỗng")
-
+    def _store_crm_token(raw_token: str) -> str:
         now_iso = datetime.now(timezone.utc).isoformat()
         sb = supabase_factory()
-
-        actor = resolve_actor(sb, authorization)
-        require_min_role(actor, "manager")
-
-        # Encrypt trước khi lưu DB (OTHER-03)
-        store_value = cookie
-        if _cipher:
-            store_value = _cipher.encrypt(cookie.encode()).decode()
+        store_value = _encrypt_token(raw_token)
 
         if sb:
             try:
@@ -1336,10 +1348,36 @@ def register_crm_routes(app, supabase_factory):
                 ).execute()
             except Exception as exc:
                 print(f"crm_tokens upsert failed (fallback to mem): {exc}")
-                _crm_token_mem.update({"cookie_value": cookie, "updated_at": now_iso})
+                _crm_token_mem.update({"cookie_value": store_value, "updated_at": now_iso})
         else:
-            _crm_token_mem.update({"cookie_value": cookie, "updated_at": now_iso})
+            _crm_token_mem.update({"cookie_value": store_value, "updated_at": now_iso})
+        return now_iso
 
+    @app.post("/system/update-crm-token/extension", tags=["CRM"])
+    async def update_crm_token_from_extension(
+        body: CrmTokenBody,
+        x_crm_ext_token: str | None = Header(None, alias=CRM_EXTENSION_INGEST_HEADER),
+    ):
+        """Nhận auth bundle từ extension bằng ingest secret riêng."""
+        raw_token = body.cookie_str.strip()
+        if not raw_token:
+            raise HTTPException(400, "cookie_str không được rỗng")
+
+        _require_extension_ingest_token(x_crm_ext_token)
+        now_iso = _store_crm_token(raw_token)
+        return {"ok": True, "updated_at": now_iso}
+
+    @app.post("/system/update-crm-token", tags=["CRM"])
+    async def update_crm_token(body: CrmTokenBody, authorization: str | None = Header(None)):
+        """Nhận cookie thủ công từ nội bộ và lưu vào bảng crm_tokens."""
+        raw_token = body.cookie_str.strip()
+        if not raw_token:
+            raise HTTPException(400, "cookie_str không được rỗng")
+
+        sb = supabase_factory()
+        actor = resolve_actor(sb, authorization)
+        require_min_role(actor, "manager")
+        now_iso = _store_crm_token(raw_token)
         return {"ok": True, "updated_at": now_iso}
 
     @app.get("/crm/token-status", tags=["CRM"])

@@ -6,12 +6,9 @@
  *  2. webRequest — bắt header + body thật khi user export trên CRM
  */
 
-const SUPABASE_URL = "https://jozcvbbypwvzaefteoxn.supabase.co";
-const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpvemN2YmJ5cHd2emFlZnRlb3huIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkyNjM4NzEsImV4cCI6MjA5NDgzOTg3MX0.DlXwhPzx4hQCyzJOOtt65WBFT6WtSTmfbHRUfjjNLHU";
-
 const BACKEND_URLS = [
-  "http://localhost:8000/system/update-crm-token",
-  "https://palfish-gmv-api.onrender.com/system/update-crm-token",
+  "http://localhost:8000/system/update-crm-token/extension",
+  "https://palfish-gmv-api.onrender.com/system/update-crm-token/extension",
 ];
 
 const CRM_URL = "https://sea.pri.ibanyu.com/";
@@ -40,56 +37,45 @@ function _bundleKey(bundle) {
   });
 }
 
+function _storageGet(keys) {
+  return new Promise((resolve) => {
+    chrome.storage.local.get(keys, resolve);
+  });
+}
+
+async function _getIngestToken() {
+  const data = await _storageGet(["ingestToken"]);
+  return String(data.ingestToken || "").trim();
+}
+
 async function _pushToken(bundle) {
   const payload = JSON.stringify(bundle);
-
-  try {
-    const res = await fetch(`${SUPABASE_URL}/rest/v1/crm_tokens`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        apikey: SUPABASE_ANON_KEY,
-        Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
-        Prefer: "resolution=merge-duplicates",
-      },
-      body: JSON.stringify({
-        id: 1,
-        cookie_value: payload,
-        updated_at: new Date().toISOString(),
-      }),
-    });
-    if (res.ok || res.status === 201) {
-      _syncCount++;
-      const hasPayload = bundle.download_payload ? " + dept prefs" : "";
-      _saveState("ok", `Đã đồng bộ lúc ${new Date().toLocaleTimeString("vi-VN")}${hasPayload}`);
-      console.log("[PalFish Sync] auth bundle → Supabase OK", bundle);
-      fetch(BACKEND_URLS[0], {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ cookie_str: payload }),
-      }).catch(() => {});
-      return;
-    }
-    console.warn("[PalFish Sync] Supabase status:", res.status, await res.text());
-  } catch (err) {
-    console.warn("[PalFish Sync] Supabase push failed:", err.message);
+  const ingestToken = await _getIngestToken();
+  if (!ingestToken) {
+    _saveState("error", "Chưa cấu hình Extension Secret trong popup.");
+    return;
   }
 
   for (const url of BACKEND_URLS) {
     try {
       const res = await fetch(url, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "X-CRM-EXT-TOKEN": ingestToken,
+        },
         body: JSON.stringify({ cookie_str: payload }),
       });
       if (res.ok) {
         _syncCount++;
-        _saveState("ok", `Đã đồng bộ (backend) lúc ${new Date().toLocaleTimeString("vi-VN")}`);
+        const hasPayload = bundle.download_payload ? " + dept prefs" : "";
+        _saveState("ok", `Đã đồng bộ lúc ${new Date().toLocaleTimeString("vi-VN")}${hasPayload}`);
         return;
       }
+      console.warn("[PalFish Sync] backend status:", res.status, await res.text());
     } catch (_) {}
   }
-  _saveState("error", "Lỗi: không gửi được token về Supabase hay backend");
+  _saveState("error", "Lỗi: không gửi được token về backend");
 }
 
 async function _sendIfChanged() {
@@ -207,4 +193,4 @@ chrome.tabs.onActivated.addListener(async (activeInfo) => {
 });
 
 _saveState("idle", "Mở CRM → đăng nhập — extension tự lấy token (không cần Export)");
-console.log("[PalFish Sync] service worker started (cookies + webRequest capture)");
+console.log("[PalFish Sync] service worker started (backend ingest mode)");
