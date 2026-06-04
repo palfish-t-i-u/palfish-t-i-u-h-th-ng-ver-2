@@ -531,6 +531,7 @@ def _ledger_query(
     from_date: str | None = None,
     to_date: str | None = None,
     loai_nhap: str | None = None,
+    search: str | None = None,
     count: str | None = None,
 ):
     """Lọc theo Pay Time (pay_time) — khớp pivot Excel Hiếu, không dùng ngay_tien_ve."""
@@ -545,6 +546,17 @@ def _ledger_query(
         q = q.lte("pay_time", f"{to_date[:10]}T23:59:59")
     if loai_nhap in ("tu_dong", "tay"):
         q = q.eq("loai_nhap", loai_nhap)
+    if search and search.strip():
+        term = search.strip()
+        pattern = f"%{term}%"
+        or_clauses = ",".join(
+            f"{col}.ilike.{pattern}"
+            for col in (
+                "ten_khach", "sdt", "uid", "sale_crm_name",
+                "crm_order_id", "ma_don_hang", "info_code",
+            )
+        )
+        q = q.or_(or_clauses)
     return q
 
 
