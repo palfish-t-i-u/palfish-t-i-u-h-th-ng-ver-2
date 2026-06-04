@@ -31,10 +31,74 @@ export default defineConfig({
   },
 
   projects: [
+    // ── Auth setup ──
     {
       name: "auth-setup",
       testMatch: /auth\.setup\.ts/,
     },
+    {
+      name: "auth-sale",
+      testMatch: /auth-role\.setup\.ts/,
+      use: { ...devices["Desktop Chrome"] },
+      metadata: { role: "sale" },
+    },
+    {
+      name: "auth-marketing",
+      testMatch: /auth-role\.setup\.ts/,
+      use: { ...devices["Desktop Chrome"] },
+      metadata: { role: "marketing" },
+    },
+    {
+      name: "auth-cs",
+      testMatch: /auth-role\.setup\.ts/,
+      use: { ...devices["Desktop Chrome"] },
+      metadata: { role: "cs" },
+    },
+
+    // ── Journey chains (full-access account, serial) ──
+    {
+      name: "journeys",
+      testDir: "./e2e/journeys",
+      use: {
+        ...devices["Desktop Chrome"],
+        storageState: path.resolve(__dirname, "e2e/.auth/user.json"),
+      },
+      dependencies: ["auth-setup"],
+    },
+
+    // ── RBAC visibility (per-role, can run parallel) ──
+    {
+      name: "rbac-sale",
+      testMatch: /rbac-visibility\.spec\.ts/,
+      use: {
+        ...devices["Desktop Chrome"],
+        storageState: path.resolve(__dirname, "e2e/.auth/sale.json"),
+      },
+      metadata: { role: "sale" },
+      dependencies: ["auth-sale"],
+    },
+    {
+      name: "rbac-marketing",
+      testMatch: /rbac-visibility\.spec\.ts/,
+      use: {
+        ...devices["Desktop Chrome"],
+        storageState: path.resolve(__dirname, "e2e/.auth/marketing.json"),
+      },
+      metadata: { role: "marketing" },
+      dependencies: ["auth-marketing"],
+    },
+    {
+      name: "rbac-cs",
+      testMatch: /rbac-visibility\.spec\.ts/,
+      use: {
+        ...devices["Desktop Chrome"],
+        storageState: path.resolve(__dirname, "e2e/.auth/cs.json"),
+      },
+      metadata: { role: "cs" },
+      dependencies: ["auth-cs"],
+    },
+
+    // ── Existing tests (unchanged) ──
     {
       name: "e2e",
       use: {
@@ -42,6 +106,7 @@ export default defineConfig({
         storageState: path.resolve(__dirname, "e2e/.auth/user.json"),
       },
       dependencies: ["auth-setup"],
+      testIgnore: [/journeys/, /auth.*\.setup/, /rbac-/],
     },
   ],
 

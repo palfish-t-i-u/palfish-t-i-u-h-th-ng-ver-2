@@ -17,6 +17,9 @@ dist-ssr
 .env.*.sandbox
 .env.production.local
 
+# E2E auth state files (role-specific sessions)
+e2e/.auth/*.json
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
