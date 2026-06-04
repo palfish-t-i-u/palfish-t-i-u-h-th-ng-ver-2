@@ -13,6 +13,36 @@ from rbac import can_confirm_payment, resolve_actor
 
 DEFAULT_TY_GIA = Decimal("3700")
 
+
+def load_team_map(sb) -> dict[str, str]:
+    """Batch load nhan_su_sale (active only) → {crm_name: team}. Keeps first on duplicate."""
+    team_map: dict[str, str] = {}
+    try:
+        offset = 0
+        while True:
+            res = (
+                sb.table("nhan_su_sale")
+                .select("crm_name, team")
+                .eq("is_active", True)
+                .range(offset, offset + 999)
+                .execute()
+            )
+            chunk = res.data or []
+            if not chunk:
+                break
+            for row in chunk:
+                name = (row.get("crm_name") or "").strip()
+                team = (row.get("team") or "").strip()
+                if name and team and name not in team_map:
+                    team_map[name] = team
+            if len(chunk) < 1000:
+                break
+            offset += 1000
+    except Exception as exc:
+        print(f"[team_map] nhan_su_sale load failed: {exc}")
+    return team_map
+
+
 TEAM_PIVOT_LABELS: dict[str, str] = {
     "Inhouse 1": "HN inhouse",
     "Inhouse 2": "HN inhouse 2",
