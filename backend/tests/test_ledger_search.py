@@ -43,7 +43,7 @@ def test_ledger_query_with_search_adds_or_filter():
     assert "sale_crm_name.ilike.*0912*" in or_arg
     assert "crm_order_id.ilike.*0912*" in or_arg
     assert "ma_don_hang.ilike.*0912*" in or_arg
-    assert "info_code.ilike.*0912*" in or_arg
+    assert "info_code" not in or_arg  # info_code is on don_hang, not so_doanh_thu
 
 
 def test_ledger_query_empty_search_is_ignored():

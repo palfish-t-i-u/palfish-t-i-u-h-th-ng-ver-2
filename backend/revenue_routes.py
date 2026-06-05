@@ -583,7 +583,7 @@ def _ledger_query(
             f"{col}.ilike.{pattern}"
             for col in (
                 "ten_khach", "sdt", "uid", "sale_crm_name",
-                "crm_order_id", "ma_don_hang", "info_code",
+                "crm_order_id", "ma_don_hang",
             )
         )
         q = q.or_(or_clauses)
@@ -736,7 +736,7 @@ def _fetch_so_doanh_thu(
                 f"{col}.ilike.{pattern}"
                 for col in (
                     "ten_khach", "sdt", "uid", "sale_crm_name",
-                    "crm_order_id", "ma_don_hang", "info_code",
+                    "crm_order_id", "ma_don_hang",
                 )
             )
             q = q.or_(or_clauses)
