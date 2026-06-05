@@ -7,6 +7,8 @@ import {
   ACCESS_LABELS,
   cycleAccessLevel,
   type AccessLevel,
+  type MinRole,
+  MIN_ROLE_LABELS,
 } from "../../types/permissions";
 import type { AuthUserRow } from "../../types/profile";
 import { endpoints } from "../../lib/api";
@@ -17,17 +19,24 @@ function AccessIcon({ level }: { level: AccessLevel }) {
   return <span className="pm-access-icon">✕</span>;
 }
 
+const ROLE_RANK: Record<string, number> = { sale: 1, leader: 2, manager: 3, system: 4 };
+function roleRank(role: string): number {
+  return ROLE_RANK[role.toLowerCase()] ?? 1;
+}
+
 interface Props {
   user: AuthUserRow;
   /** Current matrix from the "Theo nhóm" tab */
   matrix: Record<string, Record<string, AccessLevel>>;
+  /** Min role requirements per dept×module */
+  minRoles: Record<string, Record<string, MinRole>>;
   /** Existing overrides for this user (from API) */
   existingOverrides: Record<string, AccessLevel>;
   onClose: () => void;
   onSaved: () => void;
 }
 
-export default function OverrideDrawer({ user, matrix, existingOverrides, onClose, onSaved }: Props) {
+export default function OverrideDrawer({ user, matrix, minRoles, existingOverrides, onClose, onSaved }: Props) {
   const [draft, setDraft] = useState<Record<string, AccessLevel>>({});
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -39,13 +48,22 @@ export default function OverrideDrawer({ user, matrix, existingOverrides, onClos
     )?.key ?? null;
   }, [user.department]);
 
+  const userRank = roleRank(user.staffRole || "sale");
+
   const deptDefaults = useMemo(() => {
     const defaults: Record<string, AccessLevel> = {};
     for (const mod of MODULE_LIST) {
-      defaults[mod.key] = deptKey ? (matrix[deptKey]?.[mod.key] ?? DEFAULT_PERMISSIONS[deptKey]?.[mod.key] ?? "none") : "none";
+      let level: AccessLevel = deptKey
+        ? (matrix[deptKey]?.[mod.key] ?? DEFAULT_PERMISSIONS[deptKey]?.[mod.key] ?? "none")
+        : "none";
+      if (level !== "none" && deptKey) {
+        const mr = minRoles[deptKey]?.[mod.key] ?? "sale";
+        if (userRank < roleRank(mr)) level = "none";
+      }
+      defaults[mod.key] = level;
     }
     return defaults;
-  }, [deptKey, matrix]);
+  }, [deptKey, matrix, minRoles, userRank]);
 
   useEffect(() => {
     const initial: Record<string, AccessLevel> = {};
@@ -147,12 +165,22 @@ export default function OverrideDrawer({ user, matrix, existingOverrides, onClos
               {modulesBySection[section].map((mod) => {
                 const level = draft[mod.key] ?? "none";
                 const isOverride = level !== deptDefaults[mod.key];
+                const mr = deptKey ? (minRoles[deptKey]?.[mod.key] ?? "sale") : "sale";
+                const rawLevel = deptKey
+                  ? (matrix[deptKey]?.[mod.key] ?? DEFAULT_PERMISSIONS[deptKey]?.[mod.key] ?? "none")
+                  : "none";
+                const blockedByScope = rawLevel !== "none" && userRank < roleRank(mr);
                 return (
                   <div key={mod.key} className="pm-drawer-module">
                     <div className="pm-drawer-module-info">
                       <div className="pm-drawer-module-name">{mod.label}</div>
                       <div className="pm-drawer-module-default">
                         Nhóm mặc định: {ACCESS_LABELS[deptDefaults[mod.key]]}
+                        {blockedByScope && (
+                          <span style={{ color: "var(--gmv-danger)", marginLeft: 6, fontSize: 10 }}>
+                            (phạm vi: {MIN_ROLE_LABELS[mr]})
+                          </span>
+                        )}
                       </div>
                     </div>
                     <div className="pm-drawer-module-actions">

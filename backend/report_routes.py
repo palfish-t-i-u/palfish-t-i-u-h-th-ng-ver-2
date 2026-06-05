@@ -20,17 +20,14 @@ from crm_metrics import (
     sync_coverage_meta,
     team_label,
 )
-from rbac import can_confirm_payment, resolve_actor
+from admin_routes import require_module_access
+from rbac import resolve_actor
 from revenue_routes import load_team_map
 from vn_staff import is_vn_sale_row
 
 _MONTH_RE = re.compile(r"^\d{4}-\d{2}$")
 DEFAULT_EXCHANGE_RATE = 3700
 
-
-def _require_bc03_actor(actor) -> None:
-    if not can_confirm_payment(actor) and actor.role.lower() not in ("manager", "leader"):
-        raise HTTPException(403, "Chỉ Leader/Manager/Ops được thao tác BC03")
 
 
 def _validate_month_key(month: str) -> str:
@@ -428,7 +425,7 @@ def register_report_routes(app, supabase_factory):
             raise HTTPException(503, "Supabase chưa cấu hình")
 
         actor = resolve_actor(sb, authorization)
-        _require_bc03_actor(actor)
+        require_module_access(sb, actor, "bc03")
 
         d_start, d_end = _date_range(range_key, start, end)
         dates = _list_dates(d_start, d_end)
@@ -500,7 +497,7 @@ def register_report_routes(app, supabase_factory):
             raise HTTPException(503, "Supabase chưa cấu hình")
         
         actor = resolve_actor(sb, authorization)
-        _require_bc03_actor(actor)
+        require_module_access(sb, actor, "bc03")
         try:
             res = (
                 sb.table("nhan_su_sale")
@@ -540,7 +537,7 @@ def register_report_routes(app, supabase_factory):
             raise HTTPException(503, "Supabase chưa cấu hình")
         
         actor = resolve_actor(sb, authorization)
-        _require_bc03_actor(actor)
+        require_module_access(sb, actor, "bc03")
         
         month_key = _validate_month_key(month)
         try:
@@ -567,7 +564,7 @@ def register_report_routes(app, supabase_factory):
             raise HTTPException(503, "Supabase chưa cấu hình")
 
         actor = resolve_actor(sb, authorization)
-        _require_bc03_actor(actor)
+        require_module_access(sb, actor, "bc03")
         actor_email = actor.email
 
         try:

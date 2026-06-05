@@ -13,6 +13,20 @@
 
 export type AccessLevel = "full" | "read" | "none";
 
+export type MinRole = "sale" | "leader" | "manager";
+
+export const MIN_ROLE_LIST: { value: MinRole; label: string }[] = [
+  { value: "sale", label: "Tất cả" },
+  { value: "leader", label: "Từ Leader" },
+  { value: "manager", label: "Chỉ Admin" },
+];
+
+export const MIN_ROLE_LABELS: Record<MinRole, string> = {
+  sale: "Tất cả",
+  leader: "Từ Leader",
+  manager: "Chỉ Admin",
+};
+
 export interface ModuleDef {
   key: string;
   label: string;

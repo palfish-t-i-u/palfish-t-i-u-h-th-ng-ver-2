@@ -9,7 +9,8 @@ from typing import Any
 from fastapi import Header, HTTPException, Query
 from pydantic import BaseModel
 
-from rbac import can_confirm_payment, resolve_actor
+from admin_routes import require_module_access, require_module_write
+from rbac import resolve_actor
 
 DEFAULT_TY_GIA = Decimal("3700")
 
@@ -155,10 +156,6 @@ BC02_TYPE_TO_GMV_KEY: dict[str, str] = {
     "Lives": "lives",
 }
 
-
-def _require_ops(actor) -> None:
-    if not can_confirm_payment(actor):
-        raise HTTPException(403, "Chỉ Thu Hiền / System được thao tác Sổ doanh thu")
 
 
 def _parse_date(value: Any) -> date | None:
@@ -1275,7 +1272,7 @@ def register_revenue_routes(app, get_supabase) -> None:
     ):
         sb = _sb()
         actor = resolve_actor(sb, authorization)
-        _require_ops(actor)
+        require_module_access(sb, actor, "revenueLedger")
         try:
             team = (team_filter or "").strip() or None
             search_term = (search or "").strip() or None
@@ -1333,7 +1330,7 @@ def register_revenue_routes(app, get_supabase) -> None:
     ):
         sb = _sb()
         actor = resolve_actor(sb, authorization)
-        _require_ops(actor)
+        require_module_access(sb, actor, "revenueLedger")
         try:
             team = (team_filter or "").strip() or None
             summary_rows = _fetch_ledger_summary_rows(
@@ -1352,7 +1349,7 @@ def register_revenue_routes(app, get_supabase) -> None:
     def create_ledger(body: LedgerCreateBody, authorization: str | None = Header(None)):
         sb = _sb()
         actor = resolve_actor(sb, authorization)
-        _require_ops(actor)
+        require_module_write(sb, actor, "revenueLedger")
         ngay = _parse_date(body.ngayTienVe)
         if not ngay:
             raise HTTPException(400, "ngayTienVe không hợp lệ")
@@ -1403,7 +1400,7 @@ def register_revenue_routes(app, get_supabase) -> None:
     ):
         sb = _sb()
         actor = resolve_actor(sb, authorization)
-        _require_ops(actor)
+        require_module_write(sb, actor, "revenueLedger")
         try:
             cur = sb.table("so_doanh_thu").select("*").eq("id", row_id).limit(1).execute()
             if not cur.data:
@@ -1451,7 +1448,7 @@ def register_revenue_routes(app, get_supabase) -> None:
     def delete_ledger(row_id: str, authorization: str | None = Header(None)):
         sb = _sb()
         actor = resolve_actor(sb, authorization)
-        _require_ops(actor)
+        require_module_write(sb, actor, "revenueLedger")
         try:
             cur = sb.table("so_doanh_thu").select("*").eq("id", row_id).limit(1).execute()
             if not cur.data:
@@ -1476,7 +1473,7 @@ def register_revenue_routes(app, get_supabase) -> None:
     ):
         sb = _sb()
         actor = resolve_actor(sb, authorization)
-        _require_ops(actor)
+        require_module_access(sb, actor, "bc01")
         try:
             rows = _fetch_so_doanh_thu(
                 sb,
@@ -1499,7 +1496,7 @@ def register_revenue_routes(app, get_supabase) -> None:
     ):
         sb = _sb()
         actor = resolve_actor(sb, authorization)
-        _require_ops(actor)
+        require_module_access(sb, actor, "bc02")
         try:
             rows = _fetch_so_doanh_thu(
                 sb,
@@ -1523,7 +1520,7 @@ def register_revenue_routes(app, get_supabase) -> None:
     ):
         sb = _sb()
         actor = resolve_actor(sb, authorization)
-        _require_ops(actor)
+        require_module_access(sb, actor, "bc01")
         try:
             rows = _fetch_so_doanh_thu(
                 sb,
@@ -1600,7 +1597,7 @@ def register_revenue_routes(app, get_supabase) -> None:
         """Tạo dòng Sổ thiếu từ active_requests đã có Order ID (ops)."""
         sb = _sb()
         actor = resolve_actor(sb, authorization)
-        _require_ops(actor)
+        require_module_write(sb, actor, "revenueLedger")
         stats = backfill_ledger_from_active_requests(sb, actor.email or "backfill@b3")
         return {"ok": True, **stats}
 
@@ -1609,7 +1606,7 @@ def register_revenue_routes(app, get_supabase) -> None:
         """Import tab SM Hanoi + HCM REV từ All File Thu Hiền → Sổ (dedupe)."""
         sb = _sb()
         actor = resolve_actor(sb, authorization)
-        _require_ops(actor)
+        require_module_write(sb, actor, "revenueLedger")
         try:
             from gsheet_ledger_import import DEFAULT_SHEET_TABS, sync_gsheet_to_ledger
 

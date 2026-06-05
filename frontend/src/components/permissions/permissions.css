@@ -578,3 +578,64 @@
   justify-content: space-between;
   margin-top: 14px;
 }
+
+/* ── Scope dropdown inside matrix cell ── */
+.pm-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.pm-scope-select {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 6px;
+  border: 1px solid var(--gmv-border);
+  border-radius: 8px;
+  background: var(--gmv-canvas);
+  color: var(--gmv-muted);
+  cursor: pointer;
+  text-align: center;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.pm-scope-select:hover {
+  border-color: var(--gmv-primary);
+  color: var(--gmv-text);
+}
+
+.pm-scope-select:focus {
+  border-color: var(--gmv-primary);
+  box-shadow: 0 0 0 2px var(--gmv-primary-soft);
+}
+
+/* ── Scope badges in legend ── */
+.pm-scope-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 12px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 600;
+  border: 1.5px solid transparent;
+}
+
+.pm-scope-badge.sale {
+  background: var(--gmv-primary-soft);
+  color: var(--gmv-primary);
+  border-color: var(--gmv-primary);
+}
+
+.pm-scope-badge.leader {
+  background: #ede9fe;
+  color: #6d28d9;
+  border-color: #6d28d9;
+}
+
+.pm-scope-badge.manager {
+  background: #fee2e2;
+  color: #dc2626;
+  border-color: #dc2626;
+}
