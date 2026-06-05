@@ -1,8 +1,9 @@
-import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import AuthAccountsTab from "../components/AuthAccountsTab";
 import PermissionsTab from "../components/permissions/PermissionsTab";
 import Module5Tab from "../components/Module5Tab";
 import Module6Tab from "../components/Module6Tab";
+import DashboardTab from "../components/DashboardTab";
 import { PaymentFlowProvider, usePaymentFlow, type PaymentFlowView } from "../contexts/PaymentFlowContext";
 import { useAuth } from "../hooks/useAuth";
 import { useMe } from "../hooks/useMe";
@@ -19,7 +20,17 @@ const ReconciliationTab = lazy(() => import("../components/ReconciliationTab"));
 const ActivationTab = lazy(() => import("../components/ActivationTab"));
 const InvoiceRequestTab = lazy(() => import("../components/InvoiceRequestTab"));
 const SoDoanhThuTab = lazy(() => import("../components/SoDoanhThuTab"));
-const DashboardTab = lazy(() => import("../components/DashboardTab"));
+
+const PRELOAD_MAP: Record<string, () => Promise<unknown>> = {
+  paymentRequests: () => import("../components/PaymentRequestsTab"),
+  reconciliation: () => import("../components/ReconciliationTab"),
+  module3: () => import("../components/ActivationTab"),
+  module4: () => import("../components/InvoiceRequestTab"),
+  revenueLedger: () => import("../components/SoDoanhThuTab"),
+  bc01: () => import("../components/reports/BC01SalesPerformance"),
+  bc02: () => import("../components/reports/BC02KeyDataReport"),
+  bc03: () => import("../components/ReportBC03Tab"),
+};
 
 type ViewId =
   | "dashboard"
@@ -192,6 +203,10 @@ function MainPageInner({
   const perms = profile?.permissions ?? {};
   const can = (key: string) => isDevMode || (perms[key] ?? "none") !== "none";
 
+  const handleNavHover = useCallback((id: string) => {
+    PRELOAD_MAP[id]?.();
+  }, []);
+
   const showReconciliation = can("reconciliation");
   const showAuthAccounts = can("authAccounts");
 
@@ -300,6 +315,7 @@ function MainPageInner({
       activeId={activeView}
       wideContent={wideContent}
       onSelect={(id) => setActiveView(id as ViewId)}
+      onHover={handleNavHover}
       title={head.title}
       subtitle={head.subtitle}
       userEmail={user?.email || undefined}
