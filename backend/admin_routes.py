@@ -13,6 +13,7 @@ from fastapi import APIRouter, Header, HTTPException
 from pydantic import BaseModel
 
 from rbac import (
+    _rank,
     require_min_role,
     resolve_actor,
     staff_to_profile,
@@ -78,6 +79,7 @@ class PermissionPatchBody(BaseModel):
     department: str
     module_key: str
     access_level: str
+    min_role: str = "sale"
 
 
 class PermissionOverrideBody(BaseModel):
@@ -109,6 +111,7 @@ MODULE_LIST = [
 ]
 VALID_DEPARTMENTS = {"sale", "hr", "marketing", "cs"}
 ACCESS_LEVELS = {"full", "read", "none"}
+VALID_MIN_ROLES = {"sale", "leader", "manager"}
 
 DEFAULT_DEPT_PERMISSIONS: dict[str, dict[str, str]] = {
     "sale": {
@@ -219,10 +222,12 @@ def _compute_permissions(sb, actor) -> dict[str, str]:
         if module_key in permissions and access_level in ACCESS_LEVELS:
             permissions[module_key] = access_level
 
+    # Read department permissions from DB (includes min_role)
+    min_roles: dict[str, str] = {}
     try:
         res = (
             sb.table("department_permissions")
-            .select("module_key, access_level")
+            .select("module_key, access_level, min_role")
             .eq("department", department)
             .execute()
         )
@@ -234,8 +239,17 @@ def _compute_permissions(sb, actor) -> dict[str, str]:
         access_level = row.get("access_level")
         if module_key in permissions and access_level in ACCESS_LEVELS:
             permissions[module_key] = access_level
+        mr = row.get("min_role", "sale")
+        if module_key in permissions and mr in VALID_MIN_ROLES:
+            min_roles[module_key] = mr
 
-    # Personal overrides take priority over department permissions
+    # Downgrade access when actor's role is below min_role
+    actor_rank = _rank(actor.role)
+    for module_key, mr in min_roles.items():
+        if actor_rank < _rank(mr):
+            permissions[module_key] = "none"
+
+    # Personal overrides take priority — bypass min_role
     try:
         overrides = (
             sb.table("permission_overrides")
@@ -249,7 +263,7 @@ def _compute_permissions(sb, actor) -> dict[str, str]:
             if mk in permissions and al in ACCESS_LEVELS:
                 permissions[mk] = al
     except Exception:
-        pass  # override lookup failure should not block login
+        pass
 
     return permissions
 
@@ -260,6 +274,15 @@ def require_module_write(sb, actor, module_key: str) -> None:
         raise HTTPException(
             403, "Bạn chỉ có quyền xem module này, không được phép thao tác"
         )
+
+
+def require_module_access(sb, actor, module_key: str) -> str:
+    """Check actor has at least 'read' on module_key. Returns the access level."""
+    perms = _compute_permissions(sb, actor)
+    level = perms.get(module_key, "none")
+    if level == "none":
+        raise HTTPException(403, f"Bạn không có quyền truy cập module này")
+    return level
 
 
 def _sb_or_503(get_sb):
@@ -973,13 +996,16 @@ def register_admin_routes(app, get_supabase):
 
         res = sb.table("department_permissions").select("*").execute()
         matrix: dict[str, dict[str, str]] = {}
+        min_roles: dict[str, dict[str, str]] = {}
         for dept in VALID_DEPARTMENTS:
             matrix[dept] = {mod: "none" for mod in MODULE_LIST}
+            min_roles[dept] = {mod: "sale" for mod in MODULE_LIST}
         for r in res.data or []:
             dept = r["department"]
             if dept in matrix:
                 matrix[dept][r["module_key"]] = r["access_level"]
-        return {"matrix": matrix}
+                min_roles[dept][r["module_key"]] = r.get("min_role", "sale")
+        return {"matrix": matrix, "minRoles": min_roles}
 
     @app.patch("/admin/permissions")
     def patch_admin_permissions(body: PermissionPatchBody, authorization: str | None = Header(None)):
@@ -989,11 +1015,13 @@ def register_admin_routes(app, get_supabase):
 
         if body.access_level not in ("none", "read", "full"):
             raise HTTPException(400, "Invalid access level")
+        mr = body.min_role if body.min_role in VALID_MIN_ROLES else "sale"
 
         sb.table("department_permissions").upsert({
             "department": body.department.strip(),
             "module_key": body.module_key.strip(),
-            "access_level": body.access_level
+            "access_level": body.access_level,
+            "min_role": mr,
         }, on_conflict="department, module_key").execute()
 
         return {"ok": True}
