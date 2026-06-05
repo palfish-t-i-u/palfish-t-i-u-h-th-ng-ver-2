@@ -22,6 +22,7 @@ interface Props {
   items: NavItem[];
   activeId: string;
   onSelect: (id: string) => void;
+  onHover?: (id: string) => void;
   title: string;
   subtitle?: string;
   userEmail?: string;
@@ -36,6 +37,7 @@ function NavButton({
   it,
   active,
   onSelect,
+  onHover,
   compact,
   expanded,
   onToggleExpand,
@@ -44,6 +46,7 @@ function NavButton({
   it: NavItem;
   active: boolean;
   onSelect: (id: string) => void;
+  onHover?: (id: string) => void;
   compact?: boolean;
   expanded?: boolean;
   onToggleExpand?: () => void;
@@ -55,6 +58,7 @@ function NavButton({
   return (
     <button
       type="button"
+      onMouseEnter={() => onHover?.(it.id)}
       onClick={() => {
         if (hasChildren && onToggleExpand) onToggleExpand();
         else onSelect(it.id);
@@ -86,6 +90,7 @@ export default function AppShell({
   items,
   activeId,
   onSelect,
+  onHover,
   title,
   subtitle,
   userEmail,
@@ -155,6 +160,7 @@ export default function AppShell({
                     it={it}
                     active={active}
                     onSelect={onSelect}
+                    onHover={onHover}
                     expanded={expandedIds.has(it.id)}
                     onToggleExpand={() => toggleExpand(it.id)}
                     childActive={childActive}
@@ -165,6 +171,7 @@ export default function AppShell({
                         <li key={child.id}>
                           <button
                             type="button"
+                            onMouseEnter={() => onHover?.(child.id)}
                             onClick={() => onSelect(child.id)}
                             className={cn(
                               "w-full rounded-gmv-md px-2.5 py-2 text-left transition",
@@ -233,6 +240,7 @@ export default function AppShell({
               it={it}
               active={it.id === activeId || (it.children?.some((c) => c.id === activeId) ?? false)}
               onSelect={onSelect}
+              onHover={onHover}
               compact
             />
           </div>
