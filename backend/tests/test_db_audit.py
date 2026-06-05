@@ -33,7 +33,7 @@ class TestAnalyticsCap(unittest.TestCase):
 
 
 def _slice_after_def(src: str, name: str, size: int = 1200) -> str:
-    needle = f"def {name}"
+    needle = f"def {name}("
     idx = src.index(needle)
     return src[idx : idx + size]
 

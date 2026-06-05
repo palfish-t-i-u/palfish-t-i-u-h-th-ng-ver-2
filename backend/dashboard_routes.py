@@ -35,6 +35,7 @@ from crm_metrics import (
 )
 from crm_routes import MAX_DAYS, fetch_live_crm_rows
 from report_routes import _load_ledger_revenue, _sale_key
+from revenue_routes import load_team_map
 
 DEFAULT_EXCHANGE_RATE = 3700
 VN_TIMEZONE = ZoneInfo("Asia/Ho_Chi_Minh")
@@ -516,6 +517,7 @@ def _load_qr_created_maps(
     total = 0
     count = 0
     try:
+        team_map = load_team_map(sb) if team else {}
         q = (
             sb.table("don_hang")
             .select("sale_crm_name, so_tien_can_thu, created_at, trang_thai")
@@ -529,19 +531,7 @@ def _load_qr_created_maps(
             if sale and sname != sale:
                 continue
             if team and sname != "(Chưa gán sale)":
-                sale_team = "—"
-                try:
-                    ns = (
-                        sb.table("nhan_su_sale")
-                        .select("team")
-                        .eq("crm_name", sname)
-                        .limit(1)
-                        .execute()
-                    )
-                    if ns.data:
-                        sale_team = str(ns.data[0].get("team") or "—")
-                except Exception:
-                    pass
+                sale_team = team_map.get(sname, "—")
                 if sale_team != team:
                     continue
             vnd = parse_metric(r.get("so_tien_can_thu"))
