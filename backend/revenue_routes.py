@@ -578,7 +578,7 @@ def _ledger_query(
         q = q.eq("loai_nhap", loai_nhap)
     if search and search.strip():
         term = search.strip()
-        pattern = f"%{term}%"
+        pattern = f"*{term}*"
         or_clauses = ",".join(
             f"{col}.ilike.{pattern}"
             for col in (
@@ -731,7 +731,7 @@ def _fetch_so_doanh_thu(
             q = q.eq("loai_nhap", loai_nhap)
         if search and search.strip():
             term = search.strip()
-            pattern = f"%{term}%"
+            pattern = f"*{term}*"
             or_clauses = ",".join(
                 f"{col}.ilike.{pattern}"
                 for col in (

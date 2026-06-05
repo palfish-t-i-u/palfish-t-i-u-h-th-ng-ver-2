@@ -37,13 +37,13 @@ def test_ledger_query_with_search_adds_or_filter():
     _ledger_query(sb, "*", search="0912")
     builder.or_.assert_called_once()
     or_arg = builder.or_.call_args[0][0]
-    assert "ten_khach.ilike.%0912%" in or_arg
-    assert "sdt.ilike.%0912%" in or_arg
-    assert "uid.ilike.%0912%" in or_arg
-    assert "sale_crm_name.ilike.%0912%" in or_arg
-    assert "crm_order_id.ilike.%0912%" in or_arg
-    assert "ma_don_hang.ilike.%0912%" in or_arg
-    assert "info_code.ilike.%0912%" in or_arg
+    assert "ten_khach.ilike.*0912*" in or_arg
+    assert "sdt.ilike.*0912*" in or_arg
+    assert "uid.ilike.*0912*" in or_arg
+    assert "sale_crm_name.ilike.*0912*" in or_arg
+    assert "crm_order_id.ilike.*0912*" in or_arg
+    assert "ma_don_hang.ilike.*0912*" in or_arg
+    assert "info_code.ilike.*0912*" in or_arg
 
 
 def test_ledger_query_empty_search_is_ignored():
