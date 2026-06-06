@@ -940,6 +940,7 @@ def register_dashboard_routes(app, supabase_factory):
                 "crm_gmv_currency": "RMB",
                 "collected_currency": "VND",
                 "collected_source": "so_doanh_thu",
+                "sub_team_scoped": allowed_sales is not None,
                 **{k: coverage[k] for k in ("synced_days", "expected_days", "missing_dates")},
             },
         }
@@ -1014,6 +1015,7 @@ def register_dashboard_routes(app, supabase_factory):
                     "qr_created_source": "don_hang",
                     "exchange_rate": exchange_rate,
                     "kpi_source": "palfish_live",
+                    "sub_team_scoped": allowed_sales is not None,
                     **live_meta,
                 },
                 "kpi": _kpi_payload(
@@ -1075,6 +1077,7 @@ def register_dashboard_routes(app, supabase_factory):
                 "qr_created_source": "don_hang",
                 "exchange_rate": exchange_rate,
                 "kpi_source": "palfish_live",
+                "sub_team_scoped": allowed_sales is not None,
                 **live_meta,
             },
             "kpi": _kpi_payload(
@@ -1173,6 +1176,7 @@ def register_dashboard_routes(app, supabase_factory):
                     "kpi_source": kpi_source_type,
                     "summary_rows": len(summary_rows),
                     "daily_rows": len(daily_rows),
+                    "sub_team_scoped": allowed_sales is not None,
                 },
                 "kpi": empty_kpi,
                 "revenue_by_date": [],
@@ -1265,6 +1269,7 @@ def register_dashboard_routes(app, supabase_factory):
                 "kpi_source": kpi_source_type,
                 "summary_rows": len(summary_rows),
                 "daily_rows": len(daily_rows),
+                "sub_team_scoped": allowed_sales is not None,
             },
             "kpi": _kpi_payload(
                 tot,

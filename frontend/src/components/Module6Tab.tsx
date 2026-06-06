@@ -335,9 +335,13 @@ export default function Module6Tab() {
 
       {hasCrmData && (trends?.row_count ?? 0) === 0 && !trendsLoading && period && (
         <div className="rounded-lg bg-amber-950/60 px-4 py-3 text-sm text-amber-300 ring-1 ring-amber-800">
-          Có dữ liệu CRM trong database nhưng <strong>không có dòng daily</strong> trong kỳ{" "}
-          {period.start} → {period.end}.
-          Vào tab <strong>Đồng bộ CRM</strong> và sync từng ngày trong kỳ.
+          {trends?.meta?.sub_team_scoped ? (
+            <>Sub-team của bạn <strong>chưa có dữ liệu CRM</strong> trong kỳ {period.start} → {period.end}. Dữ liệu sổ doanh thu vẫn hiển thị bình thường.</>
+          ) : (
+            <>Có dữ liệu CRM trong database nhưng <strong>không có dòng daily</strong> trong kỳ{" "}
+            {period.start} → {period.end}.
+            Vào tab <strong>Đồng bộ CRM</strong> và sync từng ngày trong kỳ.</>
+          )}
         </div>
       )}
 
