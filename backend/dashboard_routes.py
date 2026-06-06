@@ -479,6 +479,7 @@ def _ledger_collected_maps(
     *,
     team: str | None = None,
     sale: str | None = None,
+    allowed_sales: set[str] | None = None,
 ) -> tuple[int, dict[str, int], dict[str, int], int]:
     """Doanh thu thực thu + L8 — Sổ doanh thu theo ngay_tien_ve (BC03 logic)."""
     total = 0
@@ -487,6 +488,8 @@ def _ledger_collected_maps(
     order_count = 0
     try:
         rev_map, _ = _load_ledger_revenue(sb, d_start, d_end, team)
+        if allowed_sales is not None:
+            rev_map = {k: v for k, v in rev_map.items() if k in allowed_sales}
         for sname, entry in rev_map.items():
             if sale and sname != sale:
                 continue
@@ -512,6 +515,7 @@ def _load_qr_created_maps(
     *,
     team: str | None = None,
     sale: str | None = None,
+    allowed_sales: set[str] | None = None,
 ) -> tuple[int, int]:
     """Module 2 — doanh thu tạo mã QR: don_hang.created_at trong kỳ (không cần tien_ve)."""
     total = 0
@@ -534,6 +538,8 @@ def _load_qr_created_maps(
                 sale_team = team_map.get(sname, "—")
                 if sale_team != team:
                     continue
+            if allowed_sales is not None and sname not in allowed_sales:
+                continue
             vnd = parse_metric(r.get("so_tien_can_thu"))
             if vnd <= 0:
                 continue
@@ -900,16 +906,20 @@ def register_dashboard_routes(app, supabase_factory):
         _validate_custom_range(d_start, d_end)
         team_filter, sub_team = enforce_report_scope(actor, team or department)
 
+        allowed_sales: set[str] | None = None
+        if sub_team and team_filter:
+            allowed_sales = scope_sale_names(sb, team_filter, sub_team)
+
         try:
             rows = _query_crm_rows(sb, d_start, d_end, sale=sale, team=team_filter)
-            if sub_team and team_filter:
-                allowed = scope_sale_names(sb, team_filter, sub_team)
-                rows = [r for r in rows if (r.get("sale_name") or "").strip() in allowed]
+            if allowed_sales is not None:
+                rows = [r for r in rows if (r.get("sale_name") or "").strip() in allowed_sales]
         except Exception as exc:
             raise HTTPException(500, f"Query crm_sales_data thất bại: {exc}") from exc
 
         _, collected_by_date, _, _ = _ledger_collected_maps(
-            sb, d_start, d_end, team=team_filter, sale=sale
+            sb, d_start, d_end, team=team_filter, sale=sale,
+            allowed_sales=allowed_sales,
         )
         revenue_by_date = aggregate_daily_by_date(rows, d_start, d_end)
         for bucket in revenue_by_date:
@@ -971,18 +981,23 @@ def register_dashboard_routes(app, supabase_factory):
         except Exception as exc:
             raise HTTPException(502, f"PalFish live fetch thất bại: {exc}") from exc
 
+        allowed_sales: set[str] | None = None
+        if sub_team and team_filter:
+            allowed_sales = scope_sale_names(sb, team_filter, sub_team)
+
         if sale:
             live_rows = [r for r in live_rows if (r.get("sale_name") or "").strip() == sale]
         live_rows = _apply_team_filter(live_rows, team_filter)
-        if sub_team and team_filter:
-            allowed = scope_sale_names(sb, team_filter, sub_team)
-            live_rows = [r for r in live_rows if (r.get("sale_name") or "").strip() in allowed]
+        if allowed_sales is not None:
+            live_rows = [r for r in live_rows if (r.get("sale_name") or "").strip() in allowed_sales]
 
         tot_collected_vnd, collected_by_date, collected_by_sale, collected_order_count = _ledger_collected_maps(
             sb, d_start, d_end, team=team_filter, sale=sale,
+            allowed_sales=allowed_sales,
         )
         qr_created_vnd, qr_created_count = _load_qr_created_maps(
             sb, d_start, d_end, team=team_filter, sale=sale,
+            allowed_sales=allowed_sales,
         )
         focus_day = today_str if d_start <= today_str <= d_end else d_end
         focus_collected = collected_by_date.get(focus_day, 0)
@@ -1125,9 +1140,10 @@ def register_dashboard_routes(app, supabase_factory):
             raise HTTPException(500, f"Query crm_sales_data thất bại: {exc}") from exc
 
         all_rows = _apply_team_filter(all_rows, team_filter)
+        allowed_sales: set[str] | None = None
         if sub_team and team_filter:
-            allowed = scope_sale_names(sb, team_filter, sub_team)
-            all_rows = [r for r in all_rows if (r.get("sale_name") or "").strip() in allowed]
+            allowed_sales = scope_sale_names(sb, team_filter, sub_team)
+            all_rows = [r for r in all_rows if (r.get("sale_name") or "").strip() in allowed_sales]
         summary_rows, daily_rows, legacy_rows = _split_record_types(all_rows)
 
         # KPI + bảng sale: CHỈ summary (chuẩn L1=2610, không cộng trùng theo ngày)
@@ -1174,9 +1190,11 @@ def register_dashboard_routes(app, supabase_factory):
 
         tot_collected_vnd, collected_by_date, collected_by_sale, collected_order_count = _ledger_collected_maps(
             sb, d_start, d_end, team=team_filter, sale=sale,
+            allowed_sales=allowed_sales,
         )
         qr_created_vnd, qr_created_count = _load_qr_created_maps(
             sb, d_start, d_end, team=team_filter, sale=sale,
+            allowed_sales=allowed_sales,
         )
 
         revenue_by_date = daily_mtd_snapshot_rows(chart_rows, d_start, d_end) if chart_rows else []

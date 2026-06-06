@@ -437,9 +437,10 @@ def register_report_routes(app, supabase_factory):
             )
             rows = exclude_legacy_summary_rows(raw_rows)
             rows = [r for r in rows if is_detail_sale_row(r)]
+            allowed_sales: set[str] | None = None
             if sub_team and team:
-                allowed = scope_sale_names(sb, team, sub_team)
-                rows = [r for r in rows if aggregate_label(r) in allowed]
+                allowed_sales = scope_sale_names(sb, team, sub_team)
+                rows = [r for r in rows if aggregate_label(r) in allowed_sales]
             coverage = sync_coverage_meta(rows, d_start, d_end)
         except Exception as exc:
             raise HTTPException(500, f"Query BC03 thất bại: {exc}") from exc
@@ -475,6 +476,9 @@ def register_report_routes(app, supabase_factory):
 
         ledger_map, linked_don = _load_ledger_revenue(sb, d_start, d_end, team)
         m2_map = _load_m2_revenue(sb, d_start, d_end, team, linked_don)
+        if allowed_sales is not None:
+            ledger_map = {k: v for k, v in ledger_map.items() if k in allowed_sales}
+            m2_map = {k: v for k, v in m2_map.items() if k in allowed_sales}
         rev_map = _merge_rev_maps(rev_map, ledger_map, m2_map)
         revenue = _finalize_revenue_rows(rev_map, dates)
         trial = _finalize_metric_rows(trial_map, "completed_classes", dates)
