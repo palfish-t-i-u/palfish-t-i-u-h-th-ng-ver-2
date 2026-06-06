@@ -194,6 +194,7 @@ export interface DashboardDailyTrends {
     sync_days?: number;
     crm_gmv_currency?: "RMB";
     collected_currency?: "VND";
+    sub_team_scoped?: boolean;
   };
 }
 
