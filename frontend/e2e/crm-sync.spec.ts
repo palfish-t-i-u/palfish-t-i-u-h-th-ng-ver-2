@@ -3,7 +3,7 @@ import { test, expect } from "@playwright/test";
 test.describe("Module 5 — Đồng bộ CRM", () => {
   test.beforeEach(async ({ page }) => {
     await page.goto("/");
-    await expect(page.locator("text=Bảng thông tin")).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByRole("heading", { name: "Bảng thông tin" })).toBeVisible({ timeout: 20_000 });
 
     // Navigate to Module 5 — "Đồng bộ CRM" in the sidebar
     await page.click("text=Đồng bộ CRM");
@@ -18,11 +18,11 @@ test.describe("Module 5 — Đồng bộ CRM", () => {
     await expect(page.locator("text=Trạng thái kết nối CRM")).toBeVisible();
 
     // Token status shows one of: active / missing / loading
-    const tokenActive = page.locator("text=Token CRM đang hoạt động");
-    const tokenMissing = page.locator("text=Chưa có token CRM");
-    const tokenLoading = page.locator("text=Đang kiểm tra token");
+    const tokenActive = page.getByText("Token CRM đang hoạt động");
+    const tokenMissing = page.getByText("Chưa có token CRM");
+    const tokenLoading = page.getByText("Đang kiểm tra token");
     await expect(
-      tokenActive.or(tokenMissing).or(tokenLoading)
+      tokenActive.or(tokenMissing).or(tokenLoading).first()
     ).toBeVisible({ timeout: 10_000 });
 
     // Sync date input
@@ -32,22 +32,20 @@ test.describe("Module 5 — Đồng bộ CRM", () => {
     await expect(page.locator("text=Hôm qua")).toBeVisible();
     await expect(page.locator("text=Hôm nay")).toBeVisible();
 
-    // Sync button or instructions section
-    const syncBtn = page.locator("text=LẤY DỮ LIỆU");
-    const instructions = page.locator("text=Hướng dẫn cài Chrome Extension");
-    await expect(syncBtn.or(instructions)).toBeVisible();
+    // Sync button
+    await expect(page.getByRole("button", { name: "LẤY DỮ LIỆU" })).toBeVisible();
 
     // Instructions section
-    await expect(instructions).toBeVisible();
+    await expect(page.getByText("Hướng dẫn cài Chrome Extension")).toBeVisible();
   });
 
   test("token status hiển thị đúng trạng thái", async ({ page }) => {
     // Wait for token check to complete (pulse animation stops)
-    const tokenActive = page.locator("text=Token CRM đang hoạt động");
-    const tokenMissing = page.locator("text=Chưa có token CRM");
+    const tokenActive = page.getByText("Token CRM đang hoạt động");
+    const tokenMissing = page.getByText("Chưa có token CRM");
 
     // Eventually one of these should appear (loading state resolves)
-    await expect(tokenActive.or(tokenMissing)).toBeVisible({ timeout: 15_000 });
+    await expect(tokenActive.or(tokenMissing).first()).toBeVisible({ timeout: 15_000 });
 
     if (await tokenActive.isVisible()) {
       // If token is active, verify the timestamp is shown
@@ -77,7 +75,7 @@ test.describe("Module 5 — Đồng bộ CRM", () => {
   });
 
   test("bấm LẤY DỮ LIỆU triggers sync flow", async ({ page }) => {
-    const syncBtn = page.locator("button", { hasText: "LẤY DỮ LIỆU" });
+    const syncBtn = page.getByRole("button", { name: "LẤY DỮ LIỆU" });
 
     // If button exists and is not disabled, click it
     if (await syncBtn.isVisible()) {
@@ -87,9 +85,9 @@ test.describe("Module 5 — Đồng bộ CRM", () => {
         await syncBtn.click();
 
         // Should show loading state OR toast OR error
-        const loadingText = page.locator("text=Đang đồng bộ");
-        const successToast = page.locator("text=thành công");
-        const errorMsg = page.locator(".text-red-700");
+        const loadingText = page.getByText("Đang đồng bộ").first();
+        const successToast = page.getByText("thành công").first();
+        const errorMsg = page.locator(".text-red-700").first();
 
         await expect(
           loadingText.or(successToast).or(errorMsg)
@@ -114,11 +112,11 @@ test.describe("Module 5 — Đồng bộ CRM", () => {
   });
 
   test("nút Làm mới refresh trạng thái token", async ({ page }) => {
-    await page.click("text=Làm mới");
+    await page.getByRole("button", { name: "Làm mới" }).click();
 
     // Should briefly show loading state then resolve
-    const tokenActive = page.locator("text=Token CRM đang hoạt động");
-    const tokenMissing = page.locator("text=Chưa có token CRM");
-    await expect(tokenActive.or(tokenMissing)).toBeVisible({ timeout: 15_000 });
+    const tokenActive = page.getByText("Token CRM đang hoạt động");
+    const tokenMissing = page.getByText("Chưa có token CRM");
+    await expect(tokenActive.or(tokenMissing).first()).toBeVisible({ timeout: 15_000 });
   });
 });

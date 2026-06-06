@@ -14,13 +14,13 @@ setup("authenticate", async ({ page }) => {
   const password = requireEnv(env, "E2E_PASSWORD");
 
   await page.goto("/login");
-  await expect(page.locator("text=Đăng nhập")).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByRole("heading", { name: "Đăng nhập" })).toBeVisible({ timeout: 15_000 });
 
   await page.fill('input[type="email"]', email);
   await page.fill('input[type="password"]', password);
   await page.click('button[type="submit"]');
 
-  await expect(page.locator("text=Bảng thông tin")).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByRole("heading", { name: "Bảng thông tin" })).toBeVisible({ timeout: 20_000 });
 
   await page.context().storageState({ path: AUTH_FILE });
 });
