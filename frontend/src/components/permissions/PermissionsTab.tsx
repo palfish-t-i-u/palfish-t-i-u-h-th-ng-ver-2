@@ -158,7 +158,7 @@ export default function PermissionsTab() {
   if (!canManage) {
     return (
       <div className="rounded-gmv-md border border-gmv-warn/40 bg-gmv-warn-soft p-4 text-sm text-gmv-warn">
-        Chỉ Admin có quyền xem và quản lý phân quyền.
+        Chỉ Admin (System) có quyền xem và quản lý phân quyền.
       </div>
     );
   }
@@ -232,14 +232,14 @@ export default function PermissionsTab() {
       </div>
       <div className="pm-legend">
         <span className="pm-legend-label">Phạm vi:</span>
-        <Tooltip content="Tất cả người dùng trong bộ phận đều được hưởng quyền này, bao gồm User, Leader và Admin">
+        <Tooltip content="Tất cả người dùng trong bộ phận đều được hưởng quyền này, bao gồm User, Leader, Manager và Admin">
           <span className="pm-scope-badge sale" style={{ cursor: "default" }}>Tất cả</span>
         </Tooltip>
-        <Tooltip content="Chỉ Leader và Admin trong bộ phận được hưởng quyền này. User (nhân viên thường) sẽ không thấy module này">
+        <Tooltip content="Từ cấp Leader trở lên (Leader, Manager, Admin) được hưởng quyền này. User (nhân viên thường) sẽ không thấy">
           <span className="pm-scope-badge leader" style={{ cursor: "default" }}>Từ Leader</span>
         </Tooltip>
-        <Tooltip content="Chỉ Admin (quản lý cấp cao) trong bộ phận được hưởng quyền này. User và Leader đều không thấy">
-          <span className="pm-scope-badge manager" style={{ cursor: "default" }}>Chỉ Admin</span>
+        <Tooltip content="Từ cấp Manager trở lên (Manager, Admin) được hưởng quyền này. User và Leader đều không thấy">
+          <span className="pm-scope-badge manager" style={{ cursor: "default" }}>Từ Manager</span>
         </Tooltip>
       </div>
 
