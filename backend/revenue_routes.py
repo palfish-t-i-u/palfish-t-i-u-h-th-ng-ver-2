@@ -10,7 +10,7 @@ from fastapi import Header, HTTPException, Query
 from pydantic import BaseModel
 
 from admin_routes import require_module_access, require_module_write
-from rbac import resolve_actor
+from rbac import enforce_report_scope, resolve_actor
 
 DEFAULT_TY_GIA = Decimal("3700")
 
@@ -1474,6 +1474,7 @@ def register_revenue_routes(app, get_supabase) -> None:
         sb = _sb()
         actor = resolve_actor(sb, authorization)
         require_module_access(sb, actor, "bc01")
+        team_filter = enforce_report_scope(actor, team_filter)
         try:
             rows = _fetch_so_doanh_thu(
                 sb,
@@ -1481,7 +1482,7 @@ def register_revenue_routes(app, get_supabase) -> None:
                 from_date=from_date,
                 to_date=to_date,
             )
-            return _build_sales_performance_pivot(rows, team_filter=team_filter or None)
+            return _build_sales_performance_pivot(rows, team_filter=team_filter)
         except HTTPException:
             raise
         except Exception as exc:
@@ -1497,6 +1498,7 @@ def register_revenue_routes(app, get_supabase) -> None:
         sb = _sb()
         actor = resolve_actor(sb, authorization)
         require_module_access(sb, actor, "bc02")
+        team_filter = enforce_report_scope(actor, team_filter)
         try:
             rows = _fetch_so_doanh_thu(
                 sb,
@@ -1504,8 +1506,8 @@ def register_revenue_routes(app, get_supabase) -> None:
                 from_date=from_date,
                 to_date=to_date,
             )
-            scope = (team_filter or "").strip() or "Toàn công ty"
-            return _build_key_data_pivot(rows, team_filter=team_filter or None, scope_label=scope)
+            scope = team_filter or "Toàn công ty"
+            return _build_key_data_pivot(rows, team_filter=team_filter, scope_label=scope)
         except HTTPException:
             raise
         except Exception as exc:

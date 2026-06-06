@@ -1,5 +1,6 @@
 import { Fragment, useCallback, useEffect, useState } from "react";
 import { endpoints } from "../../lib/api";
+import { useTeamScope } from "../../hooks/useTeamScope";
 import type { RevenuePivotResponse } from "../../types/revenue";
 import Button from "../ui/Button";
 import { GmvDataBarCell } from "../ui/DataBar";
@@ -26,17 +27,6 @@ function monthStartIso() {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;
 }
-
-const TEAM_FILTERS = [
-  { value: "", label: "Toàn công ty" },
-  { value: "Inhouse 1", label: "Inhouse 1" },
-  { value: "Inhouse 2", label: "Inhouse 2" },
-  { value: "HCM (Online)", label: "HCM (Online)" },
-  { value: "Linh Dam (Store)", label: "Linh Dam (Store)" },
-  { value: "Offline", label: "Offline" },
-  { value: "An Binh (Store)", label: "An Binh (Store)" },
-  { value: "Khác", label: "Khác" },
-] as const;
 
 const grandTotalMonthBg = "bg-gmv-bc01-grand-month text-gmv-bc01-grand-month-fg";
 const grandTotalSumBg =
@@ -78,12 +68,13 @@ const stickyRightTotalCell = cn(stickyTableCellRight, "right-0 min-w-[5.5rem] fo
 const monthTd = "p-0 align-middle";
 
 export default function BC01SalesPerformance() {
+  const { teamFilters, defaultTeam, isRestricted } = useTeamScope();
   const [data, setData] = useState<RevenuePivotResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [from, setFrom] = useState(monthStartIso());
   const [to, setTo] = useState("");
-  const [team, setTeam] = useState("");
+  const [team, setTeam] = useState(defaultTeam);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -127,8 +118,8 @@ export default function BC01SalesPerformance() {
             value={team}
             onChange={(e) => setTeam(e.target.value)}
           >
-            {TEAM_FILTERS.map((opt) => (
-              <option key={opt.value || "all"} value={opt.value}>
+            {teamFilters.map((opt) => (
+              <option key={opt.value || "all"} value={opt.value} disabled={isRestricted && opt.value !== team}>
                 {opt.label}
               </option>
             ))}

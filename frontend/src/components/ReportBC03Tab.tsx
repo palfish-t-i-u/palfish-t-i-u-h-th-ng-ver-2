@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { endpoints } from "../lib/api";
 import { useRefetchOnFocus } from "../hooks/useRefetchOnFocus";
 import { useRealtimeTable } from "../hooks/useRealtimeTable";
+import { useTeamScope } from "../hooks/useTeamScope";
 import { isValidSaleName } from "../lib/metrics";
 import { cn } from "../lib/cn";
 import type { Bc03DailyRevenue, Bc03Report, Bc03StaffOption, DashboardLiveSummary } from "../types/order";
@@ -228,17 +229,6 @@ const BC03_TEAM_ORDER = [
   "Offline",
   "An Binh (Store)",
   "Khác",
-] as const;
-
-const TEAM_FILTERS = [
-  { value: "", label: "Toàn công ty" },
-  { value: "Inhouse 1", label: "Inhouse 1" },
-  { value: "Inhouse 2", label: "Inhouse 2" },
-  { value: "HCM (Online)", label: "HCM (Online)" },
-  { value: "Linh Dam (Store)", label: "Linh Dam (Store)" },
-  { value: "Offline", label: "Offline" },
-  { value: "An Binh (Store)", label: "An Binh (Store)" },
-  { value: "Khác", label: "Khác" },
 ] as const;
 
 function normalizeTeam(team: string | undefined): string {
@@ -522,6 +512,7 @@ function InlineKpiInput({
 }
 
 export default function ReportBC03Tab() {
+  const { teamFilters, defaultTeam, isRestricted } = useTeamScope();
   const [monthKey, setMonthKey] = useState(currentMonthKey);
   const [filterMode, setFilterMode] = useState<FilterMode>("month");
   const initialMonth = monthRange(currentMonthKey());
@@ -529,7 +520,7 @@ export default function ReportBC03Tab() {
   const [customEnd, setCustomEnd] = useState(initialMonth.end);
   const [exchangeRate, setExchangeRate] = useState(3700);
   const [currency, setCurrency] = useState<CurrencyMode>("VND");
-  const [teamFilter, setTeamFilter] = useState("");
+  const [teamFilter, setTeamFilter] = useState(defaultTeam);
   const [autoTab, setAutoTab] = useState<AutoTab>("revenue");
   const [report, setReport] = useState<Bc03Report | null>(null);
   const [liveSummary, setLiveSummary] = useState<DashboardLiveSummary | null>(null);
@@ -1025,8 +1016,8 @@ export default function ReportBC03Tab() {
             onChange={(e) => setTeamFilter(e.target.value)}
             className="min-w-[10rem] rounded-lg border border-gmv-border bg-gmv-canvas px-3 py-2 text-sm text-gmv-text-strong focus:border-blue-500 focus:outline-none"
           >
-            {TEAM_FILTERS.map((t) => (
-              <option key={t.value || "all"} value={t.value}>
+            {teamFilters.map((t) => (
+              <option key={t.value || "all"} value={t.value} disabled={isRestricted && t.value !== teamFilter}>
                 {t.label}
               </option>
             ))}

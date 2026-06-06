@@ -1,5 +1,6 @@
 import { Fragment, useCallback, useEffect, useState } from "react";
 import { endpoints } from "../../lib/api";
+import { useTeamScope } from "../../hooks/useTeamScope";
 import type { RevenueKeyDataResponse } from "../../types/revenue";
 import Button from "../ui/Button";
 import { Input } from "../ui/Input";
@@ -38,24 +39,14 @@ const stickyDateHead = cn(
 );
 const stickyDateCell = "sticky left-0 z-20 bg-gmv-canvas text-left font-medium shadow-[2px_0_4px_-2px_rgba(0,0,0,0.06)]";
 
-const TEAM_FILTERS = [
-  { value: "", label: "Toàn công ty" },
-  { value: "Inhouse 1", label: "Inhouse 1" },
-  { value: "Inhouse 2", label: "Inhouse 2" },
-  { value: "HCM (Online)", label: "HCM (Online)" },
-  { value: "Linh Dam (Store)", label: "Linh Dam (Store)" },
-  { value: "Offline", label: "Offline" },
-  { value: "An Binh (Store)", label: "An Binh (Store)" },
-  { value: "Khác", label: "Khác" },
-] as const;
-
 export default function BC02KeyDataReport() {
+  const { teamFilters, defaultTeam, isRestricted } = useTeamScope();
   const [data, setData] = useState<RevenueKeyDataResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [from, setFrom] = useState(monthStartIso());
   const [to, setTo] = useState("");
-  const [team, setTeam] = useState("");
+  const [team, setTeam] = useState(defaultTeam);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -102,8 +93,8 @@ export default function BC02KeyDataReport() {
             value={team}
             onChange={(e) => setTeam(e.target.value)}
           >
-            {TEAM_FILTERS.map((t) => (
-              <option key={t.value || "all"} value={t.value}>
+            {teamFilters.map((t) => (
+              <option key={t.value || "all"} value={t.value} disabled={isRestricted && t.value !== team}>
                 {t.label}
               </option>
             ))}

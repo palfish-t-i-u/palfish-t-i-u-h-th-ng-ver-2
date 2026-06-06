@@ -1,10 +1,22 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import BC02KeyDataReport from "./BC02KeyDataReport";
 import { server } from "../../test/msw/server";
 import type { RevenueKeyDataResponse } from "../../types/revenue";
+
+vi.mock("../../hooks/useTeamScope", async (importOriginal) => {
+  const mod = await importOriginal<typeof import("../../hooks/useTeamScope")>();
+  return {
+    ...mod,
+    useTeamScope: () => ({
+      teamFilters: mod.ALL_TEAM_FILTERS,
+      defaultTeam: "",
+      isRestricted: false,
+    }),
+  };
+});
 
 const BASE = "http://localhost:8000";
 
