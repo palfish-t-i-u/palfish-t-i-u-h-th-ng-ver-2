@@ -36,9 +36,21 @@ interface Props {
 
 function Tooltip({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <div className="group/tip relative">
+    <div
+      className="group/tip relative"
+      onMouseEnter={(e) => {
+        const tip = e.currentTarget.querySelector<HTMLElement>("[data-tip]");
+        if (!tip) return;
+        const rect = e.currentTarget.getBoundingClientRect();
+        tip.style.top = `${rect.top + rect.height / 2}px`;
+        tip.style.left = `${rect.right + 8}px`;
+      }}
+    >
       {children}
-      <div className="pointer-events-none absolute left-full top-1/2 z-50 ml-2 -translate-y-1/2 whitespace-nowrap rounded-gmv-md bg-gmv-text-strong px-2.5 py-1.5 text-xs font-medium text-white opacity-0 shadow-gmv-2 transition-opacity group-hover/tip:opacity-100">
+      <div
+        data-tip
+        className="pointer-events-none fixed z-[9999] -translate-y-1/2 whitespace-nowrap rounded-gmv-md bg-gmv-text-strong px-2.5 py-1.5 text-xs font-medium text-white opacity-0 shadow-gmv-2 transition-opacity group-hover/tip:opacity-100"
+      >
         {label}
       </div>
     </div>
@@ -187,7 +199,10 @@ export default function AppShell({
             </div>
           )}
         </div>
-        <nav className={cn("flex-1 overflow-y-auto py-4", collapsed ? "px-1.5" : "px-3")}>
+        <nav className={cn(
+          "flex-1 py-4",
+          collapsed ? "overflow-y-auto overflow-x-hidden px-1.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" : "overflow-y-auto px-3"
+        )}>
           <ul className="space-y-1">
             {items.map((it, idx) => {
               const active = it.id === activeId;
@@ -245,21 +260,23 @@ export default function AppShell({
             })}
           </ul>
         </nav>
-        <div className="border-t border-gmv-border">
+        <div className={cn("border-t border-gmv-border", collapsed ? "px-2.5 py-3" : "px-3 py-3")}>
           <button
             type="button"
             onClick={toggleCollapse}
             className={cn(
-              "flex w-full items-center text-gmv-muted transition hover:bg-gmv-bg hover:text-gmv-text-strong",
-              collapsed ? "justify-center p-3" : "gap-2 px-4 py-3"
+              "flex w-full items-center justify-center rounded-gmv-md border transition",
+              collapsed
+                ? "aspect-square border-gmv-border bg-gmv-bg text-gmv-primary hover:border-gmv-primary hover:bg-gmv-primary-soft"
+                : "gap-2 border-gmv-border bg-gmv-bg px-3 py-2 text-gmv-muted hover:border-gmv-primary hover:bg-gmv-primary-soft hover:text-gmv-primary"
             )}
             title={collapsed ? "Mở rộng sidebar" : "Thu gọn sidebar"}
           >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={cn("transition-transform", collapsed && "rotate-180")}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={cn("shrink-0 transition-transform", collapsed && "rotate-180")}>
               <polyline points="11 17 6 12 11 7" />
               <polyline points="18 17 13 12 18 7" />
             </svg>
-            {!collapsed && <span className="text-[11px]">Thu gọn</span>}
+            {!collapsed && <span className="text-[11px] font-medium">Thu gọn</span>}
           </button>
         </div>
       </aside>
