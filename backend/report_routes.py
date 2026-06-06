@@ -21,7 +21,7 @@ from crm_metrics import (
     team_label,
 )
 from admin_routes import require_module_access
-from rbac import enforce_report_scope, resolve_actor
+from rbac import enforce_report_scope, resolve_actor, scope_sale_names
 from revenue_routes import load_team_map
 from vn_staff import is_vn_sale_row
 
@@ -426,7 +426,7 @@ def register_report_routes(app, supabase_factory):
 
         actor = resolve_actor(sb, authorization)
         require_module_access(sb, actor, "bc03")
-        team = enforce_report_scope(actor, team or department)
+        team, sub_team = enforce_report_scope(actor, team or department)
 
         d_start, d_end = _date_range(range_key, start, end)
         dates = _list_dates(d_start, d_end)
@@ -437,6 +437,9 @@ def register_report_routes(app, supabase_factory):
             )
             rows = exclude_legacy_summary_rows(raw_rows)
             rows = [r for r in rows if is_detail_sale_row(r)]
+            if sub_team and team:
+                allowed = scope_sale_names(sb, team, sub_team)
+                rows = [r for r in rows if aggregate_label(r) in allowed]
             coverage = sync_coverage_meta(rows, d_start, d_end)
         except Exception as exc:
             raise HTTPException(500, f"Query BC03 thất bại: {exc}") from exc

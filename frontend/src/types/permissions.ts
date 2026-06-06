@@ -18,13 +18,13 @@ export type MinRole = "sale" | "leader" | "manager";
 export const MIN_ROLE_LIST: { value: MinRole; label: string }[] = [
   { value: "sale", label: "Tất cả" },
   { value: "leader", label: "Từ Leader" },
-  { value: "manager", label: "Chỉ Admin" },
+  { value: "manager", label: "Từ Manager" },
 ];
 
 export const MIN_ROLE_LABELS: Record<MinRole, string> = {
   sale: "Tất cả",
   leader: "Từ Leader",
-  manager: "Chỉ Admin",
+  manager: "Từ Manager",
 };
 
 export interface ModuleDef {
