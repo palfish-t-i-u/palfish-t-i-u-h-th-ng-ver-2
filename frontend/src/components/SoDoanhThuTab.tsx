@@ -167,8 +167,8 @@ export default function SoDoanhThuTab() {
     [appliedFrom, appliedTo, appliedLoai, appliedTeam, appliedSearch]
   );
 
-  const reloadAll = useCallback(async () => {
-    setLoading(true);
+  const reloadAll = useCallback(async (opts?: { silent?: boolean }) => {
+    if (!opts?.silent) setLoading(true);
     setError("");
     try {
       const summaryParams = filterParams(appliedFrom, appliedTo, appliedLoai, appliedTeam);
@@ -182,7 +182,7 @@ export default function SoDoanhThuTab() {
       setRows([]);
       setSummary(null);
     } finally {
-      setLoading(false);
+      if (!opts?.silent) setLoading(false);
     }
   }, [appliedFrom, appliedTo, appliedLoai, appliedTeam, appliedSearch, fetchPage]);
 
@@ -199,7 +199,7 @@ export default function SoDoanhThuTab() {
   }, [reloadAll]);
 
   useRealtimeTable(["so_doanh_thu"], reloadAll);
-  useRefetchOnFocus(reloadAll);
+  useRefetchOnFocus(() => reloadAll({ silent: true }));
 
   const loadMore = useCallback(async () => {
     if (loadingMoreRef.current || !hasMore || loading) return;

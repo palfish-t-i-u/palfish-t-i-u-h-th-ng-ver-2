@@ -636,9 +636,11 @@ export default function ReportBC03Tab() {
       .finally(() => setStaffLoading(false));
   }, []);
 
-  const loadReport = useCallback(async () => {
-    setLoading(true);
-    setKpiLoading(true);
+  const loadReport = useCallback(async (opts?: { silent?: boolean }) => {
+    if (!opts?.silent) {
+      setLoading(true);
+      setKpiLoading(true);
+    }
     setError("");
     const liveParams = { start_date: rangeStart, end_date: rangeEnd };
     try {
@@ -649,18 +651,18 @@ export default function ReportBC03Tab() {
           end: rangeEnd,
           team: teamFilter || undefined,
         }),
-        endpoints.dashboard.liveSummary(liveParams).finally(() => setKpiLoading(false)),
+        endpoints.dashboard.liveSummary(liveParams).finally(() => { if (!opts?.silent) setKpiLoading(false); }),
       ]);
       setReport(bc03Res.data);
       setLiveSummary(liveRes.data);
     } catch (e: unknown) {
-      setKpiLoading(false);
+      if (!opts?.silent) setKpiLoading(false);
       const msg = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
       setError(msg || "Không tải được báo cáo BC03.");
       setReport(null);
       setLiveSummary(null);
     } finally {
-      setLoading(false);
+      if (!opts?.silent) setLoading(false);
     }
   }, [rangeStart, rangeEnd, teamFilter]);
 
@@ -694,7 +696,7 @@ export default function ReportBC03Tab() {
   }, [loadMonthly]);
 
   useRealtimeTable(["so_doanh_thu", "payment_lines"], loadReport);
-  useRefetchOnFocus(loadReport);
+  useRefetchOnFocus(() => loadReport({ silent: true }));
 
   function getKpi(saleName: string): KpiDraft {
     return kpiDraft[saleName] ?? { b2Orders: 0, b4Gmv: 0 };
@@ -1064,7 +1066,7 @@ export default function ReportBC03Tab() {
         </button>
         <button
           type="button"
-          onClick={loadReport}
+          onClick={() => loadReport()}
           disabled={loading}
           className="rounded-lg border border-gmv-border px-3 py-2 text-xs text-gmv-text hover:bg-gmv-border disabled:opacity-50"
         >
