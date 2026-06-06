@@ -89,11 +89,17 @@ Frontend `.env.local` points `VITE_API_BASE_URL` to either localhost:8000 (local
 
 ### Backend key modules
 - `backend/main.py` — FastAPI entry + PayOS webhook (signature verify)
-- `backend/rbac.py` — Dynamic RBAC + JWT
+- `backend/rbac.py` — Unified RBAC (4-level: sale/leader/manager/system) + sub-team scoping + JWT
 - `backend/activation_routes.py` — B3: Active Request, course activation
 - `backend/payment_request_routes.py` — B1: PR CRUD, payment lines
-- `backend/revenue_routes.py` — M5: Sổ doanh thu, BC01/BC02
+- `backend/revenue_routes.py` — M5: Sổ doanh thu, search, batch team lookup, BC01/BC02
 - `backend/crm_routes.py` — CRM hybrid/autonomous sync
-- `backend/dashboard_routes.py` — Gamification, BXH, team/subteam
+- `backend/dashboard_routes.py` — Gamification, BXH, team/subteam, sub-team scope enforcement
 - `backend/report_routes.py` — BC03 daily/monthly
 - `backend/rpc_helpers.py` — Atomic RPCs, Postgres sequences
+
+### Key docs
+- `docs/PROJECT.md` — Kiến trúc, tiến độ, schema, phân quyền
+- `docs/SPEC_TEMPLATE.md` — Mẫu spec (dùng khi nhận prototype từ anh Hiếu)
+- `docs/HUONG_DAN_XUAT_SPEC.md` — Prompt cho Claude Design xuất spec
+- `docs/DESIGN.md` — Design tokens, UI components, rules
