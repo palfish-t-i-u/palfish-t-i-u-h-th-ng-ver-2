@@ -9,7 +9,7 @@ from zoneinfo import ZoneInfo
 from fastapi import HTTPException, Query, Header
 from pydantic import BaseModel, Field
 
-from rbac import enforce_report_scope, resolve_actor
+from rbac import enforce_report_scope, resolve_actor, scope_sale_names
 
 from crm_metrics import (
     INVALID_TEAM_LABELS,
@@ -898,10 +898,13 @@ def register_dashboard_routes(app, supabase_factory):
 
         d_start, d_end = start_date[:10], end_date[:10]
         _validate_custom_range(d_start, d_end)
-        team_filter = enforce_report_scope(actor, team or department)
+        team_filter, sub_team = enforce_report_scope(actor, team or department)
 
         try:
             rows = _query_crm_rows(sb, d_start, d_end, sale=sale, team=team_filter)
+            if sub_team and team_filter:
+                allowed = scope_sale_names(sb, team_filter, sub_team)
+                rows = [r for r in rows if (r.get("sale_name") or "").strip() in allowed]
         except Exception as exc:
             raise HTTPException(500, f"Query crm_sales_data thất bại: {exc}") from exc
 
@@ -954,7 +957,7 @@ def register_dashboard_routes(app, supabase_factory):
 
         d_start, d_end = start_date[:10], end_date[:10]
         _validate_custom_range(d_start, d_end)
-        team_filter = enforce_report_scope(actor, team or department)
+        team_filter, sub_team = enforce_report_scope(actor, team or department)
         exchange_rate = _load_exchange_rate(sb, d_end)
         today_str = date.today().isoformat()
 
@@ -971,6 +974,9 @@ def register_dashboard_routes(app, supabase_factory):
         if sale:
             live_rows = [r for r in live_rows if (r.get("sale_name") or "").strip() == sale]
         live_rows = _apply_team_filter(live_rows, team_filter)
+        if sub_team and team_filter:
+            allowed = scope_sale_names(sb, team_filter, sub_team)
+            live_rows = [r for r in live_rows if (r.get("sale_name") or "").strip() in allowed]
 
         tot_collected_vnd, collected_by_date, collected_by_sale, collected_order_count = _ledger_collected_maps(
             sb, d_start, d_end, team=team_filter, sale=sale,
@@ -1101,7 +1107,7 @@ def register_dashboard_routes(app, supabase_factory):
             actor_team = actor.staff.get("team")
 
         d_start, d_end = _date_range(range_key, start, end)
-        team_filter = enforce_report_scope(actor, team or department)
+        team_filter, sub_team = enforce_report_scope(actor, team or department)
         exchange_rate = _load_exchange_rate(sb, d_end)
         today_str = date.today().isoformat()
 
@@ -1119,6 +1125,9 @@ def register_dashboard_routes(app, supabase_factory):
             raise HTTPException(500, f"Query crm_sales_data thất bại: {exc}") from exc
 
         all_rows = _apply_team_filter(all_rows, team_filter)
+        if sub_team and team_filter:
+            allowed = scope_sale_names(sb, team_filter, sub_team)
+            all_rows = [r for r in all_rows if (r.get("sale_name") or "").strip() in allowed]
         summary_rows, daily_rows, legacy_rows = _split_record_types(all_rows)
 
         # KPI + bảng sale: CHỈ summary (chuẩn L1=2610, không cộng trùng theo ngày)
