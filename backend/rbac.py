@@ -180,6 +180,27 @@ def staff_to_profile(actor: Actor) -> dict[str, Any]:
     }
 
 
+def enforce_report_scope(
+    actor: Actor,
+    requested_team: str | None = None,
+) -> str | None:
+    """Enforce team-level data scope for reports based on role.
+
+    - system: honour the requested team (or None for all)
+    - leader / manager: force to the actor's own team
+    - sale: force to the actor's own team
+    """
+    role = _normalize_role(actor.role)
+    if role == "system":
+        return (requested_team or "").strip() or None
+
+    staff = actor.staff or {}
+    actor_team = (staff.get("team") or "").strip()
+    if role in ("leader", "manager", "sale") and actor_team:
+        return actor_team
+    return (requested_team or "").strip() or None
+
+
 def visible_creator_emails(sb, actor: Actor) -> list[str] | None:
     """None = all orders (system). Otherwise filter don_hang.created_by."""
     role = _normalize_role(actor.role)

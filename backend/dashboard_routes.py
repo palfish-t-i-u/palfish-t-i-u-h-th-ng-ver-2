@@ -9,7 +9,7 @@ from zoneinfo import ZoneInfo
 from fastapi import HTTPException, Query, Header
 from pydantic import BaseModel, Field
 
-from rbac import resolve_actor
+from rbac import enforce_report_scope, resolve_actor
 
 from crm_metrics import (
     INVALID_TEAM_LABELS,
@@ -894,11 +894,11 @@ def register_dashboard_routes(app, supabase_factory):
         if not sb:
             raise HTTPException(503, "Supabase chưa cấu hình")
         
-        resolve_actor(sb, authorization)
+        actor = resolve_actor(sb, authorization)
 
         d_start, d_end = start_date[:10], end_date[:10]
         _validate_custom_range(d_start, d_end)
-        team_filter = team or department
+        team_filter = enforce_report_scope(actor, team or department)
 
         try:
             rows = _query_crm_rows(sb, d_start, d_end, sale=sale, team=team_filter)
@@ -954,7 +954,7 @@ def register_dashboard_routes(app, supabase_factory):
 
         d_start, d_end = start_date[:10], end_date[:10]
         _validate_custom_range(d_start, d_end)
-        team_filter = team or department
+        team_filter = enforce_report_scope(actor, team or department)
         exchange_rate = _load_exchange_rate(sb, d_end)
         today_str = date.today().isoformat()
 
@@ -1101,7 +1101,7 @@ def register_dashboard_routes(app, supabase_factory):
             actor_team = actor.staff.get("team")
 
         d_start, d_end = _date_range(range_key, start, end)
-        team_filter = team or department
+        team_filter = enforce_report_scope(actor, team or department)
         exchange_rate = _load_exchange_rate(sb, d_end)
         today_str = date.today().isoformat()
 

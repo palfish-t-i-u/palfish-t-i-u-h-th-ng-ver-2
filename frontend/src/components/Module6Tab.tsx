@@ -6,6 +6,7 @@ import {
 import { endpoints } from "../lib/api";
 import { useRefetchOnFocus } from "../hooks/useRefetchOnFocus";
 import { useRealtimeTable } from "../hooks/useRealtimeTable";
+import { useTeamScope } from "../hooks/useTeamScope";
 import { fmtRate, isValidSaleName, pctOf, safeDivide } from "../lib/metrics";
 import type { DashboardDailyTrends, DashboardLiveSummary } from "../types/order";
 
@@ -185,10 +186,11 @@ function ConversionBar({ label, value }: { label: string; value: number }) {
 // Main component
 // --------------------------------------------------------------------------
 export default function Module6Tab() {
+  const { defaultTeam, isRestricted } = useTeamScope();
   const [rangeKey, setRangeKey]       = useState("month");
   const [customStart, setCustomStart] = useState(firstOfMonth());
   const [customEnd, setCustomEnd]     = useState(todayStr());
-  const [teamFilter, setTeamFilter]   = useState("");
+  const [teamFilter, setTeamFilter]   = useState(defaultTeam);
   const [saleFilter, setSaleFilter]   = useState("");
 
   const [live, setLive]         = useState<DashboardLiveSummary | null>(null);
@@ -300,9 +302,16 @@ export default function Module6Tab() {
           )}
           {/* Filters */}
           <select value={teamFilter} onChange={(e) => setTeamFilter(e.target.value)}
-            className="rounded-lg border border-gmv-border bg-gmv-canvas px-3 py-1.5 text-xs text-gmv-text focus:outline-none">
-            <option value="">Tất cả team</option>
-            {teams.map((t) => <option key={t}>{t}</option>)}
+            disabled={isRestricted}
+            className="rounded-lg border border-gmv-border bg-gmv-canvas px-3 py-1.5 text-xs text-gmv-text focus:outline-none disabled:opacity-60">
+            {isRestricted ? (
+              <option value={defaultTeam}>{defaultTeam}</option>
+            ) : (
+              <>
+                <option value="">Tất cả team</option>
+                {teams.map((t) => <option key={t}>{t}</option>)}
+              </>
+            )}
           </select>
           <select value={saleFilter} onChange={(e) => setSaleFilter(e.target.value)}
             className="rounded-lg border border-gmv-border bg-gmv-canvas px-3 py-1.5 text-xs text-gmv-text focus:outline-none">
