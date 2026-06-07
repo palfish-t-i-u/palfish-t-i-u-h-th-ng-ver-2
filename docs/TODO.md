@@ -420,3 +420,22 @@
 | CRM-03 | BC03 daily backfill + monthly report | done | Giang | `report_routes.py` |
 | CRM-04 | Dashboard Sale VN table | done | Giang | `dashboard_routes.py` |
 | CRM-05 | Module5Tab token status display | done | Minh | `Module5Tab.tsx` |
+
+---
+
+## Perf & RBAC improvements (2026-06-04..06)
+
+| ID | Task | Status | Owner | created_at | completed_at | Ghi chú |
+|----|------|--------|-------|------------|--------------|---------|
+| PERF-01 | Ledger search bar (debounce, BE search param) | done | Minh | 2026-06-04 | 2026-06-04 | `SoDoanhThuTab.tsx`, `revenue_routes.py` |
+| PERF-02 | Batch team lookup (thay N+1 queries) | done | Minh | 2026-06-04 | 2026-06-04 | `load_team_map()`, SQL indexes |
+| PERF-03 | Preload lazy chunks on nav hover | done | Minh | 2026-06-04 | 2026-06-04 | `AppShell.tsx` |
+| PERF-04 | MeProvider shared context (single /me fetch) | done | Minh | 2026-06-05 | 2026-06-05 | Thay `useMe` hook duplicate calls |
+| RBAC-01 | Unified permission system with min_role scope | done | Minh | 2026-06-05 | 2026-06-05 | `rbac.py`, `admin_routes.py` |
+| RBAC-02 | 4-level RBAC sub-team scoping for leader role | done | Minh | 2026-06-05 | 2026-06-06 | Leader chỉ thấy data team mình |
+| RBAC-03 | Team scope enforcement report + dashboard routes | done | Minh | 2026-06-06 | 2026-06-06 | `report_routes.py`, `dashboard_routes.py` |
+| RBAC-04 | Permission tab labels + tooltips update | done | Minh | 2026-06-06 | 2026-06-06 | `PermissionsTab.tsx` |
+| FIX-01 | CRM name priority over Google profile name in auth accounts | done | Minh | 2026-06-05 | 2026-06-05 | `AuthAccountsTab.tsx` |
+| FIX-02 | Auto-correct GMV locale errors from "All File Thu Hiền" | done | Minh | 2026-06-05 | 2026-06-05 | Detect VN decimal comma |
+| FIX-03 | Permissions tab loading spinner fix | done | Minh | 2026-06-06 | 2026-06-06 | Revert + reapply approach |
+| DOCS-01 | Spec template + export guide for prototype-to-spec workflow | done | Minh | 2026-06-06 | 2026-06-06 | `SPEC_TEMPLATE.md`, `HUONG_DAN_XUAT_SPEC.md` |

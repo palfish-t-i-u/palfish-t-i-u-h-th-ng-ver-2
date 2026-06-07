@@ -19,6 +19,7 @@ const IS_DEV_MODE =
   !REAL_SUPABASE_URL.test(SUPABASE_URL) ||
   KEY_PLACEHOLDER ||
   (!JWT_LIKE && !PUBLISHABLE_LIKE);
+const DEV_USER_KEY = "dev_user";
 
 export interface SignUpMeta {
   full_name: string;
@@ -66,6 +67,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (IS_DEV_MODE) {
+      const saved = localStorage.getItem(DEV_USER_KEY);
+      if (saved) setUser(JSON.parse(saved) as User);
       setLoading(false);
       return;
     }
@@ -78,7 +81,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const { data: listener } = supabase.auth.onAuthStateChange((event, s) => {
       setSession(s);
-      setUser(s?.user ?? null);
+      setUser(prev => prev?.id === s?.user?.id ? prev : (s?.user ?? null));
       if (event === "PASSWORD_RECOVERY") {
         setPasswordRecovery(true);
       }
@@ -89,7 +92,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   async function signInWithPassword(email: string, password: string) {
     if (IS_DEV_MODE) {
-      setUser({ email } as unknown as User);
+      const devUser = { email } as unknown as User;
+      setUser(devUser);
+      localStorage.setItem(DEV_USER_KEY, JSON.stringify(devUser));
       return { error: null };
     }
     const { error } = await supabase.auth.signInWithPassword({ email, password });
@@ -99,7 +104,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   async function signInWithGoogle() {
     if (IS_DEV_MODE) {
-      setUser({ email: "dev@google.local" } as unknown as User);
+      const devUser = { email: "dev@google.local" } as unknown as User;
+      setUser(devUser);
+      localStorage.setItem(DEV_USER_KEY, JSON.stringify(devUser));
       return { error: null };
     }
     const { error } = await supabase.auth.signInWithOAuth({
@@ -118,7 +125,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     meta: SignUpMeta
   ) {
     if (IS_DEV_MODE) {
-      setUser({ email, user_metadata: meta } as unknown as User);
+      const devUser = { email, user_metadata: meta } as unknown as User;
+      setUser(devUser);
+      localStorage.setItem(DEV_USER_KEY, JSON.stringify(devUser));
       return { error: null };
     }
     const { error } = await supabase.auth.signUp({
@@ -174,6 +183,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (IS_DEV_MODE) {
       setUser(null);
       setPasswordRecovery(false);
+      localStorage.removeItem(DEV_USER_KEY);
       return;
     }
     await supabase.auth.signOut();

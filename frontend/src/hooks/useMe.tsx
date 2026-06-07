@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
 import { endpoints } from "../lib/api";
 import type { MeProfile } from "../types/profile";
 import { useAuth } from "./useAuth";
@@ -24,7 +24,16 @@ const DEV_PROFILE: MeProfile = {
   permissions: {},
 };
 
-export function useMe() {
+interface MeContextValue {
+  profile: MeProfile | null;
+  loading: boolean;
+  error: string;
+  refresh: () => Promise<void>;
+}
+
+const MeContext = createContext<MeContextValue | null>(null);
+
+export function MeProvider({ children }: { children: ReactNode }) {
   const { user, isDevMode, loading: authLoading } = useAuth();
   const [profile, setProfile] = useState<MeProfile | null>(null);
   const [loading, setLoading] = useState(true);
@@ -83,5 +92,15 @@ export function useMe() {
     refresh();
   }, [authLoading, refresh]);
 
-  return { profile, loading, error, refresh };
+  return (
+    <MeContext.Provider value={{ profile, loading, error, refresh }}>
+      {children}
+    </MeContext.Provider>
+  );
+}
+
+export function useMe() {
+  const ctx = useContext(MeContext);
+  if (!ctx) throw new Error("useMe must be used within MeProvider");
+  return ctx;
 }

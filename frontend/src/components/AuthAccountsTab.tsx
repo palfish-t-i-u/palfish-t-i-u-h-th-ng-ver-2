@@ -395,7 +395,7 @@ export default function AuthAccountsTab() {
                     onClick={() => setDrawerUser(u)}
                   >
                     <td className="px-4 py-2 font-medium text-gmv-text-strong">{u.email}</td>
-                    <td className="px-4 py-2 text-gmv-text">{u.fullName || u.crmName || "—"}</td>
+                    <td className="px-4 py-2 text-gmv-text">{u.crmName || u.fullName || "—"}</td>
                     <td className="px-4 py-2 text-gmv-text">{u.phone || "—"}</td>
                     <td className="px-4 py-2">
                       <span className={`aa-dept-badge ${deptClass(u)}`}>{deptLabel(u)}</span>

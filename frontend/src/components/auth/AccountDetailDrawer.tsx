@@ -7,18 +7,22 @@ import "./auth-accounts.css";
 
 /* ── helpers ── */
 
-function roleLabel(role: string | null): "User" | "Leader" | "Admin" {
+type RoleKey = "User" | "Leader" | "Manager" | "Admin";
+
+function roleLabel(role: string | null): RoleKey {
   if (!role) return "User";
   const r = role.toLowerCase();
-  if (r === "system" || r === "admin" || r === "manager") return "Admin";
+  if (r === "system" || r === "admin") return "Admin";
+  if (r === "manager") return "Manager";
   if (r === "leader") return "Leader";
   return "User";
 }
 
-function roleApiValue(label: "User" | "Leader" | "Admin") {
-  if (label === "Admin") return "admin";
+function roleApiValue(label: RoleKey) {
+  if (label === "Admin") return "system";
+  if (label === "Manager") return "manager";
   if (label === "Leader") return "leader";
-  return "user";
+  return "sale";
 }
 
 function statusOf(u: AuthUserRow): "activated" | "pending" | "banned" {
@@ -78,9 +82,10 @@ function normalizeDeptKey(raw: string | null | undefined): string {
   return raw || "";
 }
 
-const ROLE_CARDS: { key: "User" | "Leader" | "Admin"; desc: string }[] = [
+const ROLE_CARDS: { key: RoleKey; desc: string }[] = [
   { key: "User", desc: "Chỉ xem thông tin cá nhân và dữ liệu liên quan đến tài khoản của chính họ." },
-  { key: "Leader", desc: "Xem dữ liệu cá nhân và thông tin nhân viên dưới quyền quản lý." },
+  { key: "Leader", desc: "Xem dữ liệu sub-team mình quản lý." },
+  { key: "Manager", desc: "Xem dữ liệu toàn bộ team/chi nhánh mình quản lý." },
   { key: "Admin", desc: "Xem và thao tác được tất cả mọi thứ trong hệ thống." },
 ];
 
@@ -94,7 +99,7 @@ interface Props {
 }
 
 export default function AccountDetailDrawer({ user, onClose, onUpdated, linkedCrmNames }: Props) {
-  const [selectedRole, setSelectedRole] = useState<"User" | "Leader" | "Admin">("User");
+  const [selectedRole, setSelectedRole] = useState<RoleKey>("User");
   const [crmLinkOpen, setCrmLinkOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -112,7 +117,7 @@ export default function AccountDetailDrawer({ user, onClose, onUpdated, linkedCr
   useEffect(() => {
     if (user) {
       setSelectedRole(roleLabel(user.staffRole));
-      setEditName(user.fullName || user.crmName || "");
+      setEditName(user.crmName || user.fullName || "");
       setEditPhone(user.phone || "");
       setEditDept(normalizeDeptKey(user.department));
       setEditTeam(user.team || "");
@@ -127,7 +132,7 @@ export default function AccountDetailDrawer({ user, onClose, onUpdated, linkedCr
   const st = statusOf(user);
   const currentRole = roleLabel(user.staffRole);
   const roleChanged = selectedRole !== currentRole;
-  const nameChanged = editing && editName !== (user.fullName || user.crmName || "");
+  const nameChanged = editing && editName !== (user.crmName || user.fullName || "");
   const phoneChanged = editing && editPhone !== (user.phone || "");
   const deptChanged = editing && editDept !== (user.department || "");
   const teamChanged = editing && editTeam !== (user.team || "");
@@ -212,7 +217,7 @@ export default function AccountDetailDrawer({ user, onClose, onUpdated, linkedCr
           <div className="aa-drawer-header-left">
             <span className="aa-drawer-id-pill">{user.email.split("@")[0].toUpperCase()}</span>
             <div>
-              <div className="aa-drawer-name">{user.fullName || user.crmName || user.email}</div>
+              <div className="aa-drawer-name">{user.crmName || user.fullName || user.email}</div>
               <div className="aa-drawer-subtitle">
                 Đăng nhập cuối:{" "}
                 {user.lastSignIn
@@ -371,7 +376,7 @@ export default function AccountDetailDrawer({ user, onClose, onUpdated, linkedCr
                 <div className="aa-info-grid">
                   <div className="aa-info-item">
                     <label>Họ tên trên CRM</label>
-                    <span>{user.fullName || user.crmName || "—"}</span>
+                    <span>{user.crmName || user.fullName || "—"}</span>
                   </div>
                   <div className="aa-info-item">
                     <label>Email</label>

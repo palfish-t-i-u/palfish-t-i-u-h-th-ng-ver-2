@@ -7,7 +7,10 @@ import {
   ACCESS_LABELS,
   cycleAccessLevel,
   type AccessLevel,
+  type MinRole,
+  MIN_ROLE_LIST,
 } from "../../types/permissions";
+import Tooltip from "../ui/Tooltip";
 import type { AuthUserRow } from "../../types/profile";
 import { useMe } from "../../hooks/useMe";
 import { endpoints } from "../../lib/api";
@@ -33,7 +36,17 @@ export default function PermissionsTab() {
   const [matrix, setMatrix] = useState<Record<string, Record<string, AccessLevel>>>(
     () => structuredClone(DEFAULT_PERMISSIONS)
   );
-  const [, setLoaded] = useState(false);
+  const [minRoles, setMinRoles] = useState<Record<string, Record<string, MinRole>>>(() => {
+    const init: Record<string, Record<string, MinRole>> = {};
+    for (const dept of DEPARTMENT_LIST) {
+      init[dept.key] = {};
+      for (const mod of MODULE_LIST) {
+        init[dept.key][mod.key] = "sale";
+      }
+    }
+    return init;
+  });
+  const [loaded, setLoaded] = useState(false);
   const [overrideCount, setOverrideCount] = useState(0);
 
   const loadMatrix = useCallback(async () => {
@@ -47,8 +60,12 @@ export default function PermissionsTab() {
         await endpoints.admin.seedPermissions();
         const seeded = await endpoints.admin.permissions();
         setMatrix(seeded.data.matrix as Record<string, Record<string, AccessLevel>>);
+        const seededMinRoles = (seeded.data.minRoles ?? {}) as Record<string, Record<string, MinRole>>;
+        if (seededMinRoles && Object.keys(seededMinRoles).length > 0) setMinRoles(seededMinRoles);
       } else {
         setMatrix(remote);
+        const remoteMinRoles = (res.data.minRoles ?? {}) as Record<string, Record<string, MinRole>>;
+        if (remoteMinRoles && Object.keys(remoteMinRoles).length > 0) setMinRoles(remoteMinRoles);
       }
     } catch {
       // API lỗi → dùng DEFAULT_PERMISSIONS
@@ -79,11 +96,36 @@ export default function PermissionsTab() {
         department: dept,
         module_key: moduleKey,
         access_level: next,
+        min_role: minRoles[dept]?.[moduleKey] ?? "sale",
       });
     } catch {
       setMatrix((prev) => {
         const reverted = structuredClone(prev);
         reverted[dept] = { ...reverted[dept], [moduleKey]: current };
+        return reverted;
+      });
+    }
+  }
+
+  async function handleMinRoleChange(dept: string, moduleKey: string, newRole: MinRole) {
+    if (!canManage) return;
+    const prev = minRoles[dept]?.[moduleKey] ?? "sale";
+    setMinRoles((old) => {
+      const updated = structuredClone(old);
+      updated[dept] = { ...updated[dept], [moduleKey]: newRole };
+      return updated;
+    });
+    try {
+      await endpoints.admin.patchPermission({
+        department: dept,
+        module_key: moduleKey,
+        access_level: matrix[dept]?.[moduleKey] ?? "none",
+        min_role: newRole,
+      });
+    } catch {
+      setMinRoles((old) => {
+        const reverted = structuredClone(old);
+        reverted[dept] = { ...reverted[dept], [moduleKey]: prev };
         return reverted;
       });
     }
@@ -116,7 +158,19 @@ export default function PermissionsTab() {
   if (!canManage) {
     return (
       <div className="rounded-gmv-md border border-gmv-warn/40 bg-gmv-warn-soft p-4 text-sm text-gmv-warn">
-        Chỉ Admin có quyền xem và quản lý phân quyền.
+        Chỉ Admin (System) có quyền xem và quản lý phân quyền.
+      </div>
+    );
+  }
+
+  if (!loaded) {
+    return (
+      <div className="flex items-center justify-center py-16 text-sm text-gmv-muted">
+        <svg className="mr-2 h-5 w-5 animate-spin text-gmv-muted" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+        </svg>
+        Đang tải phân quyền…
       </div>
     );
   }
@@ -171,22 +225,34 @@ export default function PermissionsTab() {
       {/* Legend */}
       <div className="pm-legend">
         <span className="pm-legend-label">Chú giải:</span>
-        <span className="pm-legend-item">
+        <Tooltip content="Người dùng được xem dữ liệu và thực hiện mọi thao tác trong module này (tạo, sửa, xóa)">
           <span className="pm-access-badge full" style={{ cursor: "default" }}>
             <AccessIcon level="full" /> {ACCESS_LABELS.full}
           </span>
-        </span>
-        <span className="pm-legend-item">
+        </Tooltip>
+        <Tooltip content="Người dùng chỉ được xem dữ liệu, không thể tạo mới, chỉnh sửa hoặc xóa">
           <span className="pm-access-badge read" style={{ cursor: "default" }}>
             <AccessIcon level="read" /> {ACCESS_LABELS.read}
           </span>
-        </span>
-        <span className="pm-legend-item">
+        </Tooltip>
+        <Tooltip content="Module này bị ẩn hoàn toàn — người dùng không thấy trên thanh menu và không truy cập được">
           <span className="pm-access-badge none" style={{ cursor: "default" }}>
             <AccessIcon level="none" /> {ACCESS_LABELS.none}
           </span>
-        </span>
+        </Tooltip>
         <span className="pm-legend-hint">— Click ô để xoay vòng quyền</span>
+      </div>
+      <div className="pm-legend">
+        <span className="pm-legend-label">Phạm vi:</span>
+        <Tooltip content="Tất cả người dùng trong bộ phận đều được hưởng quyền này, bao gồm User, Leader, Manager và Admin">
+          <span className="pm-scope-badge sale" style={{ cursor: "default" }}>Tất cả</span>
+        </Tooltip>
+        <Tooltip content="Từ cấp Leader trở lên (Leader, Manager, Admin) được hưởng quyền này. User (nhân viên thường) sẽ không thấy">
+          <span className="pm-scope-badge leader" style={{ cursor: "default" }}>Từ Leader</span>
+        </Tooltip>
+        <Tooltip content="Từ cấp Manager trở lên (Manager, Admin) được hưởng quyền này. User và Leader đều không thấy">
+          <span className="pm-scope-badge manager" style={{ cursor: "default" }}>Từ Manager</span>
+        </Tooltip>
       </div>
 
       {/* Tabs */}
@@ -235,16 +301,30 @@ export default function PermissionsTab() {
                       </td>
                       {DEPARTMENT_LIST.map((dept) => {
                         const level = matrix[dept.key]?.[mod.key] ?? "none";
+                        const mr = minRoles[dept.key]?.[mod.key] ?? "sale";
                         return (
                           <td key={dept.key}>
-                            <span
-                              className={`pm-access-badge ${level}`}
-                              onClick={() => handleCycle(dept.key, mod.key)}
-                              title={`Click để đổi quyền (hiện tại: ${ACCESS_LABELS[level]})`}
-                            >
-                              <AccessIcon level={level} />
-                              {ACCESS_LABELS[level]}
-                            </span>
+                            <div className="pm-cell">
+                              <span
+                                className={`pm-access-badge ${level}`}
+                                onClick={() => handleCycle(dept.key, mod.key)}
+                                title={`Click để đổi quyền (hiện tại: ${ACCESS_LABELS[level]})`}
+                              >
+                                <AccessIcon level={level} />
+                                {ACCESS_LABELS[level]}
+                              </span>
+                              {level !== "none" && (
+                                <select
+                                  className="pm-scope-select"
+                                  value={mr}
+                                  onChange={(e) => handleMinRoleChange(dept.key, mod.key, e.target.value as MinRole)}
+                                >
+                                  {MIN_ROLE_LIST.map((opt) => (
+                                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                                  ))}
+                                </select>
+                              )}
+                            </div>
                           </td>
                         );
                       })}
@@ -258,7 +338,7 @@ export default function PermissionsTab() {
       )}
 
       {tab === "override" && (
-        <OverrideTab matrix={matrix} onCountChange={setOverrideCount} />
+        <OverrideTab matrix={matrix} minRoles={minRoles} onCountChange={setOverrideCount} />
       )}
     </div>
   );
@@ -278,9 +358,11 @@ interface StaffOverrideSummary {
 
 function OverrideTab({
   matrix,
+  minRoles,
   onCountChange,
 }: {
   matrix: Record<string, Record<string, AccessLevel>>;
+  minRoles: Record<string, Record<string, MinRole>>;
   onCountChange: (n: number) => void;
 }) {
   const [allOverrides, setAllOverrides] = useState<OverrideRow[]>([]);
@@ -457,6 +539,7 @@ function OverrideTab({
         <OverrideDrawer
           user={drawerUser}
           matrix={matrix}
+          minRoles={minRoles}
           existingOverrides={drawerOverrides}
           onClose={() => setDrawerUser(null)}
           onSaved={() => {

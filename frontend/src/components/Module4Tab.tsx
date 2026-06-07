@@ -51,8 +51,8 @@ export default function Module4Tab() {
   const [exporting, setExporting] = useState(false);
   const [confirmExport, setConfirmExport] = useState(false);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (opts?: { silent?: boolean }) => {
+    if (!opts?.silent) setLoading(true);
     setError("");
     try {
       const [pendingRes, issuedRes] = await Promise.all([
@@ -65,7 +65,7 @@ export default function Module4Tab() {
       setError("Khong tai duoc du lieu hoa don.");
       console.warn(e);
     } finally {
-      setLoading(false);
+      if (!opts?.silent) setLoading(false);
     }
   }, []);
 
@@ -74,7 +74,7 @@ export default function Module4Tab() {
   }, [load]);
 
   useRealtimeTable(["active_requests"], load);
-  useRefetchOnFocus(load);
+  useRefetchOnFocus(() => load({ silent: true }));
 
   const rows = activeTab === "pending" ? pendingOrders : issuedOrders;
   const pendingTotal = useMemo(
@@ -134,7 +134,7 @@ export default function Module4Tab() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="secondary" size="sm" onClick={load} disabled={loading || exporting}>
+          <Button variant="secondary" size="sm" onClick={() => load()} disabled={loading || exporting}>
             {loading ? "Dang tai..." : "Lam moi"}
           </Button>
           {!readOnly && (

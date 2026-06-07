@@ -287,11 +287,45 @@ def _normalize_uid(value: Any) -> str | None:
 
 
 def _gmv_from_vnd(vnd: int, gmv_hint: float | None) -> float:
-    if gmv_hint and gmv_hint > 0:
-        return round(gmv_hint, 2)
+    """Convert VND → RMB, with locale-error detection on gmv_hint from sheet.
+
+    All File Thu Hiền (Google Sheet) sometimes has corrupted GMV values due to
+    locale mismatch: DingTalk uses dot as thousand separator (4.978 = 4978 RMB)
+    but Google Sheet interprets it as decimal (4.978 ≈ 5 RMB).  This typically
+    produces values ~1000× too small.
+
+    Three-tier detection:
+      ratio < 0.01  → certain locale error (>100×)  → auto-fix from VND
+      ratio < 0.10  → grey zone (10×–100×)          → auto-fix + log warning
+      ratio ≥ 0.10  → plausible (discount / custom rate) → keep sheet value
+    """
     if not vnd:
-        return 0.0
-    return vnd_to_rmb(vnd, DEFAULT_TY_GIA)
+        return round(gmv_hint, 2) if (gmv_hint and gmv_hint > 0) else 0.0
+
+    expected = float(vnd) / float(DEFAULT_TY_GIA)
+
+    if not gmv_hint or gmv_hint <= 0:
+        return round(expected, 2)
+
+    if expected <= 0:
+        return round(gmv_hint, 2)
+
+    ratio = gmv_hint / expected
+
+    if ratio < 0.01:
+        # Certain locale error (>100× off) — silently auto-correct
+        return round(expected, 2)
+
+    if ratio < 0.10:
+        # Grey zone (10×–100× off) — auto-correct + warn operator
+        _log(
+            f"⚠️ GMV locale fix: sheet={gmv_hint:.2f}, expected={expected:.2f}, "
+            f"VND={vnd}, ratio={ratio:.4f} — using calculated value"
+        )
+        return round(expected, 2)
+
+    # Plausible value (discount, custom rate, etc.) — keep sheet value
+    return round(gmv_hint, 2)
 
 
 TAB_TEAM_OVERRIDE = frozenset({"HCM REV"})

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { endpoints } from "../lib/api";
 import { cn } from "../lib/cn";
 import { useRefetchOnFocus } from "../hooks/useRefetchOnFocus";
@@ -585,14 +585,17 @@ export default function DashboardTab() {
   const [usingFallback, setUsingFallback] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
 
+  const silentRef = useRef(false);
   const refresh = useCallback(() => setRefreshKey((k) => k + 1), []);
   useRealtimeTable(["so_doanh_thu", "payment_lines"], refresh);
-  useRefetchOnFocus(refresh);
+  useRefetchOnFocus(() => { silentRef.current = true; refresh(); });
 
   useEffect(() => {
     let cancelled = false;
+    const silent = silentRef.current;
+    silentRef.current = false;
     const timer = window.setTimeout(async () => {
-      setLoading(true);
+      if (!silent) setLoading(true);
       setUsingFallback(false);
 
       try {
@@ -601,7 +604,7 @@ export default function DashboardTab() {
           if (!cancelled) {
             setSummary(summaryRes.data);
             setRows([]);
-            setLoading(false);
+            if (!silent) setLoading(false);
           }
           return;
         } catch {
@@ -637,7 +640,7 @@ export default function DashboardTab() {
           setUsingFallback(true);
         }
       } finally {
-        if (!cancelled) setLoading(false);
+        if (!cancelled && !silent) setLoading(false);
       }
     }, 0);
 

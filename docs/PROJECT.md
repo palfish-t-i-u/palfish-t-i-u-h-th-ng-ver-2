@@ -105,6 +105,8 @@ pf-gmv-reconciliation/
 │   ├── TODO.md                Task board
 │   ├── HANDOFF_BE_AUDIT_2026-06-03.md  Backend audit 22 issues
 │   ├── SETUP_ENV.md, DEPLOY.md, AUTH_SETUP.md, DESIGN.md
+│   ├── SPEC_TEMPLATE.md              # Mẫu spec cho prototype-to-spec workflow
+│   ├── HUONG_DAN_XUAT_SPEC.md        # Hướng dẫn + prompt xuất spec (cho Hiếu / Claude Design)
 │   ├── supabase_schema_patch*.sql     # v1..v8, CRM, BC03, DB audit, etc.
 │   └── MODULE_SO_DOANH_THU.md, MODULE_3_4.md, M5_*.md
 ├── scripts/
@@ -154,7 +156,7 @@ Chi tiết: `docs/WIREFRAMES.md`.
 
 ---
 
-## Tiến độ (cập nhật 2026-06-04)
+## Tiến độ (cập nhật 2026-06-06)
 
 ### Hoàn thành
 
@@ -163,16 +165,18 @@ Chi tiết: `docs/WIREFRAMES.md`.
 | Module 1 E2E | Tạo đơn, QR, Tab 2, bill, PayOS tab, hủy đơn — prod + local |
 | Payment Request B1–B4 | PR drawer, mini-window AR, allocation guard, QR/cash/card, reconciliation, invoice export |
 | Module 3 & 4 MVP | Export batch, tax ZIP, CRM order matching |
-| Module 5 | Sổ doanh thu, Sales Performance pivot, CRM sync, BC01/BC02 |
+| Module 5 | Sổ doanh thu (search bar, batch team lookup), Sales Performance pivot, CRM sync, BC01/BC02 |
 | Dashboard gamification | BXH, today-honors, event carousel, current_user rank, team/subteam |
-| Permissions dynamic RBAC | Department×module matrix, personal overrides, readOnly mode |
-| Auth accounts upgrade | Detail drawer, CRM linking/unlinking, bulk delete, sub-team |
+| Permissions dynamic RBAC | Unified permission system, 4-level RBAC (sale/leader/manager/system), sub-team scoping, department×module matrix, personal overrides, readOnly mode |
+| Auth accounts upgrade | Detail drawer, CRM linking/unlinking, bulk delete, sub-team, CRM name priority |
 | Backend audit (22/22 tasks) | DB sequences, auth endpoints, encrypt CRM token, audit log, atomic RPCs, webhook signature — `HANDOFF_BE_AUDIT_2026-06-03.md` |
 | CRM hybrid sync | Autonomous sync, BC03 daily/monthly, CRM sales data upsert |
 | E2E testing | Playwright: CRM Sync (6 tests) + Dashboard Sales (8 tests) |
 | PalFish branding | Logo, favicon |
 | UI design system | `gmv-tokens`, `components/ui`, brand tím — `docs/DESIGN.md` |
 | Production deploy | Vercel + Render + sandbox branch workflow |
+| Perf optimizations | Lazy chunk preload on hover, shared MeProvider context (single /me fetch), batch team lookup |
+| Spec workflow | Template + hướng dẫn xuất spec từ prototype — `docs/SPEC_TEMPLATE.md`, `docs/HUONG_DAN_XUAT_SPEC.md` |
 
 ### Đang chờ
 
@@ -185,7 +189,7 @@ Chi tiết: `docs/WIREFRAMES.md`.
 | M3-05: Excel layout merged header | `Report/3 file thuế/` |
 | Module bank — biến động số dư | Giang/Đức — `F2605-BANK-*` |
 | Audit log Tab 2 | Schema có, code chưa |
-| A2 Phase FE fixes | F2705-A2-01..11 — CSS, reject, copy, multi-bill |
+| GMV locale auto-correct | Detect + fix lỗi dấu phẩy thập phân VN từ "All File Thu Hiền" |
 
 ---
 
