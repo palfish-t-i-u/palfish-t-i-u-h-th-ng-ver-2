@@ -151,6 +151,91 @@ class LinkCrmBody(BaseModel):
     crm_order_id: str = Field(..., min_length=1)
 
 
+class SaleCreate(BaseModel):
+    full_name: str
+    short_code: str | None = None
+    team: str | None = None
+    khoi: str | None = None
+    active: bool = True
+
+
+class SalePatch(BaseModel):
+    full_name: str | None = None
+    short_code: str | None = None
+    team: str | None = None
+    khoi: str | None = None
+    active: bool | None = None
+
+
+class ChannelCreate(BaseModel):
+    channel_code: str | None = None
+    name: str | None = None
+    type: str | None = None
+
+
+class ChannelPatch(BaseModel):
+    channel_code: str | None = None
+    name: str | None = None
+    type: str | None = None
+
+
+class PackageCreate(BaseModel):
+    name: str
+    fixed: str | None = None
+
+
+class PackagePatch(BaseModel):
+    name: str | None = None
+    fixed: str | None = None
+
+
+class CustomerPatch(BaseModel):
+    full_name: str | None = None
+    phone: str | None = None
+
+
+def _trim(value: str | None) -> str | None:
+    if value is None:
+        return None
+    s = value.strip()
+    return s or None
+
+
+def _trim_patch(body: BaseModel) -> dict[str, Any]:
+    update: dict[str, Any] = {}
+    for key, value in body.model_dump(exclude_none=True).items():
+        if isinstance(value, str):
+            trimmed = _trim(value)
+            if trimmed is not None:
+                update[key] = trimmed
+        else:
+            update[key] = value
+    return update
+
+
+def _patch_master_row(
+    sb,
+    *,
+    table: str,
+    id_field: str,
+    id_value: str,
+    update: dict[str, Any],
+    select: str,
+) -> dict[str, Any]:
+    if not update:
+        raise HTTPException(400, "Không có dữ liệu cập nhật")
+    res = (
+        sb.table(table)
+        .update(update)
+        .eq(id_field, id_value)
+        .select(select)
+        .execute()
+    )
+    if not res.data:
+        raise HTTPException(404, f"{table} {id_value} không tồn tại")
+    return res.data[0]
+
+
 def register_payment_routes(app, sb_getter) -> None:
     def _sb():
         sb = sb_getter()
@@ -459,3 +544,151 @@ def register_payment_routes(app, sb_getter) -> None:
         require_module_access(sb, actor, "payments")
         res = sb.table("packages").select("id, name, fixed").order("name").execute()
         return res.data or []
+
+    @app.post("/api/v1/payments/master/sales", tags=["Payments"])
+    def create_sale_master(
+        body: SaleCreate,
+        authorization: str | None = Header(None),
+    ):
+        sb = _sb()
+        actor = resolve_actor(sb, authorization)
+        require_module_write(sb, actor, "payments")
+        full_name = _trim(body.full_name)
+        if not full_name:
+            raise HTTPException(400, "full_name không được rỗng")
+        row = {
+            "full_name": full_name,
+            "short_code": _trim(body.short_code),
+            "team": _trim(body.team),
+            "khoi": _trim(body.khoi),
+            "active": body.active,
+        }
+        res = sb.table("sales").insert(row).select(
+            "id, full_name, short_code, team, khoi, active"
+        ).execute()
+        if not res.data:
+            raise HTTPException(500, "Không tạo sale")
+        return res.data[0]
+
+    @app.patch("/api/v1/payments/master/sales/{sale_id}", tags=["Payments"])
+    def patch_sale_master(
+        sale_id: str,
+        body: SalePatch,
+        authorization: str | None = Header(None),
+    ):
+        sb = _sb()
+        actor = resolve_actor(sb, authorization)
+        require_module_write(sb, actor, "payments")
+        update = _trim_patch(body)
+        if "full_name" in update and not update["full_name"]:
+            raise HTTPException(400, "full_name không được rỗng")
+        return _patch_master_row(
+            sb,
+            table="sales",
+            id_field="id",
+            id_value=sale_id,
+            update=update,
+            select="id, full_name, short_code, team, khoi, active",
+        )
+
+    @app.post("/api/v1/payments/master/channels", tags=["Payments"])
+    def create_channel_master(
+        body: ChannelCreate,
+        authorization: str | None = Header(None),
+    ):
+        sb = _sb()
+        actor = resolve_actor(sb, authorization)
+        require_module_write(sb, actor, "payments")
+        channel_code = _trim(body.channel_code)
+        name = _trim(body.name)
+        ch_type = _trim(body.type)
+        if not name and not ch_type:
+            name = channel_code or "Other"
+        row = {
+            "channel_code": channel_code,
+            "name": name,
+            "type": ch_type,
+        }
+        res = sb.table("channels").insert(row).select(
+            "id, channel_code, name, type"
+        ).execute()
+        if not res.data:
+            raise HTTPException(500, "Không tạo channel")
+        return res.data[0]
+
+    @app.patch("/api/v1/payments/master/channels/{channel_id}", tags=["Payments"])
+    def patch_channel_master(
+        channel_id: str,
+        body: ChannelPatch,
+        authorization: str | None = Header(None),
+    ):
+        sb = _sb()
+        actor = resolve_actor(sb, authorization)
+        require_module_write(sb, actor, "payments")
+        return _patch_master_row(
+            sb,
+            table="channels",
+            id_field="id",
+            id_value=channel_id,
+            update=_trim_patch(body),
+            select="id, channel_code, name, type",
+        )
+
+    @app.post("/api/v1/payments/master/packages", tags=["Payments"])
+    def create_package_master(
+        body: PackageCreate,
+        authorization: str | None = Header(None),
+    ):
+        sb = _sb()
+        actor = resolve_actor(sb, authorization)
+        require_module_write(sb, actor, "payments")
+        name = _trim(body.name)
+        if not name:
+            raise HTTPException(400, "name không được rỗng")
+        row = {"name": name, "fixed": _trim(body.fixed)}
+        res = sb.table("packages").insert(row).select("id, name, fixed").execute()
+        if not res.data:
+            raise HTTPException(500, "Không tạo package")
+        return res.data[0]
+
+    @app.patch("/api/v1/payments/master/packages/{package_id}", tags=["Payments"])
+    def patch_package_master(
+        package_id: str,
+        body: PackagePatch,
+        authorization: str | None = Header(None),
+    ):
+        sb = _sb()
+        actor = resolve_actor(sb, authorization)
+        require_module_write(sb, actor, "payments")
+        update = _trim_patch(body)
+        if "name" in update and not update["name"]:
+            raise HTTPException(400, "name không được rỗng")
+        return _patch_master_row(
+            sb,
+            table="packages",
+            id_field="id",
+            id_value=package_id,
+            update=update,
+            select="id, name, fixed",
+        )
+
+    @app.patch("/api/v1/payments/master/customers/{uid}", tags=["Payments"])
+    def patch_customer_master(
+        uid: str,
+        body: CustomerPatch,
+        authorization: str | None = Header(None),
+    ):
+        sb = _sb()
+        actor = resolve_actor(sb, authorization)
+        require_module_write(sb, actor, "payments")
+        customer_uid = uid.strip()
+        if not customer_uid:
+            raise HTTPException(400, "uid không được rỗng")
+        return _patch_master_row(
+            sb,
+            table="customers",
+            id_field="uid",
+            id_value=customer_uid,
+            update=_trim_patch(body),
+            select="uid, full_name, phone, first_seen, created_at",
+        )

@@ -111,6 +111,53 @@ class TestRevenueUntouched(unittest.TestCase):
         self.assertIn('"sales": 15', src)
 
 
+class TestMasterCrud(unittest.TestCase):
+    MODELS = (
+        "SaleCreate",
+        "SalePatch",
+        "ChannelCreate",
+        "ChannelPatch",
+        "PackageCreate",
+        "PackagePatch",
+        "CustomerPatch",
+    )
+
+    MASTER_WRITE_PATHS = (
+        '"/api/v1/payments/master/sales"',
+        '"/api/v1/payments/master/sales/{sale_id}"',
+        '"/api/v1/payments/master/channels"',
+        '"/api/v1/payments/master/channels/{channel_id}"',
+        '"/api/v1/payments/master/packages"',
+        '"/api/v1/payments/master/packages/{package_id}"',
+        '"/api/v1/payments/master/customers/{uid}"',
+    )
+
+    def test_master_crud_models_exist(self):
+        src = (BACKEND / "payment_routes.py").read_text(encoding="utf-8")
+        for model in self.MODELS:
+            self.assertIn(f"class {model}(BaseModel)", src, msg=f"missing {model}")
+
+    def test_master_crud_endpoint_paths(self):
+        src = (BACKEND / "payment_routes.py").read_text(encoding="utf-8")
+        for path in self.MASTER_WRITE_PATHS:
+            self.assertIn(path, src, msg=f"missing path {path}")
+
+    def test_master_write_uses_require_module_write(self):
+        src = (BACKEND / "payment_routes.py").read_text(encoding="utf-8")
+        for fn in (
+            "create_sale_master",
+            "patch_sale_master",
+            "create_channel_master",
+            "patch_channel_master",
+            "create_package_master",
+            "patch_package_master",
+            "patch_customer_master",
+        ):
+            start = src.index(f"def {fn}")
+            block = src[start : start + 500]
+            self.assertIn("require_module_write(sb, actor, \"payments\")", block, fn)
+
+
 class TestPaymentActionPayloads(unittest.TestCase):
     def test_refund_restore_link_crm_source(self):
         src = (BACKEND / "payment_routes.py").read_text(encoding="utf-8")
