@@ -18,6 +18,7 @@ const ROLE_EXPECTATIONS: Record<
     hidden: [
       "Tài khoản Auth",
       "Đồng bộ CRM",
+      "Quản lý Doanh thu",
     ],
     readOnly: ["Sổ doanh thu"],
   },
@@ -35,6 +36,7 @@ const ROLE_EXPECTATIONS: Record<
       "Tài khoản Auth",
       "Đồng bộ CRM",
       "Dashboard Sale",
+      "Quản lý Doanh thu",
     ],
     readOnly: ["Bảng thông tin"],
   },
@@ -52,6 +54,7 @@ const ROLE_EXPECTATIONS: Record<
       "Tài khoản Auth",
       "Đồng bộ CRM",
       "Dashboard Sale",
+      "Quản lý Doanh thu",
     ],
     readOnly: ["Bảng thông tin"],
   },

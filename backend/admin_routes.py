@@ -118,7 +118,7 @@ DEFAULT_DEPT_PERMISSIONS: dict[str, dict[str, str]] = {
     "sale": {
         "dashboard": "full", "paymentRequests": "full",
         "reconciliation": "full", "module3": "full", "module4": "read",
-        "revenueLedger": "read", "payments": "read", "bc01": "read", "bc02": "read", "bc03": "read",
+        "revenueLedger": "read", "payments": "none", "bc01": "read", "bc02": "read", "bc03": "read",
         "module5": "none", "module6": "full",
         "authAccounts": "none", "profile": "full", "permissions": "none",
     },
@@ -132,7 +132,7 @@ DEFAULT_DEPT_PERMISSIONS: dict[str, dict[str, str]] = {
     "marketing": {
         "dashboard": "read", "paymentRequests": "none",
         "reconciliation": "none", "module3": "none", "module4": "none",
-        "revenueLedger": "full", "payments": "full", "bc01": "read", "bc02": "read", "bc03": "read",
+        "revenueLedger": "full", "payments": "none", "bc01": "read", "bc02": "read", "bc03": "read",
         "module5": "none", "module6": "none",
         "authAccounts": "none", "profile": "full", "permissions": "none",
     },
