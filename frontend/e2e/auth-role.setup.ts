@@ -31,7 +31,7 @@ setup("authenticate-role", async ({ page }, testInfo) => {
   const authFile = path.resolve(__dirname, `.auth/${role}.json`);
 
   await page.goto("/login");
-  await expect(page.locator("text=Đăng nhập")).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByRole("heading", { name: "Đăng nhập" })).toBeVisible({ timeout: 15_000 });
 
   await page.fill('input[type="email"]', email);
   await page.fill('input[type="password"]', password);
@@ -39,7 +39,7 @@ setup("authenticate-role", async ({ page }, testInfo) => {
 
   // Wait for redirect — role accounts may land on dashboard or profile
   await expect(
-    page.locator("text=Bảng thông tin").or(page.locator("text=Thông tin cá nhân"))
+    page.getByRole("heading", { name: "Bảng thông tin" }).or(page.getByRole("heading", { name: "Thông tin cá nhân" }))
   ).toBeVisible({ timeout: 20_000 });
 
   await page.context().storageState({ path: authFile });
