@@ -4,11 +4,19 @@ import { usePermission } from "../hooks/usePermission";
 
 type SubTab = "grid" | "reports" | "recon" | "master";
 
-const SUB_TABS: { id: SubTab; label: string; description: string }[] = [
-  { id: "grid", label: "Doanh thu", description: "Nhập / sửa / xem danh sách giao dịch" },
-  { id: "reports", label: "Báo cáo", description: "BCTB, theo team, theo kênh" },
-  { id: "recon", label: "Đối soát", description: "Cảnh báo nội bộ" },
-  { id: "master", label: "Danh mục", description: "Sale, Kênh, Gói, Khách" },
+const SUB_TABS: { id: SubTab; label: string; description: string; activeClass: string; inactiveClass: string }[] = [
+  { id: "grid", label: "Doanh thu", description: "Nhập / sửa / xem danh sách giao dịch",
+    activeClass: "bg-[#7260ff] text-white shadow-gmv-1",
+    inactiveClass: "text-[#7260ff]/70 hover:bg-[#7260ff]/10" },
+  { id: "reports", label: "Báo cáo", description: "BCTB, theo team, theo kênh",
+    activeClass: "bg-[#2f9e44] text-white shadow-gmv-1",
+    inactiveClass: "text-[#2f9e44]/70 hover:bg-[#2f9e44]/10" },
+  { id: "recon", label: "Đối soát", description: "Cảnh báo nội bộ",
+    activeClass: "bg-[#f08c00] text-white shadow-gmv-1",
+    inactiveClass: "text-[#f08c00]/80 hover:bg-[#f08c00]/10" },
+  { id: "master", label: "Danh mục", description: "Sale, Kênh, Gói, Khách",
+    activeClass: "bg-[#1c7ed6] text-white shadow-gmv-1",
+    inactiveClass: "text-[#1c7ed6]/70 hover:bg-[#1c7ed6]/10" },
 ];
 
 /* ── Summary Card ── */
@@ -378,17 +386,15 @@ export default function PaymentsTab() {
   return (
     <div className="space-y-4">
       {/* Sub-tab navigation */}
-      <div className="flex items-center gap-1 rounded-gmv-lg bg-gmv-bg p-1">
+      <div className="flex items-center gap-1.5 rounded-gmv-lg bg-gmv-bg p-1.5">
         {SUB_TABS.map((tab) => (
           <button
             key={tab.id}
             type="button"
             onClick={() => setActiveSubTab(tab.id)}
             className={cn(
-              "rounded-gmv-md px-4 py-2 text-sm font-medium transition",
-              activeSubTab === tab.id
-                ? "bg-gmv-canvas text-gmv-text-strong shadow-gmv-1"
-                : "text-gmv-muted hover:text-gmv-text"
+              "rounded-gmv-md px-4 py-2 text-sm font-semibold transition",
+              activeSubTab === tab.id ? tab.activeClass : tab.inactiveClass
             )}
           >
             {tab.label}
