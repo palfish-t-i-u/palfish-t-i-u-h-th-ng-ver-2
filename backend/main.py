@@ -24,6 +24,7 @@ from payment_request_routes import (
     reconcile_payment_line_webhook,
     register_payment_request_routes,
 )
+from payment_report_routes import register_payment_report_routes
 from report_routes import register_report_routes
 from revenue_routes import register_revenue_routes
 from rbac import can_confirm_payment, resolve_actor, visible_creator_emails
@@ -1300,6 +1301,7 @@ register_activation_routes(app, _supabase)
 register_crm_routes(app, _supabase)
 register_dashboard_routes(app, _supabase)
 register_report_routes(app, _supabase)
+register_payment_report_routes(app, _supabase)
 
 
 @app.on_event("startup")
