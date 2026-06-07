@@ -1,3 +1,4 @@
+from collections import defaultdict
 from datetime import date, timedelta
 from fastapi import APIRouter, Header, Query, HTTPException
 
@@ -192,5 +193,119 @@ def register_payment_report_routes(app, supabase):
             import traceback
             traceback.print_exc()
             raise HTTPException(500, f"Lỗi tạo báo cáo BCTB: {exc}")
+
+    @router.get("/reports/team")
+    def get_team_report(
+        date_from: date,
+        date_to: date,
+        authorization: str | None = Header(None),
+    ):
+        """Báo cáo doanh số theo Team (Aggregated, Early Return, Fallback)."""
+        if not supabase:
+            raise HTTPException(503, "Supabase chưa được cấu hình")
+
+        # ── Guard Clauses ─────────────────────────────────────────
+        delta_days = (date_to - date_from).days
+        if delta_days < 0:
+            raise HTTPException(
+                status_code=400,
+                detail="date_from không được lớn hơn date_to.",
+            )
+        if delta_days > 93:
+            raise HTTPException(
+                status_code=400,
+                detail="Khoảng thời gian truy vấn tối đa là 93 ngày để tránh quá tải hệ thống.",
+            )
+
+        # ── RBAC ──────────────────────────────────────────────────
+        try:
+            actor = resolve_actor(supabase, authorization)
+            require_min_role(actor, "leader")
+        except HTTPException:
+            raise
+        except Exception as exc:
+            raise HTTPException(401, f"Lỗi xác thực: {exc}")
+
+        try:
+            # ── 1. Fetch payments in range ────────────────────────
+            start_str = f"{date_from}T00:00:00"
+            end_str = f"{date_to}T23:59:59"
+
+            payments_res = (
+                supabase.table("payments")
+                .select("sale_id, gmv_final, real_pay_vnd, gmv_rmb")
+                .gte("pay_time", start_str)
+                .lte("pay_time", end_str)
+                .execute()
+            )
+            payments = payments_res.data or []
+
+            # ── Early Return: no payments → no rows ──────────────
+            if not payments:
+                return {"status": "success", "rows": []}
+
+            # ── 2. Extract unique sale_ids (exclude None) ────────
+            unique_sale_ids = set()
+            for p in payments:
+                sid = p.get("sale_id")
+                if sid is not None:
+                    unique_sale_ids.add(sid)
+
+            # ── 3. Fetch sales data from `sales` table ───────────
+            sale_mapping = {}
+            if unique_sale_ids:
+                sales_res = (
+                    supabase.table("sales")
+                    .select("id, team, khoi")
+                    .in_("id", list(unique_sale_ids))
+                    .execute()
+                )
+                sale_mapping = {
+                    s["id"]: (
+                        s.get("khoi") or "Không xác định",
+                        s.get("team") or "Không xác định",
+                    )
+                    for s in (sales_res.data or [])
+                }
+
+            # ── 4. Aggregate by (khoi, team) ─────────────────────
+            report = defaultdict(
+                lambda: {"gmv_final": 0, "real_pay_vnd": 0, "gmv_rmb": 0, "count": 0}
+            )
+
+            for p in payments:
+                sale_id = p.get("sale_id")
+                khoi, team = sale_mapping.get(
+                    sale_id, ("Không xác định", "Không xác định")
+                )
+
+                key = (khoi, team)
+                report[key]["gmv_final"] += float(p.get("gmv_final") or 0)
+                report[key]["real_pay_vnd"] += float(p.get("real_pay_vnd") or 0)
+                report[key]["gmv_rmb"] += float(p.get("gmv_rmb") or 0)
+                report[key]["count"] += 1
+
+            # ── 5. Build & sort rows ─────────────────────────────
+            rows = [
+                {
+                    "khoi": k[0],
+                    "team": k[1],
+                    "gmv_final": v["gmv_final"],
+                    "real_pay_vnd": v["real_pay_vnd"],
+                    "gmv_rmb": v["gmv_rmb"],
+                    "count": v["count"],
+                }
+                for k, v in report.items()
+            ]
+            rows.sort(key=lambda x: (x["khoi"], x["team"]))
+
+            return {"status": "success", "rows": rows}
+
+        except HTTPException:
+            raise
+        except Exception as exc:
+            import traceback
+            traceback.print_exc()
+            raise HTTPException(500, f"Lỗi tạo báo cáo Team: {exc}")
 
     app.include_router(router)
