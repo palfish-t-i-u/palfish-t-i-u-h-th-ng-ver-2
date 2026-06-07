@@ -20,6 +20,7 @@ from admin_routes import register_admin_routes, require_module_write
 from crm_routes import register_crm_routes
 from dashboard_routes import register_dashboard_routes
 from invoice_routes import register_invoice_routes
+from payment_routes import register_payment_routes
 from payment_request_routes import (
     reconcile_payment_line_webhook,
     register_payment_request_routes,
@@ -1300,6 +1301,7 @@ register_activation_routes(app, _supabase)
 register_crm_routes(app, _supabase)
 register_dashboard_routes(app, _supabase)
 register_report_routes(app, _supabase)
+register_payment_routes(app, _supabase)
 
 
 @app.on_event("startup")
