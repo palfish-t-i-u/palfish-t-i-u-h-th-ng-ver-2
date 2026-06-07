@@ -7,16 +7,16 @@ type SubTab = "grid" | "reports" | "recon" | "master";
 const SUB_TABS: { id: SubTab; label: string; description: string; activeClass: string; inactiveClass: string }[] = [
   { id: "grid", label: "Doanh thu", description: "Nhập / sửa / xem danh sách giao dịch",
     activeClass: "bg-[#7260ff] text-white shadow-gmv-1",
-    inactiveClass: "text-[#7260ff]/70 hover:bg-[#7260ff]/10" },
+    inactiveClass: "bg-[#7260ff]/10 text-[#7260ff] hover:bg-[#7260ff]/20" },
   { id: "reports", label: "Báo cáo", description: "BCTB, theo team, theo kênh",
     activeClass: "bg-[#2f9e44] text-white shadow-gmv-1",
-    inactiveClass: "text-[#2f9e44]/70 hover:bg-[#2f9e44]/10" },
+    inactiveClass: "bg-[#2f9e44]/10 text-[#2f9e44] hover:bg-[#2f9e44]/20" },
   { id: "recon", label: "Đối soát", description: "Cảnh báo nội bộ",
     activeClass: "bg-[#f08c00] text-white shadow-gmv-1",
-    inactiveClass: "text-[#f08c00]/80 hover:bg-[#f08c00]/10" },
+    inactiveClass: "bg-[#f08c00]/10 text-[#f08c00] hover:bg-[#f08c00]/20" },
   { id: "master", label: "Danh mục", description: "Sale, Kênh, Gói, Khách",
     activeClass: "bg-[#1c7ed6] text-white shadow-gmv-1",
-    inactiveClass: "text-[#1c7ed6]/70 hover:bg-[#1c7ed6]/10" },
+    inactiveClass: "bg-[#1c7ed6]/10 text-[#1c7ed6] hover:bg-[#1c7ed6]/20" },
 ];
 
 /* ── Summary Card ── */
