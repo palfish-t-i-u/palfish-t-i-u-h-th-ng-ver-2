@@ -145,8 +145,6 @@ const REPORT_TABS: { id: ReportTab; label: string; description: string }[] = [
 
 function ReportsSubTab() {
   const [activeReport, setActiveReport] = useState<ReportTab>("bctb");
-  const current = REPORT_TABS.find((t) => t.id === activeReport)!;
-
   return (
     <div className="space-y-4">
       {/* Report tab pills + date filter */}
