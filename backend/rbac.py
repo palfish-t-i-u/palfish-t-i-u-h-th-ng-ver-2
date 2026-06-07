@@ -25,7 +25,7 @@ class Actor:
 
 def _normalize_role(raw: str | None) -> str:
     r = (raw or "sale").lower().strip()
-    if r == "ops":
+    if r in ("ops", "admin"):
         return "system"
     if r not in ROLE_RANK:
         return "sale"
@@ -178,6 +178,53 @@ def staff_to_profile(actor: Actor) -> dict[str, Any]:
         "canManageStaff": _rank(actor.role) >= _rank("system"),
         "isActivated": actor.is_activated,
     }
+
+
+def enforce_report_scope(
+    actor: Actor,
+    requested_team: str | None = None,
+) -> tuple[str | None, str | None]:
+    """Enforce data scope for reports based on role.
+
+    Returns (team_filter, sub_team_filter):
+    - system: honour the requested team, no sub_team restriction
+    - manager: force to actor's team (whole branch)
+    - leader / sale: force to actor's team + sub_team
+    """
+    role = _normalize_role(actor.role)
+    if role == "system":
+        return (requested_team or "").strip() or None, None
+
+    staff = actor.staff or {}
+    actor_team = (staff.get("team") or "").strip()
+    actor_sub = (staff.get("sub_team") or "").strip()
+
+    if role == "manager" and actor_team:
+        return actor_team, None
+    if role in ("leader", "sale") and actor_team:
+        return actor_team, actor_sub or None
+    return (requested_team or "").strip() or None, None
+
+
+def scope_sale_names(sb, team: str, sub_team: str) -> set[str]:
+    """Return CRM names of active staff in a specific team + sub_team."""
+    try:
+        res = (
+            sb.table("nhan_su_sale")
+            .select("crm_name")
+            .eq("team", team)
+            .eq("sub_team", sub_team)
+            .eq("is_active", True)
+            .execute()
+        )
+        return {
+            (r.get("crm_name") or "").strip()
+            for r in (res.data or [])
+            if (r.get("crm_name") or "").strip()
+        }
+    except Exception as exc:
+        print(f"scope_sale_names: {exc}")
+        return set()
 
 
 def visible_creator_emails(sb, actor: Actor) -> list[str] | None:

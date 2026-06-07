@@ -235,6 +235,7 @@ export const endpoints = {
       to?: string;
       loai_nhap?: string;
       team?: string;
+      search?: string;
       limit?: number;
       offset?: number;
     }) => api.get<RevenueLedgerListResponse>("/revenue/ledger", { params }),
@@ -399,6 +400,7 @@ export const endpoints = {
       department: string;
       module_key: string;
       access_level: string;
+      min_role?: string;
     }) => api.patch("/admin/permissions", body),
     permissionOverrides: () => api.get("/admin/permission-overrides"),
     createPermissionOverride: (body: {

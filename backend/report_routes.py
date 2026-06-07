@@ -20,16 +20,14 @@ from crm_metrics import (
     sync_coverage_meta,
     team_label,
 )
-from rbac import can_confirm_payment, resolve_actor
+from admin_routes import require_module_access
+from rbac import enforce_report_scope, resolve_actor, scope_sale_names
+from revenue_routes import load_team_map
 from vn_staff import is_vn_sale_row
 
 _MONTH_RE = re.compile(r"^\d{4}-\d{2}$")
 DEFAULT_EXCHANGE_RATE = 3700
 
-
-def _require_bc03_actor(actor) -> None:
-    if not can_confirm_payment(actor) and actor.role.lower() not in ("manager", "leader"):
-        raise HTTPException(403, "Chỉ Leader/Manager/Ops được thao tác BC03")
 
 
 def _validate_month_key(month: str) -> str:
@@ -267,6 +265,7 @@ def _load_m2_revenue(
     """Module 2 — don_hang tien_ve=true (bổ sung đơn chưa có trên Sổ)."""
     out: dict[str, dict] = {}
     try:
+        team_map = load_team_map(sb) if team else {}
         q = (
             sb.table("don_hang")
             .select("id, sale_crm_name, so_tien_can_thu, updated_at")
@@ -279,23 +278,11 @@ def _load_m2_revenue(
             if oid in skip_don_ids:
                 continue
             sname = _sale_key(r.get("sale_crm_name"))
-            # Lọc team: tra nhan_su_sale nếu cần
             sale_team = "—"
             if team and sname != "(Chưa gán sale)":
-                try:
-                    ns = (
-                        sb.table("nhan_su_sale")
-                        .select("team")
-                        .eq("crm_name", sname)
-                        .limit(1)
-                        .execute()
-                    )
-                    if ns.data:
-                        sale_team = str(ns.data[0].get("team") or "—")
-                        if sale_team != team:
-                            continue
-                except Exception:
-                    pass
+                sale_team = team_map.get(sname, "—")
+                if sale_team != team:
+                    continue
             entry = _ensure_rev(out, sname, sale_team)
             vnd = parse_metric(r.get("so_tien_can_thu"))
             day = str(r.get("updated_at") or "")[:10]
@@ -438,17 +425,22 @@ def register_report_routes(app, supabase_factory):
             raise HTTPException(503, "Supabase chưa cấu hình")
 
         actor = resolve_actor(sb, authorization)
-        _require_bc03_actor(actor)
+        require_module_access(sb, actor, "bc03")
+        team, sub_team = enforce_report_scope(actor, team or department)
 
         d_start, d_end = _date_range(range_key, start, end)
         dates = _list_dates(d_start, d_end)
 
         try:
             raw_rows = fetch_crm_sales_rows(
-                sb, d_start, d_end, team=team, department=department,
+                sb, d_start, d_end, team=team,
             )
             rows = exclude_legacy_summary_rows(raw_rows)
             rows = [r for r in rows if is_detail_sale_row(r)]
+            allowed_sales: set[str] | None = None
+            if sub_team and team:
+                allowed_sales = scope_sale_names(sb, team, sub_team)
+                rows = [r for r in rows if aggregate_label(r) in allowed_sales]
             coverage = sync_coverage_meta(rows, d_start, d_end)
         except Exception as exc:
             raise HTTPException(500, f"Query BC03 thất bại: {exc}") from exc
@@ -484,6 +476,9 @@ def register_report_routes(app, supabase_factory):
 
         ledger_map, linked_don = _load_ledger_revenue(sb, d_start, d_end, team)
         m2_map = _load_m2_revenue(sb, d_start, d_end, team, linked_don)
+        if allowed_sales is not None:
+            ledger_map = {k: v for k, v in ledger_map.items() if k in allowed_sales}
+            m2_map = {k: v for k, v in m2_map.items() if k in allowed_sales}
         rev_map = _merge_rev_maps(rev_map, ledger_map, m2_map)
         revenue = _finalize_revenue_rows(rev_map, dates)
         trial = _finalize_metric_rows(trial_map, "completed_classes", dates)
@@ -510,7 +505,7 @@ def register_report_routes(app, supabase_factory):
             raise HTTPException(503, "Supabase chưa cấu hình")
         
         actor = resolve_actor(sb, authorization)
-        _require_bc03_actor(actor)
+        require_module_access(sb, actor, "bc03")
         try:
             res = (
                 sb.table("nhan_su_sale")
@@ -550,7 +545,7 @@ def register_report_routes(app, supabase_factory):
             raise HTTPException(503, "Supabase chưa cấu hình")
         
         actor = resolve_actor(sb, authorization)
-        _require_bc03_actor(actor)
+        require_module_access(sb, actor, "bc03")
         
         month_key = _validate_month_key(month)
         try:
@@ -577,7 +572,7 @@ def register_report_routes(app, supabase_factory):
             raise HTTPException(503, "Supabase chưa cấu hình")
 
         actor = resolve_actor(sb, authorization)
-        _require_bc03_actor(actor)
+        require_module_access(sb, actor, "bc03")
         actor_email = actor.email
 
         try:

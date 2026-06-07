@@ -651,3 +651,48 @@
 
 **Git**
 - Feature branch merges into `sandbox`: `feature-kem` (OTHER-01..08), `feature-duc` (DB audit RPC), `feature-dat` (auth secure).
+
+---
+
+## 2026-06-04..05 — Ledger search + batch team lookup + perf
+
+**Backend**
+- `revenue_routes.py` — `search` param cho `_ledger_query`; `load_team_map()` batch lookup thay N+1 queries.
+- SQL migration: indexes cho search + team lookup.
+
+**Frontend**
+- `SoDoanhThuTab.tsx` — debounced search bar cho Sổ doanh thu.
+- `AppShell.tsx` — preload lazy chunks on nav hover (eliminate module switch delay).
+
+**Docs**
+- `docs/SPEC_TEMPLATE.md` + `docs/HUONG_DAN_XUAT_SPEC.md` — spec template cho prototype-to-spec workflow.
+
+---
+
+## 2026-06-05 — Unified permission system + MeProvider
+
+**Frontend**
+- `useMe` → shared `MeProvider` context (single `/me` fetch, no duplicate calls).
+
+**Backend**
+- `rbac.py` + `admin_routes.py` — unified permission system with `min_role` scope.
+
+**Docs**
+- Unified permissions design spec + implementation plan.
+
+---
+
+## 2026-06-05..06 — 4-level RBAC sub-team scoping
+
+**Backend**
+- `report_routes.py`, `dashboard_routes.py` — team scope enforcement (leader chỉ thấy data team mình).
+- `revenue_routes.py` — sub-team scope trên ledger + QR data sources.
+
+**Frontend**
+- `PermissionsTab.tsx` — cập nhật labels + tooltips cho 4-level role system.
+- `DashboardTab.tsx` — warning cho sub-team scoped users không có CRM data.
+- `AuthAccountsTab.tsx` — ưu tiên CRM name thay Google profile name.
+
+**Fix**
+- Auto-correct GMV locale errors từ "All File Thu Hiền" (detect dấu phẩy thập phân VN).
+- Permissions tab loading spinner fix (revert + reapply).

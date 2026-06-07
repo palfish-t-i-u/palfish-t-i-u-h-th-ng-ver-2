@@ -23,8 +23,8 @@ export default function DoanhThuSaleTab() {
   const [from, setFrom] = useState(monthStartIso());
   const [to, setTo] = useState("");
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (opts?: { silent?: boolean }) => {
+    if (!opts?.silent) setLoading(true);
     setError("");
     try {
       const res = await endpoints.revenue.pivot({
@@ -35,7 +35,7 @@ export default function DoanhThuSaleTab() {
     } catch {
       setError("Không tải được Sales Performance.");
     } finally {
-      setLoading(false);
+      if (!opts?.silent) setLoading(false);
     }
   }, [from, to]);
 
@@ -44,7 +44,7 @@ export default function DoanhThuSaleTab() {
   }, [load]);
 
   useRealtimeTable(["so_doanh_thu"], load);
-  useRefetchOnFocus(load);
+  useRefetchOnFocus(() => load({ silent: true }));
 
   const months = data?.months ?? [];
 
@@ -63,7 +63,7 @@ export default function DoanhThuSaleTab() {
           Đến ngày
           <Input type="date" className="mt-1" value={to} onChange={(e) => setTo(e.target.value)} />
         </label>
-        <Button variant="secondary" onClick={load} disabled={loading}>
+        <Button variant="secondary" onClick={() => load()} disabled={loading}>
           {loading ? "Đang tải…" : "Làm mới"}
         </Button>
       </div>

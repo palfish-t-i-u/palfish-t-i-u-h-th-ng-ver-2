@@ -56,8 +56,8 @@ export default function Module3Tab() {
   const [savingBulk, setSavingBulk] = useState(false);
   const [confirmBulkSave, setConfirmBulkSave] = useState(false);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (opts?: { silent?: boolean }) => {
+    if (!opts?.silent) setLoading(true);
     setError("");
     try {
       const res = await endpoints.invoice.getM3Pending();
@@ -73,14 +73,14 @@ export default function Module3Tab() {
       setError("Không tải được danh sách đơn hàng.");
       console.warn(e);
     } finally {
-      setLoading(false);
+      if (!opts?.silent) setLoading(false);
     }
   }, []);
 
   useEffect(() => { load(); }, [load]);
 
   useRealtimeTable(["active_requests"], load);
-  useRefetchOnFocus(load);
+  useRefetchOnFocus(() => load({ silent: true }));
 
   async function handleSaveCrm(order: InvoiceOrder) {
     setSaving((p) => ({ ...p, [order.id]: true }));
@@ -224,7 +224,7 @@ export default function Module3Tab() {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <Button variant="secondary" size="sm" onClick={load} disabled={loading || exportingBatch || savingBulk}>
+          <Button variant="secondary" size="sm" onClick={() => load()} disabled={loading || exportingBatch || savingBulk}>
             {loading ? "Đang tải…" : "Làm mới"}
           </Button>
           {!readOnly && (

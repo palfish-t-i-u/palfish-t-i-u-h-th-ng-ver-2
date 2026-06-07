@@ -19,6 +19,18 @@ vi.mock("../lib/supabase", () => ({
   },
 }));
 
+vi.mock("../hooks/useTeamScope", async (importOriginal) => {
+  const mod = await importOriginal<typeof import("../hooks/useTeamScope")>();
+  return {
+    ...mod,
+    useTeamScope: () => ({
+      teamFilters: mod.ALL_TEAM_FILTERS,
+      defaultTeam: "",
+      isRestricted: false,
+    }),
+  };
+});
+
 const BASE = "http://localhost:8000";
 
 function today() {
