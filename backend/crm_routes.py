@@ -321,6 +321,8 @@ def _resolve_order_id(
     return f"crm-{report_date}-{idx}-{digest}"
 
 
+_ENGLISH_HEADER_MARKERS = ("ad leads", "referral leads", "total leads", "gmv", "orders", "preview rate")
+
 def _columns_look_english(cols) -> bool:
     lower = {str(c).strip().lower() for c in cols if c is not None and str(c).strip()}
     if "sales" in lower and "department" in lower:
@@ -956,7 +958,6 @@ async def _run_backfill_range(
     sem = asyncio.Semaphore(conc)
 
     async def _sync_one(day: date) -> None:
-        nonlocal days_ok, days_failed
         day_iso = day.isoformat()
         async with sem:
             try:
