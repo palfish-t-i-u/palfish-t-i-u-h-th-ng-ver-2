@@ -179,7 +179,7 @@ export default function AppShell({
     <div className="flex min-w-0 flex-1 bg-gmv-bg font-sans text-gmv-text">
       <aside
         className={cn(
-          "sticky top-0 hidden max-h-screen shrink-0 flex-col border-r border-gmv-border bg-gmv-canvas transition-[width] duration-200 md:flex",
+          "sticky top-0 z-30 hidden max-h-screen shrink-0 flex-col border-r border-gmv-border bg-gmv-canvas transition-[width] duration-200 md:flex",
           collapsed ? "w-[60px]" : "w-60"
         )}
       >
