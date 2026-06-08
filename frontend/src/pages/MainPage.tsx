@@ -20,7 +20,6 @@ const ReconciliationTab = lazy(() => import("../components/ReconciliationTab"));
 const ActivationTab = lazy(() => import("../components/ActivationTab"));
 const InvoiceRequestTab = lazy(() => import("../components/InvoiceRequestTab"));
 const SoDoanhThuTab = lazy(() => import("../components/SoDoanhThuTab"));
-const PaymentsTab = lazy(() => import("../components/PaymentsTab"));
 
 const PRELOAD_MAP: Record<string, () => Promise<unknown>> = {
   paymentRequests: () => import("../components/PaymentRequestsTab"),
@@ -31,7 +30,6 @@ const PRELOAD_MAP: Record<string, () => Promise<unknown>> = {
   bc01: () => import("../components/reports/BC01SalesPerformance"),
   bc02: () => import("../components/reports/BC02KeyDataReport"),
   bc03: () => import("../components/ReportBC03Tab"),
-  payments: () => import("../components/PaymentsTab"),
 };
 
 type ViewId =
@@ -42,7 +40,6 @@ type ViewId =
   | "module3"
   | "module4"
   | "revenueLedger"
-  | "payments"
   | "bc01"
   | "bc02"
   | "bc03"
@@ -163,10 +160,6 @@ const TITLES: Record<ViewId, { title: string; subtitle?: string }> = {
     title: "Sổ doanh thu",
     subtitle: "Pay Time · GMV RMB = VND÷3700 — M3 tự động + điền tay + Sync sheet",
   },
-  payments: {
-    title: "Quản lý Doanh thu",
-    subtitle: "Nhập / sửa doanh thu, báo cáo tự sinh, đối soát nội bộ",
-  },
   bc01: { title: "BC01: Sales performance", subtitle: "Tổng GMV theo team × sale × tháng" },
   bc02: { title: "BC02: Key Data", subtitle: "Dữ liệu then chốt quy trình bán hàng" },
   bc03: { title: "BC03 — Báo cáo tổng bộ", subtitle: "KPI thủ công + doanh thu / trial / referral tự động" },
@@ -251,9 +244,6 @@ function MainPageInner({
     // ── Báo cáo ──
     if (can("revenueLedger"))
       list.push({ id: "revenueLedger", label: "Sổ doanh thu", icon: I.ledger, section: "Báo cáo" });
-    if (can("payments"))
-      list.push({ id: "payments", label: "Quản lý Doanh thu", icon: I.database, ...(!can("revenueLedger") ? { section: "Báo cáo" } : {}) });
-
     const reportChildren: { id: string; label: string; subtitle?: string }[] = [];
     if (can("bc01")) reportChildren.push({ id: "bc01", label: "BC01: Sales performance", subtitle: "GMV theo team × sale × tháng" });
     if (can("bc02")) reportChildren.push({ id: "bc02", label: "BC02: Key Data", subtitle: "Then chốt quy trình bán" });
@@ -295,7 +285,6 @@ function MainPageInner({
     activeView === "bc01" ||
     activeView === "bc02" ||
     activeView === "bc03" ||
-    activeView === "payments" ||
     activeView === "permissions";
 
   const renderActiveView = () => {
@@ -308,7 +297,6 @@ function MainPageInner({
       case "module4": return <InvoiceRequestTab />;
       case "profile": return <ProfilePage />;
       case "revenueLedger": return <SoDoanhThuTab />;
-      case "payments": return <PaymentsTab />;
       case "bc01": return <BC01SalesPerformance />;
       case "bc02": return <BC02KeyDataReport />;
       case "bc03": return <ReportBC03Tab />;
@@ -325,7 +313,6 @@ function MainPageInner({
       items={items}
       activeId={activeView}
       wideContent={wideContent}
-      autoCollapse={activeView === "payments"}
       onSelect={(id) => setActiveView(id as ViewId)}
       onHover={handleNavHover}
       title={head.title}

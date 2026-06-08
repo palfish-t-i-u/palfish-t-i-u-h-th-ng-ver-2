@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Badge from "../components/ui/Badge";
 import { cn } from "../lib/cn";
 
@@ -30,7 +30,6 @@ interface Props {
   isDevMode?: boolean;
   onSignOut?: () => void;
   wideContent?: boolean;
-  autoCollapse?: boolean;
   children: ReactNode;
 }
 
@@ -132,21 +131,13 @@ export default function AppShell({
   isDevMode,
   onSignOut,
   wideContent,
-  autoCollapse,
   children,
 }: Props) {
   const reportParentId = items.find((it) => it.children?.some((c) => c.id === activeId))?.id;
   const [expandedIds, setExpandedIds] = useState<Set<string>>(() => new Set(reportParentId ? [reportParentId] : []));
   const [collapsed, setCollapsed] = useState(false);
-  const userToggled = useRef(false);
-
-  useEffect(() => {
-    userToggled.current = false;
-    setCollapsed(!!autoCollapse);
-  }, [autoCollapse]);
 
   const toggleCollapse = useCallback(() => {
-    userToggled.current = true;
     setCollapsed((prev) => !prev);
   }, []);
 
