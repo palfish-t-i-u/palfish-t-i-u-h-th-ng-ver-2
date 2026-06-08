@@ -706,7 +706,7 @@ function GridSubTab({ canWrite }: { canWrite: boolean }) {
   const [summary, setSummary] = useState<any>({});
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
-  const pageSize = 200;
+  const pageSize = 50;
 
   // Master data for dropdown editors
   const [salesList, setSalesList] = useState<any[]>([]);
@@ -944,14 +944,13 @@ function GridSubTab({ canWrite }: { canWrite: boolean }) {
           Không có dữ liệu {teamFilter !== "Tất cả" ? `cho team "${teamFilter}"` : ""}
         </div>
       ) : (
-        <div style={{ width: "100%" }}>
+        <div style={{ height: "calc(100vh - 380px)", minHeight: "360px", width: "100%" }}>
           <AgGridReact
             ref={gridRef}
             theme={gridTheme}
             rowData={items}
             columnDefs={columnDefs}
             defaultColDef={defaultColDef}
-            domLayout="autoHeight"
             getRowId={(params) => params.data.payment_id}
             onCellValueChanged={handleCellEdit}
             onRowClicked={handleRowClick}
@@ -1400,13 +1399,12 @@ function MasterSubTab({ canWrite }: { canWrite: boolean }) {
           {activeMaster === "customers" && !search.trim() ? "Nhập ít nhất 2 ký tự để tìm khách hàng" : "Không có dữ liệu"}
         </div>
       ) : (
-        <div style={{ width: "100%" }}>
+        <div style={{ height: "calc(100vh - 340px)", minHeight: "320px", width: "100%" }}>
           <AgGridReact
             theme={gridTheme}
             rowData={filteredRows}
             columnDefs={masterColDefs}
             defaultColDef={masterDefaultColDef}
-            domLayout="autoHeight"
             getRowId={(params) => String(params.data.id ?? params.data.uid ?? Math.random())}
             onCellValueChanged={handleMasterEdit}
             stopEditingWhenCellsLoseFocus
