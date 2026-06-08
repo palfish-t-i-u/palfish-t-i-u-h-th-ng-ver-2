@@ -260,23 +260,18 @@ export default function AppShell({
             })}
           </ul>
         </nav>
-        <div className={cn("border-t border-gmv-border", collapsed ? "px-2.5 py-3" : "px-3 py-3")}>
+        <div className="border-t border-gmv-border px-2.5 py-3">
           <button
             type="button"
             onClick={toggleCollapse}
-            className={cn(
-              "flex w-full items-center justify-center rounded-gmv-md border transition",
-              collapsed
-                ? "aspect-square border-gmv-border bg-gmv-bg text-gmv-primary hover:border-gmv-primary hover:bg-gmv-primary-soft"
-                : "gap-2 border-gmv-border bg-gmv-bg px-3 py-2 text-gmv-muted hover:border-gmv-primary hover:bg-gmv-primary-soft hover:text-gmv-primary"
-            )}
+            className="flex h-9 w-full items-center justify-center gap-2 overflow-hidden rounded-gmv-md border border-gmv-border bg-gmv-bg text-gmv-muted transition-colors hover:border-gmv-primary hover:bg-gmv-primary-soft hover:text-gmv-primary"
             title={collapsed ? "Mở rộng sidebar" : "Thu gọn sidebar"}
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={cn("shrink-0 transition-transform", collapsed && "rotate-180")}>
               <polyline points="11 17 6 12 11 7" />
               <polyline points="18 17 13 12 18 7" />
             </svg>
-            {!collapsed && <span className="text-[11px] font-medium">Thu gọn</span>}
+            {!collapsed && <span className="text-[11px] font-medium whitespace-nowrap">Thu gọn</span>}
           </button>
         </div>
       </aside>
