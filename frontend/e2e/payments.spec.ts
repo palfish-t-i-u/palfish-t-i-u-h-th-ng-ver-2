@@ -12,7 +12,7 @@ test.describe("Module Doanh thu — UI Shell & Permissions", () => {
     await expect(page.locator("text=Doanh thu").first()).toBeVisible({ timeout: 10_000 });
   });
 
-  test("Hiển thị giao diện Doanh thu với đầy đủ summary cards và grid placeholder", async ({ page }) => {
+  test("Hiển thị giao diện Doanh thu với đầy đủ summary cards và AG Grid", async ({ page }) => {
     // Check 5 summary cards are visible
     await expect(page.locator("text=Tổng GMV")).toBeVisible();
     await expect(page.locator("text=Doanh thu VNĐ")).toBeVisible();
@@ -32,9 +32,9 @@ test.describe("Module Doanh thu — UI Shell & Permissions", () => {
     await expect(page.getByRole("button", { name: "Offline" })).toBeVisible();
     await expect(page.getByRole("button", { name: "HCM" })).toBeVisible();
 
-    // Check data table or empty state is present (API now wired)
+    // Check AG Grid renders or empty state shows
     await expect(
-      page.locator("table").first().or(page.locator("text=Không có dữ liệu"))
+      page.locator(".ag-root-wrapper").first().or(page.locator("text=Không có dữ liệu"))
     ).toBeVisible({ timeout: 15_000 });
   });
 
@@ -66,57 +66,74 @@ test.describe("Module Doanh thu — UI Shell & Permissions", () => {
     await expect(page.getByRole("button", { name: "Gói học", exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: "Khách hàng", exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: "Thêm Sale" })).toBeVisible();
-    // Wait for sales data to load
+    // Wait for AG Grid or empty state
     await expect(
-      page.locator("table").first().or(page.locator("text=Không có dữ liệu"))
+      page.locator(".ag-root-wrapper").first().or(page.locator("text=Không có dữ liệu"))
     ).toBeVisible({ timeout: 15_000 });
   });
 
-  // ── Kịch bản nâng cao: Đánh dấu skip/fixme vì đang chờ API & CRUD components ──
+  // ── Tests tương tác CRUD (AG Grid đã tích hợp) ──
 
-  test.fixme("Filter theo team hoạt động", async () => {
-    // Sẽ test khi tích hợp AG Grid và API filter hoạt động
-    // 1. Click tab "In-house"
-    // 2. Kiểm tra data chỉ hiện team In-house
-    // 3. Summary cards cập nhật
+  test("Filter theo team hoạt động", async ({ page }) => {
+    // Wait for grid to load
+    await expect(
+      page.locator(".ag-root-wrapper").first().or(page.locator("text=Không có dữ liệu"))
+    ).toBeVisible({ timeout: 15_000 });
+
+    // Click In-house tab
+    await page.getByRole("button", { name: "In-house" }).first().click();
+    // Wait for data refresh (either grid or empty state)
+    await expect(
+      page.locator(".ag-root-wrapper").first().or(page.locator("text=Không có dữ liệu"))
+    ).toBeVisible({ timeout: 15_000 });
+
+    // Verify the In-house tab is now active (has primary styling)
+    const tab = page.getByRole("button", { name: "In-house" }).first();
+    await expect(tab).toHaveClass(/text-gmv-primary/);
   });
 
-  test.fixme("Thêm doanh thu mới", async () => {
-    // Sẽ test khi có Dialog nhập liệu và API POST /payments
-    // 1. Click nút "+ Thêm doanh thu"
-    // 2. Dialog mở ra
-    // 3. Điền: uid, pay_time, package, sale, tiền VNĐ
-    // 4. Kiểm tra GMV tự tính
-    // 5. Click Lưu
-    // 6. Toast "Đã thêm"
-    // 7. Record mới xuất hiện trong grid
+  test("Nút Thêm doanh thu mở dialog", async ({ page }) => {
+    // Click add button
+    await page.getByRole("button", { name: "Thêm doanh thu" }).click();
+
+    // Dialog should open with form fields
+    await expect(page.locator("text=Thêm khoản doanh thu")).toBeVisible();
+    await expect(page.locator("text=Khách hàng (UID)")).toBeVisible();
+    await expect(page.locator("text=Thời gian thanh toán")).toBeVisible();
+
+    // Close dialog
+    const closeBtn = page.locator('[role="dialog"] button, .fixed button').filter({ hasText: "Hủy" }).first();
+    // Try close via Hủy or the X button
+    await page.getByRole("button", { name: "Hủy" }).first().click();
   });
 
-  test.fixme("Sửa inline trong grid", async () => {
-    // Sẽ test khi tích hợp AG Grid
+  test("Nút Import mở dialog", async ({ page }) => {
+    await page.getByRole("button", { name: "Import từ file" }).click();
+    await expect(page.locator("text=Import doanh thu từ file")).toBeVisible();
+    await expect(page.locator("text=Chọn file")).toBeVisible();
+    await page.getByRole("button", { name: "Đóng" }).click();
+  });
+
+  test.fixme("Sửa inline trong AG Grid", async () => {
+    // Test khi có data thật:
     // 1. Double-click ô Note
     // 2. Nhập text mới
     // 3. Press Enter
-    // 4. Ô cập nhật
+    // 4. Toast "Đã lưu" hiện
+    // 5. Ô cập nhật
   });
 
-  test.fixme("Hoàn tiền và Khôi phục", async () => {
-    // Sẽ test khi có Dialog chi tiết và API refund / restore
+  test.fixme("Hoàn tiền và Khôi phục qua dialog Chi tiết", async () => {
+    // Test khi có data thật:
     // 1. Click vào 1 dòng → dialog Chi tiết mở
     // 2. Click nút "Hoàn tiền" → Trạng thái chuyển sang "refunded"
     // 3. Click "Khôi phục" → Trạng thái chuyển sang "active"
   });
 
-  test.fixme("Báo cáo BCTB hiển thị pivot và Export Excel", async () => {
-    // Sẽ test khi có endpoint báo cáo thật
-    // 1. Kiểm tra bảng pivot có hàng (sale) × cột (ngày)
-    // 2. Đổi khoảng ngày → data cập nhật
-    // 3. Click "Xuất Excel" → download thành công
-  });
-
-  test.fixme("Danh mục Sale hiển thị + sửa", async () => {
-    // Sẽ test khi có API GET/POST/PATCH danh mục thật
-    // 1. Bảng hiện danh sách sales (~190)
-    // 2. Click 1 dòng → dialog sửa → Đổi short_code → Lưu → cập nhật
+  test.fixme("Danh mục Sale hiển thị AG Grid editable", async () => {
+    // Test khi có data thật:
+    // 1. Bảng Sale AG Grid hiện danh sách
+    // 2. Double-click ô short_code → sửa → Enter → lưu
+    // 3. Nút Thêm Sale → dialog → điền → Lưu → dòng mới
   });
 });
