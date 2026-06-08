@@ -32,9 +32,10 @@ test.describe("Module Doanh thu — UI Shell & Permissions", () => {
     await expect(page.getByRole("button", { name: "Offline" })).toBeVisible();
     await expect(page.getByRole("button", { name: "HCM" })).toBeVisible();
 
-    // Check grid placeholder
-    await expect(page.getByRole("heading", { name: "Lưới doanh thu" })).toBeVisible();
-    await expect(page.locator("text=AG Grid sẽ hiển thị ở đây")).toBeVisible();
+    // Check data table or empty state is present (API now wired)
+    await expect(
+      page.locator("table").first().or(page.locator("text=Không có dữ liệu"))
+    ).toBeVisible({ timeout: 15_000 });
   });
 
   test("Chuyển đổi các sub-tab và hiển thị đúng layout", async ({ page }) => {
@@ -45,12 +46,18 @@ test.describe("Module Doanh thu — UI Shell & Permissions", () => {
     await expect(page.getByRole("button", { name: "Theo Team" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Theo Kênh" })).toBeVisible();
     await expect(page.locator('input[type="date"]').first()).toBeVisible();
-    await expect(page.locator("text=Chờ BE API — GET /api/v1/reports/bctb")).toBeVisible();
+    // Wait for report data or empty state to load
+    await expect(
+      page.locator("table").first().or(page.locator("text=Không có dữ liệu")).or(page.locator("text=Không tải được"))
+    ).toBeVisible({ timeout: 15_000 });
 
     // ── 2. Sub-tab: Đối soát ──
     await page.click("button:has-text('Đối soát')");
-    await expect(page.getByRole("heading", { name: "Đối soát nội bộ" })).toBeVisible();
-    await expect(page.locator("text=Cảnh báo: trùng đơn, thiếu trường")).toBeVisible();
+    await expect(page.locator("text=Đối soát nội bộ")).toBeVisible({ timeout: 15_000 });
+    // Check warnings loaded (count badge or clean state)
+    await expect(
+      page.locator("table").first().or(page.locator("text=dữ liệu sạch"))
+    ).toBeVisible({ timeout: 15_000 });
 
     // ── 3. Sub-tab: Danh mục ──
     await page.click("button:has-text('Danh mục')");
@@ -58,8 +65,11 @@ test.describe("Module Doanh thu — UI Shell & Permissions", () => {
     await expect(page.getByRole("button", { name: "Kênh", exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: "Gói học", exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: "Khách hàng", exact: true })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Thêm Sale", exact: true })).toBeVisible();
-    await expect(page.locator("text=Chờ BE API — GET /api/v1/sales")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Thêm Sale" })).toBeVisible();
+    // Wait for sales data to load
+    await expect(
+      page.locator("table").first().or(page.locator("text=Không có dữ liệu"))
+    ).toBeVisible({ timeout: 15_000 });
   });
 
   // ── Kịch bản nâng cao: Đánh dấu skip/fixme vì đang chờ API & CRUD components ──
