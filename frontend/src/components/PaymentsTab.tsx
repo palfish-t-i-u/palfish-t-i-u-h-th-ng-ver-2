@@ -779,20 +779,13 @@ function GridSubTab({ canWrite }: { canWrite: boolean }) {
       valueFormatter: (p) => fmtGMV(p.value ?? 0), editable: false },
     { field: "payment_seq", headerName: "Lần", width: 65, editable: canWrite },
     { field: "status", headerName: "TT", width: 90,
-      cellRenderer: (p: any) => {
-        const s = p.value;
-        return `<span class="${s === "active" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"} inline-flex rounded-full px-2 py-0.5 text-[11px] font-medium">${s === "active" ? "Active" : "Refunded"}</span>`;
-      },
+      cellRenderer: (p: any) => <StatusBadge status={p.value} />,
       editable: false },
     { field: "bank_matched", headerName: "NH", width: 70,
-      cellRenderer: (p: any) => p.value
-        ? '<span class="bg-green-100 text-green-700 inline-flex rounded-full px-2 py-0.5 text-[11px] font-medium">Khớp</span>'
-        : '<span class="bg-orange-100 text-orange-700 inline-flex rounded-full px-2 py-0.5 text-[11px] font-medium">Chưa</span>',
+      cellRenderer: (p: any) => <BoolBadge value={p.value} yes="Khớp" no="Chưa" />,
       editable: false },
     { field: "crm_activated", headerName: "CRM", width: 70,
-      cellRenderer: (p: any) => p.value
-        ? '<span class="bg-green-100 text-green-700 inline-flex rounded-full px-2 py-0.5 text-[11px] font-medium">Có</span>'
-        : '<span class="bg-orange-100 text-orange-700 inline-flex rounded-full px-2 py-0.5 text-[11px] font-medium">Chưa</span>',
+      cellRenderer: (p: any) => <BoolBadge value={p.value} />,
       editable: false },
     { field: "note", headerName: "Note", flex: 1, minWidth: 120, editable: canWrite },
   ], [canWrite, saleNames]);
@@ -1336,7 +1329,7 @@ function MasterSubTab({ canWrite }: { canWrite: boolean }) {
         valueFormatter: (p: any) => p.value === true || p.value === "true" ? "Active" : "Inactive",
         cellRenderer: (p: any) => {
           const v = p.value === true || p.value === "true";
-          return `<span class="${v ? "bg-green-100 text-green-700" : "bg-orange-100 text-orange-700"} inline-flex rounded-full px-2 py-0.5 text-[11px] font-medium">${v ? "Active" : "Inactive"}</span>`;
+          return <BoolBadge value={v} yes="Active" no="Inactive" />;
         },
       } : {}),
     }));
