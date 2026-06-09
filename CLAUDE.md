@@ -61,6 +61,17 @@ When user says "chạy e2e" or "test e2e":
 2. Report pass/fail count
 3. If failures, suggest `npm run e2e:headed` or `npm run e2e:report`
 
+## Type Checking
+
+**IMPORTANT**: Always use `tsc -b` (build mode), NOT `tsc --noEmit`.
+Vercel runs `tsc -b && vite build` — `tsc -b` is stricter than `--noEmit`
+(enforces project references, declaration emit). Use:
+
+```bash
+cd frontend && npx tsc -b          # must pass before push
+cd frontend && npm run build       # full Vercel-identical build
+```
+
 ## Dev Server
 
 ```bash
