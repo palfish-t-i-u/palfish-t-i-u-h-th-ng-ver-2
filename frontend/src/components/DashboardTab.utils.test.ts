@@ -3,6 +3,7 @@ import type { RevenueLedgerRow } from "../types/revenue";
 import {
   buildDashboardSalesData,
   buildDashboardSalesRowsFromGamification,
+  formatRevenueMillions,
   formatVndCompact,
   getInitials,
   monthDateRange,
@@ -75,6 +76,9 @@ describe("DashboardTab utilities", () => {
   it("formats compact VND labels and initials for dashboard display", () => {
     expect(formatVndCompact(1_200_000_000)).toBe("1,2 tỷ");
     expect(formatVndCompact(86_000_000)).toBe("86 tr");
+    expect(formatRevenueMillions(101_686_625)).toBe("101,69 tr");
+    expect(formatRevenueMillions(83_645_000)).toBe("83,65 tr");
+    expect(formatRevenueMillions(8_480_000)).toBe("8,48 tr");
     expect(getInitials("Trần Mỹ Linh")).toBe("LM");
     expect(monthDateRange(new Date(2026, 4, 30))).toEqual({
       from: "2026-05-01",

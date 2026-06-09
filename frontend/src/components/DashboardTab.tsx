@@ -14,6 +14,7 @@ import type { RevenueLedgerRow } from "../types/revenue";
 import {
   buildDashboardSalesData,
   buildDashboardSalesRowsFromGamification,
+  formatRevenueMillions,
   formatVndCompact,
   getInitials,
   monthDateRange,
@@ -451,7 +452,7 @@ function MonthRanking({ rows, loading }: { rows: DashboardSaleRow[]; loading: bo
             </div>
             <div className="truncate text-[#4B5572]">{row.team || "—"}</div>
             <div className="truncate text-[#4B5572]">{row.sub_team || "—"}</div>
-            <div className="text-right font-extrabold text-[#101426]">{formatVndCompact(row.gmv_vnd)}</div>
+            <div className="text-right font-extrabold text-[#101426]">{formatRevenueMillions(row.gmv_vnd)}</div>
             <div className="text-right font-semibold text-[#4B5572]">{row.order_count > 0 ? row.order_count : "—"}</div>
           </div>
         ))}
