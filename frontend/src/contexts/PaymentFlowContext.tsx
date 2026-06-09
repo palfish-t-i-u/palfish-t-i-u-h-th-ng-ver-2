@@ -71,7 +71,7 @@ type PaymentFlowContextValue = {
     requestId: string,
     payload: AddPaymentAttemptPayload
   ) => Promise<{ payment: PaymentAttempt; request: PaymentRequest } | null>;
-  confirmTransaction: (prId: string, paymentId: string) => Promise<void>;
+  confirmTransaction: (prId: string, paymentId: string, extra?: { verified_total?: number; verified_received?: number }) => Promise<void>;
   rejectTransaction: (prId: string, paymentId: string, rejectReason?: string) => Promise<void>;
   handleCreateActiveRequest: (pr: PaymentRequest) => Promise<ActiveRequest>;
   handleCreateActiveRequestFromForm: (data: {
@@ -268,10 +268,10 @@ export function PaymentFlowProvider({
   );
 
   const confirmTransaction = useCallback(
-    async (prId: string, paymentId: string) => {
+    async (prId: string, paymentId: string, extra?: { verified_total?: number; verified_received?: number }) => {
       if (isBackendLineId(paymentId)) {
         try {
-          const res = await endpoints.transactions.patchStatus(paymentId, "paid");
+          const res = await endpoints.transactions.patchStatus(paymentId, "paid", undefined, extra);
           updateRequest(prId, (r) => {
             const line = res.data.payment_line;
             const updatedPayments = r.payments.map((p) =>
@@ -282,6 +282,8 @@ export function PaymentFlowProvider({
                     paidAt: line.paid_at || flowNow(),
                     bill: !!(line.bill_image ?? p.billImage),
                     billImage: line.bill_image ?? p.billImage ?? null,
+                    verifiedTotal: line.verified_total ?? p.verifiedTotal ?? null,
+                    verifiedReceived: line.verified_received ?? p.verifiedReceived ?? null,
                   }
                 : p
             );

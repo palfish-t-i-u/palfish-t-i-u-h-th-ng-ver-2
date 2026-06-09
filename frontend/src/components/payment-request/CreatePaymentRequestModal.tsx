@@ -129,7 +129,7 @@ export default function CreatePaymentRequestModal({
           <div className="field">
             <label>Tên con (học viên)</label>
             <input
-              placeholder="Nếu người thanh toán khác học viên — VD: Nguyễn Minh Anh"
+              placeholder="VD: Nguyễn Minh Anh"
               value={form.childName}
               onChange={(e) => set("childName", e.target.value)}
             />

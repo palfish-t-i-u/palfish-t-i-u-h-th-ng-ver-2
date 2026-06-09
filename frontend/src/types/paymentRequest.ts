@@ -18,6 +18,11 @@ export interface PaymentAttempt {
   bank?: string;
   cardLast4?: string | null;
   installmentMonths?: string | null;
+  installmentPlatform?: string | null;
+  installmentTotal?: number | null;
+  saleReceived?: number | null;
+  verifiedTotal?: number | null;
+  verifiedReceived?: number | null;
   cashier?: string | null;
   paymentLinkId?: string | null;
   transferContent?: string | null;
@@ -154,6 +159,9 @@ export type AddPaymentAttemptPayload = {
   bank?: string;
   cardLast4?: string;
   installmentMonths?: string;
+  installment_platform?: string;
+  installment_total?: number;
+  sale_received?: number;
   cashier?: string;
   name_for_transfer?: string;
 };
