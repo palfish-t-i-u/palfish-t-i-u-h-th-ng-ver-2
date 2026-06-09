@@ -47,6 +47,7 @@ _bill_assets_cache: dict[str, Any] = {"expires_at": 0.0, "assets_by_line": {}}
 class PaymentRequestCreate(BaseModel):
     uid: str | None = None
     name: str | None = None
+    child_name: str | None = None
     phone: str | None = None
     country: str | None = "VN"
     address: str | None = ""
@@ -66,6 +67,7 @@ class PaymentRequestCreate(BaseModel):
 class PaymentRequestPatch(BaseModel):
     uid: str | None = None
     name: str | None = None
+    child_name: str | None = None
     phone: str | None = None
     country: str | None = None
     address: str | None = None
@@ -175,7 +177,7 @@ def _iso_now() -> str:
 def _serialize_payment_request(row: dict[str, Any]) -> dict[str, Any]:
     target = _parse_amount(row.get("target"))
     received = _parse_amount(row.get("received"))
-    return {
+    result = {
         "id": row.get("id") or "",
         "name": row.get("name") or "",
         "uid": row.get("uid") or "",
@@ -195,6 +197,9 @@ def _serialize_payment_request(row: dict[str, Any]) -> dict[str, Any]:
         "sale_email": row.get("sale_email") or "",
         "is_test": bool(row.get("is_test")),
     }
+    if row.get("child_name"):
+        result["child_name"] = row["child_name"]
+    return result
 
 
 def _is_test_email(email: str) -> bool:
@@ -631,7 +636,7 @@ def _payment_request_insert_row(body: PaymentRequestCreate) -> dict[str, Any]:
     if missing:
         raise HTTPException(400, f"Thieu du lieu bat buoc: {', '.join(missing)}")
 
-    return {
+    row = {
         "name": name,
         "uid": uid,
         "phone": phone,
@@ -645,6 +650,10 @@ def _payment_request_insert_row(body: PaymentRequestCreate) -> dict[str, Any]:
         "received": 0,
         "state": "pending",
     }
+    child_name = _clean_text(body.child_name)
+    if child_name:
+        row["child_name"] = child_name
+    return row
 
 
 def _payment_request_patch_row(body: PaymentRequestPatch, current_row: dict[str, Any]) -> dict[str, Any]:
@@ -686,6 +695,8 @@ def _payment_request_patch_row(body: PaymentRequestPatch, current_row: dict[str,
         patch["note"] = _clean_text(body.note)
     if body.email is not None:
         patch["email"] = _clean_text(body.email)
+    if body.child_name is not None:
+        patch["child_name"] = _clean_text(body.child_name) or None
 
     target_val = body.target if body.target is not None else body.tong_tien_phai_thu
     if target_val is not None:
@@ -763,6 +774,12 @@ def _ascii_transfer_name(value: Any) -> str:
     return " ".join(cleaned.split())
 
 
+_COUNTRY_DIAL: dict[str, str] = {
+    "VN": "84", "US": "1", "GB": "44", "CN": "86", "JP": "81",
+    "KR": "82", "TH": "66", "SG": "65", "MY": "60", "ID": "62", "PH": "63",
+}
+
+
 def _build_payos_transfer_description(
     pr_row: dict[str, Any],
     name_for_transfer: str | None,
@@ -772,7 +789,10 @@ def _build_payos_transfer_description(
     if not code:
         return ""
 
-    phone = re.sub(r"\D", "", str(pr_row.get("phone") or pr_row.get("sdt") or ""))
+    raw_phone = re.sub(r"\D", "", str(pr_row.get("phone") or pr_row.get("sdt") or ""))
+    country = str(pr_row.get("country") or "VN").upper()
+    dial = _COUNTRY_DIAL.get(country, "84")
+    phone = f"{dial}{raw_phone}" if raw_phone and not raw_phone.startswith(dial) else raw_phone
     name = _ascii_transfer_name(name_for_transfer)
     if not name:
         name = _ascii_transfer_name(pr_row.get("name") or pr_row.get("ten_khach"))
