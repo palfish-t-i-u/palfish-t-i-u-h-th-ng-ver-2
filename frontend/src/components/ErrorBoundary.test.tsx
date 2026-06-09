@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import ErrorBoundary from "./ErrorBoundary";
 
-function ThrowOnRender({ error }: { error: Error }) {
+function ThrowOnRender({ error }: { error: Error }): React.ReactNode {
   throw error;
 }
 

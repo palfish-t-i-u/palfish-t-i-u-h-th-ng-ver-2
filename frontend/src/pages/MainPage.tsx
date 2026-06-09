@@ -21,7 +21,7 @@ function retryImport<T>(load: () => Promise<T>, retries: number): Promise<T> {
   });
 }
 
-function lazyRetry(load: () => Promise<{ default: React.ComponentType<never> }>) {
+function lazyRetry(load: () => Promise<{ default: React.ComponentType }>) {
   return lazy(() => retryImport(load, 2));
 }
 
