@@ -561,13 +561,14 @@ def _serialize_payment_for_list(
 ) -> dict[str, Any]:
     reject = row.get("reject_reason")
     paid_at = row.get("paid_at")
-    return {
+    result = {
         "id": str(row.get("id") or ""),
         "idx": idx,
         "method": row.get("method") or "",
         "amount": _parse_amount(row.get("amount")),
         "status": row.get("status") or "pending",
         "transfer_code": row.get("transfer_code") or "",
+        "transfer_content": row.get("transfer_content") or "",
         "qr_code": row.get("qr_code") or "",
         "checkout_url": row.get("checkout_url") or "",
         "paid_at": paid_at if paid_at else None,
@@ -575,6 +576,7 @@ def _serialize_payment_for_list(
         "reject_reason": reject if reject else None,
         **_bill_fields(row, bill_urls, bill_assets),
     }
+    return result
 
 
 def _serialize_payment_request_list_item(
@@ -1399,6 +1401,7 @@ def register_payment_request_routes(app, get_supabase) -> None:
                     "payos_order_code": payos_payload["order_code"],
                     "qr_code": payos_payload.get("qr_code") or "",
                     "checkout_url": payos_payload.get("checkout_url") or "",
+                    "transfer_content": description,
                 }
             )
 
