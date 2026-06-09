@@ -21,7 +21,6 @@ import {
   fmtPhone,
   formatCoursePhone,
   formatPaymentDateFull,
-  nextPaymentCode,
   nowStamp,
   paymentAttemptLabel,
   vnd,
@@ -227,10 +226,13 @@ function AddPaymentForm({
   const [cardLast4, setCardLast4] = useState("");
   const [installmentMonths, setInstallmentMonths] = useState("6");
   const [cashier, setCashier] = useState("");
+  const [nameForTransfer, setNameForTransfer] = useState(pr.childName || pr.name);
 
   const remaining = Math.max(0, pr.target - pr.received);
-  const nextIdx = (pr.payments[pr.payments.length - 1]?.idx || 0) + 1;
-  const code = nextPaymentCode(pr.id, nextIdx);
+  const nameOptions = [
+    { value: pr.name, label: `KH: ${pr.name}` },
+    ...(pr.childName ? [{ value: pr.childName, label: `Con: ${pr.childName}` }] : []),
+  ];
 
   const submit = () => {
     const n = parseInt(String(amount).replace(/\D/g, ""), 10);
@@ -242,6 +244,7 @@ function AddPaymentForm({
       cardLast4: method === "card" ? cardLast4 : undefined,
       installmentMonths: method === "installment" ? installmentMonths : undefined,
       cashier: method === "cash" ? cashier : undefined,
+      name_for_transfer: method === "qr" ? nameForTransfer : undefined,
     });
   };
 
@@ -302,14 +305,28 @@ function AddPaymentForm({
         </div>
 
         {method === "qr" && (
-          <div className="field" style={{ flex: 1, minWidth: 180 }}>
-            <label>Ngân hàng nhận</label>
-            <select value={bank} onChange={(e) => setBank(e.target.value)}>
-              {availableBanks.map((b) => (
-                <option key={b.alias} value={b.alias}>{b.alias}</option>
-              ))}
-            </select>
-          </div>
+          <>
+            <div className="field" style={{ flex: 1, minWidth: 180 }}>
+              <label>Ngân hàng nhận</label>
+              <select value={bank} onChange={(e) => setBank(e.target.value)}>
+                {availableBanks.map((b) => (
+                  <option key={b.alias} value={b.alias}>{b.alias}</option>
+                ))}
+              </select>
+            </div>
+            <div className="field" style={{ flex: 1, minWidth: 180 }}>
+              <label>Tên trên nội dung CK</label>
+              {nameOptions.length > 1 ? (
+                <select value={nameForTransfer} onChange={(e) => setNameForTransfer(e.target.value)}>
+                  {nameOptions.map((o) => (
+                    <option key={o.value} value={o.value}>{o.label}</option>
+                  ))}
+                </select>
+              ) : (
+                <input type="text" value={pr.name} readOnly style={{ color: "var(--text-3)" }} />
+              )}
+            </div>
+          </>
         )}
         {method === "card" && (
           <div className="field" style={{ flex: 1, minWidth: 180 }}>
@@ -339,15 +356,17 @@ function AddPaymentForm({
           </div>
         )}
 
-        <div className="field" style={{ flex: 1.4, minWidth: 220 }}>
-          <label>{method === "qr" ? "Nội dung CK gợi ý" : "Mã đối soát nội bộ"}</label>
-          <input
-            type="text"
-            value={code}
-            readOnly
-            style={{ color: "var(--primary-700)", fontFamily: "JetBrains Mono, monospace" }}
-          />
-        </div>
+        {method !== "qr" && (
+          <div className="field" style={{ flex: 1.4, minWidth: 220 }}>
+            <label>Mã đối soát</label>
+            <input
+              type="text"
+              value="Tự động tạo bởi hệ thống"
+              readOnly
+              style={{ color: "var(--text-3)", fontStyle: "italic" }}
+            />
+          </div>
+        )}
       </div>
 
       <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
@@ -365,6 +384,7 @@ function AddPaymentForm({
 interface DraftPr {
   uid: string;
   name: string;
+  childName: string;
   country: string;
   phone: string;
   email: string;
@@ -1147,6 +1167,7 @@ export default function PaymentRequestDetailDrawer({
                     setDraft({
                       uid: request.uid,
                       name: request.name,
+                      childName: request.childName || "",
                       country: request.country || "VN",
                       phone: request.phone,
                       email: request.email || "",
@@ -1187,6 +1208,7 @@ export default function PaymentRequestDetailDrawer({
                         ...request,
                         uid: draft.uid,
                         name: draft.name,
+                        childName: draft.childName || undefined,
                         country: draft.country,
                         phone: draft.phone,
                         email: draft.email,
@@ -1218,6 +1240,12 @@ export default function PaymentRequestDetailDrawer({
                   <div className="info-label">Tên khách hàng</div>
                   <div className="info-value">{request.name}</div>
                 </div>
+                {request.childName && (
+                  <div className="info-cell">
+                    <div className="info-label">Tên con (học viên)</div>
+                    <div className="info-value">{request.childName}</div>
+                  </div>
+                )}
                 <div className="info-cell">
                   <div className="info-label">Số điện thoại</div>
                   <div className="info-value mono">
@@ -1294,6 +1322,21 @@ export default function PaymentRequestDetailDrawer({
                   <input
                     value={draft.name}
                     onChange={(e) => setDraft({ ...draft, name: e.target.value })}
+                    style={{
+                      border: "1px solid var(--border)",
+                      borderRadius: 8,
+                      padding: "8px 10px",
+                      font: "inherit",
+                      fontSize: 13,
+                    }}
+                  />
+                </div>
+                <div className="info-cell">
+                  <div className="info-label">Tên con (học viên)</div>
+                  <input
+                    value={draft.childName}
+                    onChange={(e) => setDraft({ ...draft, childName: e.target.value })}
+                    placeholder="Nếu khác tên KH"
                     style={{
                       border: "1px solid var(--border)",
                       borderRadius: 8,

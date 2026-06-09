@@ -7,6 +7,7 @@ import VietnamAddressFields from "./VietnamAddressFields";
 interface FormState {
   uid: string;
   name: string;
+  childName: string;
   country: string;
   phone: string;
   email: string;
@@ -20,6 +21,7 @@ interface FormState {
 const INITIAL: FormState = {
   uid: "",
   name: "",
+  childName: "",
   country: "VN",
   phone: "",
   email: "",
@@ -62,6 +64,7 @@ export default function CreatePaymentRequestModal({
     onSubmit({
       uid: form.uid,
       name: form.name,
+      child_name: form.childName.trim() || undefined,
       country: form.country,
       phone: form.phone,
       address: form.address,
@@ -100,6 +103,18 @@ export default function CreatePaymentRequestModal({
                 Tên khách hàng <span style={{ color: "var(--danger)" }}>*</span>
               </label>
               <input placeholder="Họ và tên" value={form.name} onChange={(e) => set("name", e.target.value)} />
+            </div>
+          </div>
+
+          <div className="field">
+            <label>Tên con (học viên)</label>
+            <input
+              placeholder="Nếu người thanh toán khác học viên — VD: Nguyễn Minh Anh"
+              value={form.childName}
+              onChange={(e) => set("childName", e.target.value)}
+            />
+            <div style={{ fontSize: 11.5, color: "var(--text-3)", lineHeight: 1.45, marginTop: 4 }}>
+              Nếu để trống, nội dung chuyển khoản sẽ dùng tên khách hàng.
             </div>
           </div>
 
