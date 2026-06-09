@@ -225,7 +225,7 @@ export default function CreatePaymentRequestModal({
           </div>
 
           <div className="field">
-            <label>Mã số thuế cá nhân</label>
+            <label>{form.customerType === "business" ? "Mã số thuế doanh nghiệp" : "Mã số thuế cá nhân"}</label>
             <input
               placeholder="VD: 0123456789"
               value={form.taxId}

@@ -1295,7 +1295,7 @@ export default function PaymentRequestDetailDrawer({
                 )}
                 {request.taxId && (
                   <div className="info-cell">
-                    <div className="info-label">MST cá nhân</div>
+                    <div className="info-label">{request.customerType === "business" ? "MST doanh nghiệp" : "MST cá nhân"}</div>
                     <div className="info-value mono">{request.taxId}</div>
                   </div>
                 )}
@@ -1445,7 +1445,7 @@ export default function PaymentRequestDetailDrawer({
                   </div>
                 )}
                 <div className="info-cell">
-                  <div className="info-label">MST cá nhân</div>
+                  <div className="info-label">{draft.customerType === "business" ? "MST doanh nghiệp" : "MST cá nhân"}</div>
                   <input
                     value={draft.taxId}
                     onChange={(e) => setDraft({ ...draft, taxId: e.target.value.replace(/[^\d]/g, "") })}
