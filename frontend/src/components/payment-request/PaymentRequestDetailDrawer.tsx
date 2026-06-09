@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type {
   ActiveRequest,
   AddPaymentAttemptPayload,
+  CustomerType,
   PaymentAttempt,
   PaymentMethod,
   PaymentRequest,
@@ -393,6 +394,9 @@ interface DraftPr {
   address: string;
   target: string;
   note: string;
+  taxId: string;
+  customerType: CustomerType;
+  companyName: string;
 }
 
 /**
@@ -1176,6 +1180,9 @@ export default function PaymentRequestDetailDrawer({
                       address: request.address || "",
                       target: String(request.target),
                       note: request.note || "",
+                      taxId: request.taxId || "",
+                      customerType: request.customerType || "individual",
+                      companyName: request.companyName || "",
                     });
                     setEditing(true);
                   }}
@@ -1217,6 +1224,9 @@ export default function PaymentRequestDetailDrawer({
                         address: draft.address,
                         target: targetNum,
                         note: draft.note,
+                        taxId: draft.taxId || undefined,
+                        customerType: draft.customerType,
+                        companyName: draft.customerType === "business" ? draft.companyName || undefined : undefined,
                       });
                       setSavingEdit(false);
                       if (!ok) return;
@@ -1269,6 +1279,24 @@ export default function PaymentRequestDetailDrawer({
                   <div className="info-cell">
                     <div className="info-label">Email</div>
                     <div className="info-value">{request.email}</div>
+                  </div>
+                )}
+                <div className="info-cell">
+                  <div className="info-label">Loại KH</div>
+                  <div className="info-value">
+                    {request.customerType === "business" ? "Doanh nghiệp" : "Cá nhân"}
+                  </div>
+                </div>
+                {request.customerType === "business" && request.companyName && (
+                  <div className="info-cell">
+                    <div className="info-label">Tên công ty</div>
+                    <div className="info-value">{request.companyName}</div>
+                  </div>
+                )}
+                {request.taxId && (
+                  <div className="info-cell">
+                    <div className="info-label">MST cá nhân</div>
+                    <div className="info-value mono">{request.taxId}</div>
                   </div>
                 )}
                 <div className="info-cell">
@@ -1376,6 +1404,58 @@ export default function PaymentRequestDetailDrawer({
                       borderRadius: 8,
                       padding: "8px 10px",
                       font: "inherit",
+                      fontSize: 13,
+                    }}
+                  />
+                </div>
+                <div className="info-cell">
+                  <div className="info-label">Loại KH</div>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <button
+                      type="button"
+                      className={`btn btn-sm ${draft.customerType === "individual" ? "btn-primary" : "btn-outline"}`}
+                      onClick={() => setDraft({ ...draft, customerType: "individual", companyName: "" })}
+                    >
+                      Cá nhân
+                    </button>
+                    <button
+                      type="button"
+                      className={`btn btn-sm ${draft.customerType === "business" ? "btn-primary" : "btn-outline"}`}
+                      onClick={() => setDraft({ ...draft, customerType: "business" })}
+                    >
+                      Doanh nghiệp
+                    </button>
+                  </div>
+                </div>
+                {draft.customerType === "business" && (
+                  <div className="info-cell">
+                    <div className="info-label">Tên công ty</div>
+                    <input
+                      value={draft.companyName}
+                      onChange={(e) => setDraft({ ...draft, companyName: e.target.value })}
+                      placeholder="VD: Công ty TNHH ABC"
+                      style={{
+                        border: "1px solid var(--border)",
+                        borderRadius: 8,
+                        padding: "8px 10px",
+                        font: "inherit",
+                        fontSize: 13,
+                      }}
+                    />
+                  </div>
+                )}
+                <div className="info-cell">
+                  <div className="info-label">MST cá nhân</div>
+                  <input
+                    value={draft.taxId}
+                    onChange={(e) => setDraft({ ...draft, taxId: e.target.value.replace(/[^\d]/g, "") })}
+                    placeholder="VD: 0123456789"
+                    style={{
+                      border: "1px solid var(--border)",
+                      borderRadius: 8,
+                      padding: "8px 10px",
+                      font: "inherit",
+                      fontFamily: "JetBrains Mono, monospace",
                       fontSize: 13,
                     }}
                   />

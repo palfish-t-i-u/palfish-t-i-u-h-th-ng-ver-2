@@ -66,6 +66,19 @@ class TestBuildPayosTransferDescription:
         desc = pr._build_payos_transfer_description(row, "Ha", "FH9VT")
         assert "Ha" in desc
 
+    def test_truncates_to_first_name_only(self):
+        row = {"phone": "8413521313", "name": "Trần Kỳ Duyên"}
+        desc = pr._build_payos_transfer_description(row, None, "FH9VT")
+        assert "Duyen" in desc
+        assert "Tran" not in desc
+        assert "Ky" not in desc
+
+    def test_child_name_truncates_to_first_name(self):
+        row = {"phone": "8413521313", "name": "Nguyễn Văn A"}
+        desc = pr._build_payos_transfer_description(row, "Nguyễn Minh Anh", "FH9VT")
+        assert "Anh" in desc
+        assert "Nguyen" not in desc
+
     def test_fallback_to_code_only_when_needed(self):
         row = {}
         code = "FH9VT"
