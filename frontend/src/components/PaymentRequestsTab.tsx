@@ -214,6 +214,7 @@ export default function PaymentRequestsTab() {
     const payload: PatchPaymentRequestPayload = {
       uid: next.uid.trim(),
       name: next.name.trim(),
+      child_name: (next.childName || "").trim() || undefined,
       phone: next.phone.trim(),
       country: (next.country || "VN").trim(),
       address: (next.address || "").trim(),

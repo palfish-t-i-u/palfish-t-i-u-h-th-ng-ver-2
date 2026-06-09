@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import hashlib
 import io
 import mimetypes
 import re
 import time
+import unicodedata
 import uuid
 import zipfile
 from datetime import datetime, timezone
@@ -85,6 +87,7 @@ class PaymentLineCreate(BaseModel):
     method: str | None = None
     transfer_code: str | None = None
     code: str | None = None
+    name_for_transfer: str | None = None
 
     so_tien: int | str | None = None
     hinh_thuc: str | None = None
@@ -713,9 +716,110 @@ def _allocate_pr_id(sb, year: int | None = None) -> str:
     return pr_id
 
 
+_BASE36_DIGITS = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+_PAYOS_DESCRIPTION_MAX_LEN = 25
+
+
+def _int_to_base36(n: int) -> str:
+    if n <= 0:
+        return "0"
+    out: list[str] = []
+    num = n
+    while num:
+        num, remainder = divmod(num, 36)
+        out.append(_BASE36_DIGITS[remainder])
+    return "".join(reversed(out))
+
+
+def _int_to_base36_padded(n: int, width: int = 5) -> str:
+    encoded = _int_to_base36(n).upper()
+    if len(encoded) > width:
+        encoded = encoded[-width:]
+    return encoded.rjust(width, "0")
+
+
 def _transfer_code_hint(payment_request_id: str, line_count: int) -> str:
-    suffix = payment_request_id.replace("PR-", "").replace("-", "")
-    return f"TT-{suffix}-{line_count + 1:03d}"
+    match = re.fullmatch(r"PR-(\d{4})-(\d{4})", payment_request_id.strip(), re.I)
+    if match:
+        year = int(match.group(1))
+        pr_seq = int(match.group(2))
+        yy = year % 100
+        line_seq = line_count + 1
+        raw = f"{yy:02d}{pr_seq:04d}{line_seq:02d}"
+        numeric = int(raw)
+    else:
+        seed = f"{payment_request_id}:{line_count}"
+        numeric = int(hashlib.sha256(seed.encode()).hexdigest()[:12], 16)
+    return _int_to_base36_padded(numeric, 5)
+
+
+def _ascii_transfer_name(value: Any) -> str:
+    text = _clean_text(value)
+    if not text:
+        return ""
+    normalized = unicodedata.normalize("NFKD", text)
+    ascii_only = "".join(char for char in normalized if not unicodedata.combining(char))
+    cleaned = re.sub(r"[^A-Za-z0-9 ]", "", ascii_only)
+    return " ".join(cleaned.split())
+
+
+def _build_payos_transfer_description(
+    pr_row: dict[str, Any],
+    name_for_transfer: str | None,
+    transfer_code: str,
+) -> str:
+    code = _clean_text(transfer_code).upper()
+    if not code:
+        return ""
+
+    phone = re.sub(r"\D", "", str(pr_row.get("phone") or pr_row.get("sdt") or ""))
+    name = _ascii_transfer_name(name_for_transfer)
+    if not name:
+        name = _ascii_transfer_name(pr_row.get("name") or pr_row.get("ten_khach"))
+
+    parts: list[str] = []
+    if phone:
+        parts.append(phone)
+    if name:
+        parts.append(name)
+    if len(parts) == 0:
+        return code[:_PAYOS_DESCRIPTION_MAX_LEN]
+
+    parts.append(code)
+    description = " ".join(parts)
+    if len(description) <= _PAYOS_DESCRIPTION_MAX_LEN and code in description:
+        return description
+
+    if phone and name:
+        for name_len in range(len(name), 0, -1):
+            short_name = name[:name_len].rstrip()
+            if not short_name:
+                continue
+            trial = " ".join([phone, short_name, code])
+            if len(trial) <= _PAYOS_DESCRIPTION_MAX_LEN and code in trial:
+                return trial
+        trial = f"{phone} {code}"
+        if len(trial) <= _PAYOS_DESCRIPTION_MAX_LEN and code in trial:
+            return trial
+
+    if name:
+        for name_len in range(len(name), 0, -1):
+            short_name = name[:name_len].rstrip()
+            if not short_name:
+                continue
+            trial = f"{short_name} {code}"
+            if len(trial) <= _PAYOS_DESCRIPTION_MAX_LEN and code in trial:
+                return trial
+
+    if phone:
+        max_phone_len = _PAYOS_DESCRIPTION_MAX_LEN - len(code) - 1
+        if max_phone_len > 0:
+            trial = f"{phone[:max_phone_len]} {code}"
+            trial = " ".join(trial.split())
+            if len(trial) <= _PAYOS_DESCRIPTION_MAX_LEN and code in trial:
+                return trial
+
+    return code[:_PAYOS_DESCRIPTION_MAX_LEN]
 
 
 def recompute_payment_request_totals(sb, payment_request_id: str) -> dict[str, Any]:
@@ -1260,8 +1364,11 @@ def register_payment_request_routes(app, get_supabase) -> None:
         }
 
         if method == "qr":
+            description = _build_payos_transfer_description(
+                pr_row, body.name_for_transfer, transfer_code
+            )
             try:
-                payos_payload = await create_payos_payment_link(amount, transfer_code)
+                payos_payload = await create_payos_payment_link(amount, description)
             except ValueError as exc:
                 raise HTTPException(503, str(exc)) from exc
             except Exception as exc:
@@ -1270,7 +1377,6 @@ def register_payment_request_routes(app, get_supabase) -> None:
             insert_row.update(
                 {
                     "payos_order_code": payos_payload["order_code"],
-                    "transfer_code": payos_payload.get("transfer_content") or transfer_code,
                     "qr_code": payos_payload.get("qr_code") or "",
                     "checkout_url": payos_payload.get("checkout_url") or "",
                 }

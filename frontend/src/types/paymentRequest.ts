@@ -68,6 +68,7 @@ export interface CreatePrResponse {
 export interface PaymentRequest {
   id: string;
   name: string;
+  childName?: string;
   uid: string;
   phone: string;
   country: string;
@@ -145,11 +146,13 @@ export type AddPaymentAttemptPayload = {
   cardLast4?: string;
   installmentMonths?: string;
   cashier?: string;
+  name_for_transfer?: string;
 };
 
 export type CreatePaymentRequestPayload = {
   uid: string;
   name: string;
+  child_name?: string;
   country: string;
   phone: string;
   address: string;
