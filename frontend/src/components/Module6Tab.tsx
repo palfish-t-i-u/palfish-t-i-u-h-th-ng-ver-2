@@ -213,10 +213,12 @@ export default function Module6Tab() {
       .catch(() => setHasCrmData(false));
   }, []);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (opts?: { silent?: boolean }) => {
     setError("");
-    setKpiLoading(true);
-    setTrendsLoading(true);
+    if (!opts?.silent) {
+      setKpiLoading(true);
+      setTrendsLoading(true);
+    }
 
     const { start, end } = resolvePeriod(rangeKey, customStart, customEnd);
     const params = {
@@ -244,7 +246,7 @@ export default function Module6Tab() {
   useEffect(() => { load(); }, [load]);
 
   useRealtimeTable(["so_doanh_thu", "payment_lines"], load);
-  useRefetchOnFocus(load);
+  useRefetchOnFocus(() => load({ silent: true }));
 
   const period = live?.period ?? trends?.period;
   const kpi = live?.kpi;
@@ -318,7 +320,7 @@ export default function Module6Tab() {
             <option value="">Tất cả sale</option>
             {sales.map((s) => <option key={s}>{s}</option>)}
           </select>
-          <button onClick={load} disabled={loading}
+          <button onClick={() => load()} disabled={loading}
             className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-500 disabled:opacity-50 transition">
             {loading ? "⟳" : "Làm mới"}
           </button>

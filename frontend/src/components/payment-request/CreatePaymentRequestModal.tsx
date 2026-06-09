@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { CreatePaymentRequestPayload } from "../../types/paymentRequest";
+import type { CreatePaymentRequestPayload, CustomerType } from "../../types/paymentRequest";
 import CountryCombo from "./CountryCombo";
 import { Icons } from "./Icons";
 import VietnamAddressFields from "./VietnamAddressFields";
@@ -7,6 +7,7 @@ import VietnamAddressFields from "./VietnamAddressFields";
 interface FormState {
   uid: string;
   name: string;
+  childName: string;
   country: string;
   phone: string;
   email: string;
@@ -15,11 +16,15 @@ interface FormState {
   province: string;
   target: string;
   note: string;
+  taxId: string;
+  customerType: CustomerType;
+  companyName: string;
 }
 
 const INITIAL: FormState = {
   uid: "",
   name: "",
+  childName: "",
   country: "VN",
   phone: "",
   email: "",
@@ -28,6 +33,9 @@ const INITIAL: FormState = {
   province: "",
   target: "",
   note: "",
+  taxId: "",
+  customerType: "individual",
+  companyName: "",
 };
 
 export default function CreatePaymentRequestModal({
@@ -62,6 +70,7 @@ export default function CreatePaymentRequestModal({
     onSubmit({
       uid: form.uid,
       name: form.name,
+      child_name: form.childName.trim() || undefined,
       country: form.country,
       phone: form.phone,
       address: form.address,
@@ -70,6 +79,9 @@ export default function CreatePaymentRequestModal({
       target: targetNum,
       note: form.note,
       email: form.email.trim() || undefined,
+      tax_id: form.taxId.trim() || undefined,
+      customer_type: form.customerType,
+      company_name: form.customerType === "business" ? form.companyName.trim() || undefined : undefined,
     });
   };
 
@@ -100,6 +112,18 @@ export default function CreatePaymentRequestModal({
                 Tên khách hàng <span style={{ color: "var(--danger)" }}>*</span>
               </label>
               <input placeholder="Họ và tên" value={form.name} onChange={(e) => set("name", e.target.value)} />
+            </div>
+          </div>
+
+          <div className="field">
+            <label>Tên con (học viên)</label>
+            <input
+              placeholder="Nếu người thanh toán khác học viên — VD: Nguyễn Minh Anh"
+              value={form.childName}
+              onChange={(e) => set("childName", e.target.value)}
+            />
+            <div style={{ fontSize: 11.5, color: "var(--text-3)", lineHeight: 1.45, marginTop: 4 }}>
+              Nếu để trống, nội dung chuyển khoản sẽ dùng tên khách hàng.
             </div>
           </div>
 
@@ -165,6 +189,50 @@ export default function CreatePaymentRequestModal({
             />
             <div style={{ fontSize: 11.5, color: "var(--text-3)", lineHeight: 1.45, marginTop: 4 }}>
               Email khách hàng — TH khách cần hóa đơn → Thông tin này sẽ được tổng hợp vào mục &quot;Thông tin xuất hóa đơn&quot; trong tab &quot;Xuất hóa đơn&quot;
+            </div>
+          </div>
+
+          <div className="field-row">
+            <div className="field">
+              <label>Loại khách hàng</label>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button
+                  type="button"
+                  className={`btn btn-sm ${form.customerType === "individual" ? "btn-primary" : "btn-outline"}`}
+                  onClick={() => { set("customerType", "individual"); set("companyName", ""); }}
+                >
+                  Cá nhân
+                </button>
+                <button
+                  type="button"
+                  className={`btn btn-sm ${form.customerType === "business" ? "btn-primary" : "btn-outline"}`}
+                  onClick={() => set("customerType", "business")}
+                >
+                  Doanh nghiệp
+                </button>
+              </div>
+            </div>
+            {form.customerType === "business" && (
+              <div className="field" style={{ flex: 1 }}>
+                <label>Tên công ty</label>
+                <input
+                  placeholder="VD: Công ty TNHH ABC"
+                  value={form.companyName}
+                  onChange={(e) => set("companyName", e.target.value)}
+                />
+              </div>
+            )}
+          </div>
+
+          <div className="field">
+            <label>{form.customerType === "business" ? "Mã số thuế doanh nghiệp" : "Mã số thuế cá nhân"}</label>
+            <input
+              placeholder="VD: 0123456789"
+              value={form.taxId}
+              onChange={(e) => set("taxId", e.target.value.replace(/[^\d]/g, ""))}
+            />
+            <div style={{ fontSize: 11.5, color: "var(--text-3)", lineHeight: 1.45, marginTop: 4 }}>
+              Không bắt buộc — dùng khi khách cần xuất hóa đơn
             </div>
           </div>
 

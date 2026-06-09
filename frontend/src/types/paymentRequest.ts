@@ -65,9 +65,12 @@ export interface CreatePrResponse {
   payment_request: Record<string, unknown>;
 }
 
+export type CustomerType = "individual" | "business";
+
 export interface PaymentRequest {
   id: string;
   name: string;
+  childName?: string;
   uid: string;
   phone: string;
   country: string;
@@ -76,6 +79,9 @@ export interface PaymentRequest {
   province?: string;
   note?: string;
   email?: string;
+  taxId?: string;
+  customerType?: CustomerType;
+  companyName?: string;
   target: number;
   source: string;
   createdAt: string;
@@ -145,11 +151,13 @@ export type AddPaymentAttemptPayload = {
   cardLast4?: string;
   installmentMonths?: string;
   cashier?: string;
+  name_for_transfer?: string;
 };
 
 export type CreatePaymentRequestPayload = {
   uid: string;
   name: string;
+  child_name?: string;
   country: string;
   phone: string;
   address: string;
@@ -158,6 +166,9 @@ export type CreatePaymentRequestPayload = {
   target: number;
   note?: string;
   email?: string;
+  tax_id?: string;
+  customer_type?: string;
+  company_name?: string;
 };
 
 export type PatchPaymentRequestPayload = Partial<CreatePaymentRequestPayload>;

@@ -96,6 +96,7 @@ export function fromApiPaymentRequest(raw: any): PaymentRequest {
   return {
     id: raw.id ?? "",
     name: raw.name ?? "",
+    childName: raw.child_name ?? raw.childName ?? undefined,
     uid: raw.uid ?? "",
     phone: raw.phone ?? "",
     country: raw.country ?? "VN",
@@ -104,6 +105,9 @@ export function fromApiPaymentRequest(raw: any): PaymentRequest {
     province: raw.province,
     note: raw.note,
     email: raw.email ?? "",
+    taxId: raw.tax_id ?? raw.taxId ?? undefined,
+    customerType: raw.customer_type ?? raw.customerType ?? "individual",
+    companyName: raw.company_name ?? raw.companyName ?? undefined,
     target: raw.target ?? 0,
     source: raw.source ?? "",
     saleEmail: raw.sale_email ?? raw.saleEmail ?? "",
@@ -474,7 +478,3 @@ export function nowStamp(): string {
   return new Date().toISOString().slice(0, 16).replace("T", " ");
 }
 
-export function nextPaymentCode(prId: string, idx: number): string {
-  const digits = prId.replace(/[^\d]/g, "").slice(-4) || "0000";
-  return `TT-PR${digits}-${String(idx).padStart(3, "0")}`;
-}

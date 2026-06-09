@@ -214,6 +214,7 @@ export default function PaymentRequestsTab() {
     const payload: PatchPaymentRequestPayload = {
       uid: next.uid.trim(),
       name: next.name.trim(),
+      child_name: (next.childName || "").trim() || undefined,
       phone: next.phone.trim(),
       country: (next.country || "VN").trim(),
       address: (next.address || "").trim(),
@@ -222,6 +223,9 @@ export default function PaymentRequestsTab() {
       note: (next.note || "").trim(),
       email: (next.email || "").trim(),
       target: next.target,
+      tax_id: (next.taxId || "").trim() || undefined,
+      customer_type: next.customerType || "individual",
+      company_name: next.customerType === "business" ? (next.companyName || "").trim() || undefined : undefined,
     };
 
     try {
@@ -229,6 +233,25 @@ export default function PaymentRequestsTab() {
       const savedRaw = res.data?.payment_request;
       if (savedRaw) {
         const saved = normalizeRequest(fromApiPaymentRequest(savedRaw));
+        const prev = requests.find((r) => r.id === next.id);
+        if (prev) {
+          const prevContentMap = new Map(
+            prev.payments.map((p) => [p.id, { transferContent: p.transferContent, qrCode: p.qrCode, checkoutUrl: p.checkoutUrl, paymentLinkId: p.paymentLinkId }])
+          );
+          saved.payments = saved.payments.map((p) => {
+            const cached = prevContentMap.get(p.id);
+            if (cached) {
+              return {
+                ...p,
+                transferContent: p.transferContent || cached.transferContent,
+                qrCode: p.qrCode || cached.qrCode,
+                checkoutUrl: p.checkoutUrl || cached.checkoutUrl,
+                paymentLinkId: p.paymentLinkId || cached.paymentLinkId,
+              };
+            }
+            return p;
+          });
+        }
         updateRequest(next.id, () => saved);
       }
       return true;
