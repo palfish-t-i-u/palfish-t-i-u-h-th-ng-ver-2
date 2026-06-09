@@ -82,6 +82,8 @@ export interface PaymentRequest {
   taxId?: string;
   customerType?: CustomerType;
   companyName?: string;
+  leadSource?: string;
+  leadChannel?: string;
   target: number;
   source: string;
   createdAt: string;
@@ -121,6 +123,8 @@ export interface ActiveCourse {
   taxCode?: string;
   companyName?: string;
   note?: string;
+  leadSource?: string;
+  leadChannel?: string;
 }
 
 export interface ActiveUidGroup {
@@ -169,6 +173,8 @@ export type CreatePaymentRequestPayload = {
   tax_id?: string;
   customer_type?: string;
   company_name?: string;
+  lead_source?: string;
+  lead_channel?: string;
 };
 
 export type PatchPaymentRequestPayload = Partial<CreatePaymentRequestPayload>;
@@ -233,6 +239,8 @@ export type ActiveRequestPatchUidPayload = {
     invoice_requested_at?: string;
     tax_invoice_code?: string;
     tax_product_code?: string;
+    lead_source?: string;
+    lead_channel?: string;
   }>;
 };
 

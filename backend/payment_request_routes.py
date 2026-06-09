@@ -56,6 +56,11 @@ class PaymentRequestCreate(BaseModel):
     note: str | None = ""
     email: str | None = ""
     target: int | str | None = None
+    tax_id: str | None = None
+    customer_type: str | None = None
+    company_name: str | None = None
+    lead_source: str | None = None
+    lead_channel: str | None = None
 
     uid_khach_hang: str | None = None
     ten_khach: str | None = None
@@ -76,6 +81,11 @@ class PaymentRequestPatch(BaseModel):
     note: str | None = None
     email: str | None = None
     target: int | str | None = None
+    tax_id: str | None = None
+    customer_type: str | None = None
+    company_name: str | None = None
+    lead_source: str | None = None
+    lead_channel: str | None = None
 
     uid_khach_hang: str | None = None
     ten_khach: str | None = None
@@ -655,6 +665,16 @@ def _payment_request_insert_row(body: PaymentRequestCreate) -> dict[str, Any]:
     child_name = _clean_text(body.child_name)
     if child_name:
         row["child_name"] = child_name
+    if body.tax_id:
+        row["tax_id"] = _clean_text(body.tax_id)
+    if body.customer_type:
+        row["customer_type"] = body.customer_type
+    if body.company_name:
+        row["company_name"] = _clean_text(body.company_name)
+    if body.lead_source:
+        row["lead_source"] = body.lead_source
+    if body.lead_channel:
+        row["lead_channel"] = body.lead_channel
     return row
 
 
@@ -706,6 +726,17 @@ def _payment_request_patch_row(body: PaymentRequestPatch, current_row: dict[str,
         if target <= 0:
             raise HTTPException(400, "target khong hop le")
         patch["target"] = target
+
+    if body.tax_id is not None:
+        patch["tax_id"] = _clean_text(body.tax_id) or None
+    if body.customer_type is not None:
+        patch["customer_type"] = body.customer_type or None
+    if body.company_name is not None:
+        patch["company_name"] = _clean_text(body.company_name) or None
+    if body.lead_source is not None:
+        patch["lead_source"] = body.lead_source or None
+    if body.lead_channel is not None:
+        patch["lead_channel"] = body.lead_channel or None
 
     if not patch:
         return {}

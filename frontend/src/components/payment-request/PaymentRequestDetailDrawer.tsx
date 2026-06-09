@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { LEAD_SOURCES, findSourceByKey, sourceHasChannels } from "../../constants/leadSource";
 import type {
   ActiveRequest,
   AddPaymentAttemptPayload,
@@ -397,6 +398,8 @@ interface DraftPr {
   taxId: string;
   customerType: CustomerType;
   companyName: string;
+  leadSource: string;
+  leadChannel: string;
 }
 
 /**
@@ -960,6 +963,77 @@ function ActiveRequestMiniCardV2({
                         <Icons.Close size={12} strokeWidth={2.4} />
                       </button>
                     )}
+                    {!editing && (c.leadSource || c.leadChannel) && (
+                      <div style={{ gridColumn: "1 / -1", fontSize: 11, color: "var(--text-3)", display: "flex", gap: 8 }}>
+                        {c.leadSource && <span>Nguồn: {findSourceByKey(c.leadSource)?.label ?? c.leadSource}</span>}
+                        {c.leadChannel && (() => {
+                          const src = findSourceByKey(c.leadSource);
+                          const ch = src?.channels.find((ch) => ch.code === c.leadChannel);
+                          return <span>Kênh: {ch ? `${ch.code} - ${ch.label}` : c.leadChannel}</span>;
+                        })()}
+                      </div>
+                    )}
+                    {editing && (
+                      <div style={{ gridColumn: "1 / -1", display: "flex", gap: 8 }}>
+                        <select
+                          value={c.leadSource ?? ""}
+                          disabled={courseLocked}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            mutate((next) => ({
+                              ...next,
+                              uids: next.uids.map((uu, idx) =>
+                                idx === uIdx
+                                  ? {
+                                      ...uu,
+                                      courses: uu.courses.map((course) =>
+                                        course.courseCode === c.courseCode
+                                          ? { ...course, leadSource: val, leadChannel: undefined }
+                                          : course
+                                      ),
+                                    }
+                                  : uu
+                              ),
+                            }));
+                          }}
+                          style={{ font: "inherit", fontSize: 12, flex: 1, borderRadius: 8, border: "1px solid var(--border)", padding: "5px 7px" }}
+                        >
+                          <option value="">— Nguồn —</option>
+                          {LEAD_SOURCES.map((s) => (
+                            <option key={s.key} value={s.key}>{s.label}</option>
+                          ))}
+                        </select>
+                        {sourceHasChannels(c.leadSource) && (
+                          <select
+                            value={c.leadChannel ?? ""}
+                            disabled={courseLocked}
+                            onChange={(e) =>
+                              mutate((next) => ({
+                                ...next,
+                                uids: next.uids.map((uu, idx) =>
+                                  idx === uIdx
+                                    ? {
+                                        ...uu,
+                                        courses: uu.courses.map((course) =>
+                                          course.courseCode === c.courseCode
+                                            ? { ...course, leadChannel: e.target.value }
+                                            : course
+                                        ),
+                                      }
+                                    : uu
+                                ),
+                              }))
+                            }
+                            style={{ font: "inherit", fontSize: 12, flex: 1, borderRadius: 8, border: "1px solid var(--border)", padding: "5px 7px" }}
+                          >
+                            <option value="">— Kênh —</option>
+                            {findSourceByKey(c.leadSource)?.channels.map((ch) => (
+                              <option key={ch.code} value={ch.code}>{ch.code} - {ch.label}</option>
+                            ))}
+                          </select>
+                        )}
+                      </div>
+                    )}
                   </div>
                   );
                 })}
@@ -1183,6 +1257,8 @@ export default function PaymentRequestDetailDrawer({
                       taxId: request.taxId || "",
                       customerType: request.customerType || "individual",
                       companyName: request.companyName || "",
+                      leadSource: request.leadSource || "",
+                      leadChannel: request.leadChannel || "",
                     });
                     setEditing(true);
                   }}
@@ -1227,6 +1303,8 @@ export default function PaymentRequestDetailDrawer({
                         taxId: draft.taxId || undefined,
                         customerType: draft.customerType,
                         companyName: draft.customerType === "business" ? draft.companyName || undefined : undefined,
+                        leadSource: draft.leadSource || undefined,
+                        leadChannel: draft.leadChannel || undefined,
                       });
                       setSavingEdit(false);
                       if (!ok) return;
@@ -1297,6 +1375,18 @@ export default function PaymentRequestDetailDrawer({
                   <div className="info-cell">
                     <div className="info-label">{request.customerType === "business" ? "MST doanh nghiệp" : "MST cá nhân"}</div>
                     <div className="info-value mono">{request.taxId}</div>
+                  </div>
+                )}
+                {request.leadSource && (
+                  <div className="info-cell">
+                    <div className="info-label">Nguồn KH</div>
+                    <div className="info-value">{findSourceByKey(request.leadSource)?.label || request.leadSource}</div>
+                  </div>
+                )}
+                {request.leadChannel && (
+                  <div className="info-cell">
+                    <div className="info-label">Kênh</div>
+                    <div className="info-value mono">{request.leadChannel}</div>
                   </div>
                 )}
                 <div className="info-cell">
@@ -1460,6 +1550,46 @@ export default function PaymentRequestDetailDrawer({
                     }}
                   />
                 </div>
+                <div className="info-cell">
+                  <div className="info-label">Nguồn KH</div>
+                  <select
+                    value={draft.leadSource}
+                    onChange={(e) => setDraft({ ...draft, leadSource: e.target.value, leadChannel: "" })}
+                    style={{
+                      border: "1px solid var(--border)",
+                      borderRadius: 8,
+                      padding: "8px 10px",
+                      font: "inherit",
+                      fontSize: 13,
+                    }}
+                  >
+                    <option value="">— Chọn nguồn —</option>
+                    {LEAD_SOURCES.map((s) => (
+                      <option key={s.key} value={s.key}>{s.label}</option>
+                    ))}
+                  </select>
+                </div>
+                {sourceHasChannels(draft.leadSource) && (
+                  <div className="info-cell">
+                    <div className="info-label">Kênh</div>
+                    <select
+                      value={draft.leadChannel}
+                      onChange={(e) => setDraft({ ...draft, leadChannel: e.target.value })}
+                      style={{
+                        border: "1px solid var(--border)",
+                        borderRadius: 8,
+                        padding: "8px 10px",
+                        font: "inherit",
+                        fontSize: 13,
+                      }}
+                    >
+                      <option value="">— Chọn kênh —</option>
+                      {findSourceByKey(draft.leadSource)?.channels.map((ch) => (
+                        <option key={ch.code} value={ch.code}>{ch.code} - {ch.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
                 <div className="info-cell full">
                   <div className="info-label">Địa chỉ khách hàng</div>
                   <VietnamAddressFields
