@@ -110,6 +110,13 @@ export function formatVndCompact(value: number) {
   return new Intl.NumberFormat("vi-VN", { maximumFractionDigits: 0 }).format(value);
 }
 
+export function formatRevenueMillions(value: number) {
+  return `${new Intl.NumberFormat("vi-VN", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(value / 1_000_000)} tr`;
+}
+
 function formatCompactNumber(value: number) {
   return new Intl.NumberFormat("vi-VN", {
     maximumFractionDigits: value >= 10 ? 0 : 1,
