@@ -56,6 +56,7 @@ class PaymentRequestCreate(BaseModel):
     note: str | None = ""
     email: str | None = ""
     target: int | str | None = None
+    tax_id: str | None = None
 
     uid_khach_hang: str | None = None
     ten_khach: str | None = None
@@ -76,6 +77,7 @@ class PaymentRequestPatch(BaseModel):
     note: str | None = None
     email: str | None = None
     target: int | str | None = None
+    tax_id: str | None = None
 
     uid_khach_hang: str | None = None
     ten_khach: str | None = None
@@ -188,6 +190,7 @@ def _serialize_payment_request(row: dict[str, Any]) -> dict[str, Any]:
         "province": row.get("province") or "",
         "note": row.get("note") or "",
         "email": row.get("email") or "",
+        "tax_id": row.get("tax_id") or None,
         "target": target,
         "received": received,
         "state": row.get("state") or "pending",
@@ -648,6 +651,7 @@ def _payment_request_insert_row(body: PaymentRequestCreate) -> dict[str, Any]:
         "province": _clean_text(body.province),
         "note": _clean_text(body.note),
         "email": _clean_text(body.email),
+        "tax_id": _clean_text(body.tax_id) or None,
         "target": target,
         "received": 0,
         "state": "pending",
@@ -699,6 +703,8 @@ def _payment_request_patch_row(body: PaymentRequestPatch, current_row: dict[str,
         patch["email"] = _clean_text(body.email)
     if body.child_name is not None:
         patch["child_name"] = _clean_text(body.child_name) or None
+    if body.tax_id is not None:
+        patch["tax_id"] = _clean_text(body.tax_id) or None
 
     target_val = body.target if body.target is not None else body.tong_tien_phai_thu
     if target_val is not None:
