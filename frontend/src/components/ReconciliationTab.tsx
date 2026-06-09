@@ -1134,43 +1134,44 @@ export default function ReconciliationTab() {
                 </div>
               </div>
 
+              {drawerTxn.method === "installment" && (status === "awaiting" || status === "rejected") && !readOnly && (
+                <div style={{ background: "var(--primary-bg, #f0f0ff)", borderRadius: 10, padding: "16px 18px", display: "flex", flexDirection: "column", gap: 12, border: "2px solid var(--primary)", margin: "0 0 4px" }}>
+                  <div style={{ fontWeight: 700, fontSize: 14, color: "var(--primary)", textTransform: "uppercase", letterSpacing: 0.5 }}>Kế toán xác nhận</div>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                    <label style={{ fontSize: 12, fontWeight: 600, color: "var(--text-2)" }}>
+                      Tổng tiền KH chuyển (thực tế) *
+                      <input
+                        className="input"
+                        style={{ marginTop: 4, width: "100%", fontSize: 15, padding: "10px 12px" }}
+                        placeholder="Số tiền KH thực chuyển qua Payoo/Mpos..."
+                        value={verifiedTotalDraft}
+                        onChange={(e) => setVerifiedTotalDraft(e.target.value.replace(/[^\d]/g, ""))}
+                      />
+                    </label>
+                    <label style={{ fontSize: 12, fontWeight: 600, color: "var(--text-2)" }}>
+                      Thực nhận về công ty (sau phí) *
+                      <input
+                        className="input"
+                        style={{ marginTop: 4, width: "100%", fontSize: 15, padding: "10px 12px" }}
+                        placeholder="Sau khi trừ phí dịch vụ..."
+                        value={verifiedReceivedDraft}
+                        onChange={(e) => setVerifiedReceivedDraft(e.target.value.replace(/[^\d]/g, ""))}
+                      />
+                    </label>
+                  </div>
+                </div>
+              )}
+              {drawerTxn.method === "installment" && status === "confirmed" && (drawerTxn.verifiedTotal != null || drawerTxn.verifiedReceived != null) && (
+                <div style={{ background: "var(--success-bg, #f0faf0)", borderRadius: 10, padding: "14px 18px", display: "flex", flexDirection: "column", gap: 6, border: "1px solid var(--success-text)", margin: "0 0 4px" }}>
+                  <div style={{ fontWeight: 700, fontSize: 13, color: "var(--success-text)", textTransform: "uppercase", letterSpacing: 0.5 }}>Kế toán đã xác nhận</div>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, fontSize: 14 }}>
+                    <div><span style={{ color: "var(--text-3)" }}>KH chuyển:</span> <strong>{vnd(drawerTxn.verifiedTotal ?? 0)}</strong></div>
+                    <div><span style={{ color: "var(--text-3)" }}>Thực nhận:</span> <strong>{vnd(drawerTxn.verifiedReceived ?? 0)}</strong></div>
+                  </div>
+                </div>
+              )}
+
               <div className="drawer-foot" style={{ flexDirection: "column", alignItems: "stretch", gap: 10 }}>
-                {drawerTxn.method === "installment" && (status === "awaiting" || status === "rejected") && !readOnly && (
-                  <div style={{ background: "var(--bg-2)", borderRadius: 8, padding: "10px 12px", display: "flex", flexDirection: "column", gap: 8, border: "1px solid var(--border)" }}>
-                    <div style={{ fontWeight: 600, fontSize: 12, color: "var(--primary)", textTransform: "uppercase", letterSpacing: 0.5 }}>Kế toán xác nhận</div>
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-                      <label style={{ fontSize: 11, color: "var(--text-3)" }}>
-                        Tổng tiền KH chuyển (thực tế)
-                        <input
-                          className="input"
-                          style={{ marginTop: 2, width: "100%" }}
-                          placeholder="Số tiền KH thực chuyển qua Payoo/Mpos..."
-                          value={verifiedTotalDraft}
-                          onChange={(e) => setVerifiedTotalDraft(e.target.value.replace(/[^\d]/g, ""))}
-                        />
-                      </label>
-                      <label style={{ fontSize: 11, color: "var(--text-3)" }}>
-                        Thực nhận về công ty (sau phí)
-                        <input
-                          className="input"
-                          style={{ marginTop: 2, width: "100%" }}
-                          placeholder="Sau khi trừ phí dịch vụ..."
-                          value={verifiedReceivedDraft}
-                          onChange={(e) => setVerifiedReceivedDraft(e.target.value.replace(/[^\d]/g, ""))}
-                        />
-                      </label>
-                    </div>
-                  </div>
-                )}
-                {drawerTxn.method === "installment" && status === "confirmed" && (drawerTxn.verifiedTotal != null || drawerTxn.verifiedReceived != null) && (
-                  <div style={{ background: "var(--bg-2)", borderRadius: 8, padding: "10px 12px", display: "flex", flexDirection: "column", gap: 4, border: "1px solid var(--border)" }}>
-                    <div style={{ fontWeight: 600, fontSize: 12, color: "var(--success-text)", textTransform: "uppercase", letterSpacing: 0.5 }}>Kế toán đã xác nhận</div>
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, fontSize: 13 }}>
-                      <div><span style={{ color: "var(--text-3)" }}>KH chuyển:</span> <strong>{vnd(drawerTxn.verifiedTotal ?? 0)}</strong></div>
-                      <div><span style={{ color: "var(--text-3)" }}>Thực nhận:</span> <strong>{vnd(drawerTxn.verifiedReceived ?? 0)}</strong></div>
-                    </div>
-                  </div>
-                )}
                 <div style={{ fontSize: 12, color: "var(--text-3)" }}>
                   Xác nhận sẽ cập nhật trạng thái về{" "}
                   <strong style={{ color: "var(--success-text)" }}>Đã xác nhận</strong> trên Payment Request.
