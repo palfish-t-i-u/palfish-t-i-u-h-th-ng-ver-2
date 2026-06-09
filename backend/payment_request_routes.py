@@ -812,12 +812,11 @@ def _build_payos_transfer_description(
     if len(description) <= _PAYOS_DESCRIPTION_MAX_LEN and code in description:
         return description
 
+    first_name = name.split()[-1] if name else ""
+
     if phone and name:
-        for name_len in range(len(name), 0, -1):
-            short_name = name[:name_len].rstrip()
-            if not short_name:
-                continue
-            trial = " ".join([phone, short_name, code])
+        if first_name:
+            trial = " ".join([phone, first_name, code])
             if len(trial) <= _PAYOS_DESCRIPTION_MAX_LEN and code in trial:
                 return trial
         trial = f"{phone} {code}"
@@ -825,11 +824,8 @@ def _build_payos_transfer_description(
             return trial
 
     if name:
-        for name_len in range(len(name), 0, -1):
-            short_name = name[:name_len].rstrip()
-            if not short_name:
-                continue
-            trial = f"{short_name} {code}"
+        if first_name:
+            trial = f"{first_name} {code}"
             if len(trial) <= _PAYOS_DESCRIPTION_MAX_LEN and code in trial:
                 return trial
 

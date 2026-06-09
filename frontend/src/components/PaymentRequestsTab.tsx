@@ -223,6 +223,9 @@ export default function PaymentRequestsTab() {
       note: (next.note || "").trim(),
       email: (next.email || "").trim(),
       target: next.target,
+      tax_id: (next.taxId || "").trim() || undefined,
+      customer_type: next.customerType || "individual",
+      company_name: next.customerType === "business" ? (next.companyName || "").trim() || undefined : undefined,
     };
 
     try {

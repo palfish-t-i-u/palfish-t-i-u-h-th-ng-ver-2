@@ -65,6 +65,8 @@ export interface CreatePrResponse {
   payment_request: Record<string, unknown>;
 }
 
+export type CustomerType = "individual" | "business";
+
 export interface PaymentRequest {
   id: string;
   name: string;
@@ -77,6 +79,9 @@ export interface PaymentRequest {
   province?: string;
   note?: string;
   email?: string;
+  taxId?: string;
+  customerType?: CustomerType;
+  companyName?: string;
   target: number;
   source: string;
   createdAt: string;
@@ -161,6 +166,9 @@ export type CreatePaymentRequestPayload = {
   target: number;
   note?: string;
   email?: string;
+  tax_id?: string;
+  customer_type?: string;
+  company_name?: string;
 };
 
 export type PatchPaymentRequestPayload = Partial<CreatePaymentRequestPayload>;
