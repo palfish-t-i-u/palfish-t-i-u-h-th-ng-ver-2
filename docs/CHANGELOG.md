@@ -696,3 +696,75 @@
 **Fix**
 - Auto-correct GMV locale errors từ "All File Thu Hiền" (detect dấu phẩy thập phân VN).
 - Permissions tab loading spinner fix (revert + reapply).
+
+---
+
+## 2026-06-06..08 — TOP1-01 Nội dung CK + TOP3 PayOS transfer content
+
+**Frontend**
+- `PaymentFlowContext.tsx` — transfer content format: base36 code + tên con + họ tên selector (first/last name).
+- `CreatePaymentRequestModal.tsx` — child_name persistence, phone country prefix fix.
+- `paymentRequest.ts` — `transferContent` field trên `PaymentAttempt`.
+
+**Backend**
+- `payment_request_routes.py` — persist `transfer_content` trong `payment_lines` table.
+- Store PayOS `transfer_content` (with PayOS prefix) thay vì tự tạo description.
+
+**Migration**
+- `payment_lines.transfer_content` column.
+
+**Fix**
+- `tsc -b` build errors: test type, lazy type, onClick signature (`0bb0fa5`).
+- ErrorBoundary + lazy retry prevent blank page after deploy (`23e3a4a`).
+
+---
+
+## 2026-06-08..09 — TOP2-01/02/03 Nguồn KH, MST, Loại KH
+
+**Frontend**
+- `CreatePaymentRequestModal.tsx` — lead_source dropdown, lead_channel input, customer_type toggle (cá nhân / doanh nghiệp), company_name + tax_id conditional fields.
+- Dynamic MST label — đổi theo loại KH (CCCD/CMND vs Mã số thuế).
+- `ActiveRequestApiRow` — thêm `lead_source`, `lead_channel` types.
+
+**Backend**
+- `payment_request_routes.py` — `lead_source`, `lead_channel`, `customer_type`, `company_name`, `tax_id` trên PaymentRequest CRUD.
+- `_payment_request_insert_row` + `_payment_request_patch_row` — persist all TOP2 fields.
+
+**Migration**
+- `payment_requests` table: `lead_source`, `lead_channel`, `customer_type`, `company_name`, `tax_id` columns.
+
+---
+
+## 2026-06-09 — TOP1-02 Trả góp + Kế toán xác nhận
+
+**Frontend**
+- `CreatePaymentRequestModal.tsx` — installment form: platform, total amount, sale received fields (hiện khi method = installment).
+- `ReconciliationTab.tsx` — accountant verification section trong B2 drawer: `verified_total` + `verified_received` inputs, purple bordered editable / green confirmed states.
+- `PaymentFlowContext.tsx` — `confirmTransaction` nhận optional `verified` object.
+- `api.ts` — `patchStatus` hỗ trợ extra verified fields.
+- `paymentRequestUtils.ts` — `fromApiPaymentAttempt` map `verified_total` / `verified_received`.
+
+**Backend**
+- `PaymentLineCreate` model — `installment_platform`, `installment_total`, `sale_received` fields.
+- `TransactionStatusPatch` model — `verified_total`, `verified_received` fields.
+- `_serialize_payment_line` + `_serialize_payment_for_list` — serialize tất cả 5 fields mới.
+- `create_payment_line` — insert installment fields khi method = installment.
+- `patch_transaction_status` — update verified fields khi confirm.
+
+**Migration**
+- `payment_lines`: `installment_platform`, `installment_total`, `sale_received` columns.
+- `payment_lines`: `verified_total`, `verified_received` columns.
+
+---
+
+## 2026-06-09..10 — Bug fixes từ test feedback
+
+**Backend**
+- `_serialize_payment_request` — thêm 5 fields bị thiếu: `customer_type`, `company_name`, `lead_source`, `lead_channel`, `tax_id`. Data đã lưu DB đúng nhưng serializer không trả về FE.
+
+**Frontend**
+- `ReconciliationTab.tsx` — kế toán xác nhận section: di chuyển từ `drawer-foot` (sticky footer) lên main body. Tăng kích thước: border 2px, padding 16-18px, font 14-15px, labels bold.
+
+**Chore**
+- `.gitignore` — ignore `.vite/` cache directory.
+- `CLAUDE.md` — ghi chú dùng `tsc -b` thay `tsc --noEmit`.
