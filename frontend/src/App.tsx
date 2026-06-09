@@ -6,6 +6,7 @@ import ForgotPasswordPage from "./pages/ForgotPasswordPage";
 import MainPage from "./pages/MainPage";
 import PendingActivationPage from "./pages/PendingActivationPage";
 import { useMe } from "./hooks/useMe";
+import ErrorBoundary from "./components/ErrorBoundary";
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading, isDevMode } = useAuth();
@@ -66,6 +67,7 @@ function AuthFlowRoute({ children }: { children: React.ReactNode }) {
 
 export default function App() {
   return (
+    <ErrorBoundary>
     <div className="gmv-light-ui min-h-screen">
     <Routes>
       <Route
@@ -111,5 +113,6 @@ export default function App() {
       <Route path="*" element={<Navigate to="/login" replace />} />
     </Routes>
     </div>
+    </ErrorBoundary>
   );
 }

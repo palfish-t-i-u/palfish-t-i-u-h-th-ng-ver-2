@@ -213,10 +213,12 @@ export default function Module6Tab() {
       .catch(() => setHasCrmData(false));
   }, []);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (opts?: { silent?: boolean }) => {
     setError("");
-    setKpiLoading(true);
-    setTrendsLoading(true);
+    if (!opts?.silent) {
+      setKpiLoading(true);
+      setTrendsLoading(true);
+    }
 
     const { start, end } = resolvePeriod(rangeKey, customStart, customEnd);
     const params = {
@@ -244,7 +246,7 @@ export default function Module6Tab() {
   useEffect(() => { load(); }, [load]);
 
   useRealtimeTable(["so_doanh_thu", "payment_lines"], load);
-  useRefetchOnFocus(load);
+  useRefetchOnFocus(() => load({ silent: true }));
 
   const period = live?.period ?? trends?.period;
   const kpi = live?.kpi;
