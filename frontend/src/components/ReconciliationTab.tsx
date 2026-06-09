@@ -319,6 +319,8 @@ export default function ReconciliationTab() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [drawerTxn, setDrawerTxn] = useState<FlatTransaction | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [verifiedTotalDraft, setVerifiedTotalDraft] = useState("");
+  const [verifiedReceivedDraft, setVerifiedReceivedDraft] = useState("");
   const [lightboxBill, setLightboxBill] = useState<BillImage | null>(null);
   const [currentBillIdx, setCurrentBillIdx] = useState(0);
   const [albumOpen, setAlbumOpen] = useState(false);
@@ -411,6 +413,10 @@ export default function ReconciliationTab() {
     setCurrentBillIdx(0);
     setAlbumOpen(false);
     setAlbumSelected(new Set());
+    const vt = drawerTxn?.verifiedTotal;
+    const vr = drawerTxn?.verifiedReceived;
+    setVerifiedTotalDraft(vt != null ? String(vt) : "");
+    setVerifiedReceivedDraft(vr != null ? String(vr) : "");
   }, [drawerTxn?.key]);
 
   useEffect(() => {
@@ -425,8 +431,8 @@ export default function ReconciliationTab() {
     }));
   }, [transactions, billModal.open, billModal.lineId]);
 
-  const handleConfirm = async (t: FlatTransaction) => {
-    await confirmTransaction(t.prId, t.id);
+  const handleConfirm = async (t: FlatTransaction, verified?: { verified_total?: number; verified_received?: number }) => {
+    await confirmTransaction(t.prId, t.id, verified);
   };
 
   // Opens the reject-reason modal for one or more transactions
@@ -807,11 +813,16 @@ export default function ReconciliationTab() {
                         <div style={{ fontSize: 12.5, color: "var(--text-2)" }}>
                           {t.method === "cash" && (t.cashier ? `Người thu: ${t.cashier}` : "—")}
                           {t.method === "card" && (t.cardLast4 ? `•••• ${t.cardLast4}` : t.bank || "—")}
-                          {t.method === "installment" && `${t.bank || "—"}`}
+                          {t.method === "installment" && (t.installmentPlatform || "Trả góp")}
                           {t.method === "qr" && (t.bank || "—")}
                         </div>
-                        {t.method === "installment" && (
-                          <div className="cell-sub">{t.installmentMonths} tháng</div>
+                        {t.method === "installment" && t.installmentTotal != null && (
+                          <div className="cell-sub">
+                            {vnd(t.installmentTotal)} → {vnd(t.saleReceived ?? 0)}
+                            {t.verifiedReceived != null && t.verifiedReceived !== t.saleReceived && (
+                              <span style={{ color: "var(--success-text)", marginLeft: 4 }}>✓ {vnd(t.verifiedReceived)}</span>
+                            )}
+                          </div>
                         )}
                       </td>
                       <td style={{ textAlign: "right" }}>
@@ -1030,7 +1041,7 @@ export default function ReconciliationTab() {
                           {drawerTxn.method === "card" &&
                             (drawerTxn.cardLast4 ? `•••• ${drawerTxn.cardLast4}` : "—")}
                           {drawerTxn.method === "installment" &&
-                            `${drawerTxn.bank || "—"} · ${drawerTxn.installmentMonths || "—"} tháng`}
+                            `${drawerTxn.installmentPlatform || "Trả góp"}${drawerTxn.installmentTotal != null ? ` · ${vnd(drawerTxn.installmentTotal)} → ${vnd(drawerTxn.saleReceived ?? 0)}` : ""}`}
                           {drawerTxn.method === "qr" && (drawerTxn.bank || "—")}
                         </div>
                       </div>
@@ -1124,6 +1135,42 @@ export default function ReconciliationTab() {
               </div>
 
               <div className="drawer-foot" style={{ flexDirection: "column", alignItems: "stretch", gap: 10 }}>
+                {drawerTxn.method === "installment" && (status === "awaiting" || status === "rejected") && !readOnly && (
+                  <div style={{ background: "var(--bg-2)", borderRadius: 8, padding: "10px 12px", display: "flex", flexDirection: "column", gap: 8, border: "1px solid var(--border)" }}>
+                    <div style={{ fontWeight: 600, fontSize: 12, color: "var(--primary)", textTransform: "uppercase", letterSpacing: 0.5 }}>Kế toán xác nhận</div>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                      <label style={{ fontSize: 11, color: "var(--text-3)" }}>
+                        Tổng tiền KH chuyển (thực tế)
+                        <input
+                          className="input"
+                          style={{ marginTop: 2, width: "100%" }}
+                          placeholder="Số tiền KH thực chuyển qua Payoo/Mpos..."
+                          value={verifiedTotalDraft}
+                          onChange={(e) => setVerifiedTotalDraft(e.target.value.replace(/[^\d]/g, ""))}
+                        />
+                      </label>
+                      <label style={{ fontSize: 11, color: "var(--text-3)" }}>
+                        Thực nhận về công ty (sau phí)
+                        <input
+                          className="input"
+                          style={{ marginTop: 2, width: "100%" }}
+                          placeholder="Sau khi trừ phí dịch vụ..."
+                          value={verifiedReceivedDraft}
+                          onChange={(e) => setVerifiedReceivedDraft(e.target.value.replace(/[^\d]/g, ""))}
+                        />
+                      </label>
+                    </div>
+                  </div>
+                )}
+                {drawerTxn.method === "installment" && status === "confirmed" && (drawerTxn.verifiedTotal != null || drawerTxn.verifiedReceived != null) && (
+                  <div style={{ background: "var(--bg-2)", borderRadius: 8, padding: "10px 12px", display: "flex", flexDirection: "column", gap: 4, border: "1px solid var(--border)" }}>
+                    <div style={{ fontWeight: 600, fontSize: 12, color: "var(--success-text)", textTransform: "uppercase", letterSpacing: 0.5 }}>Kế toán đã xác nhận</div>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, fontSize: 13 }}>
+                      <div><span style={{ color: "var(--text-3)" }}>KH chuyển:</span> <strong>{vnd(drawerTxn.verifiedTotal ?? 0)}</strong></div>
+                      <div><span style={{ color: "var(--text-3)" }}>Thực nhận:</span> <strong>{vnd(drawerTxn.verifiedReceived ?? 0)}</strong></div>
+                    </div>
+                  </div>
+                )}
                 <div style={{ fontSize: 12, color: "var(--text-3)" }}>
                   Xác nhận sẽ cập nhật trạng thái về{" "}
                   <strong style={{ color: "var(--success-text)" }}>Đã xác nhận</strong> trên Payment Request.
@@ -1139,13 +1186,25 @@ export default function ReconciliationTab() {
                       >
                         <Icons.XCircle size={14} /> Từ chối
                       </button>
-                      <button type="button" className="btn btn-success" onClick={() => void handleConfirm(drawerTxn)}>
+                      <button type="button" className="btn btn-success" onClick={() => {
+                        const extra = drawerTxn.method === "installment" ? {
+                          verified_total: parseInt(verifiedTotalDraft, 10) || undefined,
+                          verified_received: parseInt(verifiedReceivedDraft, 10) || undefined,
+                        } : undefined;
+                        void handleConfirm(drawerTxn, extra);
+                      }}>
                         <Icons.Check size={14} strokeWidth={2.5} /> Xác nhận tiền về
                       </button>
                     </>
                   )}
                   {status === "rejected" && !readOnly && (
-                    <button type="button" className="btn btn-outline" onClick={() => void handleConfirm(drawerTxn)}>
+                    <button type="button" className="btn btn-outline" onClick={() => {
+                      const extra = drawerTxn.method === "installment" ? {
+                        verified_total: parseInt(verifiedTotalDraft, 10) || undefined,
+                        verified_received: parseInt(verifiedReceivedDraft, 10) || undefined,
+                      } : undefined;
+                      void handleConfirm(drawerTxn, extra);
+                    }}>
                       <Icons.Clock size={14} /> Mở lại — Xác nhận
                     </button>
                   )}

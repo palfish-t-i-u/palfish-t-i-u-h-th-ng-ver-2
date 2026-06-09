@@ -122,7 +122,7 @@ function QrRow({
     : qr.method === "card"
     ? qr.bank || (qr.cardLast4 ? `•••• ${qr.cardLast4}` : "")
     : qr.method === "installment"
-    ? `${qr.installmentMonths || ""} kỳ`
+    ? `${qr.installmentPlatform || "Trả góp"}${qr.installmentTotal ? ` · ${vnd(qr.installmentTotal)}` : ""}${qr.saleReceived ? ` → ${vnd(qr.saleReceived)}` : ""}`
     : "";
 
   return (
@@ -226,7 +226,9 @@ function AddPaymentForm({
   const [isAmountFocused, setIsAmountFocused] = useState(false);
   const [bank, setBank] = useState(availableBanks[0].alias);
   const [cardLast4, setCardLast4] = useState("");
-  const [installmentMonths, setInstallmentMonths] = useState("6");
+  const [installmentPlatform, setInstallmentPlatform] = useState("");
+  const [installmentTotal, setInstallmentTotal] = useState("");
+  const [saleReceivedDraft, setSaleReceivedDraft] = useState("");
   const [cashier, setCashier] = useState("");
   const [nameForTransfer, setNameForTransfer] = useState(pr.childName || pr.name);
 
@@ -244,7 +246,9 @@ function AddPaymentForm({
       method,
       bank: method === "qr" || method === "card" ? bank : undefined,
       cardLast4: method === "card" ? cardLast4 : undefined,
-      installmentMonths: method === "installment" ? installmentMonths : undefined,
+      installment_platform: method === "installment" ? installmentPlatform : undefined,
+      installment_total: method === "installment" ? (parseInt(installmentTotal.replace(/\D/g, ""), 10) || undefined) : undefined,
+      sale_received: method === "installment" ? (parseInt(saleReceivedDraft.replace(/\D/g, ""), 10) || undefined) : undefined,
       cashier: method === "cash" ? cashier : undefined,
       name_for_transfer: method === "qr" ? nameForTransfer : undefined,
     });
@@ -341,15 +345,38 @@ function AddPaymentForm({
           </div>
         )}
         {method === "installment" && (
-          <div className="field" style={{ flex: 1, minWidth: 180 }}>
-            <label>Số kỳ trả góp</label>
-            <select value={installmentMonths} onChange={(e) => setInstallmentMonths(e.target.value)}>
-              <option value="3">3 tháng</option>
-              <option value="6">6 tháng</option>
-              <option value="9">9 tháng</option>
-              <option value="12">12 tháng</option>
-            </select>
-          </div>
+          <>
+            <div className="field" style={{ flex: 1, minWidth: 140 }}>
+              <label>Nền tảng trả góp <span style={{ color: "var(--danger)" }}>*</span></label>
+              <select
+                value={installmentPlatform}
+                onChange={(e) => setInstallmentPlatform(e.target.value)}
+                style={{ font: "inherit", fontSize: 13 }}
+              >
+                <option value="">— Chọn —</option>
+                <option value="Payoo">Payoo</option>
+                <option value="Mpos">Mpos</option>
+              </select>
+            </div>
+            <div className="field" style={{ flex: 1, minWidth: 160 }}>
+              <label>Tổng tiền trả góp <span style={{ color: "var(--danger)" }}>*</span></label>
+              <input
+                inputMode="numeric"
+                placeholder="Số tiền KH chuyển qua app"
+                value={installmentTotal}
+                onChange={(e) => setInstallmentTotal(e.target.value.replace(/[^\d]/g, ""))}
+              />
+            </div>
+            <div className="field" style={{ flex: 1, minWidth: 160 }}>
+              <label>Thực nhận về công ty <span style={{ color: "var(--danger)" }}>*</span></label>
+              <input
+                inputMode="numeric"
+                placeholder="Sau phí nền tảng"
+                value={saleReceivedDraft}
+                onChange={(e) => setSaleReceivedDraft(e.target.value.replace(/[^\d]/g, ""))}
+              />
+            </div>
+          </>
         )}
         {method === "cash" && (
           <div className="field" style={{ flex: 1, minWidth: 180 }}>
