@@ -223,6 +223,10 @@
   background: #f08c00;
 }
 
+.aa-role-badge.manager .aa-role-dot {
+  background: #0891b2;
+}
+
 .aa-role-badge.admin .aa-role-dot {
   background: #7c3aed;
 }
