@@ -12,6 +12,7 @@ import "./auth/auth-accounts.css";
 const ROLE_OPTIONS = [
   { value: "user", label: "User" },
   { value: "leader", label: "Leader" },
+  { value: "manager", label: "Manager" },
   { value: "admin", label: "Admin" },
 ];
 
@@ -82,7 +83,8 @@ function statusLabel(s: "activated" | "pending" | "banned") {
 function roleLabel(role: string | null) {
   if (!role) return "User";
   const r = role.toLowerCase();
-  if (r === "system" || r === "admin" || r === "manager") return "Admin";
+  if (r === "system" || r === "admin") return "Admin";
+  if (r === "manager") return "Manager";
   if (r === "leader") return "Leader";
   return "User";
 }
@@ -90,6 +92,7 @@ function roleLabel(role: string | null) {
 function roleClass(role: string | null) {
   const label = roleLabel(role).toLowerCase();
   if (label === "admin") return "admin";
+  if (label === "manager") return "manager";
   if (label === "leader") return "leader";
   return "user";
 }
@@ -224,7 +227,7 @@ export default function AuthAccountsTab() {
     const linked = authUsers.filter((u) => !!u.crmName).length;
     const leaderAdmin = authUsers.filter((u) => {
       const r = roleLabel(u.staffRole).toLowerCase();
-      return r === "leader" || r === "admin";
+      return r === "leader" || r === "manager" || r === "admin";
     }).length;
     const pending = total - activated;
     return { total, activated, pending, linked, leaderAdmin };
