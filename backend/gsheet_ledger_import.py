@@ -553,12 +553,11 @@ def _load_existing_import_fingerprints(sb, *, log: Callable[[str], None] = _log)
             lambda off=offset: (
                 sb.table("so_doanh_thu")
                 .select("uid, pay_time, so_tien_vnd, sale_crm_name, sdt")
-                .like("created_by_email", "import:%")
                 .range(off, off + 999)
                 .execute()
             ),
             log=log,
-            label="Load fingerprint",
+            label="Load ledger fingerprint",
         )
         chunk = res.data or []
         if not chunk:
@@ -568,7 +567,7 @@ def _load_existing_import_fingerprints(sb, *, log: Callable[[str], None] = _log)
         if len(chunk) < 1000:
             break
         offset += 1000
-    log(f"  Đã có {len(fps)} fingerprint import:* trong Sổ")
+    log(f"  Đã có {len(fps)} fingerprint trong Sổ")
     return fps
 
 
