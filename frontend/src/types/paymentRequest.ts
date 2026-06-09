@@ -217,6 +217,10 @@ export type ActiveRequestApiRow = {
       invoice_requested_at?: string;
       tax_invoice_code?: string;
       tax_product_code?: string;
+      lead_source?: string;
+      leadSource?: string;
+      lead_channel?: string;
+      leadChannel?: string;
     }>;
   }>;
   status?: string;
