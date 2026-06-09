@@ -12,14 +12,27 @@ import AppShell, { type NavItem } from "../layouts/AppShell";
 import Badge from "../components/ui/Badge";
 import { DEPARTMENT_LIST } from "../types/permissions";
 
-const BC01SalesPerformance = lazy(() => import("../components/reports/BC01SalesPerformance"));
-const BC02KeyDataReport = lazy(() => import("../components/reports/BC02KeyDataReport"));
-const ReportBC03Tab = lazy(() => import("../components/ReportBC03Tab"));
-const PaymentRequestsTab = lazy(() => import("../components/PaymentRequestsTab"));
-const ReconciliationTab = lazy(() => import("../components/ReconciliationTab"));
-const ActivationTab = lazy(() => import("../components/ActivationTab"));
-const InvoiceRequestTab = lazy(() => import("../components/InvoiceRequestTab"));
-const SoDoanhThuTab = lazy(() => import("../components/SoDoanhThuTab"));
+function retryImport<T>(load: () => Promise<T>, retries: number): Promise<T> {
+  return load().catch((err) => {
+    if (retries <= 0) throw err;
+    return new Promise<T>((resolve) =>
+      setTimeout(() => resolve(retryImport(load, retries - 1)), 1000),
+    );
+  });
+}
+
+function lazyRetry(load: () => Promise<{ default: React.ComponentType<never> }>) {
+  return lazy(() => retryImport(load, 2));
+}
+
+const BC01SalesPerformance = lazyRetry(() => import("../components/reports/BC01SalesPerformance"));
+const BC02KeyDataReport = lazyRetry(() => import("../components/reports/BC02KeyDataReport"));
+const ReportBC03Tab = lazyRetry(() => import("../components/ReportBC03Tab"));
+const PaymentRequestsTab = lazyRetry(() => import("../components/PaymentRequestsTab"));
+const ReconciliationTab = lazyRetry(() => import("../components/ReconciliationTab"));
+const ActivationTab = lazyRetry(() => import("../components/ActivationTab"));
+const InvoiceRequestTab = lazyRetry(() => import("../components/InvoiceRequestTab"));
+const SoDoanhThuTab = lazyRetry(() => import("../components/SoDoanhThuTab"));
 
 const PRELOAD_MAP: Record<string, () => Promise<unknown>> = {
   paymentRequests: () => import("../components/PaymentRequestsTab"),
