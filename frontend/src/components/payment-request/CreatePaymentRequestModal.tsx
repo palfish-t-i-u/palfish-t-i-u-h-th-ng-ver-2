@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import type { CreatePaymentRequestPayload, CustomerType } from "../../types/paymentRequest";
+import { LEAD_SOURCES, findSourceByKey, sourceHasChannels } from "../../constants/leadSource";
 import CountryCombo from "./CountryCombo";
 import { Icons } from "./Icons";
 import VietnamAddressFields from "./VietnamAddressFields";
@@ -19,6 +20,8 @@ interface FormState {
   taxId: string;
   customerType: CustomerType;
   companyName: string;
+  leadSource: string;
+  leadChannel: string;
 }
 
 const INITIAL: FormState = {
@@ -36,6 +39,8 @@ const INITIAL: FormState = {
   taxId: "",
   customerType: "individual",
   companyName: "",
+  leadSource: "",
+  leadChannel: "",
 };
 
 export default function CreatePaymentRequestModal({
@@ -63,7 +68,11 @@ export default function CreatePaymentRequestModal({
     setForm((f) => ({ ...f, [k]: v }));
 
   const targetNum = parseInt(String(form.target).replace(/\D/g, ""), 10) || 0;
-  const canSubmit = !!(form.uid && form.name && form.phone && targetNum > 0);
+  const needsChannel = sourceHasChannels(form.leadSource);
+  const canSubmit = !!(
+    form.uid && form.name && form.phone && targetNum > 0 &&
+    form.leadSource && (!needsChannel || form.leadChannel)
+  );
 
   const handleSubmit = () => {
     if (!canSubmit) return;
@@ -82,6 +91,8 @@ export default function CreatePaymentRequestModal({
       tax_id: form.taxId.trim() || undefined,
       customer_type: form.customerType,
       company_name: form.customerType === "business" ? form.companyName.trim() || undefined : undefined,
+      lead_source: form.leadSource || undefined,
+      lead_channel: form.leadChannel || undefined,
     });
   };
 
@@ -125,6 +136,44 @@ export default function CreatePaymentRequestModal({
             <div style={{ fontSize: 11.5, color: "var(--text-3)", lineHeight: 1.45, marginTop: 4 }}>
               Nếu để trống, nội dung chuyển khoản sẽ dùng tên khách hàng.
             </div>
+          </div>
+
+          <div className="field-row">
+            <div className="field">
+              <label>
+                Nguồn KH <span style={{ color: "var(--danger)" }}>*</span>
+              </label>
+              <select
+                value={form.leadSource}
+                onChange={(e) => {
+                  set("leadSource", e.target.value);
+                  set("leadChannel", "");
+                }}
+                style={{ font: "inherit", fontSize: 13 }}
+              >
+                <option value="">— Chọn nguồn —</option>
+                {LEAD_SOURCES.map((s) => (
+                  <option key={s.key} value={s.key}>{s.label}</option>
+                ))}
+              </select>
+            </div>
+            {needsChannel && (
+              <div className="field">
+                <label>
+                  Kênh <span style={{ color: "var(--danger)" }}>*</span>
+                </label>
+                <select
+                  value={form.leadChannel}
+                  onChange={(e) => set("leadChannel", e.target.value)}
+                  style={{ font: "inherit", fontSize: 13 }}
+                >
+                  <option value="">— Chọn kênh —</option>
+                  {findSourceByKey(form.leadSource)?.channels.map((ch) => (
+                    <option key={ch.code} value={ch.code}>{ch.code} - {ch.label}</option>
+                  ))}
+                </select>
+              </div>
+            )}
           </div>
 
           <div className="field-row">
