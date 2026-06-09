@@ -3491,6 +3491,7 @@ CREATE TABLE public.payment_requests (
     cancelled_reason text,
     email text DEFAULT ''::text NOT NULL,
     sale_email text,
+    tax_id text DEFAULT NULL,
     CONSTRAINT payment_requests_received_check CHECK ((received >= 0)),
     CONSTRAINT payment_requests_state_check CHECK ((state = ANY (ARRAY['pending'::text, 'short'::text, 'done'::text, 'over'::text, 'cancelled'::text]))),
     CONSTRAINT payment_requests_target_check CHECK ((target >= 0))
