@@ -56,6 +56,8 @@ class PaymentRequestCreate(BaseModel):
     note: str | None = ""
     email: str | None = ""
     target: int | str | None = None
+    customer_type: str | None = "individual"
+    company_name: str | None = None
 
     uid_khach_hang: str | None = None
     ten_khach: str | None = None
@@ -76,6 +78,8 @@ class PaymentRequestPatch(BaseModel):
     note: str | None = None
     email: str | None = None
     target: int | str | None = None
+    customer_type: str | None = None
+    company_name: str | None = None
 
     uid_khach_hang: str | None = None
     ten_khach: str | None = None
@@ -196,6 +200,8 @@ def _serialize_payment_request(row: dict[str, Any]) -> dict[str, Any]:
         "updated_at": row.get("updated_at") or "",
         "sale_email": row.get("sale_email") or "",
         "is_test": bool(row.get("is_test")),
+        "customer_type": row.get("customer_type") or "individual",
+        "company_name": row.get("company_name") or None,
     }
     if row.get("child_name"):
         result["child_name"] = row["child_name"]
@@ -655,6 +661,16 @@ def _payment_request_insert_row(body: PaymentRequestCreate) -> dict[str, Any]:
     child_name = _clean_text(body.child_name)
     if child_name:
         row["child_name"] = child_name
+
+    ct = _clean_text(body.customer_type) or "individual"
+    if ct not in ("individual", "business"):
+        raise HTTPException(400, "customer_type phai la 'individual' hoac 'business'")
+    row["customer_type"] = ct
+    if ct == "business":
+        company = _clean_text(body.company_name)
+        if company:
+            row["company_name"] = company
+
     return row
 
 
@@ -706,6 +722,17 @@ def _payment_request_patch_row(body: PaymentRequestPatch, current_row: dict[str,
         if target <= 0:
             raise HTTPException(400, "target khong hop le")
         patch["target"] = target
+    if body.customer_type is not None:
+        ct = _clean_text(body.customer_type) or "individual"
+        if ct not in ("individual", "business"):
+            raise HTTPException(400, "customer_type phai la 'individual' hoac 'business'")
+        patch["customer_type"] = ct
+    if body.company_name is not None:
+        patch["company_name"] = _clean_text(body.company_name) or None
+
+    final_ct = patch.get("customer_type", current_row.get("customer_type") or "individual")
+    if final_ct == "individual":
+        patch["company_name"] = None
 
     if not patch:
         return {}
