@@ -1401,7 +1401,7 @@ def register_payment_request_routes(app, get_supabase) -> None:
                     "payos_order_code": payos_payload["order_code"],
                     "qr_code": payos_payload.get("qr_code") or "",
                     "checkout_url": payos_payload.get("checkout_url") or "",
-                    "transfer_content": description,
+                    "transfer_content": payos_payload.get("transfer_content") or description,
                 }
             )
 
