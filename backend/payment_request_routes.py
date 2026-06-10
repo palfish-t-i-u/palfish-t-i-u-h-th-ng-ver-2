@@ -1166,6 +1166,22 @@ def _parse_iso_datetime(val: str) -> datetime:
     return datetime.fromisoformat(val)
 
 
+def _has_invoice_since(sb, pr_id: str, since: datetime) -> bool:
+    """Check if any course was invoiced after `since` for this PR's active requests."""
+    try:
+        ar_res = sb.table("active_requests").select("uids_data").eq("pr_id", pr_id).execute()
+        for ar in (ar_res.data or []):
+            for uid in (ar.get("uids_data") or []):
+                for c in (uid.get("courses") or []):
+                    if c.get("invoiced") and c.get("invoicedAt"):
+                        inv_time = _parse_iso_datetime(str(c["invoicedAt"]))
+                        if inv_time > since:
+                            return True
+    except Exception:
+        pass
+    return False
+
+
 def _is_accountant_or_manager(sb, actor) -> bool:
     if _clean_text(actor.role).lower() in ("manager", "system"):
         return True
@@ -2092,7 +2108,7 @@ def register_payment_request_routes(app, get_supabase) -> None:
         if not _can_access_request(sb, actor, current_row):
             raise HTTPException(403, "Khong co quyen thao tac phieu nay")
 
-        # Throttle check: has reminder in last 24h
+        # Throttle: block if reminded in 24h AND no invoice issued since that remind
         remind_res = (
             sb.table("invoice_reminders")
             .select("*")
@@ -2107,7 +2123,8 @@ def register_payment_request_routes(app, get_supabase) -> None:
             now_time = datetime.now(timezone.utc)
             diff = now_time - last_time
             if diff.total_seconds() < 24 * 3600:
-                raise HTTPException(429, "Da nhac trong 24h qua, vui long cho")
+                if not _has_invoice_since(sb, payment_request_id, last_time):
+                    raise HTTPException(429, "Da nhac trong 24h qua, vui long cho")
 
         # Insert
         insert_res = (
@@ -2244,7 +2261,8 @@ def register_payment_request_routes(app, get_supabase) -> None:
             now_time = datetime.now(timezone.utc)
             diff = now_time - last_time
             if diff.total_seconds() < 24 * 3600:
-                can_remind = False
+                if not _has_invoice_since(sb, payment_request_id, last_time):
+                    can_remind = False
 
             requested_by_name = _get_user_name_by_id(sb, row.get("requested_by"))
             last_reminder = {
