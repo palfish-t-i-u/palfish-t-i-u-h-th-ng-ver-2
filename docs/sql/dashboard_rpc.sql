@@ -39,6 +39,8 @@ AS $$
   WHERE pl.status = 'paid'
     AND pl.paid_at >= p_start
     AND pl.paid_at < p_end
+    AND COALESCE(pl.is_test, false) = false
+    AND LOWER(COALESCE(pr.state, '')) <> 'cancelled'
   GROUP BY pr.sale_email, ns.display_name, ns.avatar_url
   ORDER BY total_revenue DESC
   LIMIT p_limit;
