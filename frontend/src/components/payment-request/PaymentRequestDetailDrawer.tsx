@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { LEAD_SOURCES, findSourceByKey, sourceHasChannels } from "../../constants/leadSource";
 import type {
   ActiveRequest,
@@ -28,6 +28,7 @@ import {
   vnd,
 } from "./paymentRequestUtils";
 import { nextCourseCode } from "../payment-flow/paymentFlowUtils";
+import { endpoints } from "../../lib/api";
 
 const METHOD_META: Record<PaymentMethod, { cls: string; label: string; icon: IconKey; sub: string }> = {
   qr: { cls: "method-qr", label: "Chuyển khoản", icon: "QrCode", sub: "QR / chuyển khoản" },
@@ -299,7 +300,8 @@ function AddPaymentForm({
   const availableBanks = getAvailableBanks(profile?.team);
 
   const [method, setMethod] = useState<PaymentMethod>("qr");
-  const [amount, setAmount] = useState("");
+  const remaining = Math.max(0, pr.target - pr.received);
+  const [amount, setAmount] = useState(remaining > 0 ? String(remaining) : "");
   const [isAmountFocused, setIsAmountFocused] = useState(false);
   const [bank, setBank] = useState(availableBanks[0].alias);
   const [cardLast4, setCardLast4] = useState("");
@@ -308,8 +310,8 @@ function AddPaymentForm({
   const [saleReceivedDraft, setSaleReceivedDraft] = useState("");
   const [cashier, setCashier] = useState("");
   const [nameForTransfer, setNameForTransfer] = useState(pr.childName || pr.name);
+  const [validationError, setValidationError] = useState("");
 
-  const remaining = Math.max(0, pr.target - pr.received);
   const nameOptions = [
     { value: pr.name, label: `KH: ${pr.name}` },
     ...(pr.childName ? [{ value: pr.childName, label: `Con: ${pr.childName}` }] : []),
@@ -317,7 +319,23 @@ function AddPaymentForm({
 
   const submit = () => {
     const n = parseInt(String(amount).replace(/\D/g, ""), 10);
-    if (!n) return;
+    if (!n) {
+      setValidationError("Vui lòng nhập số tiền thanh toán");
+      return;
+    }
+    if (method === "installment" && !installmentPlatform) {
+      setValidationError("Vui lòng chọn nền tảng trả góp");
+      return;
+    }
+    if (method === "installment" && !installmentTotal) {
+      setValidationError("Vui lòng nhập tổng tiền trả góp");
+      return;
+    }
+    if (method === "installment" && !saleReceivedDraft) {
+      setValidationError("Vui lòng nhập số tiền thực nhận về công ty");
+      return;
+    }
+    setValidationError("");
     onSubmit({
       amount: n,
       method,
@@ -371,7 +389,7 @@ function AddPaymentForm({
 
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
         <div className="field" style={{ flex: 1, minWidth: 180 }}>
-          <label>Số tiền lần này</label>
+          <label>Số tiền lần này <span style={{ color: "var(--danger)" }}>*</span></label>
           <input
             type="text"
             placeholder={`Còn thiếu: ${vnd(remaining)}`}
@@ -383,6 +401,7 @@ function AddPaymentForm({
             onChange={(e) => {
               const v = e.target.value.replace(/[^\d]/g, "");
               setAmount(v);
+              if (v) setValidationError("");
             }}
           />
         </div>
@@ -475,6 +494,21 @@ function AddPaymentForm({
         )}
       </div>
 
+      {validationError && (
+        <div style={{
+          background: "var(--danger-bg, #fef2f2)",
+          border: "1px solid var(--danger, #ef4444)",
+          borderRadius: 8,
+          padding: "8px 12px",
+          fontSize: 12.5,
+          color: "var(--danger, #ef4444)",
+          display: "flex",
+          alignItems: "center",
+          gap: 6,
+        }}>
+          <Icons.AlertCircle size={14} /> {validationError}
+        </div>
+      )}
       <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
         <button className="btn btn-outline" onClick={onCancel}>
           Huỷ
@@ -1159,6 +1193,53 @@ function ActiveRequestMiniCardV2({
   );
 }
 
+function useInvoiceRemind(prId: string | null) {
+  const [canRemind, setCanRemind] = useState(true);
+  const [lastReminder, setLastReminder] = useState<{ requested_at: string; requested_by_name: string } | null>(null);
+  const [sending, setSending] = useState(false);
+
+  const load = useCallback(async () => {
+    if (!prId) return;
+    try {
+      const res = await endpoints.invoiceRemind.status(prId);
+      setCanRemind(res.data.can_remind);
+      setLastReminder(res.data.last_reminder);
+    } catch { /* ignore */ }
+  }, [prId]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const remind = useCallback(async (note?: string) => {
+    if (!prId || sending) return;
+    setSending(true);
+    try {
+      await endpoints.invoiceRemind.create(prId, note);
+      setCanRemind(false);
+      setLastReminder({ requested_at: new Date().toISOString(), requested_by_name: "Bạn" });
+    } finally {
+      setSending(false);
+    }
+  }, [prId, sending]);
+
+  return { canRemind, lastReminder, sending, remind };
+}
+
+function useDeliveryLog(arId: string | null) {
+  const [logs, setLogs] = useState<Array<{ sent_at: string; channel: string; sent_to: string; sent_by_email: string }>>([]);
+
+  const load = useCallback(async () => {
+    if (!arId) { setLogs([]); return; }
+    try {
+      const res = await endpoints.deliveryLog.list(arId);
+      setLogs(res.data.logs || []);
+    } catch { /* ignore */ }
+  }, [arId]);
+
+  useEffect(() => { load(); }, [load]);
+
+  return { logs, latestLog: logs[0] || null };
+}
+
 export default function PaymentRequestDetailDrawer({
   request,
   open,
@@ -1247,6 +1328,8 @@ export default function PaymentRequestDetailDrawer({
   const ready = request.state === "done" || request.state === "over";
   const hasActiveRequest = !!activeRequestId;
   const activeSummary = activationSummary(activeRequest);
+  const { canRemind, lastReminder, sending: remindSending, remind } = useInvoiceRemind(open ? request.id : null);
+  const { latestLog: deliveryLog } = useDeliveryLog(open && activeRequestId ? activeRequestId : null);
   const copyPrId = async () => {
     const id = request.id;
     const fallbackCopy = () => {
@@ -1862,10 +1945,16 @@ export default function PaymentRequestDetailDrawer({
                 </div>
               </div>
               <div className="tl-item">
-                <div className="tl-dot pending" />
+                <div className={`tl-dot ${deliveryLog ? "done" : "pending"}`} />
                 <div className="tl-content">
                   <div className="tl-title">B4 · Yêu cầu xuất hoá đơn</div>
-                  <div className="tl-meta">Sẽ xuất sau khi đủ tiền &amp; có Active code</div>
+                  <div className="tl-meta">
+                    {deliveryLog
+                      ? `HĐ đã gửi KH ngày ${formatPaymentDateFull(deliveryLog.sent_at)} (${deliveryLog.channel}) — bởi ${deliveryLog.sent_by_email}`
+                      : lastReminder
+                      ? `Đã nhắc kế toán lúc ${formatPaymentDateFull(lastReminder.requested_at)} — bởi ${lastReminder.requested_by_name}`
+                      : "Sẽ xuất sau khi đủ tiền & có Active code"}
+                  </div>
                 </div>
               </div>
             </div>
@@ -1880,6 +1969,17 @@ export default function PaymentRequestDetailDrawer({
             >
               <Icons.Copy size={13} /> Copy PR-ID
             </button>
+            {!readOnly && request.state !== "cancelled" && (
+              <button
+                className={`btn btn-sm ${canRemind ? "btn-outline" : "btn-outline"}`}
+                disabled={!canRemind || remindSending}
+                title={canRemind ? "Nhắc kế toán xuất hóa đơn cho PR này" : "Đã nhắc trong 24h qua"}
+                onClick={() => remind()}
+                style={!canRemind ? { opacity: 0.6 } : undefined}
+              >
+                <Icons.Bell size={13} /> {remindSending ? "Đang gửi…" : !canRemind ? "Đã nhắc" : "Nhắc xuất HĐ"}
+              </button>
+            )}
             {canCancel && !readOnly && (
               <button className="btn btn-outline btn-sm" style={{ color: "var(--danger)" }} onClick={onCancelRequest}>
                 <Icons.XCircle size={13} /> Huỷ Payment Request

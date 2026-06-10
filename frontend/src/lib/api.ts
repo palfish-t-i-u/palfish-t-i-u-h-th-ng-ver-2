@@ -199,6 +199,25 @@ export const endpoints = {
         { responseType: "blob" }
       ),
   },
+  invoiceRemind: {
+    create: (prId: string, note?: string) =>
+      api.post<{ reminder: { id: string; payment_request_id: string; requested_by: string; requested_at: string; note: string | null } }>(
+        `/api/v1/payment-requests/${prId}/invoice-remind`,
+        note ? { note } : {}
+      ),
+    status: (prId: string) =>
+      api.get<{ last_reminder: { id: string; requested_at: string; requested_by_name: string; note: string | null } | null; can_remind: boolean }>(
+        `/api/v1/payment-requests/${prId}/invoice-remind`
+      ),
+  },
+  deliveryLog: {
+    create: (arId: string, body: { channel: "email" | "zalo"; sent_to?: string; note?: string }) =>
+      api.post<{ log: Record<string, unknown> }>(`/api/v1/invoices/${arId}/delivery-log`, body),
+    list: (arId: string) =>
+      api.get<{ logs: Array<{ id: string; sent_to: string; sent_by_email: string; sent_at: string; status: string; channel: string; metadata: Record<string, unknown> }> }>(
+        `/api/v1/invoices/${arId}/delivery-log`
+      ),
+  },
   transactions: {
     patchStatus: (id: string, status: string, rejectReason?: string, extra?: { verified_total?: number; verified_received?: number }) =>
       api.patch(`/api/v1/transactions/${id}/status`, {
