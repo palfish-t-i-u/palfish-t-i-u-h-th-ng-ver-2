@@ -72,3 +72,14 @@ FE sẽ làm thêm (không cần BE): nút copy email KH trong B4 để kế to�
 
 - Upload PDF hóa đơn vào app cho case Zalo (sale tự tải gửi KH) — cân nhắc sau go-live 18/06
 - Tích hợp API nhà cung cấp HĐĐT để sync trạng thái gửi tự động — cần biết provider nào + API docs
+
+## ⚠️ Cập nhật 10/6 tối — FE tick UI tạm gác
+
+Quyết định sau khi review badge xuất HĐ: **không làm UI tick "đã gửi" cho kế toán đợt này** — phát sinh thêm thao tác tay mà vẫn không giải quyết triệt để (app vẫn không tự biết trạng thái phát hành/gửi trên app kế toán).
+
+Giải pháp hiện hành: badge "Đã xuất HĐ · INV-xxx" trên course trong PR drawer + dòng B4 timeline (commit `d8f704b`), với giới hạn đã ghi nhận:
+- Badge chỉ phản ánh tiến độ trên app GMV (kế toán bấm Xuất HĐ → cấp mã INV + file kê khai)
+- Phát hành HĐĐT thật (PDF có mã CQT) + gửi KH (email `hoadon-noreply` / Zalo) làm trên app kế toán riêng → badge ≠ KH đã nhận HĐ
+- Xử lý triệt để = tích hợp API provider HĐĐT (sau go-live)
+
+BE delivery-log scaffold (bảng `invoice_email_logs`, GET/POST endpoints) giữ nguyên — FE timeline vẫn đọc GET nếu có log; chỉ gác phần UI tick.
