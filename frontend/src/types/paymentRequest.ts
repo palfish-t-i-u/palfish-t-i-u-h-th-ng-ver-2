@@ -18,6 +18,11 @@ export interface PaymentAttempt {
   bank?: string;
   cardLast4?: string | null;
   installmentMonths?: string | null;
+  installmentPlatform?: string | null;
+  installmentTotal?: number | null;
+  saleReceived?: number | null;
+  verifiedTotal?: number | null;
+  verifiedReceived?: number | null;
   cashier?: string | null;
   paymentLinkId?: string | null;
   transferContent?: string | null;
@@ -82,6 +87,8 @@ export interface PaymentRequest {
   taxId?: string;
   customerType?: CustomerType;
   companyName?: string;
+  leadSource?: string;
+  leadChannel?: string;
   target: number;
   source: string;
   createdAt: string;
@@ -121,6 +128,8 @@ export interface ActiveCourse {
   taxCode?: string;
   companyName?: string;
   note?: string;
+  leadSource?: string;
+  leadChannel?: string;
 }
 
 export interface ActiveUidGroup {
@@ -150,6 +159,9 @@ export type AddPaymentAttemptPayload = {
   bank?: string;
   cardLast4?: string;
   installmentMonths?: string;
+  installment_platform?: string;
+  installment_total?: number;
+  sale_received?: number;
   cashier?: string;
   name_for_transfer?: string;
 };
@@ -169,6 +181,8 @@ export type CreatePaymentRequestPayload = {
   tax_id?: string;
   customer_type?: string;
   company_name?: string;
+  lead_source?: string;
+  lead_channel?: string;
 };
 
 export type PatchPaymentRequestPayload = Partial<CreatePaymentRequestPayload>;
@@ -211,6 +225,10 @@ export type ActiveRequestApiRow = {
       invoice_requested_at?: string;
       tax_invoice_code?: string;
       tax_product_code?: string;
+      lead_source?: string;
+      leadSource?: string;
+      lead_channel?: string;
+      leadChannel?: string;
     }>;
   }>;
   status?: string;
@@ -233,6 +251,8 @@ export type ActiveRequestPatchUidPayload = {
     invoice_requested_at?: string;
     tax_invoice_code?: string;
     tax_product_code?: string;
+    lead_source?: string;
+    lead_channel?: string;
   }>;
 };
 

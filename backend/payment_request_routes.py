@@ -56,8 +56,11 @@ class PaymentRequestCreate(BaseModel):
     note: str | None = ""
     email: str | None = ""
     target: int | str | None = None
+    tax_id: str | None = None
     customer_type: str | None = "individual"
     company_name: str | None = None
+    lead_source: str | None = None
+    lead_channel: str | None = None
 
     uid_khach_hang: str | None = None
     ten_khach: str | None = None
@@ -78,8 +81,11 @@ class PaymentRequestPatch(BaseModel):
     note: str | None = None
     email: str | None = None
     target: int | str | None = None
+    tax_id: str | None = None
     customer_type: str | None = None
     company_name: str | None = None
+    lead_source: str | None = None
+    lead_channel: str | None = None
 
     uid_khach_hang: str | None = None
     ten_khach: str | None = None
@@ -94,6 +100,9 @@ class PaymentLineCreate(BaseModel):
     transfer_code: str | None = None
     code: str | None = None
     name_for_transfer: str | None = None
+    installment_platform: str | None = None
+    installment_total: int | str | None = None
+    sale_received: int | str | None = None
 
     so_tien: int | str | None = None
     hinh_thuc: str | None = None
@@ -102,6 +111,8 @@ class PaymentLineCreate(BaseModel):
 class TransactionStatusPatch(BaseModel):
     status: str
     reject_reason: str | None = None
+    verified_total: int | str | None = None
+    verified_received: int | str | None = None
 
 
 class PaymentRequestCancelBody(BaseModel):
@@ -192,6 +203,11 @@ def _serialize_payment_request(row: dict[str, Any]) -> dict[str, Any]:
         "province": row.get("province") or "",
         "note": row.get("note") or "",
         "email": row.get("email") or "",
+        "tax_id": row.get("tax_id") or None,
+        "customer_type": row.get("customer_type") or "individual",
+        "company_name": row.get("company_name") or None,
+        "lead_source": row.get("lead_source") or None,
+        "lead_channel": row.get("lead_channel") or None,
         "target": target,
         "received": received,
         "state": row.get("state") or "pending",
@@ -200,8 +216,6 @@ def _serialize_payment_request(row: dict[str, Any]) -> dict[str, Any]:
         "updated_at": row.get("updated_at") or "",
         "sale_email": row.get("sale_email") or "",
         "is_test": bool(row.get("is_test")),
-        "customer_type": row.get("customer_type") or "individual",
-        "company_name": row.get("company_name") or None,
     }
     if row.get("child_name"):
         result["child_name"] = row["child_name"]
@@ -555,6 +569,11 @@ def _serialize_payment_line(
         "reject_reason": row.get("reject_reason") or "",
         "created_at": row.get("created_at") or "",
         "updated_at": row.get("updated_at") or "",
+        "installment_platform": row.get("installment_platform") or None,
+        "installment_total": row.get("installment_total") or None,
+        "sale_received": row.get("sale_received") or None,
+        "verified_total": row.get("verified_total") or None,
+        "verified_received": row.get("verified_received") or None,
         **_bill_fields(row, bill_urls, bill_assets),
     }
 
@@ -580,6 +599,11 @@ def _serialize_payment_for_list(
         "paid_at": paid_at if paid_at else None,
         "created_at": row.get("created_at") or "",
         "reject_reason": reject if reject else None,
+        "installment_platform": row.get("installment_platform") or None,
+        "installment_total": row.get("installment_total") or None,
+        "sale_received": row.get("sale_received") or None,
+        "verified_total": row.get("verified_total") or None,
+        "verified_received": row.get("verified_received") or None,
         **_bill_fields(row, bill_urls, bill_assets),
     }
     return result
@@ -661,7 +685,9 @@ def _payment_request_insert_row(body: PaymentRequestCreate) -> dict[str, Any]:
     child_name = _clean_text(body.child_name)
     if child_name:
         row["child_name"] = child_name
-
+    if body.tax_id:
+        row["tax_id"] = _clean_text(body.tax_id)
+    
     ct = _clean_text(body.customer_type) or "individual"
     if ct not in ("individual", "business"):
         raise HTTPException(400, "customer_type phai la 'individual' hoac 'business'")
@@ -671,6 +697,10 @@ def _payment_request_insert_row(body: PaymentRequestCreate) -> dict[str, Any]:
         if company:
             row["company_name"] = company
 
+    if body.lead_source:
+        row["lead_source"] = body.lead_source
+    if body.lead_channel:
+        row["lead_channel"] = body.lead_channel
     return row
 
 
@@ -722,6 +752,9 @@ def _payment_request_patch_row(body: PaymentRequestPatch, current_row: dict[str,
         if target <= 0:
             raise HTTPException(400, "target khong hop le")
         patch["target"] = target
+
+    if body.tax_id is not None:
+        patch["tax_id"] = _clean_text(body.tax_id) or None
     if body.customer_type is not None:
         ct = _clean_text(body.customer_type) or "individual"
         if ct not in ("individual", "business"):
@@ -733,6 +766,11 @@ def _payment_request_patch_row(body: PaymentRequestPatch, current_row: dict[str,
     final_ct = patch.get("customer_type", current_row.get("customer_type") or "individual")
     if final_ct == "individual":
         patch["company_name"] = None
+
+    if body.lead_source is not None:
+        patch["lead_source"] = body.lead_source or None
+    if body.lead_channel is not None:
+        patch["lead_channel"] = body.lead_channel or None
 
     if not patch:
         return {}
@@ -1408,6 +1446,14 @@ def register_payment_request_routes(app, get_supabase) -> None:
             "is_test": bool(pr_row.get("is_test")),
         }
 
+        if method == "installment":
+            if body.installment_platform:
+                insert_row["installment_platform"] = body.installment_platform
+            if body.installment_total is not None:
+                insert_row["installment_total"] = _parse_amount(body.installment_total)
+            if body.sale_received is not None:
+                insert_row["sale_received"] = _parse_amount(body.sale_received)
+
         if method == "qr":
             description = _build_payos_transfer_description(
                 pr_row, body.name_for_transfer, transfer_code
@@ -1497,6 +1543,11 @@ def register_payment_request_routes(app, get_supabase) -> None:
         else:
             patch["paid_at"] = None
             patch["reject_reason"] = None
+
+        if body.verified_total is not None:
+            patch["verified_total"] = _parse_amount(body.verified_total) or None
+        if body.verified_received is not None:
+            patch["verified_received"] = _parse_amount(body.verified_received) or None
 
         try:
             updated_res = sb.table("payment_lines").update(patch).eq("id", transaction_id).execute()

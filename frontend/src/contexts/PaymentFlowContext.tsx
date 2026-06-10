@@ -65,13 +65,14 @@ type PaymentFlowContextValue = {
   loadData: (options?: LoadDataOptions) => Promise<void>;
   updateRequest: (id: string, updater: (r: PaymentRequest) => PaymentRequest) => void;
   updateActiveRequest: (id: string, updater: (ar: ActiveRequest) => ActiveRequest) => void;
+  markPersisted: () => void;
   handleCreate: (payload: CreatePaymentRequestPayload) => Promise<PaymentRequest>;
   handleUpdatePr: (id: string, payload: PatchPaymentRequestPayload) => Promise<PaymentRequest>;
   handleAddPayment: (
     requestId: string,
     payload: AddPaymentAttemptPayload
   ) => Promise<{ payment: PaymentAttempt; request: PaymentRequest } | null>;
-  confirmTransaction: (prId: string, paymentId: string) => Promise<void>;
+  confirmTransaction: (prId: string, paymentId: string, extra?: { verified_total?: number; verified_received?: number }) => Promise<void>;
   rejectTransaction: (prId: string, paymentId: string, rejectReason?: string) => Promise<void>;
   handleCreateActiveRequest: (pr: PaymentRequest) => Promise<ActiveRequest>;
   handleCreateActiveRequestFromForm: (data: {
@@ -125,6 +126,7 @@ export function PaymentFlowProvider({
   const onViewChangeRef = useRef(onViewChange);
   const courseOrderPatchSeqRef = useRef<Record<string, number>>({});
   const loadDataSeqRef = useRef(0);
+  const persistCooldownRef = useRef(0);
 
   useEffect(() => {
     onViewChangeRef.current = onViewChange;
@@ -190,8 +192,13 @@ export function PaymentFlowProvider({
   }, [pendingQr, loadData]);
 
   const silentRefetch = useCallback(() => {
+    if (Date.now() < persistCooldownRef.current) return;
     void loadData({ silent: true });
   }, [loadData]);
+
+  const markPersisted = useCallback(() => {
+    persistCooldownRef.current = Date.now() + 3_000;
+  }, []);
 
   useRealtimeTable(
     ["payment_requests", "payment_lines", "active_requests"],
@@ -268,10 +275,10 @@ export function PaymentFlowProvider({
   );
 
   const confirmTransaction = useCallback(
-    async (prId: string, paymentId: string) => {
+    async (prId: string, paymentId: string, extra?: { verified_total?: number; verified_received?: number }) => {
       if (isBackendLineId(paymentId)) {
         try {
-          const res = await endpoints.transactions.patchStatus(paymentId, "paid");
+          const res = await endpoints.transactions.patchStatus(paymentId, "paid", undefined, extra);
           updateRequest(prId, (r) => {
             const line = res.data.payment_line;
             const updatedPayments = r.payments.map((p) =>
@@ -282,6 +289,8 @@ export function PaymentFlowProvider({
                     paidAt: line.paid_at || flowNow(),
                     bill: !!(line.bill_image ?? p.billImage),
                     billImage: line.bill_image ?? p.billImage ?? null,
+                    verifiedTotal: line.verified_total ?? p.verifiedTotal ?? null,
+                    verifiedReceived: line.verified_received ?? p.verifiedReceived ?? null,
                   }
                 : p
             );
@@ -408,28 +417,32 @@ export function PaymentFlowProvider({
 
       if (!optimistic) return;
 
+      markPersisted();
       try {
         const res = await endpoints.activeRequests.update(arId, {
           uids_data: toActiveRequestPatchUidsData(optimistic),
         });
         const ar = fromApiActiveRequest(res.data);
         setActiveRequests((prev) => prev.map((x) => (x.id === arId ? ar : x)));
+        markPersisted();
         setApiNote("");
       } catch {
         setApiNote("Đã đổi gói tạm trên giao diện; máy chủ chưa lưu được thay đổi gói học.");
       }
     },
-    [updateActiveRequest]
+    [updateActiveRequest, markPersisted]
   );
 
   const saveActiveRequest = useCallback(async (next: ActiveRequest) => {
     updateActiveRequest(next.id, () => next);
+    markPersisted();
     try {
       const res = await endpoints.activeRequests.update(next.id, {
         uids_data: toActiveRequestPatchUidsData(next),
       });
       const saved = fromApiActiveRequest(res.data);
       setActiveRequests((prev) => prev.map((x) => (x.id === next.id ? saved : x)));
+      markPersisted();
       setApiNote("");
       if (saved.uids.some((u) => u.courses.some((c) => c.orderId?.trim()))) {
         notifyLedgerChanged();
@@ -586,6 +599,7 @@ export function PaymentFlowProvider({
       loadData,
       updateRequest,
       updateActiveRequest,
+      markPersisted,
       handleCreate,
       handleUpdatePr,
       handleAddPayment,
@@ -612,6 +626,7 @@ export function PaymentFlowProvider({
       loadData,
       updateRequest,
       updateActiveRequest,
+      markPersisted,
       handleCreate,
       handleUpdatePr,
       handleAddPayment,

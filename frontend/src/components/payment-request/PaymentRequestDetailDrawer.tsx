@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { LEAD_SOURCES, findSourceByKey, sourceHasChannels } from "../../constants/leadSource";
 import type {
   ActiveRequest,
   AddPaymentAttemptPayload,
@@ -121,7 +122,7 @@ function QrRow({
     : qr.method === "card"
     ? qr.bank || (qr.cardLast4 ? `•••• ${qr.cardLast4}` : "")
     : qr.method === "installment"
-    ? `${qr.installmentMonths || ""} kỳ`
+    ? `${qr.installmentPlatform || "Trả góp"}${qr.installmentTotal ? ` · ${vnd(qr.installmentTotal)}` : ""}${qr.saleReceived ? ` → ${vnd(qr.saleReceived)}` : ""}`
     : "";
 
   return (
@@ -225,7 +226,9 @@ function AddPaymentForm({
   const [isAmountFocused, setIsAmountFocused] = useState(false);
   const [bank, setBank] = useState(availableBanks[0].alias);
   const [cardLast4, setCardLast4] = useState("");
-  const [installmentMonths, setInstallmentMonths] = useState("6");
+  const [installmentPlatform, setInstallmentPlatform] = useState("");
+  const [installmentTotal, setInstallmentTotal] = useState("");
+  const [saleReceivedDraft, setSaleReceivedDraft] = useState("");
   const [cashier, setCashier] = useState("");
   const [nameForTransfer, setNameForTransfer] = useState(pr.childName || pr.name);
 
@@ -243,7 +246,9 @@ function AddPaymentForm({
       method,
       bank: method === "qr" || method === "card" ? bank : undefined,
       cardLast4: method === "card" ? cardLast4 : undefined,
-      installmentMonths: method === "installment" ? installmentMonths : undefined,
+      installment_platform: method === "installment" ? installmentPlatform : undefined,
+      installment_total: method === "installment" ? (parseInt(installmentTotal.replace(/\D/g, ""), 10) || undefined) : undefined,
+      sale_received: method === "installment" ? (parseInt(saleReceivedDraft.replace(/\D/g, ""), 10) || undefined) : undefined,
       cashier: method === "cash" ? cashier : undefined,
       name_for_transfer: method === "qr" ? nameForTransfer : undefined,
     });
@@ -340,15 +345,38 @@ function AddPaymentForm({
           </div>
         )}
         {method === "installment" && (
-          <div className="field" style={{ flex: 1, minWidth: 180 }}>
-            <label>Số kỳ trả góp</label>
-            <select value={installmentMonths} onChange={(e) => setInstallmentMonths(e.target.value)}>
-              <option value="3">3 tháng</option>
-              <option value="6">6 tháng</option>
-              <option value="9">9 tháng</option>
-              <option value="12">12 tháng</option>
-            </select>
-          </div>
+          <>
+            <div className="field" style={{ flex: 1, minWidth: 140 }}>
+              <label>Nền tảng trả góp <span style={{ color: "var(--danger)" }}>*</span></label>
+              <select
+                value={installmentPlatform}
+                onChange={(e) => setInstallmentPlatform(e.target.value)}
+                style={{ font: "inherit", fontSize: 13 }}
+              >
+                <option value="">— Chọn —</option>
+                <option value="Payoo">Payoo</option>
+                <option value="Mpos">Mpos</option>
+              </select>
+            </div>
+            <div className="field" style={{ flex: 1, minWidth: 160 }}>
+              <label>Tổng tiền trả góp <span style={{ color: "var(--danger)" }}>*</span></label>
+              <input
+                inputMode="numeric"
+                placeholder="Số tiền KH chuyển qua app"
+                value={installmentTotal}
+                onChange={(e) => setInstallmentTotal(e.target.value.replace(/[^\d]/g, ""))}
+              />
+            </div>
+            <div className="field" style={{ flex: 1, minWidth: 160 }}>
+              <label>Thực nhận về công ty <span style={{ color: "var(--danger)" }}>*</span></label>
+              <input
+                inputMode="numeric"
+                placeholder="Sau phí nền tảng"
+                value={saleReceivedDraft}
+                onChange={(e) => setSaleReceivedDraft(e.target.value.replace(/[^\d]/g, ""))}
+              />
+            </div>
+          </>
         )}
         {method === "cash" && (
           <div className="field" style={{ flex: 1, minWidth: 180 }}>
@@ -397,6 +425,8 @@ interface DraftPr {
   taxId: string;
   customerType: CustomerType;
   companyName: string;
+  leadSource: string;
+  leadChannel: string;
 }
 
 /**
@@ -960,6 +990,77 @@ function ActiveRequestMiniCardV2({
                         <Icons.Close size={12} strokeWidth={2.4} />
                       </button>
                     )}
+                    {!editing && (c.leadSource || c.leadChannel) && (
+                      <div style={{ gridColumn: "1 / -1", fontSize: 11, color: "var(--text-3)", display: "flex", gap: 8 }}>
+                        {c.leadSource && <span>Nguồn: {findSourceByKey(c.leadSource)?.label ?? c.leadSource}</span>}
+                        {c.leadChannel && (() => {
+                          const src = findSourceByKey(c.leadSource);
+                          const ch = src?.channels.find((ch) => ch.code === c.leadChannel);
+                          return <span>Kênh: {ch ? `${ch.code} - ${ch.label}` : c.leadChannel}</span>;
+                        })()}
+                      </div>
+                    )}
+                    {editing && (
+                      <div style={{ gridColumn: "1 / -1", display: "flex", gap: 8 }}>
+                        <select
+                          value={c.leadSource ?? ""}
+                          disabled={courseLocked}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            mutate((next) => ({
+                              ...next,
+                              uids: next.uids.map((uu, idx) =>
+                                idx === uIdx
+                                  ? {
+                                      ...uu,
+                                      courses: uu.courses.map((course) =>
+                                        course.courseCode === c.courseCode
+                                          ? { ...course, leadSource: val, leadChannel: undefined }
+                                          : course
+                                      ),
+                                    }
+                                  : uu
+                              ),
+                            }));
+                          }}
+                          style={{ font: "inherit", fontSize: 12, flex: 1, borderRadius: 8, border: "1px solid var(--border)", padding: "5px 7px" }}
+                        >
+                          <option value="">— Nguồn —</option>
+                          {LEAD_SOURCES.map((s) => (
+                            <option key={s.key} value={s.key}>{s.label}</option>
+                          ))}
+                        </select>
+                        {sourceHasChannels(c.leadSource) && (
+                          <select
+                            value={c.leadChannel ?? ""}
+                            disabled={courseLocked}
+                            onChange={(e) =>
+                              mutate((next) => ({
+                                ...next,
+                                uids: next.uids.map((uu, idx) =>
+                                  idx === uIdx
+                                    ? {
+                                        ...uu,
+                                        courses: uu.courses.map((course) =>
+                                          course.courseCode === c.courseCode
+                                            ? { ...course, leadChannel: e.target.value }
+                                            : course
+                                        ),
+                                      }
+                                    : uu
+                                ),
+                              }))
+                            }
+                            style={{ font: "inherit", fontSize: 12, flex: 1, borderRadius: 8, border: "1px solid var(--border)", padding: "5px 7px" }}
+                          >
+                            <option value="">— Kênh —</option>
+                            {findSourceByKey(c.leadSource)?.channels.map((ch) => (
+                              <option key={ch.code} value={ch.code}>{ch.code} - {ch.label}</option>
+                            ))}
+                          </select>
+                        )}
+                      </div>
+                    )}
                   </div>
                   );
                 })}
@@ -1183,6 +1284,8 @@ export default function PaymentRequestDetailDrawer({
                       taxId: request.taxId || "",
                       customerType: request.customerType || "individual",
                       companyName: request.companyName || "",
+                      leadSource: request.leadSource || "",
+                      leadChannel: request.leadChannel || "",
                     });
                     setEditing(true);
                   }}
@@ -1227,6 +1330,8 @@ export default function PaymentRequestDetailDrawer({
                         taxId: draft.taxId || undefined,
                         customerType: draft.customerType,
                         companyName: draft.customerType === "business" ? draft.companyName || undefined : undefined,
+                        leadSource: draft.leadSource || undefined,
+                        leadChannel: draft.leadChannel || undefined,
                       });
                       setSavingEdit(false);
                       if (!ok) return;
@@ -1295,8 +1400,20 @@ export default function PaymentRequestDetailDrawer({
                 )}
                 {request.taxId && (
                   <div className="info-cell">
-                    <div className="info-label">MST cá nhân</div>
+                    <div className="info-label">{request.customerType === "business" ? "MST doanh nghiệp" : "MST cá nhân"}</div>
                     <div className="info-value mono">{request.taxId}</div>
+                  </div>
+                )}
+                {request.leadSource && (
+                  <div className="info-cell">
+                    <div className="info-label">Nguồn KH</div>
+                    <div className="info-value">{findSourceByKey(request.leadSource)?.label || request.leadSource}</div>
+                  </div>
+                )}
+                {request.leadChannel && (
+                  <div className="info-cell">
+                    <div className="info-label">Kênh</div>
+                    <div className="info-value mono">{request.leadChannel}</div>
                   </div>
                 )}
                 <div className="info-cell">
@@ -1445,7 +1562,7 @@ export default function PaymentRequestDetailDrawer({
                   </div>
                 )}
                 <div className="info-cell">
-                  <div className="info-label">MST cá nhân</div>
+                  <div className="info-label">{draft.customerType === "business" ? "MST doanh nghiệp" : "MST cá nhân"}</div>
                   <input
                     value={draft.taxId}
                     onChange={(e) => setDraft({ ...draft, taxId: e.target.value.replace(/[^\d]/g, "") })}
@@ -1460,6 +1577,46 @@ export default function PaymentRequestDetailDrawer({
                     }}
                   />
                 </div>
+                <div className="info-cell">
+                  <div className="info-label">Nguồn KH</div>
+                  <select
+                    value={draft.leadSource}
+                    onChange={(e) => setDraft({ ...draft, leadSource: e.target.value, leadChannel: "" })}
+                    style={{
+                      border: "1px solid var(--border)",
+                      borderRadius: 8,
+                      padding: "8px 10px",
+                      font: "inherit",
+                      fontSize: 13,
+                    }}
+                  >
+                    <option value="">— Chọn nguồn —</option>
+                    {LEAD_SOURCES.map((s) => (
+                      <option key={s.key} value={s.key}>{s.label}</option>
+                    ))}
+                  </select>
+                </div>
+                {sourceHasChannels(draft.leadSource) && (
+                  <div className="info-cell">
+                    <div className="info-label">Kênh</div>
+                    <select
+                      value={draft.leadChannel}
+                      onChange={(e) => setDraft({ ...draft, leadChannel: e.target.value })}
+                      style={{
+                        border: "1px solid var(--border)",
+                        borderRadius: 8,
+                        padding: "8px 10px",
+                        font: "inherit",
+                        fontSize: 13,
+                      }}
+                    >
+                      <option value="">— Chọn kênh —</option>
+                      {findSourceByKey(draft.leadSource)?.channels.map((ch) => (
+                        <option key={ch.code} value={ch.code}>{ch.code} - {ch.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
                 <div className="info-cell full">
                   <div className="info-label">Địa chỉ khách hàng</div>
                   <VietnamAddressFields

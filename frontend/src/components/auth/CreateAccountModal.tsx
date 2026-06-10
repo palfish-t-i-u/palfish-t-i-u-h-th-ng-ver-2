@@ -11,7 +11,20 @@ const DEPARTMENTS = [
 ];
 
 const TEAMS_BY_DEPT: Record<string, string[]> = {
-  sale: ["Inhouse 1", "Inhouse 2", "HCM", "Offline Linh Đan"],
+  sale: [
+    "Inhouse 1",
+    "An Binh Store",
+    "Inhouse 2",
+    "Team 1",
+    "HCM (Online)",
+    "Linh Dam Store",
+    "Khác / Chưa phân loại",
+    "HN Inhouse",
+    "Team 2",
+    "Group KL",
+    "HN Offline Store",
+    "Marketing",
+  ],
 };
 
 const ROLES = [

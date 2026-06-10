@@ -79,6 +79,11 @@ export function fromApiAttempt(raw: any, idx = 0): PaymentAttempt {
     bank: raw.bank,
     cardLast4: raw.card_last4 ?? raw.cardLast4 ?? null,
     installmentMonths: raw.installment_months ?? raw.installmentMonths ?? null,
+    installmentPlatform: raw.installment_platform ?? raw.installmentPlatform ?? null,
+    installmentTotal: raw.installment_total ?? raw.installmentTotal ?? null,
+    saleReceived: raw.sale_received ?? raw.saleReceived ?? null,
+    verifiedTotal: raw.verified_total ?? raw.verifiedTotal ?? null,
+    verifiedReceived: raw.verified_received ?? raw.verifiedReceived ?? null,
     cashier: raw.cashier ?? null,
     paymentLinkId: raw.payment_link_id ?? raw.paymentLinkId ?? null,
     transferContent: raw.transfer_content ?? raw.transferContent ?? null,
@@ -108,6 +113,8 @@ export function fromApiPaymentRequest(raw: any): PaymentRequest {
     taxId: raw.tax_id ?? raw.taxId ?? undefined,
     customerType: raw.customer_type ?? raw.customerType ?? "individual",
     companyName: raw.company_name ?? raw.companyName ?? undefined,
+    leadSource: raw.lead_source ?? raw.leadSource ?? undefined,
+    leadChannel: raw.lead_channel ?? raw.leadChannel ?? undefined,
     target: raw.target ?? 0,
     source: raw.source ?? "",
     saleEmail: raw.sale_email ?? raw.saleEmail ?? "",
@@ -210,6 +217,8 @@ export function fromApiActiveRequest(raw: ActiveRequestApiRow): ActiveRequest {
         invoiceRequestedAt: c.invoice_requested_at ?? null,
         taxInvoiceCode: c.tax_invoice_code,
         taxProductCode: c.tax_product_code,
+        leadSource: c.lead_source ?? c.leadSource ?? undefined,
+        leadChannel: c.lead_channel ?? c.leadChannel ?? undefined,
       })),
     })),
   };
@@ -285,6 +294,8 @@ export function toActiveRequestPatchUidsData(ar: ActiveRequest): ActiveRequestPa
       invoice_requested_at: c.invoiceRequestedAt ?? undefined,
       tax_invoice_code: c.taxInvoiceCode,
       tax_product_code: c.taxProductCode,
+      lead_source: c.leadSource,
+      lead_channel: c.leadChannel,
     })),
   }));
 }

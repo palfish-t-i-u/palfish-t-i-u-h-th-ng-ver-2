@@ -24,6 +24,7 @@ frontend/e2e-results/
 frontend/e2e-report/
 frontend/e2e/.auth/
 frontend/.env.e2e
+.vite/
 
 # Backend
 backend/__pycache__/

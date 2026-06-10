@@ -1036,7 +1036,7 @@ function ActivationDetailDrawer({
                 draftUid.phone.replace(/[^\d]/g, "") !== (uidObj.phone || "") ||
                 (draftUid.country || "VN") !== (uidObj.country || "VN");
               return (
-              <div key={uidIdx} className="uid-group">
+              <div key={uidObj.uid || `new-uid-${uidIdx}`} className="uid-group">
               <div className="uid-group-head">
                 <div
                   style={{
@@ -1434,6 +1434,7 @@ export default function ActivationTab() {
     apiNote,
     setApiNote,
     updateActiveRequest,
+    markPersisted,
     handleCreateActiveRequestFromForm,
     requestInvoiceForCourse,
   } = usePaymentFlow();
@@ -1483,11 +1484,13 @@ export default function ActivationTab() {
   const openPr = openAr?.prId ? requests.find((p) => p.id === openAr.prId) ?? null : null;
   const persistActiveRequest = async (next: ActiveRequest) => {
     try {
+      markPersisted();
       const res = await endpoints.activeRequests.update(next.id, {
         uids_data: toActiveRequestPatchUidsData(next),
       });
       const saved = fromApiActiveRequest(res.data);
       updateActiveRequest(next.id, () => saved);
+      markPersisted();
       setApiNote("");
       if (saved.uids.some((u) => u.courses.some((c) => c.orderId?.trim()))) {
         notifyLedgerChanged();
