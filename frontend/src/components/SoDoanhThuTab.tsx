@@ -364,10 +364,12 @@ export default function SoDoanhThuTab() {
     setError("");
     try {
       const res = await endpoints.revenue.syncGsheet();
-      const { inserted, skippedExisting, fetched } = res.data;
+      const { inserted, skippedExisting, skippedLoose, fetched } = res.data;
+      const totalSkipped = skippedExisting + (skippedLoose || 0);
+      const looseNote = skippedLoose ? ` (${skippedLoose} trùng cross-source)` : "";
       setSyncMessage(
         `Sync xong: thêm ${inserted.toLocaleString("vi-VN")} dòng mới` +
-          ` (bỏ qua ${skippedExisting.toLocaleString("vi-VN")} đã có, đọc ${fetched.toLocaleString("vi-VN")} từ sheet).`
+          ` (bỏ qua ${totalSkipped.toLocaleString("vi-VN")} đã có${looseNote}, đọc ${fetched.toLocaleString("vi-VN")} từ sheet).`
       );
       await reloadAll();
     } catch (err) {

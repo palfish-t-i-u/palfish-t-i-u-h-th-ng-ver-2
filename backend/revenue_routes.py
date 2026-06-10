@@ -995,6 +995,29 @@ def sync_ledger_from_ar_course(
             "updated_by_email": actor_email,
             "is_test": bool(pr.get("is_test")) if pr else False,
         }
+
+        if uid:
+            loose_match = (
+                sb.table("so_doanh_thu")
+                .select("id")
+                .eq("uid", uid)
+                .eq("ngay_tien_ve", ngay.isoformat())
+                .eq("so_tien_vnd", vnd)
+                .limit(2)
+                .execute()
+            )
+            if len(loose_match.data) == 1:
+                match_id = str(loose_match.data[0]["id"])
+                sb.table("so_doanh_thu").update({
+                    "crm_order_id": order_id,
+                    "ma_don_hang": course_code,
+                    "loai_nhap": "tu_dong",
+                    "don_hang_id": None,
+                    "note": f"AR {ar_id}",
+                    "updated_by_email": actor_email,
+                }).eq("id", match_id).execute()
+                return match_id
+
         ins = sb.table("so_doanh_thu").insert(payload).execute()
         if ins.data:
             return str(ins.data[0]["id"])
