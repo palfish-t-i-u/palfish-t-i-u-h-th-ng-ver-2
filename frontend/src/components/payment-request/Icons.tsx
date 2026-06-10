@@ -85,6 +85,9 @@ export const Icons = {
       <line x1="12" y1="16" x2="12.01" y2="16" />
     </>
   ),
+  Bell: makeIcon(
+    <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 0 1-3.46 0" />
+  ),
   Sigma: makeIcon(<path d="M18 4H6l8 8-8 8h12" />),
   ChevronLeft: makeIcon(<polyline points="15 18 9 12 15 6" />),
   ChevronRight: makeIcon(<polyline points="9 18 15 12 9 6" />),
