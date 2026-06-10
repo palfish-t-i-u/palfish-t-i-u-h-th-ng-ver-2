@@ -209,6 +209,10 @@ export const endpoints = {
       api.get<{ last_reminder: { id: string; requested_at: string; requested_by_name: string; note: string | null } | null; can_remind: boolean }>(
         `/api/v1/payment-requests/${prId}/invoice-remind`
       ),
+    list: (status?: string) =>
+      api.get<{ reminders: Array<{ id: string; payment_request_id: string; pr_code: string; customer_name: string; requested_by_name: string; requested_at: string; note: string | null }> }>(
+        `/api/v1/invoice-reminders${status ? `?status=${status}` : ""}`
+      ),
   },
   deliveryLog: {
     create: (arId: string, body: { channel: "email" | "zalo"; sent_to?: string; note?: string }) =>
