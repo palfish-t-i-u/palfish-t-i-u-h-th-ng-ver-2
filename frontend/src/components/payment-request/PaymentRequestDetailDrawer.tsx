@@ -1989,7 +1989,7 @@ export default function PaymentRequestDetailDrawer({
             >
               <Icons.Copy size={13} /> Copy PR-ID
             </button>
-            {!readOnly && request.state !== "cancelled" && (
+            {!readOnly && request.state !== "cancelled" && activeSummary.activatedCount > 0 && (
               <button
                 className={`btn btn-sm ${canRemind ? "btn-outline" : "btn-outline"}`}
                 disabled={!canRemind || remindSending}
