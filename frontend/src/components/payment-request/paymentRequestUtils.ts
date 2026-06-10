@@ -444,6 +444,8 @@ export function activationSummary(ar: ActiveRequest | null | undefined) {
     return {
       allActivated: false,
       activatedCount: 0,
+      invoicedCount: 0,
+      allInvoiced: false,
       courseCount: 0,
       buttonLabel: "Kích hoạt khóa học",
       courseBadgeLabel: "Chờ kích hoạt",
@@ -453,9 +455,13 @@ export function activationSummary(ar: ActiveRequest | null | undefined) {
   const courses = ar.uids.flatMap((u) => u.courses);
   const activatedCount = courses.filter((c) => !!c.orderId?.trim()).length;
   const allActivated = courses.length > 0 && activatedCount === courses.length;
+  const invoicedCount = courses.filter((c) => !!c.invoiced).length;
+  const allInvoiced = courses.length > 0 && invoicedCount === courses.length;
   return {
     allActivated,
     activatedCount,
+    invoicedCount,
+    allInvoiced,
     courseCount: courses.length,
     buttonLabel: allActivated ? "Đã kích hoạt khóa học" : "Chờ kích hoạt khóa học",
     courseBadgeLabel: allActivated ? "Đã kích hoạt" : "Chờ kích hoạt",
