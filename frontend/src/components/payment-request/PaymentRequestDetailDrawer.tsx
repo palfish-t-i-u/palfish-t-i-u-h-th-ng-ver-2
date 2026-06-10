@@ -1107,6 +1107,12 @@ function ActiveRequestMiniCardV2({
                         <span className="ar-toggle-knob" />
                       </span>
                     </div>
+                    {c.invoiced && (
+                      <div className="ar-invoice-badge" title={c.invoicedAt ? `Xuất HĐ lúc ${formatPaymentDateFull(c.invoicedAt)}` : "Đã xuất hóa đơn"}>
+                        <Icons.Doc size={11} />
+                        {c.invoiceId || c.taxInvoiceCode ? `Đã xuất HĐ · ${c.invoiceId || c.taxInvoiceCode}` : "Đã xuất HĐ"}
+                      </div>
+                    )}
                     {editing && (
                       <button
                         type="button"
@@ -1965,11 +1971,13 @@ export default function PaymentRequestDetailDrawer({
                 </div>
               </div>
               <div className="tl-item">
-                <div className={`tl-dot ${deliveryLog ? "done" : "pending"}`} />
+                <div className={`tl-dot ${activeSummary.invoicedCount > 0 ? "done" : deliveryLog ? "done" : "pending"}`} />
                 <div className="tl-content">
                   <div className="tl-title">B4 · Yêu cầu xuất hoá đơn</div>
                   <div className="tl-meta">
-                    {deliveryLog
+                    {activeSummary.invoicedCount > 0
+                      ? `Đã xuất HĐ ${activeSummary.invoicedCount}/${activeSummary.courseCount} gói học`
+                      : deliveryLog
                       ? `HĐ đã gửi KH ngày ${formatPaymentDateFull(deliveryLog.sent_at)} (${deliveryLog.channel}) — bởi ${deliveryLog.sent_by_email}`
                       : lastReminder
                       ? `Đã nhắc kế toán lúc ${formatPaymentDateFull(lastReminder.requested_at)} — bởi ${lastReminder.requested_by_name}`
