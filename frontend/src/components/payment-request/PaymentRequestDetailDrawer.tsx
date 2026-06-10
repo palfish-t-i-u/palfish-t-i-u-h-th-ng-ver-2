@@ -92,6 +92,17 @@ function QrRow({
   const isCancelled = !!qr.cancelled;
   const canEditAmount = !isCancelled && qr.status === "pending" && !!onEditAmount;
 
+  const [showEditTip, setShowEditTip] = useState(false);
+  useEffect(() => {
+    if (!canEditAmount) return;
+    const key = "pf-edit-amount-tip-shown";
+    if (localStorage.getItem(key)) return;
+    localStorage.setItem(key, "1");
+    const t0 = setTimeout(() => setShowEditTip(true), 600);
+    const t1 = setTimeout(() => setShowEditTip(false), 5000);
+    return () => { clearTimeout(t0); clearTimeout(t1); };
+  }, [canEditAmount]);
+
   const [editingAmount, setEditingAmount] = useState(false);
   const [draftAmount, setDraftAmount] = useState("");
   const [savingAmount, setSavingAmount] = useState(false);
@@ -205,11 +216,19 @@ function QrRow({
           ) : (
             <span
               className="amt"
-              style={canEditAmount ? { cursor: "pointer", textDecoration: "underline", textDecorationStyle: "dotted", textUnderlineOffset: 2 } : undefined}
+              style={canEditAmount ? { cursor: "pointer", position: "relative" } : undefined}
               title={canEditAmount ? "Bấm để sửa số tiền" : undefined}
-              onClick={canEditAmount ? () => { setDraftAmount(String(qr.amount)); setEditingAmount(true); } : undefined}
+              onClick={canEditAmount ? () => { setShowEditTip(false); setDraftAmount(String(qr.amount)); setEditingAmount(true); } : undefined}
             >
-              {vnd(qr.amount)}{canEditAmount && <Icons.Pencil size={10} style={{ marginLeft: 3, opacity: 0.5 }} />}
+              {vnd(qr.amount)}{canEditAmount && <Icons.Pencil size={12} style={{ marginLeft: 3, opacity: 0.6 }} />}
+              {showEditTip && (
+                <span
+                  className="edit-amount-tip"
+                  onClick={(e) => { e.stopPropagation(); setShowEditTip(false); }}
+                >
+                  Bấm vào số tiền để sửa
+                </span>
+              )}
             </span>
           )}
           {pill}
@@ -1313,6 +1332,9 @@ export default function PaymentRequestDetailDrawer({
     return () => clearTimeout(id);
   }, [showAdd]);
 
+  const { canRemind, lastReminder, sending: remindSending, remind } = useInvoiceRemind(open && request ? request.id : null);
+  const { latestLog: deliveryLog } = useDeliveryLog(open && activeRequestId ? activeRequestId : null);
+
   if (!request) {
     return (
       <>
@@ -1328,8 +1350,6 @@ export default function PaymentRequestDetailDrawer({
   const ready = request.state === "done" || request.state === "over";
   const hasActiveRequest = !!activeRequestId;
   const activeSummary = activationSummary(activeRequest);
-  const { canRemind, lastReminder, sending: remindSending, remind } = useInvoiceRemind(open ? request.id : null);
-  const { latestLog: deliveryLog } = useDeliveryLog(open && activeRequestId ? activeRequestId : null);
   const copyPrId = async () => {
     const id = request.id;
     const fallbackCopy = () => {
