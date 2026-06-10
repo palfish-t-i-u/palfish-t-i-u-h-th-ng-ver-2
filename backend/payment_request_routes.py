@@ -57,7 +57,7 @@ class PaymentRequestCreate(BaseModel):
     email: str | None = ""
     target: int | str | None = None
     tax_id: str | None = None
-    customer_type: str | None = None
+    customer_type: str | None = "individual"
     company_name: str | None = None
     lead_source: str | None = None
     lead_channel: str | None = None
@@ -127,6 +127,10 @@ class PaymentLineBillDeleteBody(BaseModel):
     bill_url: str | None = None
     delete_all: bool = False
     index: int | None = None
+
+
+class InvoiceRemindCreate(BaseModel):
+    note: str | None = None
 
 
 def _sb_or_503(get_supabase: Callable[[], Any]):
@@ -691,10 +695,16 @@ def _payment_request_insert_row(body: PaymentRequestCreate) -> dict[str, Any]:
         row["child_name"] = child_name
     if body.tax_id:
         row["tax_id"] = _clean_text(body.tax_id)
-    if body.customer_type:
-        row["customer_type"] = body.customer_type
-    if body.company_name:
-        row["company_name"] = _clean_text(body.company_name)
+    
+    ct = _clean_text(body.customer_type) or "individual"
+    if ct not in ("individual", "business"):
+        raise HTTPException(400, "customer_type phai la 'individual' hoac 'business'")
+    row["customer_type"] = ct
+    if ct == "business":
+        company = _clean_text(body.company_name)
+        if company:
+            row["company_name"] = company
+
     if body.lead_source:
         row["lead_source"] = body.lead_source
     if body.lead_channel:
@@ -754,9 +764,17 @@ def _payment_request_patch_row(body: PaymentRequestPatch, current_row: dict[str,
     if body.tax_id is not None:
         patch["tax_id"] = _clean_text(body.tax_id) or None
     if body.customer_type is not None:
-        patch["customer_type"] = body.customer_type or None
+        ct = _clean_text(body.customer_type) or "individual"
+        if ct not in ("individual", "business"):
+            raise HTTPException(400, "customer_type phai la 'individual' hoac 'business'")
+        patch["customer_type"] = ct
     if body.company_name is not None:
         patch["company_name"] = _clean_text(body.company_name) or None
+
+    final_ct = patch.get("customer_type", current_row.get("customer_type") or "individual")
+    if final_ct == "individual":
+        patch["company_name"] = None
+
     if body.lead_source is not None:
         patch["lead_source"] = body.lead_source or None
     if body.lead_channel is not None:
@@ -1140,6 +1158,95 @@ def reconcile_payment_line_webhook(sb, payload: dict[str, Any]) -> dict[str, Any
         "description": description,
         **result,
     }
+
+
+def _parse_iso_datetime(val: str) -> datetime:
+    if val.endswith("Z"):
+        val = val[:-1] + "+00:00"
+    return datetime.fromisoformat(val)
+
+
+def _is_accountant_or_manager(sb, actor) -> bool:
+    if _clean_text(actor.role).lower() in ("manager", "system"):
+        return True
+    if can_confirm_payment(actor):
+        return True
+    try:
+        from admin_routes import _compute_permissions
+        perms = _compute_permissions(sb, actor)
+        if perms.get("module4", "none") != "none":
+            return True
+    except Exception as exc:
+        print(f"[invoice_reminders] check permissions failed: {exc}")
+    return False
+
+
+def _get_user_id_to_name_map(sb) -> dict[str, str]:
+    """Map auth_user_id -> display_name or crm_name or email."""
+    try:
+        users_res = sb.auth.admin.list_users()
+        users = users_res if isinstance(users_res, list) else getattr(users_res, "users", []) or []
+    except Exception as exc:
+        print(f"[invoice_reminders] list_users failed: {exc}")
+        users = []
+
+    email_to_id: dict[str, str] = {}
+    for u in users:
+        u_id = getattr(u, "id", None) or (isinstance(u, dict) and u.get("id"))
+        u_email = getattr(u, "email", None) or (isinstance(u, dict) and u.get("email"))
+        if u_id and u_email:
+            email_to_id[str(u_email).strip().lower()] = str(u_id)
+
+    try:
+        staff_res = sb.table("nhan_su_sale").select("email, display_name, crm_name").execute()
+        staff_list = staff_res.data or []
+    except Exception as exc:
+        print(f"[invoice_reminders] nhan_su_sale query failed: {exc}")
+        staff_list = []
+
+    email_to_name: dict[str, str] = {}
+    for s in staff_list:
+        email = str(s.get("email") or "").strip().lower()
+        if not email:
+            continue
+        name = s.get("display_name") or s.get("crm_name") or email
+        email_to_name[email] = name
+
+    id_to_name: dict[str, str] = {}
+    for email, uid in email_to_id.items():
+        id_to_name[uid] = email_to_name.get(email, email)
+
+    for u in users:
+        u_id = str(getattr(u, "id", None) or (isinstance(u, dict) and u.get("id")) or "")
+        if not u_id:
+            continue
+        if u_id not in id_to_name:
+            u_email = getattr(u, "email", None) or (isinstance(u, dict) and u.get("email"))
+            id_to_name[u_id] = str(u_email) if u_email else u_id
+
+    return id_to_name
+
+
+def _get_user_name_by_id(sb, user_id: str) -> str:
+    try:
+        user_res = sb.auth.admin.get_user_by_id(user_id)
+        user = user_res.user if hasattr(user_res, "user") else user_res
+        if user:
+            email = getattr(user, "email", None) or (isinstance(user, dict) and user.get("email"))
+            if email:
+                staff_res = (
+                    sb.table("nhan_su_sale")
+                    .select("display_name, crm_name")
+                    .eq("email", email)
+                    .limit(1)
+                    .execute()
+                )
+                if staff_res.data:
+                    return staff_res.data[0].get("display_name") or staff_res.data[0].get("crm_name") or email
+                return email
+    except Exception as exc:
+        print(f"[invoice_reminders] get_user_name_by_id failed: {exc}")
+    return user_id
 
 
 def register_payment_request_routes(app, get_supabase) -> None:
@@ -1959,5 +2066,196 @@ def register_payment_request_routes(app, get_supabase) -> None:
                 "X-Bills-Failed": str(failed_count),
             },
         )
+
+    @router.post("/payment-requests/{payment_request_id}/invoice-remind")
+    def create_invoice_reminder(
+        payment_request_id: str,
+        body: InvoiceRemindCreate,
+        authorization: str | None = Header(None),
+    ):
+        sb = _sb_or_503(get_supabase)
+        actor = resolve_actor(sb, authorization)
+        require_module_write(sb, actor, "paymentRequests")
+
+        # Check PR exists and actor has access
+        request_res = (
+            sb.table("payment_requests")
+            .select("*")
+            .eq("id", payment_request_id)
+            .limit(1)
+            .execute()
+        )
+        if not request_res.data:
+            raise HTTPException(404, "Khong tim thay payment_request")
+
+        current_row = request_res.data[0]
+        if not _can_access_request(sb, actor, current_row):
+            raise HTTPException(403, "Khong co quyen thao tac phieu nay")
+
+        # Throttle check: has reminder in last 24h
+        remind_res = (
+            sb.table("invoice_reminders")
+            .select("*")
+            .eq("payment_request_id", payment_request_id)
+            .order("requested_at", desc=True)
+            .limit(1)
+            .execute()
+        )
+        if remind_res.data:
+            last_remind = remind_res.data[0]
+            last_time = _parse_iso_datetime(last_remind["requested_at"])
+            now_time = datetime.now(timezone.utc)
+            diff = now_time - last_time
+            if diff.total_seconds() < 24 * 3600:
+                raise HTTPException(429, "Da nhac trong 24h qua, vui long cho")
+
+        # Insert
+        insert_res = (
+            sb.table("invoice_reminders")
+            .insert({
+                "payment_request_id": payment_request_id,
+                "requested_by": actor.user_id,
+                "note": _clean_text(body.note) if body.note else None
+            })
+            .execute()
+        )
+        if not insert_res.data:
+            raise HTTPException(500, "Khong the luu remind")
+
+        row = insert_res.data[0]
+        return {
+            "reminder": {
+                "id": str(row.get("id")),
+                "payment_request_id": str(row.get("payment_request_id")),
+                "requested_by": str(row.get("requested_by")),
+                "requested_at": str(row.get("requested_at")),
+                "note": row.get("note")
+            }
+        }
+
+    @router.get("/invoice-reminders")
+    def list_invoice_reminders(
+        status: str | None = Query(None),
+        authorization: str | None = Header(None),
+    ):
+        sb = _sb_or_503(get_supabase)
+        actor = resolve_actor(sb, authorization)
+
+        # check role kế toán/manager
+        if not _is_accountant_or_manager(sb, actor):
+            raise HTTPException(403, "Chỉ kế toán hoặc manager được phép xem danh sách nhắc nhở")
+
+        reminders_res = (
+            sb.table("invoice_reminders")
+            .select("*")
+            .order("requested_at", desc=True)
+            .execute()
+        )
+        reminders_data = reminders_res.data or []
+        if not reminders_data:
+            return {"reminders": []}
+
+        # Query related payment requests
+        pr_ids = list({r["payment_request_id"] for r in reminders_data if r.get("payment_request_id")})
+        pr_res = sb.table("payment_requests").select("id, name").in_("id", pr_ids).execute()
+        pr_map = {r["id"]: r for r in (pr_res.data or [])}
+
+        # Query related active requests to check if invoiced/activated
+        ar_res = sb.table("active_requests").select("pr_id, status").in_("pr_id", pr_ids).execute()
+        ar_status_map: dict[str, list[str]] = {}
+        for ar in (ar_res.data or []):
+            pid = ar.get("pr_id")
+            if pid:
+                ar_status_map.setdefault(pid, []).append(ar.get("status"))
+
+        def is_pending(pr_id: str) -> bool:
+            if pr_id not in pr_map:
+                return False
+            statuses = ar_status_map.get(pr_id, [])
+            if any(s in ("invoiced", "activated") for s in statuses):
+                return False
+            return True
+
+        if status == "pending":
+            reminders_data = [r for r in reminders_data if is_pending(r["payment_request_id"])]
+
+        user_names = _get_user_id_to_name_map(sb)
+
+        reminders = []
+        for r in reminders_data:
+            pr_id = r["payment_request_id"]
+            pr = pr_map.get(pr_id)
+            if not pr:
+                continue
+
+            requested_by = r.get("requested_by")
+            requested_by_name = user_names.get(requested_by, requested_by)
+
+            reminders.append({
+                "id": str(r["id"]),
+                "payment_request_id": pr_id,
+                "pr_code": pr_id,
+                "customer_name": pr.get("name") or "",
+                "requested_by_name": requested_by_name,
+                "requested_at": str(r["requested_at"]),
+                "note": r.get("note")
+            })
+
+        return {"reminders": reminders}
+
+    @router.get("/payment-requests/{payment_request_id}/invoice-remind")
+    def get_invoice_reminder_status(
+        payment_request_id: str,
+        authorization: str | None = Header(None),
+    ):
+        sb = _sb_or_503(get_supabase)
+        actor = resolve_actor(sb, authorization)
+
+        # Check PR exists and actor has access
+        request_res = (
+            sb.table("payment_requests")
+            .select("*")
+            .eq("id", payment_request_id)
+            .limit(1)
+            .execute()
+        )
+        if not request_res.data:
+            raise HTTPException(404, "Khong tim thay payment_request")
+
+        pr_row = request_res.data[0]
+        if not _can_access_request(sb, actor, pr_row):
+            raise HTTPException(403, "Khong co quyen access PR")
+
+        remind_res = (
+            sb.table("invoice_reminders")
+            .select("*")
+            .eq("payment_request_id", payment_request_id)
+            .order("requested_at", desc=True)
+            .limit(1)
+            .execute()
+        )
+
+        can_remind = True
+        last_reminder = None
+        if remind_res.data:
+            row = remind_res.data[0]
+            last_time = _parse_iso_datetime(row["requested_at"])
+            now_time = datetime.now(timezone.utc)
+            diff = now_time - last_time
+            if diff.total_seconds() < 24 * 3600:
+                can_remind = False
+
+            requested_by_name = _get_user_name_by_id(sb, row.get("requested_by"))
+            last_reminder = {
+                "id": str(row["id"]),
+                "requested_at": str(row["requested_at"]),
+                "requested_by_name": requested_by_name,
+                "note": row.get("note")
+            }
+
+        return {
+            "last_reminder": last_reminder,
+            "can_remind": can_remind
+        }
 
     app.include_router(router)
