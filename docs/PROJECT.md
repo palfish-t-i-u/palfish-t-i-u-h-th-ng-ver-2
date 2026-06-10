@@ -129,15 +129,15 @@ pf-gmv-reconciliation/
 | `giao_dich` | Tiền thật vào bank — khớp `info_code` |
 | `nhan_su_sale` | 149 sale / 15 team — role, team, email link (patch v2) |
 | `don_hang_audit` | Audit log đơn (schema sẵn, chưa ghi từ app) |
-| `payment_requests` | Phiếu thu (B1); `sale_email`, `customer_email`, `status` |
-| `payment_lines` | Các lần thanh toán: QR / cash / card; `bill_images` |
+| `payment_requests` | Phiếu thu (B1); `sale_email`, `customer_email`, `status`, `lead_source`, `lead_channel`, `customer_type`, `company_name`, `tax_id` |
+| `payment_lines` | Các lần thanh toán: QR / cash / card; `bill_images`, `transfer_content`, `installment_platform`, `installment_total`, `sale_received`, `verified_total`, `verified_received` |
 | `active_requests` | Yêu cầu kích hoạt (B3); `uids_data` JSONB; `pr_id` nullable |
 | `so_doanh_thu` | Sổ doanh thu M5; import gsheet/xlsx/dingtalk/tay |
 | `crm_sales_data` | CRM sales data upsert; `crm_tokens` cho sync |
 | `bc03_monthly` | BC03 daily backfill + monthly report |
 | `don_hang_seq` / `invoice_code_seq` / `payment_request_seq` | Postgres sequences — chống trùng mã (DB audit) |
 
-Patch (SQL Editor, thứ tự): **v1** → **v2** → **v3** → **v4** → **v5** → **v5_invoice** → **v6** → **v7** (Sổ) → **v8** (bill_images + activated) → **payment_requests** → **active_requests** → **crm_\*** → **bc03_monthly** → **db_audit_20260603** (sequences + RPCs). Cuối mỗi patch: `NOTIFY pgrst, 'reload schema'`. Xem `supabase_diagnose.sql` nếu lỗi cột.
+Patch (SQL Editor, thứ tự): **v1** → **v2** → **v3** → **v4** → **v5** → **v5_invoice** → **v6** → **v7** (Sổ) → **v8** (bill_images + activated) → **payment_requests** → **active_requests** → **crm_\*** → **bc03_monthly** → **db_audit_20260603** (sequences + RPCs) → **2026-06-09-top1-02** (installment fields) → **2026-06-10-top1-02** (verified fields). Cuối mỗi patch: `NOTIFY pgrst, 'reload schema'`. Xem `supabase_diagnose.sql` nếu lỗi cột.
 
 ---
 

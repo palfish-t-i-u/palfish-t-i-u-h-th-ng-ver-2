@@ -226,6 +226,8 @@ export default function PaymentRequestsTab() {
       tax_id: (next.taxId || "").trim() || undefined,
       customer_type: next.customerType || "individual",
       company_name: next.customerType === "business" ? (next.companyName || "").trim() || undefined : undefined,
+      lead_source: next.leadSource || undefined,
+      lead_channel: next.leadChannel || undefined,
     };
 
     try {

@@ -64,6 +64,8 @@ class ActiveRequestPatchCoursePayload(BaseModel):
     invoiced_at: str | None = ""
     tax_invoice_code: str | None = ""
     tax_product_code: str | None = ""
+    lead_source: str | None = None
+    lead_channel: str | None = None
 
 
 class ActiveRequestPatchUidPayload(BaseModel):

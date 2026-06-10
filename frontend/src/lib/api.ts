@@ -192,10 +192,11 @@ export const endpoints = {
       ),
   },
   transactions: {
-    patchStatus: (id: string, status: string, rejectReason?: string) =>
+    patchStatus: (id: string, status: string, rejectReason?: string, extra?: { verified_total?: number; verified_received?: number }) =>
       api.patch(`/api/v1/transactions/${id}/status`, {
         status,
         ...(rejectReason ? { reject_reason: rejectReason } : {}),
+        ...extra,
       }),
   },
   crm: {
