@@ -768,3 +768,25 @@
 **Chore**
 - `.gitignore` — ignore `.vite/` cache directory.
 - `CLAUDE.md` — ghi chú dùng `tsc -b` thay `tsc --noEmit`.
+
+---
+
+## 2026-06-10 — Feedback 10/6: Edit amount UX + Invoice remind + Smart throttle
+
+**Frontend**
+- `PaymentRequestDetailDrawer.tsx` — pencil icon size 12 + opacity 0.6 (rõ hơn); one-time onboarding tooltip (auto-show 600ms, auto-hide 5s, localStorage `pf-edit-amount-tip-shown`).
+- `PaymentRequestDetailDrawer.tsx` — nút "Nhắc xuất hóa đơn" + hook `useInvoiceRemind` (fetch remind status, throttle 24h, send remind); dòng trạng thái "Đã nhắc kế toán lúc ... — bởi ..."; guard `activatedCount > 0`.
+- `InvoiceRequestTab.tsx` — standalone banner (cam) hiện khi có pending reminders; KPI card "Sales đang nhắc" + icon chuông; row-level badge "Nhắc" trong tab pending.
+- `api.ts` — `invoiceRemind.list(status?)` endpoint.
+- `prototype-payments.css` — `.edit-amount-tip` tooltip bubble; `.remind-badge` orange pill; `.cell-name` flex layout.
+- `constants/leadSource.ts` — fix Tiktokshop code `300531b` → `300551`.
+
+**Backend**
+- `payment_request_routes.py` — `_has_invoice_since(sb, pr_id, since)`: check nếu course nào được xuất HĐ (invoicedAt) sau datetime `since`. Smart throttle: cooldown 24h reset khi kế toán đã xuất HĐ → sale nhắc lại được cho course mới.
+- `payment_request_routes.py` — fix `is_pending()`: check `course.invoiced` field thay vì AR status string (reminder biến mất khi AR activated nhưng chưa invoiced).
+- `payment_request_routes.py` — fix column name `uids` → `uids_data` trong query invoice-reminders (Supabase PostgREST trả 400).
+
+**Docs**
+- `HANDOFF_DAT_INVOICE_REMIND.md` — §5–§7: smart throttle, FE complete, BE bugs fixed.
+- `TODO.md` — block Feedback 10/6 (F1006-01..09).
+- `CHANGELOG.md` — entry này.
