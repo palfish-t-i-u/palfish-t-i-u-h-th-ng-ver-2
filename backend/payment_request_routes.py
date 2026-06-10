@@ -2160,21 +2160,22 @@ def register_payment_request_routes(app, get_supabase) -> None:
         pr_res = sb.table("payment_requests").select("id, name").in_("id", pr_ids).execute()
         pr_map = {r["id"]: r for r in (pr_res.data or [])}
 
-        # Query related active requests to check if invoiced/activated
-        ar_res = sb.table("active_requests").select("pr_id, status").in_("pr_id", pr_ids).execute()
-        ar_status_map: dict[str, list[str]] = {}
+        # Query related active requests — check if ALL courses invoiced
+        ar_res = sb.table("active_requests").select("pr_id, uids").in_("pr_id", pr_ids).execute()
+        ar_all_invoiced: dict[str, bool] = {}
         for ar in (ar_res.data or []):
             pid = ar.get("pr_id")
-            if pid:
-                ar_status_map.setdefault(pid, []).append(ar.get("status"))
+            if not pid:
+                continue
+            uids = ar.get("uids") or []
+            courses = [c for u in (uids if isinstance(uids, list) else []) for c in (u.get("courses") or [])]
+            all_done = bool(courses) and all(c.get("invoiced") for c in courses)
+            ar_all_invoiced[pid] = ar_all_invoiced.get(pid, True) and all_done
 
         def is_pending(pr_id: str) -> bool:
             if pr_id not in pr_map:
                 return False
-            statuses = ar_status_map.get(pr_id, [])
-            if any(s in ("invoiced", "activated") for s in statuses):
-                return False
-            return True
+            return not ar_all_invoiced.get(pr_id, False)
 
         if status == "pending":
             reminders_data = [r for r in reminders_data if is_pending(r["payment_request_id"])]
