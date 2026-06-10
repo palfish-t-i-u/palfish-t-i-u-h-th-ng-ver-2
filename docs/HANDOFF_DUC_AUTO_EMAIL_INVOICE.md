@@ -1,95 +1,74 @@
-# TOP 3: Tự động gửi hóa đơn qua email cho KH — BE Handoff (Đức)
+# TOP 3 (SCOPE MỚI 10/6): Theo dõi trạng thái gửi hóa đơn — BE Handoff (Đức)
 
-## Mô tả nghiệp vụ
-Khi kế toán xuất xong hóa đơn cho KH, hiện tại phải download file rồi gửi email thủ công. Cần tự động hóa: bấm nút → hệ thống gửi email kèm file hóa đơn đến email KH.
+## ⚠️ Thay đổi scope so với handoff cũ
 
-## 1. Email service
+Chị Thu Hiền xác nhận: **hóa đơn điện tử được gửi trực tiếp từ hệ thống thuế** (nhà cung cấp HĐĐT, email `hoadon-noreply`, có mã CQT + mã tra cứu). App KHÔNG tự gửi email hóa đơn nữa — vừa trùng lặp vừa không có giá trị pháp lý.
 
-Đức đã setup email cty + OTP quên mật khẩu trước đó. Dùng lại infrastructure đó (Resend / SendGrid / SMTP cty — tùy cái đã có).
+**Task đổi thành:** kế toán sau khi gửi HĐ từ hệ thống thuế → **tick ghi nhận "Đã gửi"** trong app (kênh email/Zalo) → sales thấy trạng thái ngay trong PR, không phải hỏi qua lại.
 
-Config cần thêm:
-- Template email hóa đơn (subject, body HTML)
-- Sender: dùng email cty (VD: `ketoan@palfish.vn` hoặc tương tự)
+**Vấn đề thật (ảnh chat 10/6):** sale trách kế toán chưa gửi HĐ trong khi HĐ đã gửi từ 4/6 — sale không có chỗ nào nhìn thấy trạng thái gửi.
 
-## 2. Endpoint gửi email hóa đơn
+## Tận dụng scaffold đã có (commit a2965b5 trên sandbox)
 
-```
-POST /api/v1/invoices/{active_request_id}/send-email
-```
+Giữ lại ~80%: bảng `invoice_email_logs`, route file, helpers, tests. **Bỏ hẳn phần gửi email thật** — không cần tích hợp SMTP/provider nữa (`invoice_email_service.py` chỉ giữ `is_valid_email`).
 
-### Request body
-```python
-class InvoiceSendEmailBody(BaseModel):
-    email_override: str | None = None  # Gửi đến email khác (nếu KH yêu cầu)
-```
+## Việc cần làm
 
-### Logic xử lý
-1. `resolve_actor()` → check role kế toán/manager (chỉ kế toán mới gửi được)
-2. Lấy active_request → lấy thông tin KH (tên, email từ PR liên quan)
-3. Lấy file hóa đơn đã xuất (từ Supabase Storage hoặc generate lại)
-4. Compose email:
-   - **To**: `body.email_override` hoặc email KH từ PR
-   - **Subject**: "Hóa đơn thanh toán - [Tên KH] - [Mã PR]"
-   - **Body**: Template HTML đơn giản (thông tin KH, số tiền, ngày, file đính kèm)
-   - **Attachment**: File hóa đơn (Excel/PDF)
-5. Gửi email qua service đã có
-6. Log kết quả vào bảng `invoice_email_logs`
-7. Response:
-```json
-{
-  "success": true,
-  "sent_to": "khachhang@gmail.com",
-  "sent_at": "2026-06-10T10:00:00Z"
-}
-```
-
-## 3. Bảng log gửi email
+### 1. Migration — thêm cột `channel`
 
 ```sql
-CREATE TABLE invoice_email_logs (
-  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-  active_request_id UUID NOT NULL,
-  payment_request_id UUID,
-  sent_to TEXT NOT NULL,
-  sent_by UUID NOT NULL REFERENCES profiles(id),
-  sent_at TIMESTAMPTZ DEFAULT now(),
-  status TEXT DEFAULT 'sent',  -- sent / failed / delivered
-  error_message TEXT
-);
+ALTER TABLE public.invoice_email_logs
+ADD COLUMN IF NOT EXISTS channel text NOT NULL DEFAULT 'email'
+  CHECK (channel IN ('email', 'zalo'));
+
+-- Status giờ chỉ còn ý nghĩa "đã ghi nhận gửi" — giữ CHECK cũ
+-- ('sent','dry_run','failed') để khỏi migrate data, chỉ dùng 'sent'.
 ```
 
-## 4. Endpoint xem lịch sử gửi (cho FE hiện trạng thái)
+### 2. Đổi endpoint POST `send-email` → `delivery-log`
 
 ```
-GET /api/v1/invoices/{active_request_id}/email-logs
+POST /api/v1/invoices/{active_request_id}/delivery-log
 ```
 
-### Response
-```json
-{
-  "logs": [
-    {
-      "id": "...",
-      "sent_to": "khachhang@gmail.com",
-      "sent_by_name": "Nguyen Van Ke Toan",
-      "sent_at": "2026-06-10T10:00:00Z",
-      "status": "sent"
-    }
-  ]
-}
+```python
+class InvoiceDeliveryLogBody(BaseModel):
+    channel: str = "email"          # "email" | "zalo"
+    sent_to: str | None = None      # email KH (channel=email) / SĐT-ghi chú (zalo)
+    note: str | None = None
 ```
 
-## FE contract
-FE sẽ gọi:
+Logic (đơn giản hơn bản cũ nhiều):
+1. RBAC như hiện tại (`resolve_actor` + `require_module_write`) — kế toán/manager
+2. Validate AR tồn tại (helper `_fetch_active_request` có sẵn)
+3. `channel=email` → validate `sent_to` bằng `is_valid_email` (nếu trống → lấy email KH từ PR như code cũ)
+4. **KHÔNG gọi send_invoice_email nữa** — chỉ `_insert_email_log` với `status='sent'`, `channel`, `sent_to`, `sent_by_email`
+5. Response: `{ "log": {...} }` (serialize có sẵn, thêm field `channel`)
+
+### 3. GET giữ nguyên, đổi path cho khớp
+
+```
+GET /api/v1/invoices/{active_request_id}/delivery-log
+```
+Trả `{ "logs": [...] }` — thêm `channel` vào `_serialize_email_log`.
+
+### 4. Cập nhật tests
+
+Sửa `test_invoice_email.py` theo semantic mới: bỏ test dry-run/SMTP, thêm test channel email/zalo + validate email.
+
+## FE contract (AI làm sau khi BE xong)
+
 ```ts
-// Gửi email hóa đơn
-await api.post(`/api/v1/invoices/${arId}/send-email`, { email_override: null });
-// Xem lịch sử gửi
-const { data } = await api.get(`/api/v1/invoices/${arId}/email-logs`);
-// data.logs → hiện badge "Đã gửi email lúc ..."
+// Kế toán tick đã gửi (B4)
+await api.post(`/api/v1/invoices/${arId}/delivery-log`, { channel: "email", sent_to: "kh@gmail.com" });
+// Badge trạng thái (PR drawer + B4)
+const { data } = await api.get(`/api/v1/invoices/${arId}/delivery-log`);
+// data.logs[0] → "HĐ đã gửi KH ngày 04/06 (email) — bởi Thu Hiền"
 ```
 
-## Ghi chú
-- Task này là TOP 3, không gấp bằng TOP 1-2
-- Ưu tiên: gửi được email cơ bản trước, template đẹp sau
-- Nếu email service hiện tại chỉ dùng cho OTP → cần check rate limit / quota có đủ cho gửi hóa đơn không
+FE sẽ làm thêm (không cần BE): nút copy email KH trong B4 để kế toán paste sang hệ thống thuế.
+
+## Để sau (không làm đợt này)
+
+- Upload PDF hóa đơn vào app cho case Zalo (sale tự tải gửi KH) — cân nhắc sau go-live 18/06
+- Tích hợp API nhà cung cấp HĐĐT để sync trạng thái gửi tự động — cần biết provider nào + API docs
