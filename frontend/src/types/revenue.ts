@@ -121,6 +121,7 @@ export interface GsheetSyncResponse {
   tabs: string[];
   fetched: number;
   skippedExisting: number;
+  skippedLoose: number;
   inserted: number;
   dryRun: boolean;
 }
