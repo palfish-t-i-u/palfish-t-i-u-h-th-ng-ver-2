@@ -244,77 +244,28 @@ def _query_today_honors(
     d_date: str,
     *,
     limit: int | None = None,
-    staff_crm_map: dict[str, tuple[str, str, str]] | None = None,
+    staff_map: dict[str, tuple[str, str]] | None = None,
 ) -> list[TopSale]:
-    """Vinh danh hôm nay — query giao_dich WHERE trang_thai_doi_soat='da_xac_nhan', join don_hang."""
-    # Convert Vietnam date to UTC bounds for timestamptz comparison
+    """Vinh danh hôm nay — payment_lines status='paid' có paid_at trong ngày (RPC get_top_sales).
+
+    Không đọc giao_dich (luồng prototype cũ, webhook PayOS hiện match payment_lines
+    trước nên giao_dich không còn được ghi) và không phụ thuộc sync sổ doanh thu.
+    QR lên bảng ngay khi webhook đánh dấu paid; cash/card/installment lên khi
+    kế toán xác nhận ở B2.
+    """
     day_start_vn = datetime.strptime(d_date, "%Y-%m-%d").replace(tzinfo=VN_TIMEZONE)
     day_end_vn = day_start_vn + timedelta(days=1)
-    start_utc = day_start_vn.astimezone(timezone.utc).isoformat()
-    end_utc = day_end_vn.astimezone(timezone.utc).isoformat()
-
-    sale_map: dict[str, int] = {}
     try:
-        q = (
-            sb.table("giao_dich")
-            .select("so_tien_nhan, don_hang!inner(sale_crm_name)")
-            .eq("trang_thai_doi_soat", "da_xac_nhan")
-            .gte("thoi_gian_giao_dich", start_utc)
-            .lt("thoi_gian_giao_dich", end_utc)
+        return _load_top_sales_rpc(
+            sb,
+            day_start_vn.astimezone(timezone.utc),
+            day_end_vn.astimezone(timezone.utc),
+            limit=limit if limit is not None else GAMIFICATION_TODAY_LIMIT,
+            staff_map=staff_map,
         )
-        from analytics_limits import fetch_rows_capped
-
-        def fetch_page(offset: int, limit: int) -> list[dict]:
-            res = q.range(offset, offset + limit - 1).execute()
-            return res.data or []
-
-        all_data, _ = fetch_rows_capped(
-            fetch_page, log_prefix="[Dashboard] today honors"
-        )
-
-        for r in all_data:
-            don_hang = r.get("don_hang") or {}
-            sname = _sale_key(don_hang.get("sale_crm_name"))
-            if not sname or sname == "(Chưa gán sale)":
-                continue
-            vnd = int(float(r.get("so_tien_nhan") or 0))
-            if vnd > 0:
-                sale_map[sname] = sale_map.get(sname, 0) + vnd
-    except Exception as exc:
-        print(f"[Dashboard] giao_dich today honors query failed: {exc}")
-
-    if staff_crm_map is None:
-        _, staff_crm_map = _load_staff_maps(sb)
-
-    ranked = sorted(sale_map.items(), key=lambda x: x[1], reverse=True)
-    if limit is not None:
-        ranked = ranked[:limit]
-
-    out: list[TopSale] = []
-    for name, revenue in ranked:
-        crm_info = staff_crm_map.get(name.strip())
-        if crm_info:
-            email, team, sub_team = crm_info
-            out.append(
-                TopSale(
-                    id=email or f"sale-{name}",
-                    name=name,
-                    revenue=revenue,
-                    team=team or None,
-                    sub_team=sub_team or None,
-                )
-            )
-        else:
-            out.append(
-                TopSale(
-                    id=f"sale-{name}",
-                    name=name,
-                    revenue=revenue,
-                    team=None,
-                    sub_team=None,
-                )
-            )
-    return out
+    except HTTPException as exc:
+        print(f"[Dashboard] today honors RPC failed: {exc.detail}")
+        return []
 
 
 def _load_staff_maps(sb) -> tuple[dict[str, tuple[str, str]], dict[str, tuple[str, str, str]]]:
@@ -402,7 +353,7 @@ def _build_gamification_summary(
     staff_map, staff_crm_map = _load_staff_maps(sb)
 
     top_today = _query_today_honors(
-        sb, _vn_today_iso(), limit=GAMIFICATION_TODAY_LIMIT, staff_crm_map=staff_crm_map
+        sb, _vn_today_iso(), limit=GAMIFICATION_TODAY_LIMIT, staff_map=staff_map
     )
     top_month = _query_top_sales(
         sb,
@@ -1307,36 +1258,19 @@ def register_dashboard_routes(app, supabase_factory):
         resolve_actor(sb, authorization)
 
         today_str = _vn_today_iso()
-        
+
         top_sales = _query_today_honors(sb, today_str, limit=3)
-        
+
         top = [
             {
+                "rank": i + 1,
                 "sale_name": ts.name,
+                "team": ts.team or "—",
                 "collected_vnd": ts.revenue,
                 "orders": 1,
             }
-            for ts in top_sales
+            for i, ts in enumerate(top_sales)
         ]
-
-        if top:
-            names = [x["sale_name"] for x in top]
-            staff_res = (
-                sb.table("nhan_su_sale")
-                .select("crm_name, team, display_name")
-                .in_("crm_name", names)
-                .execute()
-            )
-            staff_map = {
-                (s.get("crm_name") or "").strip(): s
-                for s in (staff_res.data or [])
-            }
-            
-            for i, entry in enumerate(top):
-                entry["rank"] = i + 1
-                staff_info = staff_map.get(entry["sale_name"]) or {}
-                entry["team"] = staff_info.get("team") or "—"
-                entry["sale_name"] = staff_info.get("display_name") or entry["sale_name"]
 
         return {
             "date": today_str,
