@@ -73,6 +73,7 @@ function QrRow({
   onBillView,
   onMarkPaid,
   onShowQr,
+  onEditAmount,
   uploadingBillId,
   deletingBillId,
 }: {
@@ -82,11 +83,37 @@ function QrRow({
   onBillView: (qr: PaymentAttempt) => void;
   onMarkPaid: (qr: PaymentAttempt) => void;
   onShowQr: (qr: PaymentAttempt) => void;
+  onEditAmount?: (qr: PaymentAttempt, newAmount: number) => Promise<void>;
   uploadingBillId?: string | null;
   deletingBillId?: string | null;
 }) {
   const isQr = qr.method === "qr";
   const isCancelled = !!qr.cancelled;
+  const canEditAmount = !isCancelled && qr.status === "pending" && !!onEditAmount;
+
+  const [editingAmount, setEditingAmount] = useState(false);
+  const [draftAmount, setDraftAmount] = useState("");
+  const [savingAmount, setSavingAmount] = useState(false);
+  const amountInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (editingAmount) amountInputRef.current?.focus();
+  }, [editingAmount]);
+
+  const handleAmountSave = async () => {
+    const parsed = parseInt(draftAmount.replace(/\D/g, ""), 10);
+    if (!parsed || parsed <= 0 || parsed === qr.amount) {
+      setEditingAmount(false);
+      return;
+    }
+    setSavingAmount(true);
+    try {
+      await onEditAmount!(qr, parsed);
+    } finally {
+      setSavingAmount(false);
+      setEditingAmount(false);
+    }
+  };
 
   let pill;
   if (isCancelled) {
@@ -133,7 +160,57 @@ function QrRow({
           <span style={{ fontWeight: 600, color: "var(--text-3)", fontSize: 11.5, textTransform: "uppercase", letterSpacing: "0.05em", whiteSpace: "nowrap" }}>
             Lần #{qr.idx}
           </span>
-          <span className="amt">{vnd(qr.amount)}</span>
+          {editingAmount ? (
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+              <input
+                ref={amountInputRef}
+                type="text"
+                inputMode="numeric"
+                value={draftAmount}
+                onChange={(e) => setDraftAmount(e.target.value.replace(/[^0-9]/g, ""))}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") handleAmountSave();
+                  if (e.key === "Escape") setEditingAmount(false);
+                }}
+                disabled={savingAmount}
+                style={{
+                  width: 120,
+                  padding: "2px 6px",
+                  fontSize: 13,
+                  fontWeight: 700,
+                  border: "1.5px solid var(--primary-400)",
+                  borderRadius: 6,
+                  outline: "none",
+                  background: "var(--bg-1)",
+                }}
+              />
+              <button
+                className="btn btn-primary btn-sm"
+                style={{ padding: "2px 8px", fontSize: 11 }}
+                onClick={handleAmountSave}
+                disabled={savingAmount}
+              >
+                {savingAmount ? "…" : "Lưu"}
+              </button>
+              <button
+                className="btn btn-outline btn-sm"
+                style={{ padding: "2px 6px", fontSize: 11 }}
+                onClick={() => setEditingAmount(false)}
+                disabled={savingAmount}
+              >
+                Huỷ
+              </button>
+            </span>
+          ) : (
+            <span
+              className="amt"
+              style={canEditAmount ? { cursor: "pointer", textDecoration: "underline", textDecorationStyle: "dotted", textUnderlineOffset: 2 } : undefined}
+              title={canEditAmount ? "Bấm để sửa số tiền" : undefined}
+              onClick={canEditAmount ? () => { setDraftAmount(String(qr.amount)); setEditingAmount(true); } : undefined}
+            >
+              {vnd(qr.amount)}{canEditAmount && <Icons.Pencil size={10} style={{ marginLeft: 3, opacity: 0.5 }} />}
+            </span>
+          )}
           {pill}
         </div>
         <div className="qr-info-line2">
@@ -1090,6 +1167,7 @@ export default function PaymentRequestDetailDrawer({
   onAddPayment,
   onCancelPayment,
   onMarkPaid,
+  onEditAmount,
   onBillFile,
   onBillView,
   onCreateActiveRequest,
@@ -1111,6 +1189,7 @@ export default function PaymentRequestDetailDrawer({
   onAddPayment: (payload: AddPaymentAttemptPayload) => void;
   onCancelPayment: (qr: PaymentAttempt) => void;
   onMarkPaid: (qr: PaymentAttempt) => void;
+  onEditAmount?: (qr: PaymentAttempt, newAmount: number) => Promise<void>;
   onBillFile: (qr: PaymentAttempt, file: File) => void | Promise<void>;
   onBillView: (qr: PaymentAttempt) => void;
   onCreateActiveRequest: () => void;
@@ -1712,6 +1791,7 @@ export default function PaymentRequestDetailDrawer({
                   onBillFile={onBillFile}
                   onBillView={onBillView}
                   onMarkPaid={onMarkPaid}
+                  onEditAmount={readOnly ? undefined : onEditAmount}
                   onShowQr={onShowQr}
                   uploadingBillId={uploadingBillId}
                   deletingBillId={deletingBillId}
