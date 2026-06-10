@@ -329,6 +329,38 @@ export default function PaymentRequestsTab() {
     }
   };
 
+  const handleEditAmount = async (qr: PaymentAttempt, newAmount: number) => {
+    if (!selected) return;
+    const prId = selected.id;
+    const oldAmount = qr.amount;
+
+    updateRequest(prId, (r) => ({
+      ...r,
+      payments: r.payments.map((p: PaymentAttempt) =>
+        p.id === qr.id ? { ...p, amount: newAmount } : p
+      ),
+    }));
+
+    if (!isBackendLineId(qr.id)) return;
+    try {
+      const res = await endpoints.paymentRequests.patchPaymentLineAmount(qr.id, newAmount);
+      updateRequest(prId, (r) => {
+        const updatedPayments = r.payments.map((p: PaymentAttempt) =>
+          p.id === qr.id ? { ...p, amount: res.data.payment_line.amount ?? newAmount } : p
+        );
+        const prFromBe = fromApiPaymentRequest(res.data.payment_request);
+        return normalizeRequest({ ...r, ...prFromBe, payments: updatedPayments });
+      });
+    } catch {
+      updateRequest(prId, (r) => ({
+        ...r,
+        payments: r.payments.map((p: PaymentAttempt) =>
+          p.id === qr.id ? { ...p, amount: oldAmount } : p
+        ),
+      }));
+    }
+  };
+
   const handleMarkPaid = async (qr: PaymentAttempt) => {
     if (!selected) return;
     updateRequest(selected.id, (r) => ({
@@ -693,6 +725,7 @@ export default function PaymentRequestsTab() {
         onAddPayment={handleAddPayment}
         onCancelPayment={handleCancelPayment}
         onMarkPaid={handleMarkPaid}
+        onEditAmount={handleEditAmount}
         onBillFile={handleBillFile}
         onBillView={handleBillView}
         uploadingBillId={uploadingBillId}

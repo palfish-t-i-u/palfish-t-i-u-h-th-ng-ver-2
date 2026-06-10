@@ -115,6 +115,10 @@ class TransactionStatusPatch(BaseModel):
     verified_received: int | str | None = None
 
 
+class PaymentLineAmountPatch(BaseModel):
+    amount: int | str
+
+
 class PaymentRequestCancelBody(BaseModel):
     reason: str | None = None
 
@@ -1491,6 +1495,66 @@ def register_payment_request_routes(app, get_supabase) -> None:
         if not result.get("matched"):
             raise HTTPException(404, "Khong tim thay payment_line tuong ung webhook")
         return result
+
+    @router.patch("/payment-lines/{line_id}/amount")
+    def patch_payment_line_amount(
+        line_id: str,
+        body: PaymentLineAmountPatch,
+        authorization: str | None = Header(None),
+    ):
+        sb = _sb_or_503(get_supabase)
+        actor = resolve_actor(sb, authorization)
+        require_module_write(sb, actor, "paymentRequests")
+
+        line_res = (
+            sb.table("payment_lines")
+            .select("*")
+            .eq("id", line_id)
+            .limit(1)
+            .execute()
+        )
+        if not line_res.data:
+            raise HTTPException(404, "Khong tim thay payment_line")
+
+        line = line_res.data[0]
+        if _clean_text(line.get("status")).lower() != "pending" or line.get("cancelled"):
+            raise HTTPException(400, "Chi duoc sua so tien khi chua thanh toan")
+
+        pr_id = str(line.get("payment_request_id") or "")
+        if not pr_id:
+            raise HTTPException(400, "payment_line thieu payment_request_id")
+
+        pr_res = sb.table("payment_requests").select("*").eq("id", pr_id).limit(1).execute()
+        if not pr_res.data:
+            raise HTTPException(404, "Khong tim thay payment_request lien quan")
+        if not _can_access_request(sb, actor, pr_res.data[0]):
+            raise HTTPException(403, "Khong co quyen sua payment_line nay")
+
+        amount = _parse_amount(body.amount)
+        if amount <= 0:
+            raise HTTPException(400, "amount khong hop le")
+
+        try:
+            updated_res = (
+                sb.table("payment_lines")
+                .update({"amount": amount})
+                .eq("id", line_id)
+                .execute()
+            )
+            totals = recompute_payment_request_totals(sb, pr_id)
+        except HTTPException:
+            raise
+        except Exception as exc:
+            raise HTTPException(500, f"Khong cap nhat amount: {exc}") from exc
+
+        updated_line = updated_res.data[0] if updated_res.data else {**line, "amount": amount}
+        return {
+            "payment_line": _serialize_payment_line(updated_line),
+            "payment_request": totals["payment_request"],
+            "received": totals["received"],
+            "target": totals["target"],
+            "state": totals["state"],
+        }
 
     @router.patch("/transactions/{transaction_id}/status")
     def patch_transaction_status(

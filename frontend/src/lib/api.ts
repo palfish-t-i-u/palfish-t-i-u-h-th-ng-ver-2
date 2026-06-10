@@ -122,6 +122,14 @@ export const endpoints = {
     addPayment: (id: string, body: AddPaymentAttemptPayload) =>
       api.post<AddPaymentLineResponse>(`/api/v1/payment-requests/${id}/payment-lines`, body),
     cancel: (id: string) => api.post(`/api/v1/payment-requests/${id}/cancel`),
+    patchPaymentLineAmount: (lineId: string, amount: number) =>
+      api.patch<{
+        payment_line: PaymentLineApiRow;
+        payment_request: Record<string, unknown>;
+        received: number;
+        target: number;
+        state: string;
+      }>(`/api/v1/payment-lines/${lineId}/amount`, { amount }),
     uploadPaymentLineBill: (lineId: string, file: Blob, filename: string) => {
       const fd = new FormData();
       fd.append("file", file, filename);
