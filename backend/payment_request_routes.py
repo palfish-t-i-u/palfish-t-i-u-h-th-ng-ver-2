@@ -2161,13 +2161,13 @@ def register_payment_request_routes(app, get_supabase) -> None:
         pr_map = {r["id"]: r for r in (pr_res.data or [])}
 
         # Query related active requests — check if ALL courses invoiced
-        ar_res = sb.table("active_requests").select("pr_id, uids").in_("pr_id", pr_ids).execute()
+        ar_res = sb.table("active_requests").select("pr_id, uids_data").in_("pr_id", pr_ids).execute()
         ar_all_invoiced: dict[str, bool] = {}
         for ar in (ar_res.data or []):
             pid = ar.get("pr_id")
             if not pid:
                 continue
-            uids = ar.get("uids") or []
+            uids = ar.get("uids_data") or []
             courses = [c for u in (uids if isinstance(uids, list) else []) for c in (u.get("courses") or [])]
             all_done = bool(courses) and all(c.get("invoiced") for c in courses)
             ar_all_invoiced[pid] = ar_all_invoiced.get(pid, True) and all_done
