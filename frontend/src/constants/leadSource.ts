@@ -22,7 +22,7 @@ export const LEAD_SOURCES: LeadSourceDef[] = [
       { code: "300581", label: "FB-Landing Page-VN" },
       { code: "300531", label: "FB - Paid Partnership" },
       { code: "300301", label: "Tiktok ads" },
-      { code: "300531b", label: "Tiktokshop" },
+      { code: "300551", label: "Tiktokshop" },
       { code: "300291", label: "VN google" },
       { code: "300361", label: "Gọi hotline & nhắn tin FE" },
     ],
