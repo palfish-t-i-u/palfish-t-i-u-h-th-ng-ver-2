@@ -218,7 +218,7 @@ export default function InvoiceRequestTab() {
   const [confirmBulkIssue, setConfirmBulkIssue] = useState(false);
   const [bulkError, setBulkError] = useState("");
 
-  type Reminder = { payment_request_id: string; requested_by_name: string; requested_at: string; note: string | null };
+  type Reminder = { id: string; payment_request_id: string; pr_code: string; customer_name: string; requested_by_name: string; requested_at: string; note: string | null };
   const [reminders, setReminders] = useState<Reminder[]>([]);
   const loadReminders = useCallback(async () => {
     try {
@@ -357,6 +357,40 @@ export default function InvoiceRequestTab() {
           Mỗi <strong style={{ color: "var(--text-2)" }}>Course Code</strong> có Order ID → một hoá đơn (INV). Sau xuất, tải{" "}
           <strong style={{ color: "var(--text-2)" }}>ZIP 3 file Excel</strong> kê khai thuế (don_hang, khach_hang, san_pham).
         </div>
+
+        {reminders.length > 0 && (
+          <div
+            style={{
+              padding: "10px 14px",
+              borderRadius: 10,
+              border: "1px solid #ffcc80",
+              background: "#fff3e0",
+              fontSize: 12.5,
+              marginBottom: 8,
+              display: "flex",
+              alignItems: "flex-start",
+              gap: 8,
+            }}
+          >
+            <Icons.Bell size={15} style={{ color: "#e65100", flexShrink: 0, marginTop: 1 }} />
+            <div>
+              <strong style={{ color: "#e65100" }}>Sales đang nhắc xuất HĐ ({reminders.length})</strong>
+              <div style={{ marginTop: 4, lineHeight: 1.6 }}>
+                {reminders.map((rem) => {
+                  const dt = new Date(rem.requested_at);
+                  return (
+                    <div key={rem.id} style={{ color: "var(--text-2)" }}>
+                      <strong>{rem.customer_name || rem.pr_code}</strong>
+                      {" — nhắc bởi "}{rem.requested_by_name}
+                      {" lúc "}{dt.toLocaleDateString("vi-VN")}{" "}{dt.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })}
+                      {rem.note && <span style={{ color: "var(--text-3)" }}> · &ldquo;{rem.note}&rdquo;</span>}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        )}
 
         {apiNote && (
           <div
