@@ -63,14 +63,24 @@ const DEPARTMENTS = [
 ];
 
 const TEAMS_BY_DEPT: Record<string, string[]> = {
-  sale: ["Inhouse 1", "Inhouse 2", "HCM", "Offline Linh Đan"],
+  sale: [
+    "Inhouse 1",
+    "Inhouse 2",
+    "HCM (Online)",
+    "Linh Dam Store",
+    "An Binh Store",
+    "Group KL",
+    "HN Inhouse",
+    "HN Offline Store",
+    "Marketing",
+    "Team 1",
+    "Team 2",
+    "Khác / Chưa phân loại",
+  ],
 };
 
 const SUBTEAMS_BY_TEAM: Record<string, string[]> = {
   "Inhouse 1": ["Team 1", "Team 2", "Team 3", "Team 4", "Team 5", "Sales"],
-  "Tele sale": ["Area 2", "Team Au"],
-  "P'AU Group": ["Team Lookkaew", "Team Aon"],
-  "P'TEE Group": ["Team James"],
 };
 
 function normalizeDeptKey(raw: string | null | undefined): string {
