@@ -468,7 +468,7 @@ def _load_qr_created_maps(
     sale: str | None = None,
     allowed_sales: set[str] | None = None,
 ) -> tuple[int, int]:
-    """Doanh thu tạo lần thanh toán: payment_lines.created_at trong kỳ (không lọc trạng thái)."""
+    """Doanh thu lần thanh toán đã xác nhận: payment_lines status=paid, created_at trong kỳ."""
     total = 0
     count = 0
     try:
@@ -480,6 +480,7 @@ def _load_qr_created_maps(
             .gte("created_at", f"{d_start}T00:00:00")
             .lte("created_at", f"{d_end}T23:59:59")
             .eq("is_test", False)
+            .eq("status", "paid")
         )
         lines = q.execute().data or []
         if not lines:
