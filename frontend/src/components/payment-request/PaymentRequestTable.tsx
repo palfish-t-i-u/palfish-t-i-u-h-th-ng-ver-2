@@ -248,7 +248,7 @@ export default function PaymentRequestTable({
                     )}
                   </td>
                   <td>
-                    <PaymentRequestStatusBadge state={p.state} />
+                    <PaymentRequestStatusBadge state={p.state} totalCount={p.totalCount} />
                   </td>
                   <td>
                     <DeltaCell state={p.state} delta={p.delta} />

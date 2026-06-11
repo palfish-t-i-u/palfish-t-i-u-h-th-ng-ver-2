@@ -1407,7 +1407,7 @@ export default function PaymentRequestDetailDrawer({
             </div>
           </div>
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            <PaymentRequestStatusBadge state={request.state} />
+            <PaymentRequestStatusBadge state={request.state} totalCount={request.totalCount} />
             <button className="drawer-close" onClick={onClose}>
               <Icons.Close size={16} />
             </button>
