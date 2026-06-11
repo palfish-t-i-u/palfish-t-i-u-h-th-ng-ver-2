@@ -2,10 +2,11 @@
 """Clean up all test-flagged data from PalFish GMV database.
 
 Xoa toan bo data duoc danh dau is_test=true khoi cac bang:
-  - payment_lines  (FK -> payment_requests)
-  - active_requests (FK -> payment_requests)
-  - payment_requests (is_test = true)
-  - so_doanh_thu (is_test = true)
+  - payment_lines     (FK -> payment_requests)
+  - active_requests   (FK -> payment_requests)
+  - invoice_reminders (FK -> payment_requests)
+  - payment_requests  (is_test = true)
+  - so_doanh_thu      (is_test = true)
 
 Sau do reset payment_request_sequences va invoice_sequences ve 0
 neu khong con PR that nao.
@@ -85,6 +86,11 @@ def run(dry_run: bool) -> None:
     if test_pr_ids:
         test_pls = sb.table("payment_lines").select("id, payment_request_id").in_("payment_request_id", test_pr_ids).execute().data
 
+    # ── 5. Tìm invoice_reminders liên quan ───────────────────────────────────
+    test_irs: list[dict] = []
+    if test_pr_ids:
+        test_irs = sb.table("invoice_reminders").select("id, payment_request_id").in_("payment_request_id", test_pr_ids).execute().data
+
     # ── Preview ──────────────────────────────────────────────────────────────
     print(f"\n{'='*55}")
     print(f"  PalFish GMV — Clean Test Data  {mode}")
@@ -94,11 +100,12 @@ def run(dry_run: bool) -> None:
         print(f"    • {pr['id']}  {pr['name']} (uid: {pr['uid']})")
     print(f"  payment_lines    : {len(test_pls):>4} dòng")
     print(f"  active_requests  : {len(test_ars):>4} dòng")
+    print(f"  invoice_reminders: {len(test_irs):>4} dòng")
     print(f"  so_doanh_thu     : {len(test_sdt):>4} dòng test")
     for s in test_sdt:
         print(f"    • {s['id'][:8]}…  {s['ten_khach']} (uid: {s['uid']})")
 
-    total = len(test_prs) + len(test_pls) + len(test_ars) + len(test_sdt)
+    total = len(test_prs) + len(test_pls) + len(test_ars) + len(test_irs) + len(test_sdt)
     if total == 0:
         print("\n✅  Không có data test nào. Database đã sạch!")
         return
@@ -121,6 +128,10 @@ def run(dry_run: bool) -> None:
         if test_ars:
             sb.table("active_requests").delete().in_("pr_id", test_pr_ids).execute()
             print(f"  ✓ Đã xóa {len(test_ars)} active_requests")
+
+        if test_irs:
+            sb.table("invoice_reminders").delete().in_("payment_request_id", test_pr_ids).execute()
+            print(f"  ✓ Đã xóa {len(test_irs)} invoice_reminders")
 
         if test_prs:
             sb.table("payment_requests").delete().eq("is_test", True).execute()
