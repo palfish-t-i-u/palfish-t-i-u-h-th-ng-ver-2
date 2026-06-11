@@ -33,8 +33,12 @@ import {
   isBackendLineId,
   normalizeRequest,
   nowStamp,
+  paginate,
   toActiveRequestPatchUidsData,
+  visiblePaymentRequests,
 } from "./payment-request/paymentRequestUtils";
+
+const PAGE_SIZE = 20;
 
 export default function PaymentRequestsTab() {
   const { readOnly } = usePermission("paymentRequests");
@@ -63,6 +67,7 @@ export default function PaymentRequestsTab() {
   const [dateRange, setDateRange] = useState<DateRange>(EMPTY_RANGE);
   const [tab, setTab] = useState<RequestBucket>("tracking");
   const [hideTest, setHideTest] = useState(true);
+  const [page, setPage] = useState(1);
   const [createOpen, setCreateOpen] = useState(false);
   const [cancelTarget, setCancelTarget] = useState<PaymentRequest | null>(null);
   const [qrView, setQrView] = useState<{ qr: PaymentAttempt; request: PaymentRequest } | null>(null);
@@ -111,29 +116,27 @@ export default function PaymentRequestsTab() {
     [billModal.lineId]
   );
 
-  const trackingRequests = useMemo(
-    () => requests.filter((r) => r.state !== "cancelled"),
-    [requests]
-  );
-  const cancelledRequests = useMemo(
-    () => requests.filter((r) => r.state === "cancelled"),
-    [requests]
-  );
-  const createdRequests = useMemo(
-    () => requests.filter((r) => r.state !== "cancelled" && arByPrId[r.id]),
-    [requests, arByPrId]
+  const visibleRequests = useMemo(
+    () => visiblePaymentRequests(requests, hideTest),
+    [requests, hideTest]
   );
 
-  const bucketTotal = useMemo(() => {
-    if (tab === "cancelled") return cancelledRequests.length;
-    if (tab === "created") return createdRequests.length;
-    return trackingRequests.length;
-  }, [tab, trackingRequests, cancelledRequests, createdRequests]);
+  const trackingRequests = useMemo(
+    () => visibleRequests.filter((r) => r.state !== "cancelled"),
+    [visibleRequests]
+  );
+  const cancelledRequests = useMemo(
+    () => visibleRequests.filter((r) => r.state === "cancelled"),
+    [visibleRequests]
+  );
+  const createdRequests = useMemo(
+    () => visibleRequests.filter((r) => r.state !== "cancelled" && arByPrId[r.id]),
+    [visibleRequests, arByPrId]
+  );
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return requests.filter((r) => {
-      if (hideTest && r.isTest) return false;
+    return visibleRequests.filter((r) => {
       if (tab === "cancelled") {
         if (r.state !== "cancelled") return false;
       } else {
@@ -145,7 +148,14 @@ export default function PaymentRequestsTab() {
       if (!q) return true;
       return [r.id, r.name, r.uid, r.phone].some((v) => v.toLowerCase().includes(q));
     });
-  }, [requests, tab, status, dateRange, search, arByPrId, hideTest]);
+  }, [visibleRequests, tab, status, dateRange, search, arByPrId]);
+
+  // Đổi tab/filter → về trang 1; danh sách co lại thì paginate tự clamp
+  useEffect(() => {
+    setPage(1);
+  }, [tab, status, dateRange, search, hideTest]);
+
+  const pageSlice = useMemo(() => paginate(filtered, page, PAGE_SIZE), [filtered, page]);
 
   const chips = useMemo(
     () => [
@@ -654,7 +664,7 @@ export default function PaymentRequestsTab() {
 
   return (
     <div className="gmv-prototype">
-      <div className="page">
+      <div className="page page--fit">
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
           <div style={{ fontSize: 12.5, color: "var(--text-3)", maxWidth: 640, lineHeight: 1.55 }}>
             Mỗi <strong style={{ color: "var(--text-2)" }}>Payment Request</strong> đại diện cho một thương vụ. Một PR có thể gồm{" "}
@@ -698,8 +708,12 @@ export default function PaymentRequestsTab() {
         )}
 
         <PaymentRequestTable
-          requests={filtered}
-          totalForBucket={bucketTotal}
+          requests={pageSlice.rows}
+          total={filtered.length}
+          page={pageSlice.page}
+          totalPages={pageSlice.totalPages}
+          pageSize={PAGE_SIZE}
+          onPageChange={setPage}
           selectedId={drawerOpen ? selected?.id ?? null : null}
           tab={tab}
           onTabChange={setTab}

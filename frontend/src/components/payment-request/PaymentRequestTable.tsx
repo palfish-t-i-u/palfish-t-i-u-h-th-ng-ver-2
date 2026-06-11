@@ -9,6 +9,7 @@ import {
   ddmmyyyy,
   fmtPhone,
   formatPaymentDateShort,
+  pageItems,
   relativeFrom,
   vnd,
 } from "./paymentRequestUtils";
@@ -46,7 +47,11 @@ interface TabConfig {
 
 export default function PaymentRequestTable({
   requests,
-  totalForBucket,
+  total,
+  page,
+  totalPages,
+  pageSize,
+  onPageChange,
   selectedId,
   tab,
   onTabChange,
@@ -57,7 +62,12 @@ export default function PaymentRequestTable({
   arByPrId,
 }: {
   requests: PaymentRequest[];
-  totalForBucket: number;
+  /** Tổng kết quả sau lọc (mọi trang) */
+  total: number;
+  page: number;
+  totalPages: number;
+  pageSize: number;
+  onPageChange: (page: number) => void;
   selectedId: string | null;
   tab: RequestBucket;
   onTabChange: (next: RequestBucket) => void;
@@ -122,7 +132,7 @@ export default function PaymentRequestTable({
             );
           })}
         </div>
-        <span className="right-meta">{requests.length} kết quả</span>
+        <span className="right-meta">{total} kết quả</span>
       </div>
       <div className="tbl-wrap">
         <table className="tbl">
@@ -283,16 +293,40 @@ export default function PaymentRequestTable({
       </div>
       <div className="pagi">
         <span>
-          Hiển thị 1–{requests.length} trong {totalForBucket} kết quả
+          {requests.length === 0
+            ? "Không có kết quả"
+            : `Hiển thị ${(page - 1) * pageSize + 1}–${(page - 1) * pageSize + requests.length} trong ${total} kết quả`}
         </span>
         <div className="pagi-btns">
-          <button className="pagi-btn">
+          <button
+            className="pagi-btn"
+            disabled={page <= 1}
+            onClick={() => onPageChange(page - 1)}
+            aria-label="Trang trước"
+          >
             <Icons.ChevronLeft size={13} />
           </button>
-          <button className="pagi-btn active">1</button>
-          <button className="pagi-btn">2</button>
-          <button className="pagi-btn">3</button>
-          <button className="pagi-btn">
+          {pageItems(page, totalPages).map((it, i) =>
+            it === "..." ? (
+              <span key={`gap-${i}`} className="pagi-gap">
+                …
+              </span>
+            ) : (
+              <button
+                key={it}
+                className={`pagi-btn ${it === page ? "active" : ""}`}
+                onClick={() => onPageChange(it)}
+              >
+                {it}
+              </button>
+            )
+          )}
+          <button
+            className="pagi-btn"
+            disabled={page >= totalPages}
+            onClick={() => onPageChange(page + 1)}
+            aria-label="Trang sau"
+          >
             <Icons.ChevronRight size={13} />
           </button>
         </div>
