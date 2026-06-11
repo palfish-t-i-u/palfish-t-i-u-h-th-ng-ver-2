@@ -648,6 +648,22 @@ def _group_lines_by_request(lines: list[dict[str, Any]]) -> dict[str, list[dict[
     return grouped
 
 
+def _sale_name_map(sb) -> dict[str, str]:
+    """Map email (lower) -> ten TVTS (display_name/crm_name) tu nhan_su_sale."""
+    try:
+        res = sb.table("nhan_su_sale").select("email, display_name, crm_name").execute()
+    except Exception as exc:
+        print(f"[payment_requests] nhan_su_sale lookup failed: {exc}")
+        return {}
+    mapping: dict[str, str] = {}
+    for row in res.data or []:
+        email = str(row.get("email") or "").strip().lower()
+        if not email:
+            continue
+        mapping[email] = row.get("display_name") or row.get("crm_name") or email
+    return mapping
+
+
 def _can_access_request(sb, actor: Any, pr_row: dict[str, Any]) -> bool:
     allowed_emails = visible_creator_emails(sb, actor)
     if allowed_emails is None:
@@ -1332,6 +1348,13 @@ def register_payment_request_routes(app, get_supabase) -> None:
             )
             for row in pr_rows
         ]
+
+        # Enrich ten TVTS de FE hien cot TVTS cho leader+ ngay tren bang chinh.
+        name_map = _sale_name_map(sb)
+        for item in requests:
+            email = str(item.get("sale_email") or "").strip().lower()
+            item["sale_name"] = name_map.get(email, "")
+
         return {"requests": requests}
 
     @router.patch("/payment-requests/{payment_request_id}")
