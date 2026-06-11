@@ -89,7 +89,7 @@ Frontend `.env.local` points `VITE_API_BASE_URL` to either localhost:8000 (local
 - `frontend/src/components/Module6Tab.tsx` — M6: Dashboard Sale (hiệu suất)
 - `frontend/src/components/SoDoanhThuTab.tsx` — Sổ doanh thu
 - `frontend/src/components/DoanhThuSaleTab.tsx` — Sales Performance pivot
-- `frontend/src/components/PaymentRequestsTab.tsx` — B1: Phiếu thu
+- `frontend/src/components/PaymentRequestsTab.tsx` — B1: PR (Payment Requests)
 - `frontend/src/components/ReconciliationTab.tsx` — B2: Đối soát
 - `frontend/src/components/ActivationTab.tsx` — B3: Kích hoạt khóa học
 - `frontend/src/components/InvoiceRequestTab.tsx` — B4: Xuất hóa đơn
