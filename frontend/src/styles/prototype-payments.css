@@ -310,6 +310,7 @@
 .gmv-prototype .badge.is-short { background: var(--danger-bg); color: var(--danger-text); }
 .gmv-prototype .badge.is-over { background: var(--warning-bg); color: var(--warning-text); }
 .gmv-prototype .badge.is-pending { background: var(--surface-3); color: var(--text-2); }
+.gmv-prototype .badge.is-waiting { background: var(--info-bg); color: var(--info-text); }
 .gmv-prototype .badge.is-cancelled { background: var(--surface-3); color: var(--text-3); }
 
 /* delta amount */
