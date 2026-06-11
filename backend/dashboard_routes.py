@@ -468,36 +468,55 @@ def _load_qr_created_maps(
     sale: str | None = None,
     allowed_sales: set[str] | None = None,
 ) -> tuple[int, int]:
-    """Module 2 — doanh thu tạo mã QR: don_hang.created_at trong kỳ (không cần tien_ve)."""
+    """Doanh thu tạo lần thanh toán: payment_lines.created_at trong kỳ (không lọc trạng thái)."""
     total = 0
     count = 0
     try:
-        team_map = load_team_map(sb) if team else {}
+        staff_by_email, staff_by_crm = _load_staff_maps(sb) if (team or sale or allowed_sales) else ({}, {})
+
         q = (
-            sb.table("don_hang")
-            .select("sale_crm_name, so_tien_can_thu, created_at, trang_thai")
+            sb.table("payment_lines")
+            .select("amount, created_at, is_test, payment_request_id")
             .gte("created_at", f"{d_start}T00:00:00")
             .lte("created_at", f"{d_end}T23:59:59")
+            .eq("is_test", False)
         )
-        for r in q.execute().data or []:
-            if str(r.get("trang_thai") or "").strip().lower() == "huy":
-                continue
-            sname = _sale_key(r.get("sale_crm_name"))
-            if sale and sname != sale:
-                continue
-            if team and sname != "(Chưa gán sale)":
-                sale_team = team_map.get(sname, "—")
-                if sale_team != team:
+        lines = q.execute().data or []
+        if not lines:
+            return 0, 0
+
+        pr_ids = list({r["payment_request_id"] for r in lines})
+        pr_map: dict[str, str] = {}
+        for batch_start in range(0, len(pr_ids), 50):
+            batch = pr_ids[batch_start:batch_start + 50]
+            prs = sb.table("payment_requests").select("id, sale_email").in_("id", batch).execute().data or []
+            for pr in prs:
+                pr_map[pr["id"]] = str(pr.get("sale_email") or "").strip().lower()
+
+        for r in lines:
+            sale_email = pr_map.get(r["payment_request_id"], "")
+            if team or sale or allowed_sales is not None:
+                sale_team, _ = staff_by_email.get(sale_email, ("", ""))
+                crm_name = ""
+                for k, (em, t, st) in staff_by_crm.items():
+                    if em.lower() == sale_email:
+                        crm_name = k
+                        break
+                sname = crm_name or _sale_key(None)
+                if sale and sname != sale:
                     continue
-            if allowed_sales is not None and sname not in allowed_sales:
-                continue
-            vnd = parse_metric(r.get("so_tien_can_thu"))
+                if team and sname != "(Chưa gán sale)" and sale_team != team:
+                    continue
+                if allowed_sales is not None and sname not in allowed_sales:
+                    continue
+
+            vnd = int(r.get("amount") or 0)
             if vnd <= 0:
                 continue
             count += 1
             total += vnd
     except Exception as exc:
-        print(f"[Dashboard] don_hang QR-created query failed: {exc}")
+        print(f"[Dashboard] payment_lines QR-created query failed: {exc}")
     return total, count
 
 
@@ -963,7 +982,7 @@ def register_dashboard_routes(app, supabase_factory):
                     "collected_currency": "VND",
                     "collected_source": "so_doanh_thu",
                     "l8_source": "so_doanh_thu",
-                    "qr_created_source": "don_hang",
+                    "qr_created_source": "payment_lines",
                     "exchange_rate": exchange_rate,
                     "kpi_source": "palfish_live",
                     "sub_team_scoped": allowed_sales is not None,
@@ -1025,7 +1044,7 @@ def register_dashboard_routes(app, supabase_factory):
                 "collected_currency": "VND",
                 "collected_source": "so_doanh_thu",
                 "l8_source": "so_doanh_thu",
-                "qr_created_source": "don_hang",
+                "qr_created_source": "payment_lines",
                 "exchange_rate": exchange_rate,
                 "kpi_source": "palfish_live",
                 "sub_team_scoped": allowed_sales is not None,
@@ -1215,7 +1234,7 @@ def register_dashboard_routes(app, supabase_factory):
                 "collected_currency": "VND",
                 "collected_source": "so_doanh_thu",
                 "l8_source": "so_doanh_thu",
-                "qr_created_source": "don_hang",
+                "qr_created_source": "payment_lines",
                 "exchange_rate": exchange_rate,
                 "kpi_source": kpi_source_type,
                 "summary_rows": len(summary_rows),
