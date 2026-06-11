@@ -60,6 +60,7 @@ export default function PaymentRequestTable({
   onCancelClick,
   onRestoreClick,
   arByPrId,
+  showTvts = false,
 }: {
   requests: PaymentRequest[];
   /** Tổng kết quả sau lọc (mọi trang) */
@@ -76,6 +77,8 @@ export default function PaymentRequestTable({
   onCancelClick: (request: PaymentRequest) => void;
   onRestoreClick: (request: PaymentRequest) => void;
   arByPrId: Record<string, ActiveRequest>;
+  /** Hiện cột TVTS — chỉ bật cho leader/manager/system (sale chỉ thấy PR của mình) */
+  showTvts?: boolean;
 }) {
   const copyPrId = async (id: string) => {
     // In-app browsers may block navigator.clipboard; fallback to execCommand copy.
@@ -142,6 +145,7 @@ export default function PaymentRequestTable({
               <th style={{ width: 120 }}>PR-ID</th>
               <th style={{ minWidth: 180 }}>Tên khách hàng</th>
               <th style={{ width: 200 }}>UID / SĐT</th>
+              {showTvts && <th style={{ width: 130 }}>TVTS</th>}
               <th style={{ textAlign: "center", width: 90 }}>Số lần TT</th>
               <th style={{ width: 200 }}>Tiến trình thanh toán</th>
               <th style={{ width: 130 }}>Trạng thái</th>
@@ -221,6 +225,16 @@ export default function PaymentRequestTable({
                       </div>
                     </div>
                   </td>
+                  {showTvts && (
+                    <td>
+                      <span
+                        style={{ fontSize: 12.5, color: "var(--text-2)", fontWeight: 500 }}
+                        title={p.saleEmail || undefined}
+                      >
+                        {p.saleName || (p.saleEmail ? p.saleEmail.split("@")[0] : "—")}
+                      </span>
+                    </td>
+                  )}
                   <td style={{ textAlign: "center" }}>
                     <QrCountCell done={p.doneCount} total={p.totalCount} />
                   </td>
@@ -280,7 +294,7 @@ export default function PaymentRequestTable({
             })}
             {requests.length === 0 && (
               <tr>
-                <td colSpan={10}>
+                <td colSpan={showTvts ? 11 : 10}>
                   <div className="empty">
                     <Icons.Search size={20} />
                     <div>Không có Payment Request nào khớp với điều kiện lọc.</div>

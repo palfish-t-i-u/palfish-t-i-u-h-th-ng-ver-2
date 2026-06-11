@@ -99,6 +99,8 @@ export interface PaymentRequest {
   totalCount: number;
   delta: number;
   saleEmail?: string;
+  /** Tên TVTS phụ trách (map từ nhan_su_sale theo sale_email) — chỉ có ở response danh sách */
+  saleName?: string;
   state: PaymentRequestStatus;
   payments: PaymentAttempt[];
   isTest?: boolean;

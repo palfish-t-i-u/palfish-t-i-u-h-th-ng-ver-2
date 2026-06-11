@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useState } from "react";
 import "../styles/prototype-payments.css";
 import { usePaymentFlow } from "../contexts/PaymentFlowContext";
+import { useMe } from "../hooks/useMe";
 import { usePermission } from "../hooks/usePermission";
 import { endpoints } from "../lib/api";
 import { compressImageFile } from "../lib/imageCompress";
@@ -42,6 +43,9 @@ const PAGE_SIZE = 20;
 
 export default function PaymentRequestsTab() {
   const { readOnly } = usePermission("paymentRequests");
+  const { profile } = useMe();
+  // Cột TVTS phục vụ leader+ xem PR của team; sale chỉ thấy PR của mình nên ẩn cho gọn bảng
+  const showTvts = (profile?.role ?? "sale") !== "sale";
   const {
     requests,
     activeRequests,
@@ -247,6 +251,8 @@ export default function PaymentRequestsTab() {
         const saved = normalizeRequest(fromApiPaymentRequest(savedRaw));
         const prev = requests.find((r) => r.id === next.id);
         if (prev) {
+          // Response PATCH không có sale_name — giữ lại tên TVTS đã load từ danh sách
+          saved.saleName = saved.saleName || prev.saleName;
           const prevContentMap = new Map(
             prev.payments.map((p) => [p.id, { transferContent: p.transferContent, qrCode: p.qrCode, checkoutUrl: p.checkoutUrl, paymentLinkId: p.paymentLinkId }])
           );
@@ -722,6 +728,7 @@ export default function PaymentRequestsTab() {
           onCancelClick={setCancelTarget}
           onRestoreClick={handleRestore}
           arByPrId={arByPrId}
+          showTvts={showTvts}
         />
 
         <div style={{ display: "flex", justifyContent: "flex-end" }}>
