@@ -1893,3 +1893,34 @@
   display: flex; align-items: center; justify-content: center;
   padding: 20px;
 }
+
+/* ───────── Quản lý thanh toán: vừa khít viewport, bảng cuộn trong ─────────
+   Chỉ áp cho .page--fit (PaymentRequestsTab). Desktop ≥768px;
+   mobile giữ cuộn trang tự nhiên (đã có bottom-nav 72px). */
+@media (min-width: 768px) {
+  .gmv-prototype .page.page--fit {
+    /* 100vh − 64px header − 24px×2 padding <main> */
+    height: calc(100vh - 112px);
+    padding-bottom: 0;
+    overflow: hidden;
+  }
+  .gmv-prototype .page.page--fit .table-card.has-tabs {
+    flex: 1;
+    min-height: 240px; /* màn quá thấp: bảng không bẹp, chấp nhận cuộn trang nhẹ */
+    display: flex;
+    flex-direction: column;
+  }
+  .gmv-prototype .page.page--fit .tbl-wrap {
+    flex: 1;
+    overflow-y: auto; /* scrollbar dọc của bảng */
+  }
+  .gmv-prototype .page.page--fit .tbl thead th {
+    position: sticky; /* header bảng đứng yên khi cuộn dòng */
+    top: 0;
+    z-index: 2;
+  }
+}
+
+.gmv-prototype .pagi-btn:disabled { opacity: 0.45; cursor: default; }
+.gmv-prototype .pagi-btn:disabled:hover { border-color: var(--border); }
+.gmv-prototype .pagi-gap { color: var(--text-3); font-size: 12px; padding: 0 2px; align-self: center; }

@@ -495,3 +495,51 @@ export function nowStamp(): string {
   return new Date().toISOString().slice(0, 16).replace("T", " ");
 }
 
+// ───────── Ẩn data test + phân trang client-side ─────────
+
+/** PR hiển thị theo checkbox "Ẩn data test" — dùng làm gốc cho MỌI con số trên màn (badge/chip/KPI/bảng). */
+export function visiblePaymentRequests(
+  requests: PaymentRequest[],
+  hideTest: boolean
+): PaymentRequest[] {
+  return hideTest ? requests.filter((r) => !r.isTest) : requests;
+}
+
+export interface PageSlice<T> {
+  rows: T[];
+  /** Trang hợp lệ sau khi clamp vào [1..totalPages] */
+  page: number;
+  totalPages: number;
+  /** Thứ tự 1-based của dòng đầu/cuối trang; 0 khi không có kết quả */
+  from: number;
+  to: number;
+}
+
+export function paginate<T>(items: T[], rawPage: number, pageSize: number): PageSlice<T> {
+  const totalPages = Math.max(1, Math.ceil(items.length / pageSize));
+  const page = Math.min(Math.max(1, Math.floor(rawPage) || 1), totalPages);
+  const start = (page - 1) * pageSize;
+  const rows = items.slice(start, start + pageSize);
+  return {
+    rows,
+    page,
+    totalPages,
+    from: items.length === 0 ? 0 : start + 1,
+    to: start + rows.length,
+  };
+}
+
+/** Dãy nút trang rút gọn: luôn có trang 1 + trang cuối + cửa sổ quanh trang hiện tại, "..." cho khoảng trống. */
+export function pageItems(page: number, totalPages: number): Array<number | "..."> {
+  if (totalPages <= 7) return Array.from({ length: totalPages }, (_, i) => i + 1);
+  const wanted = [...new Set([1, page - 1, page, page + 1, totalPages])]
+    .filter((n) => n >= 1 && n <= totalPages)
+    .sort((a, b) => a - b);
+  const out: Array<number | "..."> = [];
+  for (let i = 0; i < wanted.length; i++) {
+    if (i > 0 && wanted[i] - wanted[i - 1] > 1) out.push("...");
+    out.push(wanted[i]);
+  }
+  return out;
+}
+
