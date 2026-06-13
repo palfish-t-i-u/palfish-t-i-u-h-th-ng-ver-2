@@ -1382,9 +1382,11 @@ def register_crm_routes(app, supabase_factory):
         return {"ok": True, "updated_at": now_iso}
 
     @app.get("/crm/token-status", tags=["CRM"])
-    async def crm_token_status():
+    async def crm_token_status(authorization: str | None = Header(None)):
         """Kiểm tra xem đã có token CRM chưa (để frontend hiển thị trạng thái)."""
         sb = supabase_factory()
+        actor = resolve_actor(sb, authorization)
+        require_min_role(actor, "leader")
         cookie = _get_cookie(sb)
         has_token = bool(cookie)
         updated_at: str | None = None
@@ -1403,10 +1405,12 @@ def register_crm_routes(app, supabase_factory):
         return {"hasToken": has_token, "updatedAt": updated_at}
 
     @app.post("/crm/sync", tags=["CRM"])
-    async def crm_sync(body: CrmSyncBody):
+    async def crm_sync(body: CrmSyncBody, authorization: str | None = Header(None)):
         """Incremental: đúng 1 ngày → upsert (sale_name, report_date)."""
         sync_day = _parse_sync_date(body.sync_date)
         sb = supabase_factory()
+        actor = resolve_actor(sb, authorization)
+        require_min_role(actor, "manager")
 
         try:
             result = await _run_incremental_day_sync(sb, sync_day)
@@ -1431,10 +1435,12 @@ def register_crm_routes(app, supabase_factory):
         }
 
     @app.post("/crm/sync/backfill", tags=["CRM"])
-    async def crm_sync_backfill(body: CrmBackfillBody):
+    async def crm_sync_backfill(body: CrmBackfillBody, authorization: str | None = Header(None)):
         """Backfill incremental — song song N ngày/lúc (mặc định 5, tối đa 8)."""
         d_start, d_end = _validate_date_range(body.start_date, body.end_date)
         sb = supabase_factory()
+        actor = resolve_actor(sb, authorization)
+        require_min_role(actor, "manager")
 
         try:
             return await _run_backfill_range(

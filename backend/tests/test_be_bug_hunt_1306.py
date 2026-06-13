@@ -23,6 +23,30 @@ ACTOR = Actor(
     is_activated=True,
 )
 
+SALE_ACTOR = Actor(
+    email="sale@test.com",
+    user_id="sale-1",
+    role="sale",
+    staff={"team": "HN", "sub_team": "A", "crm_name": "Sale Test", "department": "sale"},
+    is_activated=True,
+)
+
+LEADER_ACTOR = Actor(
+    email="leader@test.com",
+    user_id="leader-1",
+    role="leader",
+    staff={"team": "HN", "sub_team": "A", "crm_name": "Leader Test", "department": "sale"},
+    is_activated=True,
+)
+
+MANAGER_ACTOR = Actor(
+    email="manager@test.com",
+    user_id="manager-1",
+    role="manager",
+    staff={"team": "HN", "crm_name": "Manager Test", "department": "sale"},
+    is_activated=True,
+)
+
 
 class TestTransferCodeDescriptionMatch:
     def test_substring_false_positive_avoided(self):
@@ -219,6 +243,107 @@ class TestCreatePaymentLineFullPR:
         assert detail["code"] == "PR_ALREADY_FULL"
         assert detail["received"] == 5000000
         assert detail["target"] == 5000000
+
+
+class TestAuthPatches:
+    def _crm_client(self):
+        import crm_routes as crm
+
+        crm = importlib.reload(crm)
+        app = FastAPI()
+        sb = MagicMock()
+        crm.register_crm_routes(app, lambda: sb)
+        return TestClient(app, raise_server_exceptions=False), sb
+
+    def test_crm_sync_requires_manager(self):
+        client, _sb = self._crm_client()
+
+        with patch("crm_routes.resolve_actor", return_value=SALE_ACTOR):
+            sale_resp = client.post(
+                "/crm/sync",
+                json={"sync_date": "2026-06-13"},
+                headers={"Authorization": "Bearer token"},
+            )
+
+        with patch("crm_routes.resolve_actor", return_value=MANAGER_ACTOR):
+            with patch(
+                "crm_routes._run_incremental_day_sync",
+                return_value={
+                    "rows_fetched": 1,
+                    "upserted": 1,
+                    "show_type_used": "all",
+                    "department_id_used": "1",
+                },
+            ):
+                manager_resp = client.post(
+                    "/crm/sync",
+                    json={"sync_date": "2026-06-13"},
+                    headers={"Authorization": "Bearer token"},
+                )
+
+        assert sale_resp.status_code == 403
+        assert manager_resp.status_code == 200
+        assert manager_resp.json()["rows_upserted"] == 1
+
+    def test_crm_backfill_requires_manager(self):
+        client, _sb = self._crm_client()
+
+        with patch("crm_routes.resolve_actor", return_value=SALE_ACTOR):
+            sale_resp = client.post(
+                "/crm/sync/backfill",
+                json={"start_date": "2026-06-12", "end_date": "2026-06-13", "concurrency": 1},
+                headers={"Authorization": "Bearer token"},
+            )
+
+        with patch("crm_routes.resolve_actor", return_value=MANAGER_ACTOR):
+            with patch("crm_routes._run_backfill_range", return_value={"ok": True}):
+                manager_resp = client.post(
+                    "/crm/sync/backfill",
+                    json={"start_date": "2026-06-12", "end_date": "2026-06-13", "concurrency": 1},
+                    headers={"Authorization": "Bearer token"},
+                )
+
+        assert sale_resp.status_code == 403
+        assert manager_resp.status_code == 200
+        assert manager_resp.json()["ok"] is True
+
+    def test_crm_token_status_requires_leader(self):
+        client, _sb = self._crm_client()
+
+        with patch("crm_routes.resolve_actor", return_value=SALE_ACTOR):
+            sale_resp = client.get(
+                "/crm/token-status",
+                headers={"Authorization": "Bearer token"},
+            )
+
+        with patch("crm_routes.resolve_actor", return_value=LEADER_ACTOR):
+            with patch("crm_routes._get_cookie", return_value="cookie"):
+                leader_resp = client.get(
+                    "/crm/token-status",
+                    headers={"Authorization": "Bearer token"},
+                )
+
+        assert sale_resp.status_code == 403
+        assert leader_resp.status_code == 200
+        assert leader_resp.json()["hasToken"] is True
+
+    def test_payos_webhook_old_rejects_unsigned(self):
+        import os
+        import payment_request_routes as pr
+
+        pr = importlib.reload(pr)
+        app = FastAPI()
+        pr.register_payment_request_routes(app, lambda: MagicMock())
+        client = TestClient(app, raise_server_exceptions=False)
+
+        with patch.dict(os.environ, {"PAYOS_CHECKSUM_KEY": "test-secret"}):
+            resp = client.post(
+                "/api/v1/payos-webhook",
+                json={"data": {"orderCode": "99999"}},
+            )
+
+        assert resp.status_code == 400
+        assert "Invalid signature" in resp.text
 
 
 class TestValidateCourseAmountsFailClosed:

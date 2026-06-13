@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import hashlib
+import hmac
 import io
+import json
 import mimetypes
+import os
 import re
 import time
 import unicodedata
@@ -14,7 +17,7 @@ from datetime import datetime, timezone
 from typing import Any, Callable
 
 import pandas as pd
-from fastapi import APIRouter, File, Header, HTTPException, Query, UploadFile
+from fastapi import APIRouter, File, Header, HTTPException, Query, Request, UploadFile
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
@@ -42,6 +45,62 @@ METHOD_ALIASES = {
 
 _BILL_STORAGE_CACHE_TTL_SECONDS = 30.0
 _bill_assets_cache: dict[str, Any] = {"expires_at": 0.0, "assets_by_line": {}}
+
+
+def _payos_signature_value(value: Any) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, (int, float)):
+        return str(value)
+    if isinstance(value, (dict, list)):
+        return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
+    return str(value)
+
+
+def _payos_signature_payload(data: dict[str, Any]) -> str:
+    return "&".join(
+        f"{key}={_payos_signature_value(data.get(key))}"
+        for key in sorted(data)
+    )
+
+
+def _normalize_payos_signature(signature: str | None) -> str:
+    sig = str(signature or "").strip()
+    if not sig:
+        return ""
+    if "=" in sig:
+        parts = [part.strip() for part in sig.replace(",", " ").split() if part.strip()]
+        for part in parts:
+            if part.startswith("v1="):
+                return part.split("=", 1)[1].strip()
+    return sig
+
+
+def _verify_payos_webhook_signature(payload: dict[str, Any], request: Request) -> None:
+    checksum_key = os.getenv("PAYOS_CHECKSUM_KEY", "").strip()
+    if not checksum_key:
+        raise HTTPException(503, "PayOS checksum key not configured")
+
+    data = payload.get("data")
+    if not isinstance(data, dict):
+        raise HTTPException(400, "Invalid signature")
+
+    received = _normalize_payos_signature(
+        payload.get("signature") or request.headers.get("x-payos-signature")
+    )
+    if not received:
+        raise HTTPException(400, "Invalid signature")
+
+    signed_data = _payos_signature_payload(data)
+    expected = hmac.new(
+        checksum_key.encode("utf-8"),
+        signed_data.encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()
+    if not hmac.compare_digest(expected.lower(), received.lower()):
+        raise HTTPException(400, "Invalid signature")
 
 
 class PaymentRequestCreate(BaseModel):
@@ -1730,7 +1789,16 @@ def register_payment_request_routes(app, get_supabase) -> None:
         return response
 
     @router.post("/payos-webhook")
-    async def payos_webhook_v1(payload: dict):
+    async def payos_webhook_v1(request: Request):
+        raw_body = await request.body()
+        try:
+            payload = json.loads(raw_body)
+        except json.JSONDecodeError as exc:
+            raise HTTPException(400, "Invalid JSON payload") from exc
+        if not isinstance(payload, dict):
+            raise HTTPException(400, "Invalid JSON payload")
+        _verify_payos_webhook_signature(payload, request)
+
         sb = _sb_or_503(get_supabase)
         result = reconcile_payment_line_webhook(sb, payload)
         if not result.get("matched"):
