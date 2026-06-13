@@ -327,7 +327,8 @@ function AddPaymentForm({
   const [installmentPlatform, setInstallmentPlatform] = useState("");
   const [installmentTotal, setInstallmentTotal] = useState("");
   const [saleReceivedDraft, setSaleReceivedDraft] = useState("");
-  const [cashier, setCashier] = useState("");
+  // Default "người thu" = tên sale đang login (1B-05) — vẫn cho phép sửa nếu khác
+  const [cashier, setCashier] = useState(profile?.displayName || profile?.crmName || "");
   const [nameForTransfer, setNameForTransfer] = useState(pr.childName || pr.name);
   const [validationError, setValidationError] = useState("");
 
@@ -352,6 +353,25 @@ function AddPaymentForm({
     }
     if (method === "installment" && !saleReceivedDraft) {
       setValidationError("Vui lòng nhập số tiền thực nhận về công ty");
+      return;
+    }
+    // Bug 1B-07: trả góp — thực nhận không thể lớn hơn tổng trả góp
+    if (method === "installment") {
+      const totalNum = parseInt(installmentTotal.replace(/\D/g, ""), 10) || 0;
+      const recvNum = parseInt(saleReceivedDraft.replace(/\D/g, ""), 10) || 0;
+      if (recvNum > totalNum) {
+        setValidationError("Số tiền thực nhận không thể lớn hơn tổng trả góp");
+        return;
+      }
+    }
+    // Bug 1B-05: cash — bắt buộc nhập người thu
+    if (method === "cash" && !cashier.trim()) {
+      setValidationError("Vui lòng nhập tên người thu tiền mặt");
+      return;
+    }
+    // Bug 1B-06: card — bắt buộc 4 số cuối thẻ (đủ 4 chữ số)
+    if (method === "card" && cardLast4.length !== 4) {
+      setValidationError("Vui lòng nhập đủ 4 số cuối thẻ");
       return;
     }
     setValidationError("");
@@ -1431,7 +1451,7 @@ export default function PaymentRequestDetailDrawer({
               </div>
               <div className="summary-value">
                 {request.state === "done"
-                  ? "0 ─æ"
+                  ? vnd(0)
                   : request.state === "over"
                   ? "+" + vnd(Math.abs(request.delta))
                   : vnd(remaining)}

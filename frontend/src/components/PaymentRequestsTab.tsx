@@ -223,6 +223,15 @@ export default function PaymentRequestsTab() {
 
   const handleUpdatePr = async (next: PaymentRequest) => {
     const previous = requests.find((r) => r.id === next.id) ?? null;
+    // Bug 1A-08: cảnh báo nếu sửa target nhỏ hơn số đã thu — PR sẽ chuyển "Thừa"
+    if (previous && next.target !== previous.target && next.target < previous.received) {
+      const ok = window.confirm(
+        `Tổng tiền dự kiến mới (${next.target.toLocaleString("vi-VN")}đ) ` +
+        `nhỏ hơn số đã nhận (${previous.received.toLocaleString("vi-VN")}đ). ` +
+        `PR sẽ chuyển sang trạng thái "Thừa". Vẫn lưu?`
+      );
+      if (!ok) return false;
+    }
     updateRequest(next.id, () => next);
 
     const payload: PatchPaymentRequestPayload = {
