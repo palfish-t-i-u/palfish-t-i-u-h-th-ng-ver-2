@@ -89,6 +89,7 @@
 | **1B-07** | Sale gõ nhầm thực nhận lớn hơn tổng trả góp (vd total=5tr, thực nhận=8tr) → đối soát phí nền tảng sai. | Cùng file: nếu `method === "installment"` và `parseInt(saleReceivedDraft) > parseInt(installmentTotal)` → setValidationError "Thực nhận không thể lớn hơn tổng trả góp". | **FE** |
 | **1A-08** | Sửa target nhỏ hơn số đã thu → PR tự động chuyển sang "Thừa" mà không cảnh báo, dễ làm KPI lệch. | Trong drawer khi save B1 info, nếu `newTarget < pr.received` → dialog confirm "Tổng tiền dự kiến mới (X) nhỏ hơn số đã nhận (Y). PR sẽ chuyển sang trạng thái Thừa. Vẫn lưu?". | **FE** |
 | 🛠️ **4-04** | Chị Thu Hiền hiện có toàn quyền system (sửa được Phân quyền + Auth của bất kỳ ai). Đây không phải bug — chỉ là cấu hình lỏng do role `ops` → `system`. Cần thu hẹp phạm vi theo bảng đã chốt. | (1) **DB**: insert/update rows trong `department_permissions` cho `department='ops'`: B2/B3/B4/Sổ doanh thu/BC01/BC02/BC03 = "full"; Tài khoản Auth = "none"; Phân quyền sử dụng = "none". (2) **BE**: bỏ dòng `if r in ("ops", "admin"): return "system"` ở [`rbac.py:28-29`](backend/rbac.py:28); thêm "ops" vào `ROLE_RANK` với rank=2; sửa `_compute_permissions` ([`admin_routes.py:212`](backend/admin_routes.py:212)) — chỉ role `system` mới full bypass, ops đi nhánh department-based. (3) **Test**: login chị Hiền → sidebar không hiện tab "Tài khoản Auth" + "Phân quyền sử dụng". | **BE + DB config** |
+| 🛠️ **4-06 (mới 13/06)** | Default permission `sale` đang có `revenueLedger`/`bc01`/`bc02`/`bc03` = "read" — sale nào cũng thấy menu Sổ doanh thu + BC, click vào lộ toàn bộ doanh thu công ty. Ngược chốt anh Minh. | (1) **DB**: sửa [`admin_routes.py:117-123`](backend/admin_routes.py:117) `DEFAULT_DEPT_PERMISSIONS["sale"]` → đổi 4 module trên thành "none". (2) **DB migration**: rà các sale user hiện có override `revenueLedger:read` trong `permission_overrides` — có thể cần dọn. (3) **Test**: login sale sandbox → sidebar không hiện "Sổ doanh thu" + "BC01"/02/03 nữa. Cảnh báo nội bộ trước khi deploy main vì sale có thể đã quen vào. | **BE + DB config** |
 
 **Gom thành 2 PR**:
 - **PR5** — Form validation + visual cues: 1A-08, 1A-09, 1A-10, 1A-11, 1B-05, 1B-06, 1B-07 (toàn FE)
@@ -457,13 +458,17 @@
 
 ## Phase 3 — Tài chính / Sổ doanh thu / Báo cáo
 
-### 🟠 Bug 3-01: `GET /revenue/ledger` không scope theo actor (defense-in-depth)
-- **Tình trạng theo nghiệp vụ**: Đã chốt — Sổ doanh thu chỉ kế toán + ops xem. Sale không có quyền `revenueLedger:read` → bug này chỉ exposed nếu Phân quyền cấp nhầm.
-- **Vẫn cần fix vì**: defense-in-depth. Một ngày nào đó admin lỡ cấp quyền nhầm → leak toàn bộ. Code nên scope ở cả 2 layer (permission + actor scope).
-- **Thực tế**: [`revenue_routes.py:1285-1344`](backend/revenue_routes.py:1285) — không gọi `enforce_report_scope`.
-- **Fix nhẹ**: Vì kế toán + ops cần xem TẤT CẢ team (đối soát cross-team), chỉ cần scope cho role `sale/leader` (nếu có ai được cấp nhầm): khi `actor.role in ("sale", "leader")` → filter `created_by_email = actor.email`. Manager/ops/system full.
+### 🔴 Bug 3-01 (UPGRADE 13/06): `GET /revenue/ledger` leak doanh thu chéo team — exploit ngay sandbox
+- **Phát hiện 13/06 lúc verify**: Em ghi 🟠 vì "sale không có quyền". Check lại [`admin_routes.py:117-123`](backend/admin_routes.py:117) — default permission cho department `"sale"` có `"revenueLedger": "read"`. **Sale mọi nơi mặc định có quyền** → ngược chốt anh Minh.
+- **Hậu quả thực tế**:
+  - Sidebar sale **có hiện menu "Sổ doanh thu"** ngay từ đầu (vì `can("revenueLedger")=true`)
+  - Click vào → call `GET /revenue/ledger?team=...` → trả về **toàn bộ ledger toàn công ty không scope** (bug code)
+  - Sale thấy doanh thu của TẤT CẢ team, KH, tên sale → **leak nghiêm trọng**
+- **Cần fix 2 chỗ**:
+  1. **DB default permission**: `revenueLedger`/`bc01`/`bc02`/`bc03` cho sale → "none" (gộp vào PR6)
+  2. **Code scope**: `revenue_routes.py:1285` thêm `actor.role in ("sale", "leader") → filter created_by_email = actor.email` (defense-in-depth — phòng admin cấp nhầm tương lai)
 
-### 🟠 Bug 3-02: `GET /revenue/ledger/summary` cũng KHÔNG scope (defense-in-depth)
+### 🔴 Bug 3-02 (UPGRADE 13/06): `GET /revenue/ledger/summary` cùng lỗi
 - Cùng tình trạng 3-01.
 
 ### 🟠 Bug 3-03: Tỷ giá VND/RMB hard-code 3700, không có time-period rates
