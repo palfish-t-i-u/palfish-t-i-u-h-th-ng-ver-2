@@ -1242,6 +1242,7 @@ function useInvoiceRemind(prId: string | null) {
   const [canRemind, setCanRemind] = useState(true);
   const [lastReminder, setLastReminder] = useState<{ requested_at: string; requested_by_name: string } | null>(null);
   const [sending, setSending] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!prId) return;
@@ -1263,13 +1264,19 @@ function useInvoiceRemind(prId: string | null) {
       setLastReminder({ requested_at: new Date().toISOString(), requested_by_name: "Bạn" });
     } catch (err) {
       const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-      alert(typeof detail === "string" && detail ? detail : "Không gửi được nhắc xuất HĐ. Vui lòng thử lại.");
+      setErrorMessage(
+        typeof detail === "string" && detail
+          ? detail
+          : "Không gửi được nhắc xuất HĐ. Vui lòng thử lại."
+      );
     } finally {
       setSending(false);
     }
   }, [prId, sending]);
 
-  return { canRemind, lastReminder, sending, remind };
+  const dismissError = useCallback(() => setErrorMessage(null), []);
+
+  return { canRemind, lastReminder, sending, remind, errorMessage, dismissError };
 }
 
 function useDeliveryLog(arId: string | null) {
@@ -1367,7 +1374,7 @@ export default function PaymentRequestDetailDrawer({
     return () => clearTimeout(id);
   }, [showAdd]);
 
-  const { canRemind, lastReminder, sending: remindSending, remind } = useInvoiceRemind(open && request ? request.id : null);
+  const { canRemind, lastReminder, sending: remindSending, remind, errorMessage: remindError, dismissError: dismissRemindError } = useInvoiceRemind(open && request ? request.id : null);
   const { latestLog: deliveryLog } = useDeliveryLog(open && activeRequestId ? activeRequestId : null);
 
   // PR3 (1B-04): nếu PR đã đủ tiền → hiện popup hướng dẫn thay vì mở form tạo lần TT
@@ -2119,6 +2126,55 @@ export default function PaymentRequestDetailDrawer({
           </div>
         </div>
       </aside>
+      {/* 2-03 — popup khi BE chặn nhắc xuất HĐ (PR chưa đủ tiền) */}
+      {remindError && (() => {
+        const m = /PR chua thu du tien \((\d+)\/(\d+)\)/.exec(remindError);
+        const isUnderpaid = !!m;
+        const received = m ? Number(m[1]) : 0;
+        const target = m ? Number(m[2]) : 0;
+        return (
+          <div
+            className="gmv-prototype-modal-scrim"
+            onClick={dismissRemindError}
+            style={{ zIndex: 140 }}
+          >
+            <div className="modal" style={{ width: "min(480px, 100%)" }} onClick={(e) => e.stopPropagation()}>
+              <div className="modal-head">
+                <div>
+                  <h3>{isUnderpaid ? "PR chưa đủ tiền — không nhắc xuất HĐ được" : "Không gửi được nhắc xuất HĐ"}</h3>
+                  {isUnderpaid && (
+                    <div style={{ fontSize: 12, color: "var(--text-3)", marginTop: 2 }}>
+                      Đã thu {vnd(received)} / Tổng dự kiến {vnd(target)} · Còn thiếu {vnd(target - received)}
+                    </div>
+                  )}
+                </div>
+                <button className="drawer-close" onClick={dismissRemindError}>
+                  <Icons.Close size={16} />
+                </button>
+              </div>
+              <div className="modal-body">
+                <div style={{ display: "flex", gap: 10, alignItems: "flex-start", padding: "4px 0" }}>
+                  <Icons.AlertCircle size={20} stroke="var(--danger, #ef4444)" />
+                  <div style={{ fontSize: 13.5, lineHeight: 1.6, color: "var(--text-2)" }}>
+                    {isUnderpaid ? (
+                      <>
+                        PR này chưa thu đủ <strong>Tổng tiền dự kiến</strong> hiện tại. Bạn cần thu đủ tiền (hoặc giảm Tổng tiền dự kiến nếu khách chốt số mới) trước khi gửi nhắc kế toán xuất hóa đơn.
+                      </>
+                    ) : (
+                      remindError
+                    )}
+                  </div>
+                </div>
+              </div>
+              <div className="modal-foot">
+                <button className="btn btn-primary" onClick={dismissRemindError}>
+                  Đã hiểu
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
       {/* PR3 (1B-04) — popup hướng dẫn khi PR đã đủ tiền */}
       {prFullModalOpen && (
         <div
