@@ -9,7 +9,7 @@ from typing import Any
 import httpx
 from fastapi import HTTPException
 
-ROLE_RANK = {"sale": 1, "leader": 2, "manager": 3, "system": 4}
+ROLE_RANK = {"sale": 1, "ops": 2, "leader": 2, "manager": 3, "system": 4}
 OPS_ROLES = {"ops", "system"}
 
 
@@ -25,7 +25,7 @@ class Actor:
 
 def _normalize_role(raw: str | None) -> str:
     r = (raw or "sale").lower().strip()
-    if r in ("ops", "admin"):
+    if r == "admin":
         return "system"
     if r not in ROLE_RANK:
         return "sale"

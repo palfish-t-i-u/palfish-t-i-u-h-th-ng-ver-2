@@ -363,3 +363,13 @@ class TestExchangeRatesAndGsheet:
 
         assert gsheet._loose_fp(row_a) != gsheet._loose_fp(row_b)
 
+
+class TestOpsRole:
+    def test_ops_no_longer_normalizes_to_system(self):
+        import rbac
+
+        rbac = importlib.reload(rbac)
+
+        assert rbac._normalize_role("ops") == "ops"
+        assert rbac._rank("ops") == 2
+        assert rbac._normalize_role("admin") == "system"
