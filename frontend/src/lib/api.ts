@@ -122,6 +122,8 @@ export const endpoints = {
     addPayment: (id: string, body: AddPaymentAttemptPayload) =>
       api.post<AddPaymentLineResponse>(`/api/v1/payment-requests/${id}/payment-lines`, body),
     cancel: (id: string) => api.post(`/api/v1/payment-requests/${id}/cancel`),
+    restore: (id: string) =>
+      api.post<CreatePrResponse>(`/api/v1/payment-requests/${id}/restore`),
     patchPaymentLineAmount: (lineId: string, amount: number) =>
       api.patch<{
         payment_line: PaymentLineApiRow;

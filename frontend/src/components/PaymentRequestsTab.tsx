@@ -655,13 +655,29 @@ export default function PaymentRequestsTab() {
     }
   };
 
-  const handleRestore = (request: PaymentRequest) => {
+  const handleRestore = async (request: PaymentRequest) => {
+    // Snapshot trước optimistic — nếu BE từ chối thì rollback
+    const previous = requests.find((r) => r.id === request.id) ?? null;
     updateRequest(request.id, (r) => ({
       ...r,
       cancelledAt: null,
       cancelledReason: null,
       state: "pending",
     }));
+    try {
+      const res = await endpoints.paymentRequests.restore(request.id);
+      const savedRaw = res.data?.payment_request;
+      if (savedRaw) {
+        const saved = normalizeRequest(fromApiPaymentRequest(savedRaw));
+        updateRequest(request.id, () => saved);
+      }
+    } catch (err) {
+      if (previous) updateRequest(request.id, () => previous);
+      const msg =
+        (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ||
+        "Không khôi phục được PR. Vui lòng thử lại.";
+      alert(msg);
+    }
   };
 
   const onCreateActiveRequest = async () => {
