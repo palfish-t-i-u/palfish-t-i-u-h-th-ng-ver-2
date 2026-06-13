@@ -330,11 +330,15 @@ def _assert_order_id_available(sb, ar_id: str, course_code: str, order_id: str) 
 
 
 def _assert_uids_data_order_ids_unique(sb, ar_id: str | None, uids_data: list[Any]) -> None:
-    """Quét toàn bộ order_id trong uids_data để chặn trùng — dùng khi tạo AR mới
+    """Quét order_id trong uids_data để chặn trùng — dùng khi tạo AR mới
     hoặc replace toàn bộ uids_data qua PATCH /active-requests/{ar_id}.
+
+    Chỉ check những (course_code, order_id) MỚI so với state hiện tại của AR target.
+    Cặp (code, order_id) đã tồn tại trong AR target trước khi PATCH thì giữ nguyên
+    (không phải "thêm mới") — kể cả nếu chúng đã trùng với AR khác do dữ liệu legacy.
     """
     target_ar = _clean_text(ar_id) if ar_id else ""
-    # Gom (course_code, order_id) cần insert/replace
+    # Gom (course_code, order_id) trong incoming uids_data
     incoming: dict[str, str] = {}  # order_id → course_code
     for uid_block in uids_data or []:
         if not isinstance(uid_block, dict):
@@ -357,6 +361,37 @@ def _assert_uids_data_order_ids_unique(sb, ar_id: str | None, uids_data: list[An
     if not incoming:
         return
 
+    # Fetch state hiện tại của AR target để exclude (code, order_id) đã có trước PATCH.
+    existing_in_target: set[tuple[str, str]] = set()
+    if target_ar:
+        try:
+            cur_res = (
+                sb.table("active_requests")
+                .select("uids_data")
+                .eq("id", target_ar)
+                .limit(1)
+                .execute()
+            )
+            if cur_res.data:
+                for uid_block in cur_res.data[0].get("uids_data") or []:
+                    if not isinstance(uid_block, dict):
+                        continue
+                    for course in uid_block.get("courses") or []:
+                        if not isinstance(course, dict):
+                            continue
+                        code = _clean_text(course.get("code"))
+                        oid = _clean_text(_course_order_id(course))
+                        if code and oid:
+                            existing_in_target.add((code, oid))
+        except Exception:
+            # Best-effort — nếu fetch fail thì fallback check thường (có thể false positive)
+            pass
+
+    # Chỉ giữ cặp (order_id, code) MỚI thực sự
+    truly_new = {oid: code for oid, code in incoming.items() if (code, oid) not in existing_in_target}
+    if not truly_new:
+        return
+
     try:
         res = sb.table("active_requests").select("id,uids_data").execute()
     except Exception as exc:
@@ -372,10 +407,10 @@ def _assert_uids_data_order_ids_unique(sb, ar_id: str | None, uids_data: list[An
                     continue
                 existing_code = _clean_text(course.get("code"))
                 existing_order = _clean_text(_course_order_id(course))
-                if not existing_order or existing_order not in incoming:
+                if not existing_order or existing_order not in truly_new:
                     continue
                 # Cùng AR + cùng course → idempotent (PATCH cùng row), skip
-                if existing_ar_id == target_ar and existing_code == incoming[existing_order]:
+                if existing_ar_id == target_ar and existing_code == truly_new[existing_order]:
                     continue
                 raise HTTPException(
                     409,
