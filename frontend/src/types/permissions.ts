@@ -59,7 +59,6 @@ export const MODULE_LIST: ModuleDef[] = [
   { key: "module6", label: "Dashboard Sale", description: "Tổng quan hiệu suất theo team & cá nhân", section: "Dữ liệu" },
   // ── Tài khoản & Quyền ──
   { key: "authAccounts", label: "Tài khoản Auth", description: "Quản lý tài khoản đăng nhập", section: "Tài khoản & Quyền" },
-  { key: "exchangeRates", label: "Cấu hình tỷ giá", description: "Tỷ giá GMV (VND/RMB) theo thời kỳ", section: "Tài khoản & Quyền" },
   { key: "profile", label: "Thông tin cá nhân", description: "Hồ sơ cá nhân người dùng", section: "Tài khoản & Quyền" },
 ];
 
@@ -81,28 +80,28 @@ export const DEFAULT_PERMISSIONS: Record<string, Record<string, AccessLevel>> = 
     reconciliation: "full", module3: "full", module4: "read",
     revenueLedger: "read", bc01: "read", bc02: "read", bc03: "read",
     module5: "none", module6: "full",
-    authAccounts: "none", exchangeRates: "none", profile: "full",
+    authAccounts: "none", profile: "full",
   },
   hr: {
     dashboard: "full", paymentRequests: "full",
     reconciliation: "full", module3: "full", module4: "full",
     revenueLedger: "full", bc01: "full", bc02: "full", bc03: "full",
     module5: "full", module6: "full",
-    authAccounts: "full", exchangeRates: "full", profile: "full",
+    authAccounts: "full", profile: "full",
   },
   marketing: {
     dashboard: "read", paymentRequests: "none",
     reconciliation: "none", module3: "none", module4: "none",
     revenueLedger: "full", bc01: "read", bc02: "read", bc03: "read",
     module5: "none", module6: "none",
-    authAccounts: "none", exchangeRates: "none", profile: "full",
+    authAccounts: "none", profile: "full",
   },
   cs: {
     dashboard: "read", paymentRequests: "none",
     reconciliation: "none", module3: "full", module4: "none",
     revenueLedger: "none", bc01: "none", bc02: "none", bc03: "none",
     module5: "none", module6: "none",
-    authAccounts: "none", exchangeRates: "none", profile: "full",
+    authAccounts: "none", profile: "full",
   },
 };
 

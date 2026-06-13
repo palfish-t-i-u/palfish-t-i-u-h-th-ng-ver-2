@@ -20,10 +20,13 @@ import LedgerFormModal, {
 } from "./LedgerFormModal";
 import LedgerSummaryCards from "./LedgerSummaryCards";
 import { usePermission } from "../hooks/usePermission";
+import { useMe } from "../hooks/useMe";
 import Button from "./ui/Button";
 import Badge from "./ui/Badge";
 import Tooltip from "./ui/Tooltip";
 import { Input } from "./ui/Input";
+import Modal from "./ui/Modal";
+import ExchangeRatesPanel from "./admin/ExchangeRatesPanel";
 import {
   Table,
   TableScrollWrap,
@@ -116,6 +119,10 @@ function filterParams(from: string, to: string, loaiFilter: string, teamFilter: 
 
 export default function SoDoanhThuTab() {
   const { readOnly } = usePermission("revenueLedger");
+  const { profile } = useMe();
+  // Tỷ giá là cấu hình hệ thống cấp HR/admin — không phải tất cả ai sửa được Sổ DT đều được sửa tỷ giá.
+  const canConfigRate = profile?.role === "system" || profile?.department === "hr";
+  const [rateModalOpen, setRateModalOpen] = useState(false);
   const [rows, setRows] = useState<RevenueLedgerRow[]>([]);
   const [summary, setSummary] = useState<LedgerSummaryResponse | null>(null);
   const [totalCount, setTotalCount] = useState(0);
@@ -456,8 +463,22 @@ export default function SoDoanhThuTab() {
             </Button>
           </Tooltip>
         )}
+        {canConfigRate && (
+          <Button variant="ghost" onClick={() => setRateModalOpen(true)}>
+            Cấu hình tỷ giá
+          </Button>
+        )}
         {!readOnly && <Button onClick={openCreate}>+ Thêm dòng</Button>}
       </div>
+
+      <Modal
+        open={rateModalOpen}
+        onClose={() => setRateModalOpen(false)}
+        wide
+        className="max-w-4xl"
+      >
+        <ExchangeRatesPanel />
+      </Modal>
 
       {syncing && (
         <p className="text-xs text-gmv-primary">

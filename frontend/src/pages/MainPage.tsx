@@ -34,7 +34,6 @@ const ReconciliationTab = lazyRetry(() => import("../components/ReconciliationTa
 const ActivationTab = lazyRetry(() => import("../components/ActivationTab"));
 const InvoiceRequestTab = lazyRetry(() => import("../components/InvoiceRequestTab"));
 const SoDoanhThuTab = lazyRetry(() => import("../components/SoDoanhThuTab"));
-const ExchangeRatesTab = lazyRetry(() => import("../components/admin/ExchangeRatesTab"));
 
 const PRELOAD_MAP: Record<string, () => Promise<unknown>> = {
   paymentRequests: () => import("../components/PaymentRequestsTab"),
@@ -61,8 +60,7 @@ type ViewId =
   | "module5"
   | "module6"
   | "authAccounts"
-  | "permissions"
-  | "exchangeRates";
+  | "permissions";
 
 const FLOW_VIEW_MAP: Record<PaymentFlowView, ViewId> = {
   paymentRequests: "paymentRequests",
@@ -189,10 +187,6 @@ const TITLES: Record<ViewId, { title: string; subtitle?: string }> = {
     title: "Phân quyền sử dụng",
     subtitle: "Quản lý quyền truy cập module theo nhóm và cá nhân",
   },
-  exchangeRates: {
-    title: "Cấu hình tỷ giá",
-    subtitle: "Tỷ giá GMV (VND ⇄ RMB) theo thời kỳ — Sổ doanh thu & báo cáo sẽ dùng tỷ giá đúng kỳ",
-  },
 };
 
 export default function MainPage() {
@@ -284,8 +278,6 @@ function MainPageInner({
       accountItems.push({ id: "authAccounts", label: "Tài khoản Auth", icon: I.shield });
     if (can("permissions"))
       accountItems.push({ id: "permissions", label: "Phân quyền sử dụng", icon: I.check });
-    if (can("exchangeRates"))
-      accountItems.push({ id: "exchangeRates", label: "Cấu hình tỷ giá", icon: I.ledger });
     if (can("profile"))
       accountItems.push({ id: "profile", label: "Thông tin cá nhân", icon: I.user });
 
@@ -326,7 +318,6 @@ function MainPageInner({
       case "module6": return <Module6Tab />;
       case "authAccounts": return <AuthAccountsTab />;
       case "permissions": return <PermissionsTab />;
-      case "exchangeRates": return <ExchangeRatesTab />;
       default: return <PaymentRequestsTab />;
     }
   };

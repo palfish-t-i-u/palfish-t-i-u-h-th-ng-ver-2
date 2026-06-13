@@ -30,7 +30,7 @@ function formatDate(iso?: string): string {
   return d.toLocaleDateString("vi-VN");
 }
 
-export default function ExchangeRatesTab() {
+export default function ExchangeRatesPanel() {
   const [rates, setRates] = useState<ExchangeRateItem[]>([]);
   const [currentRate, setCurrentRate] = useState<number>(DEFAULT_RATE_FALLBACK);
   const [loading, setLoading] = useState(false);
