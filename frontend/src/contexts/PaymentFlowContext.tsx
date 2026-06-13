@@ -61,6 +61,8 @@ type PaymentFlowContextValue = {
   loading: boolean;
   apiNote: string;
   setApiNote: (note: string) => void;
+  orderIdConflictMessage: string;
+  dismissOrderIdConflict: () => void;
   loadData: (options?: LoadDataOptions) => Promise<void>;
   updateRequest: (id: string, updater: (r: PaymentRequest) => PaymentRequest) => void;
   updateActiveRequest: (id: string, updater: (ar: ActiveRequest) => ActiveRequest) => void;
@@ -121,6 +123,7 @@ export function PaymentFlowProvider({
   const [activeRequests, setActiveRequests] = useState<ActiveRequest[]>([]);
   const [loading, setLoading] = useState(false);
   const [apiNote, setApiNote] = useState("");
+  const [orderIdConflictMessage, setOrderIdConflictMessage] = useState("");
   const [nav, setNav] = useState<NavState>({});
   const onViewChangeRef = useRef(onViewChange);
   const courseOrderPatchSeqRef = useRef<Record<string, number>>({});
@@ -513,6 +516,12 @@ export function PaymentFlowProvider({
         })),
       };
 
+      // Helper: parse axios error detail
+      const extractDetail = (err: unknown): string => {
+        const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+        return typeof detail === "string" ? detail : "";
+      };
+
       try {
         const res = await endpoints.activeRequests.patchCourseOrderId(arId, courseCode, trimmed);
         if (courseOrderPatchSeqRef.current[seqKey] !== seq) {
@@ -526,7 +535,14 @@ export function PaymentFlowProvider({
         setApiNote("");
         if (trimmed) notifyLedgerChanged();
         return { ok: true };
-      } catch {
+      } catch (err1) {
+        const detail1 = extractDetail(err1);
+        // BE trả 409 "order_id 'X' da ton tai o AR/course khac" → conflict, không retry full update.
+        if (detail1.includes("order_id") && detail1.includes("ton tai")) {
+          setOrderIdConflictMessage(detail1);
+          setApiNote(`Order ID '${trimmed}' đã được dùng ở Active Request khác — không lưu được.`);
+          return { ok: false, error: detail1 };
+        }
         try {
           const res = await endpoints.activeRequests.update(arId, {
             uids_data: toActiveRequestPatchUidsData(optimistic),
@@ -542,8 +558,14 @@ export function PaymentFlowProvider({
           setApiNote("");
           if (trimmed) notifyLedgerChanged();
           return { ok: true };
-        } catch {
-          const error = "Khong luu duoc Order ID len may chu.";
+        } catch (err2) {
+          const detail2 = extractDetail(err2);
+          if (detail2.includes("order_id") && detail2.includes("ton tai")) {
+            setOrderIdConflictMessage(detail2);
+            setApiNote(`Order ID '${trimmed}' đã được dùng ở Active Request khác — không lưu được.`);
+            return { ok: false, error: detail2 };
+          }
+          const error = detail2 || detail1 || "Khong luu duoc Order ID len may chu.";
           setApiNote(error);
           return { ok: false, error };
         }
@@ -616,6 +638,8 @@ export function PaymentFlowProvider({
       loading,
       apiNote,
       setApiNote,
+      orderIdConflictMessage,
+      dismissOrderIdConflict: () => setOrderIdConflictMessage(""),
       loadData,
       updateRequest,
       updateActiveRequest,
@@ -643,6 +667,7 @@ export function PaymentFlowProvider({
       activeRequests,
       loading,
       apiNote,
+      orderIdConflictMessage,
       loadData,
       updateRequest,
       updateActiveRequest,
