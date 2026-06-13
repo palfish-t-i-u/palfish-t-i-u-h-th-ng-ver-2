@@ -62,6 +62,7 @@ type PaymentFlowContextValue = {
   apiNote: string;
   setApiNote: (note: string) => void;
   orderIdConflictMessage: string;
+  setOrderIdConflictMessage: (msg: string) => void;
   dismissOrderIdConflict: () => void;
   loadData: (options?: LoadDataOptions) => Promise<void>;
   updateRequest: (id: string, updater: (r: PaymentRequest) => PaymentRequest) => void;
@@ -639,6 +640,7 @@ export function PaymentFlowProvider({
       apiNote,
       setApiNote,
       orderIdConflictMessage,
+      setOrderIdConflictMessage,
       dismissOrderIdConflict: () => setOrderIdConflictMessage(""),
       loadData,
       updateRequest,

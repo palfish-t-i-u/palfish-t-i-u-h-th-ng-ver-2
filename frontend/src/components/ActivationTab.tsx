@@ -1434,6 +1434,7 @@ export default function ActivationTab() {
     apiNote,
     setApiNote,
     orderIdConflictMessage,
+    setOrderIdConflictMessage,
     dismissOrderIdConflict,
     updateActiveRequest,
     markPersisted,
@@ -1498,8 +1499,20 @@ export default function ActivationTab() {
         notifyLedgerChanged();
       }
       return { ok: true as const, saved };
-    } catch {
-      const error = "Không lưu được thay đổi Active Request lên máy chủ.";
+    } catch (err) {
+      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      // BE 409: "order_id 'X' da ton tai o AR/course khac" → show modal in-app rõ ràng
+      if (typeof detail === "string" && detail.includes("order_id") && detail.includes("ton tai")) {
+        setOrderIdConflictMessage(detail);
+        const m = /order_id '([^']+)'/.exec(detail);
+        const orderId = m ? m[1] : "";
+        const msg = orderId
+          ? `Order ID '${orderId}' đã được dùng ở Active Request khác — không lưu được.`
+          : "Order ID đã được dùng ở Active Request khác — không lưu được.";
+        setApiNote(msg);
+        return { ok: false as const, error: msg };
+      }
+      const error = (typeof detail === "string" && detail) || "Không lưu được thay đổi Active Request lên máy chủ.";
       setApiNote(error);
       return { ok: false as const, error };
     }
