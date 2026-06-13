@@ -66,7 +66,7 @@ export function useNotifications() {
       usingMockRef.current = false;
       setState({
         items,
-        unreadCount: res.data.unread_count ?? items.filter((n) => !n.isRead).length,
+        unreadCount: items.filter((n) => !n.isRead).length,
         loading: false,
         error: null,
       });

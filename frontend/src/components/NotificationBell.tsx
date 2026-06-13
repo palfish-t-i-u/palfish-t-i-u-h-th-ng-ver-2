@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { useNotifications } from "../hooks/useNotifications";
-import type { NotificationItem, NotificationKind } from "../types/notification";
+import type { NotificationItem } from "../types/notification";
 
-const KIND_META: Record<NotificationKind, { icon: string; tone: string }> = {
+const KIND_META: Record<string, { icon: string; tone: string }> = {
   ar_confirmed: { icon: "✓", tone: "text-emerald-600 bg-emerald-50" },
   ar_rejected: { icon: "✕", tone: "text-rose-600 bg-rose-50" },
   invoice_remind: { icon: "📄", tone: "text-amber-600 bg-amber-50" },

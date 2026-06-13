@@ -1,11 +1,11 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { endpoints } from "../../lib/api";
 import {
   fromApiExchangeRate,
   type ExchangeRateItem,
 } from "../../types/exchangeRate";
 
-const DEFAULT_RATE_FALLBACK = 3700; // legacy hard-code, fallback nếu BE chưa có data
+const DEFAULT_RATE_FALLBACK = 3700;
 
 interface FormState {
   rate: string;
@@ -30,9 +30,14 @@ function formatDate(iso?: string): string {
   return d.toLocaleDateString("vi-VN");
 }
 
+// Row "current" = effective_from <= today gần nhất. BE không có effective_to.
+function findCurrentIndex(sortedDesc: ExchangeRateItem[]): number {
+  const today = new Date().toISOString().slice(0, 10);
+  return sortedDesc.findIndex((r) => r.effectiveFrom <= today);
+}
+
 export default function ExchangeRatesPanel() {
   const [rates, setRates] = useState<ExchangeRateItem[]>([]);
-  const [currentRate, setCurrentRate] = useState<number>(DEFAULT_RATE_FALLBACK);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [usingMock, setUsingMock] = useState(false);
@@ -40,31 +45,31 @@ export default function ExchangeRatesPanel() {
   const [form, setForm] = useState<FormState>(INITIAL_FORM);
   const [submitting, setSubmitting] = useState(false);
 
+  const currentIndex = useMemo(() => findCurrentIndex(rates), [rates]);
+  const currentRate = currentIndex >= 0 ? rates[currentIndex].rate : DEFAULT_RATE_FALLBACK;
+
   const loadRates = async () => {
     setLoading(true);
     setError(null);
     try {
-      const res = await endpoints.admin.exchangeRates.list();
-      const items = res.data.rates.map(fromApiExchangeRate);
+      const res = await endpoints.exchangeRates.list();
+      // BE đã order effective_from DESC.
+      const items = (res.data.rates || []).map(fromApiExchangeRate);
       setRates(items);
-      setCurrentRate(res.data.current_rate ?? DEFAULT_RATE_FALLBACK);
       setUsingMock(false);
     } catch (err) {
       const status = (err as { response?: { status?: number } })?.response?.status;
       if (status === 404 || status === 500 || status === undefined) {
-        // BE chưa có endpoint → mock list để demo UI
         setUsingMock(true);
         setRates([
           {
-            id: "mock-current",
-            rateVndPerRmb: 3700,
-            effectiveFrom: "2025-01-01",
-            effectiveTo: undefined,
-            note: "Mặc định legacy (hard-code 3700)",
+            id: "mock-2020-01-01",
+            rate: 3700,
+            effectiveFrom: "2020-01-01",
+            note: "Mặc định legacy (mock — BE chưa sẵn sàng)",
             createdAt: new Date().toISOString(),
           },
         ]);
-        setCurrentRate(DEFAULT_RATE_FALLBACK);
       } else {
         setError("Không tải được danh sách tỷ giá");
       }
@@ -88,15 +93,21 @@ export default function ExchangeRatesPanel() {
       return;
     }
     if (usingMock) {
-      alert(
-        "BE chưa sẵn sàng (mock data). Đợi Đức triển khai endpoint /admin/exchange-rates để lưu được."
-      );
+      alert("BE chưa sẵn sàng. Deploy commit mới của Đức rồi thử lại.");
+      return;
+    }
+    // Nếu đã có row trùng ngày → BE upsert sẽ ghi đè. Cảnh báo trước.
+    const exists = rates.find((r) => r.effectiveFrom === form.effectiveFrom);
+    if (exists && !confirm(
+      `Đã có tỷ giá ${formatVnd(exists.rate)} VND áp dụng từ ${formatDate(exists.effectiveFrom)}.\n` +
+      `Lưu mới sẽ ghi đè (upsert theo effective_from). Tiếp tục?`
+    )) {
       return;
     }
     setSubmitting(true);
     try {
-      await endpoints.admin.exchangeRates.create({
-        rate_vnd_per_rmb: rateNum,
+      await endpoints.exchangeRates.upsert({
+        rate: rateNum,
         effective_from: form.effectiveFrom,
         note: form.note.trim() || undefined,
       });
@@ -105,27 +116,9 @@ export default function ExchangeRatesPanel() {
     } catch (err) {
       const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data
         ?.detail;
-      alert(detail || "Không lưu được tỷ giá");
+      alert(typeof detail === "string" ? detail : "Không lưu được tỷ giá");
     } finally {
       setSubmitting(false);
-    }
-  };
-
-  const handleDelete = async (rate: ExchangeRateItem) => {
-    if (!confirm(`Xóa tỷ giá ${formatVnd(rate.rateVndPerRmb)} VND/RMB (từ ${formatDate(rate.effectiveFrom)})?`)) {
-      return;
-    }
-    if (usingMock) {
-      alert("BE chưa sẵn sàng (mock data).");
-      return;
-    }
-    try {
-      await endpoints.admin.exchangeRates.remove(rate.id);
-      await loadRates();
-    } catch (err) {
-      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data
-        ?.detail;
-      alert(detail || "Không xóa được");
     }
   };
 
@@ -148,8 +141,7 @@ export default function ExchangeRatesPanel() {
         </div>
         {usingMock && (
           <div className="mt-3 rounded-gmv-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-            ⚠ BE chưa có endpoint <code>/admin/exchange-rates</code>. UI hiện chạy với mock data —
-            đợi Đức triển khai để lưu được tỷ giá mới.
+            ⚠ BE chưa trả dữ liệu (có thể chưa deploy commit mới). UI đang hiển thị mock.
           </div>
         )}
       </div>
@@ -205,6 +197,9 @@ export default function ExchangeRatesPanel() {
       <div className="rounded-gmv-md border border-gmv-border bg-gmv-canvas shadow-gmv-1">
         <div className="border-b border-gmv-border px-4 py-3">
           <h3 className="text-sm font-semibold text-gmv-text-strong">Lịch sử tỷ giá</h3>
+          <p className="mt-0.5 text-[11px] text-gmv-muted">
+            BE chưa hỗ trợ sửa/xoá tỷ giá đã lưu. Cần điều chỉnh thì thêm tỷ giá mới cùng ngày để ghi đè (upsert).
+          </p>
         </div>
         {error && (
           <div className="px-4 py-3 text-sm text-rose-700">{error}</div>
@@ -215,25 +210,23 @@ export default function ExchangeRatesPanel() {
               <tr>
                 <th className="px-4 py-2 text-left">Tỷ giá VND/RMB</th>
                 <th className="px-4 py-2 text-left">Áp dụng từ</th>
-                <th className="px-4 py-2 text-left">Đến</th>
                 <th className="px-4 py-2 text-left">Ghi chú</th>
                 <th className="px-4 py-2 text-left">Người tạo</th>
-                <th className="px-4 py-2 text-right">Thao tác</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gmv-border">
               {loading && (
-                <tr><td colSpan={6} className="px-4 py-6 text-center text-gmv-muted">Đang tải...</td></tr>
+                <tr><td colSpan={4} className="px-4 py-6 text-center text-gmv-muted">Đang tải...</td></tr>
               )}
               {!loading && rates.length === 0 && (
-                <tr><td colSpan={6} className="px-4 py-6 text-center text-gmv-muted">Chưa có tỷ giá nào</td></tr>
+                <tr><td colSpan={4} className="px-4 py-6 text-center text-gmv-muted">Chưa có tỷ giá nào</td></tr>
               )}
-              {rates.map((r) => {
-                const isCurrent = !r.effectiveTo;
+              {rates.map((r, idx) => {
+                const isCurrent = idx === currentIndex;
                 return (
                   <tr key={r.id} className={isCurrent ? "bg-emerald-50/40" : ""}>
                     <td className="px-4 py-2 font-medium">
-                      {formatVnd(r.rateVndPerRmb)}
+                      {formatVnd(r.rate)}
                       {isCurrent && (
                         <span className="ml-2 rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700">
                           Hiện hành
@@ -241,20 +234,8 @@ export default function ExchangeRatesPanel() {
                       )}
                     </td>
                     <td className="px-4 py-2">{formatDate(r.effectiveFrom)}</td>
-                    <td className="px-4 py-2 text-gmv-muted">{r.effectiveTo ? formatDate(r.effectiveTo) : "—"}</td>
                     <td className="px-4 py-2 text-gmv-muted">{r.note || "—"}</td>
                     <td className="px-4 py-2 text-gmv-muted">{r.createdBy || "—"}</td>
-                    <td className="px-4 py-2 text-right">
-                      <button
-                        type="button"
-                        onClick={() => void handleDelete(r)}
-                        disabled={isCurrent}
-                        title={isCurrent ? "Không thể xóa tỷ giá hiện hành" : "Xóa"}
-                        className="text-xs text-rose-600 hover:underline disabled:cursor-not-allowed disabled:text-gmv-muted"
-                      >
-                        Xóa
-                      </button>
-                    </td>
                   </tr>
                 );
               })}
