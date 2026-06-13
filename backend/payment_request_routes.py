@@ -1489,6 +1489,63 @@ def register_payment_request_routes(app, get_supabase) -> None:
             )
         }
 
+    @router.post("/payment-requests/{payment_request_id}/restore")
+    def restore_payment_request(
+        payment_request_id: str,
+        authorization: str | None = Header(None),
+    ):
+        sb = _sb_or_503(get_supabase)
+        actor = resolve_actor(sb, authorization)
+        require_module_write(sb, actor, "paymentRequests")
+        request_res = (
+            sb.table("payment_requests")
+            .select("*")
+            .eq("id", payment_request_id)
+            .limit(1)
+            .execute()
+        )
+        if not request_res.data:
+            raise HTTPException(404, "Khong tim thay payment_request")
+
+        pr_row = request_res.data[0]
+        if not _can_access_request(sb, actor, pr_row):
+            raise HTTPException(403, "Khong co quyen thao tac phieu nay")
+        current_state = _clean_text(pr_row.get("state")).lower()
+        if current_state != "cancelled":
+            raise HTTPException(400, "Chi restore duoc payment request da bi huy")
+
+        line_res = (
+            sb.table("payment_lines")
+            .select("*")
+            .eq("payment_request_id", payment_request_id)
+            .execute()
+        )
+        lines = line_res.data or []
+        target = _parse_amount(pr_row.get("target"))
+        received = _sum_paid_amount(lines)
+        state = _compute_state(received, target)
+
+        patch: dict[str, Any] = {
+            "state": state,
+            "received": received,
+            "cancelled_at": None,
+            "cancelled_reason": None,
+        }
+        try:
+            updated_res = (
+                sb.table("payment_requests")
+                .update(patch)
+                .eq("id", payment_request_id)
+                .execute()
+            )
+        except Exception as exc:
+            raise HTTPException(500, f"Khong restore duoc payment_request: {exc}") from exc
+
+        updated = updated_res.data[0] if updated_res.data else {**pr_row, **patch}
+        return {
+            "payment_request": _serialize_payment_request_list_item(updated, lines)
+        }
+
     @router.post("/payment-requests/sync-pending-payos")
     async def sync_pending_payos_payments(authorization: str | None = Header(None)):
         """Poll PayOS cho mọi QR pending — dùng khi webhook chưa tới (local/prod)."""
