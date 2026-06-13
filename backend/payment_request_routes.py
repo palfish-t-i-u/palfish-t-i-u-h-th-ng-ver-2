@@ -992,6 +992,23 @@ def _extract_payos_data(payload: dict[str, Any]) -> tuple[str, int, str]:
 
 
 def _mark_line_paid(sb, line_id: str) -> dict[str, Any]:
+    existing_res = (
+        sb.table("payment_lines")
+        .select("*")
+        .eq("id", line_id)
+        .limit(1)
+        .execute()
+    )
+    if not existing_res.data:
+        raise HTTPException(404, "Khong tim thay payment_line")
+    existing = existing_res.data[0]
+    if _clean_text(existing.get("status")).lower() == "paid":
+        totals = recompute_payment_request_totals(sb, str(existing["payment_request_id"]))
+        return {
+            "payment_line": _serialize_payment_line(existing),
+            **totals,
+        }
+
     now_iso = _iso_now()
     line_res = (
         sb.table("payment_lines")
@@ -1119,6 +1136,13 @@ async def sync_all_pending_payos_lines(sb) -> dict[str, Any]:
     return {"synced": synced, "synced_count": len(synced), "errors": errors}
 
 
+def _transfer_code_in_description(code: str, description: str) -> bool:
+    cleaned = _clean_text(code).upper()
+    if not cleaned:
+        return False
+    return bool(re.search(rf"\b{re.escape(cleaned)}\b", description.upper()))
+
+
 def reconcile_payment_line_webhook(sb, payload: dict[str, Any]) -> dict[str, Any]:
     """Match PayOS webhook to payment_lines; fallback to don_hang when unmatched."""
     order_code, amount, description = _extract_payos_data(payload)
@@ -1135,7 +1159,6 @@ def reconcile_payment_line_webhook(sb, payload: dict[str, Any]) -> dict[str, Any
         line = _find_payment_line_by_payment_link_id(sb, payment_link_id)
     if not line and description:
         # Fallback: khớp transfer_code trong nội dung CK (PayOS description)
-        desc = description.upper()
         try:
             candidates = (
                 sb.table("payment_lines")
@@ -1145,8 +1168,8 @@ def reconcile_payment_line_webhook(sb, payload: dict[str, Any]) -> dict[str, Any
                 .execute()
             )
             for candidate in candidates.data or []:
-                code = _clean_text(candidate.get("transfer_code")).upper()
-                if code and code in desc:
+                code = _clean_text(candidate.get("transfer_code"))
+                if code and _transfer_code_in_description(code, description):
                     line = candidate
                     break
         except Exception as exc:
@@ -2187,6 +2210,14 @@ def register_payment_request_routes(app, get_supabase) -> None:
         current_row = request_res.data[0]
         if not _can_access_request(sb, actor, current_row):
             raise HTTPException(403, "Khong co quyen thao tac phieu nay")
+
+        target = _parse_amount(current_row.get("target"))
+        received = _parse_amount(current_row.get("received"))
+        if target > 0 and received < target:
+            raise HTTPException(
+                400,
+                f"PR chua thu du tien ({received}/{target}), khong nhac xuat HD duoc",
+            )
 
         # Throttle: block if reminded in 24h AND no invoice issued since that remind
         remind_res = (

@@ -299,6 +299,36 @@ def _course_order_id(course: dict[str, Any]) -> str:
     return str(raw or "").strip()
 
 
+def _assert_order_id_available(sb, ar_id: str, course_code: str, order_id: str) -> None:
+    normalized_order_id = _clean_text(order_id)
+    if not normalized_order_id:
+        return
+    target_ar = _clean_text(ar_id)
+    target_course = _clean_text(course_code)
+    try:
+        res = sb.table("active_requests").select("id,uids_data").execute()
+    except Exception as exc:
+        raise HTTPException(500, f"Khong quet duplicate order_id: {exc}") from exc
+    for ar in res.data or []:
+        existing_ar_id = _clean_text(ar.get("id"))
+        for uid_block in ar.get("uids_data") or []:
+            if not isinstance(uid_block, dict):
+                continue
+            for course in uid_block.get("courses") or []:
+                if not isinstance(course, dict):
+                    continue
+                existing_code = _clean_text(course.get("code"))
+                existing_order = _clean_text(_course_order_id(course))
+                if existing_order != normalized_order_id:
+                    continue
+                if existing_ar_id == target_ar and existing_code == target_course:
+                    continue
+                raise HTTPException(
+                    409,
+                    f"order_id {normalized_order_id!r} da ton tai o AR/course khac",
+                )
+
+
 def _course_invoice_requested_at(course: dict[str, Any]) -> str:
     return str(course.get("invoice_requested_at") or "").strip()
 
@@ -460,8 +490,11 @@ def _validate_course_amounts(
             for u in (ar.get("uids_data") or []):
                 for c in (u.get("courses") or []):
                     existing_total += _course_amount(c)
-    except Exception:
-        pass  # Fail-open: nếu không đọc được AR khác thì không block
+    except Exception as exc:
+        raise HTTPException(
+            500,
+            f"Khong xac dinh duoc budget cua PR (loi doc AR): {exc}",
+        ) from exc
 
     grand_total = new_total + existing_total
     if grand_total > budget:
@@ -1254,6 +1287,7 @@ def register_activation_routes(app, supabase_factory):
         from rpc_helpers import rpc_active_request_row
 
         if order_id:
+            _assert_order_id_available(sb, ar_id, course_code, order_id)
             row = rpc_active_request_row(
                 sb,
                 "patch_active_request_course_order",
