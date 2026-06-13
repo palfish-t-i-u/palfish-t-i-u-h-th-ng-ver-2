@@ -4,6 +4,11 @@
 > Tổng ước ~5-7h. Tất cả push lên branch `sandbox`.
 > Đọc lại context đầy đủ ở [docs/bug-hunt-report-2026-06-13.md](bug-hunt-report-2026-06-13.md).
 
+## 📌 Đính chính (13/06, sau khi anh Minh check UI thực tế)
+
+- **Việc 5 (1F-01 nhắc HĐ)**: priority hạ từ 🔴 xuống **🟡 defense-in-depth**. Bình thường UI đã chặn (nút chỉ hiện khi PR có course activated). Vẫn làm vì code nhỏ + tốt cho edge case sale tăng target sau. Xem chi tiết ở Việc 5.
+- Các Việc 1, 2, 3, 4, 6: không thay đổi, vẫn priority gốc.
+
 ## Tổng quan 2 commits
 
 | Commit | Thuộc PR | Việc | Thời gian |
@@ -162,7 +167,14 @@ def patch_active_request_course(...):
 
 ## Việc 5 — Chặn nhắc HĐ khi PR chưa thu đủ (Bug 1F-01, PR2)
 
-**Bối cảnh nghiệp vụ**: Hiện sale có thể bấm nhắc xuất HĐ cho PR chưa thu đồng nào → kế toán nhận nhắc nhầm, phải tra cứu lại.
+> ⚠️ **Đính chính 13/06 (sau khi anh Minh check UI)**:
+> Priority hạ từ 🔴 chặn go-live xuống **🟡 defense-in-depth**. Lý do: nút "Nhắc xuất HĐ" ở FE chỉ hiện khi `activeSummary.activatedCount > 0` ([`PaymentRequestDetailDrawer.tsx:2000`](../frontend/src/components/payment-request/PaymentRequestDetailDrawer.tsx:2000)), nghĩa là PR đã có course activated (đã pass `_assert_pr_paid` lúc tạo AR) → tại thời điểm nút hiện thì PR đã thu đủ.
+>
+> **Edge case duy nhất còn lại**: Sale tăng "Tổng tiền dự kiến" sau khi AR đã activated → `received < target` trở lại → nút vẫn hiện → có thể nhắc nhầm. Rất hiếm.
+>
+> **Vẫn làm vì**: code ~3 dòng, defense-in-depth tốt, chặn được edge case. Không tốn thời gian.
+
+**Bối cảnh nghiệp vụ**: Bình thường UI đã chặn — nút nhắc HĐ chỉ hiện khi PR có course activated. Nhưng nếu sale tăng target sau, BE cần backup chặn.
 
 **Spec fix**: [`backend/payment_request_routes.py:2109-2174`](../backend/payment_request_routes.py:2109) hàm `create_invoice_reminder` — thêm check sau `_can_access_request`:
 
@@ -170,7 +182,7 @@ def patch_active_request_course(...):
 def create_invoice_reminder(...):
     # ... existing đến _can_access_request
 
-    # CHECK: PR phải thu đủ tiền mới được nhắc HĐ
+    # CHECK: PR phải thu đủ tiền mới được nhắc HĐ (defense-in-depth)
     target = _parse_amount(current_row.get("target"))
     received = _parse_amount(current_row.get("received"))
     if target > 0 and received < target:
@@ -183,10 +195,11 @@ def create_invoice_reminder(...):
 ```
 
 **Test**:
-- Tạo PR sandbox target 5tr, đã thu 2tr
-- Gọi nhắc HĐ → kỳ vọng 400
-- Tạo lần TT thêm 3tr, mark paid → đủ
-- Gọi nhắc HĐ → kỳ vọng 200
+- Tạo PR sandbox target 5tr, đã thu 5tr (đủ)
+- Tạo AR + fill order_id (course activated) → nút Nhắc HĐ hiện trên FE
+- Sửa PR target lên 10tr (giờ received < target)
+- Gọi nhắc HĐ qua curl/Postman (FE vẫn cho bấm) → kỳ vọng **400 với message rõ**
+- Nếu test happy path (target 5tr đã thu 5tr, không sửa) → nhắc HĐ vẫn được → 200
 
 ---
 

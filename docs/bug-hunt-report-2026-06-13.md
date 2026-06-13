@@ -131,12 +131,10 @@
 - **Thực tế**: [`PaymentRequestsTab.tsx:635-642`](frontend/src/components/PaymentRequestsTab.tsx:635) — `handleRestore` chỉ `updateRequest` local, **không gọi endpoint BE nào**. F5 → PR vẫn cancelled. Mà cũng không có route BE để restore (grep `restore` trong `payment_request_routes.py` không có).
 - **Fix**: Hoặc ẩn nút Restore, hoặc bổ sung endpoint `POST /payment-requests/{id}/restore`.
 
-### 🔴 Bug 1A-03: Đánh dấu lần TT "đã thu" — BE từ chối nhưng FE vẫn show paid
-- **Role**: Sale (liên quan luồng tạo PR vì cùng drawer)
-- **Bước**: Lần TT QR đang pending → Sale bấm "Đánh dấu đã thu" thủ công
-- **Kỳ vọng**: BE phải có rule (line không thuộc PR của sale, hoặc đã rejected) → trả 4xx. FE phải rollback.
-- **Thực tế**: [`PaymentRequestsTab.tsx:380-405`](frontend/src/components/PaymentRequestsTab.tsx:380) — `handleMarkPaid` set paid trước, `catch { /* optimistic */ }` không rollback, không alert. Sai số liệu nghiêm trọng: KPI "đã thu", state PR đều sai tới khi F5.
-- **Fix**: Rollback giống `handleEditAmount` (vốn đã đúng — line 370-377).
+### 🟡 Bug 1A-03: `handleMarkPaid` catch im lặng — code smell (chỉ dev mode bấm được)
+- **Đính chính 13/06**: Trước ghi 🔴, sau khi anh Minh kiểm tra UI thực tế — **prod không có nút này**. Link "Mô phỏng kế toán xác nhận →" chỉ render khi `import.meta.env.DEV` ([`PaymentRequestDetailDrawer.tsx:254-275`](frontend/src/components/payment-request/PaymentRequestDetailDrawer.tsx:254)) — chỉ thấy trên `npm run dev` local.
+- **Vẫn nên fix vì**: Code smell — pattern `catch { /* optimistic */ }`. Tương lai nếu mở nút lên prod hoặc dev local lỡ bấm → state lệch BE.
+- **Đã fix**: cùng commit `d495f67` với 5 bug optimistic-catch khác.
 
 ### 🟠 Bug 1A-04: Huỷ lần TT — BE lỗi vẫn show "cancelled"
 - **Role**: Sale
@@ -423,13 +421,11 @@
 
 ## Phase 1F — Nhắc & xuất hóa đơn
 
-### 🟠 Bug 1F-01: Sale có thể nhắc xuất HĐ cho PR chưa thu đủ tiền
-- **Role**: Sale
-- **Bước**: PR còn pending (chưa thu đủ) → bấm "Nhắc xuất HĐ"
-- **Kỳ vọng**: BE chặn — chưa thu tiền sao xuất HĐ.
-- **Thực tế**: [`payment_request_routes.py:2109-2174`](backend/payment_request_routes.py:2109) `create_invoice_reminder` chỉ check tồn tại + permission + throttle 24h. **Không check `received >= target`**.
-- **Ảnh hưởng**: Kế toán nhận nhắc HĐ cho PR chưa thu → phải tra cứu thủ công → mất thời gian.
-- **Fix**: Trước khi insert reminder, raise 400 nếu PR chưa đủ tiền hoặc chưa có AR confirmed.
+### 🟡 Bug 1F-01: BE không chặn nhắc HĐ cho PR chưa thu đủ — defense-in-depth
+- **Đính chính 13/06**: Trước ghi 🟠, hạ xuống 🟡. Sau khi check UI thực tế: nút "Nhắc xuất HĐ" ở [`PaymentRequestDetailDrawer.tsx:2000`](frontend/src/components/payment-request/PaymentRequestDetailDrawer.tsx:2000) chỉ hiện khi `activeSummary.activatedCount > 0` → PR đã có course activated → tại thời điểm đó PR đã pass `_assert_pr_paid` (thu đủ).
+- **Edge case duy nhất còn lại**: Sale tăng "Tổng tiền dự kiến" sau khi AR đã activated → `received < target` → nút vẫn hiện trong UI.
+- **Vẫn fix vì**: code ~3 dòng, defense-in-depth chặn được edge case + bảo vệ tương lai nếu UI logic đổi.
+- **Fix**: [`payment_request_routes.py:2109`](backend/payment_request_routes.py:2109) `create_invoice_reminder` — sau `_can_access_request`, raise 400 nếu `received < target`.
 
 ### 🟠 Bug 1F-02: Không có endpoint huỷ reminder — nhắc nhầm phải chờ 24h
 - **Role**: Sale (nhấn nhầm)
