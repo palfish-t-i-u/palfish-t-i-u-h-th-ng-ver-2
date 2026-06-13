@@ -532,6 +532,39 @@ def _clean_text(value: Any) -> str:
     return str(value or "").strip()
 
 
+def _insert_ar_confirmed_notification(
+    sb,
+    *,
+    ar_id: str,
+    course_code: str,
+    order_id: str,
+    ar_row: dict[str, Any],
+) -> None:
+    pr_id = _clean_text(ar_row.get("pr_id"))
+    if not pr_id:
+        return
+    try:
+        pr_row = _fetch_payment_request(sb, pr_id)
+        sale_email = _clean_text(pr_row.get("sale_email")).lower()
+        if not sale_email:
+            return
+        sb.table("notifications").insert(
+            {
+                "user_email": sale_email,
+                "kind": "ar_confirmed",
+                "payload": {
+                    "ar_id": ar_id,
+                    "pr_id": pr_id,
+                    "course_code": course_code,
+                    "order_id": order_id,
+                    "customer_name": pr_row.get("name") or ar_row.get("customer_name") or "",
+                },
+            }
+        ).execute()
+    except Exception as exc:
+        print(f"[notify] insert failed (non-blocking): {exc}")
+
+
 def _find_course(uids_data: list[dict[str, Any]], course_code: str) -> dict[str, Any]:
     for uid_block in uids_data:
         for course in uid_block.get("courses") or []:
@@ -1299,6 +1332,13 @@ def register_activation_routes(app, supabase_factory):
             )
             ledger_id = sync_ledger_from_ar_course(sb, ar_id, course_code)
             if ledger_id:
+                _insert_ar_confirmed_notification(
+                    sb,
+                    ar_id=ar_id,
+                    course_code=course_code,
+                    order_id=order_id,
+                    ar_row=row,
+                )
                 print(f"[activation] B3 → Sổ: AR {ar_id} course {course_code} → {ledger_id}")
             else:
                 print(f"[activation] B3 → Sổ: skip/fail AR {ar_id} course {course_code}")

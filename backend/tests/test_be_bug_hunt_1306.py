@@ -5,6 +5,8 @@ from __future__ import annotations
 import importlib
 import inspect
 import uuid
+from datetime import date
+from decimal import Decimal
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -235,3 +237,129 @@ class TestValidateCourseAmountsFailClosed:
 
         assert exc.value.status_code == 500
         assert "loi doc AR" in exc.value.detail
+
+
+class TestNotifications:
+    class _NotificationsQuery:
+        def __init__(self, rows):
+            self.rows = rows
+            self.filters = []
+            self.null_filters = []
+            self.patch = None
+            self._limit = None
+
+        def select(self, *_args, **_kwargs):
+            return self
+
+        def update(self, patch):
+            self.patch = patch
+            return self
+
+        def eq(self, key, value):
+            self.filters.append((key, value))
+            return self
+
+        def is_(self, key, value):
+            self.null_filters.append((key, value))
+            return self
+
+        def order(self, *_args, **_kwargs):
+            return self
+
+        def limit(self, value):
+            self._limit = value
+            return self
+
+        def execute(self):
+            matched = list(self.rows)
+            for key, value in self.filters:
+                matched = [row for row in matched if row.get(key) == value]
+            for key, value in self.null_filters:
+                if value == "null":
+                    matched = [row for row in matched if row.get(key) is None]
+            if self.patch is not None:
+                for row in matched:
+                    row.update(self.patch)
+            if self._limit is not None:
+                matched = matched[: self._limit]
+            return MagicMock(data=matched)
+
+    class _FakeSB:
+        def __init__(self):
+            self.rows = [
+                {
+                    "id": "n1",
+                    "user_email": "ops@test.com",
+                    "kind": "ar_confirmed",
+                    "payload": {"ar_id": "AR-1"},
+                    "created_at": "2026-06-13T00:00:00+00:00",
+                    "read_at": None,
+                },
+                {
+                    "id": "n2",
+                    "user_email": "other@test.com",
+                    "kind": "ar_confirmed",
+                    "payload": {},
+                    "created_at": "2026-06-13T00:00:01+00:00",
+                    "read_at": None,
+                },
+            ]
+
+        def table(self, name):
+            assert name == "notifications"
+            return TestNotifications._NotificationsQuery(self.rows)
+
+    def _build_client(self):
+        import notification_routes as routes
+
+        routes = importlib.reload(routes)
+        sb = self._FakeSB()
+        app = FastAPI()
+        routes.register_notification_routes(app, lambda: sb)
+        return TestClient(app, raise_server_exceptions=False), sb
+
+    def test_list_and_mark_read_are_scoped_to_actor_email(self):
+        client, sb = self._build_client()
+        with patch("notification_routes.resolve_actor", return_value=ACTOR):
+            list_resp = client.get(
+                "/api/v1/notifications?unread=true",
+                headers={"Authorization": "Bearer token"},
+            )
+            mark_resp = client.post(
+                "/api/v1/notifications/n1/read",
+                headers={"Authorization": "Bearer token"},
+            )
+
+        assert list_resp.status_code == 200
+        body = list_resp.json()
+        assert [row["id"] for row in body["notifications"]] == ["n1"]
+        assert mark_resp.status_code == 200
+        assert sb.rows[0]["read_at"] is not None
+        assert sb.rows[1]["read_at"] is None
+
+
+class TestExchangeRatesAndGsheet:
+    def test_get_rate_for_date_uses_latest_effective_rate(self):
+        import revenue_routes as revenue
+
+        revenue = importlib.reload(revenue)
+        sb = MagicMock()
+        chain = MagicMock()
+        chain.select.return_value = chain
+        chain.lte.return_value = chain
+        chain.order.return_value = chain
+        chain.limit.return_value = chain
+        chain.execute.return_value = MagicMock(data=[{"rate": "3655.25"}])
+        sb.table.return_value = chain
+
+        assert revenue.get_rate_for_date(sb, date(2026, 6, 13)) == Decimal("3655.25")
+
+    def test_loose_fp_includes_phone_to_reduce_collision(self):
+        import gsheet_ledger_import as gsheet
+
+        gsheet = importlib.reload(gsheet)
+        row_a = {"uid": "U1", "ngay_tien_ve": "2026-06-13", "so_tien_vnd": 5000000, "sdt": "0901"}
+        row_b = {"uid": "U1", "ngay_tien_ve": "2026-06-13", "so_tien_vnd": 5000000, "sdt": "0902"}
+
+        assert gsheet._loose_fp(row_a) != gsheet._loose_fp(row_b)
+
