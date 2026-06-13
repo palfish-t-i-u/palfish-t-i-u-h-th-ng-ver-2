@@ -329,6 +329,60 @@ def _assert_order_id_available(sb, ar_id: str, course_code: str, order_id: str) 
                 )
 
 
+def _assert_uids_data_order_ids_unique(sb, ar_id: str | None, uids_data: list[Any]) -> None:
+    """Quét toàn bộ order_id trong uids_data để chặn trùng — dùng khi tạo AR mới
+    hoặc replace toàn bộ uids_data qua PATCH /active-requests/{ar_id}.
+    """
+    target_ar = _clean_text(ar_id) if ar_id else ""
+    # Gom (course_code, order_id) cần insert/replace
+    incoming: dict[str, str] = {}  # order_id → course_code
+    for uid_block in uids_data or []:
+        if not isinstance(uid_block, dict):
+            continue
+        for course in uid_block.get("courses") or []:
+            if not isinstance(course, dict):
+                continue
+            code = _clean_text(course.get("code"))
+            order_id = _clean_text(_course_order_id(course))
+            if not order_id:
+                continue
+            # Trùng trong cùng batch (2 course cùng AR mà order_id trùng)
+            if order_id in incoming and incoming[order_id] != code:
+                raise HTTPException(
+                    409,
+                    f"order_id {order_id!r} bi trung giua nhieu course trong cung AR",
+                )
+            incoming[order_id] = code
+
+    if not incoming:
+        return
+
+    try:
+        res = sb.table("active_requests").select("id,uids_data").execute()
+    except Exception as exc:
+        raise HTTPException(500, f"Khong quet duplicate order_id: {exc}") from exc
+
+    for ar in res.data or []:
+        existing_ar_id = _clean_text(ar.get("id"))
+        for uid_block in ar.get("uids_data") or []:
+            if not isinstance(uid_block, dict):
+                continue
+            for course in uid_block.get("courses") or []:
+                if not isinstance(course, dict):
+                    continue
+                existing_code = _clean_text(course.get("code"))
+                existing_order = _clean_text(_course_order_id(course))
+                if not existing_order or existing_order not in incoming:
+                    continue
+                # Cùng AR + cùng course → idempotent (PATCH cùng row), skip
+                if existing_ar_id == target_ar and existing_code == incoming[existing_order]:
+                    continue
+                raise HTTPException(
+                    409,
+                    f"order_id {existing_order!r} da ton tai o AR/course khac",
+                )
+
+
 def _course_invoice_requested_at(course: dict[str, Any]) -> str:
     return str(course.get("invoice_requested_at") or "").strip()
 
@@ -750,6 +804,9 @@ def _save_active_request(
     if pr is not None:
         _validate_course_amounts(sb, pr, uids_data)
 
+    # Chặn duplicate order_id giữa AR/course khác — defense (Bug 2-04)
+    _assert_uids_data_order_ids_unique(sb, ar_id, uids_data)
+
     status = _derive_status(uids_data)
     row: dict[str, Any] = {
         "id": ar_id,
@@ -1142,6 +1199,8 @@ def register_activation_routes(app, supabase_factory):
             if current_pr_id:
                 patch_pr = _fetch_payment_request(sb, current_pr_id)
                 _validate_course_amounts(sb, patch_pr, uids_data, exclude_ar_id=ar_id)
+            # Chặn duplicate order_id (Bug 2-04)
+            _assert_uids_data_order_ids_unique(sb, ar_id, uids_data)
             guarded_status = _derive_status(uids_data)
             if body.expected_updated_at:
                 from rpc_helpers import MIGRATION_HINT, rpc_first_row

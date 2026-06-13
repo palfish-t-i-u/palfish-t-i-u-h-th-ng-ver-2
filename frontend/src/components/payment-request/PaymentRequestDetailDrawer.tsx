@@ -1261,6 +1261,9 @@ function useInvoiceRemind(prId: string | null) {
       await endpoints.invoiceRemind.create(prId, note);
       setCanRemind(false);
       setLastReminder({ requested_at: new Date().toISOString(), requested_by_name: "Bạn" });
+    } catch (err) {
+      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      alert(typeof detail === "string" && detail ? detail : "Không gửi được nhắc xuất HĐ. Vui lòng thử lại.");
     } finally {
       setSending(false);
     }
