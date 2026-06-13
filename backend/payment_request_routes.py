@@ -1635,6 +1635,21 @@ def register_payment_request_routes(app, get_supabase) -> None:
             raise HTTPException(403, "Khong co quyen thao tac phieu nay")
         if _clean_text(pr_row.get("state")).lower() == "cancelled":
             raise HTTPException(400, "Payment request da bi huy")
+        target = _parse_amount(pr_row.get("target"))
+        received = _parse_amount(pr_row.get("received"))
+        if target > 0 and received >= target:
+            raise HTTPException(
+                400,
+                {
+                    "code": "PR_ALREADY_FULL",
+                    "message": (
+                        "PR da nhan du tien, can tang so tien du kien "
+                        "de tao them lan thanh toan"
+                    ),
+                    "received": received,
+                    "target": target,
+                },
+            )
 
         amount = _parse_amount(body.amount or body.so_tien)
         if amount <= 0:

@@ -179,6 +179,46 @@ class TestRestoreEndpointSource:
         assert "_compute_state(received, target)" in source
 
 
+class TestCreatePaymentLineFullPR:
+    def _build_client(self):
+        import payment_request_routes as pr
+
+        pr = importlib.reload(pr)
+        sb = MagicMock()
+        app = FastAPI()
+        pr.register_payment_request_routes(app, lambda: sb)
+        return TestClient(app, raise_server_exceptions=False), sb
+
+    def test_full_pr_returns_structured_error(self):
+        client, sb = self._build_client()
+        sb.table.return_value.select.return_value.eq.return_value.limit.return_value.execute.return_value = MagicMock(
+            data=[
+                {
+                    "id": "PR-2026-0001",
+                    "target": 5000000,
+                    "received": 5000000,
+                    "state": "done",
+                    "sale_email": "ops@test.com",
+                }
+            ]
+        )
+
+        with patch("payment_request_routes.resolve_actor", return_value=ACTOR):
+            with patch("payment_request_routes.require_module_write"):
+                with patch("payment_request_routes._can_access_request", return_value=True):
+                    resp = client.post(
+                        "/api/v1/payment-requests/PR-2026-0001/payment-lines",
+                        json={"amount": 1000000, "method": "qr"},
+                        headers={"Authorization": "Bearer token"},
+                    )
+
+        assert resp.status_code == 400
+        detail = resp.json()["detail"]
+        assert detail["code"] == "PR_ALREADY_FULL"
+        assert detail["received"] == 5000000
+        assert detail["target"] == 5000000
+
+
 class TestValidateCourseAmountsFailClosed:
     def test_ar_query_error_raises_500(self):
         import activation_routes as ar
