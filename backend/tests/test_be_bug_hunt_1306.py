@@ -498,3 +498,136 @@ class TestOpsRole:
         assert rbac._normalize_role("ops") == "ops"
         assert rbac._rank("ops") == 2
         assert rbac._normalize_role("admin") == "system"
+
+
+class TestScopeDefense:
+    def test_visible_creator_emails_leader_without_team_degrades_to_self(self):
+        import rbac
+
+        rbac = importlib.reload(rbac)
+        actor = Actor(
+            email="leader-unlinked@test.com",
+            user_id="leader-unlinked",
+            role="leader",
+            staff=None,
+            is_activated=True,
+        )
+
+        assert rbac.visible_creator_emails(MagicMock(), actor) == ["leader-unlinked@test.com"]
+
+    def test_enforce_report_scope_manager_without_team_raises(self):
+        import rbac
+
+        rbac = importlib.reload(rbac)
+        actor = Actor(
+            email="manager-unlinked@test.com",
+            user_id="manager-unlinked",
+            role="manager",
+            staff=None,
+            is_activated=True,
+        )
+
+        with pytest.raises(HTTPException) as exc:
+            rbac.enforce_report_scope(actor, "HN")
+
+        assert exc.value.status_code == 403
+
+    def test_dashboard_filters_sale_scope(self):
+        import dashboard_routes as dashboard
+
+        dashboard = importlib.reload(dashboard)
+        app = FastAPI()
+        dashboard.register_dashboard_routes(app, lambda: MagicMock())
+        client = TestClient(app, raise_server_exceptions=False)
+
+        with patch("dashboard_routes.resolve_actor", return_value=SALE_ACTOR):
+            resp = client.get(
+                "/dashboard/filters",
+                headers={"Authorization": "Bearer token"},
+            )
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["teams"] == ["HN"]
+        assert body["sales"] == ["Sale Test"]
+        assert "HN" in body["departments"]
+
+    def test_revenue_ledger_sale_filters_by_created_by_email(self):
+        import revenue_routes as revenue
+
+        revenue = importlib.reload(revenue)
+        app = FastAPI()
+        revenue.register_revenue_routes(app, lambda: MagicMock())
+        client = TestClient(app, raise_server_exceptions=False)
+
+        with patch("revenue_routes.resolve_actor", return_value=SALE_ACTOR):
+            with patch("revenue_routes.require_module_access"):
+                with patch("revenue_routes.visible_creator_emails", return_value=["sale@test.com"]):
+                    with patch("revenue_routes._fetch_so_doanh_thu", return_value=[]) as fetch_rows:
+                        resp = client.get(
+                            "/revenue/ledger",
+                            headers={"Authorization": "Bearer token"},
+                        )
+
+        assert resp.status_code == 200
+        assert fetch_rows.call_args.kwargs["created_by_emails"] == ["sale@test.com"]
+
+    def test_compute_permissions_retries_on_db_error(self):
+        import admin_routes as admin
+
+        admin = importlib.reload(admin)
+
+        class _Query:
+            def __init__(self, sb, table_name):
+                self.sb = sb
+                self.table_name = table_name
+
+            def select(self, *_args, **_kwargs):
+                return self
+
+            def eq(self, *_args, **_kwargs):
+                return self
+
+            def execute(self):
+                if self.table_name == "department_permissions":
+                    self.sb.department_attempts += 1
+                    if self.sb.department_attempts < 3:
+                        raise RuntimeError("temporary db error")
+                    return MagicMock(data=[{"module_key": "paymentRequests", "access_level": "read", "min_role": "sale"}])
+                return MagicMock(data=[])
+
+        class _FakeSB:
+            def __init__(self):
+                self.department_attempts = 0
+
+            def table(self, table_name):
+                return _Query(self, table_name)
+
+        with patch("admin_routes.time.sleep"):
+            perms = admin._compute_permissions(_FakeSB(), SALE_ACTOR)
+
+        assert perms["paymentRequests"] == "read"
+
+    def test_compute_permissions_falls_back_after_max_retries(self):
+        import admin_routes as admin
+
+        admin = importlib.reload(admin)
+
+        class _FailingQuery:
+            def select(self, *_args, **_kwargs):
+                return self
+
+            def eq(self, *_args, **_kwargs):
+                return self
+
+            def execute(self):
+                raise RuntimeError("db down")
+
+        sb = MagicMock()
+        sb.table.return_value = _FailingQuery()
+
+        with patch("admin_routes.time.sleep"):
+            perms = admin._compute_permissions(sb, SALE_ACTOR)
+
+        assert perms["dashboard"] == admin.DEFAULT_DEPT_PERMISSIONS["sale"]["dashboard"]
+        assert perms["paymentRequests"] == admin.DEFAULT_DEPT_PERMISSIONS["sale"]["paymentRequests"]

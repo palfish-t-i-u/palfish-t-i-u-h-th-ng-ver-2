@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import time
 import unicodedata
 from datetime import datetime, timezone
 from pathlib import Path
@@ -224,15 +225,25 @@ def _compute_permissions(sb, actor) -> dict[str, str]:
 
     # Read department permissions from DB (includes min_role)
     min_roles: dict[str, str] = {}
-    try:
-        res = (
-            sb.table("department_permissions")
-            .select("module_key, access_level, min_role")
-            .eq("department", department)
-            .execute()
-        )
-    except Exception as exc:
-        raise HTTPException(500, f"Khong tai duoc phan quyen: {exc}") from exc
+    last_exc: Exception | None = None
+    res = None
+    for attempt in range(3):
+        try:
+            res = (
+                sb.table("department_permissions")
+                .select("module_key, access_level, min_role")
+                .eq("department", department)
+                .execute()
+            )
+            break
+        except Exception as exc:
+            last_exc = exc
+            if attempt < 2:
+                time.sleep(0.2 * (attempt + 1))
+                continue
+    if res is None:
+        print(f"[permissions] department query failed after retries for {actor.email}: {last_exc}")
+        return permissions
 
     for row in res.data or []:
         module_key = row.get("module_key")
@@ -262,8 +273,8 @@ def _compute_permissions(sb, actor) -> dict[str, str]:
             al = row.get("access_level")
             if mk in permissions and al in ACCESS_LEVELS:
                 permissions[mk] = al
-    except Exception:
-        pass
+    except Exception as exc:
+        print(f"[permission_overrides] query failed for {actor.email.lower()}: {exc}")
 
     return permissions
 

@@ -10,7 +10,7 @@ from fastapi import Header, HTTPException, Query
 from pydantic import BaseModel
 
 from admin_routes import require_module_access, require_module_write
-from rbac import enforce_report_scope, require_min_role, resolve_actor, scope_sale_names
+from rbac import enforce_report_scope, require_min_role, resolve_actor, scope_sale_names, visible_creator_emails
 
 DEFAULT_TY_GIA = Decimal("3700")
 
@@ -577,6 +577,7 @@ def _ledger_query(
     to_date: str | None = None,
     loai_nhap: str | None = None,
     search: str | None = None,
+    created_by_emails: list[str] | None = None,
     count: str | None = None,
 ):
     """Lọc theo Pay Time (pay_time) — khớp pivot Excel Hiếu, không dùng ngay_tien_ve."""
@@ -591,6 +592,8 @@ def _ledger_query(
         q = q.lte("pay_time", f"{to_date[:10]}T23:59:59")
     if loai_nhap in ("tu_dong", "tay"):
         q = q.eq("loai_nhap", loai_nhap)
+    if created_by_emails is not None:
+        q = q.in_("created_by_email", created_by_emails)
     if search and search.strip():
         term = search.strip()
         pattern = f"*{term}*"
@@ -628,6 +631,7 @@ def _count_so_doanh_thu(
     loai_nhap: str | None = None,
     team_filter: str | None = None,
     search: str | None = None,
+    created_by_emails: list[str] | None = None,
 ) -> int:
     if team_filter:
         rows = _fetch_so_doanh_thu(
@@ -637,6 +641,7 @@ def _count_so_doanh_thu(
             to_date=to_date,
             loai_nhap=loai_nhap,
             search=search,
+            created_by_emails=created_by_emails,
         )
         return len(_filter_rows_by_team(rows, team_filter))
     res = _ledger_query(
@@ -646,6 +651,7 @@ def _count_so_doanh_thu(
         to_date=to_date,
         loai_nhap=loai_nhap,
         search=search,
+        created_by_emails=created_by_emails,
         count="exact",
     ).limit(0).execute()
     return int(res.count or 0)
@@ -659,11 +665,20 @@ def _fetch_so_doanh_thu_page(
     to_date: str | None = None,
     loai_nhap: str | None = None,
     search: str | None = None,
+    created_by_emails: list[str] | None = None,
     limit: int = LEDGER_TABLE_PAGE,
     offset: int = 0,
 ) -> list[dict[str, Any]]:
     res = (
-        _ledger_query(sb, select, from_date=from_date, to_date=to_date, loai_nhap=loai_nhap, search=search)
+        _ledger_query(
+            sb,
+            select,
+            from_date=from_date,
+            to_date=to_date,
+            loai_nhap=loai_nhap,
+            search=search,
+            created_by_emails=created_by_emails,
+        )
         .range(offset, offset + max(limit, 1) - 1)
         .execute()
     )
@@ -696,6 +711,7 @@ def _fetch_ledger_summary_rows(
     from_date: str | None = None,
     to_date: str | None = None,
     loai_nhap: str | None = None,
+    created_by_emails: list[str] | None = None,
 ) -> list[dict[str, Any]]:
     """Chỉ cột cần cho thẻ tổng hợp — paginate, không enrich."""
     from analytics_limits import fetch_rows_capped
@@ -707,6 +723,7 @@ def _fetch_ledger_summary_rows(
             from_date=from_date,
             to_date=to_date,
             loai_nhap=loai_nhap,
+            created_by_emails=created_by_emails,
             limit=limit,
             offset=offset,
         )
@@ -725,6 +742,7 @@ def _fetch_so_doanh_thu(
     to_date: str | None = None,
     loai_nhap: str | None = None,
     search: str | None = None,
+    created_by_emails: list[str] | None = None,
 ) -> list[dict[str, Any]]:
     """PostgREST trả tối đa 1000 dòng/lần — paginate có giới hạn MAX_ANALYTICS_ROWS."""
     from analytics_limits import fetch_rows_capped
@@ -744,6 +762,8 @@ def _fetch_so_doanh_thu(
             q = q.lte("pay_time", f"{to_date[:10]}T23:59:59")
         if loai_nhap in ("tu_dong", "tay"):
             q = q.eq("loai_nhap", loai_nhap)
+        if created_by_emails is not None:
+            q = q.in_("created_by_email", created_by_emails)
         if search and search.strip():
             term = search.strip()
             pattern = f"*{term}*"
@@ -1316,6 +1336,13 @@ def register_revenue_routes(app, get_supabase) -> None:
         require_module_access(sb, actor, "revenueLedger")
         try:
             team = (team_filter or "").strip() or None
+            role = (actor.role or "sale").lower().strip()
+            scoped_emails: list[str] | None = None
+            if role in ("sale", "leader"):
+                scoped_emails = visible_creator_emails(sb, actor) or [actor.email.lower()]
+                team, _sub_team = enforce_report_scope(actor, team)
+            elif role == "manager":
+                team, _sub_team = enforce_report_scope(actor, team)
             search_term = (search or "").strip() or None
             if team:
                 all_rows = _fetch_so_doanh_thu(
@@ -1325,6 +1352,7 @@ def register_revenue_routes(app, get_supabase) -> None:
                     to_date=to_date or None,
                     loai_nhap=loai_nhap,
                     search=search_term,
+                    created_by_emails=scoped_emails,
                 )
                 filtered = _filter_rows_by_team(all_rows, team)
                 total = len(filtered)
@@ -1337,6 +1365,7 @@ def register_revenue_routes(app, get_supabase) -> None:
                     to_date=to_date or None,
                     loai_nhap=loai_nhap,
                     search=search_term,
+                    created_by_emails=scoped_emails,
                 )
                 db_rows = _fetch_so_doanh_thu_page(
                     sb,
@@ -1345,6 +1374,7 @@ def register_revenue_routes(app, get_supabase) -> None:
                     to_date=to_date or None,
                     loai_nhap=loai_nhap,
                     search=search_term,
+                    created_by_emails=scoped_emails,
                     limit=limit,
                     offset=offset,
                 )
@@ -1374,11 +1404,19 @@ def register_revenue_routes(app, get_supabase) -> None:
         require_module_access(sb, actor, "revenueLedger")
         try:
             team = (team_filter or "").strip() or None
+            role = (actor.role or "sale").lower().strip()
+            scoped_emails: list[str] | None = None
+            if role in ("sale", "leader"):
+                scoped_emails = visible_creator_emails(sb, actor) or [actor.email.lower()]
+                team, _sub_team = enforce_report_scope(actor, team)
+            elif role == "manager":
+                team, _sub_team = enforce_report_scope(actor, team)
             summary_rows = _fetch_ledger_summary_rows(
                 sb,
                 from_date=from_date or None,
                 to_date=to_date or None,
                 loai_nhap=loai_nhap,
+                created_by_emails=scoped_emails,
             )
             return _build_ledger_summary(summary_rows, team_filter=team)
         except HTTPException:
