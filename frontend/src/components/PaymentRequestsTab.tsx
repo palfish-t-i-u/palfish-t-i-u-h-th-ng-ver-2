@@ -223,6 +223,15 @@ export default function PaymentRequestsTab() {
 
   const handleUpdatePr = async (next: PaymentRequest) => {
     const previous = requests.find((r) => r.id === next.id) ?? null;
+    // Bug 1A-08: cảnh báo nếu sửa target nhỏ hơn số đã thu — PR sẽ chuyển "Thừa"
+    if (previous && next.target !== previous.target && next.target < previous.received) {
+      const ok = window.confirm(
+        `Tổng tiền dự kiến mới (${next.target.toLocaleString("vi-VN")}đ) ` +
+        `nhỏ hơn số đã nhận (${previous.received.toLocaleString("vi-VN")}đ). ` +
+        `PR sẽ chuyển sang trạng thái "Thừa". Vẫn lưu?`
+      );
+      if (!ok) return false;
+    }
     updateRequest(next.id, () => next);
 
     const payload: PatchPaymentRequestPayload = {
@@ -303,6 +312,8 @@ export default function PaymentRequestsTab() {
     const prId = selected.id;
     const cancelledAt = nowStamp();
     const reason = "Sales huỷ lần thanh toán";
+    // Snapshot trước optimistic để rollback nếu BE từ chối
+    const previous = requests.find((r) => r.id === prId) ?? null;
 
     updateRequest(prId, (r) => ({
       ...r,
@@ -340,8 +351,13 @@ export default function PaymentRequestsTab() {
         const prFromBe = fromApiPaymentRequest(res.data.payment_request);
         return normalizeRequest({ ...r, ...prFromBe, payments: updatedPayments });
       });
-    } catch {
-      /* optimistic */
+    } catch (err) {
+      // BE từ chối → rollback FE để UI khớp DB
+      if (previous) updateRequest(prId, () => previous);
+      const msg =
+        (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ||
+        "Không huỷ được lần thanh toán. Vui lòng thử lại.";
+      alert(msg);
     }
   };
 
@@ -379,28 +395,35 @@ export default function PaymentRequestsTab() {
 
   const handleMarkPaid = async (qr: PaymentAttempt) => {
     if (!selected) return;
-    updateRequest(selected.id, (r) => ({
+    const prId = selected.id;
+    // Snapshot trước optimistic — nếu BE từ chối thì rollback để KPI không sai
+    const previous = requests.find((r) => r.id === prId) ?? null;
+    updateRequest(prId, (r) => ({
       ...r,
       payments: r.payments.map((p: PaymentAttempt) =>
         p.id === qr.id ? { ...p, status: "paid", paidAt: nowStamp() } : p
       ),
     }));
-    if (isBackendLineId(qr.id)) {
-      try {
-        const res = await endpoints.transactions.patchStatus(qr.id, "paid");
-        const line = res.data.payment_line;
-        updateRequest(selected.id, (r) => {
-          const updatedPayments = r.payments.map((p: PaymentAttempt) =>
-            p.id === qr.id
-              ? { ...p, status: "paid" as const, paidAt: line.paid_at || nowStamp(), bill: !!(line.bill_image ?? p.billImage), billImage: line.bill_image ?? p.billImage ?? null }
-              : p
-          );
-          const prFromBe = fromApiPaymentRequest(res.data.payment_request);
-          return normalizeRequest({ ...r, ...prFromBe, payments: updatedPayments });
-        });
-      } catch {
-        /* optimistic */
-      }
+    if (!isBackendLineId(qr.id)) return;
+    try {
+      const res = await endpoints.transactions.patchStatus(qr.id, "paid");
+      const line = res.data.payment_line;
+      updateRequest(prId, (r) => {
+        const updatedPayments = r.payments.map((p: PaymentAttempt) =>
+          p.id === qr.id
+            ? { ...p, status: "paid" as const, paidAt: line.paid_at || nowStamp(), bill: !!(line.bill_image ?? p.billImage), billImage: line.bill_image ?? p.billImage ?? null }
+            : p
+        );
+        const prFromBe = fromApiPaymentRequest(res.data.payment_request);
+        return normalizeRequest({ ...r, ...prFromBe, payments: updatedPayments });
+      });
+    } catch (err) {
+      // BE từ chối → rollback FE; KPI doanh thu không bị "ảo"
+      if (previous) updateRequest(prId, () => previous);
+      const msg =
+        (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ||
+        "Không xác nhận được thanh toán. Vui lòng thử lại.";
+      alert(msg);
     }
   };
 
@@ -617,6 +640,10 @@ export default function PaymentRequestsTab() {
   const handleConfirmCancel = async ({ reason }: { reason: string }) => {
     if (!cancelTarget) return;
     const id = cancelTarget.id;
+    // Snapshot PR trước optimistic — nếu BE từ chối (vì PR đã có lần TT paid hay
+    // đã nhận tiền), rollback để PR không bị "cancelled giả".
+    const previous = requests.find((r) => r.id === id) ?? null;
+    const wasDrawerOpen = selected?.id === id && drawerOpen;
     updateRequest(id, (r) => ({
       ...r,
       cancelledAt: nowStamp(),
@@ -627,18 +654,39 @@ export default function PaymentRequestsTab() {
     if (selected?.id === id) setDrawerOpen(false);
     try {
       await endpoints.paymentRequests.cancel(id);
-    } catch {
-      /* optimistic */
+    } catch (err) {
+      if (previous) updateRequest(id, () => previous);
+      if (wasDrawerOpen) setDrawerOpen(true);
+      const msg =
+        (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ||
+        "Không huỷ được PR. Vui lòng thử lại.";
+      alert(msg);
     }
   };
 
-  const handleRestore = (request: PaymentRequest) => {
+  const handleRestore = async (request: PaymentRequest) => {
+    // Snapshot trước optimistic — nếu BE từ chối thì rollback
+    const previous = requests.find((r) => r.id === request.id) ?? null;
     updateRequest(request.id, (r) => ({
       ...r,
       cancelledAt: null,
       cancelledReason: null,
       state: "pending",
     }));
+    try {
+      const res = await endpoints.paymentRequests.restore(request.id);
+      const savedRaw = res.data?.payment_request;
+      if (savedRaw) {
+        const saved = normalizeRequest(fromApiPaymentRequest(savedRaw));
+        updateRequest(request.id, () => saved);
+      }
+    } catch (err) {
+      if (previous) updateRequest(request.id, () => previous);
+      const msg =
+        (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ||
+        "Không khôi phục được PR. Vui lòng thử lại.";
+      alert(msg);
+    }
   };
 
   const onCreateActiveRequest = async () => {

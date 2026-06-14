@@ -45,6 +45,16 @@ ACCOUNTS = [
             "is_activated": True,
         },
     },
+    {
+        "email": "test.ops@dev",
+        "password": "123456",
+        "user_metadata": {
+            "full_name": "Test Ops",
+            "role": "ops",
+            "department": "ops",
+            "is_activated": True,
+        },
+    },
 ]
 
 
@@ -82,6 +92,7 @@ def main():
     print("  test.user@dev   / 123456  (role: sale)")
     print("  test.leader@dev / 123456  (role: leader)")
     print("  test.admin@dev  / 123456  (role: system/admin)")
+    print("  test.ops@dev    / 123456  (role: ops — for bug 4-04 test)")
     print("\nDọn dữ liệu test: tìm PR/giao dịch có sale_email chứa '@dev'")
 
 

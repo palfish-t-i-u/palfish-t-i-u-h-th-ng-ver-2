@@ -24,7 +24,6 @@ import type {
 } from "../types/paymentRequest";
 import {
   buildCreateActiveRequestPayload,
-  createLocalActiveRequest,
   createLocalActiveRequestFromForm,
   fromApiActiveRequest,
   fromApiPaymentRequest,
@@ -62,6 +61,9 @@ type PaymentFlowContextValue = {
   loading: boolean;
   apiNote: string;
   setApiNote: (note: string) => void;
+  orderIdConflictMessage: string;
+  setOrderIdConflictMessage: (msg: string) => void;
+  dismissOrderIdConflict: () => void;
   loadData: (options?: LoadDataOptions) => Promise<void>;
   updateRequest: (id: string, updater: (r: PaymentRequest) => PaymentRequest) => void;
   updateActiveRequest: (id: string, updater: (ar: ActiveRequest) => ActiveRequest) => void;
@@ -122,6 +124,7 @@ export function PaymentFlowProvider({
   const [activeRequests, setActiveRequests] = useState<ActiveRequest[]>([]);
   const [loading, setLoading] = useState(false);
   const [apiNote, setApiNote] = useState("");
+  const [orderIdConflictMessage, setOrderIdConflictMessage] = useState("");
   const [nav, setNav] = useState<NavState>({});
   const onViewChangeRef = useRef(onViewChange);
   const courseOrderPatchSeqRef = useRef<Record<string, number>>({});
@@ -276,6 +279,7 @@ export function PaymentFlowProvider({
 
   const confirmTransaction = useCallback(
     async (prId: string, paymentId: string, extra?: { verified_total?: number; verified_received?: number }) => {
+      // Backend-persisted line: gọi BE thật; nếu BE từ chối, KHÔNG set paid ở FE.
       if (isBackendLineId(paymentId)) {
         try {
           const res = await endpoints.transactions.patchStatus(paymentId, "paid", undefined, extra);
@@ -297,11 +301,17 @@ export function PaymentFlowProvider({
             const prFromBe = fromApiPaymentRequest(res.data.payment_request);
             return normalizeRequest({ ...r, ...prFromBe, payments: updatedPayments });
           });
+          setApiNote("");
           return;
-        } catch {
-          /* fall through optimistic */
+        } catch (err) {
+          const msg =
+            (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ||
+            "Máy chủ từ chối xác nhận thanh toán. Vui lòng thử lại.";
+          setApiNote(String(msg));
+          throw err;
         }
       }
+      // Local-only line (chưa có ở BE) — optimistic OK
       updateRequest(prId, (r) => ({
         ...r,
         payments: r.payments.map((p) =>
@@ -314,7 +324,8 @@ export function PaymentFlowProvider({
 
   const rejectTransaction = useCallback(
     async (prId: string, paymentId: string, rejectReason?: string) => {
-      // Optimistic update immediately — no full reload
+      // Snapshot trước khi optimistic để rollback nếu BE từ chối
+      const previousPayments = (requests.find((r) => r.id === prId)?.payments ?? null);
       updateRequest(prId, (r) => ({
         ...r,
         payments: r.payments.map((p) =>
@@ -326,12 +337,21 @@ export function PaymentFlowProvider({
       if (isBackendLineId(paymentId)) {
         try {
           await endpoints.transactions.patchStatus(paymentId, "rejected", rejectReason);
-        } catch {
-          /* silently ignore — optimistic update already applied */
+          setApiNote("");
+        } catch (err) {
+          // BE từ chối: rollback FE để UI khớp DB
+          if (previousPayments) {
+            updateRequest(prId, (r) => ({ ...r, payments: previousPayments }));
+          }
+          const msg =
+            (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ||
+            "Máy chủ từ chối huỷ giao dịch. Vui lòng thử lại.";
+          setApiNote(String(msg));
+          throw err;
         }
       }
     },
-    [updateRequest]
+    [requests, updateRequest]
   );
 
   const handleCreateActiveRequest = useCallback(
@@ -344,14 +364,18 @@ export function PaymentFlowProvider({
         const ar = fromApiActiveRequest(res.data);
         if (!ar.customerName) ar.customerName = pr.name;
         setActiveRequests((prev) => [ar, ...prev.filter((x) => x.id !== ar.id)]);
+        setApiNote("");
         return ar;
-      } catch {
-        const ar = createLocalActiveRequest(pr, activeRequests);
-        setActiveRequests((prev) => [ar, ...prev]);
-        return ar;
+      } catch (err) {
+        // Không tạo AR giả lập local — ops không thấy được, sale chờ vô vọng.
+        const msg =
+          (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ||
+          "Không tạo được Active Request trên máy chủ. Vui lòng thử lại.";
+        setApiNote(String(msg));
+        throw err;
       }
     },
-    [activeRequests]
+    []
   );
 
   const handleCreateActiveRequestFromForm = useCallback(
@@ -493,6 +517,12 @@ export function PaymentFlowProvider({
         })),
       };
 
+      // Helper: parse axios error detail
+      const extractDetail = (err: unknown): string => {
+        const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+        return typeof detail === "string" ? detail : "";
+      };
+
       try {
         const res = await endpoints.activeRequests.patchCourseOrderId(arId, courseCode, trimmed);
         if (courseOrderPatchSeqRef.current[seqKey] !== seq) {
@@ -506,7 +536,14 @@ export function PaymentFlowProvider({
         setApiNote("");
         if (trimmed) notifyLedgerChanged();
         return { ok: true };
-      } catch {
+      } catch (err1) {
+        const detail1 = extractDetail(err1);
+        // BE trả 409 "order_id 'X' da ton tai o AR/course khac" → conflict, không retry full update.
+        if (detail1.includes("order_id") && detail1.includes("ton tai")) {
+          setOrderIdConflictMessage(detail1);
+          setApiNote(`Order ID '${trimmed}' đã được dùng ở Active Request khác — không lưu được.`);
+          return { ok: false, error: detail1 };
+        }
         try {
           const res = await endpoints.activeRequests.update(arId, {
             uids_data: toActiveRequestPatchUidsData(optimistic),
@@ -522,8 +559,14 @@ export function PaymentFlowProvider({
           setApiNote("");
           if (trimmed) notifyLedgerChanged();
           return { ok: true };
-        } catch {
-          const error = "Khong luu duoc Order ID len may chu.";
+        } catch (err2) {
+          const detail2 = extractDetail(err2);
+          if (detail2.includes("order_id") && detail2.includes("ton tai")) {
+            setOrderIdConflictMessage(detail2);
+            setApiNote(`Order ID '${trimmed}' đã được dùng ở Active Request khác — không lưu được.`);
+            return { ok: false, error: detail2 };
+          }
+          const error = detail2 || detail1 || "Khong luu duoc Order ID len may chu.";
           setApiNote(error);
           return { ok: false, error };
         }
@@ -596,6 +639,9 @@ export function PaymentFlowProvider({
       loading,
       apiNote,
       setApiNote,
+      orderIdConflictMessage,
+      setOrderIdConflictMessage,
+      dismissOrderIdConflict: () => setOrderIdConflictMessage(""),
       loadData,
       updateRequest,
       updateActiveRequest,
@@ -623,6 +669,7 @@ export function PaymentFlowProvider({
       activeRequests,
       loading,
       apiNote,
+      orderIdConflictMessage,
       loadData,
       updateRequest,
       updateActiveRequest,

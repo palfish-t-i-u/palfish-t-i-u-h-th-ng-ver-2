@@ -30,6 +30,7 @@ interface Props {
   isDevMode?: boolean;
   onSignOut?: () => void;
   wideContent?: boolean;
+  headerExtras?: ReactNode;
   children: ReactNode;
 }
 
@@ -131,6 +132,7 @@ export default function AppShell({
   isDevMode,
   onSignOut,
   wideContent,
+  headerExtras,
   children,
 }: Props) {
   const reportParentId = items.find((it) => it.children?.some((c) => c.id === activeId))?.id;
@@ -279,6 +281,7 @@ export default function AppShell({
                 Dev Mode
               </Badge>
             )}
+            {headerExtras}
             {userRole && <Badge tone="neutral">{userRole}</Badge>}
             <span className="hidden text-xs text-gmv-muted sm:inline">{userEmail || "dev@local"}</span>
             {onSignOut && (
