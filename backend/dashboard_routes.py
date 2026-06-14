@@ -9,7 +9,7 @@ from zoneinfo import ZoneInfo
 from fastapi import HTTPException, Query, Header
 from pydantic import BaseModel, Field
 
-from rbac import enforce_report_scope, resolve_actor, scope_sale_names
+from rbac import enforce_report_scope, resolve_actor, scope_sale_names, visible_creator_emails
 
 from crm_metrics import (
     INVALID_TEAM_LABELS,
@@ -821,7 +821,62 @@ def register_dashboard_routes(app, supabase_factory):
         if not sb:
             return {"teams": [], "sales": [], "departments": []}
         
-        resolve_actor(sb, authorization)
+        actor = resolve_actor(sb, authorization)
+        role = (actor.role or "sale").lower().strip()
+        staff = actor.staff or {}
+        if role == "sale":
+            team = str(staff.get("team") or "").strip()
+            dept = str(staff.get("department") or "").strip()
+            crm_name = str(staff.get("crm_name") or "").strip()
+            return {
+                "teams": sorted({v for v in (team,) if v}),
+                "sales": sorted({crm_name or actor.email.lower()}),
+                "departments": sorted({v for v in (dept, team) if v}),
+            }
+        if role in ("leader", "manager"):
+            emails = visible_creator_emails(sb, actor) or [actor.email.lower()]
+            try:
+                staff_res = (
+                    sb.table("nhan_su_sale")
+                    .select("email, crm_name, team, sub_team, department")
+                    .in_("email", emails)
+                    .eq("is_active", True)
+                    .execute()
+                )
+                teams: set[str] = set()
+                sales: set[str] = set()
+                depts: set[str] = set()
+                for row in staff_res.data or []:
+                    team = str(row.get("team") or "").strip()
+                    sub_team = str(row.get("sub_team") or "").strip()
+                    dept = str(row.get("department") or "").strip()
+                    crm_name = str(row.get("crm_name") or "").strip()
+                    email = str(row.get("email") or "").strip().lower()
+                    if team:
+                        teams.add(team)
+                        depts.add(team)
+                    if sub_team:
+                        teams.add(sub_team)
+                    if dept:
+                        depts.add(dept)
+                    if crm_name:
+                        sales.add(crm_name)
+                    elif email:
+                        sales.add(email)
+                if not sales:
+                    sales.add(actor.email.lower())
+                return {
+                    "teams": sorted(teams),
+                    "sales": sorted(sales),
+                    "departments": sorted(depts),
+                }
+            except Exception as exc:
+                print(f"[Dashboard filters scoped] {exc}")
+                return {
+                    "teams": [],
+                    "sales": [actor.email.lower()],
+                    "departments": [],
+                }
         try:
             res = sb.table("crm_sales_data").select(
                 "team, sale_name, department, raw_data, record_type"

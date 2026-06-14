@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import hashlib
+import hmac
 import io
+import json
 import mimetypes
+import os
 import re
 import time
 import unicodedata
@@ -14,7 +17,7 @@ from datetime import datetime, timezone
 from typing import Any, Callable
 
 import pandas as pd
-from fastapi import APIRouter, File, Header, HTTPException, Query, UploadFile
+from fastapi import APIRouter, File, Header, HTTPException, Query, Request, UploadFile
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
@@ -42,6 +45,62 @@ METHOD_ALIASES = {
 
 _BILL_STORAGE_CACHE_TTL_SECONDS = 30.0
 _bill_assets_cache: dict[str, Any] = {"expires_at": 0.0, "assets_by_line": {}}
+
+
+def _payos_signature_value(value: Any) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, (int, float)):
+        return str(value)
+    if isinstance(value, (dict, list)):
+        return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
+    return str(value)
+
+
+def _payos_signature_payload(data: dict[str, Any]) -> str:
+    return "&".join(
+        f"{key}={_payos_signature_value(data.get(key))}"
+        for key in sorted(data)
+    )
+
+
+def _normalize_payos_signature(signature: str | None) -> str:
+    sig = str(signature or "").strip()
+    if not sig:
+        return ""
+    if "=" in sig:
+        parts = [part.strip() for part in sig.replace(",", " ").split() if part.strip()]
+        for part in parts:
+            if part.startswith("v1="):
+                return part.split("=", 1)[1].strip()
+    return sig
+
+
+def _verify_payos_webhook_signature(payload: dict[str, Any], request: Request) -> None:
+    checksum_key = os.getenv("PAYOS_CHECKSUM_KEY", "").strip()
+    if not checksum_key:
+        raise HTTPException(503, "PayOS checksum key not configured")
+
+    data = payload.get("data")
+    if not isinstance(data, dict):
+        raise HTTPException(400, "Invalid signature")
+
+    received = _normalize_payos_signature(
+        payload.get("signature") or request.headers.get("x-payos-signature")
+    )
+    if not received:
+        raise HTTPException(400, "Invalid signature")
+
+    signed_data = _payos_signature_payload(data)
+    expected = hmac.new(
+        checksum_key.encode("utf-8"),
+        signed_data.encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()
+    if not hmac.compare_digest(expected.lower(), received.lower()):
+        raise HTTPException(400, "Invalid signature")
 
 
 class PaymentRequestCreate(BaseModel):
@@ -992,6 +1051,23 @@ def _extract_payos_data(payload: dict[str, Any]) -> tuple[str, int, str]:
 
 
 def _mark_line_paid(sb, line_id: str) -> dict[str, Any]:
+    existing_res = (
+        sb.table("payment_lines")
+        .select("*")
+        .eq("id", line_id)
+        .limit(1)
+        .execute()
+    )
+    if not existing_res.data:
+        raise HTTPException(404, "Khong tim thay payment_line")
+    existing = existing_res.data[0]
+    if _clean_text(existing.get("status")).lower() == "paid":
+        totals = recompute_payment_request_totals(sb, str(existing["payment_request_id"]))
+        return {
+            "payment_line": _serialize_payment_line(existing),
+            **totals,
+        }
+
     now_iso = _iso_now()
     line_res = (
         sb.table("payment_lines")
@@ -1119,6 +1195,13 @@ async def sync_all_pending_payos_lines(sb) -> dict[str, Any]:
     return {"synced": synced, "synced_count": len(synced), "errors": errors}
 
 
+def _transfer_code_in_description(code: str, description: str) -> bool:
+    cleaned = _clean_text(code).upper()
+    if not cleaned:
+        return False
+    return bool(re.search(rf"\b{re.escape(cleaned)}\b", description.upper()))
+
+
 def reconcile_payment_line_webhook(sb, payload: dict[str, Any]) -> dict[str, Any]:
     """Match PayOS webhook to payment_lines; fallback to don_hang when unmatched."""
     order_code, amount, description = _extract_payos_data(payload)
@@ -1135,7 +1218,6 @@ def reconcile_payment_line_webhook(sb, payload: dict[str, Any]) -> dict[str, Any
         line = _find_payment_line_by_payment_link_id(sb, payment_link_id)
     if not line and description:
         # Fallback: khớp transfer_code trong nội dung CK (PayOS description)
-        desc = description.upper()
         try:
             candidates = (
                 sb.table("payment_lines")
@@ -1145,8 +1227,8 @@ def reconcile_payment_line_webhook(sb, payload: dict[str, Any]) -> dict[str, Any
                 .execute()
             )
             for candidate in candidates.data or []:
-                code = _clean_text(candidate.get("transfer_code")).upper()
-                if code and code in desc:
+                code = _clean_text(candidate.get("transfer_code"))
+                if code and _transfer_code_in_description(code, description):
                     line = candidate
                     break
         except Exception as exc:
@@ -1489,6 +1571,63 @@ def register_payment_request_routes(app, get_supabase) -> None:
             )
         }
 
+    @router.post("/payment-requests/{payment_request_id}/restore")
+    def restore_payment_request(
+        payment_request_id: str,
+        authorization: str | None = Header(None),
+    ):
+        sb = _sb_or_503(get_supabase)
+        actor = resolve_actor(sb, authorization)
+        require_module_write(sb, actor, "paymentRequests")
+        request_res = (
+            sb.table("payment_requests")
+            .select("*")
+            .eq("id", payment_request_id)
+            .limit(1)
+            .execute()
+        )
+        if not request_res.data:
+            raise HTTPException(404, "Khong tim thay payment_request")
+
+        pr_row = request_res.data[0]
+        if not _can_access_request(sb, actor, pr_row):
+            raise HTTPException(403, "Khong co quyen thao tac phieu nay")
+        current_state = _clean_text(pr_row.get("state")).lower()
+        if current_state != "cancelled":
+            raise HTTPException(400, "Chi restore duoc payment request da bi huy")
+
+        line_res = (
+            sb.table("payment_lines")
+            .select("*")
+            .eq("payment_request_id", payment_request_id)
+            .execute()
+        )
+        lines = line_res.data or []
+        target = _parse_amount(pr_row.get("target"))
+        received = _sum_paid_amount(lines)
+        state = _compute_state(received, target)
+
+        patch: dict[str, Any] = {
+            "state": state,
+            "received": received,
+            "cancelled_at": None,
+            "cancelled_reason": None,
+        }
+        try:
+            updated_res = (
+                sb.table("payment_requests")
+                .update(patch)
+                .eq("id", payment_request_id)
+                .execute()
+            )
+        except Exception as exc:
+            raise HTTPException(500, f"Khong restore duoc payment_request: {exc}") from exc
+
+        updated = updated_res.data[0] if updated_res.data else {**pr_row, **patch}
+        return {
+            "payment_request": _serialize_payment_request_list_item(updated, lines)
+        }
+
     @router.post("/payment-requests/sync-pending-payos")
     async def sync_pending_payos_payments(authorization: str | None = Header(None)):
         """Poll PayOS cho mọi QR pending — dùng khi webhook chưa tới (local/prod)."""
@@ -1555,6 +1694,21 @@ def register_payment_request_routes(app, get_supabase) -> None:
             raise HTTPException(403, "Khong co quyen thao tac phieu nay")
         if _clean_text(pr_row.get("state")).lower() == "cancelled":
             raise HTTPException(400, "Payment request da bi huy")
+        target = _parse_amount(pr_row.get("target"))
+        received = _parse_amount(pr_row.get("received"))
+        if target > 0 and received >= target:
+            raise HTTPException(
+                400,
+                {
+                    "code": "PR_ALREADY_FULL",
+                    "message": (
+                        "PR da nhan du tien, can tang so tien du kien "
+                        "de tao them lan thanh toan"
+                    ),
+                    "received": received,
+                    "target": target,
+                },
+            )
 
         amount = _parse_amount(body.amount or body.so_tien)
         if amount <= 0:
@@ -1635,7 +1789,16 @@ def register_payment_request_routes(app, get_supabase) -> None:
         return response
 
     @router.post("/payos-webhook")
-    async def payos_webhook_v1(payload: dict):
+    async def payos_webhook_v1(request: Request):
+        raw_body = await request.body()
+        try:
+            payload = json.loads(raw_body)
+        except json.JSONDecodeError as exc:
+            raise HTTPException(400, "Invalid JSON payload") from exc
+        if not isinstance(payload, dict):
+            raise HTTPException(400, "Invalid JSON payload")
+        _verify_payos_webhook_signature(payload, request)
+
         sb = _sb_or_503(get_supabase)
         result = reconcile_payment_line_webhook(sb, payload)
         if not result.get("matched"):
@@ -2130,6 +2293,14 @@ def register_payment_request_routes(app, get_supabase) -> None:
         current_row = request_res.data[0]
         if not _can_access_request(sb, actor, current_row):
             raise HTTPException(403, "Khong co quyen thao tac phieu nay")
+
+        target = _parse_amount(current_row.get("target"))
+        received = _parse_amount(current_row.get("received"))
+        if target > 0 and received < target:
+            raise HTTPException(
+                400,
+                f"PR chua thu du tien ({received}/{target}), khong nhac xuat HD duoc",
+            )
 
         # Throttle: block if reminded in 24h AND no invoice issued since that remind
         remind_res = (

@@ -327,7 +327,8 @@ function AddPaymentForm({
   const [installmentPlatform, setInstallmentPlatform] = useState("");
   const [installmentTotal, setInstallmentTotal] = useState("");
   const [saleReceivedDraft, setSaleReceivedDraft] = useState("");
-  const [cashier, setCashier] = useState("");
+  // Default "người thu" = tên sale đang login (1B-05) — vẫn cho phép sửa nếu khác
+  const [cashier, setCashier] = useState(profile?.displayName || profile?.crmName || "");
   const [nameForTransfer, setNameForTransfer] = useState(pr.childName || pr.name);
   const [validationError, setValidationError] = useState("");
 
@@ -352,6 +353,25 @@ function AddPaymentForm({
     }
     if (method === "installment" && !saleReceivedDraft) {
       setValidationError("Vui lòng nhập số tiền thực nhận về công ty");
+      return;
+    }
+    // Bug 1B-07: trả góp — thực nhận không thể lớn hơn tổng trả góp
+    if (method === "installment") {
+      const totalNum = parseInt(installmentTotal.replace(/\D/g, ""), 10) || 0;
+      const recvNum = parseInt(saleReceivedDraft.replace(/\D/g, ""), 10) || 0;
+      if (recvNum > totalNum) {
+        setValidationError("Số tiền thực nhận không thể lớn hơn tổng trả góp");
+        return;
+      }
+    }
+    // Bug 1B-05: cash — bắt buộc nhập người thu
+    if (method === "cash" && !cashier.trim()) {
+      setValidationError("Vui lòng nhập tên người thu tiền mặt");
+      return;
+    }
+    // Bug 1B-06: card — bắt buộc 4 số cuối thẻ (đủ 4 chữ số)
+    if (method === "card" && cardLast4.length !== 4) {
+      setValidationError("Vui lòng nhập đủ 4 số cuối thẻ");
       return;
     }
     setValidationError("");
@@ -1222,6 +1242,7 @@ function useInvoiceRemind(prId: string | null) {
   const [canRemind, setCanRemind] = useState(true);
   const [lastReminder, setLastReminder] = useState<{ requested_at: string; requested_by_name: string } | null>(null);
   const [sending, setSending] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!prId) return;
@@ -1241,12 +1262,21 @@ function useInvoiceRemind(prId: string | null) {
       await endpoints.invoiceRemind.create(prId, note);
       setCanRemind(false);
       setLastReminder({ requested_at: new Date().toISOString(), requested_by_name: "Bạn" });
+    } catch (err) {
+      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      setErrorMessage(
+        typeof detail === "string" && detail
+          ? detail
+          : "Không gửi được nhắc xuất HĐ. Vui lòng thử lại."
+      );
     } finally {
       setSending(false);
     }
   }, [prId, sending]);
 
-  return { canRemind, lastReminder, sending, remind };
+  const dismissError = useCallback(() => setErrorMessage(null), []);
+
+  return { canRemind, lastReminder, sending, remind, errorMessage, dismissError };
 }
 
 function useDeliveryLog(arId: string | null) {
@@ -1317,6 +1347,10 @@ export default function PaymentRequestDetailDrawer({
   const [draft, setDraft] = useState<DraftPr | null>(null);
   const drawerBodyRef = useRef<HTMLDivElement | null>(null);
   const addFormRef = useRef<HTMLDivElement | null>(null);
+  // PR3 (1B-04): chặn tạo lần TT khi PR đã đủ + popup hướng dẫn sửa target
+  const [prFullModalOpen, setPrFullModalOpen] = useState(false);
+  const [highlightTarget, setHighlightTarget] = useState(false);
+  const targetInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     setShowAdd(false);
@@ -1324,6 +1358,8 @@ export default function PaymentRequestDetailDrawer({
     setSavingEdit(false);
     setIsTargetFocused(false);
     setDraft(null);
+    setPrFullModalOpen(false);
+    setHighlightTarget(false);
   }, [request?.id]);
 
   useEffect(() => {
@@ -1338,8 +1374,51 @@ export default function PaymentRequestDetailDrawer({
     return () => clearTimeout(id);
   }, [showAdd]);
 
-  const { canRemind, lastReminder, sending: remindSending, remind } = useInvoiceRemind(open && request ? request.id : null);
+  const { canRemind, lastReminder, sending: remindSending, remind, errorMessage: remindError, dismissError: dismissRemindError } = useInvoiceRemind(open && request ? request.id : null);
   const { latestLog: deliveryLog } = useDeliveryLog(open && activeRequestId ? activeRequestId : null);
+
+  // PR3 (1B-04): nếu PR đã đủ tiền → hiện popup hướng dẫn thay vì mở form tạo lần TT
+  const isPrFull = request?.state === "done" || request?.state === "over";
+  const handleAddPaymentClick = () => {
+    if (isPrFull) {
+      setPrFullModalOpen(true);
+    } else {
+      setShowAdd(true);
+    }
+  };
+  const handleOpenEditForTarget = () => {
+    if (!request) return;
+    setDraft({
+      uid: request.uid,
+      name: request.name,
+      childName: request.childName || "",
+      country: request.country || "VN",
+      phone: request.phone,
+      email: request.email || "",
+      province: request.province || "",
+      ward: request.ward || "",
+      address: request.address || "",
+      target: String(request.target),
+      note: request.note || "",
+      taxId: request.taxId || "",
+      customerType: request.customerType || "individual",
+      companyName: request.companyName || "",
+      leadSource: request.leadSource || "",
+      leadChannel: request.leadChannel || "",
+    });
+    setEditing(true);
+    setPrFullModalOpen(false);
+    // Sau khi render edit form xong → scroll vào ô "Tổng tiền dự kiến" + highlight 2s
+    window.setTimeout(() => {
+      const el = targetInputRef.current;
+      if (el) {
+        el.scrollIntoView({ behavior: "smooth", block: "center" });
+        el.focus();
+      }
+      setHighlightTarget(true);
+      window.setTimeout(() => setHighlightTarget(false), 2000);
+    }, 100);
+  };
 
   if (!request) {
     return (
@@ -1431,7 +1510,7 @@ export default function PaymentRequestDetailDrawer({
               </div>
               <div className="summary-value">
                 {request.state === "done"
-                  ? "0 ─æ"
+                  ? vnd(0)
                   : request.state === "over"
                   ? "+" + vnd(Math.abs(request.delta))
                   : vnd(remaining)}
@@ -1819,6 +1898,7 @@ export default function PaymentRequestDetailDrawer({
                 <div className="info-cell">
                   <div className="info-label">Tổng tiền dự kiến</div>
                   <input
+                    ref={targetInputRef}
                     value={
                       isTargetFocused
                         ? draft.target
@@ -1835,13 +1915,15 @@ export default function PaymentRequestDetailDrawer({
                       setDraft({ ...draft, target: v });
                     }}
                     style={{
-                      border: "1px solid var(--border)",
+                      border: highlightTarget ? "2px solid var(--warning, #f59e0b)" : "1px solid var(--border)",
                       borderRadius: 8,
                       padding: "8px 10px",
                       font: "inherit",
                       fontSize: 13,
                       color: "var(--money)",
                       fontWeight: 600,
+                      boxShadow: highlightTarget ? "0 0 0 4px rgba(245, 158, 11, 0.18)" : undefined,
+                      transition: "border-color 200ms ease, box-shadow 200ms ease",
                     }}
                   />
                 </div>
@@ -1874,7 +1956,11 @@ export default function PaymentRequestDetailDrawer({
                 <span className="num-pill">{request.payments.length}</span>
               </h4>
               {!showAdd && !readOnly && request.state !== "cancelled" && (
-                <button className="btn btn-secondary btn-sm" onClick={() => setShowAdd(true)}>
+                <button
+                  className={`btn btn-sm ${isPrFull ? "btn-outline" : "btn-secondary"}`}
+                  onClick={handleAddPaymentClick}
+                  title={isPrFull ? "PR đã nhận đủ tiền — cần tăng Tổng tiền dự kiến trước khi tạo thêm lần TT" : undefined}
+                >
                   <Icons.Plus size={13} /> Tạo lần thanh toán
                 </button>
               )}
@@ -1886,7 +1972,11 @@ export default function PaymentRequestDetailDrawer({
                   <Icons.Wallet size={22} />
                   <div>Chưa có lần thanh toán nào.</div>
                   {request.state !== "cancelled" && (
-                    <button className="btn btn-primary btn-sm" onClick={() => setShowAdd(true)}>
+                    <button
+                      className={`btn btn-sm ${isPrFull ? "btn-outline" : "btn-primary"}`}
+                      onClick={handleAddPaymentClick}
+                      title={isPrFull ? "PR đã nhận đủ tiền — cần tăng Tổng tiền dự kiến trước" : undefined}
+                    >
                       <Icons.Plus size={13} /> Tạo lần thanh toán đầu tiên
                     </button>
                   )}
@@ -2016,7 +2106,12 @@ export default function PaymentRequestDetailDrawer({
           </div>
           <div className="quick-create">
             {!readOnly && request.state !== "cancelled" && (
-              <button className="btn btn-primary" onClick={() => setShowAdd(true)} disabled={showAdd}>
+              <button
+                className={`btn ${isPrFull ? "btn-outline" : "btn-primary"}`}
+                onClick={handleAddPaymentClick}
+                disabled={showAdd}
+                title={isPrFull ? "PR đã nhận đủ tiền — cần tăng Tổng tiền dự kiến trước" : undefined}
+              >
                 <Icons.Plus size={14} /> Tạo lần thanh toán
               </button>
             )}
@@ -2031,6 +2126,93 @@ export default function PaymentRequestDetailDrawer({
           </div>
         </div>
       </aside>
+      {/* 2-03 — popup khi BE chặn nhắc xuất HĐ (PR chưa đủ tiền) */}
+      {remindError && (() => {
+        const m = /PR chua thu du tien \((\d+)\/(\d+)\)/.exec(remindError);
+        const isUnderpaid = !!m;
+        const received = m ? Number(m[1]) : 0;
+        const target = m ? Number(m[2]) : 0;
+        return (
+          <div
+            className="gmv-prototype-modal-scrim"
+            onClick={dismissRemindError}
+            style={{ zIndex: 140 }}
+          >
+            <div className="modal" style={{ width: "min(480px, 100%)" }} onClick={(e) => e.stopPropagation()}>
+              <div className="modal-head">
+                <div>
+                  <h3>{isUnderpaid ? "PR chưa đủ tiền — không nhắc xuất HĐ được" : "Không gửi được nhắc xuất HĐ"}</h3>
+                  {isUnderpaid && (
+                    <div style={{ fontSize: 12, color: "var(--text-3)", marginTop: 2 }}>
+                      Đã thu {vnd(received)} / Tổng dự kiến {vnd(target)} · Còn thiếu {vnd(target - received)}
+                    </div>
+                  )}
+                </div>
+                <button className="drawer-close" onClick={dismissRemindError}>
+                  <Icons.Close size={16} />
+                </button>
+              </div>
+              <div className="modal-body">
+                <div style={{ display: "flex", gap: 10, alignItems: "flex-start", padding: "4px 0" }}>
+                  <Icons.AlertCircle size={20} stroke="var(--danger, #ef4444)" />
+                  <div style={{ fontSize: 13.5, lineHeight: 1.6, color: "var(--text-2)" }}>
+                    {isUnderpaid ? (
+                      <>
+                        PR này chưa thu đủ <strong>Tổng tiền dự kiến</strong> hiện tại. Bạn cần thu đủ tiền (hoặc giảm Tổng tiền dự kiến nếu khách chốt số mới) trước khi gửi nhắc kế toán xuất hóa đơn.
+                      </>
+                    ) : (
+                      remindError
+                    )}
+                  </div>
+                </div>
+              </div>
+              <div className="modal-foot">
+                <button className="btn btn-primary" onClick={dismissRemindError}>
+                  Đã hiểu
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+      {/* PR3 (1B-04) — popup hướng dẫn khi PR đã đủ tiền */}
+      {prFullModalOpen && (
+        <div
+          className="gmv-prototype-modal-scrim"
+          onClick={() => setPrFullModalOpen(false)}
+          style={{ zIndex: 130 }}
+        >
+          <div className="modal" style={{ width: "min(480px, 100%)" }} onClick={(e) => e.stopPropagation()}>
+            <div className="modal-head">
+              <div>
+                <h3>PR đã nhận đủ tiền</h3>
+                <div style={{ fontSize: 12, color: "var(--text-3)", marginTop: 2 }}>
+                  Đã thu {vnd(request.received)} / {vnd(request.target)}
+                </div>
+              </div>
+              <button className="drawer-close" onClick={() => setPrFullModalOpen(false)}>
+                <Icons.Close size={16} />
+              </button>
+            </div>
+            <div className="modal-body">
+              <div style={{ display: "flex", gap: 10, alignItems: "flex-start", padding: "4px 0" }}>
+                <Icons.AlertCircle size={20} stroke="var(--warning, #f59e0b)" />
+                <div style={{ fontSize: 13.5, lineHeight: 1.6, color: "var(--text-2)" }}>
+                  PR này đã thu đủ tiền theo <strong>Tổng tiền dự kiến</strong> hiện tại. Để tạo thêm lần thanh toán, bạn cần <strong>tăng Tổng tiền dự kiến</strong> bằng cách bấm <strong>"Sửa thông tin PR ngay"</strong> bên dưới → nhập số tiền mới ở ô được đánh dấu vàng → bấm <strong>Lưu</strong>.
+                </div>
+              </div>
+            </div>
+            <div className="modal-foot">
+              <button className="btn btn-outline" onClick={() => setPrFullModalOpen(false)}>
+                Đóng
+              </button>
+              <button className="btn btn-primary" onClick={handleOpenEditForTarget}>
+                <Icons.Pencil size={14} /> Sửa thông tin PR ngay
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }

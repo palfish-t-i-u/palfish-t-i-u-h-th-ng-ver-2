@@ -11,6 +11,7 @@ import ProfilePage from "./ProfilePage";
 import AppShell, { type NavItem } from "../layouts/AppShell";
 import Badge from "../components/ui/Badge";
 import { DEPARTMENT_LIST } from "../types/permissions";
+import NotificationBell from "../components/NotificationBell";
 
 function retryImport<T>(load: () => Promise<T>, retries: number): Promise<T> {
   return load().catch((err) => {
@@ -334,6 +335,7 @@ function MainPageInner({
       userRole={DEPARTMENT_LIST.find((d) => d.key === profile?.department)?.label ?? profile?.role}
       isDevMode={isDevMode}
       onSignOut={signOut}
+      headerExtras={<NotificationBell onNavigate={(view) => setActiveView(view as ViewId)} />}
     >
       <Suspense fallback={<ViewFallback />}>{renderActiveView()}</Suspense>
     </AppShell>

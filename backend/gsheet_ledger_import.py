@@ -383,7 +383,8 @@ def _loose_fp(row: dict[str, Any]) -> str:
     uid = _fp_clean(row.get("uid"))
     ngay = str(row.get("ngay_tien_ve") or "")[:10]
     vnd = str(row.get("so_tien_vnd") or 0)
-    return f"{uid}|{ngay}|{vnd}"
+    sdt = _fp_clean(row.get("sdt"))
+    return f"{uid}|{ngay}|{vnd}|{sdt}"
 
 
 def map_hcm_rev_row(team_cache: TeamLookupCache, row: list[Any], *, tab: str = "HCM REV") -> dict[str, Any] | None:
@@ -587,7 +588,7 @@ def _load_existing_loose_fps(sb, *, log: Callable[[str], None] = _log) -> dict[s
         res = _execute_supabase(
             lambda off=offset: (
                 sb.table("so_doanh_thu")
-                .select("uid, ngay_tien_ve, so_tien_vnd")
+                .select("uid, ngay_tien_ve, so_tien_vnd, sdt")
                 .range(off, off + 999)
                 .execute()
             ),

@@ -9,7 +9,7 @@ from typing import Any
 import httpx
 from fastapi import HTTPException
 
-ROLE_RANK = {"sale": 1, "leader": 2, "manager": 3, "system": 4}
+ROLE_RANK = {"sale": 1, "ops": 2, "leader": 2, "manager": 3, "system": 4}
 OPS_ROLES = {"ops", "system"}
 
 
@@ -25,7 +25,7 @@ class Actor:
 
 def _normalize_role(raw: str | None) -> str:
     r = (raw or "sale").lower().strip()
-    if r in ("ops", "admin"):
+    if r == "admin":
         return "system"
     if r not in ROLE_RANK:
         return "sale"
@@ -192,16 +192,20 @@ def enforce_report_scope(
     - leader / sale: force to actor's team + sub_team
     """
     role = _normalize_role(actor.role)
-    if role == "system":
+    if role in OPS_ROLES:
         return (requested_team or "").strip() or None, None
 
     staff = actor.staff or {}
     actor_team = (staff.get("team") or "").strip()
     actor_sub = (staff.get("sub_team") or "").strip()
 
-    if role == "manager" and actor_team:
+    if role == "manager":
+        if not actor_team:
+            raise HTTPException(403, "Tai khoan manager chua duoc link voi team trong nhan_su_sale")
         return actor_team, None
-    if role in ("leader", "sale") and actor_team:
+    if role in ("leader", "sale"):
+        if not actor_team:
+            raise HTTPException(403, "Tai khoan chua duoc link voi team trong nhan_su_sale")
         return actor_team, actor_sub or None
     return (requested_team or "").strip() or None, None
 
@@ -230,7 +234,7 @@ def scope_sale_names(sb, team: str, sub_team: str) -> set[str]:
 def visible_creator_emails(sb, actor: Actor) -> list[str] | None:
     """None = all orders (system). Otherwise filter don_hang.created_by."""
     role = _normalize_role(actor.role)
-    if role == "system":
+    if role in OPS_ROLES:
         return None
     if role == "sale":
         return [actor.email.lower()]
@@ -241,6 +245,8 @@ def visible_creator_emails(sb, actor: Actor) -> list[str] | None:
             staff = actor.staff or {}
             team = staff.get("team")
             sub = staff.get("sub_team")
+            if not team:
+                return [actor.email.lower()]
             if team:
                 q = q.eq("team", team)
             if sub:
@@ -248,6 +254,8 @@ def visible_creator_emails(sb, actor: Actor) -> list[str] | None:
         elif role == "manager":
             staff = actor.staff or {}
             team = staff.get("team")
+            if not team:
+                return [actor.email.lower()]
             if team:
                 q = q.eq("team", team)
         res = q.execute()

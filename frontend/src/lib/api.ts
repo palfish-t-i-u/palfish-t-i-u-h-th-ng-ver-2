@@ -26,6 +26,12 @@ import type {
   RevenuePivotResponse,
   GsheetSyncResponse,
 } from "../types/revenue";
+import type { NotificationsListResponse } from "../types/notification";
+import type {
+  ExchangeRatesListResponse,
+  ExchangeRateUpsertPayload,
+  ExchangeRateApiRow,
+} from "../types/exchangeRate";
 
 export const API_BASE_URL = resolveApiBaseUrl();
 
@@ -122,6 +128,8 @@ export const endpoints = {
     addPayment: (id: string, body: AddPaymentAttemptPayload) =>
       api.post<AddPaymentLineResponse>(`/api/v1/payment-requests/${id}/payment-lines`, body),
     cancel: (id: string) => api.post(`/api/v1/payment-requests/${id}/cancel`),
+    restore: (id: string) =>
+      api.post<CreatePrResponse>(`/api/v1/payment-requests/${id}/restore`),
     patchPaymentLineAmount: (lineId: string, amount: number) =>
       api.patch<{
         payment_line: PaymentLineApiRow;
@@ -446,5 +454,25 @@ export const endpoints = {
       email: string;
       overrides: Record<string, string>;
     }) => api.put("/admin/permission-overrides/bulk", body),
+  },
+  // PR4 4-03 — Cấu hình tỷ giá GMV theo thời kỳ.
+  // BE schema (Đức ship fb83b5f): /api/v1/exchange-rates, field = `rate`.
+  // effective_from làm PK → ID dùng để upsert/delete.
+  // Chưa có DELETE/PATCH endpoint → FE bỏ nút Xóa, chỉ thêm/upsert.
+  exchangeRates: {
+    list: () => api.get<ExchangeRatesListResponse>("/api/v1/exchange-rates"),
+    upsert: (body: ExchangeRateUpsertPayload) =>
+      api.post<{ rate: ExchangeRateApiRow }>("/api/v1/exchange-rates", body),
+  },
+  // PR4 4-01 — In-app notification (bell icon).
+  // BE schema (Đức ship fb83b5f): /api/v1/notifications.
+  // Item: { id, kind, payload (jsonb), created_at, read_at } → FE render title/body từ kind.
+  notifications: {
+    list: (params?: { unread?: boolean; limit?: number }) =>
+      api.get<NotificationsListResponse>("/api/v1/notifications", { params }),
+    markRead: (id: string) =>
+      api.post<{ ok: boolean }>(`/api/v1/notifications/${id}/read`),
+    markAllRead: () =>
+      api.post<{ ok: boolean }>("/api/v1/notifications/mark-all-read"),
   },
 };

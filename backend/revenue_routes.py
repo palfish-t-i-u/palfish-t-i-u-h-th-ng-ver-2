@@ -10,9 +10,27 @@ from fastapi import Header, HTTPException, Query
 from pydantic import BaseModel
 
 from admin_routes import require_module_access, require_module_write
-from rbac import enforce_report_scope, resolve_actor, scope_sale_names
+from rbac import enforce_report_scope, require_min_role, resolve_actor, scope_sale_names, visible_creator_emails
 
 DEFAULT_TY_GIA = Decimal("3700")
+
+
+def get_rate_for_date(sb, target_date: date) -> Decimal:
+    """Lookup latest exchange rate effective on target_date; fallback to legacy 3700."""
+    try:
+        res = (
+            sb.table("exchange_rates")
+            .select("rate")
+            .lte("effective_from", target_date.isoformat())
+            .order("effective_from", desc=True)
+            .limit(1)
+            .execute()
+        )
+        if res.data:
+            return Decimal(str(res.data[0]["rate"]))
+    except Exception as exc:
+        print(f"[exchange_rates] lookup failed: {exc}")
+    return DEFAULT_TY_GIA
 
 
 def load_team_map(sb) -> dict[str, str]:
@@ -559,6 +577,7 @@ def _ledger_query(
     to_date: str | None = None,
     loai_nhap: str | None = None,
     search: str | None = None,
+    created_by_emails: list[str] | None = None,
     count: str | None = None,
 ):
     """Lọc theo Pay Time (pay_time) — khớp pivot Excel Hiếu, không dùng ngay_tien_ve."""
@@ -573,6 +592,8 @@ def _ledger_query(
         q = q.lte("pay_time", f"{to_date[:10]}T23:59:59")
     if loai_nhap in ("tu_dong", "tay"):
         q = q.eq("loai_nhap", loai_nhap)
+    if created_by_emails is not None:
+        q = q.in_("created_by_email", created_by_emails)
     if search and search.strip():
         term = search.strip()
         pattern = f"*{term}*"
@@ -610,6 +631,7 @@ def _count_so_doanh_thu(
     loai_nhap: str | None = None,
     team_filter: str | None = None,
     search: str | None = None,
+    created_by_emails: list[str] | None = None,
 ) -> int:
     if team_filter:
         rows = _fetch_so_doanh_thu(
@@ -619,6 +641,7 @@ def _count_so_doanh_thu(
             to_date=to_date,
             loai_nhap=loai_nhap,
             search=search,
+            created_by_emails=created_by_emails,
         )
         return len(_filter_rows_by_team(rows, team_filter))
     res = _ledger_query(
@@ -628,6 +651,7 @@ def _count_so_doanh_thu(
         to_date=to_date,
         loai_nhap=loai_nhap,
         search=search,
+        created_by_emails=created_by_emails,
         count="exact",
     ).limit(0).execute()
     return int(res.count or 0)
@@ -641,11 +665,20 @@ def _fetch_so_doanh_thu_page(
     to_date: str | None = None,
     loai_nhap: str | None = None,
     search: str | None = None,
+    created_by_emails: list[str] | None = None,
     limit: int = LEDGER_TABLE_PAGE,
     offset: int = 0,
 ) -> list[dict[str, Any]]:
     res = (
-        _ledger_query(sb, select, from_date=from_date, to_date=to_date, loai_nhap=loai_nhap, search=search)
+        _ledger_query(
+            sb,
+            select,
+            from_date=from_date,
+            to_date=to_date,
+            loai_nhap=loai_nhap,
+            search=search,
+            created_by_emails=created_by_emails,
+        )
         .range(offset, offset + max(limit, 1) - 1)
         .execute()
     )
@@ -678,6 +711,7 @@ def _fetch_ledger_summary_rows(
     from_date: str | None = None,
     to_date: str | None = None,
     loai_nhap: str | None = None,
+    created_by_emails: list[str] | None = None,
 ) -> list[dict[str, Any]]:
     """Chỉ cột cần cho thẻ tổng hợp — paginate, không enrich."""
     from analytics_limits import fetch_rows_capped
@@ -689,6 +723,7 @@ def _fetch_ledger_summary_rows(
             from_date=from_date,
             to_date=to_date,
             loai_nhap=loai_nhap,
+            created_by_emails=created_by_emails,
             limit=limit,
             offset=offset,
         )
@@ -707,6 +742,7 @@ def _fetch_so_doanh_thu(
     to_date: str | None = None,
     loai_nhap: str | None = None,
     search: str | None = None,
+    created_by_emails: list[str] | None = None,
 ) -> list[dict[str, Any]]:
     """PostgREST trả tối đa 1000 dòng/lần — paginate có giới hạn MAX_ANALYTICS_ROWS."""
     from analytics_limits import fetch_rows_capped
@@ -726,6 +762,8 @@ def _fetch_so_doanh_thu(
             q = q.lte("pay_time", f"{to_date[:10]}T23:59:59")
         if loai_nhap in ("tu_dong", "tay"):
             q = q.eq("loai_nhap", loai_nhap)
+        if created_by_emails is not None:
+            q = q.in_("created_by_email", created_by_emails)
         if search and search.strip():
             term = search.strip()
             pattern = f"*{term}*"
@@ -1298,6 +1336,13 @@ def register_revenue_routes(app, get_supabase) -> None:
         require_module_access(sb, actor, "revenueLedger")
         try:
             team = (team_filter or "").strip() or None
+            role = (actor.role or "sale").lower().strip()
+            scoped_emails: list[str] | None = None
+            if role in ("sale", "leader"):
+                scoped_emails = visible_creator_emails(sb, actor) or [actor.email.lower()]
+                team, _sub_team = enforce_report_scope(actor, team)
+            elif role == "manager":
+                team, _sub_team = enforce_report_scope(actor, team)
             search_term = (search or "").strip() or None
             if team:
                 all_rows = _fetch_so_doanh_thu(
@@ -1307,6 +1352,7 @@ def register_revenue_routes(app, get_supabase) -> None:
                     to_date=to_date or None,
                     loai_nhap=loai_nhap,
                     search=search_term,
+                    created_by_emails=scoped_emails,
                 )
                 filtered = _filter_rows_by_team(all_rows, team)
                 total = len(filtered)
@@ -1319,6 +1365,7 @@ def register_revenue_routes(app, get_supabase) -> None:
                     to_date=to_date or None,
                     loai_nhap=loai_nhap,
                     search=search_term,
+                    created_by_emails=scoped_emails,
                 )
                 db_rows = _fetch_so_doanh_thu_page(
                     sb,
@@ -1327,6 +1374,7 @@ def register_revenue_routes(app, get_supabase) -> None:
                     to_date=to_date or None,
                     loai_nhap=loai_nhap,
                     search=search_term,
+                    created_by_emails=scoped_emails,
                     limit=limit,
                     offset=offset,
                 )
@@ -1356,17 +1404,67 @@ def register_revenue_routes(app, get_supabase) -> None:
         require_module_access(sb, actor, "revenueLedger")
         try:
             team = (team_filter or "").strip() or None
+            role = (actor.role or "sale").lower().strip()
+            scoped_emails: list[str] | None = None
+            if role in ("sale", "leader"):
+                scoped_emails = visible_creator_emails(sb, actor) or [actor.email.lower()]
+                team, _sub_team = enforce_report_scope(actor, team)
+            elif role == "manager":
+                team, _sub_team = enforce_report_scope(actor, team)
             summary_rows = _fetch_ledger_summary_rows(
                 sb,
                 from_date=from_date or None,
                 to_date=to_date or None,
                 loai_nhap=loai_nhap,
+                created_by_emails=scoped_emails,
             )
             return _build_ledger_summary(summary_rows, team_filter=team)
         except HTTPException:
             raise
         except Exception as exc:
             raise HTTPException(500, f"Lỗi tổng hợp Sổ: {exc}") from exc
+
+    @app.get("/api/v1/exchange-rates")
+    def list_exchange_rates(authorization: str | None = Header(None)):
+        sb = _sb()
+        actor = resolve_actor(sb, authorization)
+        require_min_role(actor, "manager")
+        try:
+            res = (
+                sb.table("exchange_rates")
+                .select("*")
+                .order("effective_from", desc=True)
+                .execute()
+            )
+        except Exception as exc:
+            raise HTTPException(500, f"Loi doc ty gia: {exc}") from exc
+        return {"rates": res.data or []}
+
+    @app.post("/api/v1/exchange-rates")
+    def upsert_exchange_rate(body: dict[str, Any], authorization: str | None = Header(None)):
+        sb = _sb()
+        actor = resolve_actor(sb, authorization)
+        require_min_role(actor, "manager")
+        parsed_date = _parse_date(str(body.get("effective_from") or "").strip())
+        if not parsed_date:
+            raise HTTPException(400, "effective_from khong hop le")
+        try:
+            rate = Decimal(str(body.get("rate") or "0"))
+        except Exception as exc:
+            raise HTTPException(400, "rate khong hop le") from exc
+        if rate <= 0:
+            raise HTTPException(400, "rate phai lon hon 0")
+        payload = {
+            "effective_from": parsed_date.isoformat(),
+            "rate": float(rate),
+            "note": str(body.get("note") or "").strip() or None,
+            "created_by": actor.email,
+        }
+        try:
+            res = sb.table("exchange_rates").upsert(payload).execute()
+        except Exception as exc:
+            raise HTTPException(500, f"Loi luu ty gia: {exc}") from exc
+        return {"rate": (res.data or [payload])[0]}
 
     @app.post("/revenue/ledger")
     def create_ledger(body: LedgerCreateBody, authorization: str | None = Header(None)):
@@ -1376,7 +1474,10 @@ def register_revenue_routes(app, get_supabase) -> None:
         ngay = _parse_date(body.ngayTienVe)
         if not ngay:
             raise HTTPException(400, "ngayTienVe không hợp lệ")
-        rate = Decimal(str(body.tyGiaVndRmb or 3700))
+        if "tyGiaVndRmb" in body.model_fields_set:
+            rate = Decimal(str(body.tyGiaVndRmb or DEFAULT_TY_GIA))
+        else:
+            rate = get_rate_for_date(sb, ngay)
         gmv = body.gmvRmb
         if gmv is None:
             gmv = vnd_to_rmb(body.soTienVnd, rate)
@@ -1404,6 +1505,26 @@ def register_revenue_routes(app, get_supabase) -> None:
             "is_test": _is_test_email(actor.email),
         }
         try:
+            if payload["uid"]:
+                dup_res = (
+                    sb.table("so_doanh_thu")
+                    .select("id")
+                    .eq("uid", payload["uid"])
+                    .eq("ngay_tien_ve", payload["ngay_tien_ve"])
+                    .eq("so_tien_vnd", payload["so_tien_vnd"])
+                    .eq("loai_nhap", "tay")
+                    .limit(1)
+                    .execute()
+                )
+                if dup_res.data:
+                    raise HTTPException(
+                        409,
+                        {
+                            "code": "LEDGER_DUPLICATE",
+                            "message": "Da co dong tay tuong tu trong So doanh thu",
+                            "existing_id": dup_res.data[0]["id"],
+                        },
+                    )
             res = sb.table("so_doanh_thu").insert(payload).execute()
             if not res.data:
                 raise HTTPException(500, "Không tạo được dòng")
@@ -1456,7 +1577,11 @@ def register_revenue_routes(app, get_supabase) -> None:
             if len(patch) <= 1:
                 raise HTTPException(400, "Không có trường nào để cập nhật")
             if "so_tien_vnd" in patch and "gmv_rmb" not in body_dict:
-                rate = Decimal(str(patch.get("ty_gia_vnd_rmb") or old_row.get("ty_gia_vnd_rmb") or 3700))
+                if "tyGiaVndRmb" in body_dict:
+                    rate = Decimal(str(patch.get("ty_gia_vnd_rmb") or DEFAULT_TY_GIA))
+                else:
+                    rate_date = _parse_date(patch.get("ngay_tien_ve") or old_row.get("ngay_tien_ve"))
+                    rate = get_rate_for_date(sb, rate_date) if rate_date else DEFAULT_TY_GIA
                 patch["gmv_rmb"] = vnd_to_rmb(int(patch["so_tien_vnd"]), rate)
             res = sb.table("so_doanh_thu").update(patch).eq("id", row_id).execute()
             if not res.data:
