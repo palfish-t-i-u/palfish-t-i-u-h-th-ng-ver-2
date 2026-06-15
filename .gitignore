@@ -39,6 +39,8 @@ api_pipe/.env
 **/secrets/
 *gsheet*.json
 *service-account*.json
+# Backup/report dọn trùng Sổ doanh thu (chứa dữ liệu khách hàng)
+backend/backups/
 api_pipe/__pycache__/
 api_pipe/*.py[cod]
 

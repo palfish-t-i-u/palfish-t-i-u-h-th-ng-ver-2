@@ -479,14 +479,24 @@ class TestExchangeRatesAndGsheet:
 
         assert revenue.get_rate_for_date(sb, date(2026, 6, 13)) == Decimal("3655.25")
 
-    def test_loose_fp_includes_phone_to_reduce_collision(self):
+    def test_loose_fp_collapses_phone_edits_same_transaction(self):
+        """SDT cố tình BỎ khỏi loose_fp: Hiền sửa SĐT trên sheet giữa các đợt
+        sync khiến fingerprint chính xác đổi → đợt sau import lại thành bản
+        sao. Cùng UID + sale + tháng + tiền = cùng giao dịch dù SĐT khác (xem
+        18 cặp X dọn 15/6/2026)."""
         import gsheet_ledger_import as gsheet
 
         gsheet = importlib.reload(gsheet)
-        row_a = {"uid": "U1", "ngay_tien_ve": "2026-06-13", "so_tien_vnd": 5000000, "sdt": "0901"}
-        row_b = {"uid": "U1", "ngay_tien_ve": "2026-06-13", "so_tien_vnd": 5000000, "sdt": "0902"}
+        base = {
+            "uid": "U1",
+            "pay_time": "2026-06-13T10:00:00",
+            "so_tien_vnd": 5_000_000,
+            "sale_crm_name": "Sale A",
+        }
+        row_a = {**base, "sdt": "0901"}
+        row_b = {**base, "sdt": "0902"}
 
-        assert gsheet._loose_fp(row_a) != gsheet._loose_fp(row_b)
+        assert gsheet._loose_fp(row_a) == gsheet._loose_fp(row_b)
 
 
 class TestOpsRole:
