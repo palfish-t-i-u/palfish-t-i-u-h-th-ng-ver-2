@@ -11,6 +11,7 @@ import hmac
 import json
 import os
 import re
+import time
 from datetime import datetime, timezone
 from typing import Any, Callable
 
@@ -115,6 +116,14 @@ def _verify_hmac(raw_body: bytes, signature_header: str, timestamp_header: str) 
         raise HTTPException(401, "Missing webhook signature")
     if not timestamp_header:
         raise HTTPException(401, "Missing webhook timestamp")
+
+    # Anti-replay: reject requests older than 5 minutes (per SePay docs)
+    try:
+        ts = int(timestamp_header)
+        if abs(time.time() - ts) > 300:
+            raise HTTPException(401, "Webhook request expired")
+    except (ValueError, TypeError):
+        raise HTTPException(401, "Invalid webhook timestamp")
 
     # Bóc tách tiền tố "sha256=" nếu có
     provided_sig = signature_header.strip()
@@ -368,6 +377,7 @@ def register_sepay_routes(app, get_supabase: Callable) -> None:
         """
         sb = _sb_or_503(get_supabase)
         actor = resolve_actor(sb, authorization)
+        require_module_write(sb, actor, "reconciliation")
 
         if not SEPAY_API_TOKEN:
             raise HTTPException(
@@ -433,6 +443,7 @@ def register_sepay_routes(app, get_supabase: Callable) -> None:
         """Kế toán map thủ công 1 bank_transaction → payment_line (NEEDS_REVIEW flow)."""
         sb = _sb_or_503(get_supabase)
         actor = resolve_actor(sb, authorization)
+        require_module_write(sb, actor, "reconciliation")
 
         # Verify bank_transaction exists and is in needs_review
         txn_res = (
@@ -447,8 +458,8 @@ def register_sepay_routes(app, get_supabase: Callable) -> None:
 
         txn = txn_res.data[0]
         current_status = _clean_text(txn.get("match_status"))
-        if current_status == "auto_matched":
-            raise HTTPException(400, "Giao dịch đã được khớp tự động")
+        if current_status in ("auto_matched", "manual_matched"):
+            raise HTTPException(400, "Giao dịch đã được khớp")
 
         # Link to payment_line and mark paid
         try:
@@ -457,8 +468,9 @@ def register_sepay_routes(app, get_supabase: Callable) -> None:
             now_iso = _iso_now()
             # Update bank_transaction
             sb.table("bank_transactions").update({
-                "match_status": "auto_matched",
+                "match_status": "manual_matched",
                 "payment_line_id": payment_line_id,
+                "matched_by": actor.email,
                 "updated_at": now_iso,
             }).eq("txn_id", txn_id).execute()
 

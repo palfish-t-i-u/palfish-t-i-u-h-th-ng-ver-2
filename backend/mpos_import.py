@@ -341,6 +341,7 @@ def register_mpos_routes(app, get_supabase: Callable) -> None:
         """
         sb = _sb_or_503(get_supabase)
         actor = resolve_actor(sb, authorization)
+        require_module_write(sb, actor, "reconciliation")
 
         if not file.filename or not file.filename.endswith((".xls", ".xlsx")):
             raise HTTPException(400, "File phải có đuôi .xls hoặc .xlsx")
@@ -370,6 +371,7 @@ def register_mpos_routes(app, get_supabase: Callable) -> None:
         """
         sb = _sb_or_503(get_supabase)
         actor = resolve_actor(sb, authorization)
+        require_module_write(sb, actor, "reconciliation")
 
         if not file.filename or not file.filename.endswith((".xls", ".xlsx")):
             raise HTTPException(400, "File phải có đuôi .xls hoặc .xlsx")
