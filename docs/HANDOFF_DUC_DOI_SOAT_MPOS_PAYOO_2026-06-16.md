@@ -10,16 +10,15 @@
 Đức đã push BE core (`37fe208`). Minh review + làm nốt tối 16/6:
 
 **✅ XONG + đã test (8/8 pytest xanh — `backend/tests/test_gateway_routes.py`):**
-- Migration 2 bảng `gateway_transactions`/`gateway_settlements`.
+- Migration 2 bảng `gateway_transactions`/`gateway_settlements` — **đã apply trên Supabase sandbox** (Đức chạy lúc push; verify 2 bảng + schema khớp, hiện 0 dòng).
 - API đủ 6 endpoint, shape khớp FE mock (`gateway_routes.py`).
 - Parser mPOS map cột thật (alias tuple) — bug map sai cột đã hết.
 - **Payoo JSON auto-fetch**: `parse_payoo_orders()` + endpoint `POST /api/v1/gateway-sync/ingest-orders` (nhận mảng `OrderList`). CSV = fallback upload tay.
 - Sửa bug header file "Danh sách phiếu chi" (tự dò header dòng 0/1).
-- `match-candidates`: ghép theo tiền + **xếp theo độ gần ngày**, KHÔNG ẩn lần TT đã `paid`, loại lần TT đã ghép giao dịch khác.
+- `match-candidates`: ghép theo tiền + **xếp theo độ gần ngày**, KHÔNG ẩn lần TT đã `paid`, loại lần TT đã ghép giao dịch khác. (Verify DB sandbox: 15 line `paid` + 6 `pending` → code cũ lọc `pending` sẽ ẩn mất 15 line paid.)
 - Extension (`crm-token-extension/`): logic kéo data thật (Payoo lật trang JSON + mPOS tải file) + `chrome.alarms` 6h + message `gateway-sync-now`.
 
 **⏳ CÒN LẠI (chưa verify được tối nay):**
-- **Apply migration lên Supabase sandbox** (chạy file `.sql`) — bảng có thể chưa được tạo.
 - **Test extension với phiên mPOS/Payoo thật**: params export mPOS reverse-engineer cần phiên đăng nhập kiểm chứng (Payoo JSON tự tin hơn).
 - **Popup nhập `gatewayIngestToken`** + cầu nối nút "Đồng bộ ngay" của app → extension.
 - **FE bỏ mock, nối API thật** (`endpoints.cardRecon.*`).

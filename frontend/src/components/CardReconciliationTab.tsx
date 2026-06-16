@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
 import { Icons } from "./payment-request/Icons";
 import { formatPaymentDateFull, formatPaymentDateTime, vnd } from "./payment-request/paymentRequestUtils";
 import {
@@ -6,12 +6,8 @@ import {
   type GatewayTxn,
   type MatchCandidate,
   type MatchStatus,
-  LAST_SYNC_AT,
-  MOCK_GATEWAY_TXNS,
-  MOCK_MATCH_CANDIDATES,
-  isExtInstalled,
-  suggestCandidates,
 } from "./card-recon/mockGatewayTxns";
+import { endpoints } from "../lib/api";
 import "../styles/prototype-payments.css";
 
 type StatusFilter = "all" | MatchStatus;
@@ -53,10 +49,6 @@ function StatusBadge({ s }: { s: MatchStatus }) {
   );
 }
 
-function candidateLabel(c: MatchCandidate) {
-  return `${c.pr_id} · ${c.pr_name} · lần TT ${c.attempt_idx}`;
-}
-
 export default function CardReconciliationTab({
   lockedSource,
   onGoToSync,
@@ -64,17 +56,42 @@ export default function CardReconciliationTab({
   lockedSource?: GatewaySource;
   onGoToSync?: () => void;
 }) {
-  const [txns, setTxns] = useState<GatewayTxn[]>(MOCK_GATEWAY_TXNS);
+  const [txns, setTxns] = useState<GatewayTxn[]>([]);
+  const [loading, setLoading] = useState(false);
   const [source, setSource] = useState<GatewaySource>(lockedSource ?? "mpos");
-  const [installed, setInstalled] = useState(isExtInstalled());
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [search, setSearch] = useState("");
   const [drawerId, setDrawerId] = useState<string | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [picked, setPicked] = useState<string | null>(null);
   const [candSearch, setCandSearch] = useState("");
+  const [candidates, setCandidates] = useState<MatchCandidate[]>([]);
   const [syncing, setSyncing] = useState(false);
-  const [lastSync, setLastSync] = useState(LAST_SYNC_AT);
+  const [lastSync, setLastSync] = useState<string | null>(null);
+  const [connected, setConnected] = useState(false);
+
+  const loadTxns = useCallback(async () => {
+    setLoading(true);
+    try {
+      const { data } = await endpoints.cardRecon.list({ source });
+      setTxns(Array.isArray(data) ? data : []);
+    } catch (err) {
+      console.error("[card-recon] load txns failed", err);
+      setTxns([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [source]);
+
+  const loadSyncStatus = useCallback(async () => {
+    try {
+      const { data } = await endpoints.cardRecon.syncStatus();
+      setLastSync(data.last_sync_at ? formatPaymentDateFull(data.last_sync_at) : null);
+      setConnected(Boolean(data.ext_connected));
+    } catch (err) {
+      console.error("[card-recon] sync status failed", err);
+    }
+  }, []);
 
   // Khi nhúng làm tab con (khoá 1 kênh), đồng bộ source theo prop + đóng drawer khi đổi kênh.
   useEffect(() => {
@@ -84,16 +101,13 @@ export default function CardReconciliationTab({
     }
   }, [lockedSource]);
 
-  // Cập nhật trạng thái tiện ích khi quay lại tab / đổi ở tab Đồng bộ.
   useEffect(() => {
-    const refresh = () => setInstalled(isExtInstalled());
-    window.addEventListener("focus", refresh);
-    window.addEventListener("storage", refresh);
-    return () => {
-      window.removeEventListener("focus", refresh);
-      window.removeEventListener("storage", refresh);
-    };
-  }, []);
+    loadTxns();
+  }, [loadTxns]);
+
+  useEffect(() => {
+    loadSyncStatus();
+  }, [loadSyncStatus]);
 
   const drawerTxn = useMemo(() => txns.find((t) => t.id === drawerId) ?? null, [txns, drawerId]);
 
@@ -121,15 +135,36 @@ export default function CardReconciliationTab({
     });
   }, [bySource, statusFilter, search]);
 
-  const candidates = useMemo(() => {
-    if (!drawerTxn) return [];
-    const list = suggestCandidates(drawerTxn, MOCK_MATCH_CANDIDATES);
+  // Tải ứng viên ghép từ API mỗi khi mở drawer (BE đã xếp theo tiền + độ gần ngày).
+  useEffect(() => {
+    if (!drawerOpen || !drawerId) return;
+    const txn = txns.find((t) => t.id === drawerId);
+    if (!txn || txn.match_status === "matched") {
+      setCandidates([]);
+      return;
+    }
+    let alive = true;
+    endpoints.cardRecon
+      .matchCandidates(drawerId)
+      .then(({ data }) => {
+        if (alive) setCandidates(Array.isArray(data) ? data : []);
+      })
+      .catch((err) => {
+        console.error("[card-recon] candidates failed", err);
+        if (alive) setCandidates([]);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [drawerOpen, drawerId, txns]);
+
+  const filteredCandidates = useMemo(() => {
     const q = candSearch.trim().toLowerCase();
-    if (!q) return list;
-    return list.filter((c) =>
-      [c.pr_id, c.pr_name, c.uid].some((v) => v.toLowerCase().includes(q)),
+    if (!q) return candidates;
+    return candidates.filter((c) =>
+      [c.pr_id, c.pr_name, c.uid].some((v) => (v ?? "").toLowerCase().includes(q)),
     );
-  }, [drawerTxn, candSearch]);
+  }, [candidates, candSearch]);
 
   const openDrawer = (t: GatewayTxn) => {
     setDrawerId(t.id);
@@ -141,33 +176,44 @@ export default function CardReconciliationTab({
   const updateTxn = (id: string, patch: Partial<GatewayTxn>) =>
     setTxns((prev) => prev.map((t) => (t.id === id ? { ...t, ...patch } : t)));
 
-  const handleMatch = () => {
+  const handleMatch = async () => {
     if (!drawerTxn || !picked) return;
-    const c = MOCK_MATCH_CANDIDATES.find((x) => x.payment_line_id === picked);
-    updateTxn(drawerTxn.id, {
-      match_status: "matched",
-      payment_line_id: picked,
-      matched_label: c ? candidateLabel(c) : drawerTxn.matched_label,
-    });
+    try {
+      const { data } = await endpoints.cardRecon.match(drawerTxn.id, picked);
+      updateTxn(drawerTxn.id, data);
+    } catch (err) {
+      console.error("[card-recon] match failed", err);
+      return;
+    }
     setDrawerOpen(false);
   };
 
-  const handleIgnore = (id: string) => {
-    updateTxn(id, { match_status: "ignored", payment_line_id: null, matched_label: null });
+  const handleIgnore = async (id: string) => {
+    try {
+      const { data } = await endpoints.cardRecon.patchStatus(id, "ignored");
+      updateTxn(id, data);
+    } catch (err) {
+      console.error("[card-recon] ignore failed", err);
+      return;
+    }
     setDrawerOpen(false);
   };
 
-  const handleUnmatch = (id: string) => {
-    updateTxn(id, { match_status: "pending", payment_line_id: null, matched_label: null });
+  const handleUnmatch = async (id: string) => {
+    try {
+      const { data } = await endpoints.cardRecon.patchStatus(id, "pending");
+      updateTxn(id, data);
+    } catch (err) {
+      console.error("[card-recon] unmatch failed", err);
+    }
   };
 
-  const handleSync = () => {
+  const handleSync = async () => {
     if (syncing) return;
     setSyncing(true);
-    window.setTimeout(() => {
-      setSyncing(false);
-      setLastSync(formatPaymentDateFull(new Date().toISOString()));
-    }, 1200);
+    // TODO: cầu nối message → extension chạy sync ngay. Hiện tại tải lại data + trạng thái từ backend.
+    await Promise.all([loadTxns(), loadSyncStatus()]);
+    setSyncing(false);
   };
 
   const groupCol = source === "mpos" ? "Phiếu chi" : "Kênh / Mã đơn";
@@ -196,10 +242,10 @@ export default function CardReconciliationTab({
           }}
         >
           <Icons.Database size={15} stroke="var(--text-3)" />
-          {installed ? (
+          {connected ? (
             <>
               <span style={{ color: "var(--text-2)" }}>
-                Đồng bộ gần nhất: <strong>{lastSync}</strong>
+                Đồng bộ gần nhất: <strong>{lastSync ?? "chưa có"}</strong>
               </span>
               <span style={{ color: "var(--text-3)" }}>· Tự động tải định kỳ qua tiện ích trình duyệt</span>
               <div style={{ marginLeft: "auto" }}>
@@ -211,9 +257,12 @@ export default function CardReconciliationTab({
           ) : (
             <>
               <span style={{ color: "var(--warning-text)" }}>
-                Chưa cài tiện ích đồng bộ — dữ liệu dưới đây là <strong>dữ liệu mẫu</strong>.
+                Chưa có dữ liệu đồng bộ — cài tiện ích để tự kéo giao dịch mPOS/Payoo về.
               </span>
-              <div style={{ marginLeft: "auto" }}>
+              <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
+                <button type="button" className="btn btn-outline btn-sm" onClick={handleSync} disabled={syncing}>
+                  <RefreshIcon /> {syncing ? "Đang tải…" : "Tải lại"}
+                </button>
                 <button type="button" className="btn btn-outline btn-sm" onClick={() => onGoToSync?.()}>
                   <Icons.Download size={13} /> Cài tiện ích
                 </button>
@@ -322,7 +371,7 @@ export default function CardReconciliationTab({
                     <td colSpan={6}>
                       <div className="empty">
                         <Icons.Database size={20} />
-                        <div>Không có giao dịch nào khớp điều kiện lọc.</div>
+                        <div>{loading ? "Đang tải…" : "Không có giao dịch nào khớp điều kiện lọc."}</div>
                       </div>
                     </td>
                   </tr>
@@ -515,12 +564,12 @@ export default function CardReconciliationTab({
                         />
                       </div>
                       <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 260, overflowY: "auto" }}>
-                        {candidates.length === 0 && (
+                        {filteredCandidates.length === 0 && (
                           <div style={{ fontSize: 12, color: "var(--text-3)", padding: "8px 0" }}>
                             Không có lần thanh toán phù hợp. Thử tìm theo PR-ID.
                           </div>
                         )}
-                        {candidates.map((c) => {
+                        {filteredCandidates.map((c) => {
                           const isPick = picked === c.payment_line_id;
                           const exact = c.amount === drawerTxn.amount;
                           return (
@@ -571,7 +620,7 @@ export default function CardReconciliationTab({
                     <div>
                       <div className="info-label" style={{ marginBottom: 6 }}>Ảnh bill lần thanh toán</div>
                       {(() => {
-                        const pc = MOCK_MATCH_CANDIDATES.find((c) => c.payment_line_id === picked);
+                        const pc = candidates.find((c) => c.payment_line_id === picked);
                         const box: CSSProperties = {
                           borderRadius: 10, height: 150, display: "flex", flexDirection: "column",
                           gap: 6, fontSize: 12, padding: 12,

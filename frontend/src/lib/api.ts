@@ -32,6 +32,12 @@ import type {
   ExchangeRateUpsertPayload,
   ExchangeRateApiRow,
 } from "../types/exchangeRate";
+import type {
+  GatewaySource,
+  GatewayTxn,
+  MatchCandidate,
+  MatchStatus,
+} from "../components/card-recon/mockGatewayTxns";
 
 export const API_BASE_URL = resolveApiBaseUrl();
 
@@ -474,5 +480,23 @@ export const endpoints = {
       api.post<{ ok: boolean }>(`/api/v1/notifications/${id}/read`),
     markAllRead: () =>
       api.post<{ ok: boolean }>("/api/v1/notifications/mark-all-read"),
+  },
+  // Đối soát giao dịch thẻ mPOS / Payoo (BE: backend/gateway_routes.py).
+  cardRecon: {
+    list: (params?: { source?: GatewaySource; status?: string; q?: string; from?: string; to?: string }) =>
+      api.get<GatewayTxn[]>("/api/v1/gateway-txns", { params }),
+    matchCandidates: (txnId: string) =>
+      api.get<MatchCandidate[]>(`/api/v1/gateway-txns/${txnId}/match-candidates`),
+    match: (txnId: string, paymentLineId: string) =>
+      api.patch<GatewayTxn>(`/api/v1/gateway-txns/${txnId}/match`, { payment_line_id: paymentLineId }),
+    patchStatus: (txnId: string, matchStatus: MatchStatus | "needs_review", paymentLineId?: string) =>
+      api.patch<GatewayTxn>(`/api/v1/gateway-txns/${txnId}/status`, {
+        match_status: matchStatus,
+        ...(paymentLineId ? { payment_line_id: paymentLineId } : {}),
+      }),
+    syncStatus: () =>
+      api.get<{ last_sync_at: string | null; ext_connected: boolean; counts: Record<string, Record<string, number>> }>(
+        "/api/v1/gateway-sync/status"
+      ),
   },
 };
