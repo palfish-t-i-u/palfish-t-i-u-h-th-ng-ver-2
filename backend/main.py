@@ -590,8 +590,22 @@ def health():
     url = os.getenv("SUPABASE_URL", "").strip()
     key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "").strip()
     configured = bool(url and key and "PASTE_" not in key and not key.startswith("YOUR_"))
-    # Chỉ kiểm tra biến môi trường — tránh crash khi key sai format
-    key_looks_valid = configured and len(key) > 40 and key.count(".") >= 2
+    # Format key: hỗ trợ cả JWT legacy (eyJ..., 3 phần) lẫn API key mới (sb_secret_/sb_publishable_)
+    key_looks_valid = configured and (
+        (key.startswith("eyJ") and key.count(".") >= 2 and len(key) > 40)
+        or key.startswith("sb_secret_")
+        or key.startswith("sb_publishable_")
+    )
+    # Ping DB thật để xác nhận key xác thực được với Supabase (không đổi HTTP status nếu fail)
+    db_reachable = False
+    if configured:
+        try:
+            sb = _supabase()
+            if sb:
+                sb.table("payment_requests").select("id").limit(1).execute()
+                db_reachable = True
+        except Exception as exc:
+            print(f"[healthz] DB ping failed: {exc}")
     payos_ok = bool(os.getenv("PAYOS_CLIENT_ID", "").strip())
     api_pipe_env = (_REPO_ROOT / "api_pipe" / ".env").is_file()
     return {
@@ -600,6 +614,7 @@ def health():
         "sandbox": is_sandbox_env(),
         "supabase_configured": configured,
         "supabase_key_valid_format": key_looks_valid,
+        "supabase_db_reachable": db_reachable,
         "supabase_url_present": bool(url),
         "supabase_key_length": len(key),
         "supabase_key_starts_eyJ": key.startswith("eyJ"),
