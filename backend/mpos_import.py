@@ -222,29 +222,17 @@ def _collector_region(collector: str) -> str | None:
 
 
 def _is_reversed(status: str) -> bool:
-    return "đảo" in status.lower() or "dao" in status.lower()
-
-
-def _is_settled(status: str) -> bool:
-    if not status:
-        return True
-    lowered = status.lower()
-    return "kết toán" in lowered or "ket toan" in lowered or not _is_reversed(status)
-
-
-def _record_match_status(status: str) -> str:
-    return "ignored" if _is_reversed(status) else "pending"
-
-
-def _is_reversed(status: str) -> bool:
     return "dao" in _fold_text(status)
 
 
 def _is_settled(status: str) -> bool:
     if not status:
         return True
-    lowered = _fold_text(status)
-    return "ket toan" in lowered or not _is_reversed(status)
+    return "ket toan" in _fold_text(status) or not _is_reversed(status)
+
+
+def _record_match_status(status: str) -> str:
+    return "ignored" if _is_reversed(status) else "pending"
 
 
 def _mpos_transaction_from_row(row: pd.Series, idx: int) -> dict[str, Any]:
@@ -377,6 +365,9 @@ def parse_mpos_transactions(file_bytes: bytes) -> dict[str, Any]:
 def parse_mpos_settlements(file_bytes: bytes) -> dict[str, Any]:
     """Parse mPOS settlement list export."""
     df = _read_excel(file_bytes, header=0)
+    # "Danh sách phiếu chi" .xls: dòng 0 là tiêu đề, header thật ở dòng 1 → tự dò
+    if not any(col in df.columns for col in SETTLEMENT_ALIASES["settlement_code"]):
+        df = _read_excel(file_bytes, header=1)
     _require_columns(df, SETTLEMENT_ALIASES, ("created_date", "gross", "net"))
 
     settlements: list[dict[str, Any]] = []
@@ -480,6 +471,57 @@ def parse_payoo_installment(file_bytes: bytes) -> dict[str, Any]:
         if _clean_text(_first(row, PAYOO_INSTALLMENT_ALIASES, "txn_code"))
     ]
     return {"transactions": txns, "warnings": [], "summary": {"total_rows": len(df), "parsed_count": len(txns)}}
+
+
+def parse_payoo_orders(orders: list[dict[str, Any]]) -> dict[str, Any]:
+    """Parse Payoo JSON OrderList[] (extension auto-fetch GET /api/ecom/order/).
+
+    Khác parser CSV: nhận thẳng mảng dict JSON từ Payoo, map theo field thật
+    (OrderNo, MoneyAmount, PurchaseDate...). Xem handoff §4.4.
+    """
+    txns: list[dict[str, Any]] = []
+    for idx, order in enumerate(orders or []):
+        if not isinstance(order, dict):
+            continue
+        txn_code = _clean_text(order.get("OrderNo"))
+        if not txn_code:
+            continue
+        installment_bank = _clean_text(order.get("InstallmentBankName"))
+        term = _parse_int(order.get("InstallmentPeriod"))
+        is_installment = bool(installment_bank or term)
+        amount = _parse_amount(order.get("MoneyAmount"))
+        fee = _parse_amount(order.get("TransactionFeeEcomer"))
+        net = _parse_amount(order.get("MoneyAmountAfterFee"))
+        txns.append(
+            {
+                "row_index": int(idx),
+                "source": "payoo",
+                "category": "Trả góp" if is_installment else "Trực tuyến",
+                "txn_code": txn_code,
+                "settlement_code": _clean_text(order.get("BillingCode")) or None,
+                "paid_at": _parse_datetime(order.get("PurchaseDate")),
+                "amount": amount,
+                "fee": fee,
+                "net_amount": net if net else amount - fee,
+                # PaymentCustomerName = tên người quẹt (không che) — chỉ hiển thị tham khảo,
+                # KHÔNG dùng làm khóa ghép (sales đặt tên tự do; có thể là phụ huynh).
+                "cardholder_name": _clean_text(order.get("PaymentCustomerName"))
+                or _clean_text(order.get("BankCardHolderName")),
+                "card_masked": _clean_text(order.get("CardNumber")),
+                "card_type": _clean_text(order.get("CardIssuanceTypeName")),
+                "installment_term": term,
+                "bank": _clean_text(order.get("BankName")) or installment_bank or None,
+                "collector_region": None,
+                "match_status": "pending",
+                "payment_line_id": None,
+                "raw": order,
+            }
+        )
+    return {
+        "transactions": txns,
+        "warnings": [],
+        "summary": {"total_rows": len(orders or []), "parsed_count": len(txns)},
+    }
 
 
 def register_mpos_routes(app, get_supabase: Callable) -> None:

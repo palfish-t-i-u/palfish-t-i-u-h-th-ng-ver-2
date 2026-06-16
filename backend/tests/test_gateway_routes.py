@@ -206,3 +206,95 @@ def test_gateway_match_candidates_and_match_flow():
     assert match_resp.status_code == 200
     assert match_resp.json()["match_status"] == "matched"
     assert sb.tables["gateway_transactions"][0]["payment_line_id"] == "line-1"
+
+
+def test_payoo_orders_json_parser_maps_real_fields():
+    from mpos_import import parse_payoo_orders
+
+    orders = [
+        {
+            "OrderNo": "8971260616094704777",
+            "MoneyAmount": 17820000,
+            "TransactionFeeEcomer": 376420,
+            "MoneyAmountAfterFee": 17443580,
+            "PurchaseDate": "16/06/2026 11:10:14",
+            "CardNumber": "VISA***4763",
+            "PaymentCustomerName": "ton thi my kieu",
+            "BankCardHolderName": "***KIEU",
+            "BankName": "VISA",
+            "BillingCode": "",
+            "InstallmentBankName": "",
+            "InstallmentPeriod": 0,
+        }
+    ]
+
+    txn = parse_payoo_orders(orders)["transactions"][0]
+    assert txn["txn_code"] == "8971260616094704777"  # 19 số giữ nguyên string
+    assert txn["amount"] == 17820000
+    assert txn["fee"] == 376420
+    assert txn["net_amount"] == 17443580
+    assert txn["category"] == "Trực tuyến"
+    assert txn["cardholder_name"] == "ton thi my kieu"
+    assert txn["paid_at"].startswith("2026-06-16T11:10")
+
+
+def test_payoo_orders_json_detects_installment():
+    from mpos_import import parse_payoo_orders
+
+    orders = [
+        {
+            "OrderNo": "8971260422201706311",
+            "MoneyAmount": 18320000,
+            "TransactionFeeEcomer": 2057704,
+            "MoneyAmountAfterFee": 16262296,
+            "PurchaseDate": "22/04/2026 20:20:00",
+            "InstallmentBankName": "VPBank",
+            "InstallmentPeriod": 12,
+        }
+    ]
+
+    txn = parse_payoo_orders(orders)["transactions"][0]
+    assert txn["category"] == "Trả góp"
+    assert txn["installment_term"] == 12
+    assert txn["bank"] == "VPBank"
+
+
+def test_gateway_ingest_orders_json_upserts_and_dedups():
+    sb = FakeSB()
+    client = build_client(sb)
+    orders = [
+        {
+            "OrderNo": "8971260616094704777",
+            "MoneyAmount": 1000,
+            "TransactionFeeEcomer": 10,
+            "MoneyAmountAfterFee": 990,
+            "PurchaseDate": "16/06/2026 10:00:00",
+        }
+    ]
+
+    with patch.dict(os.environ, {"GATEWAY_EXTENSION_INGEST_TOKEN": "secret"}):
+        first = client.post(
+            "/api/v1/gateway-sync/ingest-orders?source=payoo&kind=online",
+            headers={"X-GATEWAY-EXT-TOKEN": "secret"},
+            json={"orders": orders},
+        )
+        second = client.post(
+            "/api/v1/gateway-sync/ingest-orders?source=payoo&kind=online",
+            headers={"X-GATEWAY-EXT-TOKEN": "secret"},
+            json={"orders": orders},
+        )
+
+    assert first.status_code == 200
+    assert first.json()["inserted"] == 1
+    assert second.json()["skipped"] == 1
+
+
+def test_gateway_ingest_orders_rejects_bad_token():
+    sb = FakeSB()
+    client = build_client(sb)
+    with patch.dict(os.environ, {"GATEWAY_EXTENSION_INGEST_TOKEN": "secret"}):
+        resp = client.post(
+            "/api/v1/gateway-sync/ingest-orders?source=payoo&kind=online",
+            json={"orders": []},
+        )
+    assert resp.status_code == 401

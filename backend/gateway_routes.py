@@ -15,6 +15,7 @@ from mpos_import import (
     parse_mpos_transactions,
     parse_payoo_installment,
     parse_payoo_online,
+    parse_payoo_orders,
 )
 from rbac import resolve_actor
 
@@ -30,6 +31,10 @@ class GatewayMatchBody(BaseModel):
 class GatewayStatusBody(BaseModel):
     match_status: str
     payment_line_id: str | None = None
+
+
+class GatewayOrdersBody(BaseModel):
+    orders: list[dict[str, Any]]
 
 
 def _iso_now() -> str:
@@ -75,6 +80,23 @@ def _format_dt(value: Any) -> str:
         return dt.strftime("%Y-%m-%d %H:%M")
     except Exception:
         return text[:16]
+
+
+def _to_dt(value: Any) -> datetime | None:
+    text = _clean_text(value)
+    if not text:
+        return None
+    try:
+        return datetime.fromisoformat(text.replace("Z", "+00:00")).replace(tzinfo=None)
+    except Exception:
+        return None
+
+
+def _day_diff(a: Any, b: Any) -> float:
+    da, db = _to_dt(a), _to_dt(b)
+    if not da or not db:
+        return 1e6
+    return abs((da - db).total_seconds()) / 86400.0
 
 
 def _matched_label(line: dict[str, Any] | None, pr: dict[str, Any] | None) -> str | None:
@@ -235,6 +257,36 @@ def register_gateway_routes(app, get_supabase: Callable[[], Any]) -> None:
             "last_sync_at": _iso_now(),
         }
 
+    @router.post("/gateway-sync/ingest-orders")
+    async def ingest_gateway_orders(
+        body: GatewayOrdersBody,
+        source: str = Query("payoo"),
+        kind: str = Query("online"),
+        x_gateway_ext_token: str | None = Header(None, alias="X-GATEWAY-EXT-TOKEN"),
+    ):
+        """Payoo auto-fetch: extension gọi GET /api/ecom/order/ rồi POST mảng OrderList (JSON) về đây."""
+        _require_gateway_token(x_gateway_ext_token)
+        source = source.strip().lower()
+        if source != "payoo":
+            raise HTTPException(400, "ingest-orders chi ho tro source=payoo (JSON OrderList)")
+        sb = _sb_or_503(get_supabase)
+        try:
+            parsed = parse_payoo_orders(body.orders)
+            txn_rows = [_txn_insert_row(row) for row in parsed["transactions"] if row.get("txn_code")]
+            inserted, skipped = _upsert_rows(sb, "gateway_transactions", txn_rows, "txn_code")
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        except Exception as exc:
+            raise HTTPException(500, f"Loi ingest gateway orders: {exc}") from exc
+        return {
+            "total": len(txn_rows),
+            "inserted": inserted,
+            "skipped": skipped,
+            "transactions": {"inserted": inserted, "skipped": skipped},
+            "warnings": parsed.get("warnings", []),
+            "last_sync_at": _iso_now(),
+        }
+
     @router.get("/gateway-txns")
     def list_gateway_txns(
         source: str | None = Query(None),
@@ -288,22 +340,34 @@ def register_gateway_routes(app, get_supabase: Callable[[], Any]) -> None:
             raise HTTPException(404, "Khong tim thay gateway transaction")
         txn = txn_res.data[0]
         amount = _parse_amount(txn.get("amount"))
-        line_res = (
-            sb.table("payment_lines")
-            .select("*")
-            .eq("status", "pending")
-            .eq("amount", amount)
-            .limit(50)
+        txn_paid = txn.get("paid_at")
+        # Ghép theo SỐ TIỀN (khóa mạnh) — KHÔNG lọc theo status để không ẩn lần TT đã 'paid'
+        # (giao dịch thẻ có thể ứng với lần TT đã xác nhận trong app).
+        line_res = sb.table("payment_lines").select("*").eq("amount", amount).limit(100).execute()
+        lines = line_res.data or []
+        # Bỏ lần TT đã ghép với giao dịch gateway KHÁC (tránh ghép trùng).
+        matched_res = (
+            sb.table("gateway_transactions")
+            .select("payment_line_id, id")
+            .eq("match_status", "matched")
             .execute()
         )
-        lines = line_res.data or []
+        used_line_ids = {
+            str(row.get("payment_line_id"))
+            for row in (matched_res.data or [])
+            if row.get("payment_line_id") and str(row.get("id")) != str(txn_id)
+        }
+        lines = [ln for ln in lines if str(ln.get("id")) not in used_line_ids]
+        # Xếp theo độ gần ngày (gần nhất trước), rồi theo created_at.
+        lines.sort(key=lambda ln: (_day_diff(txn_paid, ln.get("created_at")), str(ln.get("created_at") or "")))
+        lines = lines[:50]
         pr_ids = sorted({_clean_text(line.get("payment_request_id")) for line in lines if line.get("payment_request_id")})
         prs: dict[str, dict[str, Any]] = {}
         if pr_ids:
             pr_res = sb.table("payment_requests").select("*").in_("id", pr_ids).execute()
             prs = {str(row.get("id")): row for row in (pr_res.data or [])}
         candidates: list[dict[str, Any]] = []
-        for idx, line in enumerate(sorted(lines, key=lambda item: str(item.get("created_at") or "")), start=1):
+        for idx, line in enumerate(lines, start=1):
             pr = prs.get(str(line.get("payment_request_id"))) or {}
             bill_images = line.get("bill_images") if isinstance(line.get("bill_images"), list) else []
             if line.get("bill_image") and line.get("bill_image") not in bill_images:
