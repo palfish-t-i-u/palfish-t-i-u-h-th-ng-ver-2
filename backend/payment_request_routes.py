@@ -769,8 +769,6 @@ def _payment_request_insert_row(body: PaymentRequestCreate) -> dict[str, Any]:
     child_name = _clean_text(body.child_name)
     if child_name:
         row["child_name"] = child_name
-    if body.tax_id:
-        row["tax_id"] = _clean_text(body.tax_id)
     
     ct = _clean_text(body.customer_type) or "individual"
     if ct not in ("individual", "business"):
