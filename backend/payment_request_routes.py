@@ -761,6 +761,7 @@ def _payment_request_insert_row(body: PaymentRequestCreate) -> dict[str, Any]:
         "province": _clean_text(body.province),
         "note": _clean_text(body.note),
         "email": _clean_text(body.email),
+        "tax_id": _clean_text(body.tax_id) or None,
         "target": target,
         "received": 0,
         "state": "pending",
@@ -828,6 +829,8 @@ def _payment_request_patch_row(body: PaymentRequestPatch, current_row: dict[str,
         patch["email"] = _clean_text(body.email)
     if body.child_name is not None:
         patch["child_name"] = _clean_text(body.child_name) or None
+    if body.tax_id is not None:
+        patch["tax_id"] = _clean_text(body.tax_id) or None
 
     target_val = body.target if body.target is not None else body.tong_tien_phai_thu
     if target_val is not None:
@@ -928,6 +931,7 @@ _COUNTRY_DIAL: dict[str, str] = {
     "VN": "84", "US": "1", "GB": "44", "CN": "86", "JP": "81",
     "KR": "82", "TH": "66", "SG": "65", "MY": "60", "ID": "62", "PH": "63",
 }
+
 
 
 def _build_payos_transfer_description(

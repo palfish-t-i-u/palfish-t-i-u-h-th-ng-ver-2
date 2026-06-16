@@ -79,6 +79,7 @@ class TestBuildPayosTransferDescription:
         assert "Anh" in desc
         assert "Nguyen" not in desc
 
+
     def test_fallback_to_code_only_when_needed(self):
         row = {}
         code = "FH9VT"
