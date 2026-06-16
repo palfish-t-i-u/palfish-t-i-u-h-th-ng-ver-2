@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { Icons } from "./payment-request/Icons";
 import { formatPaymentDateFull, formatPaymentDateTime, vnd } from "./payment-request/paymentRequestUtils";
 import {
@@ -9,6 +9,7 @@ import {
   LAST_SYNC_AT,
   MOCK_GATEWAY_TXNS,
   MOCK_MATCH_CANDIDATES,
+  isExtInstalled,
   suggestCandidates,
 } from "./card-recon/mockGatewayTxns";
 import "../styles/prototype-payments.css";
@@ -56,9 +57,16 @@ function candidateLabel(c: MatchCandidate) {
   return `${c.pr_id} · ${c.pr_name} · lần TT ${c.attempt_idx}`;
 }
 
-export default function CardReconciliationTab({ lockedSource }: { lockedSource?: GatewaySource }) {
+export default function CardReconciliationTab({
+  lockedSource,
+  onGoToSync,
+}: {
+  lockedSource?: GatewaySource;
+  onGoToSync?: () => void;
+}) {
   const [txns, setTxns] = useState<GatewayTxn[]>(MOCK_GATEWAY_TXNS);
   const [source, setSource] = useState<GatewaySource>(lockedSource ?? "mpos");
+  const [installed, setInstalled] = useState(isExtInstalled());
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [search, setSearch] = useState("");
   const [drawerId, setDrawerId] = useState<string | null>(null);
@@ -75,6 +83,17 @@ export default function CardReconciliationTab({ lockedSource }: { lockedSource?:
       setDrawerOpen(false);
     }
   }, [lockedSource]);
+
+  // Cập nhật trạng thái tiện ích khi quay lại tab / đổi ở tab Đồng bộ.
+  useEffect(() => {
+    const refresh = () => setInstalled(isExtInstalled());
+    window.addEventListener("focus", refresh);
+    window.addEventListener("storage", refresh);
+    return () => {
+      window.removeEventListener("focus", refresh);
+      window.removeEventListener("storage", refresh);
+    };
+  }, []);
 
   const drawerTxn = useMemo(() => txns.find((t) => t.id === drawerId) ?? null, [txns, drawerId]);
 
@@ -177,15 +196,30 @@ export default function CardReconciliationTab({ lockedSource }: { lockedSource?:
           }}
         >
           <Icons.Database size={15} stroke="var(--text-3)" />
-          <span style={{ color: "var(--text-2)" }}>
-            Đồng bộ gần nhất: <strong>{lastSync}</strong>
-          </span>
-          <span style={{ color: "var(--text-3)" }}>· Tự động tải định kỳ qua tiện ích trình duyệt</span>
-          <div style={{ marginLeft: "auto" }}>
-            <button type="button" className="btn btn-outline btn-sm" onClick={handleSync} disabled={syncing}>
-              <RefreshIcon /> {syncing ? "Đang đồng bộ…" : "Đồng bộ ngay"}
-            </button>
-          </div>
+          {installed ? (
+            <>
+              <span style={{ color: "var(--text-2)" }}>
+                Đồng bộ gần nhất: <strong>{lastSync}</strong>
+              </span>
+              <span style={{ color: "var(--text-3)" }}>· Tự động tải định kỳ qua tiện ích trình duyệt</span>
+              <div style={{ marginLeft: "auto" }}>
+                <button type="button" className="btn btn-outline btn-sm" onClick={handleSync} disabled={syncing}>
+                  <RefreshIcon /> {syncing ? "Đang đồng bộ…" : "Đồng bộ ngay"}
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <span style={{ color: "var(--warning-text)" }}>
+                Chưa cài tiện ích đồng bộ — dữ liệu dưới đây là <strong>dữ liệu mẫu</strong>.
+              </span>
+              <div style={{ marginLeft: "auto" }}>
+                <button type="button" className="btn btn-outline btn-sm" onClick={() => onGoToSync?.()}>
+                  <Icons.Download size={13} /> Cài tiện ích
+                </button>
+              </div>
+            </>
+          )}
         </div>
 
         <div className="kpi-row">
@@ -535,26 +569,43 @@ export default function CardReconciliationTab({ lockedSource }: { lockedSource?:
                     </div>
 
                     <div>
-                      <div className="info-label" style={{ marginBottom: 6 }}>Ảnh bill sales gửi</div>
-                      <div
-                        style={{
-                          border: "1.5px dashed var(--border-strong, var(--border))",
-                          borderRadius: 10,
-                          height: 150,
-                          display: "flex",
-                          flexDirection: "column",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          gap: 6,
-                          color: "var(--text-3)",
-                          fontSize: 12,
-                          textAlign: "center",
-                          padding: 12,
-                        }}
-                      >
-                        <Icons.Image size={22} />
-                        <span>Đối chiếu với ảnh bill của lần thanh toán</span>
-                      </div>
+                      <div className="info-label" style={{ marginBottom: 6 }}>Ảnh bill lần thanh toán</div>
+                      {(() => {
+                        const pc = MOCK_MATCH_CANDIDATES.find((c) => c.payment_line_id === picked);
+                        const box: CSSProperties = {
+                          borderRadius: 10, height: 150, display: "flex", flexDirection: "column",
+                          gap: 6, fontSize: 12, padding: 12,
+                        };
+                        if (!pc)
+                          return (
+                            <div style={{ ...box, border: "1.5px dashed var(--border)", color: "var(--text-3)", alignItems: "center", justifyContent: "center", textAlign: "center" }}>
+                              <Icons.Image size={22} />
+                              <span>Chọn 1 lần thanh toán bên trái để xem ảnh bill</span>
+                            </div>
+                          );
+                        if (!pc.has_bill)
+                          return (
+                            <div style={{ ...box, border: "1.5px dashed var(--warning-text)", background: "var(--warning-bg)", color: "var(--warning-text)", alignItems: "center", justifyContent: "center", textAlign: "center" }}>
+                              <Icons.AlertCircle size={20} />
+                              <span>{pc.pr_id} chưa có ảnh bill — nhắc sales upload trước khi ghép</span>
+                            </div>
+                          );
+                        return (
+                          <div style={{ ...box, border: "1px solid var(--border)", background: "var(--surface-2)" }}>
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                              <span style={{ fontSize: 10.5, letterSpacing: "0.05em", color: "var(--text-3)", textTransform: "uppercase", fontWeight: 600 }}>
+                                Biên lai · {pc.pr_id}
+                              </span>
+                              <Icons.Receipt size={15} />
+                            </div>
+                            <div style={{ fontSize: 12, color: "var(--text-2)", marginTop: 2 }}>
+                              {pc.pr_name} · lần TT {pc.attempt_idx}
+                            </div>
+                            <div style={{ fontSize: 18, fontWeight: 800, color: "var(--money)", marginTop: "auto" }}>{vnd(pc.amount)}</div>
+                            <div style={{ fontSize: 10.5, color: "var(--text-3)" }}>{pc.created_at}</div>
+                          </div>
+                        );
+                      })()}
                     </div>
                   </div>
                 </div>

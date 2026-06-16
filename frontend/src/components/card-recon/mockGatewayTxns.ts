@@ -41,6 +41,8 @@ export interface MatchCandidate {
   amount: number;
   created_at: string;
   uid: string;
+  /** Lần thanh toán này đã có ảnh bill sales upload chưa (để kế toán đối chiếu) */
+  has_bill: boolean;
 }
 
 export const LAST_SYNC_AT = "2026-06-16 09:42";
@@ -132,15 +134,15 @@ export const MOCK_GATEWAY_TXNS: GatewayTxn[] = [
 
 // Ứng viên lần thanh toán (mock) — backend sẽ gợi ý theo số tiền + ngày gần.
 export const MOCK_MATCH_CANDIDATES: MatchCandidate[] = [
-  { payment_line_id: "pl-1001", pr_id: "PR-2026-0061", pr_name: "Đào Trung Thành", attempt_idx: 1, amount: 18_820_000, created_at: "2026-06-15 09:30", uid: "daott90" },
-  { payment_line_id: "pl-1002", pr_id: "PR-2026-0058", pr_name: "Đổng Trần Hiếu", attempt_idx: 2, amount: 7_900_000, created_at: "2026-06-15 16:40", uid: "donghieu" },
-  { payment_line_id: "pl-1003", pr_id: "PR-2026-0055", pr_name: "Nguyễn Minh Đức", attempt_idx: 1, amount: 19_600_000, created_at: "2026-06-14 20:00", uid: "minhduc" },
-  { payment_line_id: "pl-1004", pr_id: "PR-2026-0049", pr_name: "Nguyễn Thị Luyến", attempt_idx: 1, amount: 26_200_000, created_at: "2026-06-12 09:00", uid: "luyennt" },
-  { payment_line_id: "pl-1005", pr_id: "PR-2026-0071", pr_name: "Kiều Anh", attempt_idx: 1, amount: 17_820_000, created_at: "2026-06-16 10:05", uid: "kieuanh" },
-  { payment_line_id: "pl-1006", pr_id: "PR-2026-0072", pr_name: "Hằng Trần", attempt_idx: 2, amount: 17_820_000, created_at: "2026-06-09 11:20", uid: "hangtran" },
-  { payment_line_id: "pl-1007", pr_id: "PR-2026-0044", pr_name: "Huỳnh Phương Trinh", attempt_idx: 1, amount: 10_080_000, created_at: "2026-06-06 08:30", uid: "trinhhp" },
-  { payment_line_id: "pl-1008", pr_id: "PR-2026-0040", pr_name: "Phạm Thu Hương", attempt_idx: 3, amount: 26_200_000, created_at: "2026-06-11 18:00", uid: "huongpt" },
-  { payment_line_id: "pl-1010", pr_id: "PR-2026-0073", pr_name: "Lê Nhân", attempt_idx: 1, amount: 18_320_000, created_at: "2026-04-22 19:00", uid: "lenhan" },
+  { payment_line_id: "pl-1001", pr_id: "PR-2026-0061", pr_name: "Đào Trung Thành", attempt_idx: 1, amount: 18_820_000, created_at: "2026-06-15 09:30", uid: "daott90", has_bill: true },
+  { payment_line_id: "pl-1002", pr_id: "PR-2026-0058", pr_name: "Đổng Trần Hiếu", attempt_idx: 2, amount: 7_900_000, created_at: "2026-06-15 16:40", uid: "donghieu", has_bill: true },
+  { payment_line_id: "pl-1003", pr_id: "PR-2026-0055", pr_name: "Nguyễn Minh Đức", attempt_idx: 1, amount: 19_600_000, created_at: "2026-06-14 20:00", uid: "minhduc", has_bill: true },
+  { payment_line_id: "pl-1004", pr_id: "PR-2026-0049", pr_name: "Nguyễn Thị Luyến", attempt_idx: 1, amount: 26_200_000, created_at: "2026-06-12 09:00", uid: "luyennt", has_bill: true },
+  { payment_line_id: "pl-1005", pr_id: "PR-2026-0071", pr_name: "Kiều Anh", attempt_idx: 1, amount: 17_820_000, created_at: "2026-06-16 10:05", uid: "kieuanh", has_bill: true },
+  { payment_line_id: "pl-1006", pr_id: "PR-2026-0072", pr_name: "Hằng Trần", attempt_idx: 2, amount: 17_820_000, created_at: "2026-06-09 11:20", uid: "hangtran", has_bill: false },
+  { payment_line_id: "pl-1007", pr_id: "PR-2026-0044", pr_name: "Huỳnh Phương Trinh", attempt_idx: 1, amount: 10_080_000, created_at: "2026-06-06 08:30", uid: "trinhhp", has_bill: true },
+  { payment_line_id: "pl-1008", pr_id: "PR-2026-0040", pr_name: "Phạm Thu Hương", attempt_idx: 3, amount: 26_200_000, created_at: "2026-06-11 18:00", uid: "huongpt", has_bill: false },
+  { payment_line_id: "pl-1010", pr_id: "PR-2026-0073", pr_name: "Lê Nhân", attempt_idx: 1, amount: 18_320_000, created_at: "2026-04-22 19:00", uid: "lenhan", has_bill: true },
 ];
 
 const DAY = 24 * 60 * 60 * 1000;
@@ -159,4 +161,25 @@ export function suggestCandidates(txn: GatewayTxn, all: MatchCandidate[]): Match
     .filter((x) => x.exact || x.diffDay <= 3)
     .sort((a, b) => a.score - b.score)
     .map((x) => x.c);
+}
+
+// ── Trạng thái tiện ích đồng bộ (mock FE) ──
+// Thực tế: extension sẽ nhét cờ "đã cài" vào trang app. Ở đây dùng localStorage để demo state-aware.
+export const EXT_FLAG_KEY = "gw_ext_installed";
+
+export function isExtInstalled(): boolean {
+  try {
+    return localStorage.getItem(EXT_FLAG_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+export function setExtInstalled(v: boolean): void {
+  try {
+    if (v) localStorage.setItem(EXT_FLAG_KEY, "1");
+    else localStorage.removeItem(EXT_FLAG_KEY);
+  } catch {
+    // ignore (SSR / private mode)
+  }
 }

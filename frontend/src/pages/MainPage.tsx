@@ -32,6 +32,7 @@ const ReportBC03Tab = lazyRetry(() => import("../components/ReportBC03Tab"));
 const PaymentRequestsTab = lazyRetry(() => import("../components/PaymentRequestsTab"));
 const ReconciliationTab = lazyRetry(() => import("../components/ReconciliationTab"));
 const CardReconciliationTab = lazyRetry(() => import("../components/CardReconciliationTab"));
+const GatewaySyncTab = lazyRetry(() => import("../components/GatewaySyncTab"));
 const ActivationTab = lazyRetry(() => import("../components/ActivationTab"));
 const InvoiceRequestTab = lazyRetry(() => import("../components/InvoiceRequestTab"));
 const SoDoanhThuTab = lazyRetry(() => import("../components/SoDoanhThuTab"));
@@ -47,6 +48,7 @@ const PRELOAD_MAP: Record<string, () => Promise<unknown>> = {
   bc01: () => import("../components/reports/BC01SalesPerformance"),
   bc02: () => import("../components/reports/BC02KeyDataReport"),
   bc03: () => import("../components/ReportBC03Tab"),
+  gatewaySync: () => import("../components/GatewaySyncTab"),
 };
 
 type ViewId =
@@ -64,6 +66,7 @@ type ViewId =
   | "bc03"
   | "module5"
   | "module6"
+  | "gatewaySync"
   | "authAccounts"
   | "permissions";
 
@@ -192,6 +195,7 @@ const TITLES: Record<ViewId, { title: string; subtitle?: string }> = {
   bc03: { title: "BC03 — Báo cáo tổng bộ", subtitle: "KPI thủ công + doanh thu / trial / referral tự động" },
   module5: { title: "Đồng bộ CRM", subtitle: "M5 — 1-Click sync & xuất Master Data CRM PalFish" },
   module6: { title: "Dashboard Sale", subtitle: "M6 — Tổng quan hiệu suất theo team & cá nhân" },
+  gatewaySync: { title: "Đồng bộ mPOS / Payoo", subtitle: "Cài tiện ích kéo giao dịch mPOS & Payoo về app" },
   authAccounts: {
     title: "Tài khoản Auth",
     subtitle: "Quản lý tài khoản đăng nhập — liên kết CRM & phân quyền vai trò",
@@ -230,7 +234,7 @@ function MainPageInner({
   const perms = profile?.permissions ?? {};
   const can = (key: string) => {
     // Tab con mPOS/Payoo dùng chung quyền với reconciliation (B2)
-    const k = key === "reconMpos" || key === "reconPayoo" ? "reconciliation" : key;
+    const k = key === "reconMpos" || key === "reconPayoo" || key === "gatewaySync" ? "reconciliation" : key;
     return isDevMode || (perms[k] ?? "none") !== "none";
   };
 
@@ -294,6 +298,9 @@ function MainPageInner({
       list.push({ id: "module5", label: "Đồng bộ CRM", icon: I.database, section: "Dữ liệu" });
     if (can("module6"))
       list.push({ id: "module6", label: "Dashboard Sale", icon: I.chart, ...(!can("module5") ? { section: "Dữ liệu" } : {}) });
+    if (can("gatewaySync"))
+      list.push({ id: "gatewaySync", label: "Đồng bộ mPOS / Payoo", icon: I.database,
+        ...(!can("module5") && !can("module6") ? { section: "Dữ liệu" } : {}) });
 
     // ── Tài khoản & Quyền ──
     const accountItems: NavItem[] = [];
@@ -332,8 +339,8 @@ function MainPageInner({
       case "dashboard": return <DashboardTab />;
       case "paymentRequests": return <PaymentRequestsTab />;
       case "reconciliation": return <ReconciliationTab />;
-      case "reconMpos": return <CardReconciliationTab lockedSource="mpos" />;
-      case "reconPayoo": return <CardReconciliationTab lockedSource="payoo" />;
+      case "reconMpos": return <CardReconciliationTab lockedSource="mpos" onGoToSync={() => setActiveView("gatewaySync")} />;
+      case "reconPayoo": return <CardReconciliationTab lockedSource="payoo" onGoToSync={() => setActiveView("gatewaySync")} />;
       case "module3": return <ActivationTab />;
       case "module4": return <InvoiceRequestTab />;
       case "profile": return <ProfilePage />;
@@ -343,6 +350,7 @@ function MainPageInner({
       case "bc03": return <ReportBC03Tab />;
       case "module5": return <Module5Tab />;
       case "module6": return <Module6Tab />;
+      case "gatewaySync": return <GatewaySyncTab />;
       case "authAccounts": return <AuthAccountsTab />;
       case "permissions": return <PermissionsTab />;
       default: return <PaymentRequestsTab />;
