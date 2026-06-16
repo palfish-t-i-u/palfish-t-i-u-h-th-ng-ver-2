@@ -279,7 +279,7 @@ def _process_sepay_transaction(sb, txn: dict[str, Any]) -> dict[str, Any]:
         is_new = bool(res.data)
     except Exception as exc:
         err_msg = str(exc).lower()
-        if "duplicate" in err_msg or "unique" in err_msg or "23505" in err_msg:
+        if "duplicate key" in err_msg or "23505" in err_msg:
             # Duplicate → đã xử lý trước đó (race condition resolved by DB)
             return {"sepay_id": sepay_id, "status": "duplicate", "skipped": True}
         print(f"[sepay] DB insert failed: {exc}")
