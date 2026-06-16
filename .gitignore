@@ -42,6 +42,9 @@ api_pipe/.env
 api_pipe/__pycache__/
 api_pipe/*.py[cod]
 
+# Backup/báo cáo tự sinh từ dedup Sổ doanh thu — giữ local, không commit
+backend/backups/
+
 # OS
 .DS_Store
 Thumbs.db
