@@ -1,6 +1,7 @@
-# Bỏ qua thư mục chứa file mẫu
+# Bỏ qua thư mục chứa file mẫu / prototype
 references/
 _prototype_ref/
+CRM Palfish*/
 
 # Brief nội bộ (PDF + script tạo PDF — không commit)
 docs/Brief_Module3_Module4_xuat_hoa_don.pdf
@@ -43,6 +44,7 @@ api_pipe/.env
 backend/backups/
 api_pipe/__pycache__/
 api_pipe/*.py[cod]
+api_pipe/ngrok*
 
 # OS
 .DS_Store
