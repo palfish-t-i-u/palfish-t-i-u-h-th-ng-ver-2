@@ -589,6 +589,8 @@ def _record_bank_payment(sb, info_code: str, amount: int, bank_content: str, ban
 def health():
     url = os.getenv("SUPABASE_URL", "").strip()
     key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "").strip()
+    # Project ref từ URL (không phải secret) — để chẩn đoán backend trỏ đúng project nào
+    url_ref = url.replace("https://", "").replace("http://", "").split(".")[0] if url else ""
     configured = bool(url and key and "PASTE_" not in key and not key.startswith("YOUR_"))
     # Format key: hỗ trợ cả JWT legacy (eyJ..., 3 phần) lẫn API key mới (sb_secret_/sb_publishable_)
     key_looks_valid = configured and (
@@ -613,6 +615,7 @@ def health():
         "app_env": app_env(),
         "sandbox": is_sandbox_env(),
         "supabase_configured": configured,
+        "supabase_project_ref": url_ref,
         "supabase_key_valid_format": key_looks_valid,
         "supabase_db_reachable": db_reachable,
         "supabase_url_present": bool(url),
