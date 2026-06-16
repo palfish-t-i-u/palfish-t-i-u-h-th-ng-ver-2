@@ -73,6 +73,8 @@ Ngân hàng · Chi nhánh · Chủ tài khoản · Số tài khoản · Tên c�
 ```
 - Khóa dedup phiếu chi = **`Mã phiếu chi`**.
 
+**Payoo CSV (chỉ dùng cho FALLBACK upload tay — auto-fetch dùng JSON, xem 4.4):**
+
 **Payoo "Trực tuyến" (.csv, UTF-8, header dòng 0):**
 ```
 STT · Mã đơn hàng · Mã thanh toán · Mã cửa hàng · Tên cửa hàng · Số tiền · Hình thức thanh toán ·
@@ -94,6 +96,51 @@ Mã đơn hàng đối tác · Ghi chú đối tác · Kết quả chuyển đ�
 - **Ingest token**: theo `crm_routes.py` — header `X-CRM-EXT-TOKEN` + env `CRM_EXTENSION_INGEST_TOKEN` + `_require_extension_ingest_token()`. Làm tương tự cho gateway ingest.
 - **RBAC**: `resolve_actor(sb, authorization)` + `require_module_write(sb, actor, "reconciliation")` (như `mpos_import.py` đang dùng).
 - **Upsert chống trùng**: `ON CONFLICT (<dedup_key>) DO NOTHING` (như SePay `sepay_id`).
+
+### 4.4 ⭐ PAYOO AUTO-FETCH = JSON (KHÔNG tải CSV) — đã soi DevTools 16/6
+
+Nút "Xuất file" Payoo chỉ dựng CSV **phía client** từ 1 endpoint JSON. → Extension Payoo gọi **thẳng JSON**, KHÔNG cần tải/parse CSV. CSV (mục 4.2) chỉ còn **fallback khi kế toán upload tay**.
+
+**Endpoint data (soi thật):**
+```
+GET https://portal.payoo.vn/api/ecom/order/
+    ?PageNo=0&PageSize=25
+    &From=<epoch_giây>&To=<epoch_giây>
+    &ShopID=8971&Query=8971&isSearch=1
+```
+- Auth = cookie phiên Payoo (`credentials:'include'`). `ShopID=8971` = PALFISH.
+- `From`/`To` = **epoch GIÂY** (KHÁC mPOS dùng `DD/MM/YYYY`).
+- Response: `{ code:1000, message, data:{ OrderList:[...], TotalItem, TotalMoney } }`.
+- **Phân trang**: đọc `data.TotalItem` → loop `PageNo` 0,1,2... tới khi `PageNo*PageSize >= TotalItem`.
+
+3 request `/api/setting/table/101/export` (GET đọc + PUT lưu) = **CHỈ cấu hình cột mẫu xuất** (`export_setting[]` + `file:"csv"`), KHÔNG phải data → bỏ qua cho auto-fetch. (`101` = mã báo cáo "Thanh toán trực tuyến".)
+
+**Field map `OrderList[i]` → `gateway_transactions`:**
+| JSON | → DB | Ghi chú |
+|------|------|---------|
+| `OrderNo` `"8971260616094704777"` | `txn_code` (dedup) | **TEXT** 19 số (Payoo trả sẵn string) |
+| `OrderID` `926173103` | id nội bộ (optional) | số |
+| `MoneyAmount` `17820000` | `amount` | |
+| `TransactionFeeEcomer` `376420` | `fee` | |
+| `MoneyAmountAfterFee` `17443580` | `net_amount` | = amount − fee ✓ |
+| `OriginalAmount` `17820000` | gốc (optional) | = MoneyAmount (online) |
+| `PurchaseDate` `"16/06/2026 11:10:14"` | `paid_at` | ⚠️ **CHUỖI `DD/MM/YYYY HH:mm:ss`** — parse, KHÔNG epoch |
+| `CardNumber` `"VISA***4763"` | `card_masked` | brand + 4 cuối |
+| `PaymentCustomerName` `"ton thi my kieu"` | `cardholder_name` | TÊN ĐẦY ĐỦ (không che) NHƯNG = người quẹt thẻ (có thể là phụ huynh ≠ học viên) + sales đặt tên KH trên app tự do ("c Trang" vs "Trang Huyen Thi Nguyen") → **chỉ hiển thị tham khảo, KHÔNG làm khóa ghép** |
+| `BankCardHolderName` `"***KIEU"` | — | che gần hết, bỏ (dùng PaymentCustomerName) |
+| `CustomerPhone` `"0903690047"` | `customer_phone` (col mới, optional) | ⚠️ PII đầy đủ — lưu hạn quyền, KHÔNG log raw |
+| `BankName` `"VISA"` | `bank` | brand thẻ |
+| `CardIssuanceTypeName` `"BankTransaction_CardIssuanceType_1"` | `card_type` | i18n key → map nhãn |
+| `PaymentMethod` `"PaymentMethod_2"` | method (optional) | i18n key |
+| `BillingCode` `""` | `settlement_code` | mã chuẩn chi (online thường rỗng) |
+| `AuthorizationNo` `"293736"` | mã duyệt NH (optional) | |
+| `TransactionStatus` `7` / `TransactionStatusName` `"TransactionStatus_5"` | status | i18n key → cần bảng map; lọc GD thành công |
+| `InstallmentBankName`/`InstallmentPeriod`/`InstallmentMoneyTotal` | trả góp | rỗng = online; có giá trị = trả góp |
+| `Description` `"<div>Hthp</div>"` | ghi chú (optional) | ⚠️ dính HTML → strip tag |
+
+Lưu nguyên record vào `raw jsonb`.
+
+⚠️ **Trả góp**: record mẫu là online (`InstallmentBankName=""`). Khoảng ngày test KHÔNG có GD trả góp → **chưa xác nhận** trả góp lên chung `/api/ecom/order/` (Installment* populated) hay cần param/endpoint khác. Volume trả góp cực thấp (~1 GD từ 7/2025) → ưu tiên thấp, xử lý sau khi Minh có mẫu.
 
 ---
 
@@ -124,11 +171,11 @@ Nhớ `NOTIFY pgrst, 'reload schema';`.
 
 ### B2. Sửa parser (mục 4.2) + thêm parser Payoo CSV
 - Sửa `mpos_import.py` map theo cột thật (cả .xlsx detail + .xls list). Chú ý engine: `.xlsx`→openpyxl, `.xls`→xlrd, `.csv`→pandas read_csv `dtype=str` cho mã đơn.
-- Thêm `parse_payoo_online()` + `parse_payoo_installment()` (CSV). Giữ logic contra-entry + ambiguous.
+- Payoo: parser CHÍNH = map JSON `OrderList[]` (mục 4.4) → rows. `parse_payoo_csv()` chỉ làm **fallback upload tay** (ưu tiên thấp). Giữ logic contra-entry + ambiguous.
 
 ### B3. Endpoint ingest cho extension
 `POST /api/v1/gateway-sync/ingest` — auth = ext token (không phải JWT user).
-- Body: multipart `file` + query `source` ('mpos'|'payoo') + `kind` ('detail'|'settlement'|'online'|'installment').
+- Body: **mPOS** = multipart `file` (.xlsx/.xls); **Payoo** = JSON `{ orders: OrderList[] }` (extension gọi `/api/ecom/order/` rồi đẩy mảng về). Query `source` ('mpos'|'payoo') + `kind` ('detail'|'settlement'|'online'|'installment').
 - Parse → upsert `ON CONFLICT (txn_code) DO NOTHING` → trả `{ inserted, skipped, total }`.
 - Ghi `last_sync_at`.
 
@@ -139,7 +186,7 @@ Nhớ `NOTIFY pgrst, 'reload schema';`.
   - Chi tiết phiếu chi: `/merchant/transfer/export-withdraw-transaction`
   - Query: `?formSession=false&` + `$(withdrawSearchForm).serialize()` + `&withdrawGroup=NORMALY`
   - Form fields điều khiển: `start`/`end` (ngày **DD/MM/YYYY**), `withdrawStatus`, `money`, `withdrawNumber`, `isQuick`, `storeName`. Auth = cookie `JSESSIONID`.
-- Payoo export: **CHƯA có URL** — Minh sẽ tóm "Xuất file" trên `portal.payoo.vn` (xem mục 7). Chọn format **CSV**.
+- Payoo: **KHÔNG tải file** — gọi thẳng JSON `GET portal.payoo.vn/api/ecom/order/` (xem 4.4), lật trang theo `TotalItem`, POST mảng `OrderList` (JSON) về ingest. Auth = cookie phiên Payoo.
 - **Cửa sổ ngày** (mPOS+Payoo giới hạn tìm tối đa **31 ngày**):
   - Định kỳ: cửa sổ trượt **14 ngày** (`start`=nay−14, `end`=nay). Dedup lo chồng lấn.
   - Backfill: chia **theo tháng** (1/4–30/4, 1/5–31/5...), mỗi cửa sổ ≤31 ngày.
@@ -178,12 +225,15 @@ Nguồn chuẩn: `frontend/src/components/card-recon/mockGatewayTxns.ts`.
 - **Mã đơn Payoo 19 số** → đọc string, tránh float làm tròn.
 - **Dedup**: `txn_code` UNIQUE + `ON CONFLICT DO NOTHING` → import lại trùng kỳ = no-op.
 - **GD "Đảo" (refund)**: tạo contra-entry số tiền âm (parser Giang đã có), không xoá cứng.
+- **Payoo ngày = chuỗi** `DD/MM/YYYY HH:mm:ss` (parse tay); `From`/`To` trên URL mới là epoch giây. mPOS ngày = `DD/MM/YYYY`.
+- **Ghép = số tiền + ngày + ảnh bill (CHÍNH).** `match-candidates` xếp hạng theo **tiền + ngày**, KHÔNG theo tên. `PaymentCustomerName`/`CustomerPhone` chỉ HIỂN THỊ cho người soát mắt thường — tên KHÔNG tin cậy (sales đặt tên KH tự do; người quẹt có thể là phụ huynh ≠ học viên). `CustomerPhone` = PII → lưu hạn quyền, không log raw.
+- **Payoo status / card-type = i18n key** (`TransactionStatus_5`, `BankTransaction_CardIssuanceType_1`) → cần bảng map nhãn; chỉ đối soát giao dịch thành công.
 
 ---
 
 ## 8. CẦN CHỐT (đang chờ)
 
-1. **URL export Payoo** — Minh tóm trên `portal.payoo.vn` (F12/Sources) rồi gửi → mới dựng được extension Payoo. (mPOS đã có URL ở B4.)
+1. ✅ **URL Payoo — ĐÃ TÓM** (16/6, mục 4.4): `GET portal.payoo.vn/api/ecom/order/` trả JSON (KHÔNG phải CSV). Còn chờ: xác nhận giao dịch **trả góp** có lên chung feed này không (chưa có mẫu trong khoảng test).
 2. **Anh Hiếu duyệt UI** trên sandbox (đang chờ) — có thể đổi cột/luồng → ảnh hưởng nhẹ API.
 3. Xác nhận chạy extension trên máy nào (kế toán + chị Thu Hiền).
 
