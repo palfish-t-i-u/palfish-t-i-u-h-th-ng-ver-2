@@ -9,6 +9,13 @@
 const BACKEND_URLS = [
   "http://localhost:8000/system/update-crm-token/extension",
   "https://palfish-gmv-api.onrender.com/system/update-crm-token/extension",
+  "https://palfish-gmv-api-sandbox.onrender.com/system/update-crm-token/extension",
+];
+
+const GATEWAY_INGEST_URLS = [
+  "http://localhost:8000/api/v1/gateway-sync/ingest",
+  "https://palfish-gmv-api.onrender.com/api/v1/gateway-sync/ingest",
+  "https://palfish-gmv-api-sandbox.onrender.com/api/v1/gateway-sync/ingest",
 ];
 
 const CRM_URL = "https://sea.pri.ibanyu.com/";
@@ -48,6 +55,11 @@ async function _getIngestToken() {
   return String(data.ingestToken || "").trim();
 }
 
+async function _getGatewayIngestToken() {
+  const data = await _storageGet(["gatewayIngestToken", "ingestToken"]);
+  return String(data.gatewayIngestToken || data.ingestToken || "").trim();
+}
+
 async function _pushToken(bundle) {
   const payload = JSON.stringify(bundle);
   const ingestToken = await _getIngestToken();
@@ -78,6 +90,51 @@ async function _pushToken(bundle) {
   _saveState("error", "Lỗi: không gửi được token về backend");
 }
 
+function _bytesFromBase64(base64) {
+  const binary = atob(String(base64 || ""));
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return bytes;
+}
+
+async function _pushGatewayFile({ source, kind, filename, contentBase64, contentType }) {
+  const ingestToken = await _getGatewayIngestToken();
+  if (!ingestToken) {
+    return { ok: false, error: "Chua cau hinh gateway ingest token" };
+  }
+  if (!source || !kind || !contentBase64) {
+    return { ok: false, error: "Thieu source/kind/file" };
+  }
+
+  const file = new File(
+    [_bytesFromBase64(contentBase64)],
+    filename || `${source}-${kind}.csv`,
+    { type: contentType || "text/csv" }
+  );
+  const form = new FormData();
+  form.append("file", file);
+
+  for (const baseUrl of GATEWAY_INGEST_URLS) {
+    const url = `${baseUrl}?source=${encodeURIComponent(source)}&kind=${encodeURIComponent(kind)}`;
+    try {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "X-GATEWAY-EXT-TOKEN": ingestToken },
+        body: form,
+      });
+      if (res.ok) {
+        return { ok: true, data: await res.json() };
+      }
+      console.warn("[PalFish Sync] gateway ingest status:", res.status, await res.text());
+    } catch (e) {
+      console.warn("[PalFish Sync] gateway ingest failed:", e);
+    }
+  }
+  return { ok: false, error: "Khong gui duoc file gateway ve backend" };
+}
+
 async function _sendIfChanged() {
   const key = _bundleKey(_authBundle);
   const now = Date.now();
@@ -89,6 +146,12 @@ async function _sendIfChanged() {
   _saveState("idle", "Đang gửi token…");
   await _pushToken(_authBundle);
 }
+
+chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  if (message?.type !== "gateway-ingest-file") return false;
+  _pushGatewayFile(message.payload || {}).then(sendResponse);
+  return true;
+});
 
 async function grabCookiesFromUrl() {
   let cookies = [];

@@ -32,6 +32,7 @@ from payos_qr import parse_transfer_content_from_qr
 from env_utils import app_env, is_sandbox_env
 from sepay_routes import register_sepay_routes
 from mpos_import import register_mpos_routes
+from gateway_routes import register_gateway_routes
 
 CANCEL_ANY_ROLES = {"manager", "system", "ops"}
 PAYOS_MAX_SAFE_ORDER_CODE = 9_007_199_254_740_991
@@ -1324,6 +1325,7 @@ register_dashboard_routes(app, _supabase)
 register_report_routes(app, _supabase)
 register_sepay_routes(app, _supabase)
 register_mpos_routes(app, _supabase)
+register_gateway_routes(app, _supabase)
 
 
 @app.on_event("startup")
