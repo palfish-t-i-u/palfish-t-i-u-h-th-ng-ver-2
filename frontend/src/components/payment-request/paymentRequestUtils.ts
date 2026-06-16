@@ -221,6 +221,9 @@ export function fromApiActiveRequest(raw: ActiveRequestApiRow): ActiveRequest {
         taxProductCode: c.tax_product_code,
         leadSource: c.lead_source ?? c.leadSource ?? undefined,
         leadChannel: c.lead_channel ?? c.leadChannel ?? undefined,
+        referrerUid: c.referrer_uid ?? undefined,
+        bonusSessionsReferee: c.bonus_sessions_referee ?? undefined,
+        bonusSessionsReferrer: c.bonus_sessions_referrer ?? undefined,
       })),
     })),
   };
@@ -264,6 +267,32 @@ export function activeRequestAllocation(ar: ActiveRequest, pr: PaymentRequest | 
   };
 }
 
+/**
+ * Kiểm tra dữ liệu cộng buổi referral trên toàn bộ AR.
+ * Trả về chuỗi lỗi đầu tiên, hoặc "" nếu hợp lệ.
+ * Quy tắc: nếu một course nguồn "gioi_thieu" cộng buổi cho người giới thiệu
+ * (bonusSessionsReferrer > 0) thì bắt buộc có referrerUid, và referrerUid
+ * phải khác UID người được giới thiệu (uid của nhóm).
+ */
+export function validateReferralBonus(ar: ActiveRequest): string {
+  for (const u of ar.uids) {
+    const refereeUid = (u.uid ?? "").trim();
+    for (const c of u.courses) {
+      if (c.leadSource !== "gioi_thieu") continue;
+      if ((c.bonusSessionsReferrer ?? 0) > 0) {
+        const refUid = (c.referrerUid ?? "").trim();
+        if (!refUid) {
+          return `Khoá ${c.courseCode}: đã cộng buổi cho người giới thiệu nhưng chưa nhập UID người giới thiệu.`;
+        }
+        if (refUid === refereeUid) {
+          return `Khoá ${c.courseCode}: UID người giới thiệu phải khác UID người được giới thiệu (${refereeUid}).`;
+        }
+      }
+    }
+  }
+  return "";
+}
+
 export function updateActiveCoursePackage(
   ar: ActiveRequest,
   courseCode: string,
@@ -298,6 +327,9 @@ export function toActiveRequestPatchUidsData(ar: ActiveRequest): ActiveRequestPa
       tax_product_code: c.taxProductCode,
       lead_source: c.leadSource,
       lead_channel: c.leadChannel,
+      referrer_uid: c.referrerUid,
+      bonus_sessions_referee: c.bonusSessionsReferee,
+      bonus_sessions_referrer: c.bonusSessionsReferrer,
     })),
   }));
 }

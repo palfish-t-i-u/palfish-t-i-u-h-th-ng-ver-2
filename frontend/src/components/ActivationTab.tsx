@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { COURSE_PACKAGES } from "../constants/coursePackages";
 import { usePaymentFlow } from "../contexts/PaymentFlowContext";
 import { usePermission } from "../hooks/usePermission";
@@ -1126,7 +1126,8 @@ function ActivationDetailDrawer({
                 <span />
               </div>
               {uidObj.courses.map((course, courseIdx) => (
-                <div key={course.courseCode} className="course-row">
+                <Fragment key={course.courseCode}>
+                <div className="course-row">
                   <div className="idx-bubble">{courseIdx + 1}</div>
                   <div className="pkg-name">
                     <input
@@ -1278,6 +1279,19 @@ function ActivationDetailDrawer({
                     </button>
                   )}
                 </div>
+                {course.leadSource === "gioi_thieu" &&
+                  ((course.bonusSessionsReferee ?? 0) > 0 || (course.bonusSessionsReferrer ?? 0) > 0) && (
+                  <div style={{ fontSize: 11, color: "var(--text-3)", display: "flex", gap: 8, flexWrap: "wrap", padding: "2px 4px 8px" }}>
+                    <span style={{ fontWeight: 600 }}>Thưởng giới thiệu:</span>
+                    {(course.bonusSessionsReferee ?? 0) > 0 && (
+                      <span>+{course.bonusSessionsReferee} buổi · người được giới thiệu ({uidObj.uid || "—"})</span>
+                    )}
+                    {(course.bonusSessionsReferrer ?? 0) > 0 && (
+                      <span>+{course.bonusSessionsReferrer} buổi · người giới thiệu ({course.referrerUid || "—"})</span>
+                    )}
+                  </div>
+                )}
+                </Fragment>
               ))}
               <datalist id={`packages-${ar.id}`}>
                 {COURSE_PACKAGES.map((p) => (

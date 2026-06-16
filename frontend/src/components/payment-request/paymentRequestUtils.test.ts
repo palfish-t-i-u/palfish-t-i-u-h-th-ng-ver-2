@@ -1,14 +1,16 @@
 import { describe, expect, it } from "vitest";
-import type { ActiveRequest, PaymentRequest } from "../../types/paymentRequest";
+import type { ActiveRequest, ActiveRequestApiRow, PaymentRequest } from "../../types/paymentRequest";
 import {
   activationSummary,
   activeRequestAllocation,
   buildCreateActiveRequestPayload,
   formatCoursePhone,
+  fromApiActiveRequest,
   pageItems,
   paginate,
   toActiveRequestPatchUidsData,
   updateActiveCoursePackage,
+  validateReferralBonus,
   visiblePaymentRequests,
 } from "./paymentRequestUtils";
 
@@ -154,6 +156,66 @@ describe("active request course package updates", () => {
       isOver: true,
     });
   });
+
+  it("đọc field referral snake_case từ API về camelCase", () => {
+    const raw: ActiveRequestApiRow = {
+      id: "AR-2026-0099",
+      pr_id: "PR-2026-0099",
+      customer_name: "Khách B",
+      uids_data: [
+        {
+          uid: "BUYER_B",
+          phone: "0900000000",
+          country: "VN",
+          courses: [
+            {
+              code: "CC-0099-001",
+              name: "Gói X",
+              amount: 5000000,
+              lead_source: "gioi_thieu",
+              referrer_uid: "REFERRER_A",
+              bonus_sessions_referee: 2,
+              bonus_sessions_referrer: 3,
+            },
+          ],
+        },
+      ],
+    };
+
+    const course = fromApiActiveRequest(raw).uids[0].courses[0];
+    expect(course.leadSource).toBe("gioi_thieu");
+    expect(course.referrerUid).toBe("REFERRER_A");
+    expect(course.bonusSessionsReferee).toBe(2);
+    expect(course.bonusSessionsReferrer).toBe(3);
+  });
+
+  it("ghi field referral camelCase ra payload snake_case", () => {
+    const arWithReferral: ActiveRequest = {
+      ...ar,
+      uids: [
+        {
+          ...ar.uids[0],
+          uid: "BUYER_B",
+          courses: [
+            {
+              ...ar.uids[0].courses[0],
+              leadSource: "gioi_thieu",
+              referrerUid: "REFERRER_A",
+              bonusSessionsReferee: 2,
+              bonusSessionsReferrer: 3,
+            },
+          ],
+        },
+      ],
+    };
+
+    expect(toActiveRequestPatchUidsData(arWithReferral)[0].courses[0]).toMatchObject({
+      lead_source: "gioi_thieu",
+      referrer_uid: "REFERRER_A",
+      bonus_sessions_referee: 2,
+      bonus_sessions_referrer: 3,
+    });
+  });
 });
 
 describe("visiblePaymentRequests", () => {
@@ -228,5 +290,53 @@ describe("pageItems", () => {
 
   it("cuối dãy: 1 … 9 10", () => {
     expect(pageItems(10, 10)).toEqual([1, "...", 9, 10]);
+  });
+});
+
+describe("validateReferralBonus", () => {
+  const base: ActiveRequest = {
+    id: "AR-1", prId: "PR-1", customerName: "B", createdAt: "", createdBy: "",
+    uids: [{ uid: "BUYER_B", phone: "", country: "VN", courses: [
+      { courseCode: "CC-1", packageName: "", amount: 1000, orderId: "", invoiced: false, leadSource: "gioi_thieu" },
+    ] }],
+  };
+
+  it("không lỗi khi không cộng buổi cho người giới thiệu", () => {
+    expect(validateReferralBonus(base)).toBe("");
+  });
+
+  it("không lỗi khi chỉ cộng buổi cho người được giới thiệu", () => {
+    const ar = { ...base, uids: [{ ...base.uids[0], courses: [
+      { ...base.uids[0].courses[0], bonusSessionsReferee: 2 },
+    ] }] };
+    expect(validateReferralBonus(ar)).toBe("");
+  });
+
+  it("báo lỗi khi cộng buổi người giới thiệu nhưng thiếu UID", () => {
+    const ar = { ...base, uids: [{ ...base.uids[0], courses: [
+      { ...base.uids[0].courses[0], bonusSessionsReferrer: 3 },
+    ] }] };
+    expect(validateReferralBonus(ar)).toContain("chưa nhập UID người giới thiệu");
+  });
+
+  it("báo lỗi khi UID người giới thiệu trùng UID người được giới thiệu", () => {
+    const ar = { ...base, uids: [{ ...base.uids[0], courses: [
+      { ...base.uids[0].courses[0], bonusSessionsReferrer: 3, referrerUid: "BUYER_B" },
+    ] }] };
+    expect(validateReferralBonus(ar)).toContain("phải khác");
+  });
+
+  it("hợp lệ khi đủ UID người giới thiệu khác người được giới thiệu", () => {
+    const ar = { ...base, uids: [{ ...base.uids[0], courses: [
+      { ...base.uids[0].courses[0], bonusSessionsReferrer: 3, referrerUid: "REFERRER_A" },
+    ] }] };
+    expect(validateReferralBonus(ar)).toBe("");
+  });
+
+  it("bỏ qua course không phải nguồn Giới thiệu", () => {
+    const ar = { ...base, uids: [{ ...base.uids[0], courses: [
+      { ...base.uids[0].courses[0], leadSource: "quang_cao", bonusSessionsReferrer: 3 },
+    ] }] };
+    expect(validateReferralBonus(ar)).toBe("");
   });
 });

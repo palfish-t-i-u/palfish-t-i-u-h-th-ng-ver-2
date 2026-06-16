@@ -66,6 +66,10 @@ class ActiveRequestPatchCoursePayload(BaseModel):
     tax_product_code: str | None = ""
     lead_source: str | None = None
     lead_channel: str | None = None
+    # Cộng buổi referral (nguồn = gioi_thieu): persist trong uids_data JSONB
+    referrer_uid: str | None = None
+    bonus_sessions_referee: int | None = None
+    bonus_sessions_referrer: int | None = None
 
 
 class ActiveRequestPatchUidPayload(BaseModel):

@@ -132,6 +132,12 @@ export interface ActiveCourse {
   note?: string;
   leadSource?: string;
   leadChannel?: string;
+  /** UID người giới thiệu (referral) — sale nhập khi nguồn = gioi_thieu */
+  referrerUid?: string;
+  /** Số buổi thưởng cho người được giới thiệu (chủ AR) */
+  bonusSessionsReferee?: number;
+  /** Số buổi thưởng cho người giới thiệu */
+  bonusSessionsReferrer?: number;
 }
 
 export interface ActiveUidGroup {
@@ -231,6 +237,9 @@ export type ActiveRequestApiRow = {
       leadSource?: string;
       lead_channel?: string;
       leadChannel?: string;
+      referrer_uid?: string;
+      bonus_sessions_referee?: number;
+      bonus_sessions_referrer?: number;
     }>;
   }>;
   status?: string;
@@ -255,6 +264,9 @@ export type ActiveRequestPatchUidPayload = {
     tax_product_code?: string;
     lead_source?: string;
     lead_channel?: string;
+    referrer_uid?: string;
+    bonus_sessions_referee?: number;
+    bonus_sessions_referrer?: number;
   }>;
 };
 
