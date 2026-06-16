@@ -6,8 +6,13 @@
   "permissions": ["webRequest", "storage", "cookies", "tabs"],
   "host_permissions": [
     "*://sea.pri.ibanyu.com/*",
+    "*://mpos.vn/*",
+    "*://*.mpos.vn/*",
+    "*://payoo.vn/*",
+    "*://*.payoo.vn/*",
     "http://localhost:8000/*",
     "https://palfish-gmv-api.onrender.com/*",
+    "https://palfish-gmv-api-sandbox.onrender.com/*",
     "https://palfish-gmv-manager.vercel.app/*",
     "https://palfish-gmv-manager-sandbox.vercel.app/*",
     "https://gmv.palfish.vn/*"
