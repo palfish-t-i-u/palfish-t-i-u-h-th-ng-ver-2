@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { usePaymentFlow } from "../contexts/PaymentFlowContext";
 import { usePermission } from "../hooks/usePermission";
 import {
@@ -218,6 +218,21 @@ export default function InvoiceRequestTab() {
   const [confirmBulkIssue, setConfirmBulkIssue] = useState(false);
   const [bulkError, setBulkError] = useState("");
 
+  type Reminder = { id: string; payment_request_id: string; pr_code: string; customer_name: string; requested_by_name: string; requested_at: string; note: string | null };
+  const [reminders, setReminders] = useState<Reminder[]>([]);
+  const loadReminders = useCallback(async () => {
+    try {
+      const res = await endpoints.invoiceRemind.list("pending");
+      setReminders(res.data.reminders);
+    } catch { /* API not ready */ }
+  }, []);
+  useEffect(() => { loadReminders(); }, [loadReminders]);
+  const remindedPrMap = useMemo(() => {
+    const m = new Map<string, Reminder>();
+    for (const r of reminders) m.set(r.payment_request_id, r);
+    return m;
+  }, [reminders]);
+
   useEffect(() => {
     const tabHint = nav.openInvoiceTab ?? nav.invoiceTab;
     if (tabHint) setTab(tabHint);
@@ -267,6 +282,7 @@ export default function InvoiceRequestTab() {
   const openRow = openKey ? rows.find((r) => r.key === openKey) ?? null : null;
   const sumPending = pending.reduce((s, r) => s + r.course.amount, 0);
   const sumIssued = issued.reduce((s, r) => s + r.course.amount, 0);
+  const remindedPendingCount = pending.filter((r) => remindedPrMap.has(r.ar.prId || "")).length;
 
   const selectedRows = useMemo(
     () => rows.filter((r) => selectedKeys.has(r.key)),
@@ -341,6 +357,40 @@ export default function InvoiceRequestTab() {
           Mỗi <strong style={{ color: "var(--text-2)" }}>Course Code</strong> có Order ID → một hoá đơn (INV). Sau xuất, tải{" "}
           <strong style={{ color: "var(--text-2)" }}>ZIP 3 file Excel</strong> kê khai thuế (don_hang, khach_hang, san_pham).
         </div>
+
+        {reminders.length > 0 && (
+          <div
+            style={{
+              padding: "10px 14px",
+              borderRadius: 10,
+              border: "1px solid #ffcc80",
+              background: "#fff3e0",
+              fontSize: 12.5,
+              marginBottom: 8,
+              display: "flex",
+              alignItems: "flex-start",
+              gap: 8,
+            }}
+          >
+            <Icons.Bell size={15} style={{ color: "#e65100", flexShrink: 0, marginTop: 1 }} />
+            <div>
+              <strong style={{ color: "#e65100" }}>Sales đang nhắc xuất HĐ ({reminders.length})</strong>
+              <div style={{ marginTop: 4, lineHeight: 1.6 }}>
+                {reminders.map((rem) => {
+                  const dt = new Date(rem.requested_at);
+                  return (
+                    <div key={rem.id} style={{ color: "var(--text-2)" }}>
+                      <strong>{rem.customer_name || rem.pr_code}</strong>
+                      {" — nhắc bởi "}{rem.requested_by_name}
+                      {" lúc "}{dt.toLocaleDateString("vi-VN")}{" "}{dt.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })}
+                      {rem.note && <span style={{ color: "var(--text-3)" }}> · &ldquo;{rem.note}&rdquo;</span>}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        )}
 
         {apiNote && (
           <div
@@ -426,6 +476,16 @@ export default function InvoiceRequestTab() {
             <div className="kpi-label">Tỉ lệ đã xuất</div>
             <div className="kpi-value">{rows.length > 0 ? Math.round((issued.length / rows.length) * 100) : 0}%</div>
           </div>
+          {remindedPendingCount > 0 && (
+            <div className="kpi">
+              <div className="kpi-icon" style={{ background: "#fff3e0", color: "#e65100" }}>
+                <Icons.Bell size={16} />
+              </div>
+              <div className="kpi-label">Sales đang nhắc</div>
+              <div className="kpi-value">{remindedPendingCount}</div>
+              <div className="kpi-sub">PR cần ưu tiên xuất HĐ</div>
+            </div>
+          )}
         </div>
 
         <div className="toolbar">
@@ -610,7 +670,20 @@ export default function InvoiceRequestTab() {
                         </td>
                       )}
                       <td>
-                        <div className="cell-name">{d.name}</div>
+                        <div className="cell-name">
+                          {d.name}
+                          {(() => {
+                            const rem = remindedPrMap.get(r.ar.prId || "");
+                            if (!rem || r.course.invoiced) return null;
+                            const dt = new Date(rem.requested_at);
+                            const tip = `Sales nhắc xuất HĐ lúc ${dt.toLocaleDateString("vi-VN")} ${dt.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })} — bởi ${rem.requested_by_name}${rem.note ? ` · "${rem.note}"` : ""}`;
+                            return (
+                              <span className="remind-badge" title={tip}>
+                                <Icons.Bell size={11} /> Nhắc
+                              </span>
+                            );
+                          })()}
+                        </div>
                       </td>
                       <td>
                         <span className="cell-phone">

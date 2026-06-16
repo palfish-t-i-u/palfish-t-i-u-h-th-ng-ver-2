@@ -353,7 +353,7 @@ export default function Module6Tab() {
           {meta?.department_fallback ? " (fallback org VN)" : ""} · Biểu đồ ={" "}
           <strong className="text-gmv-text">DB daily</strong>
           ({trends?.meta?.sync_days ?? 0} ngày sync, {trends?.row_count ?? 0} dòng).
-          GMV CRM = RMB (PalFish) · Thực thu / L8 = Sổ doanh thu (ngay_tien_ve) · QR tạo = Module 2 (created_at) · Tỷ giá: 1 RMB = {fmt(fx)} ₫.
+          GMV CRM = RMB (PalFish) · Thực thu / L8 = Sổ doanh thu (ngay_tien_ve) · QR tạo = Quản lý thanh toán (created_at) · Tỷ giá: 1 RMB = {fmt(fx)} ₫.
         </div>
       )}
 
@@ -378,7 +378,7 @@ export default function Module6Tab() {
         <KpiCard label="Tổng số L8"   value={fmt(kpi?.l8 ?? 0)} sub="Nguồn: Sổ doanh thu" />
         <KpiCard label="GMV CRM" value={gmvRmb(kpi?.total_gmv_rmb ?? 0)} sub={`≈ ${vnd(kpi?.gmv_vnd_est ?? (kpi?.total_gmv_rmb ?? 0) * fx)} · Nguồn: CRM`} />
         <KpiCard label="Doanh thu thực thu" value={vnd(kpi?.total_collected_vnd ?? kpi?.total_collected ?? 0)} sub="Nguồn: Sổ doanh thu (ngay_tien_ve)" highlight />
-        <KpiCard label="Doanh thu tạo mã QR" value={vnd(kpi?.revenue_qr_created_vnd ?? 0)} sub={`${fmt(kpi?.qr_created_count ?? 0)} đơn · Module 2 (created_at)`} />
+        <KpiCard label="Doanh thu tạo mã QR" value={vnd(kpi?.revenue_qr_created_vnd ?? 0)} sub={`${fmt(kpi?.qr_created_count ?? 0)} đơn · Quản lý thanh toán (created_at)`} />
         <KpiCard label="AOV (thực thu)" value={vnd(kpi?.aov ?? 0)} sub="VND / đơn trên Sổ" />
       </div>
 

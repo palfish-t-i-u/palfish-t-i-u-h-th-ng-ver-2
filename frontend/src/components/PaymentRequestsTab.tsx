@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useState } from "react";
 import "../styles/prototype-payments.css";
 import { usePaymentFlow } from "../contexts/PaymentFlowContext";
+import { useMe } from "../hooks/useMe";
 import { usePermission } from "../hooks/usePermission";
 import { endpoints } from "../lib/api";
 import { compressImageFile } from "../lib/imageCompress";
@@ -33,11 +34,18 @@ import {
   isBackendLineId,
   normalizeRequest,
   nowStamp,
+  paginate,
   toActiveRequestPatchUidsData,
+  visiblePaymentRequests,
 } from "./payment-request/paymentRequestUtils";
+
+const PAGE_SIZE = 20;
 
 export default function PaymentRequestsTab() {
   const { readOnly } = usePermission("paymentRequests");
+  const { profile } = useMe();
+  // Cột TVTS phục vụ leader+ xem PR của team; sale chỉ thấy PR của mình nên ẩn cho gọn bảng
+  const showTvts = (profile?.role ?? "sale") !== "sale";
   const {
     requests,
     activeRequests,
@@ -63,6 +71,7 @@ export default function PaymentRequestsTab() {
   const [dateRange, setDateRange] = useState<DateRange>(EMPTY_RANGE);
   const [tab, setTab] = useState<RequestBucket>("tracking");
   const [hideTest, setHideTest] = useState(true);
+  const [page, setPage] = useState(1);
   const [createOpen, setCreateOpen] = useState(false);
   const [cancelTarget, setCancelTarget] = useState<PaymentRequest | null>(null);
   const [qrView, setQrView] = useState<{ qr: PaymentAttempt; request: PaymentRequest } | null>(null);
@@ -111,29 +120,27 @@ export default function PaymentRequestsTab() {
     [billModal.lineId]
   );
 
-  const trackingRequests = useMemo(
-    () => requests.filter((r) => r.state !== "cancelled"),
-    [requests]
-  );
-  const cancelledRequests = useMemo(
-    () => requests.filter((r) => r.state === "cancelled"),
-    [requests]
-  );
-  const createdRequests = useMemo(
-    () => requests.filter((r) => r.state !== "cancelled" && arByPrId[r.id]),
-    [requests, arByPrId]
+  const visibleRequests = useMemo(
+    () => visiblePaymentRequests(requests, hideTest),
+    [requests, hideTest]
   );
 
-  const bucketTotal = useMemo(() => {
-    if (tab === "cancelled") return cancelledRequests.length;
-    if (tab === "created") return createdRequests.length;
-    return trackingRequests.length;
-  }, [tab, trackingRequests, cancelledRequests, createdRequests]);
+  const trackingRequests = useMemo(
+    () => visibleRequests.filter((r) => r.state !== "cancelled"),
+    [visibleRequests]
+  );
+  const cancelledRequests = useMemo(
+    () => visibleRequests.filter((r) => r.state === "cancelled"),
+    [visibleRequests]
+  );
+  const createdRequests = useMemo(
+    () => visibleRequests.filter((r) => r.state !== "cancelled" && arByPrId[r.id]),
+    [visibleRequests, arByPrId]
+  );
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return requests.filter((r) => {
-      if (hideTest && r.isTest) return false;
+    return visibleRequests.filter((r) => {
       if (tab === "cancelled") {
         if (r.state !== "cancelled") return false;
       } else {
@@ -145,7 +152,14 @@ export default function PaymentRequestsTab() {
       if (!q) return true;
       return [r.id, r.name, r.uid, r.phone].some((v) => v.toLowerCase().includes(q));
     });
-  }, [requests, tab, status, dateRange, search, arByPrId, hideTest]);
+  }, [visibleRequests, tab, status, dateRange, search, arByPrId]);
+
+  // Đổi tab/filter → về trang 1; danh sách co lại thì paginate tự clamp
+  useEffect(() => {
+    setPage(1);
+  }, [tab, status, dateRange, search, hideTest]);
+
+  const pageSlice = useMemo(() => paginate(filtered, page, PAGE_SIZE), [filtered, page]);
 
   const chips = useMemo(
     () => [
@@ -209,6 +223,15 @@ export default function PaymentRequestsTab() {
 
   const handleUpdatePr = async (next: PaymentRequest) => {
     const previous = requests.find((r) => r.id === next.id) ?? null;
+    // Bug 1A-08: cảnh báo nếu sửa target nhỏ hơn số đã thu — PR sẽ chuyển "Thừa"
+    if (previous && next.target !== previous.target && next.target < previous.received) {
+      const ok = window.confirm(
+        `Tổng tiền dự kiến mới (${next.target.toLocaleString("vi-VN")}đ) ` +
+        `nhỏ hơn số đã nhận (${previous.received.toLocaleString("vi-VN")}đ). ` +
+        `PR sẽ chuyển sang trạng thái "Thừa". Vẫn lưu?`
+      );
+      if (!ok) return false;
+    }
     updateRequest(next.id, () => next);
 
     const payload: PatchPaymentRequestPayload = {
@@ -226,6 +249,8 @@ export default function PaymentRequestsTab() {
       tax_id: (next.taxId || "").trim() || undefined,
       customer_type: next.customerType || "individual",
       company_name: next.customerType === "business" ? (next.companyName || "").trim() || undefined : undefined,
+      lead_source: next.leadSource || undefined,
+      lead_channel: next.leadChannel || undefined,
     };
 
     try {
@@ -235,6 +260,8 @@ export default function PaymentRequestsTab() {
         const saved = normalizeRequest(fromApiPaymentRequest(savedRaw));
         const prev = requests.find((r) => r.id === next.id);
         if (prev) {
+          // Response PATCH không có sale_name — giữ lại tên TVTS đã load từ danh sách
+          saved.saleName = saved.saleName || prev.saleName;
           const prevContentMap = new Map(
             prev.payments.map((p) => [p.id, { transferContent: p.transferContent, qrCode: p.qrCode, checkoutUrl: p.checkoutUrl, paymentLinkId: p.paymentLinkId }])
           );
@@ -285,6 +312,8 @@ export default function PaymentRequestsTab() {
     const prId = selected.id;
     const cancelledAt = nowStamp();
     const reason = "Sales huỷ lần thanh toán";
+    // Snapshot trước optimistic để rollback nếu BE từ chối
+    const previous = requests.find((r) => r.id === prId) ?? null;
 
     updateRequest(prId, (r) => ({
       ...r,
@@ -322,35 +351,79 @@ export default function PaymentRequestsTab() {
         const prFromBe = fromApiPaymentRequest(res.data.payment_request);
         return normalizeRequest({ ...r, ...prFromBe, payments: updatedPayments });
       });
+    } catch (err) {
+      // BE từ chối → rollback FE để UI khớp DB
+      if (previous) updateRequest(prId, () => previous);
+      const msg =
+        (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ||
+        "Không huỷ được lần thanh toán. Vui lòng thử lại.";
+      alert(msg);
+    }
+  };
+
+  const handleEditAmount = async (qr: PaymentAttempt, newAmount: number) => {
+    if (!selected) return;
+    const prId = selected.id;
+    const oldAmount = qr.amount;
+
+    updateRequest(prId, (r) => ({
+      ...r,
+      payments: r.payments.map((p: PaymentAttempt) =>
+        p.id === qr.id ? { ...p, amount: newAmount } : p
+      ),
+    }));
+
+    if (!isBackendLineId(qr.id)) return;
+    try {
+      const res = await endpoints.paymentRequests.patchPaymentLineAmount(qr.id, newAmount);
+      updateRequest(prId, (r) => {
+        const updatedPayments = r.payments.map((p: PaymentAttempt) =>
+          p.id === qr.id ? { ...p, amount: res.data.payment_line.amount ?? newAmount } : p
+        );
+        const prFromBe = fromApiPaymentRequest(res.data.payment_request);
+        return normalizeRequest({ ...r, ...prFromBe, payments: updatedPayments });
+      });
     } catch {
-      /* optimistic */
+      updateRequest(prId, (r) => ({
+        ...r,
+        payments: r.payments.map((p: PaymentAttempt) =>
+          p.id === qr.id ? { ...p, amount: oldAmount } : p
+        ),
+      }));
     }
   };
 
   const handleMarkPaid = async (qr: PaymentAttempt) => {
     if (!selected) return;
-    updateRequest(selected.id, (r) => ({
+    const prId = selected.id;
+    // Snapshot trước optimistic — nếu BE từ chối thì rollback để KPI không sai
+    const previous = requests.find((r) => r.id === prId) ?? null;
+    updateRequest(prId, (r) => ({
       ...r,
       payments: r.payments.map((p: PaymentAttempt) =>
         p.id === qr.id ? { ...p, status: "paid", paidAt: nowStamp() } : p
       ),
     }));
-    if (isBackendLineId(qr.id)) {
-      try {
-        const res = await endpoints.transactions.patchStatus(qr.id, "paid");
-        const line = res.data.payment_line;
-        updateRequest(selected.id, (r) => {
-          const updatedPayments = r.payments.map((p: PaymentAttempt) =>
-            p.id === qr.id
-              ? { ...p, status: "paid" as const, paidAt: line.paid_at || nowStamp(), bill: !!(line.bill_image ?? p.billImage), billImage: line.bill_image ?? p.billImage ?? null }
-              : p
-          );
-          const prFromBe = fromApiPaymentRequest(res.data.payment_request);
-          return normalizeRequest({ ...r, ...prFromBe, payments: updatedPayments });
-        });
-      } catch {
-        /* optimistic */
-      }
+    if (!isBackendLineId(qr.id)) return;
+    try {
+      const res = await endpoints.transactions.patchStatus(qr.id, "paid");
+      const line = res.data.payment_line;
+      updateRequest(prId, (r) => {
+        const updatedPayments = r.payments.map((p: PaymentAttempt) =>
+          p.id === qr.id
+            ? { ...p, status: "paid" as const, paidAt: line.paid_at || nowStamp(), bill: !!(line.bill_image ?? p.billImage), billImage: line.bill_image ?? p.billImage ?? null }
+            : p
+        );
+        const prFromBe = fromApiPaymentRequest(res.data.payment_request);
+        return normalizeRequest({ ...r, ...prFromBe, payments: updatedPayments });
+      });
+    } catch (err) {
+      // BE từ chối → rollback FE; KPI doanh thu không bị "ảo"
+      if (previous) updateRequest(prId, () => previous);
+      const msg =
+        (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ||
+        "Không xác nhận được thanh toán. Vui lòng thử lại.";
+      alert(msg);
     }
   };
 
@@ -567,6 +640,10 @@ export default function PaymentRequestsTab() {
   const handleConfirmCancel = async ({ reason }: { reason: string }) => {
     if (!cancelTarget) return;
     const id = cancelTarget.id;
+    // Snapshot PR trước optimistic — nếu BE từ chối (vì PR đã có lần TT paid hay
+    // đã nhận tiền), rollback để PR không bị "cancelled giả".
+    const previous = requests.find((r) => r.id === id) ?? null;
+    const wasDrawerOpen = selected?.id === id && drawerOpen;
     updateRequest(id, (r) => ({
       ...r,
       cancelledAt: nowStamp(),
@@ -577,18 +654,39 @@ export default function PaymentRequestsTab() {
     if (selected?.id === id) setDrawerOpen(false);
     try {
       await endpoints.paymentRequests.cancel(id);
-    } catch {
-      /* optimistic */
+    } catch (err) {
+      if (previous) updateRequest(id, () => previous);
+      if (wasDrawerOpen) setDrawerOpen(true);
+      const msg =
+        (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ||
+        "Không huỷ được PR. Vui lòng thử lại.";
+      alert(msg);
     }
   };
 
-  const handleRestore = (request: PaymentRequest) => {
+  const handleRestore = async (request: PaymentRequest) => {
+    // Snapshot trước optimistic — nếu BE từ chối thì rollback
+    const previous = requests.find((r) => r.id === request.id) ?? null;
     updateRequest(request.id, (r) => ({
       ...r,
       cancelledAt: null,
       cancelledReason: null,
       state: "pending",
     }));
+    try {
+      const res = await endpoints.paymentRequests.restore(request.id);
+      const savedRaw = res.data?.payment_request;
+      if (savedRaw) {
+        const saved = normalizeRequest(fromApiPaymentRequest(savedRaw));
+        updateRequest(request.id, () => saved);
+      }
+    } catch (err) {
+      if (previous) updateRequest(request.id, () => previous);
+      const msg =
+        (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ||
+        "Không khôi phục được PR. Vui lòng thử lại.";
+      alert(msg);
+    }
   };
 
   const onCreateActiveRequest = async () => {
@@ -620,7 +718,7 @@ export default function PaymentRequestsTab() {
 
   return (
     <div className="gmv-prototype">
-      <div className="page">
+      <div className="page page--fit">
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
           <div style={{ fontSize: 12.5, color: "var(--text-3)", maxWidth: 640, lineHeight: 1.55 }}>
             Mỗi <strong style={{ color: "var(--text-2)" }}>Payment Request</strong> đại diện cho một thương vụ. Một PR có thể gồm{" "}
@@ -664,8 +762,12 @@ export default function PaymentRequestsTab() {
         )}
 
         <PaymentRequestTable
-          requests={filtered}
-          totalForBucket={bucketTotal}
+          requests={pageSlice.rows}
+          total={filtered.length}
+          page={pageSlice.page}
+          totalPages={pageSlice.totalPages}
+          pageSize={PAGE_SIZE}
+          onPageChange={setPage}
           selectedId={drawerOpen ? selected?.id ?? null : null}
           tab={tab}
           onTabChange={setTab}
@@ -674,6 +776,7 @@ export default function PaymentRequestsTab() {
           onCancelClick={setCancelTarget}
           onRestoreClick={handleRestore}
           arByPrId={arByPrId}
+          showTvts={showTvts}
         />
 
         <div style={{ display: "flex", justifyContent: "flex-end" }}>
@@ -691,6 +794,7 @@ export default function PaymentRequestsTab() {
         onAddPayment={handleAddPayment}
         onCancelPayment={handleCancelPayment}
         onMarkPaid={handleMarkPaid}
+        onEditAmount={handleEditAmount}
         onBillFile={handleBillFile}
         onBillView={handleBillView}
         uploadingBillId={uploadingBillId}

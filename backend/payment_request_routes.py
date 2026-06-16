@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import hashlib
+import hmac
 import io
+import json
 import mimetypes
+import os
 import re
 import time
 import unicodedata
@@ -14,7 +17,7 @@ from datetime import datetime, timezone
 from typing import Any, Callable
 
 import pandas as pd
-from fastapi import APIRouter, File, Header, HTTPException, Query, UploadFile
+from fastapi import APIRouter, File, Header, HTTPException, Query, Request, UploadFile
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
@@ -44,6 +47,62 @@ _BILL_STORAGE_CACHE_TTL_SECONDS = 30.0
 _bill_assets_cache: dict[str, Any] = {"expires_at": 0.0, "assets_by_line": {}}
 
 
+def _payos_signature_value(value: Any) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, (int, float)):
+        return str(value)
+    if isinstance(value, (dict, list)):
+        return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
+    return str(value)
+
+
+def _payos_signature_payload(data: dict[str, Any]) -> str:
+    return "&".join(
+        f"{key}={_payos_signature_value(data.get(key))}"
+        for key in sorted(data)
+    )
+
+
+def _normalize_payos_signature(signature: str | None) -> str:
+    sig = str(signature or "").strip()
+    if not sig:
+        return ""
+    if "=" in sig:
+        parts = [part.strip() for part in sig.replace(",", " ").split() if part.strip()]
+        for part in parts:
+            if part.startswith("v1="):
+                return part.split("=", 1)[1].strip()
+    return sig
+
+
+def _verify_payos_webhook_signature(payload: dict[str, Any], request: Request) -> None:
+    checksum_key = os.getenv("PAYOS_CHECKSUM_KEY", "").strip()
+    if not checksum_key:
+        raise HTTPException(503, "PayOS checksum key not configured")
+
+    data = payload.get("data")
+    if not isinstance(data, dict):
+        raise HTTPException(400, "Invalid signature")
+
+    received = _normalize_payos_signature(
+        payload.get("signature") or request.headers.get("x-payos-signature")
+    )
+    if not received:
+        raise HTTPException(400, "Invalid signature")
+
+    signed_data = _payos_signature_payload(data)
+    expected = hmac.new(
+        checksum_key.encode("utf-8"),
+        signed_data.encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()
+    if not hmac.compare_digest(expected.lower(), received.lower()):
+        raise HTTPException(400, "Invalid signature")
+
+
 class PaymentRequestCreate(BaseModel):
     uid: str | None = None
     name: str | None = None
@@ -57,6 +116,10 @@ class PaymentRequestCreate(BaseModel):
     email: str | None = ""
     target: int | str | None = None
     tax_id: str | None = None
+    customer_type: str | None = "individual"
+    company_name: str | None = None
+    lead_source: str | None = None
+    lead_channel: str | None = None
 
     uid_khach_hang: str | None = None
     ten_khach: str | None = None
@@ -78,6 +141,10 @@ class PaymentRequestPatch(BaseModel):
     email: str | None = None
     target: int | str | None = None
     tax_id: str | None = None
+    customer_type: str | None = None
+    company_name: str | None = None
+    lead_source: str | None = None
+    lead_channel: str | None = None
 
     uid_khach_hang: str | None = None
     ten_khach: str | None = None
@@ -92,6 +159,9 @@ class PaymentLineCreate(BaseModel):
     transfer_code: str | None = None
     code: str | None = None
     name_for_transfer: str | None = None
+    installment_platform: str | None = None
+    installment_total: int | str | None = None
+    sale_received: int | str | None = None
 
     so_tien: int | str | None = None
     hinh_thuc: str | None = None
@@ -100,6 +170,12 @@ class PaymentLineCreate(BaseModel):
 class TransactionStatusPatch(BaseModel):
     status: str
     reject_reason: str | None = None
+    verified_total: int | str | None = None
+    verified_received: int | str | None = None
+
+
+class PaymentLineAmountPatch(BaseModel):
+    amount: int | str
 
 
 class PaymentRequestCancelBody(BaseModel):
@@ -110,6 +186,10 @@ class PaymentLineBillDeleteBody(BaseModel):
     bill_url: str | None = None
     delete_all: bool = False
     index: int | None = None
+
+
+class InvoiceRemindCreate(BaseModel):
+    note: str | None = None
 
 
 def _sb_or_503(get_supabase: Callable[[], Any]):
@@ -191,6 +271,10 @@ def _serialize_payment_request(row: dict[str, Any]) -> dict[str, Any]:
         "note": row.get("note") or "",
         "email": row.get("email") or "",
         "tax_id": row.get("tax_id") or None,
+        "customer_type": row.get("customer_type") or "individual",
+        "company_name": row.get("company_name") or None,
+        "lead_source": row.get("lead_source") or None,
+        "lead_channel": row.get("lead_channel") or None,
         "target": target,
         "received": received,
         "state": row.get("state") or "pending",
@@ -552,6 +636,11 @@ def _serialize_payment_line(
         "reject_reason": row.get("reject_reason") or "",
         "created_at": row.get("created_at") or "",
         "updated_at": row.get("updated_at") or "",
+        "installment_platform": row.get("installment_platform") or None,
+        "installment_total": row.get("installment_total") or None,
+        "sale_received": row.get("sale_received") or None,
+        "verified_total": row.get("verified_total") or None,
+        "verified_received": row.get("verified_received") or None,
         **_bill_fields(row, bill_urls, bill_assets),
     }
 
@@ -577,6 +666,11 @@ def _serialize_payment_for_list(
         "paid_at": paid_at if paid_at else None,
         "created_at": row.get("created_at") or "",
         "reject_reason": reject if reject else None,
+        "installment_platform": row.get("installment_platform") or None,
+        "installment_total": row.get("installment_total") or None,
+        "sale_received": row.get("sale_received") or None,
+        "verified_total": row.get("verified_total") or None,
+        "verified_received": row.get("verified_received") or None,
         **_bill_fields(row, bill_urls, bill_assets),
     }
     return result
@@ -611,6 +705,22 @@ def _group_lines_by_request(lines: list[dict[str, Any]]) -> dict[str, list[dict[
             continue
         grouped.setdefault(pr_id, []).append(line)
     return grouped
+
+
+def _sale_name_map(sb) -> dict[str, str]:
+    """Map email (lower) -> ten TVTS (display_name/crm_name) tu nhan_su_sale."""
+    try:
+        res = sb.table("nhan_su_sale").select("email, display_name, crm_name").execute()
+    except Exception as exc:
+        print(f"[payment_requests] nhan_su_sale lookup failed: {exc}")
+        return {}
+    mapping: dict[str, str] = {}
+    for row in res.data or []:
+        email = str(row.get("email") or "").strip().lower()
+        if not email:
+            continue
+        mapping[email] = row.get("display_name") or row.get("crm_name") or email
+    return mapping
 
 
 def _can_access_request(sb, actor: Any, pr_row: dict[str, Any]) -> bool:
@@ -659,6 +769,22 @@ def _payment_request_insert_row(body: PaymentRequestCreate) -> dict[str, Any]:
     child_name = _clean_text(body.child_name)
     if child_name:
         row["child_name"] = child_name
+    if body.tax_id:
+        row["tax_id"] = _clean_text(body.tax_id)
+    
+    ct = _clean_text(body.customer_type) or "individual"
+    if ct not in ("individual", "business"):
+        raise HTTPException(400, "customer_type phai la 'individual' hoac 'business'")
+    row["customer_type"] = ct
+    if ct == "business":
+        company = _clean_text(body.company_name)
+        if company:
+            row["company_name"] = company
+
+    if body.lead_source:
+        row["lead_source"] = body.lead_source
+    if body.lead_channel:
+        row["lead_channel"] = body.lead_channel
     return row
 
 
@@ -712,6 +838,25 @@ def _payment_request_patch_row(body: PaymentRequestPatch, current_row: dict[str,
         if target <= 0:
             raise HTTPException(400, "target khong hop le")
         patch["target"] = target
+
+    if body.tax_id is not None:
+        patch["tax_id"] = _clean_text(body.tax_id) or None
+    if body.customer_type is not None:
+        ct = _clean_text(body.customer_type) or "individual"
+        if ct not in ("individual", "business"):
+            raise HTTPException(400, "customer_type phai la 'individual' hoac 'business'")
+        patch["customer_type"] = ct
+    if body.company_name is not None:
+        patch["company_name"] = _clean_text(body.company_name) or None
+
+    final_ct = patch.get("customer_type", current_row.get("customer_type") or "individual")
+    if final_ct == "individual":
+        patch["company_name"] = None
+
+    if body.lead_source is not None:
+        patch["lead_source"] = body.lead_source or None
+    if body.lead_channel is not None:
+        patch["lead_channel"] = body.lead_channel or None
 
     if not patch:
         return {}
@@ -910,6 +1055,23 @@ def _extract_payos_data(payload: dict[str, Any]) -> tuple[str, int, str]:
 
 
 def _mark_line_paid(sb, line_id: str) -> dict[str, Any]:
+    existing_res = (
+        sb.table("payment_lines")
+        .select("*")
+        .eq("id", line_id)
+        .limit(1)
+        .execute()
+    )
+    if not existing_res.data:
+        raise HTTPException(404, "Khong tim thay payment_line")
+    existing = existing_res.data[0]
+    if _clean_text(existing.get("status")).lower() == "paid":
+        totals = recompute_payment_request_totals(sb, str(existing["payment_request_id"]))
+        return {
+            "payment_line": _serialize_payment_line(existing),
+            **totals,
+        }
+
     now_iso = _iso_now()
     line_res = (
         sb.table("payment_lines")
@@ -1037,6 +1199,13 @@ async def sync_all_pending_payos_lines(sb) -> dict[str, Any]:
     return {"synced": synced, "synced_count": len(synced), "errors": errors}
 
 
+def _transfer_code_in_description(code: str, description: str) -> bool:
+    cleaned = _clean_text(code).upper()
+    if not cleaned:
+        return False
+    return bool(re.search(rf"\b{re.escape(cleaned)}\b", description.upper()))
+
+
 def reconcile_payment_line_webhook(sb, payload: dict[str, Any]) -> dict[str, Any]:
     """Match PayOS webhook to payment_lines; fallback to don_hang when unmatched."""
     order_code, amount, description = _extract_payos_data(payload)
@@ -1053,7 +1222,6 @@ def reconcile_payment_line_webhook(sb, payload: dict[str, Any]) -> dict[str, Any
         line = _find_payment_line_by_payment_link_id(sb, payment_link_id)
     if not line and description:
         # Fallback: khớp transfer_code trong nội dung CK (PayOS description)
-        desc = description.upper()
         try:
             candidates = (
                 sb.table("payment_lines")
@@ -1063,8 +1231,8 @@ def reconcile_payment_line_webhook(sb, payload: dict[str, Any]) -> dict[str, Any
                 .execute()
             )
             for candidate in candidates.data or []:
-                code = _clean_text(candidate.get("transfer_code")).upper()
-                if code and code in desc:
+                code = _clean_text(candidate.get("transfer_code"))
+                if code and _transfer_code_in_description(code, description):
                     line = candidate
                     break
         except Exception as exc:
@@ -1092,6 +1260,111 @@ def reconcile_payment_line_webhook(sb, payload: dict[str, Any]) -> dict[str, Any
         "description": description,
         **result,
     }
+
+
+def _parse_iso_datetime(val: str) -> datetime:
+    if val.endswith("Z"):
+        val = val[:-1] + "+00:00"
+    return datetime.fromisoformat(val)
+
+
+def _has_invoice_since(sb, pr_id: str, since: datetime) -> bool:
+    """Check if any course was invoiced after `since` for this PR's active requests."""
+    try:
+        ar_res = sb.table("active_requests").select("uids_data").eq("pr_id", pr_id).execute()
+        for ar in (ar_res.data or []):
+            for uid in (ar.get("uids_data") or []):
+                for c in (uid.get("courses") or []):
+                    if c.get("invoiced") and c.get("invoicedAt"):
+                        inv_time = _parse_iso_datetime(str(c["invoicedAt"]))
+                        if inv_time > since:
+                            return True
+    except Exception:
+        pass
+    return False
+
+
+def _is_accountant_or_manager(sb, actor) -> bool:
+    if _clean_text(actor.role).lower() in ("manager", "system"):
+        return True
+    if can_confirm_payment(actor):
+        return True
+    try:
+        from admin_routes import _compute_permissions
+        perms = _compute_permissions(sb, actor)
+        if perms.get("module4", "none") != "none":
+            return True
+    except Exception as exc:
+        print(f"[invoice_reminders] check permissions failed: {exc}")
+    return False
+
+
+def _get_user_id_to_name_map(sb) -> dict[str, str]:
+    """Map auth_user_id -> display_name or crm_name or email."""
+    try:
+        users_res = sb.auth.admin.list_users()
+        users = users_res if isinstance(users_res, list) else getattr(users_res, "users", []) or []
+    except Exception as exc:
+        print(f"[invoice_reminders] list_users failed: {exc}")
+        users = []
+
+    email_to_id: dict[str, str] = {}
+    for u in users:
+        u_id = getattr(u, "id", None) or (isinstance(u, dict) and u.get("id"))
+        u_email = getattr(u, "email", None) or (isinstance(u, dict) and u.get("email"))
+        if u_id and u_email:
+            email_to_id[str(u_email).strip().lower()] = str(u_id)
+
+    try:
+        staff_res = sb.table("nhan_su_sale").select("email, display_name, crm_name").execute()
+        staff_list = staff_res.data or []
+    except Exception as exc:
+        print(f"[invoice_reminders] nhan_su_sale query failed: {exc}")
+        staff_list = []
+
+    email_to_name: dict[str, str] = {}
+    for s in staff_list:
+        email = str(s.get("email") or "").strip().lower()
+        if not email:
+            continue
+        name = s.get("display_name") or s.get("crm_name") or email
+        email_to_name[email] = name
+
+    id_to_name: dict[str, str] = {}
+    for email, uid in email_to_id.items():
+        id_to_name[uid] = email_to_name.get(email, email)
+
+    for u in users:
+        u_id = str(getattr(u, "id", None) or (isinstance(u, dict) and u.get("id")) or "")
+        if not u_id:
+            continue
+        if u_id not in id_to_name:
+            u_email = getattr(u, "email", None) or (isinstance(u, dict) and u.get("email"))
+            id_to_name[u_id] = str(u_email) if u_email else u_id
+
+    return id_to_name
+
+
+def _get_user_name_by_id(sb, user_id: str) -> str:
+    try:
+        user_res = sb.auth.admin.get_user_by_id(user_id)
+        user = user_res.user if hasattr(user_res, "user") else user_res
+        if user:
+            email = getattr(user, "email", None) or (isinstance(user, dict) and user.get("email"))
+            if email:
+                staff_res = (
+                    sb.table("nhan_su_sale")
+                    .select("display_name, crm_name")
+                    .eq("email", email)
+                    .limit(1)
+                    .execute()
+                )
+                if staff_res.data:
+                    return staff_res.data[0].get("display_name") or staff_res.data[0].get("crm_name") or email
+                return email
+    except Exception as exc:
+        print(f"[invoice_reminders] get_user_name_by_id failed: {exc}")
+    return user_id
 
 
 def register_payment_request_routes(app, get_supabase) -> None:
@@ -1161,6 +1434,13 @@ def register_payment_request_routes(app, get_supabase) -> None:
             )
             for row in pr_rows
         ]
+
+        # Enrich ten TVTS de FE hien cot TVTS cho leader+ ngay tren bang chinh.
+        name_map = _sale_name_map(sb)
+        for item in requests:
+            email = str(item.get("sale_email") or "").strip().lower()
+            item["sale_name"] = name_map.get(email, "")
+
         return {"requests": requests}
 
     @router.patch("/payment-requests/{payment_request_id}")
@@ -1295,6 +1575,63 @@ def register_payment_request_routes(app, get_supabase) -> None:
             )
         }
 
+    @router.post("/payment-requests/{payment_request_id}/restore")
+    def restore_payment_request(
+        payment_request_id: str,
+        authorization: str | None = Header(None),
+    ):
+        sb = _sb_or_503(get_supabase)
+        actor = resolve_actor(sb, authorization)
+        require_module_write(sb, actor, "paymentRequests")
+        request_res = (
+            sb.table("payment_requests")
+            .select("*")
+            .eq("id", payment_request_id)
+            .limit(1)
+            .execute()
+        )
+        if not request_res.data:
+            raise HTTPException(404, "Khong tim thay payment_request")
+
+        pr_row = request_res.data[0]
+        if not _can_access_request(sb, actor, pr_row):
+            raise HTTPException(403, "Khong co quyen thao tac phieu nay")
+        current_state = _clean_text(pr_row.get("state")).lower()
+        if current_state != "cancelled":
+            raise HTTPException(400, "Chi restore duoc payment request da bi huy")
+
+        line_res = (
+            sb.table("payment_lines")
+            .select("*")
+            .eq("payment_request_id", payment_request_id)
+            .execute()
+        )
+        lines = line_res.data or []
+        target = _parse_amount(pr_row.get("target"))
+        received = _sum_paid_amount(lines)
+        state = _compute_state(received, target)
+
+        patch: dict[str, Any] = {
+            "state": state,
+            "received": received,
+            "cancelled_at": None,
+            "cancelled_reason": None,
+        }
+        try:
+            updated_res = (
+                sb.table("payment_requests")
+                .update(patch)
+                .eq("id", payment_request_id)
+                .execute()
+            )
+        except Exception as exc:
+            raise HTTPException(500, f"Khong restore duoc payment_request: {exc}") from exc
+
+        updated = updated_res.data[0] if updated_res.data else {**pr_row, **patch}
+        return {
+            "payment_request": _serialize_payment_request_list_item(updated, lines)
+        }
+
     @router.post("/payment-requests/sync-pending-payos")
     async def sync_pending_payos_payments(authorization: str | None = Header(None)):
         """Poll PayOS cho mọi QR pending — dùng khi webhook chưa tới (local/prod)."""
@@ -1361,6 +1698,21 @@ def register_payment_request_routes(app, get_supabase) -> None:
             raise HTTPException(403, "Khong co quyen thao tac phieu nay")
         if _clean_text(pr_row.get("state")).lower() == "cancelled":
             raise HTTPException(400, "Payment request da bi huy")
+        target = _parse_amount(pr_row.get("target"))
+        received = _parse_amount(pr_row.get("received"))
+        if target > 0 and received >= target:
+            raise HTTPException(
+                400,
+                {
+                    "code": "PR_ALREADY_FULL",
+                    "message": (
+                        "PR da nhan du tien, can tang so tien du kien "
+                        "de tao them lan thanh toan"
+                    ),
+                    "received": received,
+                    "target": target,
+                },
+            )
 
         amount = _parse_amount(body.amount or body.so_tien)
         if amount <= 0:
@@ -1387,6 +1739,14 @@ def register_payment_request_routes(app, get_supabase) -> None:
             "transfer_code": transfer_code,
             "is_test": bool(pr_row.get("is_test")),
         }
+
+        if method == "installment":
+            if body.installment_platform:
+                insert_row["installment_platform"] = body.installment_platform
+            if body.installment_total is not None:
+                insert_row["installment_total"] = _parse_amount(body.installment_total)
+            if body.sale_received is not None:
+                insert_row["sale_received"] = _parse_amount(body.sale_received)
 
         if method == "qr":
             description = _build_payos_transfer_description(
@@ -1433,12 +1793,81 @@ def register_payment_request_routes(app, get_supabase) -> None:
         return response
 
     @router.post("/payos-webhook")
-    async def payos_webhook_v1(payload: dict):
+    async def payos_webhook_v1(request: Request):
+        raw_body = await request.body()
+        try:
+            payload = json.loads(raw_body)
+        except json.JSONDecodeError as exc:
+            raise HTTPException(400, "Invalid JSON payload") from exc
+        if not isinstance(payload, dict):
+            raise HTTPException(400, "Invalid JSON payload")
+        _verify_payos_webhook_signature(payload, request)
+
         sb = _sb_or_503(get_supabase)
         result = reconcile_payment_line_webhook(sb, payload)
         if not result.get("matched"):
             raise HTTPException(404, "Khong tim thay payment_line tuong ung webhook")
         return result
+
+    @router.patch("/payment-lines/{line_id}/amount")
+    def patch_payment_line_amount(
+        line_id: str,
+        body: PaymentLineAmountPatch,
+        authorization: str | None = Header(None),
+    ):
+        sb = _sb_or_503(get_supabase)
+        actor = resolve_actor(sb, authorization)
+        require_module_write(sb, actor, "paymentRequests")
+
+        line_res = (
+            sb.table("payment_lines")
+            .select("*")
+            .eq("id", line_id)
+            .limit(1)
+            .execute()
+        )
+        if not line_res.data:
+            raise HTTPException(404, "Khong tim thay payment_line")
+
+        line = line_res.data[0]
+        if _clean_text(line.get("status")).lower() != "pending" or line.get("cancelled"):
+            raise HTTPException(400, "Chi duoc sua so tien khi chua thanh toan")
+
+        pr_id = str(line.get("payment_request_id") or "")
+        if not pr_id:
+            raise HTTPException(400, "payment_line thieu payment_request_id")
+
+        pr_res = sb.table("payment_requests").select("*").eq("id", pr_id).limit(1).execute()
+        if not pr_res.data:
+            raise HTTPException(404, "Khong tim thay payment_request lien quan")
+        if not _can_access_request(sb, actor, pr_res.data[0]):
+            raise HTTPException(403, "Khong co quyen sua payment_line nay")
+
+        amount = _parse_amount(body.amount)
+        if amount <= 0:
+            raise HTTPException(400, "amount khong hop le")
+
+        try:
+            updated_res = (
+                sb.table("payment_lines")
+                .update({"amount": amount})
+                .eq("id", line_id)
+                .execute()
+            )
+            totals = recompute_payment_request_totals(sb, pr_id)
+        except HTTPException:
+            raise
+        except Exception as exc:
+            raise HTTPException(500, f"Khong cap nhat amount: {exc}") from exc
+
+        updated_line = updated_res.data[0] if updated_res.data else {**line, "amount": amount}
+        return {
+            "payment_line": _serialize_payment_line(updated_line),
+            "payment_request": totals["payment_request"],
+            "received": totals["received"],
+            "target": totals["target"],
+            "state": totals["state"],
+        }
 
     @router.patch("/transactions/{transaction_id}/status")
     def patch_transaction_status(
@@ -1477,6 +1906,11 @@ def register_payment_request_routes(app, get_supabase) -> None:
         else:
             patch["paid_at"] = None
             patch["reject_reason"] = None
+
+        if body.verified_total is not None:
+            patch["verified_total"] = _parse_amount(body.verified_total) or None
+        if body.verified_received is not None:
+            patch["verified_received"] = _parse_amount(body.verified_received) or None
 
         try:
             updated_res = sb.table("payment_lines").update(patch).eq("id", transaction_id).execute()
@@ -1838,5 +2272,207 @@ def register_payment_request_routes(app, get_supabase) -> None:
                 "X-Bills-Failed": str(failed_count),
             },
         )
+
+    @router.post("/payment-requests/{payment_request_id}/invoice-remind")
+    def create_invoice_reminder(
+        payment_request_id: str,
+        body: InvoiceRemindCreate,
+        authorization: str | None = Header(None),
+    ):
+        sb = _sb_or_503(get_supabase)
+        actor = resolve_actor(sb, authorization)
+        require_module_write(sb, actor, "paymentRequests")
+
+        # Check PR exists and actor has access
+        request_res = (
+            sb.table("payment_requests")
+            .select("*")
+            .eq("id", payment_request_id)
+            .limit(1)
+            .execute()
+        )
+        if not request_res.data:
+            raise HTTPException(404, "Khong tim thay payment_request")
+
+        current_row = request_res.data[0]
+        if not _can_access_request(sb, actor, current_row):
+            raise HTTPException(403, "Khong co quyen thao tac phieu nay")
+
+        target = _parse_amount(current_row.get("target"))
+        received = _parse_amount(current_row.get("received"))
+        if target > 0 and received < target:
+            raise HTTPException(
+                400,
+                f"PR chua thu du tien ({received}/{target}), khong nhac xuat HD duoc",
+            )
+
+        # Throttle: block if reminded in 24h AND no invoice issued since that remind
+        remind_res = (
+            sb.table("invoice_reminders")
+            .select("*")
+            .eq("payment_request_id", payment_request_id)
+            .order("requested_at", desc=True)
+            .limit(1)
+            .execute()
+        )
+        if remind_res.data:
+            last_remind = remind_res.data[0]
+            last_time = _parse_iso_datetime(last_remind["requested_at"])
+            now_time = datetime.now(timezone.utc)
+            diff = now_time - last_time
+            if diff.total_seconds() < 24 * 3600:
+                if not _has_invoice_since(sb, payment_request_id, last_time):
+                    raise HTTPException(429, "Da nhac trong 24h qua, vui long cho")
+
+        # Insert
+        insert_res = (
+            sb.table("invoice_reminders")
+            .insert({
+                "payment_request_id": payment_request_id,
+                "requested_by": actor.user_id,
+                "note": _clean_text(body.note) if body.note else None
+            })
+            .execute()
+        )
+        if not insert_res.data:
+            raise HTTPException(500, "Khong the luu remind")
+
+        row = insert_res.data[0]
+        return {
+            "reminder": {
+                "id": str(row.get("id")),
+                "payment_request_id": str(row.get("payment_request_id")),
+                "requested_by": str(row.get("requested_by")),
+                "requested_at": str(row.get("requested_at")),
+                "note": row.get("note")
+            }
+        }
+
+    @router.get("/invoice-reminders")
+    def list_invoice_reminders(
+        status: str | None = Query(None),
+        authorization: str | None = Header(None),
+    ):
+        sb = _sb_or_503(get_supabase)
+        actor = resolve_actor(sb, authorization)
+
+        # check role kế toán/manager
+        if not _is_accountant_or_manager(sb, actor):
+            raise HTTPException(403, "Chỉ kế toán hoặc manager được phép xem danh sách nhắc nhở")
+
+        reminders_res = (
+            sb.table("invoice_reminders")
+            .select("*")
+            .order("requested_at", desc=True)
+            .execute()
+        )
+        reminders_data = reminders_res.data or []
+        if not reminders_data:
+            return {"reminders": []}
+
+        # Query related payment requests
+        pr_ids = list({r["payment_request_id"] for r in reminders_data if r.get("payment_request_id")})
+        pr_res = sb.table("payment_requests").select("id, name").in_("id", pr_ids).execute()
+        pr_map = {r["id"]: r for r in (pr_res.data or [])}
+
+        # Query related active requests — check if ALL courses invoiced
+        ar_res = sb.table("active_requests").select("pr_id, uids_data").in_("pr_id", pr_ids).execute()
+        ar_all_invoiced: dict[str, bool] = {}
+        for ar in (ar_res.data or []):
+            pid = ar.get("pr_id")
+            if not pid:
+                continue
+            uids = ar.get("uids_data") or []
+            courses = [c for u in (uids if isinstance(uids, list) else []) for c in (u.get("courses") or [])]
+            all_done = bool(courses) and all(c.get("invoiced") for c in courses)
+            ar_all_invoiced[pid] = ar_all_invoiced.get(pid, True) and all_done
+
+        def is_pending(pr_id: str) -> bool:
+            if pr_id not in pr_map:
+                return False
+            return not ar_all_invoiced.get(pr_id, False)
+
+        if status == "pending":
+            reminders_data = [r for r in reminders_data if is_pending(r["payment_request_id"])]
+
+        user_names = _get_user_id_to_name_map(sb)
+
+        reminders = []
+        for r in reminders_data:
+            pr_id = r["payment_request_id"]
+            pr = pr_map.get(pr_id)
+            if not pr:
+                continue
+
+            requested_by = r.get("requested_by")
+            requested_by_name = user_names.get(requested_by, requested_by)
+
+            reminders.append({
+                "id": str(r["id"]),
+                "payment_request_id": pr_id,
+                "pr_code": pr_id,
+                "customer_name": pr.get("name") or "",
+                "requested_by_name": requested_by_name,
+                "requested_at": str(r["requested_at"]),
+                "note": r.get("note")
+            })
+
+        return {"reminders": reminders}
+
+    @router.get("/payment-requests/{payment_request_id}/invoice-remind")
+    def get_invoice_reminder_status(
+        payment_request_id: str,
+        authorization: str | None = Header(None),
+    ):
+        sb = _sb_or_503(get_supabase)
+        actor = resolve_actor(sb, authorization)
+
+        # Check PR exists and actor has access
+        request_res = (
+            sb.table("payment_requests")
+            .select("*")
+            .eq("id", payment_request_id)
+            .limit(1)
+            .execute()
+        )
+        if not request_res.data:
+            raise HTTPException(404, "Khong tim thay payment_request")
+
+        pr_row = request_res.data[0]
+        if not _can_access_request(sb, actor, pr_row):
+            raise HTTPException(403, "Khong co quyen access PR")
+
+        remind_res = (
+            sb.table("invoice_reminders")
+            .select("*")
+            .eq("payment_request_id", payment_request_id)
+            .order("requested_at", desc=True)
+            .limit(1)
+            .execute()
+        )
+
+        can_remind = True
+        last_reminder = None
+        if remind_res.data:
+            row = remind_res.data[0]
+            last_time = _parse_iso_datetime(row["requested_at"])
+            now_time = datetime.now(timezone.utc)
+            diff = now_time - last_time
+            if diff.total_seconds() < 24 * 3600:
+                if not _has_invoice_since(sb, payment_request_id, last_time):
+                    can_remind = False
+
+            requested_by_name = _get_user_name_by_id(sb, row.get("requested_by"))
+            last_reminder = {
+                "id": str(row["id"]),
+                "requested_at": str(row["requested_at"]),
+                "requested_by_name": requested_by_name,
+                "note": row.get("note")
+            }
+
+        return {
+            "last_reminder": last_reminder,
+            "can_remind": can_remind
+        }
 
     app.include_router(router)

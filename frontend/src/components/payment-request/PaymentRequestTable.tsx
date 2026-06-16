@@ -9,6 +9,7 @@ import {
   ddmmyyyy,
   fmtPhone,
   formatPaymentDateShort,
+  pageItems,
   relativeFrom,
   vnd,
 } from "./paymentRequestUtils";
@@ -46,7 +47,11 @@ interface TabConfig {
 
 export default function PaymentRequestTable({
   requests,
-  totalForBucket,
+  total,
+  page,
+  totalPages,
+  pageSize,
+  onPageChange,
   selectedId,
   tab,
   onTabChange,
@@ -55,9 +60,15 @@ export default function PaymentRequestTable({
   onCancelClick,
   onRestoreClick,
   arByPrId,
+  showTvts = false,
 }: {
   requests: PaymentRequest[];
-  totalForBucket: number;
+  /** Tổng kết quả sau lọc (mọi trang) */
+  total: number;
+  page: number;
+  totalPages: number;
+  pageSize: number;
+  onPageChange: (page: number) => void;
   selectedId: string | null;
   tab: RequestBucket;
   onTabChange: (next: RequestBucket) => void;
@@ -66,6 +77,8 @@ export default function PaymentRequestTable({
   onCancelClick: (request: PaymentRequest) => void;
   onRestoreClick: (request: PaymentRequest) => void;
   arByPrId: Record<string, ActiveRequest>;
+  /** Hiện cột TVTS — chỉ bật cho leader/manager/system (sale chỉ thấy PR của mình) */
+  showTvts?: boolean;
 }) {
   const copyPrId = async (id: string) => {
     // In-app browsers may block navigator.clipboard; fallback to execCommand copy.
@@ -122,7 +135,7 @@ export default function PaymentRequestTable({
             );
           })}
         </div>
-        <span className="right-meta">{requests.length} kết quả</span>
+        <span className="right-meta">{total} kết quả</span>
       </div>
       <div className="tbl-wrap">
         <table className="tbl">
@@ -132,6 +145,7 @@ export default function PaymentRequestTable({
               <th style={{ width: 120 }}>PR-ID</th>
               <th style={{ minWidth: 180 }}>Tên khách hàng</th>
               <th style={{ width: 200 }}>UID / SĐT</th>
+              {showTvts && <th style={{ width: 130 }}>TVTS</th>}
               <th style={{ textAlign: "center", width: 90 }}>Số lần TT</th>
               <th style={{ width: 200 }}>Tiến trình thanh toán</th>
               <th style={{ width: 130 }}>Trạng thái</th>
@@ -211,6 +225,16 @@ export default function PaymentRequestTable({
                       </div>
                     </div>
                   </td>
+                  {showTvts && (
+                    <td>
+                      <span
+                        style={{ fontSize: 12.5, color: "var(--text-2)", fontWeight: 500 }}
+                        title={p.saleEmail || undefined}
+                      >
+                        {p.saleName || (p.saleEmail ? p.saleEmail.split("@")[0] : "—")}
+                      </span>
+                    </td>
+                  )}
                   <td style={{ textAlign: "center" }}>
                     <QrCountCell done={p.doneCount} total={p.totalCount} />
                   </td>
@@ -224,7 +248,7 @@ export default function PaymentRequestTable({
                     )}
                   </td>
                   <td>
-                    <PaymentRequestStatusBadge state={p.state} />
+                    <PaymentRequestStatusBadge state={p.state} totalCount={p.totalCount} />
                   </td>
                   <td>
                     <DeltaCell state={p.state} delta={p.delta} />
@@ -270,7 +294,7 @@ export default function PaymentRequestTable({
             })}
             {requests.length === 0 && (
               <tr>
-                <td colSpan={10}>
+                <td colSpan={showTvts ? 11 : 10}>
                   <div className="empty">
                     <Icons.Search size={20} />
                     <div>Không có Payment Request nào khớp với điều kiện lọc.</div>
@@ -283,16 +307,40 @@ export default function PaymentRequestTable({
       </div>
       <div className="pagi">
         <span>
-          Hiển thị 1–{requests.length} trong {totalForBucket} kết quả
+          {requests.length === 0
+            ? "Không có kết quả"
+            : `Hiển thị ${(page - 1) * pageSize + 1}–${(page - 1) * pageSize + requests.length} trong ${total} kết quả`}
         </span>
         <div className="pagi-btns">
-          <button className="pagi-btn">
+          <button
+            className="pagi-btn"
+            disabled={page <= 1}
+            onClick={() => onPageChange(page - 1)}
+            aria-label="Trang trước"
+          >
             <Icons.ChevronLeft size={13} />
           </button>
-          <button className="pagi-btn active">1</button>
-          <button className="pagi-btn">2</button>
-          <button className="pagi-btn">3</button>
-          <button className="pagi-btn">
+          {pageItems(page, totalPages).map((it, i) =>
+            it === "..." ? (
+              <span key={`gap-${i}`} className="pagi-gap">
+                …
+              </span>
+            ) : (
+              <button
+                key={it}
+                className={`pagi-btn ${it === page ? "active" : ""}`}
+                onClick={() => onPageChange(it)}
+              >
+                {it}
+              </button>
+            )
+          )}
+          <button
+            className="pagi-btn"
+            disabled={page >= totalPages}
+            onClick={() => onPageChange(page + 1)}
+            aria-label="Trang sau"
+          >
             <Icons.ChevronRight size={13} />
           </button>
         </div>

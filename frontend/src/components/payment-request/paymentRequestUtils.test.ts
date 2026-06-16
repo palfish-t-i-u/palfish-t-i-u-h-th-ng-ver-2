@@ -5,8 +5,11 @@ import {
   activeRequestAllocation,
   buildCreateActiveRequestPayload,
   formatCoursePhone,
+  pageItems,
+  paginate,
   toActiveRequestPatchUidsData,
   updateActiveCoursePackage,
+  visiblePaymentRequests,
 } from "./paymentRequestUtils";
 
 describe("active request course package updates", () => {
@@ -150,5 +153,80 @@ describe("active request course package updates", () => {
       overAmount: 4000,
       isOver: true,
     });
+  });
+});
+
+describe("visiblePaymentRequests", () => {
+  const reqs = [
+    { id: "PR-1", isTest: true } as PaymentRequest,
+    { id: "PR-2" } as PaymentRequest,
+    { id: "PR-3", isTest: false } as PaymentRequest,
+  ];
+
+  it("ẩn PR test khi hideTest bật", () => {
+    expect(visiblePaymentRequests(reqs, true).map((r) => r.id)).toEqual(["PR-2", "PR-3"]);
+  });
+
+  it("giữ nguyên toàn bộ khi hideTest tắt", () => {
+    expect(visiblePaymentRequests(reqs, false)).toEqual(reqs);
+  });
+});
+
+describe("paginate", () => {
+  const items = Array.from({ length: 45 }, (_, i) => i + 1);
+
+  it("cắt trang 1 đúng 20 phần tử", () => {
+    const s = paginate(items, 1, 20);
+    expect(s.rows).toHaveLength(20);
+    expect(s.rows[0]).toBe(1);
+    expect(s.totalPages).toBe(3);
+    expect(s.page).toBe(1);
+    expect(s.from).toBe(1);
+    expect(s.to).toBe(20);
+  });
+
+  it("trang cuối lẻ phần tử", () => {
+    const s = paginate(items, 3, 20);
+    expect(s.rows).toEqual([41, 42, 43, 44, 45]);
+    expect(s.from).toBe(41);
+    expect(s.to).toBe(45);
+  });
+
+  it("clamp khi page vượt totalPages (vd sau khi đổi filter danh sách co lại)", () => {
+    const s = paginate(items, 99, 20);
+    expect(s.page).toBe(3);
+    expect(s.rows[0]).toBe(41);
+  });
+
+  it("clamp khi page < 1", () => {
+    expect(paginate(items, 0, 20).page).toBe(1);
+  });
+
+  it("danh sách rỗng: 1 trang rỗng, from/to = 0", () => {
+    const s = paginate([], 1, 20);
+    expect(s.rows).toEqual([]);
+    expect(s.totalPages).toBe(1);
+    expect(s.page).toBe(1);
+    expect(s.from).toBe(0);
+    expect(s.to).toBe(0);
+  });
+});
+
+describe("pageItems", () => {
+  it("ít trang: hiện hết", () => {
+    expect(pageItems(2, 5)).toEqual([1, 2, 3, 4, 5]);
+    expect(pageItems(1, 7)).toEqual([1, 2, 3, 4, 5, 6, 7]);
+  });
+
+  it("đầu dãy: 1 2 … cuối", () => {
+    expect(pageItems(1, 10)).toEqual([1, 2, "...", 10]);
+  });
+
+  it("giữa dãy: 1 … quanh trang hiện tại … cuối", () => {
+    expect(pageItems(5, 10)).toEqual([1, "...", 4, 5, 6, "...", 10]);
+  });
+
+  it("cuối dãy: 1 … 9 10", () => {
+    expect(pageItems(10, 10)).toEqual([1, "...", 9, 10]);
   });
 });

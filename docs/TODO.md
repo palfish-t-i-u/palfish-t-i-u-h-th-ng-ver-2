@@ -439,3 +439,50 @@
 | FIX-02 | Auto-correct GMV locale errors from "All File Thu Hiền" | done | Minh | 2026-06-05 | 2026-06-05 | Detect VN decimal comma |
 | FIX-03 | Permissions tab loading spinner fix | done | Minh | 2026-06-06 | 2026-06-06 | Revert + reapply approach |
 | DOCS-01 | Spec template + export guide for prototype-to-spec workflow | done | Minh | 2026-06-06 | 2026-06-06 | `SPEC_TEMPLATE.md`, `HUONG_DAN_XUAT_SPEC.md` |
+
+---
+
+## Feedback 9/6/2026 — Demo review tasks
+
+> Từ buổi demo 9/6, go-live 18/06. Trừ nghiệp vụ hoa hồng & HCM (chưa có spec).
+
+| ID | Task | Status | Owner | created_at | completed_at | Ghi chú |
+|----|------|--------|-------|------------|--------------|---------|
+| TOP1-01 | Nội dung CK: base36 code + tên con + họ tên selector | done | Minh | 2026-06-07 | 2026-06-08 | `transfer_content` format, `PaymentFlowContext`, `CreatePaymentRequestModal` |
+| TOP1-02 | Trả góp: form trả góp mới + kế toán xác nhận (B2) | done | Minh | 2026-06-09 | 2026-06-09 | FE form, BE `PaymentLineCreate` + `verified_total/verified_received`, 2 migrations |
+| TOP2-01 | Nguồn khách hàng: lead_source + lead_channel trên PR | done | Minh | 2026-06-08 | 2026-06-09 | FE + BE + migration `add_lead_source_channel` |
+| TOP2-02 | Mã số thuế: tax_id trên PR, dynamic label cá nhân/DN | done | Minh | 2026-06-08 | 2026-06-09 | `CreatePaymentRequestModal`, BE migration |
+| TOP2-03 | Loại KH: customer_type (individual/business) + company_name | done | Minh | 2026-06-08 | 2026-06-09 | Toggle cá nhân/doanh nghiệp, conditional fields |
+| TOP3 | PayOS transfer_content: persist nội dung CK PayOS | done | Minh | 2026-06-08 | 2026-06-08 | Store PayOS prefix content, `payment_lines.transfer_content` |
+| BUG-01 | PR serialize thiếu lead_source/customer_type/company_name | done | Minh | 2026-06-09 | 2026-06-09 | `_serialize_payment_request` missing 5 fields |
+| BUG-02 | B2 drawer kế toán xác nhận quá nhỏ, tụt dưới đáy | done | Minh | 2026-06-09 | 2026-06-09 | Move to main body, larger styling |
+
+---
+
+## Feedback 10/6/2026 — Test review tasks
+
+> Từ buổi test 10/6. TOP 1-B (edit amount) và TOP 2-A (remind invoice) là trọng tâm.
+
+| ID | Task | Status | Owner | created_at | completed_at | Ghi chú |
+|----|------|--------|-------|------------|--------------|---------|
+| F1006-01 | Edit amount UX: pencil icon rõ hơn + one-time onboarding tooltip | done | Minh | 2026-06-10 | 2026-06-10 | `dc8cf31` — pencil size 12 + opacity 0.6, tooltip auto-show 600ms, auto-hide 5s, localStorage |
+| F1006-02 | Invoice remind FE: nút nhắc trong PR drawer + hook useInvoiceRemind | done | Minh | 2026-06-10 | 2026-06-10 | `ab49c5f` — dòng trạng thái "Đã nhắc kế toán lúc ..." |
+| F1006-03 | Invoice remind FE: banner + badge + KPI card cho kế toán (B4 tab) | done | Minh | 2026-06-10 | 2026-06-10 | `457f716`, `7ccfb98` — standalone banner, row badge "Nhắc", KPI "Sales đang nhắc" |
+| F1006-04 | Fix: is_pending lọc sai — reminder biến mất khi AR activated nhưng chưa invoiced | done | Minh | 2026-06-10 | 2026-06-10 | `29f71bd` — check course.invoiced field thay vì AR status string |
+| F1006-05 | Fix: sai tên cột uids → uids_data trong query invoice-reminders | done | Minh | 2026-06-10 | 2026-06-10 | `bfc318b` — Supabase PostgREST trả 400 cho cột không tồn tại |
+| F1006-06 | Tighten remind button: chỉ hiện khi activatedCount > 0 | done | Minh | 2026-06-10 | 2026-06-10 | `9a1e181` — không nhắc khi PR chưa có course kích hoạt |
+| F1006-07 | Smart throttle: cho nhắc lại trong 24h nếu KT đã xuất HĐ từ lần nhắc trước | done | Minh | 2026-06-10 | 2026-06-10 | `ac765bf` — `_has_invoice_since()` helper, check invoicedAt > requested_at |
+| F1006-08 | Fix leadSource.ts: Tiktokshop code 300531b → 300551 | done | Minh | 2026-06-10 | 2026-06-10 | `9e3b40d` |
+| F1006-09 | BXH vinh danh hôm nay: today-honors đọc RPC get_top_sales | done | Minh | 2026-06-10 | 2026-06-10 | `d52ca08` — done từ session trước |
+
+---
+
+## E2E Testing — Expanded (2026-06-03..06)
+
+| ID | Task | Status | Owner | Ghi chú |
+|----|------|--------|-------|---------|
+| E2E-05 | RBAC visibility tests (sidebar per role) | done | Minh | `e2e/rbac-visibility.spec.ts` |
+| E2E-06 | Payment lifecycle journey (B1→B2→B3→B4) | done | Minh | `e2e/journeys/payment-lifecycle.spec.ts` |
+| E2E-07 | Revenue + BC03 reporting journey | done | Minh | `e2e/journeys/revenue-reporting.spec.ts` |
+| E2E-08 | Admin smoke tests (Auth + Permissions) | done | Minh | `e2e/journeys/admin-smoke.spec.ts` |
+| E2E-09 | CRM Dashboard extended journey | done | Minh | `e2e/journeys/crm-dashboard.spec.ts` |

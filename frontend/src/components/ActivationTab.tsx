@@ -1036,7 +1036,7 @@ function ActivationDetailDrawer({
                 draftUid.phone.replace(/[^\d]/g, "") !== (uidObj.phone || "") ||
                 (draftUid.country || "VN") !== (uidObj.country || "VN");
               return (
-              <div key={uidIdx} className="uid-group">
+              <div key={uidObj.uid || `new-uid-${uidIdx}`} className="uid-group">
               <div className="uid-group-head">
                 <div
                   style={{
@@ -1433,7 +1433,11 @@ export default function ActivationTab() {
     setNav,
     apiNote,
     setApiNote,
+    orderIdConflictMessage,
+    setOrderIdConflictMessage,
+    dismissOrderIdConflict,
     updateActiveRequest,
+    markPersisted,
     handleCreateActiveRequestFromForm,
     requestInvoiceForCourse,
   } = usePaymentFlow();
@@ -1483,18 +1487,32 @@ export default function ActivationTab() {
   const openPr = openAr?.prId ? requests.find((p) => p.id === openAr.prId) ?? null : null;
   const persistActiveRequest = async (next: ActiveRequest) => {
     try {
+      markPersisted();
       const res = await endpoints.activeRequests.update(next.id, {
         uids_data: toActiveRequestPatchUidsData(next),
       });
       const saved = fromApiActiveRequest(res.data);
       updateActiveRequest(next.id, () => saved);
+      markPersisted();
       setApiNote("");
       if (saved.uids.some((u) => u.courses.some((c) => c.orderId?.trim()))) {
         notifyLedgerChanged();
       }
       return { ok: true as const, saved };
-    } catch {
-      const error = "Không lưu được thay đổi Active Request lên máy chủ.";
+    } catch (err) {
+      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      // BE 409: "order_id 'X' da ton tai o AR/course khac" → show modal in-app rõ ràng
+      if (typeof detail === "string" && detail.includes("order_id") && detail.includes("ton tai")) {
+        setOrderIdConflictMessage(detail);
+        const m = /order_id '([^']+)'/.exec(detail);
+        const orderId = m ? m[1] : "";
+        const msg = orderId
+          ? `Order ID '${orderId}' đã được dùng ở Active Request khác — không lưu được.`
+          : "Order ID đã được dùng ở Active Request khác — không lưu được.";
+        setApiNote(msg);
+        return { ok: false as const, error: msg };
+      }
+      const error = (typeof detail === "string" && detail) || "Không lưu được thay đổi Active Request lên máy chủ.";
       setApiNote(error);
       return { ok: false as const, error };
     }
@@ -1749,6 +1767,47 @@ export default function ActivationTab() {
           });
         }}
       />
+
+      {/* 2-04 — popup khi BE chặn order_id trùng */}
+      {orderIdConflictMessage && (() => {
+        const m = /order_id '([^']+)' da ton tai/.exec(orderIdConflictMessage);
+        const orderId = m ? m[1] : "";
+        return (
+          <div
+            className="gmv-prototype-modal-scrim"
+            onClick={dismissOrderIdConflict}
+            style={{ zIndex: 140 }}
+          >
+            <div className="modal" style={{ width: "min(480px, 100%)" }} onClick={(e) => e.stopPropagation()}>
+              <div className="modal-head">
+                <div>
+                  <h3>Order ID đã tồn tại — không lưu được</h3>
+                  {orderId && (
+                    <div style={{ fontSize: 12, color: "var(--text-3)", marginTop: 2 }}>
+                      Order ID <strong>{orderId}</strong> đã được dùng ở Active Request khác
+                    </div>
+                  )}
+                </div>
+                <button className="drawer-close" onClick={dismissOrderIdConflict}>✕</button>
+              </div>
+              <div className="modal-body">
+                <div style={{ display: "flex", gap: 10, alignItems: "flex-start", padding: "4px 0" }}>
+                  <span style={{ fontSize: 20, lineHeight: 1, color: "#ef4444" }}>⚠</span>
+                  <div style={{ fontSize: 13.5, lineHeight: 1.6, color: "var(--text-2)" }}>
+                    Mỗi Order ID CRM phải là <strong>duy nhất</strong> trên toàn hệ thống — không thể dùng cùng Order ID cho 2 gói học khác nhau.
+                    Vui lòng kiểm tra lại Order ID đúng (CRM trả về số nào cho gói học này) và điền lại.
+                  </div>
+                </div>
+              </div>
+              <div className="modal-foot">
+                <button className="btn btn-primary" onClick={dismissOrderIdConflict}>
+                  Đã hiểu
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }

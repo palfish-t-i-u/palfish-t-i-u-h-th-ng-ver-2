@@ -64,6 +64,8 @@ class ActiveRequestPatchCoursePayload(BaseModel):
     invoiced_at: str | None = ""
     tax_invoice_code: str | None = ""
     tax_product_code: str | None = ""
+    lead_source: str | None = None
+    lead_channel: str | None = None
 
 
 class ActiveRequestPatchUidPayload(BaseModel):
@@ -297,6 +299,125 @@ def _course_order_id(course: dict[str, Any]) -> str:
     return str(raw or "").strip()
 
 
+def _assert_order_id_available(sb, ar_id: str, course_code: str, order_id: str) -> None:
+    normalized_order_id = _clean_text(order_id)
+    if not normalized_order_id:
+        return
+    target_ar = _clean_text(ar_id)
+    target_course = _clean_text(course_code)
+    try:
+        res = sb.table("active_requests").select("id,uids_data").execute()
+    except Exception as exc:
+        raise HTTPException(500, f"Khong quet duplicate order_id: {exc}") from exc
+    for ar in res.data or []:
+        existing_ar_id = _clean_text(ar.get("id"))
+        for uid_block in ar.get("uids_data") or []:
+            if not isinstance(uid_block, dict):
+                continue
+            for course in uid_block.get("courses") or []:
+                if not isinstance(course, dict):
+                    continue
+                existing_code = _clean_text(course.get("code"))
+                existing_order = _clean_text(_course_order_id(course))
+                if existing_order != normalized_order_id:
+                    continue
+                if existing_ar_id == target_ar and existing_code == target_course:
+                    continue
+                raise HTTPException(
+                    409,
+                    f"order_id {normalized_order_id!r} da ton tai o AR/course khac",
+                )
+
+
+def _assert_uids_data_order_ids_unique(sb, ar_id: str | None, uids_data: list[Any]) -> None:
+    """Quét order_id trong uids_data để chặn trùng — dùng khi tạo AR mới
+    hoặc replace toàn bộ uids_data qua PATCH /active-requests/{ar_id}.
+
+    Chỉ check những (course_code, order_id) MỚI so với state hiện tại của AR target.
+    Cặp (code, order_id) đã tồn tại trong AR target trước khi PATCH thì giữ nguyên
+    (không phải "thêm mới") — kể cả nếu chúng đã trùng với AR khác do dữ liệu legacy.
+    """
+    target_ar = _clean_text(ar_id) if ar_id else ""
+    # Gom (course_code, order_id) trong incoming uids_data
+    incoming: dict[str, str] = {}  # order_id → course_code
+    for uid_block in uids_data or []:
+        if not isinstance(uid_block, dict):
+            continue
+        for course in uid_block.get("courses") or []:
+            if not isinstance(course, dict):
+                continue
+            code = _clean_text(course.get("code"))
+            order_id = _clean_text(_course_order_id(course))
+            if not order_id:
+                continue
+            # Trùng trong cùng batch (2 course cùng AR mà order_id trùng)
+            if order_id in incoming and incoming[order_id] != code:
+                raise HTTPException(
+                    409,
+                    f"order_id {order_id!r} bi trung giua nhieu course trong cung AR",
+                )
+            incoming[order_id] = code
+
+    if not incoming:
+        return
+
+    # Fetch state hiện tại của AR target để exclude (code, order_id) đã có trước PATCH.
+    existing_in_target: set[tuple[str, str]] = set()
+    if target_ar:
+        try:
+            cur_res = (
+                sb.table("active_requests")
+                .select("uids_data")
+                .eq("id", target_ar)
+                .limit(1)
+                .execute()
+            )
+            if cur_res.data:
+                for uid_block in cur_res.data[0].get("uids_data") or []:
+                    if not isinstance(uid_block, dict):
+                        continue
+                    for course in uid_block.get("courses") or []:
+                        if not isinstance(course, dict):
+                            continue
+                        code = _clean_text(course.get("code"))
+                        oid = _clean_text(_course_order_id(course))
+                        if code and oid:
+                            existing_in_target.add((code, oid))
+        except Exception:
+            # Best-effort — nếu fetch fail thì fallback check thường (có thể false positive)
+            pass
+
+    # Chỉ giữ cặp (order_id, code) MỚI thực sự
+    truly_new = {oid: code for oid, code in incoming.items() if (code, oid) not in existing_in_target}
+    if not truly_new:
+        return
+
+    try:
+        res = sb.table("active_requests").select("id,uids_data").execute()
+    except Exception as exc:
+        raise HTTPException(500, f"Khong quet duplicate order_id: {exc}") from exc
+
+    for ar in res.data or []:
+        existing_ar_id = _clean_text(ar.get("id"))
+        for uid_block in ar.get("uids_data") or []:
+            if not isinstance(uid_block, dict):
+                continue
+            for course in uid_block.get("courses") or []:
+                if not isinstance(course, dict):
+                    continue
+                existing_code = _clean_text(course.get("code"))
+                existing_order = _clean_text(_course_order_id(course))
+                if not existing_order or existing_order not in truly_new:
+                    continue
+                # Cùng AR + cùng course → idempotent (PATCH cùng row), skip
+                if existing_ar_id == target_ar and existing_code == truly_new[existing_order]:
+                    continue
+                raise HTTPException(
+                    409,
+                    f"order_id {existing_order!r} da ton tai o AR/course khac",
+                )
+
+
 def _course_invoice_requested_at(course: dict[str, Any]) -> str:
     return str(course.get("invoice_requested_at") or "").strip()
 
@@ -458,8 +579,11 @@ def _validate_course_amounts(
             for u in (ar.get("uids_data") or []):
                 for c in (u.get("courses") or []):
                     existing_total += _course_amount(c)
-    except Exception:
-        pass  # Fail-open: nếu không đọc được AR khác thì không block
+    except Exception as exc:
+        raise HTTPException(
+            500,
+            f"Khong xac dinh duoc budget cua PR (loi doc AR): {exc}",
+        ) from exc
 
     grand_total = new_total + existing_total
     if grand_total > budget:
@@ -495,6 +619,39 @@ def _sync_ledger_courses_from_uids(sb, ar_id: str, uids_data: list) -> None:
 
 def _clean_text(value: Any) -> str:
     return str(value or "").strip()
+
+
+def _insert_ar_confirmed_notification(
+    sb,
+    *,
+    ar_id: str,
+    course_code: str,
+    order_id: str,
+    ar_row: dict[str, Any],
+) -> None:
+    pr_id = _clean_text(ar_row.get("pr_id"))
+    if not pr_id:
+        return
+    try:
+        pr_row = _fetch_payment_request(sb, pr_id)
+        sale_email = _clean_text(pr_row.get("sale_email")).lower()
+        if not sale_email:
+            return
+        sb.table("notifications").insert(
+            {
+                "user_email": sale_email,
+                "kind": "ar_confirmed",
+                "payload": {
+                    "ar_id": ar_id,
+                    "pr_id": pr_id,
+                    "course_code": course_code,
+                    "order_id": order_id,
+                    "customer_name": pr_row.get("name") or ar_row.get("customer_name") or "",
+                },
+            }
+        ).execute()
+    except Exception as exc:
+        print(f"[notify] insert failed (non-blocking): {exc}")
 
 
 def _find_course(uids_data: list[dict[str, Any]], course_code: str) -> dict[str, Any]:
@@ -681,6 +838,9 @@ def _save_active_request(
     # Validate: tổng tiền gói học không được vượt số tiền thực nhận
     if pr is not None:
         _validate_course_amounts(sb, pr, uids_data)
+
+    # Chặn duplicate order_id giữa AR/course khác — defense (Bug 2-04)
+    _assert_uids_data_order_ids_unique(sb, ar_id, uids_data)
 
     status = _derive_status(uids_data)
     row: dict[str, Any] = {
@@ -1074,6 +1234,8 @@ def register_activation_routes(app, supabase_factory):
             if current_pr_id:
                 patch_pr = _fetch_payment_request(sb, current_pr_id)
                 _validate_course_amounts(sb, patch_pr, uids_data, exclude_ar_id=ar_id)
+            # Chặn duplicate order_id (Bug 2-04)
+            _assert_uids_data_order_ids_unique(sb, ar_id, uids_data)
             guarded_status = _derive_status(uids_data)
             if body.expected_updated_at:
                 from rpc_helpers import MIGRATION_HINT, rpc_first_row
@@ -1252,6 +1414,7 @@ def register_activation_routes(app, supabase_factory):
         from rpc_helpers import rpc_active_request_row
 
         if order_id:
+            _assert_order_id_available(sb, ar_id, course_code, order_id)
             row = rpc_active_request_row(
                 sb,
                 "patch_active_request_course_order",
@@ -1263,6 +1426,13 @@ def register_activation_routes(app, supabase_factory):
             )
             ledger_id = sync_ledger_from_ar_course(sb, ar_id, course_code)
             if ledger_id:
+                _insert_ar_confirmed_notification(
+                    sb,
+                    ar_id=ar_id,
+                    course_code=course_code,
+                    order_id=order_id,
+                    ar_row=row,
+                )
                 print(f"[activation] B3 → Sổ: AR {ar_id} course {course_code} → {ledger_id}")
             else:
                 print(f"[activation] B3 → Sổ: skip/fail AR {ar_id} course {course_code}")

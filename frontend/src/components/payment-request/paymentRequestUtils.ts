@@ -79,6 +79,11 @@ export function fromApiAttempt(raw: any, idx = 0): PaymentAttempt {
     bank: raw.bank,
     cardLast4: raw.card_last4 ?? raw.cardLast4 ?? null,
     installmentMonths: raw.installment_months ?? raw.installmentMonths ?? null,
+    installmentPlatform: raw.installment_platform ?? raw.installmentPlatform ?? null,
+    installmentTotal: raw.installment_total ?? raw.installmentTotal ?? null,
+    saleReceived: raw.sale_received ?? raw.saleReceived ?? null,
+    verifiedTotal: raw.verified_total ?? raw.verifiedTotal ?? null,
+    verifiedReceived: raw.verified_received ?? raw.verifiedReceived ?? null,
     cashier: raw.cashier ?? null,
     paymentLinkId: raw.payment_link_id ?? raw.paymentLinkId ?? null,
     transferContent: raw.transfer_content ?? raw.transferContent ?? null,
@@ -108,9 +113,13 @@ export function fromApiPaymentRequest(raw: any): PaymentRequest {
     taxId: raw.tax_id ?? raw.taxId ?? undefined,
     customerType: raw.customer_type ?? raw.customerType ?? "individual",
     companyName: raw.company_name ?? raw.companyName ?? undefined,
+    leadSource: raw.lead_source ?? raw.leadSource ?? undefined,
+    leadChannel: raw.lead_channel ?? raw.leadChannel ?? undefined,
     target: raw.target ?? 0,
     source: raw.source ?? "",
     saleEmail: raw.sale_email ?? raw.saleEmail ?? "",
+    // Chỉ set khi BE trả về (endpoint danh sách) — tránh spread ghi đè mất tên ở các response khác
+    ...((raw.sale_name ?? raw.saleName) ? { saleName: raw.sale_name ?? raw.saleName } : {}),
     createdAt: raw.created_at ?? raw.createdAt ?? "",
     cancelledAt: raw.cancelled_at ?? raw.cancelledAt ?? null,
     cancelledReason: raw.cancelled_reason ?? raw.cancelledReason ?? null,
@@ -210,6 +219,8 @@ export function fromApiActiveRequest(raw: ActiveRequestApiRow): ActiveRequest {
         invoiceRequestedAt: c.invoice_requested_at ?? null,
         taxInvoiceCode: c.tax_invoice_code,
         taxProductCode: c.tax_product_code,
+        leadSource: c.lead_source ?? c.leadSource ?? undefined,
+        leadChannel: c.lead_channel ?? c.leadChannel ?? undefined,
       })),
     })),
   };
@@ -285,6 +296,8 @@ export function toActiveRequestPatchUidsData(ar: ActiveRequest): ActiveRequestPa
       invoice_requested_at: c.invoiceRequestedAt ?? undefined,
       tax_invoice_code: c.taxInvoiceCode,
       tax_product_code: c.taxProductCode,
+      lead_source: c.leadSource,
+      lead_channel: c.leadChannel,
     })),
   }));
 }
@@ -433,6 +446,8 @@ export function activationSummary(ar: ActiveRequest | null | undefined) {
     return {
       allActivated: false,
       activatedCount: 0,
+      invoicedCount: 0,
+      allInvoiced: false,
       courseCount: 0,
       buttonLabel: "Kích hoạt khóa học",
       courseBadgeLabel: "Chờ kích hoạt",
@@ -442,9 +457,13 @@ export function activationSummary(ar: ActiveRequest | null | undefined) {
   const courses = ar.uids.flatMap((u) => u.courses);
   const activatedCount = courses.filter((c) => !!c.orderId?.trim()).length;
   const allActivated = courses.length > 0 && activatedCount === courses.length;
+  const invoicedCount = courses.filter((c) => !!c.invoiced).length;
+  const allInvoiced = courses.length > 0 && invoicedCount === courses.length;
   return {
     allActivated,
     activatedCount,
+    invoicedCount,
+    allInvoiced,
     courseCount: courses.length,
     buttonLabel: allActivated ? "Đã kích hoạt khóa học" : "Chờ kích hoạt khóa học",
     courseBadgeLabel: allActivated ? "Đã kích hoạt" : "Chờ kích hoạt",
@@ -476,5 +495,53 @@ export function relativeFrom(dateStr: string): string {
 
 export function nowStamp(): string {
   return new Date().toISOString().slice(0, 16).replace("T", " ");
+}
+
+// ───────── Ẩn data test + phân trang client-side ─────────
+
+/** PR hiển thị theo checkbox "Ẩn data test" — dùng làm gốc cho MỌI con số trên màn (badge/chip/KPI/bảng). */
+export function visiblePaymentRequests(
+  requests: PaymentRequest[],
+  hideTest: boolean
+): PaymentRequest[] {
+  return hideTest ? requests.filter((r) => !r.isTest) : requests;
+}
+
+export interface PageSlice<T> {
+  rows: T[];
+  /** Trang hợp lệ sau khi clamp vào [1..totalPages] */
+  page: number;
+  totalPages: number;
+  /** Thứ tự 1-based của dòng đầu/cuối trang; 0 khi không có kết quả */
+  from: number;
+  to: number;
+}
+
+export function paginate<T>(items: T[], rawPage: number, pageSize: number): PageSlice<T> {
+  const totalPages = Math.max(1, Math.ceil(items.length / pageSize));
+  const page = Math.min(Math.max(1, Math.floor(rawPage) || 1), totalPages);
+  const start = (page - 1) * pageSize;
+  const rows = items.slice(start, start + pageSize);
+  return {
+    rows,
+    page,
+    totalPages,
+    from: items.length === 0 ? 0 : start + 1,
+    to: start + rows.length,
+  };
+}
+
+/** Dãy nút trang rút gọn: luôn có trang 1 + trang cuối + cửa sổ quanh trang hiện tại, "..." cho khoảng trống. */
+export function pageItems(page: number, totalPages: number): Array<number | "..."> {
+  if (totalPages <= 7) return Array.from({ length: totalPages }, (_, i) => i + 1);
+  const wanted = [...new Set([1, page - 1, page, page + 1, totalPages])]
+    .filter((n) => n >= 1 && n <= totalPages)
+    .sort((a, b) => a - b);
+  const out: Array<number | "..."> = [];
+  for (let i = 0; i < wanted.length; i++) {
+    if (i > 0 && wanted[i] - wanted[i - 1] > 1) out.push("...");
+    out.push(wanted[i]);
+  }
+  return out;
 }
 

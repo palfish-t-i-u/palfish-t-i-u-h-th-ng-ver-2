@@ -378,6 +378,15 @@ def row_fingerprint(payload: dict[str, Any]) -> str:
     return hashlib.sha256("|".join(parts).encode()).hexdigest()[:32]
 
 
+def _loose_fp(row: dict[str, Any]) -> str:
+    """uid + ngày tiền về + số tiền — cross-source dedup."""
+    uid = _fp_clean(row.get("uid"))
+    ngay = str(row.get("ngay_tien_ve") or "")[:10]
+    vnd = str(row.get("so_tien_vnd") or 0)
+    sdt = _fp_clean(row.get("sdt"))
+    return f"{uid}|{ngay}|{vnd}|{sdt}"
+
+
 def map_hcm_rev_row(team_cache: TeamLookupCache, row: list[Any], *, tab: str = "HCM REV") -> dict[str, Any] | None:
     vnd = _to_int_vnd(_cell(row, 9))
     if vnd <= 0:
@@ -571,6 +580,36 @@ def _load_existing_import_fingerprints(sb, *, log: Callable[[str], None] = _log)
     return fps
 
 
+def _load_existing_loose_fps(sb, *, log: Callable[[str], None] = _log) -> dict[str, int]:
+    """uid|ngày|tiền counts — cross-source dedup with multiplicity."""
+    fps: dict[str, int] = {}
+    offset = 0
+    while True:
+        res = _execute_supabase(
+            lambda off=offset: (
+                sb.table("so_doanh_thu")
+                .select("uid, ngay_tien_ve, so_tien_vnd, sdt")
+                .range(off, off + 999)
+                .execute()
+            ),
+            log=log,
+            label="Load ledger loose fp",
+        )
+        chunk = res.data or []
+        if not chunk:
+            break
+        for r in chunk:
+            if not _fp_clean(r.get("uid")):
+                continue
+            key = _loose_fp(r)
+            fps[key] = fps.get(key, 0) + 1
+        if len(chunk) < 1000:
+            break
+        offset += 1000
+    log(f"  Đã có {len(fps)} loose fingerprint (uid+ngày+tiền)")
+    return fps
+
+
 def sync_gsheet_to_ledger(
     sb,
     *,
@@ -602,12 +641,24 @@ def sync_gsheet_to_ledger(
     log("Kiểm tra dòng đã import…")
     existing = _load_existing_import_fingerprints(sb, log=log)
 
+    log("Kiểm tra loose match (uid+ngày+tiền)…")
+    loose_existing = _load_existing_loose_fps(sb, log=log)
+
     to_insert: list[dict[str, Any]] = []
     skipped = 0
+    loose_skipped = 0
+    loose_budget = dict(loose_existing)
     for p in payloads:
         fp = row_fingerprint(p)
+        lfp = _loose_fp(p) if _fp_clean(p.get("uid")) else ""
         if fp in existing:
             skipped += 1
+            if lfp and lfp in loose_budget:
+                loose_budget[lfp] -= 1
+            continue
+        if lfp and loose_budget.get(lfp, 0) > 0:
+            loose_skipped += 1
+            loose_budget[lfp] -= 1
             continue
         p["updated_by_email"] = actor_email
         if not p.get("created_by_email"):
@@ -645,15 +696,16 @@ def sync_gsheet_to_ledger(
             if INSERT_PAUSE_SEC and i + INSERT_BATCH < len(to_insert):
                 time.sleep(INSERT_PAUSE_SEC)
     elif dry_run:
-        log(f"Dry-run — sẽ insert {len(to_insert)} dòng (skip {skipped} đã có)")
+        log(f"Dry-run — sẽ insert {len(to_insert)} dòng (skip {skipped} exact + {loose_skipped} loose)")
     else:
-        log(f"Không có dòng mới (skip {skipped} đã có)")
+        log(f"Không có dòng mới (skip {skipped} exact + {loose_skipped} loose)")
 
     return {
         "spreadsheetId": sid,
         "tabs": list(tabs),
         "fetched": len(payloads),
         "skippedExisting": skipped,
+        "skippedLoose": loose_skipped,
         "inserted": inserted if not dry_run else 0,
         "dryRun": dry_run,
         "samples": payloads[:3],

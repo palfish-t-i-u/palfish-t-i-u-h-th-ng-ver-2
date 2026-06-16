@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { LEAD_SOURCES, findSourceByKey, sourceHasChannels } from "../../constants/leadSource";
 import type {
   ActiveRequest,
   AddPaymentAttemptPayload,
@@ -27,6 +28,7 @@ import {
   vnd,
 } from "./paymentRequestUtils";
 import { nextCourseCode } from "../payment-flow/paymentFlowUtils";
+import { endpoints } from "../../lib/api";
 
 const METHOD_META: Record<PaymentMethod, { cls: string; label: string; icon: IconKey; sub: string }> = {
   qr: { cls: "method-qr", label: "Chuyển khoản", icon: "QrCode", sub: "QR / chuyển khoản" },
@@ -72,6 +74,7 @@ function QrRow({
   onBillView,
   onMarkPaid,
   onShowQr,
+  onEditAmount,
   uploadingBillId,
   deletingBillId,
 }: {
@@ -81,11 +84,48 @@ function QrRow({
   onBillView: (qr: PaymentAttempt) => void;
   onMarkPaid: (qr: PaymentAttempt) => void;
   onShowQr: (qr: PaymentAttempt) => void;
+  onEditAmount?: (qr: PaymentAttempt, newAmount: number) => Promise<void>;
   uploadingBillId?: string | null;
   deletingBillId?: string | null;
 }) {
   const isQr = qr.method === "qr";
   const isCancelled = !!qr.cancelled;
+  const canEditAmount = !isCancelled && qr.status === "pending" && !!onEditAmount;
+
+  const [showEditTip, setShowEditTip] = useState(false);
+  useEffect(() => {
+    if (!canEditAmount) return;
+    const key = "pf-edit-amount-tip-shown";
+    if (localStorage.getItem(key)) return;
+    localStorage.setItem(key, "1");
+    const t0 = setTimeout(() => setShowEditTip(true), 600);
+    const t1 = setTimeout(() => setShowEditTip(false), 5000);
+    return () => { clearTimeout(t0); clearTimeout(t1); };
+  }, [canEditAmount]);
+
+  const [editingAmount, setEditingAmount] = useState(false);
+  const [draftAmount, setDraftAmount] = useState("");
+  const [savingAmount, setSavingAmount] = useState(false);
+  const amountInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (editingAmount) amountInputRef.current?.focus();
+  }, [editingAmount]);
+
+  const handleAmountSave = async () => {
+    const parsed = parseInt(draftAmount.replace(/\D/g, ""), 10);
+    if (!parsed || parsed <= 0 || parsed === qr.amount) {
+      setEditingAmount(false);
+      return;
+    }
+    setSavingAmount(true);
+    try {
+      await onEditAmount!(qr, parsed);
+    } finally {
+      setSavingAmount(false);
+      setEditingAmount(false);
+    }
+  };
 
   let pill;
   if (isCancelled) {
@@ -121,7 +161,7 @@ function QrRow({
     : qr.method === "card"
     ? qr.bank || (qr.cardLast4 ? `•••• ${qr.cardLast4}` : "")
     : qr.method === "installment"
-    ? `${qr.installmentMonths || ""} kỳ`
+    ? `${qr.installmentPlatform || "Trả góp"}${qr.installmentTotal ? ` · ${vnd(qr.installmentTotal)}` : ""}${qr.saleReceived ? ` → ${vnd(qr.saleReceived)}` : ""}`
     : "";
 
   return (
@@ -132,7 +172,65 @@ function QrRow({
           <span style={{ fontWeight: 600, color: "var(--text-3)", fontSize: 11.5, textTransform: "uppercase", letterSpacing: "0.05em", whiteSpace: "nowrap" }}>
             Lần #{qr.idx}
           </span>
-          <span className="amt">{vnd(qr.amount)}</span>
+          {editingAmount ? (
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+              <input
+                ref={amountInputRef}
+                type="text"
+                inputMode="numeric"
+                value={draftAmount}
+                onChange={(e) => setDraftAmount(e.target.value.replace(/[^0-9]/g, ""))}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") handleAmountSave();
+                  if (e.key === "Escape") setEditingAmount(false);
+                }}
+                disabled={savingAmount}
+                style={{
+                  width: 120,
+                  padding: "2px 6px",
+                  fontSize: 13,
+                  fontWeight: 700,
+                  border: "1.5px solid var(--primary-400)",
+                  borderRadius: 6,
+                  outline: "none",
+                  background: "var(--bg-1)",
+                }}
+              />
+              <button
+                className="btn btn-primary btn-sm"
+                style={{ padding: "2px 8px", fontSize: 11 }}
+                onClick={handleAmountSave}
+                disabled={savingAmount}
+              >
+                {savingAmount ? "…" : "Lưu"}
+              </button>
+              <button
+                className="btn btn-outline btn-sm"
+                style={{ padding: "2px 6px", fontSize: 11 }}
+                onClick={() => setEditingAmount(false)}
+                disabled={savingAmount}
+              >
+                Huỷ
+              </button>
+            </span>
+          ) : (
+            <span
+              className="amt"
+              style={canEditAmount ? { cursor: "pointer", position: "relative" } : undefined}
+              title={canEditAmount ? "Bấm để sửa số tiền" : undefined}
+              onClick={canEditAmount ? () => { setShowEditTip(false); setDraftAmount(String(qr.amount)); setEditingAmount(true); } : undefined}
+            >
+              {vnd(qr.amount)}{canEditAmount && <Icons.Pencil size={12} style={{ marginLeft: 3, opacity: 0.6 }} />}
+              {showEditTip && (
+                <span
+                  className="edit-amount-tip"
+                  onClick={(e) => { e.stopPropagation(); setShowEditTip(false); }}
+                >
+                  Bấm vào số tiền để sửa
+                </span>
+              )}
+            </span>
+          )}
           {pill}
         </div>
         <div className="qr-info-line2">
@@ -221,15 +319,19 @@ function AddPaymentForm({
   const availableBanks = getAvailableBanks(profile?.team);
 
   const [method, setMethod] = useState<PaymentMethod>("qr");
-  const [amount, setAmount] = useState("");
+  const remaining = Math.max(0, pr.target - pr.received);
+  const [amount, setAmount] = useState(remaining > 0 ? String(remaining) : "");
   const [isAmountFocused, setIsAmountFocused] = useState(false);
   const [bank, setBank] = useState(availableBanks[0].alias);
   const [cardLast4, setCardLast4] = useState("");
-  const [installmentMonths, setInstallmentMonths] = useState("6");
-  const [cashier, setCashier] = useState("");
+  const [installmentPlatform, setInstallmentPlatform] = useState("");
+  const [installmentTotal, setInstallmentTotal] = useState("");
+  const [saleReceivedDraft, setSaleReceivedDraft] = useState("");
+  // Default "người thu" = tên sale đang login (1B-05) — vẫn cho phép sửa nếu khác
+  const [cashier, setCashier] = useState(profile?.displayName || profile?.crmName || "");
   const [nameForTransfer, setNameForTransfer] = useState(pr.childName || pr.name);
+  const [validationError, setValidationError] = useState("");
 
-  const remaining = Math.max(0, pr.target - pr.received);
   const nameOptions = [
     { value: pr.name, label: `KH: ${pr.name}` },
     ...(pr.childName ? [{ value: pr.childName, label: `Con: ${pr.childName}` }] : []),
@@ -237,13 +339,50 @@ function AddPaymentForm({
 
   const submit = () => {
     const n = parseInt(String(amount).replace(/\D/g, ""), 10);
-    if (!n) return;
+    if (!n) {
+      setValidationError("Vui lòng nhập số tiền thanh toán");
+      return;
+    }
+    if (method === "installment" && !installmentPlatform) {
+      setValidationError("Vui lòng chọn nền tảng trả góp");
+      return;
+    }
+    if (method === "installment" && !installmentTotal) {
+      setValidationError("Vui lòng nhập tổng tiền trả góp");
+      return;
+    }
+    if (method === "installment" && !saleReceivedDraft) {
+      setValidationError("Vui lòng nhập số tiền thực nhận về công ty");
+      return;
+    }
+    // Bug 1B-07: trả góp — thực nhận không thể lớn hơn tổng trả góp
+    if (method === "installment") {
+      const totalNum = parseInt(installmentTotal.replace(/\D/g, ""), 10) || 0;
+      const recvNum = parseInt(saleReceivedDraft.replace(/\D/g, ""), 10) || 0;
+      if (recvNum > totalNum) {
+        setValidationError("Số tiền thực nhận không thể lớn hơn tổng trả góp");
+        return;
+      }
+    }
+    // Bug 1B-05: cash — bắt buộc nhập người thu
+    if (method === "cash" && !cashier.trim()) {
+      setValidationError("Vui lòng nhập tên người thu tiền mặt");
+      return;
+    }
+    // Bug 1B-06: card — bắt buộc 4 số cuối thẻ (đủ 4 chữ số)
+    if (method === "card" && cardLast4.length !== 4) {
+      setValidationError("Vui lòng nhập đủ 4 số cuối thẻ");
+      return;
+    }
+    setValidationError("");
     onSubmit({
       amount: n,
       method,
       bank: method === "qr" || method === "card" ? bank : undefined,
       cardLast4: method === "card" ? cardLast4 : undefined,
-      installmentMonths: method === "installment" ? installmentMonths : undefined,
+      installment_platform: method === "installment" ? installmentPlatform : undefined,
+      installment_total: method === "installment" ? (parseInt(installmentTotal.replace(/\D/g, ""), 10) || undefined) : undefined,
+      sale_received: method === "installment" ? (parseInt(saleReceivedDraft.replace(/\D/g, ""), 10) || undefined) : undefined,
       cashier: method === "cash" ? cashier : undefined,
       name_for_transfer: method === "qr" ? nameForTransfer : undefined,
     });
@@ -289,7 +428,7 @@ function AddPaymentForm({
 
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
         <div className="field" style={{ flex: 1, minWidth: 180 }}>
-          <label>Số tiền lần này</label>
+          <label>Số tiền lần này <span style={{ color: "var(--danger)" }}>*</span></label>
           <input
             type="text"
             placeholder={`Còn thiếu: ${vnd(remaining)}`}
@@ -301,6 +440,7 @@ function AddPaymentForm({
             onChange={(e) => {
               const v = e.target.value.replace(/[^\d]/g, "");
               setAmount(v);
+              if (v) setValidationError("");
             }}
           />
         </div>
@@ -340,15 +480,38 @@ function AddPaymentForm({
           </div>
         )}
         {method === "installment" && (
-          <div className="field" style={{ flex: 1, minWidth: 180 }}>
-            <label>Số kỳ trả góp</label>
-            <select value={installmentMonths} onChange={(e) => setInstallmentMonths(e.target.value)}>
-              <option value="3">3 tháng</option>
-              <option value="6">6 tháng</option>
-              <option value="9">9 tháng</option>
-              <option value="12">12 tháng</option>
-            </select>
-          </div>
+          <>
+            <div className="field" style={{ flex: 1, minWidth: 140 }}>
+              <label>Nền tảng trả góp <span style={{ color: "var(--danger)" }}>*</span></label>
+              <select
+                value={installmentPlatform}
+                onChange={(e) => setInstallmentPlatform(e.target.value)}
+                style={{ font: "inherit", fontSize: 13 }}
+              >
+                <option value="">— Chọn —</option>
+                <option value="Payoo">Payoo</option>
+                <option value="Mpos">Mpos</option>
+              </select>
+            </div>
+            <div className="field" style={{ flex: 1, minWidth: 160 }}>
+              <label>Tổng tiền trả góp <span style={{ color: "var(--danger)" }}>*</span></label>
+              <input
+                inputMode="numeric"
+                placeholder="Số tiền KH chuyển qua app"
+                value={installmentTotal}
+                onChange={(e) => setInstallmentTotal(e.target.value.replace(/[^\d]/g, ""))}
+              />
+            </div>
+            <div className="field" style={{ flex: 1, minWidth: 160 }}>
+              <label>Thực nhận về công ty <span style={{ color: "var(--danger)" }}>*</span></label>
+              <input
+                inputMode="numeric"
+                placeholder="Sau phí nền tảng"
+                value={saleReceivedDraft}
+                onChange={(e) => setSaleReceivedDraft(e.target.value.replace(/[^\d]/g, ""))}
+              />
+            </div>
+          </>
         )}
         {method === "cash" && (
           <div className="field" style={{ flex: 1, minWidth: 180 }}>
@@ -370,6 +533,21 @@ function AddPaymentForm({
         )}
       </div>
 
+      {validationError && (
+        <div style={{
+          background: "var(--danger-bg, #fef2f2)",
+          border: "1px solid var(--danger, #ef4444)",
+          borderRadius: 8,
+          padding: "8px 12px",
+          fontSize: 12.5,
+          color: "var(--danger, #ef4444)",
+          display: "flex",
+          alignItems: "center",
+          gap: 6,
+        }}>
+          <Icons.AlertCircle size={14} /> {validationError}
+        </div>
+      )}
       <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
         <button className="btn btn-outline" onClick={onCancel}>
           Huỷ
@@ -397,6 +575,8 @@ interface DraftPr {
   taxId: string;
   customerType: CustomerType;
   companyName: string;
+  leadSource: string;
+  leadChannel: string;
 }
 
 /**
@@ -947,6 +1127,12 @@ function ActiveRequestMiniCardV2({
                         <span className="ar-toggle-knob" />
                       </span>
                     </div>
+                    {c.invoiced && (
+                      <div className="ar-invoice-badge" title={c.invoicedAt ? `Xuất HĐ lúc ${formatPaymentDateFull(c.invoicedAt)}` : "Đã xuất hóa đơn"}>
+                        <Icons.Doc size={11} />
+                        {c.invoiceId || c.taxInvoiceCode ? `Đã xuất HĐ · ${c.invoiceId || c.taxInvoiceCode}` : "Đã xuất HĐ"}
+                      </div>
+                    )}
                     {editing && (
                       <button
                         type="button"
@@ -959,6 +1145,77 @@ function ActiveRequestMiniCardV2({
                       >
                         <Icons.Close size={12} strokeWidth={2.4} />
                       </button>
+                    )}
+                    {!editing && (c.leadSource || c.leadChannel) && (
+                      <div style={{ gridColumn: "1 / -1", fontSize: 11, color: "var(--text-3)", display: "flex", gap: 8 }}>
+                        {c.leadSource && <span>Nguồn: {findSourceByKey(c.leadSource)?.label ?? c.leadSource}</span>}
+                        {c.leadChannel && (() => {
+                          const src = findSourceByKey(c.leadSource);
+                          const ch = src?.channels.find((ch) => ch.code === c.leadChannel);
+                          return <span>Kênh: {ch ? `${ch.code} - ${ch.label}` : c.leadChannel}</span>;
+                        })()}
+                      </div>
+                    )}
+                    {editing && (
+                      <div style={{ gridColumn: "1 / -1", display: "flex", gap: 8 }}>
+                        <select
+                          value={c.leadSource ?? ""}
+                          disabled={courseLocked}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            mutate((next) => ({
+                              ...next,
+                              uids: next.uids.map((uu, idx) =>
+                                idx === uIdx
+                                  ? {
+                                      ...uu,
+                                      courses: uu.courses.map((course) =>
+                                        course.courseCode === c.courseCode
+                                          ? { ...course, leadSource: val, leadChannel: undefined }
+                                          : course
+                                      ),
+                                    }
+                                  : uu
+                              ),
+                            }));
+                          }}
+                          style={{ font: "inherit", fontSize: 12, flex: 1, borderRadius: 8, border: "1px solid var(--border)", padding: "5px 7px" }}
+                        >
+                          <option value="">— Nguồn —</option>
+                          {LEAD_SOURCES.map((s) => (
+                            <option key={s.key} value={s.key}>{s.label}</option>
+                          ))}
+                        </select>
+                        {sourceHasChannels(c.leadSource) && (
+                          <select
+                            value={c.leadChannel ?? ""}
+                            disabled={courseLocked}
+                            onChange={(e) =>
+                              mutate((next) => ({
+                                ...next,
+                                uids: next.uids.map((uu, idx) =>
+                                  idx === uIdx
+                                    ? {
+                                        ...uu,
+                                        courses: uu.courses.map((course) =>
+                                          course.courseCode === c.courseCode
+                                            ? { ...course, leadChannel: e.target.value }
+                                            : course
+                                        ),
+                                      }
+                                    : uu
+                                ),
+                              }))
+                            }
+                            style={{ font: "inherit", fontSize: 12, flex: 1, borderRadius: 8, border: "1px solid var(--border)", padding: "5px 7px" }}
+                          >
+                            <option value="">— Kênh —</option>
+                            {findSourceByKey(c.leadSource)?.channels.map((ch) => (
+                              <option key={ch.code} value={ch.code}>{ch.code} - {ch.label}</option>
+                            ))}
+                          </select>
+                        )}
+                      </div>
                     )}
                   </div>
                   );
@@ -981,6 +1238,63 @@ function ActiveRequestMiniCardV2({
   );
 }
 
+function useInvoiceRemind(prId: string | null) {
+  const [canRemind, setCanRemind] = useState(true);
+  const [lastReminder, setLastReminder] = useState<{ requested_at: string; requested_by_name: string } | null>(null);
+  const [sending, setSending] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    if (!prId) return;
+    try {
+      const res = await endpoints.invoiceRemind.status(prId);
+      setCanRemind(res.data.can_remind);
+      setLastReminder(res.data.last_reminder);
+    } catch { /* ignore */ }
+  }, [prId]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const remind = useCallback(async (note?: string) => {
+    if (!prId || sending) return;
+    setSending(true);
+    try {
+      await endpoints.invoiceRemind.create(prId, note);
+      setCanRemind(false);
+      setLastReminder({ requested_at: new Date().toISOString(), requested_by_name: "Bạn" });
+    } catch (err) {
+      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      setErrorMessage(
+        typeof detail === "string" && detail
+          ? detail
+          : "Không gửi được nhắc xuất HĐ. Vui lòng thử lại."
+      );
+    } finally {
+      setSending(false);
+    }
+  }, [prId, sending]);
+
+  const dismissError = useCallback(() => setErrorMessage(null), []);
+
+  return { canRemind, lastReminder, sending, remind, errorMessage, dismissError };
+}
+
+function useDeliveryLog(arId: string | null) {
+  const [logs, setLogs] = useState<Array<{ sent_at: string; channel: string; sent_to: string; sent_by_email: string }>>([]);
+
+  const load = useCallback(async () => {
+    if (!arId) { setLogs([]); return; }
+    try {
+      const res = await endpoints.deliveryLog.list(arId);
+      setLogs(res.data.logs || []);
+    } catch { /* ignore */ }
+  }, [arId]);
+
+  useEffect(() => { load(); }, [load]);
+
+  return { logs, latestLog: logs[0] || null };
+}
+
 export default function PaymentRequestDetailDrawer({
   request,
   open,
@@ -989,6 +1303,7 @@ export default function PaymentRequestDetailDrawer({
   onAddPayment,
   onCancelPayment,
   onMarkPaid,
+  onEditAmount,
   onBillFile,
   onBillView,
   onCreateActiveRequest,
@@ -1010,6 +1325,7 @@ export default function PaymentRequestDetailDrawer({
   onAddPayment: (payload: AddPaymentAttemptPayload) => void;
   onCancelPayment: (qr: PaymentAttempt) => void;
   onMarkPaid: (qr: PaymentAttempt) => void;
+  onEditAmount?: (qr: PaymentAttempt, newAmount: number) => Promise<void>;
   onBillFile: (qr: PaymentAttempt, file: File) => void | Promise<void>;
   onBillView: (qr: PaymentAttempt) => void;
   onCreateActiveRequest: () => void;
@@ -1031,6 +1347,10 @@ export default function PaymentRequestDetailDrawer({
   const [draft, setDraft] = useState<DraftPr | null>(null);
   const drawerBodyRef = useRef<HTMLDivElement | null>(null);
   const addFormRef = useRef<HTMLDivElement | null>(null);
+  // PR3 (1B-04): chặn tạo lần TT khi PR đã đủ + popup hướng dẫn sửa target
+  const [prFullModalOpen, setPrFullModalOpen] = useState(false);
+  const [highlightTarget, setHighlightTarget] = useState(false);
+  const targetInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     setShowAdd(false);
@@ -1038,6 +1358,8 @@ export default function PaymentRequestDetailDrawer({
     setSavingEdit(false);
     setIsTargetFocused(false);
     setDraft(null);
+    setPrFullModalOpen(false);
+    setHighlightTarget(false);
   }, [request?.id]);
 
   useEffect(() => {
@@ -1051,6 +1373,52 @@ export default function PaymentRequestDetailDrawer({
     }, 60);
     return () => clearTimeout(id);
   }, [showAdd]);
+
+  const { canRemind, lastReminder, sending: remindSending, remind, errorMessage: remindError, dismissError: dismissRemindError } = useInvoiceRemind(open && request ? request.id : null);
+  const { latestLog: deliveryLog } = useDeliveryLog(open && activeRequestId ? activeRequestId : null);
+
+  // PR3 (1B-04): nếu PR đã đủ tiền → hiện popup hướng dẫn thay vì mở form tạo lần TT
+  const isPrFull = request?.state === "done" || request?.state === "over";
+  const handleAddPaymentClick = () => {
+    if (isPrFull) {
+      setPrFullModalOpen(true);
+    } else {
+      setShowAdd(true);
+    }
+  };
+  const handleOpenEditForTarget = () => {
+    if (!request) return;
+    setDraft({
+      uid: request.uid,
+      name: request.name,
+      childName: request.childName || "",
+      country: request.country || "VN",
+      phone: request.phone,
+      email: request.email || "",
+      province: request.province || "",
+      ward: request.ward || "",
+      address: request.address || "",
+      target: String(request.target),
+      note: request.note || "",
+      taxId: request.taxId || "",
+      customerType: request.customerType || "individual",
+      companyName: request.companyName || "",
+      leadSource: request.leadSource || "",
+      leadChannel: request.leadChannel || "",
+    });
+    setEditing(true);
+    setPrFullModalOpen(false);
+    // Sau khi render edit form xong → scroll vào ô "Tổng tiền dự kiến" + highlight 2s
+    window.setTimeout(() => {
+      const el = targetInputRef.current;
+      if (el) {
+        el.scrollIntoView({ behavior: "smooth", block: "center" });
+        el.focus();
+      }
+      setHighlightTarget(true);
+      window.setTimeout(() => setHighlightTarget(false), 2000);
+    }, 100);
+  };
 
   if (!request) {
     return (
@@ -1113,12 +1481,12 @@ export default function PaymentRequestDetailDrawer({
             <div>
               <div style={{ fontWeight: 700, fontSize: 16 }}>{request.name}</div>
               <div style={{ fontSize: 12, color: "var(--text-3)", marginTop: 2 }}>
-                Tạo bởi <strong style={{ color: "var(--text-2)" }}>{request.saleEmail ? request.saleEmail.split("@")[0] : "—"}</strong> · {request.createdAt}
+                Tạo bởi <strong style={{ color: "var(--text-2)" }} title={request.saleEmail || undefined}>{request.saleName || (request.saleEmail ? request.saleEmail.split("@")[0] : "—")}</strong> · {request.createdAt}
               </div>
             </div>
           </div>
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            <PaymentRequestStatusBadge state={request.state} />
+            <PaymentRequestStatusBadge state={request.state} totalCount={request.totalCount} />
             <button className="drawer-close" onClick={onClose}>
               <Icons.Close size={16} />
             </button>
@@ -1142,7 +1510,7 @@ export default function PaymentRequestDetailDrawer({
               </div>
               <div className="summary-value">
                 {request.state === "done"
-                  ? "0 ─æ"
+                  ? vnd(0)
                   : request.state === "over"
                   ? "+" + vnd(Math.abs(request.delta))
                   : vnd(remaining)}
@@ -1183,6 +1551,8 @@ export default function PaymentRequestDetailDrawer({
                       taxId: request.taxId || "",
                       customerType: request.customerType || "individual",
                       companyName: request.companyName || "",
+                      leadSource: request.leadSource || "",
+                      leadChannel: request.leadChannel || "",
                     });
                     setEditing(true);
                   }}
@@ -1227,6 +1597,8 @@ export default function PaymentRequestDetailDrawer({
                         taxId: draft.taxId || undefined,
                         customerType: draft.customerType,
                         companyName: draft.customerType === "business" ? draft.companyName || undefined : undefined,
+                        leadSource: draft.leadSource || undefined,
+                        leadChannel: draft.leadChannel || undefined,
                       });
                       setSavingEdit(false);
                       if (!ok) return;
@@ -1297,6 +1669,18 @@ export default function PaymentRequestDetailDrawer({
                   <div className="info-cell">
                     <div className="info-label">{request.customerType === "business" ? "MST doanh nghiệp" : "MST cá nhân"}</div>
                     <div className="info-value mono">{request.taxId}</div>
+                  </div>
+                )}
+                {request.leadSource && (
+                  <div className="info-cell">
+                    <div className="info-label">Nguồn KH</div>
+                    <div className="info-value">{findSourceByKey(request.leadSource)?.label || request.leadSource}</div>
+                  </div>
+                )}
+                {request.leadChannel && (
+                  <div className="info-cell">
+                    <div className="info-label">Kênh</div>
+                    <div className="info-value mono">{request.leadChannel}</div>
                   </div>
                 )}
                 <div className="info-cell">
@@ -1460,6 +1844,46 @@ export default function PaymentRequestDetailDrawer({
                     }}
                   />
                 </div>
+                <div className="info-cell">
+                  <div className="info-label">Nguồn KH</div>
+                  <select
+                    value={draft.leadSource}
+                    onChange={(e) => setDraft({ ...draft, leadSource: e.target.value, leadChannel: "" })}
+                    style={{
+                      border: "1px solid var(--border)",
+                      borderRadius: 8,
+                      padding: "8px 10px",
+                      font: "inherit",
+                      fontSize: 13,
+                    }}
+                  >
+                    <option value="">— Chọn nguồn —</option>
+                    {LEAD_SOURCES.map((s) => (
+                      <option key={s.key} value={s.key}>{s.label}</option>
+                    ))}
+                  </select>
+                </div>
+                {sourceHasChannels(draft.leadSource) && (
+                  <div className="info-cell">
+                    <div className="info-label">Kênh</div>
+                    <select
+                      value={draft.leadChannel}
+                      onChange={(e) => setDraft({ ...draft, leadChannel: e.target.value })}
+                      style={{
+                        border: "1px solid var(--border)",
+                        borderRadius: 8,
+                        padding: "8px 10px",
+                        font: "inherit",
+                        fontSize: 13,
+                      }}
+                    >
+                      <option value="">— Chọn kênh —</option>
+                      {findSourceByKey(draft.leadSource)?.channels.map((ch) => (
+                        <option key={ch.code} value={ch.code}>{ch.code} - {ch.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
                 <div className="info-cell full">
                   <div className="info-label">Địa chỉ khách hàng</div>
                   <VietnamAddressFields
@@ -1474,6 +1898,7 @@ export default function PaymentRequestDetailDrawer({
                 <div className="info-cell">
                   <div className="info-label">Tổng tiền dự kiến</div>
                   <input
+                    ref={targetInputRef}
                     value={
                       isTargetFocused
                         ? draft.target
@@ -1490,13 +1915,15 @@ export default function PaymentRequestDetailDrawer({
                       setDraft({ ...draft, target: v });
                     }}
                     style={{
-                      border: "1px solid var(--border)",
+                      border: highlightTarget ? "2px solid var(--warning, #f59e0b)" : "1px solid var(--border)",
                       borderRadius: 8,
                       padding: "8px 10px",
                       font: "inherit",
                       fontSize: 13,
                       color: "var(--money)",
                       fontWeight: 600,
+                      boxShadow: highlightTarget ? "0 0 0 4px rgba(245, 158, 11, 0.18)" : undefined,
+                      transition: "border-color 200ms ease, box-shadow 200ms ease",
                     }}
                   />
                 </div>
@@ -1529,7 +1956,11 @@ export default function PaymentRequestDetailDrawer({
                 <span className="num-pill">{request.payments.length}</span>
               </h4>
               {!showAdd && !readOnly && request.state !== "cancelled" && (
-                <button className="btn btn-secondary btn-sm" onClick={() => setShowAdd(true)}>
+                <button
+                  className={`btn btn-sm ${isPrFull ? "btn-outline" : "btn-secondary"}`}
+                  onClick={handleAddPaymentClick}
+                  title={isPrFull ? "PR đã nhận đủ tiền — cần tăng Tổng tiền dự kiến trước khi tạo thêm lần TT" : undefined}
+                >
                   <Icons.Plus size={13} /> Tạo lần thanh toán
                 </button>
               )}
@@ -1541,7 +1972,11 @@ export default function PaymentRequestDetailDrawer({
                   <Icons.Wallet size={22} />
                   <div>Chưa có lần thanh toán nào.</div>
                   {request.state !== "cancelled" && (
-                    <button className="btn btn-primary btn-sm" onClick={() => setShowAdd(true)}>
+                    <button
+                      className={`btn btn-sm ${isPrFull ? "btn-outline" : "btn-primary"}`}
+                      onClick={handleAddPaymentClick}
+                      title={isPrFull ? "PR đã nhận đủ tiền — cần tăng Tổng tiền dự kiến trước" : undefined}
+                    >
                       <Icons.Plus size={13} /> Tạo lần thanh toán đầu tiên
                     </button>
                   )}
@@ -1555,6 +1990,7 @@ export default function PaymentRequestDetailDrawer({
                   onBillFile={onBillFile}
                   onBillView={onBillView}
                   onMarkPaid={onMarkPaid}
+                  onEditAmount={readOnly ? undefined : onEditAmount}
                   onShowQr={onShowQr}
                   uploadingBillId={uploadingBillId}
                   deletingBillId={deletingBillId}
@@ -1625,10 +2061,18 @@ export default function PaymentRequestDetailDrawer({
                 </div>
               </div>
               <div className="tl-item">
-                <div className="tl-dot pending" />
+                <div className={`tl-dot ${activeSummary.invoicedCount > 0 ? "done" : deliveryLog ? "done" : "pending"}`} />
                 <div className="tl-content">
                   <div className="tl-title">B4 · Yêu cầu xuất hoá đơn</div>
-                  <div className="tl-meta">Sẽ xuất sau khi đủ tiền &amp; có Active code</div>
+                  <div className="tl-meta">
+                    {activeSummary.invoicedCount > 0
+                      ? `Đã xuất HĐ ${activeSummary.invoicedCount}/${activeSummary.courseCount} gói học`
+                      : deliveryLog
+                      ? `HĐ đã gửi KH ngày ${formatPaymentDateFull(deliveryLog.sent_at)} (${deliveryLog.channel}) — bởi ${deliveryLog.sent_by_email}`
+                      : lastReminder
+                      ? `Đã nhắc kế toán lúc ${formatPaymentDateFull(lastReminder.requested_at)} — bởi ${lastReminder.requested_by_name}`
+                      : "Sẽ xuất sau khi đủ tiền & có Active code"}
+                  </div>
                 </div>
               </div>
             </div>
@@ -1643,6 +2087,17 @@ export default function PaymentRequestDetailDrawer({
             >
               <Icons.Copy size={13} /> Copy PR-ID
             </button>
+            {!readOnly && request.state !== "cancelled" && activeSummary.activatedCount > 0 && (
+              <button
+                className={`btn btn-sm ${canRemind ? "btn-outline" : "btn-outline"}`}
+                disabled={!canRemind || remindSending}
+                title={canRemind ? "Nhắc kế toán xuất hóa đơn cho PR này" : "Đã nhắc trong 24h qua"}
+                onClick={() => remind()}
+                style={!canRemind ? { opacity: 0.6 } : undefined}
+              >
+                <Icons.Bell size={13} /> {remindSending ? "Đang gửi…" : !canRemind ? "Đã nhắc" : "Nhắc xuất HĐ"}
+              </button>
+            )}
             {canCancel && !readOnly && (
               <button className="btn btn-outline btn-sm" style={{ color: "var(--danger)" }} onClick={onCancelRequest}>
                 <Icons.XCircle size={13} /> Huỷ Payment Request
@@ -1651,7 +2106,12 @@ export default function PaymentRequestDetailDrawer({
           </div>
           <div className="quick-create">
             {!readOnly && request.state !== "cancelled" && (
-              <button className="btn btn-primary" onClick={() => setShowAdd(true)} disabled={showAdd}>
+              <button
+                className={`btn ${isPrFull ? "btn-outline" : "btn-primary"}`}
+                onClick={handleAddPaymentClick}
+                disabled={showAdd}
+                title={isPrFull ? "PR đã nhận đủ tiền — cần tăng Tổng tiền dự kiến trước" : undefined}
+              >
                 <Icons.Plus size={14} /> Tạo lần thanh toán
               </button>
             )}
@@ -1666,6 +2126,93 @@ export default function PaymentRequestDetailDrawer({
           </div>
         </div>
       </aside>
+      {/* 2-03 — popup khi BE chặn nhắc xuất HĐ (PR chưa đủ tiền) */}
+      {remindError && (() => {
+        const m = /PR chua thu du tien \((\d+)\/(\d+)\)/.exec(remindError);
+        const isUnderpaid = !!m;
+        const received = m ? Number(m[1]) : 0;
+        const target = m ? Number(m[2]) : 0;
+        return (
+          <div
+            className="gmv-prototype-modal-scrim"
+            onClick={dismissRemindError}
+            style={{ zIndex: 140 }}
+          >
+            <div className="modal" style={{ width: "min(480px, 100%)" }} onClick={(e) => e.stopPropagation()}>
+              <div className="modal-head">
+                <div>
+                  <h3>{isUnderpaid ? "PR chưa đủ tiền — không nhắc xuất HĐ được" : "Không gửi được nhắc xuất HĐ"}</h3>
+                  {isUnderpaid && (
+                    <div style={{ fontSize: 12, color: "var(--text-3)", marginTop: 2 }}>
+                      Đã thu {vnd(received)} / Tổng dự kiến {vnd(target)} · Còn thiếu {vnd(target - received)}
+                    </div>
+                  )}
+                </div>
+                <button className="drawer-close" onClick={dismissRemindError}>
+                  <Icons.Close size={16} />
+                </button>
+              </div>
+              <div className="modal-body">
+                <div style={{ display: "flex", gap: 10, alignItems: "flex-start", padding: "4px 0" }}>
+                  <Icons.AlertCircle size={20} stroke="var(--danger, #ef4444)" />
+                  <div style={{ fontSize: 13.5, lineHeight: 1.6, color: "var(--text-2)" }}>
+                    {isUnderpaid ? (
+                      <>
+                        PR này chưa thu đủ <strong>Tổng tiền dự kiến</strong> hiện tại. Bạn cần thu đủ tiền (hoặc giảm Tổng tiền dự kiến nếu khách chốt số mới) trước khi gửi nhắc kế toán xuất hóa đơn.
+                      </>
+                    ) : (
+                      remindError
+                    )}
+                  </div>
+                </div>
+              </div>
+              <div className="modal-foot">
+                <button className="btn btn-primary" onClick={dismissRemindError}>
+                  Đã hiểu
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+      {/* PR3 (1B-04) — popup hướng dẫn khi PR đã đủ tiền */}
+      {prFullModalOpen && (
+        <div
+          className="gmv-prototype-modal-scrim"
+          onClick={() => setPrFullModalOpen(false)}
+          style={{ zIndex: 130 }}
+        >
+          <div className="modal" style={{ width: "min(480px, 100%)" }} onClick={(e) => e.stopPropagation()}>
+            <div className="modal-head">
+              <div>
+                <h3>PR đã nhận đủ tiền</h3>
+                <div style={{ fontSize: 12, color: "var(--text-3)", marginTop: 2 }}>
+                  Đã thu {vnd(request.received)} / {vnd(request.target)}
+                </div>
+              </div>
+              <button className="drawer-close" onClick={() => setPrFullModalOpen(false)}>
+                <Icons.Close size={16} />
+              </button>
+            </div>
+            <div className="modal-body">
+              <div style={{ display: "flex", gap: 10, alignItems: "flex-start", padding: "4px 0" }}>
+                <Icons.AlertCircle size={20} stroke="var(--warning, #f59e0b)" />
+                <div style={{ fontSize: 13.5, lineHeight: 1.6, color: "var(--text-2)" }}>
+                  PR này đã thu đủ tiền theo <strong>Tổng tiền dự kiến</strong> hiện tại. Để tạo thêm lần thanh toán, bạn cần <strong>tăng Tổng tiền dự kiến</strong> bằng cách bấm <strong>"Sửa thông tin PR ngay"</strong> bên dưới → nhập số tiền mới ở ô được đánh dấu vàng → bấm <strong>Lưu</strong>.
+                </div>
+              </div>
+            </div>
+            <div className="modal-foot">
+              <button className="btn btn-outline" onClick={() => setPrFullModalOpen(false)}>
+                Đóng
+              </button>
+              <button className="btn btn-primary" onClick={handleOpenEditForTarget}>
+                <Icons.Pencil size={14} /> Sửa thông tin PR ngay
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }

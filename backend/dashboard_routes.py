@@ -9,7 +9,7 @@ from zoneinfo import ZoneInfo
 from fastapi import HTTPException, Query, Header
 from pydantic import BaseModel, Field
 
-from rbac import enforce_report_scope, resolve_actor, scope_sale_names
+from rbac import enforce_report_scope, resolve_actor, scope_sale_names, visible_creator_emails
 
 from crm_metrics import (
     INVALID_TEAM_LABELS,
@@ -244,77 +244,28 @@ def _query_today_honors(
     d_date: str,
     *,
     limit: int | None = None,
-    staff_crm_map: dict[str, tuple[str, str, str]] | None = None,
+    staff_map: dict[str, tuple[str, str]] | None = None,
 ) -> list[TopSale]:
-    """Vinh danh hôm nay — query giao_dich WHERE trang_thai_doi_soat='da_xac_nhan', join don_hang."""
-    # Convert Vietnam date to UTC bounds for timestamptz comparison
+    """Vinh danh hôm nay — payment_lines status='paid' có paid_at trong ngày (RPC get_top_sales).
+
+    Không đọc giao_dich (luồng prototype cũ, webhook PayOS hiện match payment_lines
+    trước nên giao_dich không còn được ghi) và không phụ thuộc sync sổ doanh thu.
+    QR lên bảng ngay khi webhook đánh dấu paid; cash/card/installment lên khi
+    kế toán xác nhận ở B2.
+    """
     day_start_vn = datetime.strptime(d_date, "%Y-%m-%d").replace(tzinfo=VN_TIMEZONE)
     day_end_vn = day_start_vn + timedelta(days=1)
-    start_utc = day_start_vn.astimezone(timezone.utc).isoformat()
-    end_utc = day_end_vn.astimezone(timezone.utc).isoformat()
-
-    sale_map: dict[str, int] = {}
     try:
-        q = (
-            sb.table("giao_dich")
-            .select("so_tien_nhan, don_hang!inner(sale_crm_name)")
-            .eq("trang_thai_doi_soat", "da_xac_nhan")
-            .gte("thoi_gian_giao_dich", start_utc)
-            .lt("thoi_gian_giao_dich", end_utc)
+        return _load_top_sales_rpc(
+            sb,
+            day_start_vn.astimezone(timezone.utc),
+            day_end_vn.astimezone(timezone.utc),
+            limit=limit if limit is not None else GAMIFICATION_TODAY_LIMIT,
+            staff_map=staff_map,
         )
-        from analytics_limits import fetch_rows_capped
-
-        def fetch_page(offset: int, limit: int) -> list[dict]:
-            res = q.range(offset, offset + limit - 1).execute()
-            return res.data or []
-
-        all_data, _ = fetch_rows_capped(
-            fetch_page, log_prefix="[Dashboard] today honors"
-        )
-
-        for r in all_data:
-            don_hang = r.get("don_hang") or {}
-            sname = _sale_key(don_hang.get("sale_crm_name"))
-            if not sname or sname == "(Chưa gán sale)":
-                continue
-            vnd = int(float(r.get("so_tien_nhan") or 0))
-            if vnd > 0:
-                sale_map[sname] = sale_map.get(sname, 0) + vnd
-    except Exception as exc:
-        print(f"[Dashboard] giao_dich today honors query failed: {exc}")
-
-    if staff_crm_map is None:
-        _, staff_crm_map = _load_staff_maps(sb)
-
-    ranked = sorted(sale_map.items(), key=lambda x: x[1], reverse=True)
-    if limit is not None:
-        ranked = ranked[:limit]
-
-    out: list[TopSale] = []
-    for name, revenue in ranked:
-        crm_info = staff_crm_map.get(name.strip())
-        if crm_info:
-            email, team, sub_team = crm_info
-            out.append(
-                TopSale(
-                    id=email or f"sale-{name}",
-                    name=name,
-                    revenue=revenue,
-                    team=team or None,
-                    sub_team=sub_team or None,
-                )
-            )
-        else:
-            out.append(
-                TopSale(
-                    id=f"sale-{name}",
-                    name=name,
-                    revenue=revenue,
-                    team=None,
-                    sub_team=None,
-                )
-            )
-    return out
+    except HTTPException as exc:
+        print(f"[Dashboard] today honors RPC failed: {exc.detail}")
+        return []
 
 
 def _load_staff_maps(sb) -> tuple[dict[str, tuple[str, str]], dict[str, tuple[str, str, str]]]:
@@ -402,7 +353,7 @@ def _build_gamification_summary(
     staff_map, staff_crm_map = _load_staff_maps(sb)
 
     top_today = _query_today_honors(
-        sb, _vn_today_iso(), limit=GAMIFICATION_TODAY_LIMIT, staff_crm_map=staff_crm_map
+        sb, _vn_today_iso(), limit=GAMIFICATION_TODAY_LIMIT, staff_map=staff_map
     )
     top_month = _query_top_sales(
         sb,
@@ -517,36 +468,56 @@ def _load_qr_created_maps(
     sale: str | None = None,
     allowed_sales: set[str] | None = None,
 ) -> tuple[int, int]:
-    """Module 2 — doanh thu tạo mã QR: don_hang.created_at trong kỳ (không cần tien_ve)."""
+    """Doanh thu lần thanh toán đã xác nhận: payment_lines status=paid, created_at trong kỳ."""
     total = 0
     count = 0
     try:
-        team_map = load_team_map(sb) if team else {}
+        staff_by_email, staff_by_crm = _load_staff_maps(sb) if (team or sale or allowed_sales) else ({}, {})
+
         q = (
-            sb.table("don_hang")
-            .select("sale_crm_name, so_tien_can_thu, created_at, trang_thai")
+            sb.table("payment_lines")
+            .select("amount, created_at, is_test, payment_request_id")
             .gte("created_at", f"{d_start}T00:00:00")
             .lte("created_at", f"{d_end}T23:59:59")
+            .eq("is_test", False)
+            .eq("status", "paid")
         )
-        for r in q.execute().data or []:
-            if str(r.get("trang_thai") or "").strip().lower() == "huy":
-                continue
-            sname = _sale_key(r.get("sale_crm_name"))
-            if sale and sname != sale:
-                continue
-            if team and sname != "(Chưa gán sale)":
-                sale_team = team_map.get(sname, "—")
-                if sale_team != team:
+        lines = q.execute().data or []
+        if not lines:
+            return 0, 0
+
+        pr_ids = list({r["payment_request_id"] for r in lines})
+        pr_map: dict[str, str] = {}
+        for batch_start in range(0, len(pr_ids), 50):
+            batch = pr_ids[batch_start:batch_start + 50]
+            prs = sb.table("payment_requests").select("id, sale_email").in_("id", batch).execute().data or []
+            for pr in prs:
+                pr_map[pr["id"]] = str(pr.get("sale_email") or "").strip().lower()
+
+        for r in lines:
+            sale_email = pr_map.get(r["payment_request_id"], "")
+            if team or sale or allowed_sales is not None:
+                sale_team, _ = staff_by_email.get(sale_email, ("", ""))
+                crm_name = ""
+                for k, (em, t, st) in staff_by_crm.items():
+                    if em.lower() == sale_email:
+                        crm_name = k
+                        break
+                sname = crm_name or _sale_key(None)
+                if sale and sname != sale:
                     continue
-            if allowed_sales is not None and sname not in allowed_sales:
-                continue
-            vnd = parse_metric(r.get("so_tien_can_thu"))
+                if team and sname != "(Chưa gán sale)" and sale_team != team:
+                    continue
+                if allowed_sales is not None and sname not in allowed_sales:
+                    continue
+
+            vnd = int(r.get("amount") or 0)
             if vnd <= 0:
                 continue
             count += 1
             total += vnd
     except Exception as exc:
-        print(f"[Dashboard] don_hang QR-created query failed: {exc}")
+        print(f"[Dashboard] payment_lines QR-created query failed: {exc}")
     return total, count
 
 
@@ -850,7 +821,62 @@ def register_dashboard_routes(app, supabase_factory):
         if not sb:
             return {"teams": [], "sales": [], "departments": []}
         
-        resolve_actor(sb, authorization)
+        actor = resolve_actor(sb, authorization)
+        role = (actor.role or "sale").lower().strip()
+        staff = actor.staff or {}
+        if role == "sale":
+            team = str(staff.get("team") or "").strip()
+            dept = str(staff.get("department") or "").strip()
+            crm_name = str(staff.get("crm_name") or "").strip()
+            return {
+                "teams": sorted({v for v in (team,) if v}),
+                "sales": sorted({crm_name or actor.email.lower()}),
+                "departments": sorted({v for v in (dept, team) if v}),
+            }
+        if role in ("leader", "manager"):
+            emails = visible_creator_emails(sb, actor) or [actor.email.lower()]
+            try:
+                staff_res = (
+                    sb.table("nhan_su_sale")
+                    .select("email, crm_name, team, sub_team, department")
+                    .in_("email", emails)
+                    .eq("is_active", True)
+                    .execute()
+                )
+                teams: set[str] = set()
+                sales: set[str] = set()
+                depts: set[str] = set()
+                for row in staff_res.data or []:
+                    team = str(row.get("team") or "").strip()
+                    sub_team = str(row.get("sub_team") or "").strip()
+                    dept = str(row.get("department") or "").strip()
+                    crm_name = str(row.get("crm_name") or "").strip()
+                    email = str(row.get("email") or "").strip().lower()
+                    if team:
+                        teams.add(team)
+                        depts.add(team)
+                    if sub_team:
+                        teams.add(sub_team)
+                    if dept:
+                        depts.add(dept)
+                    if crm_name:
+                        sales.add(crm_name)
+                    elif email:
+                        sales.add(email)
+                if not sales:
+                    sales.add(actor.email.lower())
+                return {
+                    "teams": sorted(teams),
+                    "sales": sorted(sales),
+                    "departments": sorted(depts),
+                }
+            except Exception as exc:
+                print(f"[Dashboard filters scoped] {exc}")
+                return {
+                    "teams": [],
+                    "sales": [actor.email.lower()],
+                    "departments": [],
+                }
         try:
             res = sb.table("crm_sales_data").select(
                 "team, sale_name, department, raw_data, record_type"
@@ -1012,7 +1038,7 @@ def register_dashboard_routes(app, supabase_factory):
                     "collected_currency": "VND",
                     "collected_source": "so_doanh_thu",
                     "l8_source": "so_doanh_thu",
-                    "qr_created_source": "don_hang",
+                    "qr_created_source": "payment_lines",
                     "exchange_rate": exchange_rate,
                     "kpi_source": "palfish_live",
                     "sub_team_scoped": allowed_sales is not None,
@@ -1074,7 +1100,7 @@ def register_dashboard_routes(app, supabase_factory):
                 "collected_currency": "VND",
                 "collected_source": "so_doanh_thu",
                 "l8_source": "so_doanh_thu",
-                "qr_created_source": "don_hang",
+                "qr_created_source": "payment_lines",
                 "exchange_rate": exchange_rate,
                 "kpi_source": "palfish_live",
                 "sub_team_scoped": allowed_sales is not None,
@@ -1264,7 +1290,7 @@ def register_dashboard_routes(app, supabase_factory):
                 "collected_currency": "VND",
                 "collected_source": "so_doanh_thu",
                 "l8_source": "so_doanh_thu",
-                "qr_created_source": "don_hang",
+                "qr_created_source": "payment_lines",
                 "exchange_rate": exchange_rate,
                 "kpi_source": kpi_source_type,
                 "summary_rows": len(summary_rows),
@@ -1307,36 +1333,19 @@ def register_dashboard_routes(app, supabase_factory):
         resolve_actor(sb, authorization)
 
         today_str = _vn_today_iso()
-        
+
         top_sales = _query_today_honors(sb, today_str, limit=3)
-        
+
         top = [
             {
+                "rank": i + 1,
                 "sale_name": ts.name,
+                "team": ts.team or "—",
                 "collected_vnd": ts.revenue,
                 "orders": 1,
             }
-            for ts in top_sales
+            for i, ts in enumerate(top_sales)
         ]
-
-        if top:
-            names = [x["sale_name"] for x in top]
-            staff_res = (
-                sb.table("nhan_su_sale")
-                .select("crm_name, team, display_name")
-                .in_("crm_name", names)
-                .execute()
-            )
-            staff_map = {
-                (s.get("crm_name") or "").strip(): s
-                for s in (staff_res.data or [])
-            }
-            
-            for i, entry in enumerate(top):
-                entry["rank"] = i + 1
-                staff_info = staff_map.get(entry["sale_name"]) or {}
-                entry["team"] = staff_info.get("team") or "—"
-                entry["sale_name"] = staff_info.get("display_name") or entry["sale_name"]
 
         return {
             "date": today_str,

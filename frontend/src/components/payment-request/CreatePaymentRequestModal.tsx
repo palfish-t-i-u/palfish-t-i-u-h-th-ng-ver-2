@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import type { CreatePaymentRequestPayload, CustomerType } from "../../types/paymentRequest";
+import { LEAD_SOURCES, findSourceByKey, sourceHasChannels } from "../../constants/leadSource";
 import CountryCombo from "./CountryCombo";
 import { Icons } from "./Icons";
 import VietnamAddressFields from "./VietnamAddressFields";
@@ -19,6 +20,8 @@ interface FormState {
   taxId: string;
   customerType: CustomerType;
   companyName: string;
+  leadSource: string;
+  leadChannel: string;
 }
 
 const INITIAL: FormState = {
@@ -36,6 +39,8 @@ const INITIAL: FormState = {
   taxId: "",
   customerType: "individual",
   companyName: "",
+  leadSource: "",
+  leadChannel: "",
 };
 
 export default function CreatePaymentRequestModal({
@@ -63,7 +68,15 @@ export default function CreatePaymentRequestModal({
     setForm((f) => ({ ...f, [k]: v }));
 
   const targetNum = parseInt(String(form.target).replace(/\D/g, ""), 10) || 0;
-  const canSubmit = !!(form.uid && form.name && form.phone && targetNum > 0);
+  const needsChannel = sourceHasChannels(form.leadSource);
+  // Email không bắt buộc; nếu có giá trị thì phải đúng format (bug 1A-10)
+  const emailTrimmed = form.email.trim();
+  const emailValid = emailTrimmed === "" || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailTrimmed);
+  const canSubmit = !!(
+    form.uid && form.name && form.phone && targetNum > 0 &&
+    form.leadSource && (!needsChannel || form.leadChannel) &&
+    emailValid
+  );
 
   const handleSubmit = () => {
     if (!canSubmit) return;
@@ -82,6 +95,8 @@ export default function CreatePaymentRequestModal({
       tax_id: form.taxId.trim() || undefined,
       customer_type: form.customerType,
       company_name: form.customerType === "business" ? form.companyName.trim() || undefined : undefined,
+      lead_source: form.leadSource || undefined,
+      lead_channel: form.leadChannel || undefined,
     });
   };
 
@@ -118,13 +133,51 @@ export default function CreatePaymentRequestModal({
           <div className="field">
             <label>Tên con (học viên)</label>
             <input
-              placeholder="Nếu người thanh toán khác học viên — VD: Nguyễn Minh Anh"
+              placeholder="VD: Nguyễn Minh Anh"
               value={form.childName}
               onChange={(e) => set("childName", e.target.value)}
             />
             <div style={{ fontSize: 11.5, color: "var(--text-3)", lineHeight: 1.45, marginTop: 4 }}>
               Nếu để trống, nội dung chuyển khoản sẽ dùng tên khách hàng.
             </div>
+          </div>
+
+          <div className="field-row">
+            <div className="field">
+              <label>
+                Nguồn KH <span style={{ color: "var(--danger)" }}>*</span>
+              </label>
+              <select
+                value={form.leadSource}
+                onChange={(e) => {
+                  set("leadSource", e.target.value);
+                  set("leadChannel", "");
+                }}
+                style={{ font: "inherit", fontSize: 13 }}
+              >
+                <option value="">— Chọn nguồn —</option>
+                {LEAD_SOURCES.map((s) => (
+                  <option key={s.key} value={s.key}>{s.label}</option>
+                ))}
+              </select>
+            </div>
+            {needsChannel && (
+              <div className="field">
+                <label>
+                  Kênh <span style={{ color: "var(--danger)" }}>*</span>
+                </label>
+                <select
+                  value={form.leadChannel}
+                  onChange={(e) => set("leadChannel", e.target.value)}
+                  style={{ font: "inherit", fontSize: 13 }}
+                >
+                  <option value="">— Chọn kênh —</option>
+                  {findSourceByKey(form.leadSource)?.channels.map((ch) => (
+                    <option key={ch.code} value={ch.code}>{ch.code} - {ch.label}</option>
+                  ))}
+                </select>
+              </div>
+            )}
           </div>
 
           <div className="field-row">
@@ -186,10 +239,17 @@ export default function CreatePaymentRequestModal({
               placeholder="VD: khach@email.com"
               value={form.email}
               onChange={(e) => set("email", e.target.value)}
+              style={!emailValid ? { borderColor: "var(--danger)" } : undefined}
             />
-            <div style={{ fontSize: 11.5, color: "var(--text-3)", lineHeight: 1.45, marginTop: 4 }}>
-              Email khách hàng — TH khách cần hóa đơn → Thông tin này sẽ được tổng hợp vào mục &quot;Thông tin xuất hóa đơn&quot; trong tab &quot;Xuất hóa đơn&quot;
-            </div>
+            {!emailValid ? (
+              <div style={{ fontSize: 11.5, color: "var(--danger)", lineHeight: 1.45, marginTop: 4 }}>
+                Email không đúng định dạng (vd: ten@domain.com)
+              </div>
+            ) : (
+              <div style={{ fontSize: 11.5, color: "var(--text-3)", lineHeight: 1.45, marginTop: 4 }}>
+                Email khách hàng — TH khách cần hóa đơn → Thông tin này sẽ được tổng hợp vào mục &quot;Thông tin xuất hóa đơn&quot; trong tab &quot;Xuất hóa đơn&quot;
+              </div>
+            )}
           </div>
 
           <div className="field-row">
@@ -227,9 +287,17 @@ export default function CreatePaymentRequestModal({
           <div className="field">
             <label>{form.customerType === "business" ? "Mã số thuế doanh nghiệp" : "Mã số thuế cá nhân"}</label>
             <input
-              placeholder="VD: 0123456789"
+              placeholder={form.customerType === "business" ? "VD: 0123456789" : "VD: 0123456789-001"}
               value={form.taxId}
-              onChange={(e) => set("taxId", e.target.value.replace(/[^\d]/g, ""))}
+              onChange={(e) =>
+                // MST cá nhân có thể có dấu "-" (vd 0123456789-001). MST doanh nghiệp chỉ chứa số.
+                set(
+                  "taxId",
+                  form.customerType === "individual"
+                    ? e.target.value.replace(/[^\d-]/g, "")
+                    : e.target.value.replace(/[^\d]/g, "")
+                )
+              }
             />
             <div style={{ fontSize: 11.5, color: "var(--text-3)", lineHeight: 1.45, marginTop: 4 }}>
               Không bắt buộc — dùng khi khách cần xuất hóa đơn

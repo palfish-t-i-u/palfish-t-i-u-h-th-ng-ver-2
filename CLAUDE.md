@@ -61,6 +61,17 @@ When user says "chạy e2e" or "test e2e":
 2. Report pass/fail count
 3. If failures, suggest `npm run e2e:headed` or `npm run e2e:report`
 
+## Type Checking
+
+**IMPORTANT**: Always use `tsc -b` (build mode), NOT `tsc --noEmit`.
+Vercel runs `tsc -b && vite build` — `tsc -b` is stricter than `--noEmit`
+(enforces project references, declaration emit). Use:
+
+```bash
+cd frontend && npx tsc -b          # must pass before push
+cd frontend && npm run build       # full Vercel-identical build
+```
+
 ## Dev Server
 
 ```bash
@@ -78,7 +89,7 @@ Frontend `.env.local` points `VITE_API_BASE_URL` to either localhost:8000 (local
 - `frontend/src/components/Module6Tab.tsx` — M6: Dashboard Sale (hiệu suất)
 - `frontend/src/components/SoDoanhThuTab.tsx` — Sổ doanh thu
 - `frontend/src/components/DoanhThuSaleTab.tsx` — Sales Performance pivot
-- `frontend/src/components/PaymentRequestsTab.tsx` — B1: Phiếu thu
+- `frontend/src/components/PaymentRequestsTab.tsx` — B1: PR (Payment Requests)
 - `frontend/src/components/ReconciliationTab.tsx` — B2: Đối soát
 - `frontend/src/components/ActivationTab.tsx` — B3: Kích hoạt khóa học
 - `frontend/src/components/InvoiceRequestTab.tsx` — B4: Xuất hóa đơn
