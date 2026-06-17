@@ -499,4 +499,42 @@ export const endpoints = {
         "/api/v1/gateway-sync/status"
       ),
   },
+  bankTxns: {
+    list: (params?: { status?: string; q?: string; from?: string; to?: string }) =>
+      api.get<BankTransaction[]>("/api/v1/bank-transactions", { params }),
+    matchCandidates: (txnId: string) =>
+      api.get<BankMatchCandidate[]>(`/api/v1/bank-transactions/${txnId}/match-candidates`),
+    match: (txnId: string, paymentLineId: string) =>
+      api.patch<{ matched: boolean }>(`/api/v1/bank-transactions/${txnId}/match`, null, {
+        params: { payment_line_id: paymentLineId },
+      }),
+  },
 };
+
+export interface BankTransaction {
+  txn_id: string;
+  date: string | null;
+  amount: number;
+  content: string | null;
+  transfer_content: string | null;
+  account_number: string | null;
+  sub_account: string | null;
+  transaction_date: string | null;
+  match_status: "pending" | "auto_matched" | "manual_matched" | "needs_review" | "ignored";
+  gateway: string;
+  payment_line_id: string | null;
+  matched_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface BankMatchCandidate {
+  payment_line_id: string;
+  pr_id: string;
+  pr_name: string;
+  amount: number;
+  created_at: string | null;
+  method: string;
+  status: string;
+  transfer_code: string;
+}

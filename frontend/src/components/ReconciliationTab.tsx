@@ -1,7 +1,9 @@
-import { useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { usePaymentFlow } from "../contexts/PaymentFlowContext";
 import { usePermission } from "../hooks/usePermission";
-import { endpoints } from "../lib/api";
+import { endpoints, type BankTransaction } from "../lib/api";
+
+const BankTransactionsTab = lazy(() => import("./BankTransactionsTab"));
 import {
   type FlatTransaction,
   METHOD_META,
@@ -309,9 +311,57 @@ function TxnStatusBadge({ status }: { status: TxnDisplayStatus }) {
   );
 }
 
+// Loại lần thanh toán CK: QR app (có link PayOS) vs CK ngoài (khách chuyển tay)
+type TransferKind = "qr_app" | "ck_ngoai";
+function transferKind(t: FlatTransaction): TransferKind {
+  return t.checkoutUrl || t.qrCode || t.paymentLinkId ? "qr_app" : "ck_ngoai";
+}
+
+// Nguồn xác nhận tiền về: PayOS / SePay / Thủ công — dựa trên bank_transactions đã khớp
+type ConfirmSource = "payos" | "sepay" | "manual" | null;
+function confirmSource(t: FlatTransaction, matchedTxn?: BankTransaction): ConfirmSource {
+  if (matchedTxn) {
+    if (matchedTxn.gateway === "sepay_webhook" || matchedTxn.gateway === "sepay_poll") return "sepay";
+    if (matchedTxn.gateway === "manual") return "manual";
+  }
+  if (t.status !== "paid") return null;
+  // Đã thu nhưng không có bản ghi SePay → suy ra PayOS nếu có link, ngược lại thủ công
+  return transferKind(t) === "qr_app" ? "payos" : "manual";
+}
+
+const KIND_META: Record<TransferKind, { label: string; bg: string; fg: string }> = {
+  qr_app: { label: "QR app", bg: "var(--primary-50, #eef2ff)", fg: "var(--primary-700, #4338ca)" },
+  ck_ngoai: { label: "CK ngoài", bg: "var(--surface-3, #f1f5f9)", fg: "var(--text-2)" },
+};
+
+const SOURCE_META: Record<"payos" | "sepay" | "manual", { label: string; bg: string; fg: string }> = {
+  payos: { label: "PayOS", bg: "#e0f2fe", fg: "#0369a1" },
+  sepay: { label: "SePay", bg: "#dcfce7", fg: "#15803d" },
+  manual: { label: "Thủ công", bg: "#f1f5f9", fg: "#475569" },
+};
+
+function ChannelBadges({ t, matchedTxn }: { t: FlatTransaction; matchedTxn?: BankTransaction }) {
+  const kind = KIND_META[transferKind(t)];
+  const src = confirmSource(t, matchedTxn);
+  return (
+    <div style={{ display: "flex", gap: 4, flexWrap: "wrap", alignItems: "center" }}>
+      <span style={{ fontSize: 10.5, fontWeight: 600, padding: "1px 6px", borderRadius: 5, background: kind.bg, color: kind.fg }}>
+        {kind.label}
+      </span>
+      {src && (
+        <span style={{ fontSize: 10.5, fontWeight: 600, padding: "1px 6px", borderRadius: 5, background: SOURCE_META[src].bg, color: SOURCE_META[src].fg }}>
+          {SOURCE_META[src].label}
+        </span>
+      )}
+    </div>
+  );
+}
+
 export default function ReconciliationTab() {
   const { readOnly } = usePermission("reconciliation");
   const { requests, confirmTransaction, rejectTransaction, navigate, apiNote } = usePaymentFlow();
+  const [view, setView] = useState<"lines" | "bank">("lines");
+  const [bankTxns, setBankTxns] = useState<BankTransaction[]>([]);
   const [tab, setTab] = useState<TabId>("awaiting");
   const [search, setSearch] = useState("");
   const [methodFilter, setMethodFilter] = useState<MethodFilter>("all");
@@ -338,6 +388,25 @@ export default function ReconciliationTab() {
   const [pendingReject, setPendingReject] = useState<{ txns: FlatTransaction[]; label: string } | null>(null);
 
   const transactions = useMemo(() => flattenTransactions(requests), [requests]);
+
+  // Tải biến động số dư ngân hàng (SePay) để gắn nguồn xác nhận lên từng lần TT
+  useEffect(() => {
+    let alive = true;
+    endpoints.bankTxns
+      .list()
+      .then(({ data }) => { if (alive) setBankTxns(Array.isArray(data) ? data : []); })
+      .catch(() => { if (alive) setBankTxns([]); });
+    return () => { alive = false; };
+  }, []);
+
+  // Map payment_line_id → bank_transaction đã khớp (ưu tiên bản ghi đã match)
+  const bankByLine = useMemo(() => {
+    const m = new Map<string, BankTransaction>();
+    for (const b of bankTxns) {
+      if (b.payment_line_id) m.set(b.payment_line_id, b);
+    }
+    return m;
+  }, [bankTxns]);
   const billModalLineIsBackend = useMemo(
     () => isBackendLineId(billModal.lineId),
     [billModal.lineId]
@@ -569,6 +638,39 @@ export default function ReconciliationTab() {
           </div>
         )}
 
+        <div className="seg-toggle" style={{ display: "inline-flex", gap: 4, padding: 4, background: "var(--surface-3, #f1f5f9)", borderRadius: 10, marginBottom: 12 }}>
+          <button
+            type="button"
+            onClick={() => setView("lines")}
+            style={{
+              padding: "6px 14px", borderRadius: 7, fontSize: 12.5, fontWeight: 600, border: "none", cursor: "pointer",
+              background: view === "lines" ? "var(--surface-1, #fff)" : "transparent",
+              color: view === "lines" ? "var(--text-1)" : "var(--text-3)",
+              boxShadow: view === "lines" ? "0 1px 2px rgba(0,0,0,0.08)" : "none",
+            }}
+          >
+            Theo lần thanh toán
+          </button>
+          <button
+            type="button"
+            onClick={() => setView("bank")}
+            style={{
+              padding: "6px 14px", borderRadius: 7, fontSize: 12.5, fontWeight: 600, border: "none", cursor: "pointer",
+              background: view === "bank" ? "var(--surface-1, #fff)" : "transparent",
+              color: view === "bank" ? "var(--text-1)" : "var(--text-3)",
+              boxShadow: view === "bank" ? "0 1px 2px rgba(0,0,0,0.08)" : "none",
+            }}
+          >
+            Tiền về ngân hàng (SePay)
+          </button>
+        </div>
+
+        {view === "bank" ? (
+          <Suspense fallback={<div className="empty" style={{ padding: 40, textAlign: "center", color: "var(--text-3)" }}>Đang tải…</div>}>
+            <BankTransactionsTab />
+          </Suspense>
+        ) : (
+        <>
         <div className="kpi-row">
           <div className="kpi">
             <div className="kpi-icon" style={{ background: "var(--warning-bg)", color: "var(--warning-text)" }}>
@@ -814,7 +916,7 @@ export default function ReconciliationTab() {
                           {t.method === "cash" && (t.cashier ? `Người thu: ${t.cashier}` : "—")}
                           {t.method === "card" && (t.cardLast4 ? `•••• ${t.cardLast4}` : t.bank || "—")}
                           {t.method === "installment" && (t.installmentPlatform || "Trả góp")}
-                          {t.method === "qr" && (t.bank || "—")}
+                          {t.method === "qr" && <ChannelBadges t={t} matchedTxn={bankByLine.get(t.id)} />}
                         </div>
                         {t.method === "installment" && t.installmentTotal != null && (
                           <div className="cell-sub">
@@ -884,6 +986,8 @@ export default function ReconciliationTab() {
             </table>
           </div>
         </div>
+        </>
+        )}
       </div>
 
       <div

@@ -111,9 +111,8 @@ export default function GatewaySyncTab() {
             <h4>Cài tiện ích đồng bộ</h4>
             <a
               className="btn btn-primary btn-sm"
-              href="#"
-              onClick={(e) => e.preventDefault()}
-              title="Bản cài sẽ có khi tiện ích hoàn thiện"
+              href="/crm-extension.zip"
+              download="crm-extension.zip"
             >
               <Icons.Download size={14} /> Tải tiện ích (.zip)
             </a>

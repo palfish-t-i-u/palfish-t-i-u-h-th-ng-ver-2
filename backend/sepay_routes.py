@@ -491,5 +491,118 @@ def register_sepay_routes(app, get_supabase: Callable) -> None:
 
         return {"matched": True, "txn_id": txn_id, "payment_line_id": payment_line_id}
 
+    # -----------------------------------------------------------------------
+    # List bank transactions: GET /api/v1/bank-transactions
+    # -----------------------------------------------------------------------
+    @router.get("/api/v1/bank-transactions")
+    def list_bank_transactions(
+        status: str | None = Query(None),
+        q: str | None = Query(None),
+        from_date: str | None = Query(None, alias="from"),
+        to_date: str | None = Query(None, alias="to"),
+        limit: int = Query(200, ge=1, le=1000),
+        authorization: str | None = Header(None),
+    ):
+        sb = _sb_or_503(get_supabase)
+        actor = resolve_actor(sb, authorization)
+        require_module_write(sb, actor, "reconciliation")
+
+        query = (
+            sb.table("bank_transactions")
+            .select("*")
+            .order("created_at", desc=True)
+            .limit(limit)
+        )
+        if status and status != "all":
+            query = query.eq("match_status", status)
+        if from_date:
+            query = query.gte("transaction_date", from_date)
+        if to_date:
+            query = query.lte("transaction_date", to_date)
+
+        res = query.execute()
+        rows = res.data or []
+
+        if q:
+            q_lower = q.lower()
+            rows = [
+                r for r in rows
+                if q_lower in (r.get("transfer_content") or "").lower()
+                or q_lower in (r.get("content") or "").lower()
+                or q_lower in str(r.get("amount", "")).lower()
+                or q_lower in (r.get("account_number") or "").lower()
+            ]
+
+        return rows
+
+    # -----------------------------------------------------------------------
+    # Match candidates for bank transaction (reuse gateway pattern)
+    # -----------------------------------------------------------------------
+    @router.get("/api/v1/bank-transactions/{txn_id}/match-candidates")
+    def bank_txn_match_candidates(
+        txn_id: str,
+        authorization: str | None = Header(None),
+    ):
+        sb = _sb_or_503(get_supabase)
+        actor = resolve_actor(sb, authorization)
+        require_module_write(sb, actor, "reconciliation")
+
+        txn_res = (
+            sb.table("bank_transactions")
+            .select("*")
+            .eq("txn_id", txn_id)
+            .limit(1)
+            .execute()
+        )
+        if not txn_res.data:
+            raise HTTPException(404, "Không tìm thấy giao dịch")
+
+        txn = txn_res.data[0]
+        txn_amount = _parse_amount(txn.get("amount", 0))
+
+        lines_res = (
+            sb.table("payment_lines")
+            .select("id, payment_request_id, amount, method, status, transfer_code, created_at")
+            .in_("status", ["pending", "paid"])
+            .order("created_at", desc=True)
+            .limit(100)
+            .execute()
+        )
+        lines = lines_res.data or []
+
+        # Lookup tên PR (payment_request_id là text, không phải FK → query riêng)
+        pr_ids = list({l.get("payment_request_id") for l in lines if l.get("payment_request_id")})
+        pr_names: dict[str, str] = {}
+        if pr_ids:
+            try:
+                pr_res = (
+                    sb.table("payment_requests")
+                    .select("id, name")
+                    .in_("id", pr_ids)
+                    .execute()
+                )
+                pr_names = {p["id"]: p.get("name", "") for p in (pr_res.data or [])}
+            except Exception as exc:
+                print(f"[sepay] pr name lookup failed: {exc}")
+
+        candidates = []
+        for line in lines:
+            pr_id = line.get("payment_request_id", "")
+            candidates.append({
+                "payment_line_id": line["id"],
+                "pr_id": pr_id,
+                "pr_name": pr_names.get(pr_id, ""),
+                "amount": _parse_amount(line.get("amount", 0)),
+                "created_at": line.get("created_at"),
+                "method": line.get("method", ""),
+                "status": line.get("status", ""),
+                "transfer_code": line.get("transfer_code", ""),
+            })
+
+        if txn_amount > 0:
+            candidates.sort(key=lambda c: (abs(c["amount"] - txn_amount), c["created_at"] or ""))
+
+        return candidates
+
     # Register router
     app.include_router(router)
