@@ -9,6 +9,9 @@ scripts/gen_module34_brief_pdf.py
 # Backup/artifact từ cleanup scripts
 docs/artifacts/
 
+# Deploy hook secrets (Render) — local only, KHÔNG commit
+scripts/deploy-hooks.local
+
 # Node modules (root level)
 node_modules/
 
