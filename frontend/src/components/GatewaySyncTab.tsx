@@ -47,11 +47,33 @@ export default function GatewaySyncTab() {
     if (syncing || !installed) return;
     setSyncing(true);
     setSynced(null);
-    window.setTimeout(() => {
+
+    let done = false;
+    const finish = (inserted: number | null, errMsg?: string) => {
+      if (done) return;
+      done = true;
+      window.removeEventListener("message", onResult);
       setSyncing(false);
       setLastSync(formatPaymentDateFull(new Date().toISOString()));
-      setSynced(Math.floor(Math.random() * 6)); // mock: số giao dịch mới kéo về
-    }, 1200);
+      setSynced(inserted);
+      if (errMsg) console.warn("[gateway-sync] ", errMsg);
+    };
+
+    const onResult = (ev: MessageEvent) => {
+      if (ev.source !== window) return;
+      const data = ev.data;
+      if (!data || data.type !== "gateway-sync-now-result") return;
+      const resp = data.resp || {};
+      // background trả { ok, inserted, errors, ... } — tổng số mới kéo về
+      const inserted = typeof resp.inserted === "number" ? resp.inserted : null;
+      finish(inserted, resp.ok === false ? resp.error : undefined);
+    };
+
+    window.addEventListener("message", onResult);
+    window.postMessage({ type: "gateway-sync-now" }, "*");
+
+    // Timeout 60s — extension chưa response thì coi như fail
+    window.setTimeout(() => finish(null, "Hết thời gian — extension không phản hồi"), 60000);
   };
 
   return (
