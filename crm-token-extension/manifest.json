@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "PalFish GMV Sync",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "Tự động đồng bộ CRM PalFish + giao dịch mPOS + giao dịch Payoo sang app GMV",
   "permissions": ["webRequest", "storage", "cookies", "tabs", "alarms"],
   "host_permissions": [
@@ -20,6 +20,19 @@
   "background": {
     "service_worker": "background.js"
   },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://palfish-gmv-manager.vercel.app/*",
+        "https://palfish-gmv-manager-sandbox.vercel.app/*",
+        "https://gmv.palfish.vn/*",
+        "http://localhost:5173/*",
+        "http://localhost:5174/*"
+      ],
+      "js": ["content-app-flag.js"],
+      "run_at": "document_start"
+    }
+  ],
   "action": {
     "default_title": "PalFish GMV Sync",
     "default_popup": "popup.html"
