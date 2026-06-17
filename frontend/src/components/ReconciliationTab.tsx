@@ -1,9 +1,7 @@
-import { lazy, Suspense, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { usePaymentFlow } from "../contexts/PaymentFlowContext";
 import { usePermission } from "../hooks/usePermission";
-import { endpoints, type BankTransaction } from "../lib/api";
-
-const BankTransactionsTab = lazy(() => import("./BankTransactionsTab"));
+import { endpoints, type BankTransaction, type BankMatchCandidate } from "../lib/api";
 import {
   type FlatTransaction,
   METHOD_META,
@@ -25,7 +23,7 @@ import {
 } from "./payment-request/paymentRequestUtils";
 import "../styles/prototype-payments.css";
 
-type TabId = "awaiting" | "confirmed" | "cancelled" | "all";
+type TabId = "awaiting" | "confirmed" | "cancelled" | "ckOutside" | "all";
 type MethodFilter = "all" | "qr" | "cash" | "card" | "installment";
 
 type BillImage = { id: number; src: string; name: string };
@@ -360,8 +358,13 @@ function ChannelBadges({ t, matchedTxn }: { t: FlatTransaction; matchedTxn?: Ban
 export default function ReconciliationTab() {
   const { readOnly } = usePermission("reconciliation");
   const { requests, confirmTransaction, rejectTransaction, navigate, apiNote } = usePaymentFlow();
-  const [view, setView] = useState<"lines" | "bank">("lines");
   const [bankTxns, setBankTxns] = useState<BankTransaction[]>([]);
+  const [bankMatchOpen, setBankMatchOpen] = useState(false);
+  const [bankMatchTxnId, setBankMatchTxnId] = useState<string | null>(null);
+  const [bankCandidates, setBankCandidates] = useState<BankMatchCandidate[]>([]);
+  const [bankCandLoading, setBankCandLoading] = useState(false);
+  const [bankPickedLineId, setBankPickedLineId] = useState<string | null>(null);
+  const [bankMatching, setBankMatching] = useState(false);
   const [tab, setTab] = useState<TabId>("awaiting");
   const [search, setSearch] = useState("");
   const [methodFilter, setMethodFilter] = useState<MethodFilter>("all");
@@ -389,15 +392,52 @@ export default function ReconciliationTab() {
 
   const transactions = useMemo(() => flattenTransactions(requests), [requests]);
 
-  // Tải biến động số dư ngân hàng (SePay) để gắn nguồn xác nhận lên từng lần TT
-  useEffect(() => {
-    let alive = true;
-    endpoints.bankTxns
-      .list()
-      .then(({ data }) => { if (alive) setBankTxns(Array.isArray(data) ? data : []); })
-      .catch(() => { if (alive) setBankTxns([]); });
-    return () => { alive = false; };
+  // Tải biến động số dư ngân hàng (SePay) — dùng cho badge nguồn + tab "CK ngoài chờ ghép"
+  const loadBankTxns = useCallback(async () => {
+    try {
+      const { data } = await endpoints.bankTxns.list();
+      setBankTxns(Array.isArray(data) ? data : []);
+    } catch {
+      setBankTxns([]);
+    }
   }, []);
+  useEffect(() => { loadBankTxns(); }, [loadBankTxns]);
+
+  // CK ngoài chờ ghép = bank_transactions chưa khớp lần TT nào
+  const bankPendingTxns = useMemo(
+    () => bankTxns.filter((b) => b.match_status === "pending" || b.match_status === "needs_review"),
+    [bankTxns],
+  );
+
+  const openBankMatch = useCallback(async (txnId: string) => {
+    setBankMatchTxnId(txnId);
+    setBankMatchOpen(true);
+    setBankPickedLineId(null);
+    setBankCandLoading(true);
+    try {
+      const { data } = await endpoints.bankTxns.matchCandidates(txnId);
+      setBankCandidates(Array.isArray(data) ? data : []);
+    } catch {
+      setBankCandidates([]);
+    } finally {
+      setBankCandLoading(false);
+    }
+  }, []);
+
+  const doBankMatch = useCallback(async () => {
+    if (!bankMatchTxnId || !bankPickedLineId) return;
+    setBankMatching(true);
+    try {
+      await endpoints.bankTxns.match(bankMatchTxnId, bankPickedLineId);
+      setBankMatchOpen(false);
+      setBankMatchTxnId(null);
+      loadBankTxns();
+    } catch {
+      alert("Ghép thất bại — kiểm tra lại");
+    } finally {
+      setBankMatching(false);
+    }
+  }, [bankMatchTxnId, bankPickedLineId, loadBankTxns]);
 
   // Map payment_line_id → bank_transaction đã khớp (ưu tiên bản ghi đã match)
   const bankByLine = useMemo(() => {
@@ -602,6 +642,7 @@ export default function ReconciliationTab() {
     { id: "awaiting" as TabId, label: "Chờ xác nhận", icon: "Clock" as const, attention: true },
     { id: "confirmed" as TabId, label: "Đã xác nhận", icon: "CheckCircle" as const },
     { id: "cancelled" as TabId, label: "Đã huỷ", icon: "XCircle" as const },
+    { id: "ckOutside" as TabId, label: "CK ngoài chờ ghép", icon: "Bank" as const, attention: true },
     { id: "all" as TabId, label: "Tất cả", icon: "Database" as const },
   ];
 
@@ -638,39 +679,6 @@ export default function ReconciliationTab() {
           </div>
         )}
 
-        <div className="seg-toggle" style={{ display: "inline-flex", gap: 4, padding: 4, background: "var(--surface-3, #f1f5f9)", borderRadius: 10, marginBottom: 12 }}>
-          <button
-            type="button"
-            onClick={() => setView("lines")}
-            style={{
-              padding: "6px 14px", borderRadius: 7, fontSize: 12.5, fontWeight: 600, border: "none", cursor: "pointer",
-              background: view === "lines" ? "var(--surface-1, #fff)" : "transparent",
-              color: view === "lines" ? "var(--text-1)" : "var(--text-3)",
-              boxShadow: view === "lines" ? "0 1px 2px rgba(0,0,0,0.08)" : "none",
-            }}
-          >
-            Theo lần thanh toán
-          </button>
-          <button
-            type="button"
-            onClick={() => setView("bank")}
-            style={{
-              padding: "6px 14px", borderRadius: 7, fontSize: 12.5, fontWeight: 600, border: "none", cursor: "pointer",
-              background: view === "bank" ? "var(--surface-1, #fff)" : "transparent",
-              color: view === "bank" ? "var(--text-1)" : "var(--text-3)",
-              boxShadow: view === "bank" ? "0 1px 2px rgba(0,0,0,0.08)" : "none",
-            }}
-          >
-            Tiền về ngân hàng (SePay)
-          </button>
-        </div>
-
-        {view === "bank" ? (
-          <Suspense fallback={<div className="empty" style={{ padding: 40, textAlign: "center", color: "var(--text-3)" }}>Đang tải…</div>}>
-            <BankTransactionsTab />
-          </Suspense>
-        ) : (
-        <>
         <div className="kpi-row">
           <div className="kpi">
             <div className="kpi-icon" style={{ background: "var(--warning-bg)", color: "var(--warning-text)" }}>
@@ -736,15 +744,19 @@ export default function ReconciliationTab() {
               {tabConfig.map((tc) => {
                 const Ico = Icons[tc.icon];
                 const isActive = tab === tc.id;
+                const tabCount =
+                  tc.id === "cancelled"
+                    ? counts.tabCancelled
+                    : tc.id === "ckOutside"
+                    ? bankPendingTxns.length
+                    : counts[tc.id as "awaiting" | "confirmed" | "all"];
                 return (
                   <div key={tc.id} className={`tab ${isActive ? "active" : ""}`} onClick={() => setTab(tc.id)}>
                     <Ico size={14} /> {tc.label}
                     <span
-                      className={`tab-count ${tc.attention && ((tc.id === "cancelled" ? counts.tabCancelled : counts[tc.id as "awaiting" | "confirmed" | "all"]) ?? 0) > 0 && !isActive ? "is-attention" : ""}`}
+                      className={`tab-count ${tc.attention && (tabCount ?? 0) > 0 && !isActive ? "is-attention" : ""}`}
                     >
-                      {tc.id === "cancelled"
-                        ? counts.tabCancelled
-                        : counts[tc.id as "awaiting" | "confirmed" | "all"]}
+                      {tabCount}
                     </span>
                   </div>
                 );
@@ -807,6 +819,76 @@ export default function ReconciliationTab() {
             </div>
           )}
 
+          {tab === "ckOutside" ? (
+            <div className="tbl-wrap">
+              <div style={{ padding: "10px 14px", fontSize: 12, color: "var(--text-2)", background: "var(--surface-3, #f1f5f9)", borderBottom: "1px solid var(--border)" }}>
+                Tiền vào TK công ty không khớp lần TT nào (không có mã app hoặc mã sai). Kế toán bấm <strong>Ghép</strong> để gắn vào đúng lần TT của PR.
+              </div>
+              <table className="tbl">
+                <thead>
+                  <tr>
+                    <th style={{ width: 140 }}>Thời gian</th>
+                    <th style={{ width: 140, textAlign: "right" }}>Số tiền</th>
+                    <th style={{ minWidth: 240 }}>Nội dung CK</th>
+                    <th style={{ width: 140 }}>Tài khoản nhận</th>
+                    <th style={{ width: 140 }}>Trạng thái</th>
+                    <th style={{ width: 100, textAlign: "center" }}>Hành động</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {bankPendingTxns.length === 0 ? (
+                    <tr>
+                      <td colSpan={6}>
+                        <div className="empty">
+                          <Icons.CheckCircle size={20} />
+                          <div>Không có giao dịch CK ngoài chờ ghép.</div>
+                          <div style={{ fontSize: 11, color: "var(--text-3)" }}>
+                            Mọi tiền vào đã được PayOS tự khớp hoặc kế toán đã ghép tay.
+                          </div>
+                        </div>
+                      </td>
+                    </tr>
+                  ) : (
+                    bankPendingTxns.map((b) => {
+                      const when = b.transaction_date || b.created_at;
+                      const whenFmt = when ? formatPaymentDateTime(when) : { date: "—", time: "" };
+                      const isReview = b.match_status === "needs_review";
+                      return (
+                        <tr key={b.txn_id}>
+                          <td>
+                            <div className="cell-time">{whenFmt.date}</div>
+                            <div className="time-relative">{whenFmt.time}</div>
+                          </td>
+                          <td style={{ textAlign: "right" }}>
+                            <span className="txn-amount" style={{ color: "var(--money)" }}>{vnd(b.amount)}</span>
+                          </td>
+                          <td style={{ maxWidth: 380, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                            {b.transfer_content || b.content || "—"}
+                          </td>
+                          <td>
+                            <span className="cell-mono">{b.account_number || "—"}</span>
+                          </td>
+                          <td>
+                            <span className={`badge ${isReview ? "is-short" : "is-over"}`}>
+                              <span className="dot" />
+                              {isReview ? "Cần kiểm tra" : "Chờ ghép"}
+                            </span>
+                          </td>
+                          <td style={{ textAlign: "center" }}>
+                            {!readOnly && (
+                              <button type="button" className="btn btn-primary btn-sm" onClick={() => openBankMatch(b.txn_id)}>
+                                Ghép
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          ) : (
           <div className="tbl-wrap">
             <table className="tbl">
               <thead>
@@ -985,9 +1067,8 @@ export default function ReconciliationTab() {
               </tbody>
             </table>
           </div>
+          )}
         </div>
-        </>
-        )}
       </div>
 
       <div
@@ -1341,6 +1422,84 @@ export default function ReconciliationTab() {
       </aside>
 
       {lightboxBill && <BillLightbox bill={lightboxBill} onClose={() => setLightboxBill(null)} />}
+
+      {/* Modal ghép tay CK ngoài → payment_line */}
+      {(() => {
+        const drawerTxn = bankMatchTxnId ? bankTxns.find((b) => b.txn_id === bankMatchTxnId) : null;
+        return (
+          <Modal
+            open={bankMatchOpen}
+            onClose={() => { setBankMatchOpen(false); setBankMatchTxnId(null); }}
+            title="Ghép CK ngoài → Lần thanh toán"
+          >
+            {drawerTxn && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                <div style={{ padding: 12, background: "var(--surface-3, #f1f5f9)", borderRadius: 8, fontSize: 13 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+                    <span style={{ color: "var(--text-3)" }}>Số tiền</span>
+                    <strong>{vnd(drawerTxn.amount)}</strong>
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+                    <span style={{ color: "var(--text-3)" }}>Thời gian</span>
+                    <span>{drawerTxn.transaction_date ? formatPaymentDateFull(drawerTxn.transaction_date) : "—"}</span>
+                  </div>
+                  <div style={{ marginTop: 6 }}>
+                    <div style={{ color: "var(--text-3)", marginBottom: 2, fontSize: 11 }}>Nội dung CK</div>
+                    <div style={{ fontSize: 12, wordBreak: "break-word" }}>{drawerTxn.transfer_content || drawerTxn.content || "—"}</div>
+                  </div>
+                </div>
+
+                <div>
+                  <div style={{ fontSize: 12, color: "var(--text-3)", marginBottom: 8 }}>
+                    Chọn lần TT để ghép (xếp theo số tiền gần nhất):
+                  </div>
+                  {bankCandLoading ? (
+                    <div style={{ padding: 20, textAlign: "center", color: "var(--text-3)" }}>Đang tải…</div>
+                  ) : bankCandidates.length === 0 ? (
+                    <div style={{ padding: 20, textAlign: "center", color: "var(--text-3)" }}>Không có lần TT phù hợp.</div>
+                  ) : (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 320, overflow: "auto" }}>
+                      {bankCandidates.map((c) => {
+                        const exactAmount = Math.abs(c.amount - drawerTxn.amount) < 1;
+                        const selected = bankPickedLineId === c.payment_line_id;
+                        return (
+                          <div
+                            key={c.payment_line_id}
+                            onClick={() => setBankPickedLineId(c.payment_line_id)}
+                            style={{
+                              padding: "10px 12px", border: `2px solid ${selected ? "var(--primary)" : "var(--border)"}`,
+                              borderRadius: 8, cursor: "pointer",
+                              background: selected ? "var(--primary-bg, rgba(99,102,241,0.06))" : "var(--surface-1)",
+                            }}
+                          >
+                            <div style={{ display: "flex", justifyContent: "space-between" }}>
+                              <span style={{ fontWeight: 600 }}>{c.pr_name || c.pr_id}</span>
+                              <span style={{ fontWeight: 600, color: exactAmount ? "var(--success-text)" : "var(--text-2)" }}>
+                                {vnd(c.amount)}{exactAmount && " ✓"}
+                              </span>
+                            </div>
+                            <div style={{ fontSize: 11, color: "var(--text-3)", marginTop: 2 }}>
+                              {c.method} · {c.status} · mã: {c.transfer_code || "—"}
+                              {c.created_at ? ` · ${formatPaymentDateFull(c.created_at)}` : ""}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+                  <button className="btn btn-outline btn-sm" onClick={() => { setBankMatchOpen(false); setBankMatchTxnId(null); }}>Hủy</button>
+                  <button className="btn btn-primary btn-sm" disabled={!bankPickedLineId || bankMatching} onClick={doBankMatch}>
+                    {bankMatching ? "Đang ghép…" : "Xác nhận ghép"}
+                  </button>
+                </div>
+              </div>
+            )}
+          </Modal>
+        );
+      })()}
 
       {/* Bill modal từ click thumbnail trên bảng — có nút tải từng ảnh + tải tất cả */}
       <Modal
