@@ -565,33 +565,36 @@ def register_sepay_routes(app, get_supabase: Callable) -> None:
             .select("id, payment_request_id, amount, method, status, transfer_code, created_at")
             .in_("status", ["pending", "paid"])
             .order("created_at", desc=True)
-            .limit(100)
+            .limit(500)
             .execute()
         )
         lines = lines_res.data or []
 
-        # Lookup tên PR (payment_request_id là text, không phải FK → query riêng)
+        # Lookup PR info (payment_request_id là text, không phải FK → query riêng)
         pr_ids = list({l.get("payment_request_id") for l in lines if l.get("payment_request_id")})
-        pr_names: dict[str, str] = {}
+        pr_info: dict[str, dict] = {}
         if pr_ids:
             try:
                 pr_res = (
                     sb.table("payment_requests")
-                    .select("id, name")
+                    .select("id, name, uid, phone")
                     .in_("id", pr_ids)
                     .execute()
                 )
-                pr_names = {p["id"]: p.get("name", "") for p in (pr_res.data or [])}
+                pr_info = {p["id"]: p for p in (pr_res.data or [])}
             except Exception as exc:
-                print(f"[sepay] pr name lookup failed: {exc}")
+                print(f"[sepay] pr lookup failed: {exc}")
 
         candidates = []
         for line in lines:
             pr_id = line.get("payment_request_id", "")
+            pr = pr_info.get(pr_id, {})
             candidates.append({
                 "payment_line_id": line["id"],
                 "pr_id": pr_id,
-                "pr_name": pr_names.get(pr_id, ""),
+                "pr_name": pr.get("name", ""),
+                "pr_uid": pr.get("uid", ""),
+                "pr_phone": pr.get("phone", ""),
                 "amount": _parse_amount(line.get("amount", 0)),
                 "created_at": line.get("created_at"),
                 "method": line.get("method", ""),

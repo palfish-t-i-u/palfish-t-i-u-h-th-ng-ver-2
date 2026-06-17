@@ -365,6 +365,9 @@ export default function ReconciliationTab() {
   const [bankCandLoading, setBankCandLoading] = useState(false);
   const [bankPickedLineId, setBankPickedLineId] = useState<string | null>(null);
   const [bankMatching, setBankMatching] = useState(false);
+  const [bankCandSearch, setBankCandSearch] = useState("");
+  const [bankCandRange, setBankCandRange] = useState<DateRange>(EMPTY_RANGE);
+  const [bankCandStatus, setBankCandStatus] = useState<"all" | "pending" | "paid">("all");
   const [tab, setTab] = useState<TabId>("awaiting");
   const [search, setSearch] = useState("");
   const [methodFilter, setMethodFilter] = useState<MethodFilter>("all");
@@ -413,6 +416,9 @@ export default function ReconciliationTab() {
     setBankMatchTxnId(txnId);
     setBankMatchOpen(true);
     setBankPickedLineId(null);
+    setBankCandSearch("");
+    setBankCandRange(EMPTY_RANGE);
+    setBankCandStatus("all");
     setBankCandLoading(true);
     try {
       const { data } = await endpoints.bankTxns.matchCandidates(txnId);
@@ -423,6 +429,18 @@ export default function ReconciliationTab() {
       setBankCandLoading(false);
     }
   }, []);
+
+  // Filter candidates client-side
+  const filteredBankCandidates = useMemo(() => {
+    const q = bankCandSearch.trim().toLowerCase();
+    return bankCandidates.filter((c) => {
+      if (bankCandStatus !== "all" && c.status !== bankCandStatus) return false;
+      if (!inDateRange(c.created_at || "", bankCandRange)) return false;
+      if (!q) return true;
+      return [c.pr_id, c.pr_name, c.pr_uid || "", c.pr_phone || "", c.transfer_code]
+        .some((v) => v.toLowerCase().includes(q));
+    });
+  }, [bankCandidates, bankCandSearch, bankCandRange, bankCandStatus]);
 
   const doBankMatch = useCallback(async () => {
     if (!bankMatchTxnId || !bankPickedLineId) return;
@@ -1451,41 +1469,77 @@ export default function ReconciliationTab() {
 
                 <div>
                   <div style={{ fontSize: 12, color: "var(--text-3)", marginBottom: 8 }}>
-                    Chọn lần TT để ghép (xếp theo số tiền gần nhất):
+                    Tìm lần TT để ghép (xếp theo số tiền gần nhất):
                   </div>
+
+                  {/* Filter bar */}
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 10 }}>
+                    <div className="search" style={{ flex: 1, minWidth: 220 }}>
+                      <Icons.Search size={14} stroke="var(--text-3)" />
+                      <input
+                        placeholder="Tìm PR-ID, tên KH, UID, SĐT, mã CK…"
+                        value={bankCandSearch}
+                        onChange={(e) => setBankCandSearch(e.target.value)}
+                      />
+                    </div>
+                    <div style={{ display: "flex", gap: 4 }}>
+                      {(["all", "pending", "paid"] as const).map((s) => (
+                        <button
+                          key={s}
+                          type="button"
+                          className={`filter-chip ${bankCandStatus === s ? "active" : ""}`}
+                          onClick={() => setBankCandStatus(s)}
+                        >
+                          {s === "all" ? "Tất cả" : s === "pending" ? "Chưa thu" : "Đã thu"}
+                        </button>
+                      ))}
+                    </div>
+                    <DateRangeFilter value={bankCandRange} onChange={setBankCandRange} />
+                  </div>
+
                   {bankCandLoading ? (
                     <div style={{ padding: 20, textAlign: "center", color: "var(--text-3)" }}>Đang tải…</div>
-                  ) : bankCandidates.length === 0 ? (
-                    <div style={{ padding: 20, textAlign: "center", color: "var(--text-3)" }}>Không có lần TT phù hợp.</div>
-                  ) : (
-                    <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 320, overflow: "auto" }}>
-                      {bankCandidates.map((c) => {
-                        const exactAmount = Math.abs(c.amount - drawerTxn.amount) < 1;
-                        const selected = bankPickedLineId === c.payment_line_id;
-                        return (
-                          <div
-                            key={c.payment_line_id}
-                            onClick={() => setBankPickedLineId(c.payment_line_id)}
-                            style={{
-                              padding: "10px 12px", border: `2px solid ${selected ? "var(--primary)" : "var(--border)"}`,
-                              borderRadius: 8, cursor: "pointer",
-                              background: selected ? "var(--primary-bg, rgba(99,102,241,0.06))" : "var(--surface-1)",
-                            }}
-                          >
-                            <div style={{ display: "flex", justifyContent: "space-between" }}>
-                              <span style={{ fontWeight: 600 }}>{c.pr_name || c.pr_id}</span>
-                              <span style={{ fontWeight: 600, color: exactAmount ? "var(--success-text)" : "var(--text-2)" }}>
-                                {vnd(c.amount)}{exactAmount && " ✓"}
-                              </span>
-                            </div>
-                            <div style={{ fontSize: 11, color: "var(--text-3)", marginTop: 2 }}>
-                              {c.method} · {c.status} · mã: {c.transfer_code || "—"}
-                              {c.created_at ? ` · ${formatPaymentDateFull(c.created_at)}` : ""}
-                            </div>
-                          </div>
-                        );
-                      })}
+                  ) : filteredBankCandidates.length === 0 ? (
+                    <div style={{ padding: 20, textAlign: "center", color: "var(--text-3)" }}>
+                      {bankCandidates.length === 0 ? "Không có lần TT nào." : "Không có lần TT khớp bộ lọc."}
                     </div>
+                  ) : (
+                    <>
+                      <div style={{ fontSize: 11, color: "var(--text-3)", marginBottom: 6 }}>
+                        Hiện {filteredBankCandidates.length} / {bankCandidates.length} lần TT
+                      </div>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 320, overflow: "auto" }}>
+                        {filteredBankCandidates.map((c) => {
+                          const exactAmount = Math.abs(c.amount - drawerTxn.amount) < 1;
+                          const selected = bankPickedLineId === c.payment_line_id;
+                          return (
+                            <div
+                              key={c.payment_line_id}
+                              onClick={() => setBankPickedLineId(c.payment_line_id)}
+                              style={{
+                                padding: "10px 12px", border: `2px solid ${selected ? "var(--primary)" : "var(--border)"}`,
+                                borderRadius: 8, cursor: "pointer",
+                                background: selected ? "var(--primary-bg, rgba(99,102,241,0.06))" : "var(--surface-1)",
+                              }}
+                            >
+                              <div style={{ display: "flex", justifyContent: "space-between" }}>
+                                <span style={{ fontWeight: 600 }}>{c.pr_name || c.pr_id}</span>
+                                <span style={{ fontWeight: 600, color: exactAmount ? "var(--success-text)" : "var(--text-2)" }}>
+                                  {vnd(c.amount)}{exactAmount && " ✓"}
+                                </span>
+                              </div>
+                              <div style={{ fontSize: 11, color: "var(--text-3)", marginTop: 2 }}>
+                                {c.pr_id}{c.pr_uid ? ` · UID ${c.pr_uid}` : ""}{c.pr_phone ? ` · ${c.pr_phone}` : ""}
+                              </div>
+                              <div style={{ fontSize: 11, color: "var(--text-3)", marginTop: 2 }}>
+                                {c.method} · {c.status} · mã: {c.transfer_code || "—"}
+                                {c.created_at ? ` · ${formatPaymentDateFull(c.created_at)}` : ""}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </>
                   )}
                 </div>
 

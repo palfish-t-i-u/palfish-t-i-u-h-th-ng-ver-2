@@ -532,6 +532,8 @@ export interface BankMatchCandidate {
   payment_line_id: string;
   pr_id: string;
   pr_name: string;
+  pr_uid?: string;
+  pr_phone?: string;
   amount: number;
   created_at: string | null;
   method: string;
