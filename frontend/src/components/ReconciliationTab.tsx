@@ -367,7 +367,7 @@ export default function ReconciliationTab() {
   const [bankMatching, setBankMatching] = useState(false);
   const [bankCandSearch, setBankCandSearch] = useState("");
   const [bankCandRange, setBankCandRange] = useState<DateRange>(EMPTY_RANGE);
-  const [bankCandStatus, setBankCandStatus] = useState<"all" | "pending" | "paid">("all");
+  const [bankCandStatus, setBankCandStatus] = useState<"all" | "pending" | "paid">("pending");
   const [tab, setTab] = useState<TabId>("awaiting");
   const [search, setSearch] = useState("");
   const [methodFilter, setMethodFilter] = useState<MethodFilter>("all");
@@ -418,7 +418,7 @@ export default function ReconciliationTab() {
     setBankPickedLineId(null);
     setBankCandSearch("");
     setBankCandRange(EMPTY_RANGE);
-    setBankCandStatus("all");
+    setBankCandStatus("pending");
     setBankCandLoading(true);
     try {
       const { data } = await endpoints.bankTxns.matchCandidates(txnId);
@@ -1483,16 +1483,21 @@ export default function ReconciliationTab() {
                       />
                     </div>
                     <div style={{ display: "flex", gap: 4 }}>
-                      {(["all", "pending", "paid"] as const).map((s) => (
-                        <button
-                          key={s}
-                          type="button"
-                          className={`filter-chip ${bankCandStatus === s ? "active" : ""}`}
-                          onClick={() => setBankCandStatus(s)}
-                        >
-                          {s === "all" ? "Tất cả" : s === "pending" ? "Chưa thu" : "Đã thu"}
-                        </button>
-                      ))}
+                      <button
+                        type="button"
+                        className={`filter-chip ${bankCandStatus === "pending" ? "active" : ""}`}
+                        onClick={() => setBankCandStatus("pending")}
+                      >
+                        Chờ tiền về
+                      </button>
+                      <button
+                        type="button"
+                        className={`filter-chip ${bankCandStatus === "all" ? "active" : ""}`}
+                        onClick={() => setBankCandStatus("all")}
+                        title="Hiện cả lần TT đã thu — dùng khi CK trùng, audit"
+                      >
+                        Tất cả
+                      </button>
                     </div>
                     <DateRangeFilter value={bankCandRange} onChange={setBankCandRange} />
                   </div>
