@@ -640,9 +640,9 @@ export default function ReconciliationTab() {
 
   const tabConfig = [
     { id: "awaiting" as TabId, label: "Chờ xác nhận", icon: "Clock" as const, attention: true },
+    { id: "ckOutside" as TabId, label: "CK ngoài chờ ghép", icon: "Bank" as const, attention: true },
     { id: "confirmed" as TabId, label: "Đã xác nhận", icon: "CheckCircle" as const },
     { id: "cancelled" as TabId, label: "Đã huỷ", icon: "XCircle" as const },
-    { id: "ckOutside" as TabId, label: "CK ngoài chờ ghép", icon: "Bank" as const, attention: true },
     { id: "all" as TabId, label: "Tất cả", icon: "Database" as const },
   ];
 
