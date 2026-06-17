@@ -2,6 +2,8 @@
 export const COURSE_PACKAGES = [
   "2/W- NEW 48 US-UK+2 HN",
   "2/W- NEW 96 US-UK+5 HN",
+  "2/W- NEW 48 PHI+5 HN",
+  "2/W- NEW 96 PHI+10 HN",
   "2/W- UPSALE 24 US-UK+1 HN",
   "2/W- UPSALE 48 PHI+5 HN",
   "2/W- UPSALE 96 PHI+10 HN",
