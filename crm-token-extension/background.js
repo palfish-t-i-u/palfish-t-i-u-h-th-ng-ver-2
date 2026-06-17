@@ -102,26 +102,43 @@ async function _pushToken(bundle) {
     return;
   }
 
-  for (const url of BACKEND_URLS) {
-    try {
-      const res = await fetch(url, {
+  // Đẩy SONG SONG cho tất cả BE — prod + sandbox cùng có token, không chỉ 1
+  const results = await Promise.allSettled(
+    BACKEND_URLS.map((url) =>
+      fetch(url, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           "X-CRM-EXT-TOKEN": ingestToken,
         },
         body: JSON.stringify({ cookie_str: payload }),
-      });
-      if (res.ok) {
-        _syncCount++;
-        const hasPayload = bundle.download_payload ? " + dept prefs" : "";
-        _saveState("ok", `Đã đồng bộ lúc ${new Date().toLocaleTimeString("vi-VN")}${hasPayload}`);
-        return;
-      }
-      console.warn("[PalFish Sync] backend status:", res.status, await res.text());
-    } catch (_) {}
+      }).then(async (res) => {
+        if (!res.ok) {
+          const txt = await res.text().catch(() => "");
+          console.warn("[PalFish Sync] backend status:", url, res.status, txt);
+        }
+        return { url, ok: res.ok };
+      })
+    )
+  );
+
+  const oks = results.filter((r) => r.status === "fulfilled" && r.value.ok);
+  if (oks.length > 0) {
+    _syncCount++;
+    const hasPayload = bundle.download_payload ? " + dept prefs" : "";
+    const where = oks
+      .map((r) => {
+        try { return new URL(r.value.url).hostname.split(".")[0]; }
+        catch { return "?"; }
+      })
+      .join(", ");
+    _saveState(
+      "ok",
+      `Đã đồng bộ ${oks.length}/${BACKEND_URLS.length} BE [${where}] lúc ${new Date().toLocaleTimeString("vi-VN")}${hasPayload}`
+    );
+  } else {
+    _saveState("error", "Lỗi: không gửi được token về BE nào");
   }
-  _saveState("error", "Lỗi: không gửi được token về backend");
 }
 
 function _bytesFromBase64(base64) {
@@ -150,23 +167,29 @@ async function _pushGatewayFile({ source, kind, filename, contentBase64, content
   const form = new FormData();
   form.append("file", file);
 
-  for (const baseUrl of GATEWAY_INGEST_URLS) {
-    const url = `${baseUrl}?source=${encodeURIComponent(source)}&kind=${encodeURIComponent(kind)}`;
-    try {
-      const res = await fetch(url, {
+  // Đẩy SONG SONG cho prod + sandbox — cùng có data, không chỉ 1
+  const results = await Promise.allSettled(
+    GATEWAY_INGEST_URLS.map((baseUrl) => {
+      const url = `${baseUrl}?source=${encodeURIComponent(source)}&kind=${encodeURIComponent(kind)}`;
+      return fetch(url, {
         method: "POST",
         headers: { "X-GATEWAY-EXT-TOKEN": ingestToken },
         body: form,
+      }).then(async (res) => {
+        if (!res.ok) {
+          const txt = await res.text().catch(() => "");
+          console.warn("[PalFish Sync] gateway ingest status:", url, res.status, txt);
+        }
+        return { url, ok: res.ok, data: res.ok ? await res.json().catch(() => null) : null };
       });
-      if (res.ok) {
-        return { ok: true, data: await res.json() };
-      }
-      console.warn("[PalFish Sync] gateway ingest status:", res.status, await res.text());
-    } catch (e) {
-      console.warn("[PalFish Sync] gateway ingest failed:", e);
-    }
+    })
+  );
+
+  const oks = results.filter((r) => r.status === "fulfilled" && r.value.ok);
+  if (oks.length > 0) {
+    return { ok: true, results: oks.map((r) => r.value), data: oks[0].value.data };
   }
-  return { ok: false, error: "Khong gui duoc file gateway ve backend" };
+  return { ok: false, error: "Khong gui duoc file gateway ve backend nao" };
 }
 
 async function _sendIfChanged() {
