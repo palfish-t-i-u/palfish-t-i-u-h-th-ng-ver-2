@@ -5,7 +5,7 @@ import { endpoints, type BankTransaction, type BankMatchCandidate } from "../lib
 import "../styles/prototype-payments.css";
 
 type BankMatchStatus = BankTransaction["match_status"];
-type StatusFilter = "all" | BankMatchStatus;
+type StatusFilter = "all" | BankMatchStatus | "todo";
 
 const STATUS_META: Record<BankMatchStatus, { cls: string; text: string }> = {
   pending: { cls: "is-over", text: "Chờ xử lý" },
@@ -16,12 +16,13 @@ const STATUS_META: Record<BankMatchStatus, { cls: string; text: string }> = {
 };
 
 const STATUS_CHIPS: { id: StatusFilter; label: string }[] = [
-  { id: "all", label: "Tất cả" },
+  { id: "todo", label: "Cần xử lý" },
   { id: "pending", label: "Chờ xử lý" },
   { id: "needs_review", label: "Cần kiểm tra" },
   { id: "auto_matched", label: "Tự động khớp" },
   { id: "manual_matched", label: "Khớp tay" },
   { id: "ignored", label: "Bỏ qua" },
+  { id: "all", label: "Tất cả" },
 ];
 
 const GATEWAY_LABEL: Record<string, string> = {
@@ -43,7 +44,7 @@ function StatusBadge({ s }: { s: BankMatchStatus }) {
 export default function BankTransactionsTab() {
   const [txns, setTxns] = useState<BankTransaction[]>([]);
   const [loading, setLoading] = useState(false);
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("todo");
   const [search, setSearch] = useState("");
 
   const [drawerId, setDrawerId] = useState<string | null>(null);
@@ -56,8 +57,11 @@ export default function BankTransactionsTab() {
   const loadTxns = useCallback(async () => {
     setLoading(true);
     try {
+      // "todo" + "all" load tất cả; status thật mới đẩy lên BE
+      const isPureStatus =
+        statusFilter !== "all" && statusFilter !== "todo";
       const { data } = await endpoints.bankTxns.list(
-        statusFilter !== "all" ? { status: statusFilter } : undefined,
+        isPureStatus ? { status: statusFilter } : undefined,
       );
       setTxns(Array.isArray(data) ? data : []);
     } catch (err) {
@@ -71,16 +75,23 @@ export default function BankTransactionsTab() {
   useEffect(() => { loadTxns(); }, [loadTxns]);
 
   const filtered = useMemo(() => {
-    if (!search.trim()) return txns;
+    let list = txns;
+    // "Cần xử lý" = pending + needs_review (cái kế toán phải đụng tay)
+    if (statusFilter === "todo") {
+      list = list.filter(
+        (t) => t.match_status === "pending" || t.match_status === "needs_review",
+      );
+    }
+    if (!search.trim()) return list;
     const q = search.toLowerCase();
-    return txns.filter(
+    return list.filter(
       (t) =>
         (t.transfer_content ?? "").toLowerCase().includes(q) ||
         (t.content ?? "").toLowerCase().includes(q) ||
         String(t.amount).includes(q) ||
         (t.account_number ?? "").toLowerCase().includes(q),
     );
-  }, [txns, search]);
+  }, [txns, search, statusFilter]);
 
   const counts = useMemo(() => {
     const c = { total: txns.length, pending: 0, matched: 0, needs_review: 0 };
@@ -127,6 +138,16 @@ export default function BankTransactionsTab() {
 
   return (
     <div className="card-recon-tab">
+      <div style={{
+        padding: "10px 14px", borderRadius: 8, background: "var(--surface-3, #f1f5f9)",
+        fontSize: 12, color: "var(--text-2)", marginBottom: 12, lineHeight: 1.5,
+      }}>
+        <strong>Tiền vào TK công ty</strong> được PayOS + SePay ghi nhận song song.
+        Giao dịch có mã thanh toán app tạo (QR app) → <strong>PayOS tự khớp</strong> với lần thanh toán,
+        SePay chỉ lưu để đối chiếu. Giao dịch không có mã (khách CK ngoài) → kế toán <strong>ghép tay</strong> tại đây.
+        Mặc định chỉ hiện <strong>giao dịch cần xử lý</strong>.
+      </div>
+
       {/* Summary cards */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 12, marginBottom: 16 }}>
         <SummaryCard label="Tổng giao dịch" value={counts.total} icon={<Icons.Doc size={14} />} />
@@ -166,11 +187,22 @@ export default function BankTransactionsTab() {
         <div className="empty-state"><Icons.Clock size={20} /> Đang tải...</div>
       ) : filtered.length === 0 ? (
         <div className="empty-state">
-          <Icons.Doc size={20} />
-          <div>Chưa có giao dịch ngân hàng nào{statusFilter !== "all" ? ` (${STATUS_CHIPS.find((c) => c.id === statusFilter)?.label})` : ""}.</div>
-          <div style={{ fontSize: 11, color: "var(--text-3)" }}>
-            Giao dịch sẽ xuất hiện khi SePay webhook nhận biến động số dư từ ngân hàng.
-          </div>
+          <Icons.CheckCircle size={20} />
+          {statusFilter === "todo" ? (
+            <>
+              <div>Không có giao dịch nào chờ xử lý.</div>
+              <div style={{ fontSize: 11, color: "var(--text-3)" }}>
+                Mọi tiền vào đã được PayOS tự khớp hoặc kế toán đã ghép tay. Bấm "Tất cả" để xem toàn bộ.
+              </div>
+            </>
+          ) : (
+            <>
+              <div>Chưa có giao dịch ngân hàng nào{statusFilter !== "all" ? ` (${STATUS_CHIPS.find((c) => c.id === statusFilter)?.label})` : ""}.</div>
+              <div style={{ fontSize: 11, color: "var(--text-3)" }}>
+                Giao dịch sẽ xuất hiện khi SePay webhook nhận biến động số dư từ ngân hàng.
+              </div>
+            </>
+          )}
         </div>
       ) : (
         <div className="recon-table-wrap" style={{ overflowX: "auto" }}>
