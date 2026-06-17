@@ -111,8 +111,8 @@ export default function GatewaySyncTab() {
             <h4>Cài tiện ích đồng bộ</h4>
             <a
               className="btn btn-primary btn-sm"
-              href="/crm-extension.zip"
-              download="crm-extension.zip"
+              href="/palfish-gmv-sync.zip"
+              download="palfish-gmv-sync.zip"
             >
               <Icons.Download size={14} /> Tải tiện ích (.zip)
             </a>
