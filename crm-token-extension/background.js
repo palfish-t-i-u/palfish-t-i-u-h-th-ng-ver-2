@@ -362,21 +362,30 @@ async function _fetchBase64Creds(url) {
 async function _pushGatewayOrders(orders, source, kind) {
   const ingestToken = await _getGatewayIngestToken();
   if (!ingestToken) return { ok: false, error: "Chưa cấu hình gateway ingest token" };
-  for (const baseUrl of GATEWAY_ORDERS_URLS) {
-    const url = `${baseUrl}?source=${encodeURIComponent(source)}&kind=${encodeURIComponent(kind)}`;
-    try {
-      const res = await fetch(url, {
+
+  // Đẩy SONG SONG cho prod + sandbox — cùng có data
+  const results = await Promise.allSettled(
+    GATEWAY_ORDERS_URLS.map((baseUrl) => {
+      const url = `${baseUrl}?source=${encodeURIComponent(source)}&kind=${encodeURIComponent(kind)}`;
+      return fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json", "X-GATEWAY-EXT-TOKEN": ingestToken },
         body: JSON.stringify({ orders }),
+      }).then(async (res) => {
+        if (!res.ok) {
+          const txt = await res.text().catch(() => "");
+          console.warn("[PalFish Sync] payoo ingest status:", url, res.status, txt);
+        }
+        return { url, ok: res.ok, data: res.ok ? await res.json().catch(() => null) : null };
       });
-      if (res.ok) return { ok: true, data: await res.json() };
-      console.warn("[PalFish Sync] payoo ingest status:", res.status, await res.text());
-    } catch (e) {
-      console.warn("[PalFish Sync] payoo ingest failed:", e);
-    }
+    }),
+  );
+
+  const oks = results.filter((r) => r.status === "fulfilled" && r.value.ok);
+  if (oks.length > 0) {
+    return { ok: true, data: oks[0].value.data, results: oks.map((r) => r.value) };
   }
-  return { ok: false, error: "Không gửi được orders về backend" };
+  return { ok: false, error: "Không gửi được orders về backend nào" };
 }
 
 // Payoo: lật trang /api/ecom/order/ theo TotalItem, gom OrderList, đẩy JSON về backend.
@@ -437,22 +446,31 @@ async function syncMpos() {
 async function runGatewaySync(trigger = "alarm") {
   _saveState("idle", `Đang đồng bộ mPOS/Payoo… (${trigger})`);
   const summary = [];
-  let pulled = 0;
+  let inserted = 0;
+  let payooPulled = 0;
+  let mposOk = false;
   try {
     const payoo = await syncPayoo();
-    pulled += payoo.inserted || 0;
-    summary.push(payoo.ok ? `Payoo: ${payoo.pulled} GD` : `Payoo lỗi: ${payoo.error || "?"}`);
+    payooPulled = payoo.pulled || 0;
+    inserted += payoo.inserted || 0;
+    summary.push(payoo.ok ? `Payoo: kéo ${payoo.pulled} GD, ghi ${payoo.inserted || 0}` : `Payoo lỗi: ${payoo.error || "?"}`);
   } catch (e) {
     summary.push(`Payoo lỗi: ${e}`);
   }
   try {
     const mpos = await syncMpos();
-    summary.push(`mPOS: ${mpos.map((r) => r.kind + (r.ok ? "✓" : "✗")).join(" ")}`);
+    const okFiles = mpos.filter((r) => r.ok);
+    mposOk = okFiles.length > 0;
+    const mInserted = mpos.reduce((sum, r) => sum + (r.inserted || 0), 0);
+    inserted += mInserted;
+    const detail = mpos.map((r) => `${r.kind}${r.ok ? `✓${r.inserted || 0}` : `✗(${r.error || "?"})`}`).join(" ");
+    summary.push(`mPOS: ${detail}`);
   } catch (e) {
     summary.push(`mPOS lỗi: ${e}`);
   }
-  _saveState("ok", `Đồng bộ ${new Date().toLocaleTimeString("vi-VN")} — ${summary.join(" · ")}`);
-  return { pulled, summary };
+  const summaryStr = summary.join(" · ");
+  _saveState("ok", `Đồng bộ ${new Date().toLocaleTimeString("vi-VN")} — ${summaryStr}`);
+  return { ok: true, inserted, payooPulled, mposOk, summary, summaryStr };
 }
 
 // Tự đồng bộ định kỳ (cron NẰM TRONG extension, không phải server cron)

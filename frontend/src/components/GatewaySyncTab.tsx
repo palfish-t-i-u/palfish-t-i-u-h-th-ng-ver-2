@@ -26,6 +26,8 @@ export default function GatewaySyncTab() {
   const [syncing, setSyncing] = useState(false);
   const [lastSync, setLastSync] = useState(LAST_SYNC_AT);
   const [synced, setSynced] = useState<number | null>(null);
+  const [syncDetail, setSyncDetail] = useState<string | null>(null);
+  const [syncError, setSyncError] = useState<string | null>(null);
 
   useEffect(() => {
     const refresh = () => setInstalled(isExtInstalled());
@@ -47,15 +49,19 @@ export default function GatewaySyncTab() {
     if (syncing || !installed) return;
     setSyncing(true);
     setSynced(null);
+    setSyncDetail(null);
+    setSyncError(null);
 
     let done = false;
-    const finish = (inserted: number | null, errMsg?: string) => {
+    const finish = (inserted: number | null, detail: string | null, errMsg?: string) => {
       if (done) return;
       done = true;
       window.removeEventListener("message", onResult);
       setSyncing(false);
       setLastSync(formatPaymentDateFull(new Date().toISOString()));
       setSynced(inserted);
+      setSyncDetail(detail);
+      setSyncError(errMsg || null);
       if (errMsg) console.warn("[gateway-sync] ", errMsg);
     };
 
@@ -64,16 +70,19 @@ export default function GatewaySyncTab() {
       const data = ev.data;
       if (!data || data.type !== "gateway-sync-now-result") return;
       const resp = data.resp || {};
-      // background trả { ok, inserted, errors, ... } — tổng số mới kéo về
       const inserted = typeof resp.inserted === "number" ? resp.inserted : null;
-      finish(inserted, resp.ok === false ? resp.error : undefined);
+      const detail = typeof resp.summaryStr === "string" ? resp.summaryStr : null;
+      finish(inserted, detail, resp.ok === false ? resp.error : undefined);
     };
 
     window.addEventListener("message", onResult);
     window.postMessage({ type: "gateway-sync-now" }, "*");
 
     // Timeout 60s — extension chưa response thì coi như fail
-    window.setTimeout(() => finish(null, "Hết thời gian — extension không phản hồi"), 60000);
+    window.setTimeout(
+      () => finish(null, null, "Hết thời gian — extension không phản hồi (60s)"),
+      60000,
+    );
   };
 
   return (
@@ -110,19 +119,38 @@ export default function GatewaySyncTab() {
               )}
             </div>
           </div>
-          {synced != null && (
+          {(synced != null || syncDetail || syncError) && (
             <div
               style={{
                 marginTop: 10,
                 fontSize: 12.5,
-                color: "var(--success-text)",
-                background: "var(--success-bg)",
+                color: syncError ? "var(--danger-text, #b91c1c)" : "var(--success-text)",
+                background: syncError ? "var(--danger-bg, #fee2e2)" : "var(--success-bg)",
                 borderRadius: 8,
                 padding: "8px 12px",
+                lineHeight: 1.55,
               }}
             >
-              <Icons.CheckCircle size={14} /> Đã đồng bộ — kéo về {synced} giao dịch mới. (Nếu không có giao dịch nào,
-              kiểm tra đã đăng nhập mPOS/Payoo chưa.)
+              {syncError ? (
+                <>
+                  <Icons.AlertCircle size={14} /> Đồng bộ lỗi: {syncError}
+                </>
+              ) : (
+                <>
+                  <Icons.CheckCircle size={14} /> Đã đồng bộ — ghi {synced ?? 0} giao dịch mới vào hệ thống.
+                </>
+              )}
+              {syncDetail && (
+                <div style={{ marginTop: 4, fontSize: 11.5, opacity: 0.85, fontFamily: "ui-monospace, monospace" }}>
+                  Chi tiết: {syncDetail}
+                </div>
+              )}
+              {!syncError && synced === 0 && (
+                <div style={{ marginTop: 4, fontSize: 11.5, opacity: 0.85 }}>
+                  Nếu mPOS/Payoo có giao dịch nhưng đây hiển thị 0: kiểm tra đã đăng nhập đúng tài khoản chưa, hoặc mở
+                  Service Worker của tiện ích (chrome://extensions) xem log.
+                </div>
+              )}
             </div>
           )}
         </div>
