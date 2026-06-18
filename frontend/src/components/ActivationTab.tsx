@@ -1,6 +1,7 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { COURSE_PACKAGES } from "../constants/coursePackages";
 import { usePaymentFlow } from "../contexts/PaymentFlowContext";
+import { useMe } from "../hooks/useMe";
 import { usePermission } from "../hooks/usePermission";
 import { endpoints } from "../lib/api";
 import { notifyLedgerChanged } from "../lib/ledgerEvents";
@@ -18,7 +19,7 @@ import {
 import CountryCombo from "./payment-request/CountryCombo";
 import DateRangeFilter, { EMPTY_RANGE, type DateRange, inDateRange } from "./payment-request/DateRangeFilter";
 import { Icons } from "./payment-request/Icons";
-import { formatPaymentDateFull, formatPaymentDateTime, fromApiActiveRequest, getReferralStatus, REFERRAL_STATUS_HEADER, REFERRAL_STATUS_PANEL_STYLE, toActiveRequestPatchUidsData } from "./payment-request/paymentRequestUtils";
+import { formatPaymentDateFull, formatPaymentDateTime, fromApiActiveRequest, getArReferralStatus, getReferralStatus, REFERRAL_STATUS_HEADER, REFERRAL_STATUS_PANEL_STYLE, toActiveRequestPatchUidsData } from "./payment-request/paymentRequestUtils";
 import { downloadTaxInvoiceZip } from "../utils/taxInvoiceXlsxExport";
 import type { InvoiceRow } from "./payment-flow/paymentFlowUtils";
 import "../styles/prototype-payments.css";
@@ -370,6 +371,70 @@ function ActivationDetailDrawer({
   const [copiedArId, setCopiedArId] = useState(false);
   const copyResetTimer = useRef<number | null>(null);
   const uidTouchedRef = useRef<Record<number, { uid: boolean; phone: boolean; country: boolean }>>({});
+
+  // T1.1 / T1.7 — credit-referral checkbox (RBAC: Sale không được tick)
+  const { profile } = useMe();
+  const canCreditReferral =
+    profile?.role === "system" ||
+    profile?.role === "manager" ||
+    Boolean(profile?.canConfirmPayment);
+  const [creditInflight, setCreditInflight] = useState<Record<string, boolean>>({});
+  const [creditError, setCreditError] = useState<Record<string, string>>({});
+  const [uncreditDialog, setUncreditDialog] = useState<{
+    open: boolean;
+    uid: string;
+    courseCode: string;
+    side: "referee" | "referrer";
+    reason: string;
+  }>({ open: false, uid: "", courseCode: "", side: "referee", reason: "" });
+
+  const creditKey = (uid: string, courseCode: string, side: "referee" | "referrer") =>
+    `${uid}::${courseCode}::${side}`;
+
+  const submitCredit = async (
+    uid: string,
+    courseCode: string,
+    side: "referee" | "referrer",
+    credited: boolean,
+    reason?: string,
+  ) => {
+    if (!ar) return;
+    const key = creditKey(uid, courseCode, side);
+    setCreditInflight((p) => ({ ...p, [key]: true }));
+    setCreditError((p) => ({ ...p, [key]: "" }));
+    try {
+      const { data } = await endpoints.activeRequests.creditReferral(ar.id, {
+        uid,
+        course_code: courseCode,
+        side,
+        credited,
+        ...(reason ? { reason } : {}),
+      });
+      onUpdate(fromApiActiveRequest(data));
+    } catch (e: unknown) {
+      const msg =
+        e && typeof e === "object" && "response" in e
+          ? String((e as { response?: { data?: { detail?: string } } }).response?.data?.detail || "Lỗi cập nhật")
+          : "Lỗi cập nhật";
+      setCreditError((p) => ({ ...p, [key]: msg }));
+    } finally {
+      setCreditInflight((p) => ({ ...p, [key]: false }));
+    }
+  };
+
+  const handleCreditToggle = (
+    uid: string,
+    courseCode: string,
+    side: "referee" | "referrer",
+    nextChecked: boolean,
+  ) => {
+    if (!canCreditReferral) return;
+    if (nextChecked) {
+      void submitCredit(uid, courseCode, side, true);
+    } else {
+      setUncreditDialog({ open: true, uid, courseCode, side, reason: "" });
+    }
+  };
   const prByUid = useMemo(() => {
     const map = new Map<string, PaymentRequest>();
     for (const item of requestsForAutofill) {
@@ -1284,23 +1349,64 @@ function ActivationDetailDrawer({
                     const rs = getReferralStatus(course);
                     const panelStyle = REFERRAL_STATUS_PANEL_STYLE[rs];
                     const headerText = REFERRAL_STATUS_HEADER[rs];
+                    const refereeKey = creditKey(uidObj.uid || "", course.courseCode, "referee");
+                    const referrerKey = creditKey(uidObj.uid || "", course.courseCode, "referrer");
+                    const disabledTooltip = !canCreditReferral
+                      ? "Bạn không có quyền xác nhận cộng buổi (chỉ Ops / Leader / Manager / System)"
+                      : "";
                     return (
                       <div style={{ padding: "10px 12px", borderRadius: 8, marginTop: 6, ...panelStyle }}>
                         <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text-1, #111)", marginBottom: 6 }}>{headerText}</div>
                         {(course.bonusSessionsReferee ?? 0) > 0 && (
-                          <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text-1, #111)" }}>
-                            Người được giới thiệu (UID: {uidObj.uid || "—"}) — cộng thêm {course.bonusSessionsReferee} buổi.{" "}
-                            {course.refereeCreditedAt
-                              ? `Đã cộng lúc ${formatPaymentDateFull(course.refereeCreditedAt)}`
-                              : "Chưa cộng"}
+                          <div style={{ fontSize: 13, color: "var(--text-1, #111)", display: "flex", alignItems: "flex-start", gap: 8 }}>
+                            <label
+                              style={{ display: "flex", alignItems: "center", gap: 6, cursor: canCreditReferral ? "pointer" : "not-allowed", opacity: canCreditReferral ? 1 : 0.65 }}
+                              title={disabledTooltip}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={Boolean(course.refereeCreditedAt)}
+                                disabled={!canCreditReferral || Boolean(creditInflight[refereeKey])}
+                                onChange={(e) => handleCreditToggle(uidObj.uid || "", course.courseCode, "referee", e.target.checked)}
+                              />
+                              <span style={{ fontWeight: 600 }}>Đã cộng buổi</span>
+                            </label>
+                            <span style={{ flex: 1 }}>
+                              Người được giới thiệu (UID: {uidObj.uid || "—"}) — cộng thêm {course.bonusSessionsReferee} buổi.
+                              {" "}
+                              {course.refereeCreditedAt
+                                ? <span style={{ color: "var(--text-3)" }}>Đã cộng lúc {formatPaymentDateFull(course.refereeCreditedAt)}{course.refereeCreditedBy ? ` · ${course.refereeCreditedBy}` : ""}</span>
+                                : <span style={{ color: "var(--text-3)" }}>Chưa cộng</span>}
+                              {creditError[refereeKey] && (
+                                <div style={{ color: "var(--danger)", fontSize: 11.5, marginTop: 2 }}>{creditError[refereeKey]}</div>
+                              )}
+                            </span>
                           </div>
                         )}
                         {(course.bonusSessionsReferrer ?? 0) > 0 && (
-                          <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text-1, #111)", marginTop: 4 }}>
-                            Người giới thiệu (UID: {course.referrerUid || "—"}) — cộng thêm {course.bonusSessionsReferrer} buổi.{" "}
-                            {course.referrerCreditedAt
-                              ? `Đã cộng lúc ${formatPaymentDateFull(course.referrerCreditedAt)}`
-                              : "Chưa cộng"}
+                          <div style={{ fontSize: 13, color: "var(--text-1, #111)", marginTop: 6, display: "flex", alignItems: "flex-start", gap: 8 }}>
+                            <label
+                              style={{ display: "flex", alignItems: "center", gap: 6, cursor: canCreditReferral ? "pointer" : "not-allowed", opacity: canCreditReferral ? 1 : 0.65 }}
+                              title={disabledTooltip}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={Boolean(course.referrerCreditedAt)}
+                                disabled={!canCreditReferral || Boolean(creditInflight[referrerKey])}
+                                onChange={(e) => handleCreditToggle(uidObj.uid || "", course.courseCode, "referrer", e.target.checked)}
+                              />
+                              <span style={{ fontWeight: 600 }}>Đã cộng buổi</span>
+                            </label>
+                            <span style={{ flex: 1 }}>
+                              Người giới thiệu (UID: {course.referrerUid || "—"}) — cộng thêm {course.bonusSessionsReferrer} buổi.
+                              {" "}
+                              {course.referrerCreditedAt
+                                ? <span style={{ color: "var(--text-3)" }}>Đã cộng lúc {formatPaymentDateFull(course.referrerCreditedAt)}{course.referrerCreditedBy ? ` · ${course.referrerCreditedBy}` : ""}</span>
+                                : <span style={{ color: "var(--text-3)" }}>Chưa cộng</span>}
+                              {creditError[referrerKey] && (
+                                <div style={{ color: "var(--danger)", fontSize: 11.5, marginTop: 2 }}>{creditError[referrerKey]}</div>
+                              )}
+                            </span>
                           </div>
                         )}
                       </div>
@@ -1449,6 +1555,56 @@ function ActivationDetailDrawer({
           </div>
         </div>
       </aside>
+
+      {uncreditDialog.open && (
+        <div
+          className="gmv-prototype-modal-scrim"
+          onClick={() => setUncreditDialog((p) => ({ ...p, open: false }))}
+        >
+          <div
+            className="modal"
+            style={{ width: "min(440px, 92vw)" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="modal-head">
+              <h3>Bỏ xác nhận cộng buổi</h3>
+            </div>
+            <div style={{ padding: "12px 16px", display: "flex", flexDirection: "column", gap: 10 }}>
+              <div style={{ fontSize: 13, color: "var(--text-2)" }}>
+                Bỏ tick sẽ ghi lại lý do vào audit log. Vui lòng nhập lý do:
+              </div>
+              <textarea
+                value={uncreditDialog.reason}
+                onChange={(e) => setUncreditDialog((p) => ({ ...p, reason: e.target.value }))}
+                rows={3}
+                placeholder="VD: Bù sai số buổi, cộng nhầm khoá học…"
+                style={{ width: "100%", padding: 8, fontSize: 13, border: "1px solid var(--border)", borderRadius: 6 }}
+              />
+              <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+                <button
+                  type="button"
+                  className="btn btn-outline btn-sm"
+                  onClick={() => setUncreditDialog((p) => ({ ...p, open: false }))}
+                >
+                  Hủy
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-danger btn-sm"
+                  disabled={!uncreditDialog.reason.trim()}
+                  onClick={() => {
+                    const { uid, courseCode, side, reason } = uncreditDialog;
+                    setUncreditDialog((p) => ({ ...p, open: false }));
+                    void submitCredit(uid, courseCode, side, false, reason.trim());
+                  }}
+                >
+                  Xác nhận bỏ tick
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }
@@ -1476,6 +1632,8 @@ export default function ActivationTab() {
   const [tab, setTab] = useState<ArTabId>("pending_order");
   const [dateRange, setDateRange] = useState<DateRange>(EMPTY_RANGE);
   const [createOpen, setCreateOpen] = useState(false);
+  // 1.5 — filter "Thưởng giới thiệu"
+  const [referralFilter, setReferralFilter] = useState<"all" | "none" | "partial" | "full" | "any">("all");
 
   useEffect(() => {
     if (nav.openArId) {
@@ -1506,12 +1664,20 @@ export default function ActivationTab() {
     return rows.filter((a) => {
       if (tab !== "all" && a.status !== tab) return false;
       if (!inDateRange(a.createdAt, dateRange)) return false;
+      if (referralFilter !== "all") {
+        const rs = getArReferralStatus(a);
+        if (referralFilter === "any") {
+          if (rs === null) return false;
+        } else {
+          if (rs !== referralFilter) return false;
+        }
+      }
       if (!q) return true;
       return [a.id, a.prId || "", a.customerName, a.uids[0]?.uid || ""].some((v) =>
         v.toLowerCase().includes(q)
       );
     });
-  }, [rows, tab, search, dateRange]);
+  }, [rows, tab, search, dateRange, referralFilter]);
 
   const openAr = openArId ? activeRequests.find((a) => a.id === openArId) ?? null : null;
   const openPr = openAr?.prId ? requests.find((p) => p.id === openAr.prId) ?? null : null;
@@ -1626,6 +1792,25 @@ export default function ActivationTab() {
               onChange={(e) => setSearch(e.target.value)}
             />
           </div>
+          <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+            <span style={{ fontSize: 11.5, color: "var(--text-3)", marginRight: 4 }}>Thưởng giới thiệu:</span>
+            {([
+              { id: "all" as const, label: "Tất cả" },
+              { id: "any" as const, label: "Có thưởng" },
+              { id: "none" as const, label: "Chưa cộng" },
+              { id: "partial" as const, label: "Cộng 1 phần" },
+              { id: "full" as const, label: "Đã cộng" },
+            ]).map((f) => (
+              <button
+                key={f.id}
+                type="button"
+                className={`filter-chip ${referralFilter === f.id ? "active" : ""}`}
+                onClick={() => setReferralFilter(f.id)}
+              >
+                {f.label}
+              </button>
+            ))}
+          </div>
           <div style={{ marginLeft: "auto" }}>
             <DateRangeFilter value={dateRange} onChange={setDateRange} />
           </div>
@@ -1668,6 +1853,7 @@ export default function ActivationTab() {
                   <th style={{ textAlign: "right" }}>Tổng tiền</th>
                   <th style={{ textAlign: "center" }}>Order ID</th>
                   <th>Trạng thái</th>
+                  <th>Thưởng GT</th>
                   <th>Tạo lúc</th>
                   <th />
                 </tr>
@@ -1675,7 +1861,7 @@ export default function ActivationTab() {
               <tbody>
                 {filtered.length === 0 && (
                   <tr>
-                    <td colSpan={9}>
+                    <td colSpan={10}>
                       <div className="empty">
                         <Icons.Sparkle size={20} />
                         <div>Chưa có Active Request nào khớp với điều kiện lọc.</div>
@@ -1729,6 +1915,32 @@ export default function ActivationTab() {
                     </td>
                     <td>
                       <ARStatusBadge status={a.status} />
+                    </td>
+                    <td>
+                      {(() => {
+                        const rs = getArReferralStatus(a);
+                        if (rs === null) {
+                          return <span style={{ color: "var(--text-3)", fontSize: 12 }}>—</span>;
+                        }
+                        const cfg = {
+                          full: { bg: "var(--success-bg)", color: "var(--success-text)", label: "Đã cộng" },
+                          partial: { bg: "var(--caution-bg, #fef9c3)", color: "var(--caution-text, #92400e)", label: "1 phần" },
+                          none: { bg: "var(--danger-bg, #fee2e2)", color: "var(--danger-text, #b91c1c)", label: "Chưa cộng" },
+                        }[rs];
+                        return (
+                          <span style={{
+                            fontSize: 11,
+                            padding: "2px 8px",
+                            borderRadius: 6,
+                            background: cfg.bg,
+                            color: cfg.color,
+                            fontWeight: 600,
+                            whiteSpace: "nowrap",
+                          }}>
+                            {cfg.label}
+                          </span>
+                        );
+                      })()}
                     </td>
                     <td>
                       {(() => {

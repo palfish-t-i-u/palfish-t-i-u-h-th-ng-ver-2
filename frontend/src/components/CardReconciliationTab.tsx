@@ -67,6 +67,8 @@ export default function CardReconciliationTab({
   const [picked, setPicked] = useState<string | null>(null);
   const [candSearch, setCandSearch] = useState("");
   const [candidates, setCandidates] = useState<MatchCandidate[]>([]);
+  const [amountLoaded, setAmountLoaded] = useState(false);
+  const [manualSearching, setManualSearching] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [lastSync, setLastSync] = useState<string | null>(null);
   const [connected, setConnected] = useState<boolean>(() => isExtInstalled());
@@ -143,30 +145,70 @@ export default function CardReconciliationTab({
     const txn = txns.find((t) => t.id === drawerId);
     if (!txn || txn.match_status === "matched") {
       setCandidates([]);
+      setAmountLoaded(false);
       return;
     }
     let alive = true;
+    setAmountLoaded(false);
     endpoints.cardRecon
       .matchCandidates(drawerId)
       .then(({ data }) => {
-        if (alive) setCandidates(Array.isArray(data) ? data : []);
+        if (!alive) return;
+        setCandidates(Array.isArray(data) ? data : []);
+        setAmountLoaded(true);
       })
       .catch((err) => {
         console.error("[card-recon] candidates failed", err);
-        if (alive) setCandidates([]);
+        if (alive) {
+          setCandidates([]);
+          setAmountLoaded(true);
+        }
       });
     return () => {
       alive = false;
     };
   }, [drawerOpen, drawerId, txns]);
 
+  // Fallback: khi không có ứng viên cùng số tiền → cho tìm thủ công qua BE (T2.5).
+  const isManualMode = amountLoaded && candidates.length === 0;
+
+  useEffect(() => {
+    if (!isManualMode || !drawerId) return;
+    const q = candSearch.trim();
+    if (q.length < 2) {
+      setCandidates([]);
+      return;
+    }
+    let alive = true;
+    setManualSearching(true);
+    const timer = setTimeout(() => {
+      endpoints.cardRecon
+        .matchCandidates(drawerId, { search: q })
+        .then(({ data }) => {
+          if (alive) setCandidates(Array.isArray(data) ? data : []);
+        })
+        .catch((err) => {
+          console.error("[card-recon] manual search failed", err);
+          if (alive) setCandidates([]);
+        })
+        .finally(() => {
+          if (alive) setManualSearching(false);
+        });
+    }, 350);
+    return () => {
+      alive = false;
+      clearTimeout(timer);
+    };
+  }, [isManualMode, candSearch, drawerId]);
+
   const filteredCandidates = useMemo(() => {
+    if (isManualMode) return candidates;
     const q = candSearch.trim().toLowerCase();
     if (!q) return candidates;
     return candidates.filter((c) =>
       [c.pr_id, c.pr_name, c.uid].some((v) => (v ?? "").toLowerCase().includes(q)),
     );
-  }, [candidates, candSearch]);
+  }, [candidates, candSearch, isManualMode]);
 
   const openDrawer = (t: GatewayTxn) => {
     setDrawerId(t.id);
@@ -562,15 +604,33 @@ export default function CardReconciliationTab({
                       <div className="search" style={{ marginBottom: 8 }}>
                         <Icons.Search size={14} stroke="var(--text-3)" />
                         <input
-                          placeholder="Tìm PR / tên / UID…"
+                          placeholder={isManualMode ? "Tìm theo PR-ID, tên, UID, SĐT (gõ ≥ 2 ký tự)…" : "Tìm PR / tên / UID…"}
                           value={candSearch}
                           onChange={(e) => setCandSearch(e.target.value)}
                         />
                       </div>
+                      {isManualMode && (
+                        <div style={{
+                          fontSize: 11.5,
+                          color: "var(--caution-text, #92400e)",
+                          background: "var(--caution-bg, #fef9c3)",
+                          border: "1px solid var(--caution, #eab308)",
+                          padding: "6px 10px",
+                          borderRadius: 6,
+                          marginBottom: 8,
+                        }}>
+                          Không có lần thanh toán nào cùng số tiền. Gõ PR-ID, tên KH, UID hoặc SĐT để tìm thủ công.
+                        </div>
+                      )}
                       <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 260, overflowY: "auto" }}>
-                        {filteredCandidates.length === 0 && (
+                        {manualSearching && (
+                          <div style={{ fontSize: 12, color: "var(--text-3)", padding: "8px 0" }}>Đang tìm…</div>
+                        )}
+                        {!manualSearching && filteredCandidates.length === 0 && (
                           <div style={{ fontSize: 12, color: "var(--text-3)", padding: "8px 0" }}>
-                            Không có lần thanh toán phù hợp. Thử tìm theo PR-ID.
+                            {isManualMode
+                              ? (candSearch.trim().length < 2 ? "Gõ ít nhất 2 ký tự để tìm." : "Không tìm thấy PR phù hợp.")
+                              : "Không có lần thanh toán phù hợp. Thử tìm theo PR-ID."}
                           </div>
                         )}
                         {filteredCandidates.map((c) => {

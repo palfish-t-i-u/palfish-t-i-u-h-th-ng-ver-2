@@ -199,6 +199,11 @@ export const endpoints = {
         invoice_id: string;
         invoiced_at: string;
       }>(`/api/v1/active-requests/${arId}/courses/${encodeURIComponent(courseCode)}/issue-invoice`),
+    creditReferral: (
+      arId: string,
+      body: { uid: string; course_code: string; side: "referee" | "referrer"; credited: boolean; reason?: string }
+    ) =>
+      api.patch<ActiveRequestApiRow>(`/api/v1/active-requests/${arId}/credit-referral`, body),
     bulkIssueInvoices: (items: { ar_id: string; course_code: string }[]) =>
       api.post<{
         issued: { ar_id: string; course_code: string; invoice_id: string; invoiced_at: string }[];
@@ -485,8 +490,8 @@ export const endpoints = {
   cardRecon: {
     list: (params?: { source?: GatewaySource; status?: string; q?: string; from?: string; to?: string }) =>
       api.get<GatewayTxn[]>("/api/v1/gateway-txns", { params }),
-    matchCandidates: (txnId: string) =>
-      api.get<MatchCandidate[]>(`/api/v1/gateway-txns/${txnId}/match-candidates`),
+    matchCandidates: (txnId: string, params?: { search?: string }) =>
+      api.get<MatchCandidate[]>(`/api/v1/gateway-txns/${txnId}/match-candidates`, { params }),
     match: (txnId: string, paymentLineId: string) =>
       api.patch<GatewayTxn>(`/api/v1/gateway-txns/${txnId}/match`, { payment_line_id: paymentLineId }),
     patchStatus: (txnId: string, matchStatus: MatchStatus | "needs_review", paymentLineId?: string) =>
@@ -502,8 +507,8 @@ export const endpoints = {
   bankTxns: {
     list: (params?: { status?: string; q?: string; from?: string; to?: string }) =>
       api.get<BankTransaction[]>("/api/v1/bank-transactions", { params }),
-    matchCandidates: (txnId: string) =>
-      api.get<BankMatchCandidate[]>(`/api/v1/bank-transactions/${txnId}/match-candidates`),
+    matchCandidates: (txnId: string, params?: { amount_exact?: number }) =>
+      api.get<BankMatchCandidate[]>(`/api/v1/bank-transactions/${txnId}/match-candidates`, { params }),
     match: (txnId: string, paymentLineId: string) =>
       api.patch<{ matched: boolean }>(`/api/v1/bank-transactions/${txnId}/match`, null, {
         params: { payment_line_id: paymentLineId },
@@ -534,6 +539,9 @@ export interface BankMatchCandidate {
   pr_name: string;
   pr_uid?: string;
   pr_phone?: string;
+  child_name?: string;
+  sale_name?: string;
+  team_name?: string;
   amount: number;
   created_at: string | null;
   method: string;

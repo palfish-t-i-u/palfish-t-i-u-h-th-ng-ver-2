@@ -368,6 +368,8 @@ export default function ReconciliationTab() {
   const [bankCandSearch, setBankCandSearch] = useState("");
   const [bankCandRange, setBankCandRange] = useState<DateRange>(EMPTY_RANGE);
   const [bankCandStatus, setBankCandStatus] = useState<"all" | "pending" | "paid">("pending");
+  const [bankCandExactAmount, setBankCandExactAmount] = useState(true);
+  const [bankMismatchConfirm, setBankMismatchConfirm] = useState<{ open: boolean; discrepancy: number }>({ open: false, discrepancy: 0 });
   const [tab, setTab] = useState<TabId>("awaiting");
   const [search, setSearch] = useState("");
   const [methodFilter, setMethodFilter] = useState<MethodFilter>("all");
@@ -412,6 +414,20 @@ export default function ReconciliationTab() {
     [bankTxns],
   );
 
+  const loadBankCandidates = useCallback(async (txnId: string, exactAmount: boolean) => {
+    setBankCandLoading(true);
+    try {
+      const txn = bankTxns.find((b) => b.txn_id === txnId);
+      const params = exactAmount && txn ? { amount_exact: txn.amount } : undefined;
+      const { data } = await endpoints.bankTxns.matchCandidates(txnId, params);
+      setBankCandidates(Array.isArray(data) ? data : []);
+    } catch {
+      setBankCandidates([]);
+    } finally {
+      setBankCandLoading(false);
+    }
+  }, [bankTxns]);
+
   const openBankMatch = useCallback(async (txnId: string) => {
     setBankMatchTxnId(txnId);
     setBankMatchOpen(true);
@@ -419,16 +435,17 @@ export default function ReconciliationTab() {
     setBankCandSearch("");
     setBankCandRange(EMPTY_RANGE);
     setBankCandStatus("pending");
-    setBankCandLoading(true);
-    try {
-      const { data } = await endpoints.bankTxns.matchCandidates(txnId);
-      setBankCandidates(Array.isArray(data) ? data : []);
-    } catch {
-      setBankCandidates([]);
-    } finally {
-      setBankCandLoading(false);
+    setBankCandExactAmount(true);
+    await loadBankCandidates(txnId, true);
+  }, [loadBankCandidates]);
+
+  // Refetch when "Cùng số tiền" chip flips while modal open
+  useEffect(() => {
+    if (bankMatchOpen && bankMatchTxnId) {
+      loadBankCandidates(bankMatchTxnId, bankCandExactAmount);
     }
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bankCandExactAmount]);
 
   // Filter candidates client-side
   const filteredBankCandidates = useMemo(() => {
@@ -437,18 +454,23 @@ export default function ReconciliationTab() {
       if (bankCandStatus !== "all" && c.status !== bankCandStatus) return false;
       if (!inDateRange(c.created_at || "", bankCandRange)) return false;
       if (!q) return true;
-      return [c.pr_id, c.pr_name, c.pr_uid || "", c.pr_phone || "", c.transfer_code]
-        .some((v) => v.toLowerCase().includes(q));
+      return [
+        c.pr_id, c.pr_name,
+        c.pr_uid || "", c.pr_phone || "",
+        c.child_name || "", c.sale_name || "", c.team_name || "",
+        c.transfer_code,
+      ].some((v) => v.toLowerCase().includes(q));
     });
   }, [bankCandidates, bankCandSearch, bankCandRange, bankCandStatus]);
 
-  const doBankMatch = useCallback(async () => {
+  const performBankMatch = useCallback(async () => {
     if (!bankMatchTxnId || !bankPickedLineId) return;
     setBankMatching(true);
     try {
       await endpoints.bankTxns.match(bankMatchTxnId, bankPickedLineId);
       setBankMatchOpen(false);
       setBankMatchTxnId(null);
+      setBankMismatchConfirm({ open: false, discrepancy: 0 });
       loadBankTxns();
     } catch {
       alert("Ghép thất bại — kiểm tra lại");
@@ -456,6 +478,22 @@ export default function ReconciliationTab() {
       setBankMatching(false);
     }
   }, [bankMatchTxnId, bankPickedLineId, loadBankTxns]);
+
+  const doBankMatch = useCallback(async () => {
+    if (!bankMatchTxnId || !bankPickedLineId) return;
+    const txn = bankTxns.find((b) => b.txn_id === bankMatchTxnId);
+    const cand = bankCandidates.find((c) => c.payment_line_id === bankPickedLineId);
+    if (!txn || !cand) {
+      await performBankMatch();
+      return;
+    }
+    const discrepancy = txn.amount - cand.amount;
+    if (Math.abs(discrepancy) >= 1) {
+      setBankMismatchConfirm({ open: true, discrepancy });
+      return;
+    }
+    await performBankMatch();
+  }, [bankMatchTxnId, bankPickedLineId, bankTxns, bankCandidates, performBankMatch]);
 
   // Map payment_line_id → bank_transaction đã khớp (ưu tiên bản ghi đã match)
   const bankByLine = useMemo(() => {
@@ -1486,6 +1524,14 @@ export default function ReconciliationTab() {
                     <div style={{ display: "flex", gap: 4 }}>
                       <button
                         type="button"
+                        className={`filter-chip ${bankCandExactAmount ? "active" : ""}`}
+                        onClick={() => setBankCandExactAmount((v) => !v)}
+                        title="Chỉ hiện lần TT có cùng số tiền với CK ngoài này"
+                      >
+                        Cùng số tiền
+                      </button>
+                      <button
+                        type="button"
                         className={`filter-chip ${bankCandStatus === "pending" ? "active" : ""}`}
                         onClick={() => setBankCandStatus("pending")}
                       >
@@ -1537,6 +1583,15 @@ export default function ReconciliationTab() {
                               <div style={{ fontSize: 13, color: "var(--text-3)", marginTop: 4 }}>
                                 {c.pr_id}{c.pr_uid ? ` · UID ${c.pr_uid}` : ""}{c.pr_phone ? ` · ${c.pr_phone}` : ""}
                               </div>
+                              {(c.child_name || c.sale_name || c.team_name) && (
+                                <div style={{ fontSize: 13, color: "var(--text-3)", marginTop: 2 }}>
+                                  {c.child_name ? `Con: ${c.child_name}` : ""}
+                                  {c.child_name && (c.sale_name || c.team_name) ? " · " : ""}
+                                  {c.sale_name ? `Sale: ${c.sale_name}` : ""}
+                                  {c.sale_name && c.team_name ? " · " : ""}
+                                  {c.team_name ? `Team: ${c.team_name}` : ""}
+                                </div>
+                              )}
                               <div style={{ fontSize: 13, color: "var(--text-3)", marginTop: 2 }}>
                                 {c.method} · {c.status} · mã: {c.transfer_code || "—"}
                                 {c.created_at ? ` · ${formatPaymentDateFull(c.created_at)}` : ""}
@@ -1560,6 +1615,52 @@ export default function ReconciliationTab() {
           </Modal>
         );
       })()}
+
+      {/* Modal confirm ghép lệch tiền (T3.1) */}
+      <Modal
+        open={bankMismatchConfirm.open}
+        onClose={() => setBankMismatchConfirm({ open: false, discrepancy: 0 })}
+        title="Số tiền không khớp"
+      >
+        <div style={{ display: "flex", flexDirection: "column", gap: 14, fontSize: 14 }}>
+          <div style={{
+            padding: 12,
+            background: "var(--caution-bg, #fef9c3)",
+            border: "1px solid var(--caution, #eab308)",
+            borderRadius: 8,
+            color: "var(--text-1)",
+          }}>
+            <div style={{ fontWeight: 600, marginBottom: 6 }}>
+              Số tiền CK ngoài và lần thanh toán bị lệch:
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", padding: "4px 0" }}>
+              <span style={{ color: "var(--text-3)" }}>Chênh lệch</span>
+              <strong style={{ color: bankMismatchConfirm.discrepancy > 0 ? "var(--success-text)" : "var(--danger-text, #b91c1c)" }}>
+                {bankMismatchConfirm.discrepancy > 0 ? "+" : ""}{vnd(bankMismatchConfirm.discrepancy)}
+                {bankMismatchConfirm.discrepancy > 0 ? " (thừa)" : " (thiếu)"}
+              </strong>
+            </div>
+            <div style={{ fontSize: 12, color: "var(--text-3)", marginTop: 8 }}>
+              Vẫn tiếp tục ghép? Phần lệch sẽ được lưu để báo cáo.
+            </div>
+          </div>
+          <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+            <button
+              className="btn btn-outline btn-sm"
+              onClick={() => setBankMismatchConfirm({ open: false, discrepancy: 0 })}
+            >
+              Hủy
+            </button>
+            <button
+              className="btn btn-primary btn-sm"
+              disabled={bankMatching}
+              onClick={performBankMatch}
+            >
+              {bankMatching ? "Đang ghép…" : "Vẫn ghép"}
+            </button>
+          </div>
+        </div>
+      </Modal>
 
       {/* Bill modal từ click thumbnail trên bảng — có nút tải từng ảnh + tải tất cả */}
       <Modal

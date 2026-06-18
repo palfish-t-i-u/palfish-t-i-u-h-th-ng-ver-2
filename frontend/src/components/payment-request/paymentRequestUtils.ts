@@ -303,6 +303,29 @@ export function getReferralStatus(course: {
 }
 
 /**
+ * Aggregate referral status across all gioi_thieu courses in an AR.
+ * Returns null if AR has no referral courses.
+ */
+export function getArReferralStatus(ar: ActiveRequest): ReferralStatus | null {
+  const referralCourses: { bonusSessionsReferee?: number; bonusSessionsReferrer?: number; refereeCreditedAt?: string | null; referrerCreditedAt?: string | null }[] = [];
+  for (const u of ar.uids) {
+    for (const c of u.courses) {
+      if (
+        c.leadSource === "gioi_thieu" &&
+        ((c.bonusSessionsReferee ?? 0) > 0 || (c.bonusSessionsReferrer ?? 0) > 0)
+      ) {
+        referralCourses.push(c);
+      }
+    }
+  }
+  if (referralCourses.length === 0) return null;
+  const statuses = referralCourses.map(getReferralStatus);
+  if (statuses.every((s) => s === "full")) return "full";
+  if (statuses.every((s) => s === "none")) return "none";
+  return "partial";
+}
+
+/**
  * Kiểm tra dữ liệu cộng buổi referral trên toàn bộ AR.
  * Trả về chuỗi lỗi đầu tiên, hoặc "" nếu hợp lệ.
  * Quy tắc: nếu một course nguồn "gioi_thieu" cộng buổi cho người giới thiệu
