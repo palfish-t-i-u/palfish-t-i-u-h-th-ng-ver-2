@@ -23,6 +23,7 @@ from pydantic import BaseModel, Field
 
 from rbac import resolve_actor, visible_creator_emails, can_confirm_payment
 from admin_routes import require_module_write
+from activation_routes import _compute_referral_status
 
 from payos_qr import create_payos_payment_link, fetch_payos_payment, payos_payment_is_paid
 
@@ -1456,7 +1457,6 @@ def register_payment_request_routes(app, get_supabase) -> None:
                             if isinstance(c, dict):
                                 all_courses.append(c)
                                 
-            from activation_routes import _compute_referral_status
             item["referral_status"] = _compute_referral_status(all_courses)
             requests.append(item)
 
