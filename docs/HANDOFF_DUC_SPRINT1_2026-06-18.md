@@ -28,43 +28,39 @@ Sau buổi họp 18/06, anh Hiếu phản hồi 2 vấn đề liên quan tới m
 Hiện trả về mỗi candidate: `payment_line_id`, `pr_id`, `pr_name`, `pr_uid`, `pr_phone`, `amount`, `created_at`, `method`, `status`, `transfer_code`.
 
 **Bổ sung thêm 3 field:**
-- `child_name` — tên con của UID, lấy từ `active_requests.uids_data[*].courses[*].uid_owner_name` (hoặc field tương đương trong AR). Logic: tìm AR có UID khớp `pr.uid` → lấy `uid_owner_name` từ course đầu tiên. Nếu không tìm thấy → trả `""`.
-- `sale_name` — tên sale tạo PR. Join: `payment_requests.created_by_email` → `users.email` → `users.full_name` (hoặc `users.display_name`).
-- `team_name` — team của sale. Join: `users.team_id` → `teams.name`.
+- `child_name` — tên con của khách. Lấy trực tiếp từ `payment_requests.child_name` (column, không nằm trong JSONB). Nếu null/rỗng → `""`.
+- `sale_name` — tên sale tạo PR. Join: `payment_requests.sale_email` → `nhan_su_sale.email` → `display_name` (fallback `crm_name`, fallback `email`).
+- `team_name` — team của sale. Lấy từ `nhan_su_sale.team` (column string trên cùng bảng, KHÔNG có bảng `teams` riêng).
+
+**Schema lưu ý** (đã verify code):
+- **KHÔNG có bảng `users` / `teams` riêng.** Project dùng 1 bảng combo `nhan_su_sale` chứa cả thông tin sale + cột `team`/`sub_team` (string).
+- `nhan_su_sale` columns: `email, display_name, crm_name, team, sub_team, sdt`.
+- `payment_requests` đã có column `sale_email` (lookup key) và `child_name` (đã có sẵn).
+- Helper `_sale_name_map()` ở [payment_request_routes.py:710](backend/payment_request_routes.py:710) đã sẵn — return `dict[email_lower, display_name|crm_name|email]`. Em có thể reuse.
 
 **Query optimization:** Lookup batch — đừng query từng row. Pattern:
 ```python
 # Sau khi đã có pr_info (dòng 575-586):
-# 1. Batch lookup sales
-sale_emails = list({p.get("created_by_email") for p in pr_info.values() if p.get("created_by_email")})
-sale_info: dict[str, dict] = {}
+
+# 1. Sale name — reuse helper sẵn có:
+sale_name_map = _sale_name_map(sb)   # dict[email_lower, display_name|crm_name|email]
+
+# 2. Team batch lookup — query trực tiếp nhan_su_sale với select team:
+sale_emails = list({_clean_text(p.get("sale_email")).lower() for p in pr_info.values() if p.get("sale_email")})
+team_by_email: dict[str, str] = {}
 if sale_emails:
-    sale_res = sb.table("users").select("email, full_name, team_id").in_("email", sale_emails).execute()
-    sale_info = {u["email"]: u for u in (sale_res.data or [])}
+    try:
+        ns_res = sb.table("nhan_su_sale").select("email, team").in_("email", sale_emails).execute()
+        team_by_email = {
+            str(r.get("email") or "").lower(): str(r.get("team") or "")
+            for r in (ns_res.data or [])
+        }
+    except Exception as exc:
+        print(f"[match-candidates] nhan_su_sale team lookup failed: {exc}")
 
-# 2. Batch lookup teams
-team_ids = list({u.get("team_id") for u in sale_info.values() if u.get("team_id")})
-team_info: dict[str, str] = {}
-if team_ids:
-    team_res = sb.table("teams").select("id, name").in_("id", team_ids).execute()
-    team_info = {str(t["id"]): t["name"] for t in (team_res.data or [])}
-
-# 3. Batch lookup uids → uid_owner_name (active_requests.uids_data JSONB)
-uids = list({p.get("uid") for p in pr_info.values() if p.get("uid")})
-child_name_by_uid: dict[str, str] = {}
-if uids:
-    # Có thể cần raw SQL với JSONB containment, hoặc fetch all AR có uids_data chứa uid → loop
-    # Đề xuất: dùng RPC nếu có sẵn, hoặc query đơn giản sau:
-    ar_res = sb.table("active_requests").select("uids_data").execute()
-    for ar in (ar_res.data or []):
-        for uid_obj in (ar.get("uids_data") or []):
-            uid = uid_obj.get("uid")
-            if uid in uids:
-                courses = uid_obj.get("courses") or []
-                if courses:
-                    child_name_by_uid[uid] = courses[0].get("uid_owner_name", "")
+# 3. child_name — đã có sẵn trong pr_info (column trên payment_requests), không cần lookup AR.
 ```
-**Lưu ý:** `active_requests` có thể rất nhiều rows → cần optimize bằng RPC hoặc filter `uids_data @> '...'`. Nếu Postgres function khả thi, ưu tiên RPC để không scan full table.
+**Lưu ý:** KHÔNG cần scan `active_requests.uids_data` để lấy `child_name` (handoff cũ ghi sai). Column `payment_requests.child_name` đã có sẵn. Nếu có nhu cầu lấy thêm `student_name`/`uid_owner_name` per-UID trong uids_data (cho UI hiển thị multi-child) thì cân nhắc sau — Sprint 1 chỉ cần `payment_requests.child_name`.
 
 **Response mỗi candidate:**
 ```json
@@ -217,11 +213,18 @@ sb.table("bank_transactions").update({
 
 ---
 
-## Câu hỏi cần xác nhận trước khi code
+## Câu hỏi đã xác nhận (UPDATED 18/6)
 
-1. **Tên bảng/column lưu `discrepancy_amount`:** confirm bảng nào (`bank_transactions` hay bảng riêng) → em đọc endpoint match hiện tại để biết.
-2. **`active_requests.uids_data` JSONB:** có RPC sẵn để query theo UID chưa? Nếu chưa, em scan full table có chấp nhận được không (bảng đang có bao nhiêu rows)? Nếu nhiều > vài chục nghìn → cần làm RPC.
-3. **Bảng `users` field tên:** xác nhận field tên đầy đủ là `full_name` hay `display_name` hay `name`.
-4. **Bảng `teams`:** field tên là `name` hay khác.
+| Câu hỏi gốc | Trả lời sau khi grep code |
+|---|---|
+| Bảng `users` / `teams`? | KHÔNG có. Dùng `nhan_su_sale` (1 bảng combo) — columns: `email, display_name, crm_name, team, sub_team, sdt` |
+| Tên sale priority? | `display_name` → `crm_name` → `email`. Helper `_sale_name_map()` đã có ở [payment_request_routes.py:710](backend/payment_request_routes.py:710) |
+| `child_name` ở đâu? | Column trực tiếp `payment_requests.child_name`. KHÔNG nằm trong `uids_data` |
+| Bảng record match (T3.2 discrepancy)? | Cần em xác nhận khi đọc endpoint match hiện tại — nếu match lưu trực tiếp trên `bank_transactions` thì ALTER bảng đó; nếu có bảng riêng thì add column vào đó |
+| Lookup `uids_data` theo UID có RPC? | Chưa có RPC. Sprint 1 KHÔNG cần (child_name đã ở column riêng). Sau này nếu cần per-UID data → làm RPC hoặc batch fetch AR |
 
-Hỏi anh Minh / Giang trước khi bắt đầu nếu chưa rõ.
+## Câu hỏi còn lại (chưa rõ, cần em check khi code)
+
+1. **Tên bảng/column lưu `discrepancy_amount`** (T3.2): confirm bảng nào (`bank_transactions` hay bảng riêng) → em đọc endpoint match hiện tại trong `sepay_routes.py` để biết.
+
+Hỏi anh Minh nếu chưa rõ.
