@@ -66,6 +66,14 @@ class ActiveRequestPatchCoursePayload(BaseModel):
     tax_product_code: str | None = ""
     lead_source: str | None = None
     lead_channel: str | None = None
+    referrer_uid: str | None = None
+    referee_count: int | None = None
+    referrer_count: int | None = None
+    referee_credited_at: str | None = None
+    referee_credited_by: str | None = None
+    referrer_credited_at: str | None = None
+    referrer_credited_by: str | None = None
+
 
 
 class ActiveRequestPatchUidPayload(BaseModel):
@@ -241,6 +249,29 @@ def _derive_status(uids_data: list[dict[str, Any]]) -> str:
     return "pending_order"
 
 
+def _compute_referral_status(courses: list[dict[str, Any]]) -> str | None:
+    referral_courses = [c for c in courses if c.get("referrer_uid")]
+    if not referral_courses:
+        return None
+    
+    none_count = 0
+    full_count = 0
+    
+    for c in referral_courses:
+        r1 = bool(c.get("referee_credited_at"))
+        r2 = bool(c.get("referrer_credited_at"))
+        if r1 and r2:
+            full_count += 1
+        elif not r1 and not r2:
+            none_count += 1
+            
+    if full_count == len(referral_courses):
+        return "full"
+    if none_count == len(referral_courses):
+        return "none"
+    return "partial"
+
+
 def _serialize_ar(row: dict[str, Any], pr: dict[str, Any] | None = None) -> dict[str, Any]:
     raw_uids_data = row.get("uids_data") or []
     uids_data: list[dict[str, Any]] = []
@@ -274,6 +305,7 @@ def _serialize_ar(row: dict[str, Any], pr: dict[str, Any] | None = None) -> dict
         "total_amount": total_amount,
         "course_count": len(courses),
         "ordered_count": ordered_count,
+        "referral_status": _compute_referral_status(courses),
     }
     if pr is not None:
         target, received = _pr_amounts(pr)
@@ -1189,6 +1221,27 @@ def register_activation_routes(app, supabase_factory):
 
         return {"ok": True, "id": ar_id}
 
+def _diff_referral_courses(old_uids: list[dict[str, Any]], new_uids: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    old_courses = {c.get("code"): c for u in old_uids for c in (u.get("courses") or []) if isinstance(c, dict) and c.get("code")}
+    new_courses = {c.get("code"): c for u in new_uids for c in (u.get("courses") or []) if isinstance(c, dict) and c.get("code")}
+    changes = []
+    for code, nc in new_courses.items():
+        oc = old_courses.get(code) or {}
+        old_ref = {
+            "referrer_uid": oc.get("referrer_uid"),
+            "referee_count": oc.get("referee_count"),
+            "referrer_count": oc.get("referrer_count"),
+        }
+        new_ref = {
+            "referrer_uid": nc.get("referrer_uid"),
+            "referee_count": nc.get("referee_count"),
+            "referrer_count": nc.get("referrer_count"),
+        }
+        if old_ref != new_ref:
+            changes.append({"code": code, "old": old_ref, "new": new_ref})
+    return changes
+
+
     @app.patch("/api/v1/active-requests/{ar_id}", tags=["Activation"])
     def patch_active_request(
         ar_id: str,
@@ -1230,6 +1283,12 @@ def register_activation_routes(app, supabase_factory):
             if not body.uids_data:
                 raise HTTPException(400, "uids_data phai co it nhat mot uid")
             uids_data = [uid.model_dump() for uid in body.uids_data]
+
+            changes = _diff_referral_courses(current.get("uids_data") or [], uids_data)
+            if changes:
+                from audit import log_audit
+                log_audit(sb, actor.email, "referral.amount_changed", "active_request", ar_id, {"changes": changes})
+
             current_pr_id = str(current.get("pr_id") or "")
             if current_pr_id:
                 patch_pr = _fetch_payment_request(sb, current_pr_id)
@@ -1336,6 +1395,87 @@ def register_activation_routes(app, supabase_factory):
             _sync_ledger_courses_from_uids(sb, ar_id, merged.get("uids_data") or guarded_uids)
         pr_map = _fetch_prs_by_ids(sb, [str(merged.get("pr_id") or "")])
         return _serialize_ar(merged, pr_map.get(str(merged.get("pr_id") or "")))
+
+    class CreditReferralBody(BaseModel):
+        uid: str
+        course_code: str
+        side: str  # "referee" or "referrer"
+        credited: bool
+        reason: str | None = None
+
+    @app.patch("/api/v1/active-requests/{ar_id}/credit-referral", tags=["Activation"])
+    def credit_referral(
+        ar_id: str,
+        body: CreditReferralBody,
+        authorization: str | None = Header(None),
+    ):
+        sb = supabase_factory()
+        if not sb:
+            raise HTTPException(503, "Supabase chua cau hinh")
+
+        from rbac import require_referral_credit
+        actor = resolve_actor(sb, authorization)
+        require_referral_credit(actor)
+
+        if not body.credited and not (body.reason and body.reason.strip()):
+            raise HTTPException(400, "Bỏ tick xác nhận cần kèm lý do")
+        if body.side not in ("referee", "referrer"):
+            raise HTTPException(400, "side must be referee or referrer")
+
+        res = sb.table("active_requests").select("*").eq("id", ar_id).limit(1).execute()
+        if not res.data:
+            raise HTTPException(404, f"Active Request {ar_id} không tồn tại")
+        
+        ar = res.data[0]
+        uids_data = ar.get("uids_data") or []
+        
+        # Locate the course
+        target_course = None
+        for u in uids_data:
+            if u.get("uid") == body.uid:
+                for c in u.get("courses") or []:
+                    if c.get("code") == body.course_code:
+                        target_course = c
+                        break
+        
+        if not target_course:
+            raise HTTPException(404, "Không tìm thấy course trong active request này")
+
+        now = datetime.now(timezone.utc).isoformat()
+        from audit import log_audit
+
+        if body.credited:
+            target_course[f"{body.side}_credited_at"] = now
+            target_course[f"{body.side}_credited_by"] = actor.email
+            log_audit(
+                sb, actor.email, "referral.credit_confirmed",
+                "active_request_course", f"{ar_id}_{body.course_code}",
+                {"side": body.side, "credited_at": now}
+            )
+        else:
+            previous_at = target_course.get(f"{body.side}_credited_at")
+            previous_by = target_course.get(f"{body.side}_credited_by")
+            target_course[f"{body.side}_credited_at"] = None
+            target_course[f"{body.side}_credited_by"] = None
+            log_audit(
+                sb, actor.email, "referral.credit_revoked",
+                "active_request_course", f"{ar_id}_{body.course_code}",
+                {
+                    "side": body.side,
+                    "previous_credited_at": previous_at,
+                    "previous_credited_by": previous_by,
+                    "reason": body.reason.strip(),
+                }
+            )
+
+        # Update uids_data in DB
+        upd = sb.table("active_requests").update({"uids_data": uids_data}).eq("id", ar_id).execute()
+        if not upd.data:
+            raise HTTPException(500, "Cập nhật thất bại")
+
+        pr_map = _fetch_prs_by_ids(sb, [str(upd.data[0].get("pr_id") or "")])
+        return _serialize_ar(upd.data[0], pr_map.get(str(upd.data[0].get("pr_id") or "")))
+
 
     @app.post("/api/v1/active-requests", tags=["Activation"])
     def create_standalone_active_request(

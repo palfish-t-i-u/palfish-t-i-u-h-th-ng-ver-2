@@ -1424,12 +1424,41 @@ def register_payment_request_routes(app, get_supabase) -> None:
         bill_assets = _fetch_bill_assets_fast(sb, all_line_ids)
         bill_urls = _bill_urls_from_assets(bill_assets)
 
-        requests = [
-            _serialize_payment_request_list_item(
-                row, lines_by_pr.get(str(row.get("id") or ""), []), bill_urls, bill_assets
+        ars_by_pr: dict[str, list[dict[str, Any]]] = {pr_id: [] for pr_id in pr_ids}
+        if pr_ids:
+            try:
+                ar_res = (
+                    sb.table("active_requests")
+                    .select("pr_id, uids_data")
+                    .in_("pr_id", pr_ids)
+                    .execute()
+                )
+                for ar in (ar_res.data or []):
+                    pid = str(ar.get("pr_id") or "")
+                    if pid in ars_by_pr:
+                        ars_by_pr[pid].append(ar)
+            except Exception as exc:
+                print(f"Khong doc duoc active_requests for PR referral_status: {exc}")
+
+        requests = []
+        for row in pr_rows:
+            pr_id = str(row.get("id") or "")
+            item = _serialize_payment_request_list_item(
+                row, lines_by_pr.get(pr_id, []), bill_urls, bill_assets
             )
-            for row in pr_rows
-        ]
+            
+            ars = ars_by_pr.get(pr_id, [])
+            all_courses = []
+            for ar in ars:
+                for u in (ar.get("uids_data") or []):
+                    if isinstance(u, dict):
+                        for c in (u.get("courses") or []):
+                            if isinstance(c, dict):
+                                all_courses.append(c)
+                                
+            from activation_routes import _compute_referral_status
+            item["referral_status"] = _compute_referral_status(all_courses)
+            requests.append(item)
 
         # Enrich ten TVTS de FE hien cot TVTS cho leader+ ngay tren bang chinh.
         name_map = _sale_name_map(sb)
