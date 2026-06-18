@@ -163,11 +163,12 @@ class TestSepayHMAC:
     def test_valid_signature_passes(self):
         import hashlib
         import hmac as hmac_mod
+        import time
         from sepay_routes import _verify_hmac
 
         secret = "test_secret_key"
         body = b'{"id": 123, "amount": 5000000}'
-        timestamp = "1718300000"
+        timestamp = str(int(time.time()))
         msg = timestamp.encode("utf-8") + b"." + body
         
         # Test cả dạng có tiền tố sha256= và không có

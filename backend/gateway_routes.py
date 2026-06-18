@@ -331,7 +331,11 @@ def register_gateway_routes(app, get_supabase: Callable[[], Any]) -> None:
         ]
 
     @router.get("/gateway-txns/{txn_id}/match-candidates")
-    def gateway_match_candidates(txn_id: str, authorization: str | None = Header(None)):
+    def gateway_match_candidates(
+        txn_id: str,
+        search: str | None = Query(None),
+        authorization: str | None = Header(None),
+    ):
         sb = _sb_or_503(get_supabase)
         actor = resolve_actor(sb, authorization)
         require_module_access(sb, actor, "reconciliation")
@@ -343,8 +347,29 @@ def register_gateway_routes(app, get_supabase: Callable[[], Any]) -> None:
         txn_paid = txn.get("paid_at")
         # Ghép theo SỐ TIỀN (khóa mạnh) — KHÔNG lọc theo status để không ẩn lần TT đã 'paid'
         # (giao dịch thẻ có thể ứng với lần TT đã xác nhận trong app).
-        line_res = sb.table("payment_lines").select("*").eq("amount", amount).limit(100).execute()
-        lines = line_res.data or []
+        search_text = _clean_text(search)
+        if search_text:
+            pattern = f"*{search_text.replace(',', ' ').strip()}*"
+            pr_res = (
+                sb.table("payment_requests")
+                .select("id")
+                .or_(
+                    ",".join(
+                        f"{col}.ilike.{pattern}"
+                        for col in ("id", "name", "ten_khach", "uid", "uid_khach_hang", "phone", "sdt")
+                    )
+                )
+                .limit(50)
+                .execute()
+            )
+            pr_ids = [str(row.get("id")) for row in (pr_res.data or []) if row.get("id")]
+            if not pr_ids:
+                return []
+            line_res = sb.table("payment_lines").select("*").in_("payment_request_id", pr_ids).limit(100).execute()
+            lines = line_res.data or []
+        else:
+            line_res = sb.table("payment_lines").select("*").eq("amount", amount).limit(100).execute()
+            lines = line_res.data or []
         # Bỏ lần TT đã ghép với giao dịch gateway KHÁC (tránh ghép trùng).
         matched_res = (
             sb.table("gateway_transactions")
