@@ -57,6 +57,17 @@ def can_confirm_payment(actor: Actor) -> bool:
     return actor.email.lower() in ops
 
 
+def can_credit_referral(actor: Actor) -> bool:
+    if actor.role in ("system", "manager"):
+        return True
+    return can_confirm_payment(actor)
+
+
+def require_referral_credit(actor: Actor) -> None:
+    if not can_credit_referral(actor):
+        raise HTTPException(403, "Cần quyền Ops/Manager/System để xác nhận cộng buổi")
+
+
 def _extract_bearer(authorization: str | None) -> str | None:
     if not authorization:
         return None

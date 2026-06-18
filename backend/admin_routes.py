@@ -209,15 +209,21 @@ def _actor_department(actor) -> str | None:
     return None
 
 
-def _compute_permissions(sb, actor) -> dict[str, str]:
+def _compute_permissions(sb, actor) -> dict[str, Any]:
+    from rbac import can_credit_referral
+
     if actor.role == "system" or actor.email.lower() in _system_admin_emails():
-        return _permissions_with_level("full")
+        perms = _permissions_with_level("full")
+        perms["referral.credit"] = True
+        return perms
 
     department = _actor_department(actor)
     if not department:
-        return _permissions_with_level("none")
+        perms = _permissions_with_level("none")
+        perms["referral.credit"] = False
+        return perms
 
-    permissions = _permissions_with_level("none")
+    permissions: dict[str, Any] = _permissions_with_level("none")
     defaults = DEFAULT_DEPT_PERMISSIONS.get(department, {})
     for module_key, access_level in defaults.items():
         if module_key in permissions and access_level in ACCESS_LEVELS:
@@ -243,14 +249,15 @@ def _compute_permissions(sb, actor) -> dict[str, str]:
                 continue
     if res is None:
         print(f"[permissions] department query failed after retries for {actor.email}: {last_exc}")
+        permissions["referral.credit"] = can_credit_referral(actor)
         return permissions
 
     for row in res.data or []:
         module_key = row.get("module_key")
         access_level = row.get("access_level")
+        mr = row.get("min_role")
         if module_key in permissions and access_level in ACCESS_LEVELS:
             permissions[module_key] = access_level
-        mr = row.get("min_role", "sale")
         if module_key in permissions and mr in VALID_MIN_ROLES:
             min_roles[module_key] = mr
 
@@ -268,6 +275,7 @@ def _compute_permissions(sb, actor) -> dict[str, str]:
             .eq("user_email", actor.email.lower())
             .execute()
         )
+
         for row in overrides.data or []:
             mk = row.get("module_key")
             al = row.get("access_level")
@@ -276,6 +284,7 @@ def _compute_permissions(sb, actor) -> dict[str, str]:
     except Exception as exc:
         print(f"[permission_overrides] query failed for {actor.email.lower()}: {exc}")
 
+    permissions["referral.credit"] = can_credit_referral(actor)
     return permissions
 
 
