@@ -23,8 +23,11 @@ import {
   fmtPhone,
   formatCoursePhone,
   formatPaymentDateFull,
+  getReferralStatus,
   nowStamp,
   paymentAttemptLabel,
+  REFERRAL_STATUS_HEADER,
+  REFERRAL_STATUS_PANEL_STYLE,
   validateReferralBonus,
   vnd,
 } from "./paymentRequestUtils";
@@ -1163,17 +1166,33 @@ function ActiveRequestMiniCardV2({
                       </div>
                     )}
                     {!editing && c.leadSource === "gioi_thieu" &&
-                      ((c.bonusSessionsReferee ?? 0) > 0 || (c.bonusSessionsReferrer ?? 0) > 0) && (
-                      <div style={{ gridColumn: "1 / -1", fontSize: 11, color: "var(--text-3)", display: "flex", gap: 8, flexWrap: "wrap" }}>
-                        <span style={{ fontWeight: 600 }}>Thưởng giới thiệu:</span>
-                        {(c.bonusSessionsReferee ?? 0) > 0 && (
-                          <span>+{c.bonusSessionsReferee} buổi · người được giới thiệu ({u.uid || "—"})</span>
-                        )}
-                        {(c.bonusSessionsReferrer ?? 0) > 0 && (
-                          <span>+{c.bonusSessionsReferrer} buổi · người giới thiệu ({c.referrerUid || "—"})</span>
-                        )}
-                      </div>
-                    )}
+                      ((c.bonusSessionsReferee ?? 0) > 0 || (c.bonusSessionsReferrer ?? 0) > 0) && (() => {
+                        const rs = getReferralStatus(c);
+                        const panelStyle = REFERRAL_STATUS_PANEL_STYLE[rs];
+                        const headerText = REFERRAL_STATUS_HEADER[rs];
+                        return (
+                          <div style={{ gridColumn: "1 / -1", padding: "10px 12px", borderRadius: 8, marginTop: 6, ...panelStyle }}>
+                            <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text-1, #111)", marginBottom: 6 }}>{headerText}</div>
+                            {(c.bonusSessionsReferee ?? 0) > 0 && (
+                              <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text-1, #111)" }}>
+                                Người được giới thiệu (UID: {u.uid || "—"}) — cộng thêm {c.bonusSessionsReferee} buổi.{" "}
+                                {c.refereeCreditedAt
+                                  ? `Đã cộng lúc ${formatPaymentDateFull(c.refereeCreditedAt)}`
+                                  : "Chưa cộng"}
+                              </div>
+                            )}
+                            {(c.bonusSessionsReferrer ?? 0) > 0 && (
+                              <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text-1, #111)", marginTop: 4 }}>
+                                Người giới thiệu (UID: {c.referrerUid || "—"}) — cộng thêm {c.bonusSessionsReferrer} buổi.{" "}
+                                {c.referrerCreditedAt
+                                  ? `Đã cộng lúc ${formatPaymentDateFull(c.referrerCreditedAt)}`
+                                  : "Chưa cộng"}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()
+                    }
                     {editing && (
                       <div style={{ gridColumn: "1 / -1", display: "flex", gap: 8 }}>
                         <select
@@ -1235,78 +1254,104 @@ function ActiveRequestMiniCardV2({
                         )}
                       </div>
                     )}
-                    {editing && c.leadSource === "gioi_thieu" && (
-                      <div style={{ gridColumn: "1 / -1", display: "grid", gap: 8, padding: 10, border: "1px dashed var(--border)", borderRadius: 8, background: "var(--surface-2, #fafafa)" }}>
-                        <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-2)" }}>
-                          Thưởng giới thiệu — người được giới thiệu: <code>{u.uid || "(chưa có UID)"}</code>
-                        </div>
-                        <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr 1fr", gap: 8 }}>
-                          <input
-                            value={c.referrerUid ?? ""}
-                            disabled={courseLocked}
-                            placeholder="UID người giới thiệu"
-                            onChange={(e) => {
-                              const val = e.target.value;
-                              mutate((next) => ({
-                                ...next,
-                                uids: next.uids.map((uu, idx) =>
-                                  idx === uIdx
-                                    ? { ...uu, courses: uu.courses.map((course) =>
-                                        course.courseCode === c.courseCode ? { ...course, referrerUid: val } : course) }
-                                    : uu
-                                ),
-                              }));
-                            }}
-                            style={{ font: "inherit", fontSize: 12, fontFamily: "JetBrains Mono, monospace", borderRadius: 8, border: "1px solid var(--border)", padding: "5px 7px" }}
-                          />
-                          <input
-                            value={c.bonusSessionsReferee ?? ""}
-                            disabled={courseLocked}
-                            inputMode="numeric"
-                            pattern="[0-9]*"
-                            placeholder="Buổi: được g.thiệu"
-                            onChange={(e) => {
-                              const raw = e.target.value.replace(/[^\d]/g, "");
-                              const val = raw === "" ? undefined : Math.max(0, parseInt(raw, 10) || 0);
-                              mutate((next) => ({
-                                ...next,
-                                uids: next.uids.map((uu, idx) =>
-                                  idx === uIdx
-                                    ? { ...uu, courses: uu.courses.map((course) =>
-                                        course.courseCode === c.courseCode ? { ...course, bonusSessionsReferee: val } : course) }
-                                    : uu
-                                ),
-                              }));
-                            }}
-                            style={{ font: "inherit", fontSize: 12, textAlign: "right", borderRadius: 8, border: "1px solid var(--border)", padding: "5px 7px" }}
-                          />
-                          <input
-                            value={c.bonusSessionsReferrer ?? ""}
-                            disabled={courseLocked}
-                            inputMode="numeric"
-                            pattern="[0-9]*"
-                            placeholder="Buổi: g.thiệu"
-                            onChange={(e) => {
-                              const raw = e.target.value.replace(/[^\d]/g, "");
-                              const val = raw === "" ? undefined : Math.max(0, parseInt(raw, 10) || 0);
-                              mutate((next) => ({
-                                ...next,
-                                uids: next.uids.map((uu, idx) =>
-                                  idx === uIdx
-                                    ? { ...uu, courses: uu.courses.map((course) =>
-                                        course.courseCode === c.courseCode ? { ...course, bonusSessionsReferrer: val } : course) }
-                                    : uu
-                                ),
-                              }));
-                            }}
-                            style={{ font: "inherit", fontSize: 12, textAlign: "right", borderRadius: 8, border: "1px solid var(--border)", padding: "5px 7px" }}
-                          />
-                        </div>
-                        <div style={{ fontSize: 10.5, color: "var(--text-3)" }}>
-                          Tuỳ tình huống điền 1 trong 2 hoặc cả 2. Nếu cộng buổi cho người giới thiệu thì bắt buộc nhập UID người giới thiệu (khác UID người được giới thiệu).
-                        </div>
-                      </div>
-                    )}
+                    {editing && c.leadSource === "gioi_thieu" && (() => {
+                        const rs = getReferralStatus(c);
+                        const panelStyle = REFERRAL_STATUS_PANEL_STYLE[rs];
+                        const headerText = REFERRAL_STATUS_HEADER[rs];
+                        return (
+                          <div style={{ gridColumn: "1 / -1", display: "grid", gap: 10, padding: "10px 12px", borderRadius: 8, marginTop: 6, ...panelStyle }}>
+                            <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text-1, #111)" }}>{headerText}</div>
+                            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                              <div>
+                                <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "var(--text-2)", marginBottom: 4 }}>
+                                  UID người giới thiệu
+                                </label>
+                                <input
+                                  value={c.referrerUid ?? ""}
+                                  disabled={courseLocked}
+                                  placeholder="UID người giới thiệu"
+                                  onChange={(e) => {
+                                    const val = e.target.value;
+                                    mutate((next) => ({
+                                      ...next,
+                                      uids: next.uids.map((uu, idx) =>
+                                        idx === uIdx
+                                          ? { ...uu, courses: uu.courses.map((course) =>
+                                              course.courseCode === c.courseCode ? { ...course, referrerUid: val } : course) }
+                                          : uu
+                                      ),
+                                    }));
+                                  }}
+                                  style={{ font: "inherit", fontSize: 12, fontFamily: "JetBrains Mono, monospace", width: "100%", borderRadius: 8, border: "1px solid var(--border)", padding: "5px 7px", boxSizing: "border-box" }}
+                                />
+                                <div style={{ fontSize: 11, color: "var(--text-3)", marginTop: 3 }}>
+                                  Nhập đúng UID khách hàng đã giới thiệu khách này. UID phải khác UID người được giới thiệu.
+                                </div>
+                              </div>
+                              <div>
+                                <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "var(--text-2)", marginBottom: 4 }}>
+                                  Số buổi cộng cho người được giới thiệu (UID: {u.uid || "—"})
+                                </label>
+                                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                                  <input
+                                    value={c.bonusSessionsReferee ?? ""}
+                                    disabled={courseLocked}
+                                    inputMode="numeric"
+                                    pattern="[0-9]*"
+                                    onChange={(e) => {
+                                      const raw = e.target.value.replace(/[^\d]/g, "");
+                                      const val = raw === "" ? undefined : Math.max(0, parseInt(raw, 10) || 0);
+                                      mutate((next) => ({
+                                        ...next,
+                                        uids: next.uids.map((uu, idx) =>
+                                          idx === uIdx
+                                            ? { ...uu, courses: uu.courses.map((course) =>
+                                                course.courseCode === c.courseCode ? { ...course, bonusSessionsReferee: val } : course) }
+                                            : uu
+                                        ),
+                                      }));
+                                    }}
+                                    style={{ font: "inherit", fontSize: 12, textAlign: "right", width: 100, borderRadius: 8, border: "1px solid var(--border)", padding: "5px 7px" }}
+                                  />
+                                  <span style={{ fontSize: 12, color: "var(--text-2)" }}>buổi</span>
+                                </div>
+                              </div>
+                              <div>
+                                <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "var(--text-2)", marginBottom: 4 }}>
+                                  Số buổi cộng cho người giới thiệu (UID: {c.referrerUid || "—"})
+                                </label>
+                                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                                  <input
+                                    value={c.bonusSessionsReferrer ?? ""}
+                                    disabled={courseLocked}
+                                    inputMode="numeric"
+                                    pattern="[0-9]*"
+                                    onChange={(e) => {
+                                      const raw = e.target.value.replace(/[^\d]/g, "");
+                                      const val = raw === "" ? undefined : Math.max(0, parseInt(raw, 10) || 0);
+                                      mutate((next) => ({
+                                        ...next,
+                                        uids: next.uids.map((uu, idx) =>
+                                          idx === uIdx
+                                            ? { ...uu, courses: uu.courses.map((course) =>
+                                                course.courseCode === c.courseCode ? { ...course, bonusSessionsReferrer: val } : course) }
+                                            : uu
+                                        ),
+                                      }));
+                                    }}
+                                    style={{ font: "inherit", fontSize: 12, textAlign: "right", width: 100, borderRadius: 8, border: "1px solid var(--border)", padding: "5px 7px" }}
+                                  />
+                                  <span style={{ fontSize: 12, color: "var(--text-2)" }}>buổi</span>
+                                </div>
+                              </div>
+                            </div>
+                            <div style={{ fontSize: 11, color: "var(--text-3)" }}>
+                              Bạn điền số buổi cộng cho 1 trong 2 bên hoặc cả 2 bên tuỳ tình huống. Nếu cộng buổi cho người giới thiệu, bạn bắt buộc nhập UID của họ (phải khác UID người được giới thiệu).
+                            </div>
+                          </div>
+                        );
+                      })()
+                    }
                   </div>
                   );
                 })}

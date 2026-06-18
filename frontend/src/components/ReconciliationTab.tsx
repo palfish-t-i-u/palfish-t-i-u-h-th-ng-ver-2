@@ -1449,6 +1449,7 @@ export default function ReconciliationTab() {
             open={bankMatchOpen}
             onClose={() => { setBankMatchOpen(false); setBankMatchTxnId(null); }}
             title="Ghép CK ngoài → Lần thanh toán"
+            wide
           >
             {drawerTxn && (
               <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
@@ -1513,7 +1514,7 @@ export default function ReconciliationTab() {
                       <div style={{ fontSize: 11, color: "var(--text-3)", marginBottom: 6 }}>
                         Hiện {filteredBankCandidates.length} / {bankCandidates.length} lần TT
                       </div>
-                      <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 320, overflow: "auto" }}>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 8, minHeight: "60vh", maxHeight: "60vh", overflow: "auto" }}>
                         {filteredBankCandidates.map((c) => {
                           const exactAmount = Math.abs(c.amount - drawerTxn.amount) < 1;
                           const selected = bankPickedLineId === c.payment_line_id;
@@ -1522,21 +1523,21 @@ export default function ReconciliationTab() {
                               key={c.payment_line_id}
                               onClick={() => setBankPickedLineId(c.payment_line_id)}
                               style={{
-                                padding: "10px 12px", border: `2px solid ${selected ? "var(--primary)" : "var(--border)"}`,
-                                borderRadius: 8, cursor: "pointer",
+                                padding: "12px 14px", border: `2px solid ${selected ? "var(--primary)" : "var(--border)"}`,
+                                borderRadius: 8, cursor: "pointer", fontSize: 13,
                                 background: selected ? "var(--primary-bg, rgba(99,102,241,0.06))" : "var(--surface-1)",
                               }}
                             >
                               <div style={{ display: "flex", justifyContent: "space-between" }}>
-                                <span style={{ fontWeight: 600 }}>{c.pr_name || c.pr_id}</span>
-                                <span style={{ fontWeight: 600, color: exactAmount ? "var(--success-text)" : "var(--text-2)" }}>
+                                <span style={{ fontWeight: 600, fontSize: 14 }}>{c.pr_name || c.pr_id}</span>
+                                <span style={{ fontWeight: 600, fontSize: 14, color: exactAmount ? "var(--success-text)" : "var(--text-2)" }}>
                                   {vnd(c.amount)}{exactAmount && " ✓"}
                                 </span>
                               </div>
-                              <div style={{ fontSize: 11, color: "var(--text-3)", marginTop: 2 }}>
+                              <div style={{ fontSize: 13, color: "var(--text-3)", marginTop: 4 }}>
                                 {c.pr_id}{c.pr_uid ? ` · UID ${c.pr_uid}` : ""}{c.pr_phone ? ` · ${c.pr_phone}` : ""}
                               </div>
-                              <div style={{ fontSize: 11, color: "var(--text-3)", marginTop: 2 }}>
+                              <div style={{ fontSize: 13, color: "var(--text-3)", marginTop: 2 }}>
                                 {c.method} · {c.status} · mã: {c.transfer_code || "—"}
                                 {c.created_at ? ` · ${formatPaymentDateFull(c.created_at)}` : ""}
                               </div>

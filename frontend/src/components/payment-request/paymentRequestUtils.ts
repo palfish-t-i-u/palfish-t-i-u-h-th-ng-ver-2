@@ -1,3 +1,4 @@
+import type { CSSProperties } from "react";
 import type { ActiveRequest, ActiveRequestApiRow, ActiveRequestPatchUidPayload, CreateActiveRequestPayload, PaymentAttempt, PaymentMethod, PaymentRequest, PaymentRequestStatus } from "../../types/paymentRequest";
 
 export type RequestBucket = "tracking" | "created" | "cancelled";
@@ -224,6 +225,10 @@ export function fromApiActiveRequest(raw: ActiveRequestApiRow): ActiveRequest {
         referrerUid: c.referrer_uid ?? undefined,
         bonusSessionsReferee: c.bonus_sessions_referee ?? undefined,
         bonusSessionsReferrer: c.bonus_sessions_referrer ?? undefined,
+        refereeCreditedAt: c.referee_credited_at ?? null,
+        refereeCreditedBy: c.referee_credited_by ?? null,
+        referrerCreditedAt: c.referrer_credited_at ?? null,
+        referrerCreditedBy: c.referrer_credited_by ?? null,
       })),
     })),
   };
@@ -265,6 +270,36 @@ export function activeRequestAllocation(ar: ActiveRequest, pr: PaymentRequest | 
     percent: received > 0 ? Math.min(100, Math.round((total / received) * 100)) : 0,
     isOver: !!pr && overAmount > 0,
   };
+}
+
+export type ReferralStatus = "none" | "partial" | "full";
+
+export const REFERRAL_STATUS_PANEL_STYLE: Record<ReferralStatus, CSSProperties> = {
+  full:    { border: "1.5px solid var(--success, #10b981)", background: "var(--success-bg, #d1fae5)" },
+  partial: { border: "1.5px solid var(--caution, #eab308)", background: "var(--caution-bg, #fef9c3)" },
+  none:    { border: "1.5px solid var(--warning, #f59e0b)", background: "var(--warning-bg, #fef3c7)" },
+};
+
+export const REFERRAL_STATUS_HEADER: Record<ReferralStatus, string> = {
+  full:    "Khoá này đã được cộng buổi thưởng giới thiệu đầy đủ cho cả 2 bên.",
+  partial: "Khoá này có thưởng giới thiệu — bộ phận quản trị đã cộng 1 bên, còn 1 bên chưa.",
+  none:    "Khoá này có thưởng giới thiệu — bộ phận quản trị chưa cộng buổi trong CRM.",
+};
+
+export function getReferralStatus(course: {
+  bonusSessionsReferee?: number;
+  bonusSessionsReferrer?: number;
+  refereeCreditedAt?: string | null;
+  referrerCreditedAt?: string | null;
+}): ReferralStatus {
+  const needRefereeCredit = (course.bonusSessionsReferee ?? 0) > 0;
+  const needReferrerCredit = (course.bonusSessionsReferrer ?? 0) > 0;
+  if (!needRefereeCredit && !needReferrerCredit) return "none";
+  const refereeOk = !needRefereeCredit || Boolean(course.refereeCreditedAt);
+  const referrerOk = !needReferrerCredit || Boolean(course.referrerCreditedAt);
+  if (refereeOk && referrerOk) return "full";
+  if (refereeOk || referrerOk) return "partial";
+  return "none";
 }
 
 /**

@@ -18,7 +18,7 @@ import {
 import CountryCombo from "./payment-request/CountryCombo";
 import DateRangeFilter, { EMPTY_RANGE, type DateRange, inDateRange } from "./payment-request/DateRangeFilter";
 import { Icons } from "./payment-request/Icons";
-import { formatPaymentDateTime, fromApiActiveRequest, toActiveRequestPatchUidsData } from "./payment-request/paymentRequestUtils";
+import { formatPaymentDateFull, formatPaymentDateTime, fromApiActiveRequest, getReferralStatus, REFERRAL_STATUS_HEADER, REFERRAL_STATUS_PANEL_STYLE, toActiveRequestPatchUidsData } from "./payment-request/paymentRequestUtils";
 import { downloadTaxInvoiceZip } from "../utils/taxInvoiceXlsxExport";
 import type { InvoiceRow } from "./payment-flow/paymentFlowUtils";
 import "../styles/prototype-payments.css";
@@ -1280,17 +1280,33 @@ function ActivationDetailDrawer({
                   )}
                 </div>
                 {course.leadSource === "gioi_thieu" &&
-                  ((course.bonusSessionsReferee ?? 0) > 0 || (course.bonusSessionsReferrer ?? 0) > 0) && (
-                  <div style={{ fontSize: 11, color: "var(--text-3)", display: "flex", gap: 8, flexWrap: "wrap", padding: "2px 4px 8px" }}>
-                    <span style={{ fontWeight: 600 }}>Thưởng giới thiệu:</span>
-                    {(course.bonusSessionsReferee ?? 0) > 0 && (
-                      <span>+{course.bonusSessionsReferee} buổi · người được giới thiệu ({uidObj.uid || "—"})</span>
-                    )}
-                    {(course.bonusSessionsReferrer ?? 0) > 0 && (
-                      <span>+{course.bonusSessionsReferrer} buổi · người giới thiệu ({course.referrerUid || "—"})</span>
-                    )}
-                  </div>
-                )}
+                  ((course.bonusSessionsReferee ?? 0) > 0 || (course.bonusSessionsReferrer ?? 0) > 0) && (() => {
+                    const rs = getReferralStatus(course);
+                    const panelStyle = REFERRAL_STATUS_PANEL_STYLE[rs];
+                    const headerText = REFERRAL_STATUS_HEADER[rs];
+                    return (
+                      <div style={{ padding: "10px 12px", borderRadius: 8, marginTop: 6, ...panelStyle }}>
+                        <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text-1, #111)", marginBottom: 6 }}>{headerText}</div>
+                        {(course.bonusSessionsReferee ?? 0) > 0 && (
+                          <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text-1, #111)" }}>
+                            Người được giới thiệu (UID: {uidObj.uid || "—"}) — cộng thêm {course.bonusSessionsReferee} buổi.{" "}
+                            {course.refereeCreditedAt
+                              ? `Đã cộng lúc ${formatPaymentDateFull(course.refereeCreditedAt)}`
+                              : "Chưa cộng"}
+                          </div>
+                        )}
+                        {(course.bonusSessionsReferrer ?? 0) > 0 && (
+                          <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text-1, #111)", marginTop: 4 }}>
+                            Người giới thiệu (UID: {course.referrerUid || "—"}) — cộng thêm {course.bonusSessionsReferrer} buổi.{" "}
+                            {course.referrerCreditedAt
+                              ? `Đã cộng lúc ${formatPaymentDateFull(course.referrerCreditedAt)}`
+                              : "Chưa cộng"}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()
+                }
                 </Fragment>
               ))}
               <datalist id={`packages-${ar.id}`}>

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "r
 import { Icons } from "./payment-request/Icons";
 import { formatPaymentDateFull, formatPaymentDateTime, vnd } from "./payment-request/paymentRequestUtils";
 import {
+  isExtInstalled,
   type GatewaySource,
   type GatewayTxn,
   type MatchCandidate,
@@ -68,7 +69,7 @@ export default function CardReconciliationTab({
   const [candidates, setCandidates] = useState<MatchCandidate[]>([]);
   const [syncing, setSyncing] = useState(false);
   const [lastSync, setLastSync] = useState<string | null>(null);
-  const [connected, setConnected] = useState(false);
+  const [connected, setConnected] = useState<boolean>(() => isExtInstalled());
 
   const loadTxns = useCallback(async () => {
     setLoading(true);
@@ -87,9 +88,10 @@ export default function CardReconciliationTab({
     try {
       const { data } = await endpoints.cardRecon.syncStatus();
       setLastSync(data.last_sync_at ? formatPaymentDateFull(data.last_sync_at) : null);
-      setConnected(Boolean(data.ext_connected));
+      setConnected(Boolean(data.ext_connected) || isExtInstalled());
     } catch (err) {
       console.error("[card-recon] sync status failed", err);
+      setConnected(isExtInstalled());
     }
   }, []);
 
@@ -257,14 +259,16 @@ export default function CardReconciliationTab({
           ) : (
             <>
               <span style={{ color: "var(--warning-text)" }}>
-                Chưa có dữ liệu đồng bộ — cài tiện ích để tự kéo giao dịch mPOS/Payoo về.
+                {isExtInstalled()
+                  ? "Tiện ích đã cài nhưng chưa có giao dịch nào đồng bộ về. Bạn vào tab Đồng bộ mPOS/Payoo và bấm Đồng bộ ngay."
+                  : "Tiện ích chưa được cài. Bạn vào tab Đồng bộ mPOS/Payoo để cài tiện ích → tiện ích tự kéo giao dịch về app."}
               </span>
               <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
                 <button type="button" className="btn btn-outline btn-sm" onClick={handleSync} disabled={syncing}>
                   <RefreshIcon /> {syncing ? "Đang tải…" : "Tải lại"}
                 </button>
                 <button type="button" className="btn btn-outline btn-sm" onClick={() => onGoToSync?.()}>
-                  <Icons.Download size={13} /> Cài tiện ích
+                  <Icons.Download size={13} /> {isExtInstalled() ? "Đi tới tab Đồng bộ" : "Cài tiện ích"}
                 </button>
               </div>
             </>

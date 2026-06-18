@@ -49,7 +49,7 @@ const MPOS_EXPORTS = [
   },
 ];
 
-const GATEWAY_SYNC_WINDOW_DAYS = 14; // cửa sổ trượt (mPOS/Payoo giới hạn tìm ≤31 ngày)
+const GATEWAY_SYNC_WINDOW_DAYS = 3; // cửa sổ trượt (giảm 14→3 ngày theo feedback họp 18/6 — đủ cover trễ ngân hàng, data cũ giữ trong DB)
 const GATEWAY_ALARM = "palfish-gateway-sync";
 
 const CRM_URL = "https://sea.pri.ibanyu.com/";
@@ -448,11 +448,14 @@ async function runGatewaySync(trigger = "alarm") {
   const summary = [];
   let inserted = 0;
   let payooPulled = 0;
+  let payooInserted = 0;
+  let mposInserted = 0;
   let mposOk = false;
   try {
     const payoo = await syncPayoo();
     payooPulled = payoo.pulled || 0;
-    inserted += payoo.inserted || 0;
+    payooInserted = payoo.inserted || 0;
+    inserted += payooInserted;
     summary.push(payoo.ok ? `Payoo: kéo ${payoo.pulled} GD, ghi ${payoo.inserted || 0}` : `Payoo lỗi: ${payoo.error || "?"}`);
   } catch (e) {
     summary.push(`Payoo lỗi: ${e}`);
@@ -461,8 +464,8 @@ async function runGatewaySync(trigger = "alarm") {
     const mpos = await syncMpos();
     const okFiles = mpos.filter((r) => r.ok);
     mposOk = okFiles.length > 0;
-    const mInserted = mpos.reduce((sum, r) => sum + (r.inserted || 0), 0);
-    inserted += mInserted;
+    mposInserted = mpos.reduce((sum, r) => sum + (r.inserted || 0), 0);
+    inserted += mposInserted;
     const detail = mpos.map((r) => `${r.kind}${r.ok ? `✓${r.inserted || 0}` : `✗(${r.error || "?"})`}`).join(" ");
     summary.push(`mPOS: ${detail}`);
   } catch (e) {
@@ -470,7 +473,7 @@ async function runGatewaySync(trigger = "alarm") {
   }
   const summaryStr = summary.join(" · ");
   _saveState("ok", `Đồng bộ ${new Date().toLocaleTimeString("vi-VN")} — ${summaryStr}`);
-  return { ok: true, inserted, payooPulled, mposOk, summary, summaryStr };
+  return { ok: true, inserted, mposInserted, payooInserted, payooPulled, mposOk, summary, summaryStr };
 }
 
 // Tự đồng bộ định kỳ (cron NẰM TRONG extension, không phải server cron)

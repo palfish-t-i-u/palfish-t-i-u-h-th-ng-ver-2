@@ -138,6 +138,14 @@ export interface ActiveCourse {
   bonusSessionsReferee?: number;
   /** Số buổi thưởng cho người giới thiệu */
   bonusSessionsReferrer?: number;
+  /** Thời điểm bộ phận quản trị đã cộng buổi cho người được giới thiệu trong CRM (Sprint 2 BE) */
+  refereeCreditedAt?: string | null;
+  /** Người thực hiện cộng buổi cho người được giới thiệu */
+  refereeCreditedBy?: string | null;
+  /** Thời điểm bộ phận quản trị đã cộng buổi cho người giới thiệu trong CRM (Sprint 2 BE) */
+  referrerCreditedAt?: string | null;
+  /** Người thực hiện cộng buổi cho người giới thiệu */
+  referrerCreditedBy?: string | null;
 }
 
 export interface ActiveUidGroup {
@@ -240,6 +248,10 @@ export type ActiveRequestApiRow = {
       referrer_uid?: string;
       bonus_sessions_referee?: number;
       bonus_sessions_referrer?: number;
+      referee_credited_at?: string | null;
+      referee_credited_by?: string | null;
+      referrer_credited_at?: string | null;
+      referrer_credited_by?: string | null;
     }>;
   }>;
   status?: string;
