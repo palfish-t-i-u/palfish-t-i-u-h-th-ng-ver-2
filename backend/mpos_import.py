@@ -366,8 +366,6 @@ def parse_mpos_settlements(file_bytes: bytes) -> dict[str, Any]:
     """Parse mPOS settlement list export."""
     df = _read_excel(file_bytes, header=0)
     # "Danh sách phiếu chi" .xls: dòng 0 là tiêu đề, header thật ở dòng 1 → tự dò
-    if not any(col in df.columns for col in SETTLEMENT_ALIASES["settlement_code"]):
-        df = _read_excel(file_bytes, header=1)
     _require_columns(df, SETTLEMENT_ALIASES, ("created_date", "gross", "net"))
 
     settlements: list[dict[str, Any]] = []

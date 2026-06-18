@@ -21,6 +21,7 @@ class Query:
         self.patch = None
         self.upsert_rows = None
         self._limit = None
+        self.or_filter = ""
 
     def select(self, *_args, **_kwargs):
         return self
@@ -46,7 +47,8 @@ class Query:
     def lte(self, *_args, **_kwargs):
         return self
 
-    def or_(self, *_args, **_kwargs):
+    def or_(self, value, **_kwargs):
+        self.or_filter = value
         return self
 
     def update(self, patch):
@@ -75,6 +77,19 @@ class Query:
             matched = [row for row in matched if row.get(key) == value]
         for key, values in self.in_filters:
             matched = [row for row in matched if str(row.get(key)) in values]
+        if self.or_filter:
+            clauses = [clause for clause in self.or_filter.split(",") if ".ilike." in clause]
+            needles = []
+            cols = []
+            for clause in clauses:
+                col, needle = clause.split(".ilike.", 1)
+                cols.append(col)
+                needles.append(needle.replace("*", "").replace("%", "").lower())
+            matched = [
+                row
+                for row in matched
+                if any(needle in str(row.get(col) or "").lower() for col in cols for needle in needles)
+            ]
         if self.patch is not None:
             for row in matched:
                 row.update(self.patch)
@@ -206,6 +221,65 @@ def test_gateway_match_candidates_and_match_flow():
     assert match_resp.status_code == 200
     assert match_resp.json()["match_status"] == "matched"
     assert sb.tables["gateway_transactions"][0]["payment_line_id"] == "line-1"
+
+
+def test_gateway_match_candidates_search_finds_pr_without_amount_match():
+    sb = FakeSB()
+    sb.tables["gateway_transactions"].append(
+        {
+            "id": "txn-search",
+            "source": "mpos",
+            "category": "Quet the",
+            "txn_code": "gw-search",
+            "amount": 9999,
+            "match_status": "pending",
+            "paid_at": "2026-06-16T10:05:00+00:00",
+        }
+    )
+    sb.tables["payment_requests"].append(
+        {"id": "PR-SEARCH", "name": "Needle Customer", "uid": "uid-search", "phone": "0909999999"}
+    )
+    sb.tables["payment_lines"].append(
+        {
+            "id": "line-search",
+            "payment_request_id": "PR-SEARCH",
+            "amount": 1234,
+            "status": "pending",
+            "created_at": "2026-06-16T10:01:00+00:00",
+            "bill_images": [],
+        }
+    )
+    client = build_client(sb)
+
+    with patch("gateway_routes.resolve_actor", return_value=ACTOR):
+        with patch("gateway_routes.require_module_access"):
+            resp = client.get("/api/v1/gateway-txns/txn-search/match-candidates?search=Needle")
+
+    assert resp.status_code == 200
+    assert [row["payment_line_id"] for row in resp.json()] == ["line-search"]
+
+
+def test_gateway_match_candidates_search_empty_returns_empty():
+    sb = FakeSB()
+    sb.tables["gateway_transactions"].append(
+        {
+            "id": "txn-empty",
+            "source": "payoo",
+            "category": "Online",
+            "txn_code": "gw-empty",
+            "amount": 1000,
+            "match_status": "pending",
+            "paid_at": "2026-06-16T10:05:00+00:00",
+        }
+    )
+    client = build_client(sb)
+
+    with patch("gateway_routes.resolve_actor", return_value=ACTOR):
+        with patch("gateway_routes.require_module_access"):
+            resp = client.get("/api/v1/gateway-txns/txn-empty/match-candidates?search=nope")
+
+    assert resp.status_code == 200
+    assert resp.json() == []
 
 
 def test_payoo_orders_json_parser_maps_real_fields():

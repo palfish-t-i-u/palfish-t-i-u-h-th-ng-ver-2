@@ -466,11 +466,24 @@ def register_sepay_routes(app, get_supabase: Callable) -> None:
             from payment_request_routes import recompute_payment_request_totals
 
             now_iso = _iso_now()
+            line_lookup = (
+                sb.table("payment_lines")
+                .select("*")
+                .eq("id", payment_line_id)
+                .limit(1)
+                .execute()
+            )
+            if not line_lookup.data:
+                raise HTTPException(404, "Khong tim thay payment_line")
+            line_row = line_lookup.data[0]
+            discrepancy_amount = _parse_amount(txn.get("amount")) - _parse_amount(line_row.get("amount"))
+
             # Update bank_transaction
             sb.table("bank_transactions").update({
                 "match_status": "manual_matched",
                 "payment_line_id": payment_line_id,
                 "matched_by": actor.email,
+                "discrepancy_amount": discrepancy_amount,
                 "updated_at": now_iso,
             }).eq("txn_id", txn_id).execute()
 
@@ -487,9 +500,16 @@ def register_sepay_routes(app, get_supabase: Callable) -> None:
                     recompute_payment_request_totals(sb, pr_id)
 
         except Exception as exc:
+            if isinstance(exc, HTTPException):
+                raise
             raise HTTPException(500, f"Manual match failed: {exc}") from exc
 
-        return {"matched": True, "txn_id": txn_id, "payment_line_id": payment_line_id}
+        return {
+            "matched": True,
+            "txn_id": txn_id,
+            "payment_line_id": payment_line_id,
+            "discrepancy_amount": discrepancy_amount,
+        }
 
     # -----------------------------------------------------------------------
     # List bank transactions: GET /api/v1/bank-transactions
@@ -541,6 +561,7 @@ def register_sepay_routes(app, get_supabase: Callable) -> None:
     @router.get("/api/v1/bank-transactions/{txn_id}/match-candidates")
     def bank_txn_match_candidates(
         txn_id: str,
+        amount_exact: float | None = Query(None),
         authorization: str | None = Header(None),
     ):
         sb = _sb_or_503(get_supabase)
@@ -560,14 +581,16 @@ def register_sepay_routes(app, get_supabase: Callable) -> None:
         txn = txn_res.data[0]
         txn_amount = _parse_amount(txn.get("amount", 0))
 
-        lines_res = (
+        lines_query = (
             sb.table("payment_lines")
             .select("id, payment_request_id, amount, method, status, transfer_code, created_at")
             .in_("status", ["pending", "paid"])
             .order("created_at", desc=True)
             .limit(500)
-            .execute()
         )
+        if amount_exact is not None:
+            lines_query = lines_query.eq("amount", amount_exact)
+        lines_res = lines_query.execute()
         lines = lines_res.data or []
 
         # Lookup PR info (payment_request_id là text, không phải FK → query riêng)
@@ -577,7 +600,7 @@ def register_sepay_routes(app, get_supabase: Callable) -> None:
             try:
                 pr_res = (
                     sb.table("payment_requests")
-                    .select("id, name, uid, phone")
+                    .select("id, name, uid, phone, child_name, sale_email")
                     .in_("id", pr_ids)
                     .execute()
                 )
@@ -585,16 +608,50 @@ def register_sepay_routes(app, get_supabase: Callable) -> None:
             except Exception as exc:
                 print(f"[sepay] pr lookup failed: {exc}")
 
+        sale_name_map: dict[str, str] = {}
+        try:
+            from payment_request_routes import _sale_name_map
+
+            sale_name_map = _sale_name_map(sb)
+        except Exception as exc:
+            print(f"[sepay] sale name lookup failed: {exc}")
+
+        sale_emails = sorted({
+            _clean_text(pr.get("sale_email")).lower()
+            for pr in pr_info.values()
+            if _clean_text(pr.get("sale_email"))
+        })
+        team_by_email: dict[str, str] = {}
+        if sale_emails:
+            try:
+                ns_res = (
+                    sb.table("nhan_su_sale")
+                    .select("email, team, sub_team")
+                    .in_("email", sale_emails)
+                    .execute()
+                )
+                team_by_email = {
+                    _clean_text(row.get("email")).lower(): _clean_text(row.get("team") or row.get("sub_team"))
+                    for row in (ns_res.data or [])
+                    if _clean_text(row.get("email"))
+                }
+            except Exception as exc:
+                print(f"[sepay] team lookup failed: {exc}")
+
         candidates = []
         for line in lines:
             pr_id = line.get("payment_request_id", "")
             pr = pr_info.get(pr_id, {})
+            sale_email = _clean_text(pr.get("sale_email")).lower()
             candidates.append({
                 "payment_line_id": line["id"],
                 "pr_id": pr_id,
                 "pr_name": pr.get("name", ""),
                 "pr_uid": pr.get("uid", ""),
                 "pr_phone": pr.get("phone", ""),
+                "child_name": pr.get("child_name") or "",
+                "sale_name": sale_name_map.get(sale_email, sale_email),
+                "team_name": team_by_email.get(sale_email, ""),
                 "amount": _parse_amount(line.get("amount", 0)),
                 "created_at": line.get("created_at"),
                 "method": line.get("method", ""),
