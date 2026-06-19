@@ -930,6 +930,8 @@ def _ascii_transfer_name(value: Any) -> str:
 _COUNTRY_DIAL: dict[str, str] = {
     "VN": "84", "US": "1", "GB": "44", "CN": "86", "JP": "81",
     "KR": "82", "TH": "66", "SG": "65", "MY": "60", "ID": "62", "PH": "63",
+    "DE": "49", "FR": "33", "AU": "61", "CA": "1", "RU": "7", "IN": "91",
+    "TW": "886", "HK": "852", "NZ": "64", "NL": "31", "IT": "39", "ES": "34",
 }
 
 
@@ -966,21 +968,30 @@ def _build_payos_transfer_description(
 
     first_name = name.split()[-1] if name else ""
 
+    # Ưu tiên 1: giữ phone + full name truncated + code (anh feedback 19/6
+    # muốn thấy cả tên trong nội dung CK).
     if phone and name:
-        if first_name:
-            trial = " ".join([phone, first_name, code])
-            if len(trial) <= _PAYOS_DESCRIPTION_MAX_LEN and code in trial:
-                return trial
-        trial = f"{phone} {code}"
+        budget = _PAYOS_DESCRIPTION_MAX_LEN - len(phone) - len(code) - 2  # 2 dấu cách
+        if budget >= 3:
+            short_name = name[:budget].rstrip()
+            if short_name:
+                trial = f"{phone} {short_name} {code}"
+                if len(trial) <= _PAYOS_DESCRIPTION_MAX_LEN and code in trial:
+                    return trial
+
+    # Ưu tiên 2: phone + first_name (last word) + code.
+    if phone and name and first_name:
+        trial = " ".join([phone, first_name, code])
         if len(trial) <= _PAYOS_DESCRIPTION_MAX_LEN and code in trial:
             return trial
 
-    if name:
-        if first_name:
-            trial = f"{first_name} {code}"
-            if len(trial) <= _PAYOS_DESCRIPTION_MAX_LEN and code in trial:
-                return trial
+    # Ưu tiên 3: chỉ tên (không phone) + code.
+    if name and first_name:
+        trial = f"{first_name} {code}"
+        if len(trial) <= _PAYOS_DESCRIPTION_MAX_LEN and code in trial:
+            return trial
 
+    # Cuối: phone + code, không tên.
     if phone:
         max_phone_len = _PAYOS_DESCRIPTION_MAX_LEN - len(code) - 1
         if max_phone_len > 0:
