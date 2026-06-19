@@ -1282,7 +1282,7 @@ function ActiveRequestMiniCardV2({
                                       ),
                                     }));
                                   }}
-                                  style={{ font: "inherit", fontSize: 12, fontFamily: "JetBrains Mono, monospace", width: "100%", borderRadius: 8, border: "1px solid var(--border)", padding: "5px 7px", boxSizing: "border-box" }}
+                                  style={{ font: "inherit", fontSize: 14, fontFamily: "JetBrains Mono, monospace", width: "100%", borderRadius: 8, border: "1.5px solid var(--text-3)", padding: "8px 12px", boxSizing: "border-box", color: "var(--text)" }}
                                 />
                                 <div style={{ fontSize: 11, color: "var(--text-3)", marginTop: 3 }}>
                                   Nhập đúng UID khách hàng đã giới thiệu khách này. UID phải khác UID người được giới thiệu.
@@ -1311,7 +1311,7 @@ function ActiveRequestMiniCardV2({
                                         ),
                                       }));
                                     }}
-                                    style={{ font: "inherit", fontSize: 12, textAlign: "right", width: 100, borderRadius: 8, border: "1px solid var(--border)", padding: "5px 7px" }}
+                                    style={{ font: "inherit", fontSize: 15, fontWeight: 600, textAlign: "right", width: 120, borderRadius: 8, border: "1.5px solid var(--text-3)", padding: "8px 12px", color: "var(--text)" }}
                                   />
                                   <span style={{ fontSize: 12, color: "var(--text-2)" }}>buổi</span>
                                 </div>
@@ -1339,7 +1339,7 @@ function ActiveRequestMiniCardV2({
                                         ),
                                       }));
                                     }}
-                                    style={{ font: "inherit", fontSize: 12, textAlign: "right", width: 100, borderRadius: 8, border: "1px solid var(--border)", padding: "5px 7px" }}
+                                    style={{ font: "inherit", fontSize: 15, fontWeight: 600, textAlign: "right", width: 120, borderRadius: 8, border: "1.5px solid var(--text-3)", padding: "8px 12px", color: "var(--text)" }}
                                   />
                                   <span style={{ fontSize: 12, color: "var(--text-2)" }}>buổi</span>
                                 </div>

@@ -240,7 +240,9 @@ export default function CardReconciliationTab({
   const updateTxn = (id: string, patch: Partial<GatewayTxn>) =>
     setTxns((prev) => prev.map((t) => (t.id === id ? { ...t, ...patch } : t)));
 
-  const handleMatch = async () => {
+  const [mismatchConfirm, setMismatchConfirm] = useState<{ open: boolean; discrepancy: number }>({ open: false, discrepancy: 0 });
+
+  const performMatch = async () => {
     if (!drawerTxn || !picked) return;
     try {
       const { data } = await endpoints.cardRecon.match(drawerTxn.id, picked);
@@ -249,7 +251,21 @@ export default function CardReconciliationTab({
       console.error("[card-recon] match failed", err);
       return;
     }
+    setMismatchConfirm({ open: false, discrepancy: 0 });
     setDrawerOpen(false);
+  };
+
+  const handleMatch = async () => {
+    if (!drawerTxn || !picked) return;
+    const cand = candidates.find((c) => c.payment_line_id === picked);
+    if (cand) {
+      const discrepancy = drawerTxn.amount - cand.amount;
+      if (Math.abs(discrepancy) >= 1) {
+        setMismatchConfirm({ open: true, discrepancy });
+        return;
+      }
+    }
+    await performMatch();
   };
 
   const handleIgnore = async (id: string) => {
@@ -522,7 +538,7 @@ export default function CardReconciliationTab({
         onClick={() => setDrawerOpen(false)}
         style={{ pointerEvents: drawerOpen ? "auto" : "none" }}
       />
-      <aside className={`drawer ${drawerOpen ? "open" : ""}`} style={{ width: "min(960px, 95vw)" }}>
+      <aside className={`drawer drawer-center ${drawerOpen ? "open" : ""}`} style={{ width: "min(1040px, 95vw)" }}>
         {drawerTxn && (
           <>
             <div className="drawer-head">
@@ -774,6 +790,47 @@ export default function CardReconciliationTab({
           </>
         )}
       </aside>
+
+      {mismatchConfirm.open && (
+        <div className="gmv-prototype-modal-scrim" onClick={() => setMismatchConfirm({ open: false, discrepancy: 0 })}>
+          <div className="modal" style={{ width: "min(440px, 92vw)" }} onClick={(e) => e.stopPropagation()}>
+            <div className="modal-head">
+              <h3>Số tiền không khớp</h3>
+            </div>
+            <div style={{ padding: "12px 16px", display: "flex", flexDirection: "column", gap: 14, fontSize: 14 }}>
+              <div style={{
+                padding: 12,
+                background: "var(--caution-bg, #fef9c3)",
+                border: "1px solid var(--caution, #eab308)",
+                borderRadius: 8,
+                color: "var(--text)",
+              }}>
+                <div style={{ fontWeight: 600, marginBottom: 6 }}>
+                  Số tiền giao dịch và lần thanh toán bị lệch:
+                </div>
+                <div style={{ display: "flex", justifyContent: "space-between", padding: "4px 0" }}>
+                  <span style={{ color: "var(--text-2)" }}>Chênh lệch</span>
+                  <strong style={{ color: mismatchConfirm.discrepancy > 0 ? "var(--success-text)" : "var(--danger)" }}>
+                    {mismatchConfirm.discrepancy > 0 ? "+" : ""}{vnd(mismatchConfirm.discrepancy)}
+                    {mismatchConfirm.discrepancy > 0 ? " (thừa)" : " (thiếu)"}
+                  </strong>
+                </div>
+                <div style={{ fontSize: 12, color: "var(--text-2)", marginTop: 8 }}>
+                  Vẫn tiếp tục ghép? Phần lệch sẽ được lưu để báo cáo.
+                </div>
+              </div>
+              <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+                <button className="btn btn-outline btn-sm" onClick={() => setMismatchConfirm({ open: false, discrepancy: 0 })}>
+                  Hủy
+                </button>
+                <button className="btn btn-primary btn-sm" onClick={performMatch}>
+                  Vẫn ghép
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

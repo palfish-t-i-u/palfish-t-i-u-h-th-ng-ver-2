@@ -481,6 +481,26 @@
   box-shadow: -24px 0 60px rgba(20, 22, 36, 0.18);
 }
 .gmv-prototype .drawer.open { transform: translateX(0); }
+
+/* Variant: center modal (for mPOS/Payoo recon — đồng bộ UI per spec 18/6) */
+.gmv-prototype .drawer.drawer-center {
+  position: fixed;
+  top: 50%; left: 50%; right: auto;
+  height: auto; max-height: 90vh;
+  border-radius: 14px;
+  transform: translate(-50%, -50%) scale(0.96);
+  transition: transform 200ms cubic-bezier(.4, 0, .2, 1), opacity 200ms;
+  opacity: 0;
+  box-shadow: 0 24px 70px rgba(20, 22, 36, 0.28);
+  overflow: hidden;
+}
+.gmv-prototype .drawer.drawer-center.open {
+  transform: translate(-50%, -50%) scale(1);
+  opacity: 1;
+}
+.gmv-prototype .drawer.drawer-center .drawer-head { padding: 20px 28px; }
+.gmv-prototype .drawer.drawer-center .drawer-body { padding: 20px 28px; overflow-y: auto; flex: 1; }
+.gmv-prototype .drawer.drawer-center .drawer-foot { padding: 16px 28px; border-top: 1px solid var(--border); }
 .gmv-prototype .drawer-head {
   display: flex; align-items: center; justify-content: space-between;
   padding: 18px 24px;
