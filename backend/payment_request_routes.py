@@ -631,6 +631,7 @@ def _serialize_payment_line(
         "status": row.get("status") or "pending",
         "payos_order_code": row.get("payos_order_code") or "",
         "transfer_code": row.get("transfer_code") or "",
+        "transfer_content": row.get("transfer_content") or "",
         "qr_code": row.get("qr_code") or "",
         "checkout_url": row.get("checkout_url") or "",
         "paid_at": row.get("paid_at") or "",
