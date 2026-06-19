@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { LEAD_SOURCES, findSourceByKey, sourceHasChannels } from "../../constants/leadSource";
+import { LEAD_SOURCES, defaultChannelForSource, findSourceByKey, sourceHasChannels } from "../../constants/leadSource";
 import type {
   ActiveRequest,
   AddPaymentAttemptPayload,
@@ -1208,7 +1208,7 @@ function ActiveRequestMiniCardV2({
                                       ...uu,
                                       courses: uu.courses.map((course) =>
                                         course.courseCode === c.courseCode
-                                          ? { ...course, leadSource: val, leadChannel: undefined }
+                                          ? { ...course, leadSource: val, leadChannel: defaultChannelForSource(val) }
                                           : course
                                       ),
                                     }

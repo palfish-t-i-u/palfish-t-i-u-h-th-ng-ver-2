@@ -412,10 +412,17 @@ function ActivationDetailDrawer({
       });
       onUpdate(fromApiActiveRequest(data));
     } catch (e: unknown) {
-      const msg =
-        e && typeof e === "object" && "response" in e
-          ? String((e as { response?: { data?: { detail?: string } } }).response?.data?.detail || "Lỗi cập nhật")
-          : "Lỗi cập nhật";
+      const detail = (e as { response?: { data?: { detail?: unknown } } })?.response?.data?.detail;
+      let msg = "Lỗi cập nhật";
+      if (typeof detail === "string") {
+        msg = detail;
+      } else if (Array.isArray(detail)) {
+        msg = detail
+          .map((d) => (typeof d === "object" && d && "msg" in d ? String((d as { msg: unknown }).msg) : JSON.stringify(d)))
+          .join("; ");
+      } else if (detail) {
+        msg = JSON.stringify(detail);
+      }
       setCreditError((p) => ({ ...p, [key]: msg }));
     } finally {
       setCreditInflight((p) => ({ ...p, [key]: false }));

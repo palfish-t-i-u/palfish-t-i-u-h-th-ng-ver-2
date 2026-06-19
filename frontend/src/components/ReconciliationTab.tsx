@@ -1572,27 +1572,30 @@ export default function ReconciliationTab() {
                                 padding: "10px 12px", border: `2px solid ${selected ? "var(--primary)" : "var(--border)"}`,
                                 borderRadius: 8, cursor: "pointer", fontSize: 14,
                                 background: selected ? "var(--primary-bg, rgba(99,102,241,0.06))" : "var(--surface-1)",
+                                color: "var(--text)",
                               }}
                             >
                               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                                <span style={{ fontWeight: 700, fontSize: 15, color: "var(--text-1)" }}>{c.pr_name || c.pr_id}</span>
-                                <span style={{ fontWeight: 700, fontSize: 15, color: exactAmount ? "var(--success-text)" : "var(--text-1)" }}>
+                                <span style={{ fontWeight: 700, fontSize: 15, color: "var(--text)" }}>{c.pr_name || c.pr_id}</span>
+                                <span style={{ fontWeight: 700, fontSize: 15, color: exactAmount ? "var(--success-text)" : "var(--text)" }}>
                                   {vnd(c.amount)}{exactAmount && " ✓"}
                                 </span>
                               </div>
-                              <div style={{ fontSize: 13, color: "var(--text-2)", marginTop: 4 }}>
-                                {c.pr_id}{c.pr_uid ? ` · UID ${c.pr_uid}` : ""}{c.pr_phone ? ` · ${c.pr_phone}` : ""}
+                              <div style={{ fontSize: 13, color: "var(--text)", marginTop: 4 }}>
+                                <strong>{c.pr_id}</strong>
+                                {c.pr_uid ? <> · UID <strong>{c.pr_uid}</strong></> : null}
+                                {c.pr_phone ? <> · {c.pr_phone}</> : null}
                               </div>
                               {(c.child_name || c.sale_name || c.team_name) && (
-                                <div style={{ fontSize: 13, color: "var(--text-2)", marginTop: 2 }}>
-                                  {c.child_name ? <strong>Con: {c.child_name}</strong> : null}
+                                <div style={{ fontSize: 13, color: "var(--text)", marginTop: 3 }}>
+                                  {c.child_name ? <>Con: <strong>{c.child_name}</strong></> : null}
                                   {c.child_name && (c.sale_name || c.team_name) ? " · " : ""}
-                                  {c.sale_name ? `Sale: ${c.sale_name}` : ""}
+                                  {c.sale_name ? <>Sale: <strong>{c.sale_name}</strong></> : null}
                                   {c.sale_name && c.team_name ? " · " : ""}
-                                  {c.team_name ? `Team: ${c.team_name}` : ""}
+                                  {c.team_name ? <>Team: <strong>{c.team_name}</strong></> : null}
                                 </div>
                               )}
-                              <div style={{ fontSize: 12, color: "var(--text-3)", marginTop: 2 }}>
+                              <div style={{ fontSize: 12, color: "var(--text-2)", marginTop: 3 }}>
                                 {c.method} · {c.status} · mã: {c.transfer_code || "—"}
                                 {c.created_at ? ` · ${formatPaymentDateFull(c.created_at)}` : ""}
                               </div>
