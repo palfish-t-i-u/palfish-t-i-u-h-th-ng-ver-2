@@ -118,6 +118,14 @@ class ExportBatchItem(BaseModel):
     course_code: str = Field(..., min_length=1)
 
 
+class CreditReferralBody(BaseModel):
+    uid: str
+    course_code: str
+    side: str  # "referee" or "referrer"
+    credited: bool
+    reason: str | None = None
+
+
 class ExportBatchBody(BaseModel):
     items: list[ExportBatchItem] | None = None
 
@@ -1395,13 +1403,6 @@ def register_activation_routes(app, supabase_factory):
             _sync_ledger_courses_from_uids(sb, ar_id, merged.get("uids_data") or guarded_uids)
         pr_map = _fetch_prs_by_ids(sb, [str(merged.get("pr_id") or "")])
         return _serialize_ar(merged, pr_map.get(str(merged.get("pr_id") or "")))
-
-    class CreditReferralBody(BaseModel):
-        uid: str
-        course_code: str
-        side: str  # "referee" or "referrer"
-        credited: bool
-        reason: str | None = None
 
     @app.patch("/api/v1/active-requests/{ar_id}/credit-referral", tags=["Activation"])
     def credit_referral(
