@@ -323,7 +323,7 @@ export default function CardReconciliationTab({
               <Icons.Database size={16} />
             </div>
             <div className="kpi-label">Tổng giao dịch</div>
-            <div className="kpi-value">{counts.total}</div>
+            <div className="kpi-value">{loading ? "…" : counts.total}</div>
             <div className="kpi-sub">{SOURCE_TABS.find((s) => s.id === source)?.label}</div>
           </div>
           <div className="kpi">
@@ -331,7 +331,7 @@ export default function CardReconciliationTab({
               <Icons.Clock size={16} />
             </div>
             <div className="kpi-label">Chưa ghép</div>
-            <div className="kpi-value">{counts.pending}</div>
+            <div className="kpi-value">{loading ? "…" : counts.pending}</div>
             <div className="kpi-sub">Chờ kế toán đối chiếu</div>
           </div>
           <div className="kpi">
@@ -339,7 +339,7 @@ export default function CardReconciliationTab({
               <Icons.CheckCircle size={16} />
             </div>
             <div className="kpi-label">Đã ghép</div>
-            <div className="kpi-value">{counts.matched}</div>
+            <div className="kpi-value">{loading ? "…" : counts.matched}</div>
             <div className="kpi-sub">Khớp lần thanh toán</div>
           </div>
           <div className="kpi">
@@ -347,7 +347,7 @@ export default function CardReconciliationTab({
               <Icons.Wallet size={16} />
             </div>
             <div className="kpi-label">Tổng tiền</div>
-            <div className="kpi-value" style={{ fontSize: 18 }}>{vnd(counts.sum)}</div>
+            <div className="kpi-value" style={{ fontSize: 18 }}>{loading ? "…" : vnd(counts.sum)}</div>
             <div className="kpi-sub">Toàn bộ {SOURCE_TABS.find((s) => s.id === source)?.label}</div>
           </div>
         </div>
@@ -379,7 +379,7 @@ export default function CardReconciliationTab({
               <div className="tabs">
                 <div className="tab active">
                   {source === "mpos" ? "mPOS" : "Payoo"}
-                  <span className="tab-count">{bySource.length}</span>
+                  <span className="tab-count">{loading ? "…" : bySource.length}</span>
                 </div>
               </div>
             ) : (
@@ -390,13 +390,13 @@ export default function CardReconciliationTab({
                   return (
                     <div key={s.id} className={`tab ${isActive ? "active" : ""}`} onClick={() => setSource(s.id)}>
                       {s.label}
-                      <span className="tab-count">{n}</span>
+                      <span className="tab-count">{loading ? "…" : n}</span>
                     </div>
                   );
                 })}
               </div>
             )}
-            <span className="right-meta">{filtered.length} kết quả</span>
+            <span className="right-meta">{loading ? "Đang tải…" : `${filtered.length} kết quả`}</span>
           </div>
 
           <div className="tbl-wrap">

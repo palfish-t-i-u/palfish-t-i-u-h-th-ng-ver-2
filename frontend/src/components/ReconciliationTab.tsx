@@ -910,7 +910,11 @@ export default function ReconciliationTab() {
                       const whenFmt = when ? formatPaymentDateTime(when) : { date: "—", time: "" };
                       const isReview = b.match_status === "needs_review";
                       return (
-                        <tr key={b.txn_id}>
+                        <tr
+                          key={b.txn_id}
+                          onClick={() => !readOnly && openBankMatch(b.txn_id)}
+                          style={{ cursor: readOnly ? "default" : "pointer" }}
+                        >
                           <td>
                             <div className="cell-time">{whenFmt.date}</div>
                             <div className="time-relative">{whenFmt.time}</div>
@@ -932,7 +936,11 @@ export default function ReconciliationTab() {
                           </td>
                           <td style={{ textAlign: "center" }}>
                             {!readOnly && (
-                              <button type="button" className="btn btn-primary btn-sm" onClick={() => openBankMatch(b.txn_id)}>
+                              <button
+                                type="button"
+                                className="btn btn-primary btn-sm"
+                                onClick={(e) => { e.stopPropagation(); openBankMatch(b.txn_id); }}
+                              >
                                 Ghép
                               </button>
                             )}
