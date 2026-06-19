@@ -193,11 +193,21 @@ export default function CardReconciliationTab({
           console.error("[card-recon] manual search failed", err);
           if (alive) {
             setCandidates([]);
-            const detail = (err as { response?: { data?: { detail?: unknown }; status?: number } })?.response?.data?.detail;
-            const status = (err as { response?: { status?: number } })?.response?.status;
-            const msg = typeof detail === "string"
-              ? detail
-              : status ? `Lỗi máy chủ (HTTP ${status})` : "Lỗi gọi máy chủ — kiểm tra kết nối";
+            const ax = err as {
+              response?: { data?: { detail?: unknown }; status?: number };
+              message?: string;
+              code?: string;
+            };
+            const detail = ax?.response?.data?.detail;
+            const status = ax?.response?.status;
+            let msg: string;
+            if (typeof detail === "string") {
+              msg = detail;
+            } else if (status) {
+              msg = `Lỗi máy chủ (HTTP ${status})`;
+            } else {
+              msg = `Lỗi mạng: ${ax?.code || ax?.message || "không rõ"}`;
+            }
             setManualSearchError(msg);
           }
         })
