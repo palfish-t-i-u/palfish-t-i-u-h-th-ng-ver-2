@@ -1931,13 +1931,17 @@
   padding: 20px;
 }
 
-/* ───────── Quản lý thanh toán: vừa khít viewport, bảng cuộn trong ─────────
-   Chỉ áp cho .page--fit (PaymentRequestsTab). Desktop ≥768px;
-   mobile giữ cuộn trang tự nhiên (đã có bottom-nav 72px). */
+/* ───────── Vừa khít viewport, bảng cuộn trong ─────────
+   Áp cho .page--fit (PaymentRequestsTab + 3 tab đối soát). Desktop ≥768px;
+   mobile giữ cuộn trang tự nhiên (đã có bottom-nav 72px).
+   AppShell sandbox banner 22px được track qua [data-sandbox-banner] → --app-banner-h.  */
+:root { --app-banner-h: 0px; }
+[data-sandbox-banner="1"] { --app-banner-h: 22px; }
+
 @media (min-width: 768px) {
   .gmv-prototype .page.page--fit {
-    /* 100vh − 64px header − 24px×2 padding <main> */
-    height: calc(100vh - 112px);
+    /* viewport − header 64 − main padding 24×2 − sandbox banner (0 hoặc 22) */
+    height: calc(100vh - 112px - var(--app-banner-h, 0px));
     padding-bottom: 0;
     overflow: hidden;
   }
