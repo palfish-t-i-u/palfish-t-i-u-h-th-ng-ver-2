@@ -1353,16 +1353,28 @@ function ActivationDetailDrawer({
                     const headerText = REFERRAL_STATUS_HEADER[rs];
                     const refereeKey = creditKey(uidObj.uid || "", course.courseCode, "referee");
                     const referrerKey = creditKey(uidObj.uid || "", course.courseCode, "referrer");
+                    const courseActivated = Boolean(course.orderId?.trim());
+                    const lockedTooltip = !courseActivated
+                      ? "Cần điền Order ID (kích hoạt khoá) trước khi tick cộng buổi"
+                      : "";
                     return (
                       <div style={{ padding: "10px 12px", borderRadius: 8, marginTop: 6, ...panelStyle }}>
                         <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text-1, #111)", marginBottom: 6 }}>{headerText}</div>
+                        {!courseActivated && (
+                          <div style={{ fontSize: 12, color: "var(--caution-text, #92400e)", marginBottom: 6, fontStyle: "italic" }}>
+                            Chưa kích hoạt khoá (chưa điền Order ID) — không thể tick cộng buổi.
+                          </div>
+                        )}
                         {(course.bonusSessionsReferee ?? 0) > 0 && (
                           <div style={{ fontSize: 13, color: "var(--text-1, #111)", display: "flex", alignItems: "flex-start", gap: 8 }}>
-                            <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer" }}>
+                            <label
+                              style={{ display: "flex", alignItems: "center", gap: 6, cursor: courseActivated ? "pointer" : "not-allowed", opacity: courseActivated ? 1 : 0.55 }}
+                              title={lockedTooltip}
+                            >
                               <input
                                 type="checkbox"
                                 checked={Boolean(course.refereeCreditedAt)}
-                                disabled={Boolean(creditInflight[refereeKey])}
+                                disabled={!courseActivated || Boolean(creditInflight[refereeKey])}
                                 onChange={(e) => handleCreditToggle(uidObj.uid || "", course.courseCode, "referee", e.target.checked)}
                               />
                               <span style={{ fontWeight: 600 }}>Đã cộng buổi</span>
@@ -1381,11 +1393,14 @@ function ActivationDetailDrawer({
                         )}
                         {(course.bonusSessionsReferrer ?? 0) > 0 && (
                           <div style={{ fontSize: 13, color: "var(--text-1, #111)", marginTop: 6, display: "flex", alignItems: "flex-start", gap: 8 }}>
-                            <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer" }}>
+                            <label
+                              style={{ display: "flex", alignItems: "center", gap: 6, cursor: courseActivated ? "pointer" : "not-allowed", opacity: courseActivated ? 1 : 0.55 }}
+                              title={lockedTooltip}
+                            >
                               <input
                                 type="checkbox"
                                 checked={Boolean(course.referrerCreditedAt)}
-                                disabled={Boolean(creditInflight[referrerKey])}
+                                disabled={!courseActivated || Boolean(creditInflight[referrerKey])}
                                 onChange={(e) => handleCreditToggle(uidObj.uid || "", course.courseCode, "referrer", e.target.checked)}
                               />
                               <span style={{ fontWeight: 600 }}>Đã cộng buổi</span>

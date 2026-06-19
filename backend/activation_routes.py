@@ -1442,6 +1442,11 @@ def register_activation_routes(app, supabase_factory):
         if not target_course:
             raise HTTPException(404, "Không tìm thấy course trong active request này")
 
+        # Chỉ cho cộng buổi khi course đã kích hoạt (có order_id) — bỏ tick thì
+        # vẫn cho phép để sửa lỗi cộng nhầm trên course đã rollback Order ID.
+        if body.credited and not str(target_course.get("order_id") or "").strip():
+            raise HTTPException(400, "Khoá học chưa được kích hoạt (chưa có Order ID) — không thể cộng buổi")
+
         now = datetime.now(timezone.utc).isoformat()
         from audit import log_audit
 
