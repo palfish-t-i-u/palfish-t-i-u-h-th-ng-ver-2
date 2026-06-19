@@ -967,30 +967,33 @@ def _build_payos_transfer_description(
     if len(description) <= _PAYOS_DESCRIPTION_MAX_LEN and code in description:
         return description
 
-    first_name = name.split()[-1] if name else ""
+    # Vietnamese name convention (anh feedback 19/6):
+    # 3 tier ưu tiên — full → 2 từ cuối → 1 từ cuối (tên riêng).
+    # KHÔNG cắt giữa từ. KHÔNG có tier "bỏ họ giữ 2 từ đệm + tên riêng"
+    # (vd "Thi Bich Van") vì nghe ngang.
+    name_words = name.split() if name else []
+    name_candidates: list[str] = []
+    if name_words:
+        full = " ".join(name_words)
+        last2 = " ".join(name_words[-2:]) if len(name_words) >= 2 else ""
+        last1 = name_words[-1]
+        for candidate in (full, last2, last1):
+            if candidate and candidate not in name_candidates:
+                name_candidates.append(candidate)
 
-    # Ưu tiên 1: giữ phone + full name truncated + code (anh feedback 19/6
-    # muốn thấy cả tên trong nội dung CK).
-    if phone and name:
-        budget = _PAYOS_DESCRIPTION_MAX_LEN - len(phone) - len(code) - 2  # 2 dấu cách
-        if budget >= 3:
-            short_name = name[:budget].rstrip()
-            if short_name:
-                trial = f"{phone} {short_name} {code}"
-                if len(trial) <= _PAYOS_DESCRIPTION_MAX_LEN and code in trial:
-                    return trial
+    # Ưu tiên 1: phone + tên (full → last2 → last1) + code.
+    if phone and name_candidates:
+        for candidate in name_candidates:
+            trial = f"{phone} {candidate} {code}"
+            if len(trial) <= _PAYOS_DESCRIPTION_MAX_LEN and code in trial:
+                return trial
 
-    # Ưu tiên 2: phone + first_name (last word) + code.
-    if phone and name and first_name:
-        trial = " ".join([phone, first_name, code])
-        if len(trial) <= _PAYOS_DESCRIPTION_MAX_LEN and code in trial:
-            return trial
-
-    # Ưu tiên 3: chỉ tên (không phone) + code.
-    if name and first_name:
-        trial = f"{first_name} {code}"
-        if len(trial) <= _PAYOS_DESCRIPTION_MAX_LEN and code in trial:
-            return trial
+    # Ưu tiên 2: chỉ tên + code (bỏ phone nếu phone không vừa).
+    if name_candidates:
+        for candidate in name_candidates:
+            trial = f"{candidate} {code}"
+            if len(trial) <= _PAYOS_DESCRIPTION_MAX_LEN and code in trial:
+                return trial
 
     # Cuối: phone + code, không tên.
     if phone:
