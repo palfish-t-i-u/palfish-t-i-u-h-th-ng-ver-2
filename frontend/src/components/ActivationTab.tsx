@@ -1383,7 +1383,7 @@ function ActivationDetailDrawer({
                               Người được giới thiệu (UID: {uidObj.uid || "—"}) — cộng thêm {course.bonusSessionsReferee} buổi.
                               {" "}
                               {course.refereeCreditedAt
-                                ? <span style={{ color: "var(--text-3)" }}>Đã cộng lúc {formatPaymentDateFull(course.refereeCreditedAt)}{course.refereeCreditedBy ? ` · ${course.refereeCreditedBy}` : ""}</span>
+                                ? <span style={{ color: "var(--success-text)", fontWeight: 600 }}>Đã cộng lúc {formatPaymentDateFull(course.refereeCreditedAt)}{course.refereeCreditedBy ? ` · ${course.refereeCreditedBy}` : ""}</span>
                                 : <span style={{ color: "var(--text-3)" }}>Chưa cộng</span>}
                               {creditError[refereeKey] && (
                                 <div style={{ color: "var(--danger)", fontSize: 11.5, marginTop: 2 }}>{creditError[refereeKey]}</div>
@@ -1409,7 +1409,7 @@ function ActivationDetailDrawer({
                               Người giới thiệu (UID: {course.referrerUid || "—"}) — cộng thêm {course.bonusSessionsReferrer} buổi.
                               {" "}
                               {course.referrerCreditedAt
-                                ? <span style={{ color: "var(--text-3)" }}>Đã cộng lúc {formatPaymentDateFull(course.referrerCreditedAt)}{course.referrerCreditedBy ? ` · ${course.referrerCreditedBy}` : ""}</span>
+                                ? <span style={{ color: "var(--success-text)", fontWeight: 600 }}>Đã cộng lúc {formatPaymentDateFull(course.referrerCreditedAt)}{course.referrerCreditedBy ? ` · ${course.referrerCreditedBy}` : ""}</span>
                                 : <span style={{ color: "var(--text-3)" }}>Chưa cộng</span>}
                               {creditError[referrerKey] && (
                                 <div style={{ color: "var(--danger)", fontSize: 11.5, marginTop: 2 }}>{creditError[referrerKey]}</div>

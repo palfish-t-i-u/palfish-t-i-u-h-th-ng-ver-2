@@ -1177,16 +1177,16 @@ function ActiveRequestMiniCardV2({
                               <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text-1, #111)" }}>
                                 Người được giới thiệu (UID: {u.uid || "—"}) — cộng thêm {c.bonusSessionsReferee} buổi.{" "}
                                 {c.refereeCreditedAt
-                                  ? `Đã cộng lúc ${formatPaymentDateFull(c.refereeCreditedAt)}`
-                                  : "Chưa cộng"}
+                                  ? <span style={{ color: "var(--success-text)", fontWeight: 600 }}>Đã cộng lúc {formatPaymentDateFull(c.refereeCreditedAt)}</span>
+                                  : <span style={{ color: "var(--text-3)" }}>Chưa cộng</span>}
                               </div>
                             )}
                             {(c.bonusSessionsReferrer ?? 0) > 0 && (
                               <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text-1, #111)", marginTop: 4 }}>
                                 Người giới thiệu (UID: {c.referrerUid || "—"}) — cộng thêm {c.bonusSessionsReferrer} buổi.{" "}
                                 {c.referrerCreditedAt
-                                  ? `Đã cộng lúc ${formatPaymentDateFull(c.referrerCreditedAt)}`
-                                  : "Chưa cộng"}
+                                  ? <span style={{ color: "var(--success-text)", fontWeight: 600 }}>Đã cộng lúc {formatPaymentDateFull(c.referrerCreditedAt)}</span>
+                                  : <span style={{ color: "var(--text-3)" }}>Chưa cộng</span>}
                               </div>
                             )}
                           </div>
