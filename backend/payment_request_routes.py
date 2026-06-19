@@ -1779,21 +1779,36 @@ def register_payment_request_routes(app, get_supabase) -> None:
             description = _build_payos_transfer_description(
                 pr_row, body.name_for_transfer, transfer_code
             )
-            try:
-                payos_payload = await create_payos_payment_link(amount, description)
-            except ValueError as exc:
-                raise HTTPException(503, str(exc)) from exc
-            except Exception as exc:
-                raise HTTPException(502, f"Khong ket noi duoc PayOS: {exc}") from exc
+            # USE_PAYOS=true → gọi PayOS dựng link (legacy, đang được cắt theo decision 19/6).
+            # USE_PAYOS=false → chỉ build description với mã 5 ký tự, FE self-gen VietQR,
+            # SePay webhook match content. Đơn giản hoá thanh toán về 1 cổng.
+            use_payos = os.getenv("USE_PAYOS", "false").lower() == "true"
+            if use_payos:
+                try:
+                    payos_payload = await create_payos_payment_link(amount, description)
+                except ValueError as exc:
+                    raise HTTPException(503, str(exc)) from exc
+                except Exception as exc:
+                    raise HTTPException(502, f"Khong ket noi duoc PayOS: {exc}") from exc
 
-            insert_row.update(
-                {
-                    "payos_order_code": payos_payload["order_code"],
-                    "qr_code": payos_payload.get("qr_code") or "",
-                    "checkout_url": payos_payload.get("checkout_url") or "",
-                    "transfer_content": payos_payload.get("transfer_content") or description,
-                }
-            )
+                insert_row.update(
+                    {
+                        "payos_order_code": payos_payload["order_code"],
+                        "qr_code": payos_payload.get("qr_code") or "",
+                        "checkout_url": payos_payload.get("checkout_url") or "",
+                        "transfer_content": payos_payload.get("transfer_content") or description,
+                    }
+                )
+            else:
+                # SePay-only path — FE dựng VietQR tĩnh, SePay webhook match content.
+                insert_row.update(
+                    {
+                        "payos_order_code": "",
+                        "qr_code": "",
+                        "checkout_url": "",
+                        "transfer_content": description,
+                    }
+                )
 
         try:
             line_res = sb.table("payment_lines").insert(insert_row).execute()
