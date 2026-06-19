@@ -777,7 +777,14 @@ def register_admin_routes(app, get_supabase):
         existing_crm_name = old_crm_name or existing_staff_crm or None
 
         if body.is_activated is True and not unlink_crm and not (crm_name or existing_crm_name):
-            raise HTTPException(400, "Cần liên kết CRM trước khi kích hoạt tài khoản")
+            dept_for_check = _normalize_department(
+                body.department if body.department is not None else current_metadata.get("department")
+            )
+            if dept_for_check is None or dept_for_check == "sale":
+                raise HTTPException(
+                    400,
+                    "Cần liên kết CRM (hoặc đặt phòng ban HR/Marketing/CS) trước khi kích hoạt tài khoản",
+                )
 
         attrs: dict[str, Any] = {}
         banned = _patch_banned(body)
