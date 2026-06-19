@@ -1,7 +1,6 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { COURSE_PACKAGES } from "../constants/coursePackages";
 import { usePaymentFlow } from "../contexts/PaymentFlowContext";
-import { useMe } from "../hooks/useMe";
 import { usePermission } from "../hooks/usePermission";
 import { endpoints } from "../lib/api";
 import { notifyLedgerChanged } from "../lib/ledgerEvents";
@@ -372,12 +371,9 @@ function ActivationDetailDrawer({
   const copyResetTimer = useRef<number | null>(null);
   const uidTouchedRef = useRef<Record<number, { uid: boolean; phone: boolean; country: boolean }>>({});
 
-  // T1.1 / T1.7 — credit-referral checkbox (RBAC: Sale không được tick)
-  const { profile } = useMe();
-  const canCreditReferral =
-    profile?.role === "system" ||
-    profile?.role === "manager" ||
-    Boolean(profile?.canConfirmPayment);
+  // T1.1 — credit-referral checkbox. Không cần RBAC FE vì Sale không có quyền
+  // vào tab Kích hoạt khoá học (permissions[module3] = "none"). BE rbac.py
+  // require_referral_credit() vẫn enforce server-side.
   const [creditInflight, setCreditInflight] = useState<Record<string, boolean>>({});
   const [creditError, setCreditError] = useState<Record<string, string>>({});
   const [uncreditDialog, setUncreditDialog] = useState<{
@@ -435,7 +431,6 @@ function ActivationDetailDrawer({
     side: "referee" | "referrer",
     nextChecked: boolean,
   ) => {
-    if (!canCreditReferral) return;
     if (nextChecked) {
       void submitCredit(uid, courseCode, side, true);
     } else {
@@ -1358,22 +1353,16 @@ function ActivationDetailDrawer({
                     const headerText = REFERRAL_STATUS_HEADER[rs];
                     const refereeKey = creditKey(uidObj.uid || "", course.courseCode, "referee");
                     const referrerKey = creditKey(uidObj.uid || "", course.courseCode, "referrer");
-                    const disabledTooltip = !canCreditReferral
-                      ? "Bạn không có quyền xác nhận cộng buổi (chỉ Ops / Leader / Manager / System)"
-                      : "";
                     return (
                       <div style={{ padding: "10px 12px", borderRadius: 8, marginTop: 6, ...panelStyle }}>
                         <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text-1, #111)", marginBottom: 6 }}>{headerText}</div>
                         {(course.bonusSessionsReferee ?? 0) > 0 && (
                           <div style={{ fontSize: 13, color: "var(--text-1, #111)", display: "flex", alignItems: "flex-start", gap: 8 }}>
-                            <label
-                              style={{ display: "flex", alignItems: "center", gap: 6, cursor: canCreditReferral ? "pointer" : "not-allowed", opacity: canCreditReferral ? 1 : 0.65 }}
-                              title={disabledTooltip}
-                            >
+                            <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer" }}>
                               <input
                                 type="checkbox"
                                 checked={Boolean(course.refereeCreditedAt)}
-                                disabled={!canCreditReferral || Boolean(creditInflight[refereeKey])}
+                                disabled={Boolean(creditInflight[refereeKey])}
                                 onChange={(e) => handleCreditToggle(uidObj.uid || "", course.courseCode, "referee", e.target.checked)}
                               />
                               <span style={{ fontWeight: 600 }}>Đã cộng buổi</span>
@@ -1392,14 +1381,11 @@ function ActivationDetailDrawer({
                         )}
                         {(course.bonusSessionsReferrer ?? 0) > 0 && (
                           <div style={{ fontSize: 13, color: "var(--text-1, #111)", marginTop: 6, display: "flex", alignItems: "flex-start", gap: 8 }}>
-                            <label
-                              style={{ display: "flex", alignItems: "center", gap: 6, cursor: canCreditReferral ? "pointer" : "not-allowed", opacity: canCreditReferral ? 1 : 0.65 }}
-                              title={disabledTooltip}
-                            >
+                            <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer" }}>
                               <input
                                 type="checkbox"
                                 checked={Boolean(course.referrerCreditedAt)}
-                                disabled={!canCreditReferral || Boolean(creditInflight[referrerKey])}
+                                disabled={Boolean(creditInflight[referrerKey])}
                                 onChange={(e) => handleCreditToggle(uidObj.uid || "", course.courseCode, "referrer", e.target.checked)}
                               />
                               <span style={{ fontWeight: 600 }}>Đã cộng buổi</span>
