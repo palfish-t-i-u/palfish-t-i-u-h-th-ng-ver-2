@@ -308,7 +308,7 @@ export default function CardReconciliationTab({
 
   return (
     <div className="gmv-prototype">
-      <div className="page">
+      <div className="page page--fit">
         <div style={{ fontSize: 12.5, color: "var(--text-3)", maxWidth: 760, lineHeight: 1.55, marginBottom: 4 }}>
           Giao dịch quẹt thẻ <strong style={{ color: "var(--text-2)" }}>mPOS</strong> &{" "}
           <strong style={{ color: "var(--text-2)" }}>Payoo</strong> được đồng bộ tự động về đây. Kế toán đối chiếu từng

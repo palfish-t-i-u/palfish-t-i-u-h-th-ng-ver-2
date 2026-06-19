@@ -712,7 +712,7 @@ export default function ReconciliationTab() {
 
   return (
     <div className="gmv-prototype">
-      <div className="page">
+      <div className="page page--fit">
         <div style={{ fontSize: 12.5, color: "var(--text-3)", maxWidth: 720, lineHeight: 1.55, marginBottom: 4 }}>
           Kế toán đối chiếu từng giao dịch với{" "}
           <strong style={{ color: "var(--text-2)" }}>sao kê ngân hàng / phiếu thu / báo cáo POS</strong>, xác nhận khi
