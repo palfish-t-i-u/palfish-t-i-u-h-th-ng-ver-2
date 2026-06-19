@@ -119,12 +119,30 @@ def _parse_amount(value: Any) -> float:
     if not text:
         return 0.0
     text = text.replace("\u00a0", "").replace(" ", "")
+    # Strategy: rightmost separator wins as decimal IFF it's followed by 1-2 digits.
+    # Otherwise treat all "," and "." as thousand separators (Vietnamese format,
+    # e.g. "9,080,000" or "9.080.000").
     if "," in text and "." in text:
-        text = text.replace(",", "")
+        last_comma = text.rfind(",")
+        last_dot = text.rfind(".")
+        if last_dot > last_comma:
+            text = text.replace(",", "")
+        else:
+            text = text.replace(".", "").replace(",", ".")
     elif "," in text:
-        text = text.replace(".", "").replace(",", ".")
+        # If single trailing comma followed by exactly 1-2 digits \u2192 decimal sep.
+        # Else (multiple commas, or trailing 3 digits) \u2192 thousand sep.
+        parts = text.split(",")
+        if len(parts) == 2 and 1 <= len(parts[1]) <= 2 and parts[1].isdigit():
+            text = text.replace(",", ".")
+        else:
+            text = text.replace(",", "")
     else:
-        text = text.replace(",", "")
+        # Only dots. Same logic: trailing 3 digits \u2192 thousand sep.
+        if "." in text:
+            parts = text.split(".")
+            if not (len(parts) == 2 and 1 <= len(parts[1]) <= 2 and parts[1].isdigit()):
+                text = text.replace(".", "")
     text = re.sub(r"[^0-9.\-]", "", text)
     if text in ("", "-", ".", "-."):
         return 0.0

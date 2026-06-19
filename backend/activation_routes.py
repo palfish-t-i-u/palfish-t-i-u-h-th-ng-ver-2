@@ -1084,6 +1084,27 @@ def _export_b4_tax_batch(sb, items: list[ExportBatchItem] | None) -> StreamingRe
     )
 
 
+def _diff_referral_courses(old_uids: list[dict[str, Any]], new_uids: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    old_courses = {c.get("code"): c for u in old_uids for c in (u.get("courses") or []) if isinstance(c, dict) and c.get("code")}
+    new_courses = {c.get("code"): c for u in new_uids for c in (u.get("courses") or []) if isinstance(c, dict) and c.get("code")}
+    changes = []
+    for code, nc in new_courses.items():
+        oc = old_courses.get(code) or {}
+        old_ref = {
+            "referrer_uid": oc.get("referrer_uid"),
+            "bonus_sessions_referee": oc.get("bonus_sessions_referee"),
+            "bonus_sessions_referrer": oc.get("bonus_sessions_referrer"),
+        }
+        new_ref = {
+            "referrer_uid": nc.get("referrer_uid"),
+            "bonus_sessions_referee": nc.get("bonus_sessions_referee"),
+            "bonus_sessions_referrer": nc.get("bonus_sessions_referrer"),
+        }
+        if old_ref != new_ref:
+            changes.append({"code": code, "old": old_ref, "new": new_ref})
+    return changes
+
+
 def register_activation_routes(app, supabase_factory):
 
     @app.get("/api/v1/active-requests", tags=["Activation"])
@@ -1220,27 +1241,6 @@ def register_activation_routes(app, supabase_factory):
             raise HTTPException(500, f"Khong xoa active_requests: {exc}") from exc
 
         return {"ok": True, "id": ar_id}
-
-def _diff_referral_courses(old_uids: list[dict[str, Any]], new_uids: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    old_courses = {c.get("code"): c for u in old_uids for c in (u.get("courses") or []) if isinstance(c, dict) and c.get("code")}
-    new_courses = {c.get("code"): c for u in new_uids for c in (u.get("courses") or []) if isinstance(c, dict) and c.get("code")}
-    changes = []
-    for code, nc in new_courses.items():
-        oc = old_courses.get(code) or {}
-        old_ref = {
-            "referrer_uid": oc.get("referrer_uid"),
-            "bonus_sessions_referee": oc.get("bonus_sessions_referee"),
-            "bonus_sessions_referrer": oc.get("bonus_sessions_referrer"),
-        }
-        new_ref = {
-            "referrer_uid": nc.get("referrer_uid"),
-            "bonus_sessions_referee": nc.get("bonus_sessions_referee"),
-            "bonus_sessions_referrer": nc.get("bonus_sessions_referrer"),
-        }
-        if old_ref != new_ref:
-            changes.append({"code": code, "old": old_ref, "new": new_ref})
-    return changes
-
 
     @app.patch("/api/v1/active-requests/{ar_id}", tags=["Activation"])
     def patch_active_request(

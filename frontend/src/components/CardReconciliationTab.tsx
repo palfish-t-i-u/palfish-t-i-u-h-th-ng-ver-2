@@ -502,7 +502,7 @@ export default function CardReconciliationTab({
         onClick={() => setDrawerOpen(false)}
         style={{ pointerEvents: drawerOpen ? "auto" : "none" }}
       />
-      <aside className={`drawer ${drawerOpen ? "open" : ""}`} style={{ width: "min(680px, 92vw)" }}>
+      <aside className={`drawer ${drawerOpen ? "open" : ""}`} style={{ width: "min(960px, 95vw)" }}>
         {drawerTxn && (
           <>
             <div className="drawer-head">
@@ -599,7 +599,7 @@ export default function CardReconciliationTab({
                     Gợi ý theo số tiền + ngày gần. Đối chiếu ảnh bill sales gửi trước khi ghép.
                   </div>
 
-                  <div style={{ display: "grid", gridTemplateColumns: "1.1fr 1fr", gap: 14 }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "1.6fr 1fr", gap: 16 }}>
                     <div>
                       <div className="search" style={{ marginBottom: 8 }}>
                         <Icons.Search size={14} stroke="var(--text-3)" />

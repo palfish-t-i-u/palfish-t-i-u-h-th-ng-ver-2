@@ -1560,7 +1560,7 @@ export default function ReconciliationTab() {
                       <div style={{ fontSize: 11, color: "var(--text-3)", marginBottom: 6 }}>
                         Hiện {filteredBankCandidates.length} / {bankCandidates.length} lần TT
                       </div>
-                      <div style={{ display: "flex", flexDirection: "column", gap: 8, minHeight: "60vh", maxHeight: "60vh", overflow: "auto" }}>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: "44vh", overflow: "auto", border: "1px solid var(--border)", borderRadius: 8, padding: 6 }}>
                         {filteredBankCandidates.map((c) => {
                           const exactAmount = Math.abs(c.amount - drawerTxn.amount) < 1;
                           const selected = bankPickedLineId === c.payment_line_id;
@@ -1569,30 +1569,30 @@ export default function ReconciliationTab() {
                               key={c.payment_line_id}
                               onClick={() => setBankPickedLineId(c.payment_line_id)}
                               style={{
-                                padding: "12px 14px", border: `2px solid ${selected ? "var(--primary)" : "var(--border)"}`,
-                                borderRadius: 8, cursor: "pointer", fontSize: 13,
+                                padding: "10px 12px", border: `2px solid ${selected ? "var(--primary)" : "var(--border)"}`,
+                                borderRadius: 8, cursor: "pointer", fontSize: 14,
                                 background: selected ? "var(--primary-bg, rgba(99,102,241,0.06))" : "var(--surface-1)",
                               }}
                             >
-                              <div style={{ display: "flex", justifyContent: "space-between" }}>
-                                <span style={{ fontWeight: 600, fontSize: 14 }}>{c.pr_name || c.pr_id}</span>
-                                <span style={{ fontWeight: 600, fontSize: 14, color: exactAmount ? "var(--success-text)" : "var(--text-2)" }}>
+                              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                                <span style={{ fontWeight: 700, fontSize: 15, color: "var(--text-1)" }}>{c.pr_name || c.pr_id}</span>
+                                <span style={{ fontWeight: 700, fontSize: 15, color: exactAmount ? "var(--success-text)" : "var(--text-1)" }}>
                                   {vnd(c.amount)}{exactAmount && " ✓"}
                                 </span>
                               </div>
-                              <div style={{ fontSize: 13, color: "var(--text-3)", marginTop: 4 }}>
+                              <div style={{ fontSize: 13, color: "var(--text-2)", marginTop: 4 }}>
                                 {c.pr_id}{c.pr_uid ? ` · UID ${c.pr_uid}` : ""}{c.pr_phone ? ` · ${c.pr_phone}` : ""}
                               </div>
                               {(c.child_name || c.sale_name || c.team_name) && (
-                                <div style={{ fontSize: 13, color: "var(--text-3)", marginTop: 2 }}>
-                                  {c.child_name ? `Con: ${c.child_name}` : ""}
+                                <div style={{ fontSize: 13, color: "var(--text-2)", marginTop: 2 }}>
+                                  {c.child_name ? <strong>Con: {c.child_name}</strong> : null}
                                   {c.child_name && (c.sale_name || c.team_name) ? " · " : ""}
                                   {c.sale_name ? `Sale: ${c.sale_name}` : ""}
                                   {c.sale_name && c.team_name ? " · " : ""}
                                   {c.team_name ? `Team: ${c.team_name}` : ""}
                                 </div>
                               )}
-                              <div style={{ fontSize: 13, color: "var(--text-3)", marginTop: 2 }}>
+                              <div style={{ fontSize: 12, color: "var(--text-3)", marginTop: 2 }}>
                                 {c.method} · {c.status} · mã: {c.transfer_code || "—"}
                                 {c.created_at ? ` · ${formatPaymentDateFull(c.created_at)}` : ""}
                               </div>
