@@ -881,7 +881,8 @@ def _allocate_pr_id(sb, year: int | None = None) -> str:
 
 
 _BASE36_DIGITS = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-_PAYOS_DESCRIPTION_MAX_LEN = 25
+_PAYOS_DESCRIPTION_MAX_LEN = 40  # tested 19/6: img.vietqr.io cắt cứng ở 40 chars
+# (PayOS API trước limit 25, nhưng đã bỏ PayOS path theo Sprint 3 decision)
 
 
 def _int_to_base36(n: int) -> str:
