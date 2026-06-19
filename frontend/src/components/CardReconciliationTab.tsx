@@ -69,6 +69,7 @@ export default function CardReconciliationTab({
   const [candidates, setCandidates] = useState<MatchCandidate[]>([]);
   const [amountLoaded, setAmountLoaded] = useState(false);
   const [manualSearching, setManualSearching] = useState(false);
+  const [manualSearchError, setManualSearchError] = useState("");
   const [syncing, setSyncing] = useState(false);
   const [lastSync, setLastSync] = useState<string | null>(null);
   const [connected, setConnected] = useState<boolean>(() => isExtInstalled());
@@ -181,6 +182,7 @@ export default function CardReconciliationTab({
     }
     let alive = true;
     setManualSearching(true);
+    setManualSearchError("");
     const timer = setTimeout(() => {
       endpoints.cardRecon
         .matchCandidates(drawerId, { search: q })
@@ -189,7 +191,15 @@ export default function CardReconciliationTab({
         })
         .catch((err) => {
           console.error("[card-recon] manual search failed", err);
-          if (alive) setCandidates([]);
+          if (alive) {
+            setCandidates([]);
+            const detail = (err as { response?: { data?: { detail?: unknown }; status?: number } })?.response?.data?.detail;
+            const status = (err as { response?: { status?: number } })?.response?.status;
+            const msg = typeof detail === "string"
+              ? detail
+              : status ? `Lỗi máy chủ (HTTP ${status})` : "Lỗi gọi máy chủ — kiểm tra kết nối";
+            setManualSearchError(msg);
+          }
         })
         .finally(() => {
           if (alive) setManualSearching(false);
@@ -626,7 +636,12 @@ export default function CardReconciliationTab({
                         {manualSearching && (
                           <div style={{ fontSize: 12, color: "var(--text-3)", padding: "8px 0" }}>Đang tìm…</div>
                         )}
-                        {!manualSearching && filteredCandidates.length === 0 && (
+                        {!manualSearching && manualSearchError && (
+                          <div style={{ fontSize: 12, color: "var(--danger)", padding: "8px 10px", background: "var(--danger-bg, #fee2e2)", borderRadius: 6 }}>
+                            {manualSearchError}
+                          </div>
+                        )}
+                        {!manualSearching && !manualSearchError && filteredCandidates.length === 0 && (
                           <div style={{ fontSize: 12, color: "var(--text-3)", padding: "8px 0" }}>
                             {isManualMode
                               ? (candSearch.trim().length < 2 ? "Gõ ít nhất 2 ký tự để tìm." : "Không tìm thấy PR phù hợp.")
