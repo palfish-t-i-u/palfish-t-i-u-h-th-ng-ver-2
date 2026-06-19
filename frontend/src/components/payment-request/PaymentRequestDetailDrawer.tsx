@@ -1282,7 +1282,7 @@ function ActiveRequestMiniCardV2({
                                       ),
                                     }));
                                   }}
-                                  style={{ font: "inherit", fontSize: 14, fontFamily: "JetBrains Mono, monospace", width: "100%", borderRadius: 8, border: "1.5px solid var(--text-3)", padding: "8px 12px", boxSizing: "border-box", color: "var(--text)" }}
+                                  style={{ font: "inherit", fontSize: 13, fontFamily: "JetBrains Mono, monospace", width: "100%", borderRadius: 8, border: "1.5px solid var(--text-3)", padding: "6px 10px", boxSizing: "border-box", color: "var(--text)" }}
                                 />
                                 <div style={{ fontSize: 11, color: "var(--text-3)", marginTop: 3 }}>
                                   Nhập đúng UID khách hàng đã giới thiệu khách này. UID phải khác UID người được giới thiệu.
@@ -1311,7 +1311,7 @@ function ActiveRequestMiniCardV2({
                                         ),
                                       }));
                                     }}
-                                    style={{ font: "inherit", fontSize: 15, fontWeight: 600, textAlign: "right", width: 120, borderRadius: 8, border: "1.5px solid var(--text-3)", padding: "8px 12px", color: "var(--text)" }}
+                                    style={{ font: "inherit", fontSize: 13, fontWeight: 600, textAlign: "right", width: 90, borderRadius: 8, border: "1.5px solid var(--text-3)", padding: "6px 10px", color: "var(--text)" }}
                                   />
                                   <span style={{ fontSize: 12, color: "var(--text-2)" }}>buổi</span>
                                 </div>
@@ -1339,7 +1339,7 @@ function ActiveRequestMiniCardV2({
                                         ),
                                       }));
                                     }}
-                                    style={{ font: "inherit", fontSize: 15, fontWeight: 600, textAlign: "right", width: 120, borderRadius: 8, border: "1.5px solid var(--text-3)", padding: "8px 12px", color: "var(--text)" }}
+                                    style={{ font: "inherit", fontSize: 13, fontWeight: 600, textAlign: "right", width: 90, borderRadius: 8, border: "1.5px solid var(--text-3)", padding: "6px 10px", color: "var(--text)" }}
                                   />
                                   <span style={{ fontSize: 12, color: "var(--text-2)" }}>buổi</span>
                                 </div>
@@ -1496,6 +1496,14 @@ export default function PaymentRequestDetailDrawer({
     setPrFullModalOpen(false);
     setHighlightTarget(false);
   }, [request?.id]);
+
+  // Khoá scroll nền khi drawer mở — tránh 3 scrollbar (anh feedback 19/6).
+  useEffect(() => {
+    if (!open) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => { document.body.style.overflow = prev; };
+  }, [open]);
 
   useEffect(() => {
     if (!showAdd) return;

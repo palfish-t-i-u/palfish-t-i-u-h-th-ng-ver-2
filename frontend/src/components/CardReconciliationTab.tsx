@@ -114,6 +114,14 @@ export default function CardReconciliationTab({
     loadSyncStatus();
   }, [loadSyncStatus]);
 
+  // Khoá scroll nền khi drawer mở (đồng bộ với PR drawer + ActivationTab).
+  useEffect(() => {
+    if (!drawerOpen) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => { document.body.style.overflow = prev; };
+  }, [drawerOpen]);
+
   const drawerTxn = useMemo(() => txns.find((t) => t.id === drawerId) ?? null, [txns, drawerId]);
 
   const bySource = useMemo(() => txns.filter((t) => t.source === source), [txns, source]);

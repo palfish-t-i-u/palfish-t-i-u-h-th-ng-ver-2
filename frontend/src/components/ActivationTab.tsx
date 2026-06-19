@@ -352,6 +352,14 @@ function ActivationDetailDrawer({
   onGoToInvoice: (courseCode: string) => void | Promise<void>;
   readOnly?: boolean;
 }) {
+  // Khoá scroll nền khi drawer mở.
+  useEffect(() => {
+    if (!open) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => { document.body.style.overflow = prev; };
+  }, [open]);
+
   const [courseDrafts, setCourseDrafts] = useState<
     Record<string, { packageName: string; amount: string; orderId: string }>
   >({});
