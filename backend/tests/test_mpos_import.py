@@ -113,6 +113,34 @@ class TestParseSettlements:
         for s in settle_result["settlements"]:
             assert s.get("settle_date") is not None
 
+    def test_csv_parser_accepts_extension_export(self):
+        """Extension tải /exportCSV → parser phải đọc được CSV, không chỉ Excel.
+
+        Bug 19/06: parse_mpos_settlements chỉ gọi _read_excel → CSV bytes →
+        'Thiếu cột bắt buộc'. Convert XLS sang CSV trong RAM để tái dựng tình huống.
+        """
+        import io
+        import pandas as pd
+        from mpos_import import parse_mpos_settlements
+
+        with open(SETTLE_FILE, "rb") as f:
+            xls_df = pd.read_excel(io.BytesIO(f.read()), engine="xlrd", header=0, dtype=object)
+
+        csv_bytes = xls_df.to_csv(index=False).encode("utf-8")
+        result = parse_mpos_settlements(csv_bytes)
+
+        assert result["summary"]["total_rows"] > 0
+        assert len(result["settlements"]) > 0
+
+    def test_html_login_page_gives_clear_error(self):
+        """User chưa login mpos.vn → server trả HTML → báo lỗi rõ ràng."""
+        import pytest
+        from mpos_import import parse_mpos_settlements
+
+        html_bytes = b"<!DOCTYPE html><html><body>Please log in</body></html>"
+        with pytest.raises(ValueError, match="HTML"):
+            parse_mpos_settlements(html_bytes)
+
 
 class TestAmbiguousDetection:
     """Test rule NEEDS_REVIEW cho GD trùng mệnh giá."""

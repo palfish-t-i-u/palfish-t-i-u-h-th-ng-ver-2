@@ -210,7 +210,22 @@ def _require_columns(df: pd.DataFrame, aliases: dict[str, tuple[str, ...]], fiel
     missing = [field for field in fields if not any(col in df.columns for col in aliases[field])]
     if missing:
         pretty = ", ".join(f"{field} ({'/'.join(aliases[field])})" for field in missing)
-        raise ValueError(f"Thiếu cột bắt buộc: {pretty}")
+        found = ", ".join(str(c) for c in df.columns[:12]) or "(empty)"
+        raise ValueError(f"Thiếu cột bắt buộc: {pretty}. Cột đọc được: {found}")
+
+
+def _detect_format(file_bytes: bytes) -> str:
+    """Phân loại file theo magic bytes: 'xlsx' | 'xls' | 'html' | 'csv'."""
+    if not file_bytes:
+        return "csv"
+    if file_bytes[:2] == b"PK":
+        return "xlsx"
+    if file_bytes[:4] == b"\xD0\xCF\x11\xE0":
+        return "xls"
+    head = file_bytes[:200].lstrip().lower()
+    if head.startswith(b"<!doctype") or head.startswith(b"<html") or head.startswith(b"<"):
+        return "html"
+    return "csv"
 
 
 def _read_excel(file_bytes: bytes, *, header: int = 0, prefer_xlsx: bool = False) -> pd.DataFrame:
@@ -381,9 +396,20 @@ def parse_mpos_transactions(file_bytes: bytes) -> dict[str, Any]:
 
 
 def parse_mpos_settlements(file_bytes: bytes) -> dict[str, Any]:
-    """Parse mPOS settlement list export."""
-    df = _read_excel(file_bytes, header=0)
-    # "Danh sách phiếu chi" .xls: dòng 0 là tiêu đề, header thật ở dòng 1 → tự dò
+    """Parse mPOS settlement list export (.xls / .xlsx / .csv)."""
+    fmt = _detect_format(file_bytes)
+    if fmt == "html":
+        raise ValueError(
+            "File mPOS không hợp lệ — server trả HTML (có thể chưa đăng nhập mpos.vn)."
+        )
+    if fmt in ("xlsx", "xls"):
+        df = _read_excel(file_bytes, header=0)
+        # "Danh sách phiếu chi" cũ (.xls 17 cột): dòng 0 là tiêu đề → header thật ở dòng 1
+        # Format mới (9 cột) đặt header thẳng ở dòng 0 → check created_date làm cờ
+        if not any(col in df.columns for col in SETTLEMENT_ALIASES["created_date"]):
+            df = _read_excel(file_bytes, header=1)
+    else:  # csv (extension /exportCSV) — endpoint tải CSV thay vì Excel
+        df = _read_csv(file_bytes)
     _require_columns(df, SETTLEMENT_ALIASES, ("created_date", "gross", "net"))
 
     settlements: list[dict[str, Any]] = []
