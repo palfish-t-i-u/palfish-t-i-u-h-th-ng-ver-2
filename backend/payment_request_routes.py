@@ -1802,9 +1802,11 @@ def register_payment_request_routes(app, get_supabase) -> None:
                 )
             else:
                 # SePay-only path — FE dựng VietQR tĩnh, SePay webhook match content.
+                # payos_order_code = NULL (không "") để tránh duplicate unique constraint
+                # khi nhiều lần TT trên cùng PR (Postgres UNIQUE cho phép multiple NULL).
                 insert_row.update(
                     {
-                        "payos_order_code": "",
+                        "payos_order_code": None,
                         "qr_code": "",
                         "checkout_url": "",
                         "transfer_content": description,
