@@ -589,7 +589,9 @@ def register_sepay_routes(app, get_supabase: Callable) -> None:
             .limit(500)
         )
         if amount_exact is not None:
-            lines_query = lines_query.eq("amount", amount_exact)
+            # payment_lines.amount là bigint → cast int để tránh postgrest gửi
+            # "10080000.0" (postgrest err 22P02 invalid bigint syntax).
+            lines_query = lines_query.eq("amount", int(amount_exact))
         lines_res = lines_query.execute()
         lines = lines_res.data or []
 

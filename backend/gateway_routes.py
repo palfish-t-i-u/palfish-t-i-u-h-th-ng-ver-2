@@ -356,7 +356,7 @@ def register_gateway_routes(app, get_supabase: Callable[[], Any]) -> None:
                 .or_(
                     ",".join(
                         f"{col}.ilike.{pattern}"
-                        for col in ("id", "name", "ten_khach", "uid", "uid_khach_hang", "phone", "sdt")
+                        for col in ("id", "name", "child_name", "uid", "phone")
                     )
                 )
                 .limit(50)
@@ -368,7 +368,9 @@ def register_gateway_routes(app, get_supabase: Callable[[], Any]) -> None:
             line_res = sb.table("payment_lines").select("*").in_("payment_request_id", pr_ids).limit(100).execute()
             lines = line_res.data or []
         else:
-            line_res = sb.table("payment_lines").select("*").eq("amount", amount).limit(100).execute()
+            # payment_lines.amount là bigint → cast int để tránh postgrest gửi "10080000.0" (22P02).
+            amount_int = int(amount) if amount else 0
+            line_res = sb.table("payment_lines").select("*").eq("amount", amount_int).limit(100).execute()
             lines = line_res.data or []
         # Bỏ lần TT đã ghép với giao dịch gateway KHÁC (tránh ghép trùng).
         matched_res = (
