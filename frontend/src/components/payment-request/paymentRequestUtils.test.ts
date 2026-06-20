@@ -6,6 +6,8 @@ import {
   buildCreateActiveRequestPayload,
   formatCoursePhone,
   fromApiActiveRequest,
+  getArReferralStatus,
+  getReferralStatus,
   pageItems,
   paginate,
   toActiveRequestPatchUidsData,
@@ -189,6 +191,24 @@ describe("active request course package updates", () => {
     expect(course.bonusSessionsReferrer).toBe(3);
   });
 
+  it("deserialize course cũ (không có field referral) → referral undefined/null", () => {
+    const raw: ActiveRequestApiRow = {
+      id: "AR-OLD",
+      pr_id: "PR-OLD",
+      customer_name: "Khách cũ",
+      uids_data: [{
+        uid: "U1", phone: "0900000000", country: "VN",
+        courses: [{ code: "CC-1", name: "Gói cũ", amount: 3000000 }],
+      }],
+    };
+    const course = fromApiActiveRequest(raw).uids[0].courses[0];
+    expect(course.referrerUid).toBeUndefined();
+    expect(course.bonusSessionsReferee).toBeUndefined();
+    expect(course.bonusSessionsReferrer).toBeUndefined();
+    expect(course.refereeCreditedAt).toBeNull();
+    expect(course.referrerCreditedAt).toBeNull();
+  });
+
   it("ghi field referral camelCase ra payload snake_case", () => {
     const arWithReferral: ActiveRequest = {
       ...ar,
@@ -338,5 +358,117 @@ describe("validateReferralBonus", () => {
       { ...base.uids[0].courses[0], leadSource: "quang_cao", bonusSessionsReferrer: 3 },
     ] }] };
     expect(validateReferralBonus(ar)).toBe("");
+  });
+
+  it("báo lỗi khi referrerUid chỉ có whitespace", () => {
+    const ar = { ...base, uids: [{ ...base.uids[0], courses: [
+      { ...base.uids[0].courses[0], bonusSessionsReferrer: 3, referrerUid: "   " },
+    ] }] };
+    expect(validateReferralBonus(ar)).toContain("chưa nhập UID người giới thiệu");
+  });
+});
+
+describe("getReferralStatus", () => {
+  it("full khi cả 2 bên đã cộng", () => {
+    expect(getReferralStatus({
+      bonusSessionsReferee: 2, bonusSessionsReferrer: 3,
+      refereeCreditedAt: "2026-06-19T10:00:00Z", referrerCreditedAt: "2026-06-19T11:00:00Z",
+    })).toBe("full");
+  });
+
+  it("none khi chưa cộng bên nào", () => {
+    expect(getReferralStatus({
+      bonusSessionsReferee: 2, bonusSessionsReferrer: 3,
+      refereeCreditedAt: null, referrerCreditedAt: null,
+    })).toBe("none");
+  });
+
+  it("partial khi chỉ referee cộng", () => {
+    expect(getReferralStatus({
+      bonusSessionsReferee: 2, bonusSessionsReferrer: 3,
+      refereeCreditedAt: "2026-06-19T10:00:00Z", referrerCreditedAt: null,
+    })).toBe("partial");
+  });
+
+  it("partial khi chỉ referrer cộng", () => {
+    expect(getReferralStatus({
+      bonusSessionsReferee: 2, bonusSessionsReferrer: 3,
+      refereeCreditedAt: null, referrerCreditedAt: "2026-06-19T11:00:00Z",
+    })).toBe("partial");
+  });
+
+  it("full khi chỉ 1 bên có bonus và đã cộng", () => {
+    expect(getReferralStatus({
+      bonusSessionsReferee: 2, bonusSessionsReferrer: 0,
+      refereeCreditedAt: "2026-06-19T10:00:00Z", referrerCreditedAt: null,
+    })).toBe("full");
+    expect(getReferralStatus({
+      bonusSessionsReferee: 0, bonusSessionsReferrer: 3,
+      refereeCreditedAt: null, referrerCreditedAt: "2026-06-19T11:00:00Z",
+    })).toBe("full");
+  });
+
+  it("none khi cả 2 bên bonus = 0", () => {
+    expect(getReferralStatus({ bonusSessionsReferee: 0, bonusSessionsReferrer: 0 })).toBe("none");
+  });
+
+  it("none khi field hoàn toàn undefined (course cũ pre-referral)", () => {
+    expect(getReferralStatus({})).toBe("none");
+    expect(getReferralStatus({ bonusSessionsReferee: undefined, bonusSessionsReferrer: undefined })).toBe("none");
+  });
+});
+
+describe("getArReferralStatus", () => {
+  const baseAr: ActiveRequest = {
+    id: "AR-1", prId: "PR-1", customerName: "X", createdAt: "", createdBy: "", uids: [],
+  };
+
+  it("null khi không có course giới thiệu", () => {
+    const ar: ActiveRequest = { ...baseAr, uids: [{ uid: "U1", phone: "", country: "VN",
+      courses: [{ courseCode: "C1", packageName: "", amount: 1000, orderId: "", invoiced: false }],
+    }] };
+    expect(getArReferralStatus(ar)).toBeNull();
+  });
+
+  it("null khi leadSource=gioi_thieu nhưng bonus đều 0", () => {
+    const ar: ActiveRequest = { ...baseAr, uids: [{ uid: "U1", phone: "", country: "VN",
+      courses: [{ courseCode: "C1", packageName: "", amount: 1000, orderId: "", invoiced: false,
+        leadSource: "gioi_thieu", bonusSessionsReferee: 0, bonusSessionsReferrer: 0 }],
+    }] };
+    expect(getArReferralStatus(ar)).toBeNull();
+  });
+
+  it("none khi có referral course nhưng chưa cộng", () => {
+    const ar: ActiveRequest = { ...baseAr, uids: [{ uid: "U1", phone: "", country: "VN",
+      courses: [{ courseCode: "C1", packageName: "", amount: 1000, orderId: "ORD-1", invoiced: false,
+        leadSource: "gioi_thieu", bonusSessionsReferee: 2, bonusSessionsReferrer: 3,
+        referrerUid: "U2", refereeCreditedAt: null, referrerCreditedAt: null }],
+    }] };
+    expect(getArReferralStatus(ar)).toBe("none");
+  });
+
+  it("full khi tất cả referral course đều cộng đủ", () => {
+    const ar: ActiveRequest = { ...baseAr, uids: [{ uid: "U1", phone: "", country: "VN",
+      courses: [{ courseCode: "C1", packageName: "", amount: 1000, orderId: "ORD-1", invoiced: false,
+        leadSource: "gioi_thieu", bonusSessionsReferee: 2, bonusSessionsReferrer: 3,
+        referrerUid: "U2",
+        refereeCreditedAt: "2026-06-19T10:00:00Z", referrerCreditedAt: "2026-06-19T11:00:00Z" }],
+    }] };
+    expect(getArReferralStatus(ar)).toBe("full");
+  });
+
+  it("partial khi 1 course full + 1 course none", () => {
+    const ar: ActiveRequest = { ...baseAr, uids: [{ uid: "U1", phone: "", country: "VN",
+      courses: [
+        { courseCode: "C1", packageName: "", amount: 1000, orderId: "ORD-1", invoiced: false,
+          leadSource: "gioi_thieu", bonusSessionsReferee: 2, bonusSessionsReferrer: 3,
+          referrerUid: "U2",
+          refereeCreditedAt: "2026-06-19T10:00:00Z", referrerCreditedAt: "2026-06-19T11:00:00Z" },
+        { courseCode: "C2", packageName: "", amount: 2000, orderId: "ORD-2", invoiced: false,
+          leadSource: "gioi_thieu", bonusSessionsReferee: 1, bonusSessionsReferrer: 1,
+          referrerUid: "U2", refereeCreditedAt: null, referrerCreditedAt: null },
+      ],
+    }] };
+    expect(getArReferralStatus(ar)).toBe("partial");
   });
 });
