@@ -28,7 +28,7 @@ Render prod `palfish-gmv-api` crash OOM (>512MB) lúc 10:12 UTC do FE poll `/syn
 
 ```
 1. PRE-MERGE      → verify sandbox xanh, chạy lại test full
-2. DB MIGRATION   → chạy 5 file SQL trên Supabase prod
+2. DB MIGRATION   → chạy 6 file SQL trên Supabase prod (xem bảng mục 2.2)
 3. CODE DEPLOY    → merge sandbox→main, push, Render+Vercel auto-deploy
 4. POST-DEPLOY    → đổi env prod (USE_PAYOS=false), smoke test
 ```
@@ -95,10 +95,10 @@ Mỗi file copy-paste vào SQL Editor → Run → đợi xong rồi sang file ti
 | Thứ tự | File | Mục đích | Idempotent? |
 |--------|------|----------|-------------|
 | 1 | `docs/migrations/2026-06-13-sepay-bank-transactions.sql` | Tạo bảng `bank_transactions` (SePay) | ✅ có `IF NOT EXISTS` |
-| 2 | `docs/migrations/2026-06-16-fix-sepay-unique-constraint.sql` | Fix unique constraint cho sepay_id | ✅ |
+| 2 | `docs/migrations/2026-06-16-fix-sepay-unique-constraint.sql` | Fix unique constraint cho sepay_id | ✅ (đã sửa idempotent 20/6 — DROP CONSTRAINT IF EXISTS trước ADD) |
 | 3 | `docs/migrations/2026-06-16-gateway-transactions.sql` | Tạo bảng `gateway_transactions` (mPOS/Payoo) | ✅ |
 | 4 | `docs/migrations/2026-06-18-audit-logs.sql` | Tạo bảng `audit_logs` (referral revoke + manual match log) | ✅ |
-| 5 | `docs/migrations/2026-06-18-bank-transactions-discrepancy.sql` | Thêm cột `discrepancy_amount` NOT NULL DEFAULT 0 | ⚠️ **KIỂM TRA** — chạy lại sẽ lỗi |
+| 5 | `docs/migrations/2026-06-18-bank-transactions-discrepancy.sql` | Thêm cột `discrepancy_amount` NOT NULL DEFAULT 0 | ✅ có `ADD COLUMN IF NOT EXISTS` |
 | 6 | `docs/migrations/2026-06-20-add-manual-matched-status.sql` | Thêm `manual_matched` vào CHECK constraint `match_status` — **BẮT BUỘC**, không có thì kế toán bấm Ghép tay sẽ HTTP 500 | ✅ DROP IF EXISTS |
 
 **Cách kiểm tra trước khi chạy file 5**:
@@ -200,6 +200,18 @@ curl https://<render-prod-url>/healthz
 Kỳ vọng: `{"status":"ok", "supabase_configured":true, "supabase_project_ref":"jozcvbbypwvzaefteoxn"}`.
 
 Nếu `supabase_project_ref` = sandbox → env Supabase sai, phải sửa.
+
+### 4.2.b Verify PayOS đã tắt (Render logs)
+
+Render Dashboard → service `palfish-gmv-api` → **Logs** → tìm dòng:
+
+```
+[payos] confirm-webhook skipped (USE_PAYOS=false)
+```
+
+Phải thấy line này trong log startup (sau khi service `Live`). Nếu KHÔNG thấy → `USE_PAYOS` chưa set hoặc set sai value → quay lại 4.1 cập nhật.
+
+**Lưu ý**: KHÔNG có endpoint `/sync-pending-payos`. Endpoint poll fallback của hệ thống là `/api/v1/sepay/sync-pending` (SePay, không phải PayOS). PayOS đã không còn sync chủ động — chỉ webhook bị động (nếu PayOS dashboard vẫn trỏ về và USE_PAYOS=true) hoặc không hoạt động (USE_PAYOS=false).
 
 ### 4.3 Cấu hình SePay webhook URL
 
