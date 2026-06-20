@@ -5,7 +5,9 @@ CRM Palfish*/
 
 # Brief nội bộ (PDF + script tạo PDF — không commit)
 docs/Brief_Module3_Module4_xuat_hoa_don.pdf
+docs/feedback_9_6_2026.pdf
 scripts/gen_module34_brief_pdf.py
+scripts/deploy-hooks.local
 
 # Backup/artifact từ cleanup scripts
 docs/artifacts/
