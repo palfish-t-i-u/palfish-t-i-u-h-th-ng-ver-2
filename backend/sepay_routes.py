@@ -225,42 +225,29 @@ def _process_sepay_transaction(sb, txn: dict[str, Any]) -> dict[str, Any]:
         except (ValueError, TypeError):
             txn_date = None
 
-    # Step 1: Check mPOS settle → ignore
+    # Step 1: Quyết định match_status + tìm payment_line_id ứng viên
+    # KHÔNG được mark payment_line=paid ở đây — chỉ tính toán. Việc mark paid
+    # sẽ làm SAU INSERT bank_transactions thành công để chống race condition
+    # khiến payment_line=paid nhưng không có bank_transaction (state inconsistent).
     match_status = "pending"
     payment_line_id = None
+    line_to_pay: dict[str, Any] | None = None  # set nếu cần mark paid sau INSERT
 
     if _is_mpos_settlement(content):
         match_status = "ignored"
     else:
-        # Step 2: Khớp mã thanh toán
         match_result = _match_transfer_code_in_content(sb, content, amount)
         if match_result.get("matched"):
             line = match_result.get("line", {})
             payment_line_id = str(line.get("id", "")) or None
-
             if match_result["match_type"] == "auto_matched":
                 match_status = "auto_matched"
-                # Mark payment_line as paid
-                if payment_line_id:
-                    try:
-                        from payment_request_routes import recompute_payment_request_totals
-
-                        now_iso = _iso_now()
-                        sb.table("payment_lines").update(
-                            {"status": "paid", "paid_at": now_iso, "reject_reason": None}
-                        ).eq("id", payment_line_id).execute()
-
-                        pr_id = str(line.get("payment_request_id", ""))
-                        if pr_id:
-                            recompute_payment_request_totals(sb, pr_id)
-                    except Exception as exc:
-                        print(f"[sepay] mark_line_paid failed: {exc}")
-                        match_status = "needs_review"
+                line_to_pay = line
             else:
                 # Mã đúng, tiền sai → needs_review
                 match_status = "needs_review"
 
-    # Step 3: INSERT into bank_transactions (ON CONFLICT DO NOTHING)
+    # Step 2: INSERT into bank_transactions TRƯỚC (ON CONFLICT DO NOTHING)
     insert_row = {
         "sepay_id": sepay_id,
         "gateway": gateway,
@@ -278,8 +265,6 @@ def _process_sepay_transaction(sb, txn: dict[str, Any]) -> dict[str, Any]:
     }
 
     try:
-        # Supabase Python client dùng PostgREST — ON CONFLICT cần header đặc biệt
-        # Prefer: resolution=ignore-duplicates (tương đương ON CONFLICT DO NOTHING)
         res = (
             sb.table("bank_transactions")
             .upsert(insert_row, on_conflict="sepay_id", ignore_duplicates=True)
@@ -289,10 +274,35 @@ def _process_sepay_transaction(sb, txn: dict[str, Any]) -> dict[str, Any]:
     except Exception as exc:
         err_msg = str(exc).lower()
         if "duplicate key" in err_msg or "23505" in err_msg:
-            # Duplicate → đã xử lý trước đó (race condition resolved by DB)
             return {"sepay_id": sepay_id, "status": "duplicate", "skipped": True}
         print(f"[sepay] DB insert failed: {exc}")
         raise
+
+    # Step 3: CHỈ KHI bank_transactions INSERT thành công (is_new=True) MỚI mark
+    # payment_line=paid + recompute PR. Tránh case INSERT fail nhưng line đã paid.
+    if is_new and line_to_pay is not None:
+        try:
+            from payment_request_routes import recompute_payment_request_totals
+
+            now_iso = _iso_now()
+            sb.table("payment_lines").update(
+                {"status": "paid", "paid_at": now_iso, "reject_reason": None}
+            ).eq("id", payment_line_id).execute()
+
+            pr_id = str(line_to_pay.get("payment_request_id", ""))
+            if pr_id:
+                recompute_payment_request_totals(sb, pr_id)
+        except Exception as exc:
+            # Không rollback INSERT — log + chuyển bank_transactions sang needs_review
+            # để kế toán xử lý tay. State invariant: bank_transactions tồn tại.
+            print(f"[sepay] mark_line_paid failed sau khi INSERT: {exc}")
+            try:
+                sb.table("bank_transactions").update(
+                    {"match_status": "needs_review", "updated_at": _iso_now()}
+                ).eq("sepay_id", sepay_id).execute()
+                match_status = "needs_review"
+            except Exception as exc2:
+                print(f"[sepay] revert match_status failed: {exc2}")
 
     return {
         "sepay_id": sepay_id,
@@ -330,6 +340,16 @@ def register_sepay_routes(app, get_supabase: Callable) -> None:
         signature = request.headers.get("x-sepay-signature", "")
         timestamp = request.headers.get("x-sepay-timestamp", "")
         authorization = request.headers.get("authorization", "")
+
+        # Production safeguard: SEPAY_WEBHOOK_SECRET BẮT BUỘC khi APP_ENV=production.
+        # Chống bypass do ai đó deploy prod quên set env → mọi webhook đi qua không verify.
+        # Sandbox/dev/test vẫn cho phép (đã log cảnh báo ở module load nếu thiếu).
+        app_env = os.getenv("APP_ENV", "").lower()
+        if not SEPAY_WEBHOOK_SECRET and app_env == "production":
+            raise HTTPException(
+                503,
+                "SEPAY_WEBHOOK_SECRET chưa cấu hình trên environment production — từ chối nhận webhook",
+            )
 
         # 1. Xác thực bằng HMAC-SHA256 (nếu có header chữ ký từ SePay)
         if signature:

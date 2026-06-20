@@ -84,6 +84,7 @@ Mỗi file copy-paste vào SQL Editor → Run → đợi xong rồi sang file ti
 | 3 | `docs/migrations/2026-06-16-gateway-transactions.sql` | Tạo bảng `gateway_transactions` (mPOS/Payoo) | ✅ |
 | 4 | `docs/migrations/2026-06-18-audit-logs.sql` | Tạo bảng `audit_logs` (referral revoke + manual match log) | ✅ |
 | 5 | `docs/migrations/2026-06-18-bank-transactions-discrepancy.sql` | Thêm cột `discrepancy_amount` NOT NULL DEFAULT 0 | ⚠️ **KIỂM TRA** — chạy lại sẽ lỗi |
+| 6 | `docs/migrations/2026-06-20-add-manual-matched-status.sql` | Thêm `manual_matched` vào CHECK constraint `match_status` — **BẮT BUỘC**, không có thì kế toán bấm Ghép tay sẽ HTTP 500 | ✅ DROP IF EXISTS |
 
 **Cách kiểm tra trước khi chạy file 5**:
 ```sql
@@ -343,6 +344,27 @@ Bất kỳ trường hợp rollback nào → ping Minh qua Zalo. Đừng tự th
 
 ---
 
-**Last updated**: 2026-06-20 (Minh, trước demo tối)
-**Branch source**: `sandbox` (commit `0c88151`)
+**Last updated**: 2026-06-20 (Minh, sau code review + fix)
+**Branch source**: `sandbox` (commit cuối: sau fix C1/C2/C4 từ code review)
 **Target**: `main` → prod deploy
+
+---
+
+## 11. CODE REVIEW FINDINGS (20/6, đã FIX trước handoff)
+
+Trước khi viết handoff, code-reviewer subagent đã review toàn bộ 50 commit sandbox vs main. Tìm thấy 4 critical:
+
+| # | Vấn đề | Đã fix |
+|---|--------|--------|
+| **C1** | CHECK constraint `bank_transactions.match_status` thiếu `manual_matched` → kế toán bấm Ghép tay sẽ HTTP 500 | ✅ Migration #6 `2026-06-20-add-manual-matched-status.sql` |
+| **C2** | `payment_lines.status='paid'` mark TRƯỚC khi INSERT `bank_transactions` → race condition có thể leave payment_line=paid mà không có bank record | ✅ `sepay_routes.py` đảo thứ tự: INSERT trước, chỉ mark paid khi `is_new=True` |
+| **C3** | PayOS webhook không gate USE_PAYOS | ⚠️ Reviewer overstated — `_verify_payos_webhook_signature` ở `main.py:1122` đã protect bằng PAYOS_CHECKSUM_KEY. Không fix. Nhưng phải đảm bảo `PAYOS_CHECKSUM_KEY` STILL SET trên prod env. |
+| **C4** | HMAC verify silently skip khi `SEPAY_WEBHOOK_SECRET` empty | ✅ `sepay_routes.py` thêm guard: APP_ENV=production + empty secret → 503 |
+
+Đã thêm 1 test mới: `test_production_chan_khi_secret_empty` (243 tests pass).
+
+Các finding "Important" còn lại (I1 race lock, I2 mPOS không mark paid, I3 ADD CONSTRAINT non-idempotent, I4 X-Forwarded-For bypass) — **không fix trong scope tonight**, ghi nhận và fix sau khi deploy ổn:
+- **I1**: 2 manager đồng thời tick credit-referral → last-writer-wins. Probability thấp (manager team nhỏ), fix sau bằng Postgres advisory lock.
+- **I2**: `match_gateway_txn` không update `payment_lines.status='paid'`. Cần xác nhận với anh Hiếu: mPOS/Payoo có cần auto-close PR không hay chỉ là ledger reconciliation. Hỏi anh Hiếu trước khi fix.
+- **I3**: File `2026-06-16-fix-sepay-unique-constraint.sql` không idempotent. Sandbox đã chạy thành công nên prod chạy LẦN ĐẦU sẽ OK. **Đặt biết để KHÔNG chạy lại** file này.
+- **I4**: X-Forwarded-For bypass khi `SEPAY_ALLOWED_IPS` empty. Hiện env này empty → IP check skip — tạm chấp nhận, fix khi SePay confirm IP list chính thức.

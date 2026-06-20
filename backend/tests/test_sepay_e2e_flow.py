@@ -337,6 +337,22 @@ class TestSepaySecurity:
         assert res.status_code == 200
         assert res.json() == {"success": True}
 
+    def test_production_chan_khi_secret_empty(self, monkeypatch):
+        """Code review 20/6 — C4: prod deploy quên set SEPAY_WEBHOOK_SECRET
+        thì webhook PHẢI bị 503, không được mặc nhiên đi qua."""
+        monkeypatch.setenv("APP_ENV", "production")
+        sb = FakeSB()
+        client = _build_client(sb)
+
+        with patch("sepay_routes.SEPAY_WEBHOOK_SECRET", ""):
+            res = client.post("/webhook/sepay", json={
+                "id": 99999, "transferAmount": 1000, "content": "anything"
+            })
+
+        assert res.status_code == 503
+        assert "chưa cấu hình" in res.json()["detail"].lower() or \
+               "not configured" in res.json()["detail"].lower()
+
     def test_old_timestamp_bi_chan_anti_replay(self):
         """SePay yêu cầu reject request cũ hơn 5 phút (anti-replay)."""
         sb = FakeSB()
