@@ -296,18 +296,85 @@ export default function CardReconciliationTab({
     }
   };
 
-  const handleSync = async () => {
+  const [syncToast, setSyncToast] = useState<{ kind: "success" | "error"; msg: string } | null>(null);
+
+  // Trigger extension sync (mPOS + Payoo) qua window.postMessage — cùng cơ chế
+  // với GatewaySyncTab. Bấm ở tab mPOS hay Payoo đều sync CẢ 2 nguồn.
+  const handleSync = () => {
     if (syncing) return;
     setSyncing(true);
-    // TODO: cầu nối message → extension chạy sync ngay. Hiện tại tải lại data + trạng thái từ backend.
-    await Promise.all([loadTxns(), loadSyncStatus()]);
-    setSyncing(false);
+    setSyncToast(null);
+
+    let done = false;
+    const finish = (
+      inserted: number | null,
+      detail: string | null,
+      errMsg?: string,
+    ) => {
+      if (done) return;
+      done = true;
+      window.removeEventListener("message", onResult);
+      setSyncing(false);
+      if (errMsg) {
+        setSyncToast({ kind: "error", msg: errMsg });
+      } else {
+        const text = detail || (inserted != null ? `Đồng bộ xong: thêm ${inserted} giao dịch` : "Đồng bộ xong");
+        setSyncToast({ kind: "success", msg: text });
+      }
+      // Reload data + sync status sau khi extension trả kết quả
+      void Promise.all([loadTxns(), loadSyncStatus()]);
+    };
+
+    const onResult = (ev: MessageEvent) => {
+      if (ev.source !== window) return;
+      const data = ev.data;
+      if (!data || data.type !== "gateway-sync-now-result") return;
+      const resp = data.resp || {};
+      const inserted = typeof resp.inserted === "number" ? resp.inserted : null;
+      const detail = typeof resp.summaryStr === "string" ? resp.summaryStr : null;
+      finish(inserted, detail, resp.ok === false ? resp.error : undefined);
+    };
+
+    window.addEventListener("message", onResult);
+    window.postMessage({ type: "gateway-sync-now" }, "*");
+
+    // Timeout 60s — extension chưa response thì coi như fail (tránh kẹt UI)
+    window.setTimeout(
+      () => finish(null, null, "Hết thời gian — tiện ích không phản hồi (60s). Hãy mở tab Đồng bộ mPOS/Payoo để kiểm tra."),
+      60000,
+    );
   };
+
+  // Auto-dismiss toast sau 5s
+  useEffect(() => {
+    if (!syncToast) return;
+    const t = setTimeout(() => setSyncToast(null), 5000);
+    return () => clearTimeout(t);
+  }, [syncToast]);
 
   const groupCol = source === "mpos" ? "Phiếu chi" : "Kênh / Mã đơn";
 
   return (
     <div className="gmv-prototype">
+      {syncToast && (
+        <div
+          role="status"
+          style={{
+            position: "fixed",
+            top: 16,
+            right: 16,
+            zIndex: 9999,
+            padding: "10px 14px",
+            borderRadius: 8,
+            background: syncToast.kind === "success" ? "var(--success-bg)" : "var(--danger-bg, #fee2e2)",
+            color: syncToast.kind === "success" ? "var(--success-text)" : "var(--danger-text, #991b1b)",
+            border: `1px solid ${syncToast.kind === "success" ? "var(--success, #10b981)" : "var(--danger, #ef4444)"}`,
+            fontSize: 13, fontWeight: 500, maxWidth: 380, boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
+          }}
+        >
+          {syncToast.msg}
+        </div>
+      )}
       <div className="page page--fit">
         <div style={{ fontSize: 12.5, color: "var(--text-3)", maxWidth: 760, lineHeight: 1.55, marginBottom: 4 }}>
           Giao dịch quẹt thẻ <strong style={{ color: "var(--text-2)" }}>mPOS</strong> &{" "}
@@ -335,8 +402,11 @@ export default function CardReconciliationTab({
               <span style={{ color: "var(--text-2)" }}>
                 Đồng bộ gần nhất: <strong>{lastSync ?? "chưa có"}</strong>
               </span>
-              <span style={{ color: "var(--text-3)" }}>· Tự động tải định kỳ qua tiện ích trình duyệt</span>
-              <div style={{ marginLeft: "auto" }}>
+              <span style={{ color: "var(--text-3)" }}>· Tự động tải định kỳ qua tiện ích trình duyệt · Bấm "Đồng bộ ngay" sẽ kéo cả mPOS lẫn Payoo</span>
+              <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
+                <button type="button" className="btn btn-outline btn-sm" onClick={() => onGoToSync?.()}>
+                  <Icons.AlertCircle size={13} /> Hướng dẫn đồng bộ
+                </button>
                 <button type="button" className="btn btn-outline btn-sm" onClick={handleSync} disabled={syncing}>
                   <RefreshIcon /> {syncing ? "Đang đồng bộ…" : "Đồng bộ ngay"}
                 </button>
