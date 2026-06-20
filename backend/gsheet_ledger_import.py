@@ -379,12 +379,30 @@ def row_fingerprint(payload: dict[str, Any]) -> str:
 
 
 def _loose_fp(row: dict[str, Any]) -> str:
-    """uid + ngày tiền về + số tiền — cross-source dedup."""
+    """Dedup key bền với sheet edit giữa các đợt sync.
+
+    Key = uid + sale + tháng-pay-time + số tiền VND. Cùng customer PalFish
+    (UID unique per customer) + cùng sale phụ trách + cùng tháng đóng tiền +
+    cùng số tiền = cùng giao dịch — bất kể tên khách/SĐT/ngày tiền về bị sửa
+    trên sheet giữa các đợt.
+
+    Tháng (YYYY-MM) thay vì ngày để hấp thụ ca Hiền sửa `ngày tiền về` đợt
+    sau. Bỏ SDT khỏi key (bản cũ gồm SDT — Hiền sửa SDT giữa các đợt thì
+    bypass dedup; xem 18 cặp X bị xóa 15/6/2026).
+    """
     uid = _fp_clean(row.get("uid"))
-    ngay = str(row.get("ngay_tien_ve") or "")[:10]
+    pay = str(row.get("pay_time") or row.get("ngay_tien_ve") or "")[:7]
+    sale = _fp_clean(row.get("sale_crm_name")).lower()
     vnd = str(row.get("so_tien_vnd") or 0)
-    sdt = _fp_clean(row.get("sdt"))
-    return f"{uid}|{ngay}|{vnd}|{sdt}"
+    return f"{uid}|{sale}|{pay}|{vnd}"
+
+
+def _loose_fp_blank(row: dict[str, Any]) -> str:
+    """Fallback key cho dòng đợt sớm chưa điền UID: sale + tháng + tiền."""
+    pay = str(row.get("pay_time") or row.get("ngay_tien_ve") or "")[:7]
+    sale = _fp_clean(row.get("sale_crm_name")).lower()
+    vnd = str(row.get("so_tien_vnd") or 0)
+    return f"|{sale}|{pay}|{vnd}"
 
 
 def map_hcm_rev_row(team_cache: TeamLookupCache, row: list[Any], *, tab: str = "HCM REV") -> dict[str, Any] | None:
@@ -581,14 +599,18 @@ def _load_existing_import_fingerprints(sb, *, log: Callable[[str], None] = _log)
 
 
 def _load_existing_loose_fps(sb, *, log: Callable[[str], None] = _log) -> dict[str, int]:
-    """uid|ngày|tiền counts — cross-source dedup with multiplicity."""
+    """Đếm số dòng theo loose key (uid+sale+tháng+tiền) — multiplicity.
+
+    Tính cả dòng UID trống (key `|sale|tháng|tiền`) để chặn được bản đã-điền-
+    thêm UID đợt sau ([[pattern B]]).
+    """
     fps: dict[str, int] = {}
     offset = 0
     while True:
         res = _execute_supabase(
             lambda off=offset: (
                 sb.table("so_doanh_thu")
-                .select("uid, ngay_tien_ve, so_tien_vnd, sdt")
+                .select("uid, ngay_tien_ve, pay_time, so_tien_vnd, sale_crm_name")
                 .range(off, off + 999)
                 .execute()
             ),
@@ -599,14 +621,12 @@ def _load_existing_loose_fps(sb, *, log: Callable[[str], None] = _log) -> dict[s
         if not chunk:
             break
         for r in chunk:
-            if not _fp_clean(r.get("uid")):
-                continue
             key = _loose_fp(r)
             fps[key] = fps.get(key, 0) + 1
         if len(chunk) < 1000:
             break
         offset += 1000
-    log(f"  Đã có {len(fps)} loose fingerprint (uid+ngày+tiền)")
+    log(f"  Đã có {len(fps)} loose fingerprint (uid+sale+tháng+tiền, gồm UID trống)")
     return fps
 
 
@@ -647,18 +667,22 @@ def sync_gsheet_to_ledger(
     to_insert: list[dict[str, Any]] = []
     skipped = 0
     loose_skipped = 0
-    loose_budget = dict(loose_existing)
+
+    def _loose_seen(p: dict[str, Any]) -> bool:
+        """True nếu Sổ đã có dòng cùng loose key trước đợt sync này.
+
+        Mỗi loose key = (UID, sale, tháng pay-time, tiền) = 1 giao dịch duy
+        nhất. Sổ có ≥1 dòng key này → mọi payload sheet cùng key đều coi là
+        phiên bản đã-sửa-trường-khác của giao dịch đó → skip toàn bộ.
+        """
+        return _loose_fp(p) in loose_existing or _loose_fp_blank(p) in loose_existing
+
     for p in payloads:
-        fp = row_fingerprint(p)
-        lfp = _loose_fp(p) if _fp_clean(p.get("uid")) else ""
-        if fp in existing:
+        if row_fingerprint(p) in existing:
             skipped += 1
-            if lfp and lfp in loose_budget:
-                loose_budget[lfp] -= 1
             continue
-        if lfp and loose_budget.get(lfp, 0) > 0:
+        if _loose_seen(p):
             loose_skipped += 1
-            loose_budget[lfp] -= 1
             continue
         p["updated_by_email"] = actor_email
         if not p.get("created_by_email"):
@@ -706,6 +730,7 @@ def sync_gsheet_to_ledger(
         "fetched": len(payloads),
         "skippedExisting": skipped,
         "skippedLoose": loose_skipped,
+        "plannedInsert": len(to_insert),
         "inserted": inserted if not dry_run else 0,
         "dryRun": dry_run,
         "samples": payloads[:3],

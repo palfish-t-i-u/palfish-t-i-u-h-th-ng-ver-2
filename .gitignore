@@ -1,10 +1,13 @@
-# Bỏ qua thư mục chứa file mẫu
+# Bỏ qua thư mục chứa file mẫu / prototype
 references/
 _prototype_ref/
+CRM Palfish*/
 
 # Brief nội bộ (PDF + script tạo PDF — không commit)
 docs/Brief_Module3_Module4_xuat_hoa_don.pdf
+docs/feedback_9_6_2026.pdf
 scripts/gen_module34_brief_pdf.py
+scripts/deploy-hooks.local
 
 # Backup/artifact từ cleanup scripts
 docs/artifacts/
@@ -42,8 +45,11 @@ api_pipe/.env
 **/secrets/
 *gsheet*.json
 *service-account*.json
+# Backup/report dọn trùng Sổ doanh thu (chứa dữ liệu khách hàng)
+backend/backups/
 api_pipe/__pycache__/
 api_pipe/*.py[cod]
+api_pipe/ngrok*
 
 # Backup/báo cáo tự sinh từ dedup Sổ doanh thu — giữ local, không commit
 backend/backups/
