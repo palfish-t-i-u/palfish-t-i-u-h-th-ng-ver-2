@@ -1333,6 +1333,10 @@ async def _register_payos_webhook_on_startup() -> None:
     """Đăng ký webhook URL với PayOS khi deploy (Render / prod)."""
     from payos_qr import confirm_payos_webhook_url
 
+    if os.getenv("USE_PAYOS", "false").lower() != "true":
+        print("[payos] confirm-webhook skipped (USE_PAYOS=false)")
+        return
+
     if is_sandbox_env():
         print("[sandbox] PayOS confirm-webhook skipped")
         return

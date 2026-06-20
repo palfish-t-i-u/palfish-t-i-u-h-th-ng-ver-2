@@ -140,11 +140,8 @@ export function PaymentFlowProvider({
     if (!options?.silent) setLoading(true);
     const notes: string[] = [];
 
-    try {
-      await endpoints.paymentRequests.syncPendingPayos();
-    } catch {
-      /* PayOS poll fallback — webhook có thể chưa tới */
-    }
+    // Sprint 3 SePay-only: webhook tự flip status=paid, không cần poll.
+    // PayOS sync endpoint đã gate USE_PAYOS=false ở BE — bỏ call để tiết kiệm round-trip.
 
     let nextRequests: PaymentRequest[] = [];
     let prOk = false;

@@ -1677,7 +1677,13 @@ def register_payment_request_routes(app, get_supabase) -> None:
 
     @router.post("/payment-requests/sync-pending-payos")
     async def sync_pending_payos_payments(authorization: str | None = Header(None)):
-        """Poll PayOS cho mọi QR pending — dùng khi webhook chưa tới (local/prod)."""
+        """Poll PayOS cho mọi QR pending — dùng khi webhook chưa tới (local/prod).
+
+        No-op khi USE_PAYOS=false: tránh hit PayOS API + spawn N httpx.AsyncClient
+        cho mỗi stale pending line → OOM trên Render 512MB (Sprint 3 SePay-only).
+        """
+        if os.getenv("USE_PAYOS", "false").lower() != "true":
+            return {"synced": [], "synced_count": 0, "errors": []}
         sb = _sb_or_503(get_supabase)
         resolve_actor(sb, authorization)
         return await sync_all_pending_payos_lines(sb)
