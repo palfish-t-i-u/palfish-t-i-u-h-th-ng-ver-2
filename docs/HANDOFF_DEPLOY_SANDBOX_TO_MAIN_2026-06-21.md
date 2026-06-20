@@ -9,6 +9,21 @@
 
 ---
 
+## ⚠️ HOTFIX 20/6 22:00 — đã deploy main TRƯỚC handoff này
+
+Render prod `palfish-gmv-api` crash OOM (>512MB) lúc 10:12 UTC do FE poll `/sync-pending-payos` liên tục + endpoint không gate `USE_PAYOS` + 8 stale QR lines bám PayOS đã chết. Minh đã hotfix:
+
+- **Commit trên main**: `25ed579 fix(payos): gate sync/webhook theo USE_PAYOS — cứu OOM prod 512MB`
+- **Commit gốc trên sandbox**: `91ea780` (cùng nội dung)
+- **3 file đụng**: `backend/main.py`, `backend/payment_request_routes.py`, `frontend/src/contexts/PaymentFlowContext.tsx`
+
+**Ảnh hưởng đến deploy mai**:
+1. Khi merge `sandbox → main`: 3 file trên CÙNG nội dung 2 nhánh → git auto-merge KHÔNG conflict (no-op cho 3 file đó).
+2. Env `USE_PAYOS=false` trên Render BE prod **đã đề cập trong mục 4.1** — vẫn cần verify đã set explicit.
+3. Trên prod đang có **8 lần TT QR PayOS pending** thuộc 6 PR — xem mục 6.1 mới.
+
+---
+
 ## 0. TL;DR — 4 bước chính
 
 ```
@@ -132,6 +147,8 @@ git merge --no-ff sandbox -m "Merge sandbox vào main: Sprint 1+2+3 — Referral
 
 **Có conflict?** STOP, ping Minh. Sandbox đã được merge main vào trước đó (commit `cce4397`) nên không nên conflict.
 
+**Lưu ý hotfix 20/6**: commit `91ea780` (sandbox) và `25ed579` (main) cùng nội dung — merge sẽ tự skip 3 file đó. Nếu thấy git báo `Already up to date` hoặc skip — đó là expected, không phải lỗi.
+
 ### 3.2 Push main
 
 ```bash
@@ -166,7 +183,7 @@ Render Dashboard → service `palfish-gmv-api` (PROD, không phải sandbox) →
 
 | Key | Giá trị mới | Lý do |
 |-----|------------|-------|
-| `USE_PAYOS` | `false` | Tắt PayOS, chuyển hết sang SePay (anh Hiếu quyết 19/6) |
+| `USE_PAYOS` | `false` | **BẮT BUỘC explicit, không dựa default**. Gate 3 chỗ: endpoint sync-pending-payos, FE poll, startup confirm-webhook. Nếu unset → log startup sẽ ghi `[payos] confirm-webhook skipped (USE_PAYOS=false)` — đó là expected. |
 | `SEPAY_WEBHOOK_SECRET` | (Minh share riêng — đã rotated 18/6) | Bảo mật webhook |
 | `SEPAY_API_TOKEN` | (Minh share riêng) | Cron poll fallback |
 | `SEPAY_ALLOWED_IPS` | (để trống tạm — fallback dev mode; sau khi SePay confirm IP whitelist thì điền) | Chống fake webhook |
@@ -209,6 +226,8 @@ Mở `https://palfish-gmv-manager.vercel.app/` (prod URL):
 | SePay | Trigger webhook test từ SePay dashboard | Bảng "Chuyển khoản" → tab "CK ngoài chờ ghép" có dòng mới |
 | mPOS | Bấm "Đồng bộ ngay" tab mPOS | Toast xanh "Đồng bộ xong: thêm N giao dịch" |
 | Activator | Mở 1 AR → điền Order ID → tick cộng buổi | OK, audit log có entry |
+| **Hotfix PayOS** | `curl -X POST https://<render-prod-url>/api/v1/payment-requests/sync-pending-payos -H "Authorization: Bearer <token>"` | 200 + `{"synced":[],"synced_count":0,"errors":[]}` — KHÔNG hit PayOS, KHÔNG log `payos fetch skipped` |
+| **Startup log** | Render Events → Deploy live → expand log | Có dòng `[payos] confirm-webhook skipped (USE_PAYOS=false)`. KHÔNG có `-> 20 Webhook url invalid` |
 
 ### 4.6 Theo dõi 30 phút sau deploy
 
@@ -245,6 +264,33 @@ Nếu BUỘC PHẢI rollback:
 ### 5.5 Ping Minh ngay
 
 Bất kỳ trường hợp rollback nào → ping Minh qua Zalo. Đừng tự thử quá 30 phút.
+
+---
+
+## 6.1. PENDING PAYOS — 8 lần TT QR còn dở từ trước hotfix
+
+Trên prod đang có **8 lần TT QR pending** bám PayOS từ 6 PR distinct, tạo từ 11/6-20/6 trước khi USE_PAYOS bị tắt. Tổng giá trị ~113M VND:
+
+| PR-ID | Khách | Sale | Số tiền | Mã CK cũ |
+|-------|-------|------|---------|----------|
+| PR-2026-0043 | Anh Lâm | Le Hung Cuong | 8.880.000đ | FHD1Q |
+| PR-2026-0043 | Anh Lâm | Le Hung Cuong | 9.080.000đ | FHD1P |
+| PR-2026-0034 | Như Ý | Mai Thi Lien | 16.500.000đ | FHCCQ |
+| PR-2026-0047 | Khánh Ly | Vu Ho Thanh Huong | 4.550.000đ | FHDCT |
+| PR-2026-0042 | Chị Hương | Le Hung Cuong | 32.900.000đ | FHCYY (Minh huỷ xong 20/6) |
+| PR-2026-0022 | chị Hương | Ta Thi Thu Phuong | 14.650.000đ | FHBFF |
+| PR-2026-0022 | chị Hương | Ta Thi Thu Phuong | 17.650.000đ | FHBFD |
+| PR-2026-0019 | Lê Yến | Kieu Lan Anh | 9.050.000đ | FHB71 |
+
+**Anh Minh sẽ ping 5 Sale sáng 21/6** để họ tự thao tác trên app:
+1. Mở PR → mở drawer → bấm "Huỷ" trên lần TT QR cũ
+2. Bấm "Tạo lần thanh toán" → nhập lại số tiền + tên CK → app dựng QR mới (SePay path)
+3. Gửi QR mới cho khách
+
+**Quan hệ với deploy mai**:
+- 8 lần TT này **KHÔNG cản trở deploy**. Endpoint sync đã gate USE_PAYOS → không gây OOM dù còn pending.
+- **Sale có thể xử trước hoặc sau deploy đều OK**.
+- Sau khi 8 lần TT clear hết → có thể chạy cleanup SQL `UPDATE payment_lines SET payos_order_code=NULL WHERE method='qr' AND status='pending';` (defer, không gấp).
 
 ---
 
@@ -338,15 +384,17 @@ Bất kỳ trường hợp rollback nào → ping Minh qua Zalo. Đừng tự th
 [ ] 4.3 SePay webhook URL trỏ prod
 [ ] 4.4 Extension Chrome đổi BE URL + token
 [ ] 4.5 Smoke test 5 luồng trên prod
-[ ] 4.6 Theo dõi 30 phút logs
+[ ] 4.5 Hotfix verify: POST /sync-pending-payos → empty result
+[ ] 4.5 Startup log có "confirm-webhook skipped (USE_PAYOS=false)"
+[ ] 4.6 Theo dõi 30 phút logs (đặc biệt: KHÔNG còn "payos fetch skipped" + "Ran out of memory")
 [ ] 9 Tag release + update PROJECT.md + ping anh Hiếu
 ```
 
 ---
 
-**Last updated**: 2026-06-20 (Minh, sau code review + fix)
-**Branch source**: `sandbox` (commit cuối: sau fix C1/C2/C4 từ code review)
-**Target**: `main` → prod deploy
+**Last updated**: 2026-06-20 22:30 (Minh, sau hotfix payos OOM 20/6 22:00)
+**Branch source**: `sandbox` (commit cuối: `91ea780` hotfix payos gate USE_PAYOS)
+**Target**: `main` → prod deploy (main đã có cherry-pick `25ed579` hotfix)
 
 ---
 
@@ -358,7 +406,7 @@ Trước khi viết handoff, code-reviewer subagent đã review toàn bộ 50 co
 |---|--------|--------|
 | **C1** | CHECK constraint `bank_transactions.match_status` thiếu `manual_matched` → kế toán bấm Ghép tay sẽ HTTP 500 | ✅ Migration #6 `2026-06-20-add-manual-matched-status.sql` |
 | **C2** | `payment_lines.status='paid'` mark TRƯỚC khi INSERT `bank_transactions` → race condition có thể leave payment_line=paid mà không có bank record | ✅ `sepay_routes.py` đảo thứ tự: INSERT trước, chỉ mark paid khi `is_new=True` |
-| **C3** | PayOS webhook không gate USE_PAYOS | ⚠️ Reviewer overstated — `_verify_payos_webhook_signature` ở `main.py:1122` đã protect bằng PAYOS_CHECKSUM_KEY. Không fix. Nhưng phải đảm bảo `PAYOS_CHECKSUM_KEY` STILL SET trên prod env. |
+| **C3** | PayOS webhook không gate USE_PAYOS | ✅/⚠️ **Partial fix bằng hotfix 20/6** — endpoint `/sync-pending-payos` đã gate USE_PAYOS, startup `confirm-webhook` đã gate USE_PAYOS. Webhook handler `POST /webhook/payos` vẫn nhận request (signature verify chặn payload giả nhưng vẫn tốn CPU parse). Defer fix toàn bộ sau khi PayOS hoàn toàn vô hiệu hoá. **Phải đảm bảo `PAYOS_CHECKSUM_KEY` STILL SET trên prod env**. |
 | **C4** | HMAC verify silently skip khi `SEPAY_WEBHOOK_SECRET` empty | ✅ `sepay_routes.py` thêm guard: APP_ENV=production + empty secret → 503 |
 
 Đã thêm 1 test mới: `test_production_chan_khi_secret_empty` (243 tests pass).
