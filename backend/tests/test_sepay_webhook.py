@@ -94,6 +94,28 @@ class TestSepayHelpers:
         assert _parse_amount(None) == 0.0
         assert _parse_amount("abc") == 0.0
 
+    def test_extract_poll_payload_snake_case_fields(self):
+        from sepay_routes import _extract_sepay_transaction_fields
+
+        payload = {
+            "id": 64044377,
+            "transaction_date": "2026-06-21 10:59:24",
+            "account_number": "168001166899",
+            "sub_account": "MB-HCM",
+            "amount_in": "10000",
+            "amount_out": "0",
+            "transaction_content": "CSNF8DAKF04 TT20260002001",
+        }
+
+        fields = _extract_sepay_transaction_fields(payload)
+
+        assert fields["sepay_id"] == 64044377
+        assert fields["content"] == "CSNF8DAKF04 TT20260002001"
+        assert fields["amount"] == 10000.0
+        assert fields["account_number"] == "168001166899"
+        assert fields["sub_account"] == "MB-HCM"
+        assert fields["transaction_date_raw"] == "2026-06-21 10:59:24"
+
 
 class TestSepayIPWhitelist:
     """Test IP whitelisting logic."""

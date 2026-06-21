@@ -70,6 +70,88 @@ def _parse_amount(v: Any) -> float:
         return 0.0
 
 
+def _first_value(data: dict[str, Any], *keys: str) -> Any:
+    for key in keys:
+        value = data.get(key)
+        if value not in (None, ""):
+            return value
+    return None
+
+
+def _first_text(data: dict[str, Any], *keys: str) -> str:
+    return _clean_text(_first_value(data, *keys))
+
+
+def _extract_sepay_amount(txn: dict[str, Any]) -> float:
+    """Normalize amount fields from both webhook and SePay list API payloads."""
+    incoming = _parse_amount(_first_value(
+        txn,
+        "transferAmount",
+        "transfer_amount",
+        "amount",
+        "amount_in",
+        "amountIn",
+        "money_in",
+        "inAmount",
+        "creditAmount",
+        "credit_amount",
+    ))
+    if incoming:
+        return incoming
+
+    outgoing = _parse_amount(_first_value(
+        txn,
+        "amount_out",
+        "amountOut",
+        "money_out",
+        "outAmount",
+        "debitAmount",
+        "debit_amount",
+    ))
+    if outgoing:
+        return -abs(outgoing)
+
+    return 0.0
+
+
+def _extract_sepay_transaction_fields(txn: dict[str, Any]) -> dict[str, Any]:
+    """Normalize SePay webhook and poll API field names into our DB shape."""
+    return {
+        "sepay_id": _first_value(txn, "id", "sepay_id", "transaction_id", "transactionId"),
+        "content": _first_text(
+            txn,
+            "content",
+            "transferContent",
+            "transfer_content",
+            "transaction_content",
+            "transactionContent",
+            "description",
+            "note",
+            "remark",
+        ),
+        "amount": _extract_sepay_amount(txn),
+        "account_number": _first_text(
+            txn,
+            "accountNumber",
+            "account_number",
+            "bank_account",
+            "bankAccount",
+            "accountNo",
+            "account_no",
+        ),
+        "sub_account": _first_text(txn, "subAccount", "sub_account"),
+        "transaction_date_raw": _first_value(
+            txn,
+            "transactionDate",
+            "transaction_date",
+            "when",
+            "created_at",
+            "createdAt",
+            "time",
+        ),
+    }
+
+
 def _is_mpos_settlement(content: str) -> bool:
     """Nhận diện nội dung CK là khoản kết toán mPOS → ignore."""
     for pattern in MPOS_SETTLE_PATTERNS:
@@ -209,12 +291,13 @@ def _process_sepay_transaction(sb, txn: dict[str, Any]) -> dict[str, Any]:
     3. Khớp mã Base36 trong nội dung CK
     4. INSERT với ON CONFLICT DO NOTHING
     """
-    sepay_id = txn.get("id")
-    content = _clean_text(txn.get("content") or txn.get("transferContent", ""))
-    amount = _parse_amount(txn.get("transferAmount") or txn.get("amount", 0))
-    account_number = _clean_text(txn.get("accountNumber", ""))
-    sub_account = _clean_text(txn.get("subAccount") or txn.get("sub_account", ""))
-    transaction_date_raw = txn.get("transactionDate") or txn.get("when")
+    fields = _extract_sepay_transaction_fields(txn)
+    sepay_id = fields["sepay_id"]
+    content = fields["content"]
+    amount = fields["amount"]
+    account_number = fields["account_number"]
+    sub_account = fields["sub_account"]
+    transaction_date_raw = fields["transaction_date_raw"]
     gateway = txn.get("_gateway", "sepay_webhook")  # internal tag
 
     # Parse transaction date
