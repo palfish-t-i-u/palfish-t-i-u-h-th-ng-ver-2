@@ -67,6 +67,7 @@ type PaymentFlowContextValue = {
   loadData: (options?: LoadDataOptions) => Promise<void>;
   updateRequest: (id: string, updater: (r: PaymentRequest) => PaymentRequest) => void;
   updateActiveRequest: (id: string, updater: (ar: ActiveRequest) => ActiveRequest) => void;
+  setEditingArId: (id: string | null) => void;
   markPersisted: () => void;
   handleCreate: (payload: CreatePaymentRequestPayload) => Promise<PaymentRequest>;
   handleUpdatePr: (id: string, payload: PatchPaymentRequestPayload) => Promise<PaymentRequest>;
@@ -130,6 +131,7 @@ export function PaymentFlowProvider({
   const courseOrderPatchSeqRef = useRef<Record<string, number>>({});
   const loadDataSeqRef = useRef(0);
   const persistCooldownRef = useRef(0);
+  const editingArIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     onViewChangeRef.current = onViewChange;
@@ -170,7 +172,18 @@ export function PaymentFlowProvider({
     if (seq !== loadDataSeqRef.current) return;
 
     if (prOk) setRequests(nextRequests);
-    if (arOk) setActiveRequests(nextArs);
+    if (arOk) {
+      const editId = editingArIdRef.current;
+      if (editId) {
+        setActiveRequests((prev) => {
+          const editing = prev.find((x) => x.id === editId);
+          if (!editing) return nextArs;
+          return nextArs.map((x) => (x.id === editId ? editing : x));
+        });
+      } else {
+        setActiveRequests(nextArs);
+      }
+    }
     setApiNote(notes.join(" "));
     if (!options?.silent) setLoading(false);
   }, []);
@@ -213,6 +226,10 @@ export function PaymentFlowProvider({
 
   const updateActiveRequest = useCallback((id: string, updater: (ar: ActiveRequest) => ActiveRequest) => {
     setActiveRequests((prev) => prev.map((ar) => (ar.id === id ? updater(ar) : ar)));
+  }, []);
+
+  const setEditingArId = useCallback((id: string | null) => {
+    editingArIdRef.current = id;
   }, []);
 
   const handleCreate = useCallback(
@@ -642,6 +659,7 @@ export function PaymentFlowProvider({
       loadData,
       updateRequest,
       updateActiveRequest,
+      setEditingArId,
       markPersisted,
       handleCreate,
       handleUpdatePr,
@@ -670,6 +688,7 @@ export function PaymentFlowProvider({
       loadData,
       updateRequest,
       updateActiveRequest,
+      setEditingArId,
       markPersisted,
       handleCreate,
       handleUpdatePr,

@@ -12,7 +12,7 @@ import json
 import os
 import re
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Callable
 
 import httpx
@@ -217,11 +217,14 @@ def _process_sepay_transaction(sb, txn: dict[str, Any]) -> dict[str, Any]:
     transaction_date_raw = txn.get("transactionDate") or txn.get("when")
     gateway = txn.get("_gateway", "sepay_webhook")  # internal tag
 
-    # Parse transaction date
+    # Parse transaction date — SePay returns Vietnam local time (UTC+7)
+    _VN_TZ = timezone(timedelta(hours=7))
     txn_date = None
     if transaction_date_raw:
         try:
             txn_date = datetime.fromisoformat(str(transaction_date_raw))
+            if txn_date.tzinfo is None:
+                txn_date = txn_date.replace(tzinfo=_VN_TZ)
         except (ValueError, TypeError):
             txn_date = None
 

@@ -52,6 +52,7 @@ export default function PaymentRequestsTab() {
     loadData,
     updateRequest,
     updateActiveRequest,
+    setEditingArId,
     handleCreate: ctxCreate,
     handleAddPayment: ctxAddPayment,
     handleCreateActiveRequest,
@@ -792,6 +793,7 @@ export default function PaymentRequestsTab() {
         onActiveRequestMutate={handleActiveRequestMiniMutate}
         onActiveRequestSave={saveActiveRequest}
         onActiveRequestDelete={deleteActiveRequest}
+        onEditingArIdChange={setEditingArId}
         onShowQr={(qr) => selected && setQrView({ qr, request: selected })}
         readOnly={readOnly}
       />

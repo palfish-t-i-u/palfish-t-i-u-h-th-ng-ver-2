@@ -595,12 +595,14 @@ function ActiveRequestMiniCardV2({
   onActiveRequestMutate,
   onActiveRequestSave,
   onActiveRequestDelete,
+  onEditingChange,
 }: {
   ar: ActiveRequest;
   request: PaymentRequest;
   onActiveRequestMutate: (arId: string, updater: (ar: ActiveRequest) => ActiveRequest) => void;
   onActiveRequestSave: (next: ActiveRequest) => Promise<void>;
   onActiveRequestDelete: (arId: string) => Promise<void>;
+  onEditingChange?: (id: string | null) => void;
 }) {
   const [uidDrafts, setUidDrafts] = useState<Record<number, string>>({});
   const [phoneDrafts, setPhoneDrafts] = useState<Record<number, string>>({});
@@ -609,6 +611,11 @@ function ActiveRequestMiniCardV2({
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [allocationError, setAllocationError] = useState("");
+
+  useEffect(() => {
+    onEditingChange?.(editing ? ar.id : null);
+    return () => onEditingChange?.(null);
+  }, [editing, ar.id, onEditingChange]);
 
   useEffect(() => {
     if (editing) return;
@@ -1448,6 +1455,7 @@ export default function PaymentRequestDetailDrawer({
   onActiveRequestMutate,
   onActiveRequestSave,
   onActiveRequestDelete,
+  onEditingArIdChange,
   onShowQr,
   uploadingBillId,
   deletingBillId,
@@ -1470,6 +1478,7 @@ export default function PaymentRequestDetailDrawer({
   onActiveRequestMutate: (arId: string, updater: (ar: ActiveRequest) => ActiveRequest) => void;
   onActiveRequestSave: (next: ActiveRequest) => Promise<void>;
   onActiveRequestDelete: (arId: string) => Promise<void>;
+  onEditingArIdChange?: (id: string | null) => void;
   onShowQr: (qr: PaymentAttempt) => void;
   uploadingBillId?: string | null;
   deletingBillId?: string | null;
@@ -2163,6 +2172,7 @@ export default function PaymentRequestDetailDrawer({
               onActiveRequestMutate={onActiveRequestMutate}
               onActiveRequestSave={onActiveRequestSave}
               onActiveRequestDelete={onActiveRequestDelete}
+              onEditingChange={onEditingArIdChange}
             />
           )}
 
