@@ -1,13 +1,18 @@
 {
   "manifest_version": 3,
-  "name": "PalFish CRM Token Sync",
-  "version": "1.1.1",
-  "description": "Tự động đồng bộ cookie/token CRM PalFish sang hệ thống quản lý GMV",
-  "permissions": ["webRequest", "storage", "cookies", "tabs"],
+  "name": "PalFish GMV Sync",
+  "version": "1.2.3",
+  "description": "Tự động đồng bộ CRM PalFish + giao dịch mPOS + giao dịch Payoo sang app GMV",
+  "permissions": ["webRequest", "storage", "cookies", "tabs", "alarms"],
   "host_permissions": [
     "*://sea.pri.ibanyu.com/*",
+    "*://mpos.vn/*",
+    "*://*.mpos.vn/*",
+    "*://payoo.vn/*",
+    "*://*.payoo.vn/*",
     "http://localhost:8000/*",
     "https://palfish-gmv-api.onrender.com/*",
+    "https://palfish-gmv-api-sandbox.onrender.com/*",
     "https://palfish-gmv-manager.vercel.app/*",
     "https://palfish-gmv-manager-sandbox.vercel.app/*",
     "https://gmv.palfish.vn/*"
@@ -15,8 +20,22 @@
   "background": {
     "service_worker": "background.js"
   },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://palfish-gmv-manager.vercel.app/*",
+        "https://palfish-gmv-manager-sandbox.vercel.app/*",
+        "https://gmv.palfish.vn/*",
+        "http://localhost:5173/*",
+        "http://localhost:5174/*",
+        "http://localhost:5175/*"
+      ],
+      "js": ["content-app-flag.js"],
+      "run_at": "document_start"
+    }
+  ],
   "action": {
-    "default_title": "PalFish Token Sync",
+    "default_title": "PalFish GMV Sync",
     "default_popup": "popup.html"
   }
 }

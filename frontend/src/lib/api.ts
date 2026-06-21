@@ -32,6 +32,12 @@ import type {
   ExchangeRateUpsertPayload,
   ExchangeRateApiRow,
 } from "../types/exchangeRate";
+import type {
+  GatewaySource,
+  GatewayTxn,
+  MatchCandidate,
+  MatchStatus,
+} from "../components/card-recon/mockGatewayTxns";
 
 export const API_BASE_URL = resolveApiBaseUrl();
 
@@ -193,6 +199,11 @@ export const endpoints = {
         invoice_id: string;
         invoiced_at: string;
       }>(`/api/v1/active-requests/${arId}/courses/${encodeURIComponent(courseCode)}/issue-invoice`),
+    creditReferral: (
+      arId: string,
+      body: { uid: string; course_code: string; side: "referee" | "referrer"; credited: boolean; reason?: string }
+    ) =>
+      api.patch<ActiveRequestApiRow>(`/api/v1/active-requests/${arId}/credit-referral`, body),
     bulkIssueInvoices: (items: { ar_id: string; course_code: string }[]) =>
       api.post<{
         issued: { ar_id: string; course_code: string; invoice_id: string; invoiced_at: string }[];
@@ -475,4 +486,65 @@ export const endpoints = {
     markAllRead: () =>
       api.post<{ ok: boolean }>("/api/v1/notifications/mark-all-read"),
   },
+  // Đối soát giao dịch thẻ mPOS / Payoo (BE: backend/gateway_routes.py).
+  cardRecon: {
+    list: (params?: { source?: GatewaySource; status?: string; q?: string; from?: string; to?: string }) =>
+      api.get<GatewayTxn[]>("/api/v1/gateway-txns", { params }),
+    matchCandidates: (txnId: string, params?: { search?: string }) =>
+      api.get<MatchCandidate[]>(`/api/v1/gateway-txns/${txnId}/match-candidates`, { params }),
+    match: (txnId: string, paymentLineId: string) =>
+      api.patch<GatewayTxn>(`/api/v1/gateway-txns/${txnId}/match`, { payment_line_id: paymentLineId }),
+    patchStatus: (txnId: string, matchStatus: MatchStatus | "needs_review", paymentLineId?: string) =>
+      api.patch<GatewayTxn>(`/api/v1/gateway-txns/${txnId}/status`, {
+        match_status: matchStatus,
+        ...(paymentLineId ? { payment_line_id: paymentLineId } : {}),
+      }),
+    syncStatus: () =>
+      api.get<{ last_sync_at: string | null; ext_connected: boolean; counts: Record<string, Record<string, number>> }>(
+        "/api/v1/gateway-sync/status"
+      ),
+  },
+  bankTxns: {
+    list: (params?: { status?: string; q?: string; from?: string; to?: string }) =>
+      api.get<BankTransaction[]>("/api/v1/bank-transactions", { params }),
+    matchCandidates: (txnId: string, params?: { amount_exact?: number }) =>
+      api.get<BankMatchCandidate[]>(`/api/v1/bank-transactions/${txnId}/match-candidates`, { params }),
+    match: (txnId: string, paymentLineId: string) =>
+      api.patch<{ matched: boolean }>(`/api/v1/bank-transactions/${txnId}/match`, null, {
+        params: { payment_line_id: paymentLineId },
+      }),
+  },
 };
+
+export interface BankTransaction {
+  txn_id: string;
+  date: string | null;
+  amount: number;
+  content: string | null;
+  transfer_content: string | null;
+  account_number: string | null;
+  sub_account: string | null;
+  transaction_date: string | null;
+  match_status: "pending" | "auto_matched" | "manual_matched" | "needs_review" | "ignored";
+  gateway: string;
+  payment_line_id: string | null;
+  matched_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface BankMatchCandidate {
+  payment_line_id: string;
+  pr_id: string;
+  pr_name: string;
+  pr_uid?: string;
+  pr_phone?: string;
+  child_name?: string;
+  sale_name?: string;
+  team_name?: string;
+  amount: number;
+  created_at: string | null;
+  method: string;
+  status: string;
+  transfer_code: string;
+}

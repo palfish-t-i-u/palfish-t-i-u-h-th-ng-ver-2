@@ -132,6 +132,20 @@ export interface ActiveCourse {
   note?: string;
   leadSource?: string;
   leadChannel?: string;
+  /** UID người giới thiệu (referral) — sale nhập khi nguồn = gioi_thieu */
+  referrerUid?: string;
+  /** Số buổi thưởng cho người được giới thiệu (chủ AR) */
+  bonusSessionsReferee?: number;
+  /** Số buổi thưởng cho người giới thiệu */
+  bonusSessionsReferrer?: number;
+  /** Thời điểm bộ phận quản trị đã cộng buổi cho người được giới thiệu trong CRM (Sprint 2 BE) */
+  refereeCreditedAt?: string | null;
+  /** Người thực hiện cộng buổi cho người được giới thiệu */
+  refereeCreditedBy?: string | null;
+  /** Thời điểm bộ phận quản trị đã cộng buổi cho người giới thiệu trong CRM (Sprint 2 BE) */
+  referrerCreditedAt?: string | null;
+  /** Người thực hiện cộng buổi cho người giới thiệu */
+  referrerCreditedBy?: string | null;
 }
 
 export interface ActiveUidGroup {
@@ -231,6 +245,13 @@ export type ActiveRequestApiRow = {
       leadSource?: string;
       lead_channel?: string;
       leadChannel?: string;
+      referrer_uid?: string;
+      bonus_sessions_referee?: number;
+      bonus_sessions_referrer?: number;
+      referee_credited_at?: string | null;
+      referee_credited_by?: string | null;
+      referrer_credited_at?: string | null;
+      referrer_credited_by?: string | null;
     }>;
   }>;
   status?: string;
@@ -255,6 +276,9 @@ export type ActiveRequestPatchUidPayload = {
     tax_product_code?: string;
     lead_source?: string;
     lead_channel?: string;
+    referrer_uid?: string;
+    bonus_sessions_referee?: number;
+    bonus_sessions_referrer?: number;
   }>;
 };
 

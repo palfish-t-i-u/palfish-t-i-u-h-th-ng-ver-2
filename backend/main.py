@@ -30,6 +30,9 @@ from revenue_routes import register_revenue_routes
 from rbac import can_confirm_payment, resolve_actor, visible_creator_emails
 from payos_qr import parse_transfer_content_from_qr
 from env_utils import app_env, is_sandbox_env
+from sepay_routes import register_sepay_routes
+from mpos_import import register_mpos_routes
+from gateway_routes import register_gateway_routes
 
 CANCEL_ANY_ROLES = {"manager", "system", "ops"}
 PAYOS_MAX_SAFE_ORDER_CODE = 9_007_199_254_740_991
@@ -587,9 +590,25 @@ def _record_bank_payment(sb, info_code: str, amount: int, bank_content: str, ban
 def health():
     url = os.getenv("SUPABASE_URL", "").strip()
     key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "").strip()
+    # Project ref từ URL (không phải secret) — để chẩn đoán backend trỏ đúng project nào
+    url_ref = url.replace("https://", "").replace("http://", "").split(".")[0] if url else ""
     configured = bool(url and key and "PASTE_" not in key and not key.startswith("YOUR_"))
-    # Chỉ kiểm tra biến môi trường — tránh crash khi key sai format
-    key_looks_valid = configured and len(key) > 40 and key.count(".") >= 2
+    # Format key: hỗ trợ cả JWT legacy (eyJ..., 3 phần) lẫn API key mới (sb_secret_/sb_publishable_)
+    key_looks_valid = configured and (
+        (key.startswith("eyJ") and key.count(".") >= 2 and len(key) > 40)
+        or key.startswith("sb_secret_")
+        or key.startswith("sb_publishable_")
+    )
+    # Ping DB thật để xác nhận key xác thực được với Supabase (không đổi HTTP status nếu fail)
+    db_reachable = False
+    if configured:
+        try:
+            sb = _supabase()
+            if sb:
+                sb.table("payment_requests").select("id").limit(1).execute()
+                db_reachable = True
+        except Exception as exc:
+            print(f"[healthz] DB ping failed: {exc}")
     payos_ok = bool(os.getenv("PAYOS_CLIENT_ID", "").strip())
     api_pipe_env = (_REPO_ROOT / "api_pipe" / ".env").is_file()
     return {
@@ -597,7 +616,9 @@ def health():
         "app_env": app_env(),
         "sandbox": is_sandbox_env(),
         "supabase_configured": configured,
+        "supabase_project_ref": url_ref,
         "supabase_key_valid_format": key_looks_valid,
+        "supabase_db_reachable": db_reachable,
         "supabase_url_present": bool(url),
         "supabase_key_length": len(key),
         "supabase_key_starts_eyJ": key.startswith("eyJ"),
@@ -1302,6 +1323,9 @@ register_notification_routes(app, _supabase)
 register_crm_routes(app, _supabase)
 register_dashboard_routes(app, _supabase)
 register_report_routes(app, _supabase)
+register_sepay_routes(app, _supabase)
+register_mpos_routes(app, _supabase)
+register_gateway_routes(app, _supabase)
 
 
 @app.on_event("startup")

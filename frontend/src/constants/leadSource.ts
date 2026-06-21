@@ -82,3 +82,13 @@ export function sourceHasChannels(sourceKey: string | undefined | null): boolean
   const src = findSourceByKey(sourceKey);
   return !!src && src.channels.length > 0;
 }
+
+/**
+ * Trả về channel code mặc định nếu source chỉ có duy nhất 1 channel (auto-select),
+ * ngược lại trả về undefined (user phải tự chọn).
+ */
+export function defaultChannelForSource(sourceKey: string | undefined | null): string | undefined {
+  const src = findSourceByKey(sourceKey);
+  if (src && src.channels.length === 1) return src.channels[0].code;
+  return undefined;
+}
