@@ -50,10 +50,11 @@ class TestBuildPayosTransferDescription:
         assert "#" not in desc
         assert "ABC12" in desc
 
-    def test_max_twenty_five_chars(self):
+    def test_max_forty_chars_vietqr_hard_limit(self):
+        """img.vietqr.io cắt cứng ở 40 chars (commit fff4d89, tested 19/6)."""
         row = {"phone": "090123456789012345", "name": "A" * 40}
         desc = pr._build_payos_transfer_description(row, None, "FH9VT")
-        assert len(desc) <= 25
+        assert len(desc) <= 40
 
     def test_always_contains_transfer_code(self):
         row = {"phone": "0" * 20, "ten_khach": "Very Long Customer Name"}
@@ -66,18 +67,43 @@ class TestBuildPayosTransferDescription:
         desc = pr._build_payos_transfer_description(row, "Ha", "FH9VT")
         assert "Ha" in desc
 
-    def test_truncates_to_first_name_only(self):
+    def test_keeps_full_vietnamese_name_when_under_40(self):
+        """3 tên ≤ 40 chars → giữ FULL (commit 9940468 tier 1: full).
+        "8413521313 Tran Ky Duyen FH9VT" = 30 chars ≤ 40 → không cần cắt."""
         row = {"phone": "8413521313", "name": "Trần Kỳ Duyên"}
         desc = pr._build_payos_transfer_description(row, None, "FH9VT")
+        assert "Tran" in desc
+        assert "Ky" in desc
         assert "Duyen" in desc
-        assert "Tran" not in desc
-        assert "Ky" not in desc
+        assert len(desc) <= 40
 
-    def test_child_name_truncates_to_first_name(self):
+    def test_child_name_keeps_full_when_under_40(self):
+        """Tên con ngắn ≤ 40 → giữ nguyên full name."""
         row = {"phone": "8413521313", "name": "Nguyễn Văn A"}
         desc = pr._build_payos_transfer_description(row, "Nguyễn Minh Anh", "FH9VT")
+        assert "Nguyen" in desc
+        assert "Minh" in desc
         assert "Anh" in desc
-        assert "Nguyen" not in desc
+        assert len(desc) <= 40
+
+    def test_falls_back_to_last_two_words_when_over_40(self):
+        """Tên dài quá 40 → tier 2: cắt còn 2 từ cuối (convention VN)."""
+        # phone 12 + 1 + name 30 + 1 + code 5 = 49 > 40 → fallback
+        row = {"phone": "841352131311", "name": "Nguyen Thi Bich Diep Quynh"}
+        desc = pr._build_payos_transfer_description(row, None, "FH9VT")
+        assert "Diep" in desc  # từ áp cuối
+        assert "Quynh" in desc  # từ cuối
+        assert len(desc) <= 40
+
+    def test_falls_back_to_last_word_only_when_still_over_40(self):
+        """Tên cực dài → tier 3: chỉ giữ tên riêng (từ cuối)."""
+        # phone 20 chars + name nhiều từ dài → ép xuống last1
+        row = {"phone": "84012345678901234567",
+               "name": "Nguyen Thi Hong Bich Diep Quynh"}
+        desc = pr._build_payos_transfer_description(row, None, "FH9VT")
+        assert "Quynh" in desc
+        assert len(desc) <= 40
+
 
     def test_fallback_to_code_only_when_needed(self):
         row = {}

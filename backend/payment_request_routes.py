@@ -23,6 +23,7 @@ from pydantic import BaseModel, Field
 
 from rbac import resolve_actor, visible_creator_emails, can_confirm_payment
 from admin_routes import require_module_write
+from activation_routes import _compute_referral_status
 
 from payos_qr import create_payos_payment_link, fetch_payos_payment, payos_payment_is_paid
 
@@ -630,6 +631,7 @@ def _serialize_payment_line(
         "status": row.get("status") or "pending",
         "payos_order_code": row.get("payos_order_code") or "",
         "transfer_code": row.get("transfer_code") or "",
+        "transfer_content": row.get("transfer_content") or "",
         "qr_code": row.get("qr_code") or "",
         "checkout_url": row.get("checkout_url") or "",
         "paid_at": row.get("paid_at") or "",
@@ -761,6 +763,7 @@ def _payment_request_insert_row(body: PaymentRequestCreate) -> dict[str, Any]:
         "province": _clean_text(body.province),
         "note": _clean_text(body.note),
         "email": _clean_text(body.email),
+        "tax_id": _clean_text(body.tax_id) or None,
         "target": target,
         "received": 0,
         "state": "pending",
@@ -768,8 +771,6 @@ def _payment_request_insert_row(body: PaymentRequestCreate) -> dict[str, Any]:
     child_name = _clean_text(body.child_name)
     if child_name:
         row["child_name"] = child_name
-    if body.tax_id:
-        row["tax_id"] = _clean_text(body.tax_id)
     
     ct = _clean_text(body.customer_type) or "individual"
     if ct not in ("individual", "business"):
@@ -828,6 +829,8 @@ def _payment_request_patch_row(body: PaymentRequestPatch, current_row: dict[str,
         patch["email"] = _clean_text(body.email)
     if body.child_name is not None:
         patch["child_name"] = _clean_text(body.child_name) or None
+    if body.tax_id is not None:
+        patch["tax_id"] = _clean_text(body.tax_id) or None
 
     target_val = body.target if body.target is not None else body.tong_tien_phai_thu
     if target_val is not None:
@@ -878,7 +881,8 @@ def _allocate_pr_id(sb, year: int | None = None) -> str:
 
 
 _BASE36_DIGITS = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-_PAYOS_DESCRIPTION_MAX_LEN = 25
+_PAYOS_DESCRIPTION_MAX_LEN = 40  # tested 19/6: img.vietqr.io cắt cứng ở 40 chars
+# (PayOS API trước limit 25, nhưng đã bỏ PayOS path theo Sprint 3 decision)
 
 
 def _int_to_base36(n: int) -> str:
@@ -927,7 +931,10 @@ def _ascii_transfer_name(value: Any) -> str:
 _COUNTRY_DIAL: dict[str, str] = {
     "VN": "84", "US": "1", "GB": "44", "CN": "86", "JP": "81",
     "KR": "82", "TH": "66", "SG": "65", "MY": "60", "ID": "62", "PH": "63",
+    "DE": "49", "FR": "33", "AU": "61", "CA": "1", "RU": "7", "IN": "91",
+    "TW": "886", "HK": "852", "NZ": "64", "NL": "31", "IT": "39", "ES": "34",
 }
+
 
 
 def _build_payos_transfer_description(
@@ -960,23 +967,35 @@ def _build_payos_transfer_description(
     if len(description) <= _PAYOS_DESCRIPTION_MAX_LEN and code in description:
         return description
 
-    first_name = name.split()[-1] if name else ""
+    # Vietnamese name convention (anh feedback 19/6):
+    # 3 tier ưu tiên — full → 2 từ cuối → 1 từ cuối (tên riêng).
+    # KHÔNG cắt giữa từ. KHÔNG có tier "bỏ họ giữ 2 từ đệm + tên riêng"
+    # (vd "Thi Bich Van") vì nghe ngang.
+    name_words = name.split() if name else []
+    name_candidates: list[str] = []
+    if name_words:
+        full = " ".join(name_words)
+        last2 = " ".join(name_words[-2:]) if len(name_words) >= 2 else ""
+        last1 = name_words[-1]
+        for candidate in (full, last2, last1):
+            if candidate and candidate not in name_candidates:
+                name_candidates.append(candidate)
 
-    if phone and name:
-        if first_name:
-            trial = " ".join([phone, first_name, code])
+    # Ưu tiên 1: phone + tên (full → last2 → last1) + code.
+    if phone and name_candidates:
+        for candidate in name_candidates:
+            trial = f"{phone} {candidate} {code}"
             if len(trial) <= _PAYOS_DESCRIPTION_MAX_LEN and code in trial:
                 return trial
-        trial = f"{phone} {code}"
-        if len(trial) <= _PAYOS_DESCRIPTION_MAX_LEN and code in trial:
-            return trial
 
-    if name:
-        if first_name:
-            trial = f"{first_name} {code}"
+    # Ưu tiên 2: chỉ tên + code (bỏ phone nếu phone không vừa).
+    if name_candidates:
+        for candidate in name_candidates:
+            trial = f"{candidate} {code}"
             if len(trial) <= _PAYOS_DESCRIPTION_MAX_LEN and code in trial:
                 return trial
 
+    # Cuối: phone + code, không tên.
     if phone:
         max_phone_len = _PAYOS_DESCRIPTION_MAX_LEN - len(code) - 1
         if max_phone_len > 0:
@@ -1424,12 +1443,40 @@ def register_payment_request_routes(app, get_supabase) -> None:
         bill_assets = _fetch_bill_assets_fast(sb, all_line_ids)
         bill_urls = _bill_urls_from_assets(bill_assets)
 
-        requests = [
-            _serialize_payment_request_list_item(
-                row, lines_by_pr.get(str(row.get("id") or ""), []), bill_urls, bill_assets
+        ars_by_pr: dict[str, list[dict[str, Any]]] = {pr_id: [] for pr_id in pr_ids}
+        if pr_ids:
+            try:
+                ar_res = (
+                    sb.table("active_requests")
+                    .select("pr_id, uids_data")
+                    .in_("pr_id", pr_ids)
+                    .execute()
+                )
+                for ar in (ar_res.data or []):
+                    pid = str(ar.get("pr_id") or "")
+                    if pid in ars_by_pr:
+                        ars_by_pr[pid].append(ar)
+            except Exception as exc:
+                print(f"Khong doc duoc active_requests for PR referral_status: {exc}")
+
+        requests = []
+        for row in pr_rows:
+            pr_id = str(row.get("id") or "")
+            item = _serialize_payment_request_list_item(
+                row, lines_by_pr.get(pr_id, []), bill_urls, bill_assets
             )
-            for row in pr_rows
-        ]
+            
+            ars = ars_by_pr.get(pr_id, [])
+            all_courses = []
+            for ar in ars:
+                for u in (ar.get("uids_data") or []):
+                    if isinstance(u, dict):
+                        for c in (u.get("courses") or []):
+                            if isinstance(c, dict):
+                                all_courses.append(c)
+                                
+            item["referral_status"] = _compute_referral_status(all_courses)
+            requests.append(item)
 
         # Enrich ten TVTS de FE hien cot TVTS cho leader+ ngay tren bang chinh.
         name_map = _sale_name_map(sb)
@@ -1754,21 +1801,38 @@ def register_payment_request_routes(app, get_supabase) -> None:
             description = _build_payos_transfer_description(
                 pr_row, body.name_for_transfer, transfer_code
             )
-            try:
-                payos_payload = await create_payos_payment_link(amount, description)
-            except ValueError as exc:
-                raise HTTPException(503, str(exc)) from exc
-            except Exception as exc:
-                raise HTTPException(502, f"Khong ket noi duoc PayOS: {exc}") from exc
+            # USE_PAYOS=true → gọi PayOS dựng link (legacy, đang được cắt theo decision 19/6).
+            # USE_PAYOS=false → chỉ build description với mã 5 ký tự, FE self-gen VietQR,
+            # SePay webhook match content. Đơn giản hoá thanh toán về 1 cổng.
+            use_payos = os.getenv("USE_PAYOS", "false").lower() == "true"
+            if use_payos:
+                try:
+                    payos_payload = await create_payos_payment_link(amount, description)
+                except ValueError as exc:
+                    raise HTTPException(503, str(exc)) from exc
+                except Exception as exc:
+                    raise HTTPException(502, f"Khong ket noi duoc PayOS: {exc}") from exc
 
-            insert_row.update(
-                {
-                    "payos_order_code": payos_payload["order_code"],
-                    "qr_code": payos_payload.get("qr_code") or "",
-                    "checkout_url": payos_payload.get("checkout_url") or "",
-                    "transfer_content": payos_payload.get("transfer_content") or description,
-                }
-            )
+                insert_row.update(
+                    {
+                        "payos_order_code": payos_payload["order_code"],
+                        "qr_code": payos_payload.get("qr_code") or "",
+                        "checkout_url": payos_payload.get("checkout_url") or "",
+                        "transfer_content": payos_payload.get("transfer_content") or description,
+                    }
+                )
+            else:
+                # SePay-only path — FE dựng VietQR tĩnh, SePay webhook match content.
+                # payos_order_code = NULL (không "") để tránh duplicate unique constraint
+                # khi nhiều lần TT trên cùng PR (Postgres UNIQUE cho phép multiple NULL).
+                insert_row.update(
+                    {
+                        "payos_order_code": None,
+                        "qr_code": "",
+                        "checkout_url": "",
+                        "transfer_content": description,
+                    }
+                )
 
         try:
             line_res = sb.table("payment_lines").insert(insert_row).execute()

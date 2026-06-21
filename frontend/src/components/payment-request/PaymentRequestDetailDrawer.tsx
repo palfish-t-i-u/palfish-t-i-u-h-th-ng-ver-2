@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { LEAD_SOURCES, findSourceByKey, sourceHasChannels } from "../../constants/leadSource";
+import { LEAD_SOURCES, defaultChannelForSource, findSourceByKey, sourceHasChannels } from "../../constants/leadSource";
 import type {
   ActiveRequest,
   AddPaymentAttemptPayload,
@@ -23,8 +23,12 @@ import {
   fmtPhone,
   formatCoursePhone,
   formatPaymentDateFull,
+  getReferralStatus,
   nowStamp,
   paymentAttemptLabel,
+  REFERRAL_STATUS_HEADER,
+  REFERRAL_STATUS_PANEL_STYLE,
+  validateReferralBonus,
   vnd,
 } from "./paymentRequestUtils";
 import { nextCourseCode } from "../payment-flow/paymentFlowUtils";
@@ -591,12 +595,14 @@ function ActiveRequestMiniCardV2({
   onActiveRequestMutate,
   onActiveRequestSave,
   onActiveRequestDelete,
+  onEditingChange,
 }: {
   ar: ActiveRequest;
   request: PaymentRequest;
   onActiveRequestMutate: (arId: string, updater: (ar: ActiveRequest) => ActiveRequest) => void;
   onActiveRequestSave: (next: ActiveRequest) => Promise<void>;
   onActiveRequestDelete: (arId: string) => Promise<void>;
+  onEditingChange?: (id: string | null) => void;
 }) {
   const [uidDrafts, setUidDrafts] = useState<Record<number, string>>({});
   const [phoneDrafts, setPhoneDrafts] = useState<Record<number, string>>({});
@@ -605,6 +611,11 @@ function ActiveRequestMiniCardV2({
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [allocationError, setAllocationError] = useState("");
+
+  useEffect(() => {
+    onEditingChange?.(editing ? ar.id : null);
+    return () => onEditingChange?.(null);
+  }, [editing, ar.id, onEditingChange]);
 
   useEffect(() => {
     if (editing) return;
@@ -661,6 +672,11 @@ function ActiveRequestMiniCardV2({
     }
     if (hasUnfilledCourse) {
       setAllocationError("Có gói học chưa điền số tiền (0 đ). Hãy điền số tiền hoặc xóa gói trước khi lưu.");
+      return;
+    }
+    const referralError = validateReferralBonus(ar);
+    if (referralError) {
+      setAllocationError(referralError);
       return;
     }
     setSaving(true);
@@ -1156,6 +1172,34 @@ function ActiveRequestMiniCardV2({
                         })()}
                       </div>
                     )}
+                    {!editing && c.leadSource === "gioi_thieu" &&
+                      ((c.bonusSessionsReferee ?? 0) > 0 || (c.bonusSessionsReferrer ?? 0) > 0) && (() => {
+                        const rs = getReferralStatus(c);
+                        const panelStyle = REFERRAL_STATUS_PANEL_STYLE[rs];
+                        const headerText = REFERRAL_STATUS_HEADER[rs];
+                        return (
+                          <div style={{ gridColumn: "1 / -1", padding: "10px 12px", borderRadius: 8, marginTop: 6, ...panelStyle }}>
+                            <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text-1, #111)", marginBottom: 6 }}>{headerText}</div>
+                            {(c.bonusSessionsReferee ?? 0) > 0 && (
+                              <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text-1, #111)" }}>
+                                Người được giới thiệu (UID: {u.uid || "—"}) — cộng thêm {c.bonusSessionsReferee} buổi.{" "}
+                                {c.refereeCreditedAt
+                                  ? <span style={{ color: "var(--success-text)", fontWeight: 600 }}>Đã cộng lúc {formatPaymentDateFull(c.refereeCreditedAt)}</span>
+                                  : <span style={{ color: "var(--text-3)" }}>Chưa cộng</span>}
+                              </div>
+                            )}
+                            {(c.bonusSessionsReferrer ?? 0) > 0 && (
+                              <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text-1, #111)", marginTop: 4 }}>
+                                Người giới thiệu (UID: {c.referrerUid || "—"}) — cộng thêm {c.bonusSessionsReferrer} buổi.{" "}
+                                {c.referrerCreditedAt
+                                  ? <span style={{ color: "var(--success-text)", fontWeight: 600 }}>Đã cộng lúc {formatPaymentDateFull(c.referrerCreditedAt)}</span>
+                                  : <span style={{ color: "var(--text-3)" }}>Chưa cộng</span>}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()
+                    }
                     {editing && (
                       <div style={{ gridColumn: "1 / -1", display: "flex", gap: 8 }}>
                         <select
@@ -1171,7 +1215,7 @@ function ActiveRequestMiniCardV2({
                                       ...uu,
                                       courses: uu.courses.map((course) =>
                                         course.courseCode === c.courseCode
-                                          ? { ...course, leadSource: val, leadChannel: undefined }
+                                          ? { ...course, leadSource: val, leadChannel: defaultChannelForSource(val) }
                                           : course
                                       ),
                                     }
@@ -1217,6 +1261,104 @@ function ActiveRequestMiniCardV2({
                         )}
                       </div>
                     )}
+                    {editing && c.leadSource === "gioi_thieu" && (() => {
+                        const rs = getReferralStatus(c);
+                        const panelStyle = REFERRAL_STATUS_PANEL_STYLE[rs];
+                        const headerText = REFERRAL_STATUS_HEADER[rs];
+                        return (
+                          <div style={{ gridColumn: "1 / -1", display: "grid", gap: 10, padding: "10px 12px", borderRadius: 8, marginTop: 6, ...panelStyle }}>
+                            <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text-1, #111)" }}>{headerText}</div>
+                            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                              <div>
+                                <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "var(--text-2)", marginBottom: 4 }}>
+                                  UID người giới thiệu
+                                </label>
+                                <input
+                                  value={c.referrerUid ?? ""}
+                                  disabled={courseLocked}
+                                  placeholder="UID người giới thiệu"
+                                  onChange={(e) => {
+                                    const val = e.target.value;
+                                    mutate((next) => ({
+                                      ...next,
+                                      uids: next.uids.map((uu, idx) =>
+                                        idx === uIdx
+                                          ? { ...uu, courses: uu.courses.map((course) =>
+                                              course.courseCode === c.courseCode ? { ...course, referrerUid: val } : course) }
+                                          : uu
+                                      ),
+                                    }));
+                                  }}
+                                  style={{ font: "inherit", fontSize: 13, fontFamily: "JetBrains Mono, monospace", width: "100%", borderRadius: 8, border: "1.5px solid var(--text-3)", padding: "6px 10px", boxSizing: "border-box", color: "var(--text)" }}
+                                />
+                                <div style={{ fontSize: 11, color: "var(--text-3)", marginTop: 3 }}>
+                                  Nhập đúng UID khách hàng đã giới thiệu khách này. UID phải khác UID người được giới thiệu.
+                                </div>
+                              </div>
+                              <div>
+                                <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "var(--text-2)", marginBottom: 4 }}>
+                                  Số buổi cộng cho người được giới thiệu (UID: {u.uid || "—"})
+                                </label>
+                                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                                  <input
+                                    value={c.bonusSessionsReferee ?? ""}
+                                    disabled={courseLocked}
+                                    inputMode="numeric"
+                                    pattern="[0-9]*"
+                                    onChange={(e) => {
+                                      const raw = e.target.value.replace(/[^\d]/g, "");
+                                      const val = raw === "" ? undefined : Math.max(0, parseInt(raw, 10) || 0);
+                                      mutate((next) => ({
+                                        ...next,
+                                        uids: next.uids.map((uu, idx) =>
+                                          idx === uIdx
+                                            ? { ...uu, courses: uu.courses.map((course) =>
+                                                course.courseCode === c.courseCode ? { ...course, bonusSessionsReferee: val } : course) }
+                                            : uu
+                                        ),
+                                      }));
+                                    }}
+                                    style={{ font: "inherit", fontSize: 13, fontWeight: 600, textAlign: "right", width: 90, borderRadius: 8, border: "1.5px solid var(--text-3)", padding: "6px 10px", color: "var(--text)" }}
+                                  />
+                                  <span style={{ fontSize: 12, color: "var(--text-2)" }}>buổi</span>
+                                </div>
+                              </div>
+                              <div>
+                                <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "var(--text-2)", marginBottom: 4 }}>
+                                  Số buổi cộng cho người giới thiệu (UID: {c.referrerUid || "—"})
+                                </label>
+                                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                                  <input
+                                    value={c.bonusSessionsReferrer ?? ""}
+                                    disabled={courseLocked}
+                                    inputMode="numeric"
+                                    pattern="[0-9]*"
+                                    onChange={(e) => {
+                                      const raw = e.target.value.replace(/[^\d]/g, "");
+                                      const val = raw === "" ? undefined : Math.max(0, parseInt(raw, 10) || 0);
+                                      mutate((next) => ({
+                                        ...next,
+                                        uids: next.uids.map((uu, idx) =>
+                                          idx === uIdx
+                                            ? { ...uu, courses: uu.courses.map((course) =>
+                                                course.courseCode === c.courseCode ? { ...course, bonusSessionsReferrer: val } : course) }
+                                            : uu
+                                        ),
+                                      }));
+                                    }}
+                                    style={{ font: "inherit", fontSize: 13, fontWeight: 600, textAlign: "right", width: 90, borderRadius: 8, border: "1.5px solid var(--text-3)", padding: "6px 10px", color: "var(--text)" }}
+                                  />
+                                  <span style={{ fontSize: 12, color: "var(--text-2)" }}>buổi</span>
+                                </div>
+                              </div>
+                            </div>
+                            <div style={{ fontSize: 11, color: "var(--text-3)" }}>
+                              Bạn điền số buổi cộng cho 1 trong 2 bên hoặc cả 2 bên tuỳ tình huống. Nếu cộng buổi cho người giới thiệu, bạn bắt buộc nhập UID của họ (phải khác UID người được giới thiệu).
+                            </div>
+                          </div>
+                        );
+                      })()
+                    }
                   </div>
                   );
                 })}
@@ -1313,6 +1455,7 @@ export default function PaymentRequestDetailDrawer({
   onActiveRequestMutate,
   onActiveRequestSave,
   onActiveRequestDelete,
+  onEditingArIdChange,
   onShowQr,
   uploadingBillId,
   deletingBillId,
@@ -1335,6 +1478,7 @@ export default function PaymentRequestDetailDrawer({
   onActiveRequestMutate: (arId: string, updater: (ar: ActiveRequest) => ActiveRequest) => void;
   onActiveRequestSave: (next: ActiveRequest) => Promise<void>;
   onActiveRequestDelete: (arId: string) => Promise<void>;
+  onEditingArIdChange?: (id: string | null) => void;
   onShowQr: (qr: PaymentAttempt) => void;
   uploadingBillId?: string | null;
   deletingBillId?: string | null;
@@ -1361,6 +1505,14 @@ export default function PaymentRequestDetailDrawer({
     setPrFullModalOpen(false);
     setHighlightTarget(false);
   }, [request?.id]);
+
+  // Khoá scroll nền khi drawer mở — tránh 3 scrollbar (anh feedback 19/6).
+  useEffect(() => {
+    if (!open) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => { document.body.style.overflow = prev; };
+  }, [open]);
 
   useEffect(() => {
     if (!showAdd) return;
@@ -2020,6 +2172,7 @@ export default function PaymentRequestDetailDrawer({
               onActiveRequestMutate={onActiveRequestMutate}
               onActiveRequestSave={onActiveRequestSave}
               onActiveRequestDelete={onActiveRequestDelete}
+              onEditingChange={onEditingArIdChange}
             />
           )}
 

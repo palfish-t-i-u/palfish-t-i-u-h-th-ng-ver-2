@@ -18,6 +18,7 @@ openpyxl>=3.1.0
 
 # Data processing (Module 5 — xuất master data CRM)
 pandas>=2.2.0
+xlrd>=2.0.1
 
 # Google Sheets — import All File Thu Hiền → Sổ doanh thu (docs/M5_GSHEET_IMPORT.md)
 google-auth>=2.29.0

@@ -29,13 +29,11 @@ import {
   type StatusFilter,
   buildArByPrId,
   fromApiAttempt,
-  fromApiActiveRequest,
   fromApiPaymentRequest,
   isBackendLineId,
   normalizeRequest,
   nowStamp,
   paginate,
-  toActiveRequestPatchUidsData,
   visiblePaymentRequests,
 } from "./payment-request/paymentRequestUtils";
 
@@ -54,7 +52,7 @@ export default function PaymentRequestsTab() {
     loadData,
     updateRequest,
     updateActiveRequest,
-    setApiNote,
+    setEditingArId,
     handleCreate: ctxCreate,
     handleAddPayment: ctxAddPayment,
     handleCreateActiveRequest,
@@ -696,24 +694,13 @@ export default function PaymentRequestsTab() {
     await handleCreateActiveRequest(selected);
   };
 
-  const handleActiveRequestMiniMutate = async (
+  // Local-only update — KHÔNG gọi server mỗi keystroke (race condition: response chậm
+  // overwrite state mới hơn, làm mất ký tự user vừa gõ). Server save dùng Save button.
+  const handleActiveRequestMiniMutate = (
     arId: string,
     updater: (ar: ActiveRequest) => ActiveRequest
   ) => {
-    let optimistic: ActiveRequest | null = null;
-    updateActiveRequest(arId, (ar) => (optimistic = updater(ar)));
-    if (!optimistic) return;
-
-    try {
-      const res = await endpoints.activeRequests.update(arId, {
-        uids_data: toActiveRequestPatchUidsData(optimistic),
-      });
-      const saved = fromApiActiveRequest(res.data);
-      updateActiveRequest(arId, () => saved);
-      setApiNote("");
-    } catch {
-      setApiNote("Đã đổi tạm trên giao diện; máy chủ chưa lưu được thay đổi Kích hoạt khoá học.");
-    }
+    updateActiveRequest(arId, updater);
   };
 
   return (
@@ -806,6 +793,7 @@ export default function PaymentRequestsTab() {
         onActiveRequestMutate={handleActiveRequestMiniMutate}
         onActiveRequestSave={saveActiveRequest}
         onActiveRequestDelete={deleteActiveRequest}
+        onEditingArIdChange={setEditingArId}
         onShowQr={(qr) => selected && setQrView({ qr, request: selected })}
         readOnly={readOnly}
       />

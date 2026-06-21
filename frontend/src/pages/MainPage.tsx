@@ -8,7 +8,7 @@ import { PaymentFlowProvider, usePaymentFlow, type PaymentFlowView } from "../co
 import { useAuth } from "../hooks/useAuth";
 import { useMe } from "../hooks/useMe";
 import ProfilePage from "./ProfilePage";
-import AppShell, { type NavItem } from "../layouts/AppShell";
+import AppShell, { type NavChildItem, type NavItem } from "../layouts/AppShell";
 import Badge from "../components/ui/Badge";
 import { DEPARTMENT_LIST } from "../types/permissions";
 import NotificationBell from "../components/NotificationBell";
@@ -22,7 +22,7 @@ function retryImport<T>(load: () => Promise<T>, retries: number): Promise<T> {
   });
 }
 
-function lazyRetry(load: () => Promise<{ default: React.ComponentType }>) {
+function lazyRetry<P extends object = object>(load: () => Promise<{ default: React.ComponentType<P> }>) {
   return lazy(() => retryImport(load, 2));
 }
 
@@ -31,6 +31,8 @@ const BC02KeyDataReport = lazyRetry(() => import("../components/reports/BC02KeyD
 const ReportBC03Tab = lazyRetry(() => import("../components/ReportBC03Tab"));
 const PaymentRequestsTab = lazyRetry(() => import("../components/PaymentRequestsTab"));
 const ReconciliationTab = lazyRetry(() => import("../components/ReconciliationTab"));
+const CardReconciliationTab = lazyRetry(() => import("../components/CardReconciliationTab"));
+const GatewaySyncTab = lazyRetry(() => import("../components/GatewaySyncTab"));
 const ActivationTab = lazyRetry(() => import("../components/ActivationTab"));
 const InvoiceRequestTab = lazyRetry(() => import("../components/InvoiceRequestTab"));
 const SoDoanhThuTab = lazyRetry(() => import("../components/SoDoanhThuTab"));
@@ -38,18 +40,23 @@ const SoDoanhThuTab = lazyRetry(() => import("../components/SoDoanhThuTab"));
 const PRELOAD_MAP: Record<string, () => Promise<unknown>> = {
   paymentRequests: () => import("../components/PaymentRequestsTab"),
   reconciliation: () => import("../components/ReconciliationTab"),
+  reconMpos: () => import("../components/CardReconciliationTab"),
+  reconPayoo: () => import("../components/CardReconciliationTab"),
   module3: () => import("../components/ActivationTab"),
   module4: () => import("../components/InvoiceRequestTab"),
   revenueLedger: () => import("../components/SoDoanhThuTab"),
   bc01: () => import("../components/reports/BC01SalesPerformance"),
   bc02: () => import("../components/reports/BC02KeyDataReport"),
   bc03: () => import("../components/ReportBC03Tab"),
+  gatewaySync: () => import("../components/GatewaySyncTab"),
 };
 
 type ViewId =
   | "dashboard"
   | "paymentRequests"
   | "reconciliation"
+  | "reconMpos"
+  | "reconPayoo"
   | "profile"
   | "module3"
   | "module4"
@@ -59,6 +66,7 @@ type ViewId =
   | "bc03"
   | "module5"
   | "module6"
+  | "gatewaySync"
   | "authAccounts"
   | "permissions";
 
@@ -161,8 +169,16 @@ const TITLES: Record<ViewId, { title: string; subtitle?: string }> = {
     subtitle: "Theo dõi Payment Requests, biên lai & tiến độ chuyển khoản của khách",
   },
   reconciliation: {
-    title: "Đối soát giao dịch",
-    subtitle: "B2 — Kế toán xác nhận / từ chối từng lần thanh toán theo sao kê",
+    title: "Đối soát giao dịch · Chuyển khoản",
+    subtitle: "PayOS / SePay — kế toán xác nhận tiền CK đã về theo sao kê",
+  },
+  reconMpos: {
+    title: "Đối soát giao dịch · mPOS",
+    subtitle: "Ghép giao dịch quẹt thẻ mPOS với đúng lần thanh toán của PR",
+  },
+  reconPayoo: {
+    title: "Đối soát giao dịch · Payoo",
+    subtitle: "Ghép giao dịch Payoo (online / trả góp) với đúng lần thanh toán của PR",
   },
   profile: { title: "Thông tin cá nhân" },
   module3: {
@@ -179,6 +195,7 @@ const TITLES: Record<ViewId, { title: string; subtitle?: string }> = {
   bc03: { title: "BC03 — Báo cáo tổng bộ", subtitle: "KPI thủ công + doanh thu / trial / referral tự động" },
   module5: { title: "Đồng bộ CRM", subtitle: "M5 — 1-Click sync & xuất Master Data CRM PalFish" },
   module6: { title: "Dashboard Sale", subtitle: "M6 — Tổng quan hiệu suất theo team & cá nhân" },
+  gatewaySync: { title: "Đồng bộ mPOS / Payoo", subtitle: "Cài tiện ích kéo giao dịch mPOS & Payoo về app" },
   authAccounts: {
     title: "Tài khoản Auth",
     subtitle: "Quản lý tài khoản đăng nhập — liên kết CRM & phân quyền vai trò",
@@ -215,7 +232,11 @@ function MainPageInner({
   }, [flowNavRef]);
 
   const perms = profile?.permissions ?? {};
-  const can = (key: string) => isDevMode || (perms[key] ?? "none") !== "none";
+  const can = (key: string) => {
+    // Tab con mPOS/Payoo dùng chung quyền với reconciliation (B2)
+    const k = key === "reconMpos" || key === "reconPayoo" || key === "gatewaySync" ? "reconciliation" : key;
+    return isDevMode || (perms[k] ?? "none") !== "none";
+  };
 
   const handleNavHover = useCallback((id: string) => {
     PRELOAD_MAP[id]?.();
@@ -240,10 +261,16 @@ function MainPageInner({
     if (can("paymentRequests"))
       list.push({ id: "paymentRequests", label: "Quản lý thanh toán", icon: I.invoice, ...(!can("dashboard") ? { section: "Khách hàng & Đơn hàng" } : {}) });
 
-    // ── Đối soát & Hóa đơn ──
-    const reconItem: NavItem | null = showReconciliation
-      ? { id: "reconciliation", label: "Đối soát giao dịch", icon: I.history, section: "Đối soát & Hóa đơn",
-          badge: badgeCounts.reconciliation > 0 ? <Badge tone="warn">{badgeCounts.reconciliation}</Badge> : null }
+    // ── Đối soát & Hóa đơn ── (dropdown 3 tab con: Chuyển khoản / mPOS / Payoo)
+    const reconChildren: NavChildItem[] = [];
+    if (showReconciliation)
+      reconChildren.push({ id: "reconciliation", label: "Chuyển khoản", subtitle: "PayOS / SePay" });
+    if (can("reconMpos"))
+      reconChildren.push({ id: "reconMpos", label: "mPOS", subtitle: "Quẹt thẻ tại máy" });
+    if (can("reconPayoo"))
+      reconChildren.push({ id: "reconPayoo", label: "Payoo", subtitle: "Thanh toán online" });
+    const reconItem: NavItem | null = reconChildren.length > 0
+      ? { id: "reconHub", label: "Đối soát giao dịch", icon: I.history, section: "Đối soát & Hóa đơn", children: reconChildren }
       : null;
     if (reconItem) list.push(reconItem);
 
@@ -271,6 +298,9 @@ function MainPageInner({
       list.push({ id: "module5", label: "Đồng bộ CRM", icon: I.database, section: "Dữ liệu" });
     if (can("module6"))
       list.push({ id: "module6", label: "Dashboard Sale", icon: I.chart, ...(!can("module5") ? { section: "Dữ liệu" } : {}) });
+    if (can("gatewaySync"))
+      list.push({ id: "gatewaySync", label: "Đồng bộ mPOS / Payoo", icon: I.database,
+        ...(!can("module5") && !can("module6") ? { section: "Dữ liệu" } : {}) });
 
     // ── Tài khoản & Quyền ──
     const accountItems: NavItem[] = [];
@@ -294,6 +324,8 @@ function MainPageInner({
     activeView === "dashboard" ||
     activeView === "paymentRequests" ||
     activeView === "reconciliation" ||
+    activeView === "reconMpos" ||
+    activeView === "reconPayoo" ||
     activeView === "module3" ||
     activeView === "module4" ||
     activeView === "bc01" ||
@@ -307,6 +339,8 @@ function MainPageInner({
       case "dashboard": return <DashboardTab />;
       case "paymentRequests": return <PaymentRequestsTab />;
       case "reconciliation": return <ReconciliationTab />;
+      case "reconMpos": return <CardReconciliationTab lockedSource="mpos" onGoToSync={() => setActiveView("gatewaySync")} />;
+      case "reconPayoo": return <CardReconciliationTab lockedSource="payoo" onGoToSync={() => setActiveView("gatewaySync")} />;
       case "module3": return <ActivationTab />;
       case "module4": return <InvoiceRequestTab />;
       case "profile": return <ProfilePage />;
@@ -316,6 +350,7 @@ function MainPageInner({
       case "bc03": return <ReportBC03Tab />;
       case "module5": return <Module5Tab />;
       case "module6": return <Module6Tab />;
+      case "gatewaySync": return <GatewaySyncTab />;
       case "authAccounts": return <AuthAccountsTab />;
       case "permissions": return <PermissionsTab />;
       default: return <PaymentRequestsTab />;

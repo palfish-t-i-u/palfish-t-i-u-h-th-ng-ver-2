@@ -1,3 +1,4 @@
+import type { CSSProperties } from "react";
 import type { ActiveRequest, ActiveRequestApiRow, ActiveRequestPatchUidPayload, CreateActiveRequestPayload, PaymentAttempt, PaymentMethod, PaymentRequest, PaymentRequestStatus } from "../../types/paymentRequest";
 
 export type RequestBucket = "tracking" | "created" | "cancelled";
@@ -221,6 +222,13 @@ export function fromApiActiveRequest(raw: ActiveRequestApiRow): ActiveRequest {
         taxProductCode: c.tax_product_code,
         leadSource: c.lead_source ?? c.leadSource ?? undefined,
         leadChannel: c.lead_channel ?? c.leadChannel ?? undefined,
+        referrerUid: c.referrer_uid ?? undefined,
+        bonusSessionsReferee: c.bonus_sessions_referee ?? undefined,
+        bonusSessionsReferrer: c.bonus_sessions_referrer ?? undefined,
+        refereeCreditedAt: c.referee_credited_at ?? null,
+        refereeCreditedBy: c.referee_credited_by ?? null,
+        referrerCreditedAt: c.referrer_credited_at ?? null,
+        referrerCreditedBy: c.referrer_credited_by ?? null,
       })),
     })),
   };
@@ -264,6 +272,85 @@ export function activeRequestAllocation(ar: ActiveRequest, pr: PaymentRequest | 
   };
 }
 
+export type ReferralStatus = "none" | "partial" | "full";
+
+export const REFERRAL_STATUS_PANEL_STYLE: Record<ReferralStatus, CSSProperties> = {
+  full:    { border: "1.5px solid var(--success, #10b981)", background: "var(--success-bg, #d1fae5)" },
+  partial: { border: "1.5px solid var(--caution, #eab308)", background: "var(--caution-bg, #fef9c3)" },
+  none:    { border: "1.5px solid var(--warning, #f59e0b)", background: "var(--warning-bg, #fef3c7)" },
+};
+
+export const REFERRAL_STATUS_HEADER: Record<ReferralStatus, string> = {
+  full:    "Khoá này đã được cộng buổi thưởng giới thiệu đầy đủ cho cả 2 bên.",
+  partial: "Khoá này có thưởng giới thiệu — bộ phận quản trị đã cộng 1 bên, còn 1 bên chưa.",
+  none:    "Khoá này có thưởng giới thiệu — bộ phận quản trị chưa cộng buổi trong CRM.",
+};
+
+export function getReferralStatus(course: {
+  bonusSessionsReferee?: number;
+  bonusSessionsReferrer?: number;
+  refereeCreditedAt?: string | null;
+  referrerCreditedAt?: string | null;
+}): ReferralStatus {
+  const needRefereeCredit = (course.bonusSessionsReferee ?? 0) > 0;
+  const needReferrerCredit = (course.bonusSessionsReferrer ?? 0) > 0;
+  if (!needRefereeCredit && !needReferrerCredit) return "none";
+  const refereeOk = !needRefereeCredit || Boolean(course.refereeCreditedAt);
+  const referrerOk = !needReferrerCredit || Boolean(course.referrerCreditedAt);
+  if (refereeOk && referrerOk) return "full";
+  if (refereeOk || referrerOk) return "partial";
+  return "none";
+}
+
+/**
+ * Aggregate referral status across all gioi_thieu courses in an AR.
+ * Returns null if AR has no referral courses.
+ */
+export function getArReferralStatus(ar: ActiveRequest): ReferralStatus | null {
+  const referralCourses: { bonusSessionsReferee?: number; bonusSessionsReferrer?: number; refereeCreditedAt?: string | null; referrerCreditedAt?: string | null }[] = [];
+  for (const u of ar.uids) {
+    for (const c of u.courses) {
+      if (
+        c.leadSource === "gioi_thieu" &&
+        ((c.bonusSessionsReferee ?? 0) > 0 || (c.bonusSessionsReferrer ?? 0) > 0)
+      ) {
+        referralCourses.push(c);
+      }
+    }
+  }
+  if (referralCourses.length === 0) return null;
+  const statuses = referralCourses.map(getReferralStatus);
+  if (statuses.every((s) => s === "full")) return "full";
+  if (statuses.every((s) => s === "none")) return "none";
+  return "partial";
+}
+
+/**
+ * Kiểm tra dữ liệu cộng buổi referral trên toàn bộ AR.
+ * Trả về chuỗi lỗi đầu tiên, hoặc "" nếu hợp lệ.
+ * Quy tắc: nếu một course nguồn "gioi_thieu" cộng buổi cho người giới thiệu
+ * (bonusSessionsReferrer > 0) thì bắt buộc có referrerUid, và referrerUid
+ * phải khác UID người được giới thiệu (uid của nhóm).
+ */
+export function validateReferralBonus(ar: ActiveRequest): string {
+  for (const u of ar.uids) {
+    const refereeUid = (u.uid ?? "").trim();
+    for (const c of u.courses) {
+      if (c.leadSource !== "gioi_thieu") continue;
+      if ((c.bonusSessionsReferrer ?? 0) > 0) {
+        const refUid = (c.referrerUid ?? "").trim();
+        if (!refUid) {
+          return `Khoá ${c.courseCode}: đã cộng buổi cho người giới thiệu nhưng chưa nhập UID người giới thiệu.`;
+        }
+        if (refUid === refereeUid) {
+          return `Khoá ${c.courseCode}: UID người giới thiệu phải khác UID người được giới thiệu (${refereeUid}).`;
+        }
+      }
+    }
+  }
+  return "";
+}
+
 export function updateActiveCoursePackage(
   ar: ActiveRequest,
   courseCode: string,
@@ -298,6 +385,9 @@ export function toActiveRequestPatchUidsData(ar: ActiveRequest): ActiveRequestPa
       tax_product_code: c.taxProductCode,
       lead_source: c.leadSource,
       lead_channel: c.leadChannel,
+      referrer_uid: c.referrerUid,
+      bonus_sessions_referee: c.bonusSessionsReferee,
+      bonus_sessions_referrer: c.bonusSessionsReferrer,
     })),
   }));
 }

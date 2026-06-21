@@ -163,13 +163,16 @@ export default function AppShell({
     import.meta.env.VITE_APP_ENV === "sandbox" || import.meta.env.VITE_SANDBOX === "true";
 
   return (
-    <div className="flex min-h-screen w-full flex-col bg-gmv-bg font-sans text-gmv-text">
+    <div
+      className="flex h-screen w-full flex-col overflow-hidden bg-gmv-bg font-sans text-gmv-text"
+      data-sandbox-banner={isSandbox ? "1" : undefined}
+    >
       {isSandbox && (
-        <div className="z-50 bg-yellow-400 py-1 text-center text-xs font-bold text-yellow-900">
+        <div className="z-50 shrink-0 bg-yellow-400 py-1 text-center text-xs font-bold text-yellow-900">
           ⚠️ SANDBOX — Dữ liệu test, không phải production
         </div>
       )}
-    <div className="flex min-w-0 flex-1 bg-gmv-bg font-sans text-gmv-text">
+    <div className="flex min-h-0 min-w-0 flex-1 bg-gmv-bg font-sans text-gmv-text">
       <aside
         className={cn(
           "sticky top-0 z-30 hidden max-h-screen shrink-0 flex-col border-r border-gmv-border bg-gmv-canvas transition-[width] duration-200 md:flex",
@@ -269,8 +272,8 @@ export default function AppShell({
         </div>
       </aside>
 
-      <div className="flex min-h-screen min-w-0 flex-1 flex-col pb-[72px] md:pb-0">
-        <header className="sticky top-0 z-20 flex h-16 items-center justify-between border-b border-gmv-border bg-gmv-canvas/95 px-4 shadow-gmv-1 backdrop-blur md:px-6">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col pb-[72px] md:pb-0">
+        <header className="z-20 flex h-16 shrink-0 items-center justify-between border-b border-gmv-border bg-gmv-canvas/95 px-4 shadow-gmv-1 backdrop-blur md:px-6">
           <div className="min-w-0">
             <h1 className="truncate text-base font-semibold text-gmv-text-strong">{title}</h1>
             {subtitle && <p className="truncate text-xs text-gmv-muted">{subtitle}</p>}
@@ -296,7 +299,7 @@ export default function AppShell({
           </div>
         </header>
 
-        <main className="flex-1 overflow-x-auto p-4 md:p-6">
+        <main className="min-h-0 flex-1 overflow-auto p-4 md:p-6">
           <div className={cn("mx-auto", wideContent ? "max-w-none" : "max-w-[1400px]")}>{children}</div>
         </main>
       </div>

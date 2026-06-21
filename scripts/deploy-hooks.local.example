@@ -1,0 +1,6 @@
+# Copy this file to: scripts/deploy-hooks.local  (gitignored — KHÔNG commit)
+# Lấy URL: Render → service → Settings → Deploy → Deploy Hook → copy
+# Dán nguyên URL (kèm ?key=...) vào đây.
+
+RENDER_DEPLOY_HOOK_SANDBOX=https://api.render.com/deploy/srv-xxxxx?key=yyyyy
+# RENDER_DEPLOY_HOOK_PROD=https://api.render.com/deploy/srv-zzzzz?key=wwwww

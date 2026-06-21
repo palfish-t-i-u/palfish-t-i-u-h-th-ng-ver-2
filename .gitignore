@@ -12,6 +12,9 @@ scripts/deploy-hooks.local
 # Backup/artifact từ cleanup scripts
 docs/artifacts/
 
+# Deploy hook secrets (Render) — local only, KHÔNG commit
+scripts/deploy-hooks.local
+
 # Node modules (root level)
 node_modules/
 
@@ -48,6 +51,9 @@ api_pipe/__pycache__/
 api_pipe/*.py[cod]
 api_pipe/ngrok*
 
+# Backup/báo cáo tự sinh từ dedup Sổ doanh thu — giữ local, không commit
+backend/backups/
+
 # OS
 .DS_Store
 Thumbs.db
@@ -64,3 +70,4 @@ skills-lock.json
 AGENTS.md
 RTK.md
 .cavemem/
+docs/feedback_9_6_2026.pdf

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import type { CreatePaymentRequestPayload, CustomerType } from "../../types/paymentRequest";
-import { LEAD_SOURCES, findSourceByKey, sourceHasChannels } from "../../constants/leadSource";
+import { LEAD_SOURCES, defaultChannelForSource, findSourceByKey, sourceHasChannels } from "../../constants/leadSource";
 import CountryCombo from "./CountryCombo";
 import { Icons } from "./Icons";
 import VietnamAddressFields from "./VietnamAddressFields";
@@ -150,8 +150,9 @@ export default function CreatePaymentRequestModal({
               <select
                 value={form.leadSource}
                 onChange={(e) => {
-                  set("leadSource", e.target.value);
-                  set("leadChannel", "");
+                  const next = e.target.value;
+                  set("leadSource", next);
+                  set("leadChannel", defaultChannelForSource(next) ?? "");
                 }}
                 style={{ font: "inherit", fontSize: 13 }}
               >
