@@ -93,6 +93,9 @@ export function fromApiAttempt(raw: any, idx = 0): PaymentAttempt {
     cancelled: raw.cancelled ?? cancelledFromReason,
     cancelledAt: raw.cancelled_at ?? raw.cancelledAt ?? null,
     rejectReason,
+    confirmedBy: raw.confirmed_by ?? raw.confirmedBy ?? null,
+    confirmedAt: raw.confirmed_at ?? raw.confirmedAt ?? null,
+    confirmedSource: raw.confirmed_source ?? raw.confirmedSource ?? null,
   };
 }
 

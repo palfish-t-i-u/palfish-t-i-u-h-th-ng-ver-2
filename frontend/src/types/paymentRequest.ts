@@ -31,6 +31,9 @@ export interface PaymentAttempt {
   cancelled?: boolean;
   cancelledAt?: string | null;
   rejectReason?: string | null;
+  confirmedBy?: string | null;
+  confirmedAt?: string | null;
+  confirmedSource?: string | null;
 }
 
 export interface PaymentLineApiRow {

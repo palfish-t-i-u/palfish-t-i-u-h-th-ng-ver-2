@@ -10,6 +10,7 @@ from fastapi import APIRouter, File, Header, HTTPException, Query, UploadFile
 from pydantic import BaseModel
 
 from admin_routes import require_module_access, require_module_write
+from audit import log_audit
 from mpos_import import (
     parse_mpos_settlements,
     parse_mpos_transactions,
@@ -446,6 +447,10 @@ def register_gateway_routes(app, get_supabase: Callable[[], Any]) -> None:
         if pr_id:
             pr_res = sb.table("payment_requests").select("*").eq("id", pr_id).limit(1).execute()
             pr = (pr_res.data or [{}])[0]
+        log_audit(sb, actor.email, "recon.txn_matched", "gateway_txn", txn_id, {
+            "payment_line_id": line_id, "pr_id": pr_id,
+            "amount": _parse_amount(line_res.data[0].get("amount")),
+        })
         return _serialize_gateway_txn(res.data[0], line=line_res.data[0], pr=pr)
 
     @router.patch("/gateway-txns/{txn_id}/status")
@@ -460,6 +465,9 @@ def register_gateway_routes(app, get_supabase: Callable[[], Any]) -> None:
             if not body.payment_line_id:
                 raise HTTPException(400, "matched can payment_line_id")
             return match_gateway_txn(txn_id, GatewayMatchBody(payment_line_id=body.payment_line_id), authorization)
+        old_res = sb.table("gateway_transactions").select("match_status, payment_line_id").eq("id", txn_id).limit(1).execute()
+        old_status = _clean_text((old_res.data or [{}])[0].get("match_status"))
+        old_line_id = _clean_text((old_res.data or [{}])[0].get("payment_line_id"))
         patch = {
             "match_status": status,
             "payment_line_id": None,
@@ -469,6 +477,9 @@ def register_gateway_routes(app, get_supabase: Callable[[], Any]) -> None:
         res = sb.table("gateway_transactions").update(patch).eq("id", txn_id).execute()
         if not res.data:
             raise HTTPException(404, "Khong tim thay gateway transaction")
+        log_audit(sb, actor.email, "recon.txn_status_changed", "gateway_txn", txn_id, {
+            "from_status": old_status, "to_status": status, "prev_line_id": old_line_id,
+        })
         return _serialize_gateway_txn(res.data[0])
 
     @router.get("/gateway-sync/status")

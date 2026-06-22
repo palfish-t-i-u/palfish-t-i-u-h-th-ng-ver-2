@@ -14,6 +14,7 @@ import { Icons, type IconKey } from "./Icons";
 import BillUploadZone from "./BillUploadZone";
 import VietnamAddressFields from "./VietnamAddressFields";
 import PaymentRequestStatusBadge from "./PaymentRequestStatusBadge";
+import AuditTrail from "../ui/AuditTrail";
 import { getAvailableBanks } from "../../constants/bank";
 import { useMe } from "../../hooks/useMe";
 import Combobox from "../ui/Combobox";
@@ -2230,6 +2231,10 @@ export default function PaymentRequestDetailDrawer({
               </div>
             </div>
           </div>
+        </div>
+
+        <div style={{ padding: "0 20px 12px" }}>
+          <AuditTrail targetType="payment_request" targetId={request.id} />
         </div>
 
         <div className="drawer-foot">

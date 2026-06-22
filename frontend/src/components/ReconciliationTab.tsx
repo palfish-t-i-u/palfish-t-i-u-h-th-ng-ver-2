@@ -21,6 +21,7 @@ import {
   fmtPhone,
   isBackendLineId,
 } from "./payment-request/paymentRequestUtils";
+import AuditTrail from "./ui/AuditTrail";
 import "../styles/prototype-payments.css";
 
 type TabId = "awaiting" | "confirmed" | "cancelled" | "ckOutside" | "all";
@@ -1321,9 +1322,14 @@ export default function ReconciliationTab() {
                           <div className="info-label">Kế toán xác nhận lúc</div>
                           <div className="info-value">
                             <strong style={{ color: "var(--success-text)" }}>
-                              {formatPaymentDateFull(drawerTxn.paidAt || drawerTxn.createdAt)}
-                            </strong>{" "}
-                            · Tiền đã về tài khoản PalFish
+                              {formatPaymentDateFull(drawerTxn.confirmedAt || drawerTxn.paidAt || drawerTxn.createdAt)}
+                            </strong>
+                            {drawerTxn.confirmedBy && (
+                              <span style={{ marginLeft: 6, color: "var(--text-3)" }}>
+                                bởi {drawerTxn.confirmedBy.startsWith("system:") ? `Hệ thống ${drawerTxn.confirmedBy.replace("system:", "")}` : drawerTxn.confirmedBy.split("@")[0]}
+                              </span>
+                            )}
+                            {" "}· Tiền đã về tài khoản PalFish
                           </div>
                         </div>
                       )}
@@ -1379,6 +1385,10 @@ export default function ReconciliationTab() {
                       </div>
                       <Icons.ChevronRight size={16} stroke="var(--text-3)" />
                     </div>
+                  </div>
+
+                  <div className="panel" style={{ padding: 16 }}>
+                    <AuditTrail targetType="payment_line" targetId={drawerTxn.id} />
                   </div>
                 </div>
               </div>

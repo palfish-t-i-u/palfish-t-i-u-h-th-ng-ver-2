@@ -514,6 +514,10 @@ export const endpoints = {
         params: { payment_line_id: paymentLineId },
       }),
   },
+  auditLogs: {
+    list: (params: { target_type?: string; target_id?: string; action?: string; limit?: number }) =>
+      api.get<{ data: AuditLogEntry[] }>("/audit-logs", { params }),
+  },
 };
 
 export interface BankTransaction {
@@ -531,6 +535,16 @@ export interface BankTransaction {
   matched_by: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface AuditLogEntry {
+  id: number;
+  action: string;
+  actor_email: string;
+  target_type: string | null;
+  target_id: string | null;
+  payload: Record<string, unknown>;
+  created_at: string;
 }
 
 export interface BankMatchCandidate {

@@ -95,7 +95,8 @@ Ngày 8:   Cutover toàn team IH2
 |---|---|---|---|
 | **V1** | Gói Nâng cao 1 GMF-100 free đủ IH2. Khi Offline onboard sẽ thiếu | Nâng gói **Tăng trưởng 2.5tr/năm** (3 GMF) khi gần Offline onboard. Hoặc nâng luôn để sẵn | Trước Offline onboard / trước 22/8 |
 | **V2** | Gói hết hạn 22/08/2026, auto renew TẮT | Quyết định gia hạn / nâng gói + BẬT auto renew | Trước 15/08/2026 |
-| **V3** | App Pancake V2 đang chiếm slot — không dùng được cho GMV | Tạo App mới ở developers.zalo.me cho dự án GMV | Ngày 1 |
+| **V3** | ~~App Pancake V2 đang chiếm slot~~ | ✅ Đã tạo App mới "PalFish GMV Notifier" (ID `83298551201629166`) ngày 22/6 | Done |
+| **V4** 🆕 | Bug Zalo portal: không lưu được SĐT/email → không kích hoạt app → block OAuth | Đã gửi ticket support Zalo 22/6. Chờ phản hồi | **BLOCKING** |
 
 ---
 
@@ -103,21 +104,32 @@ Ngày 8:   Cutover toàn team IH2
 
 ### 4.A — Việc của MINH (trên Zalo, không giao 3 đứa)
 
-| # | Việc | Thời gian | Ngày |
-|---|---|---|---|
-| A3 | Nâng gói Tăng trưởng 2.5tr/năm (hoặc defer đến khi gần Offline onboard) | 30 phút | Ngày 1 (hoặc sau) |
-| A4 | Bật gia hạn tự động ZBS | 5 phút | Ngày 1 |
-| B1 | Tạo nhóm GMF-100 "IH2 — GMV Notify" | 15 phút | Ngày 1 |
-| B2 | Add anh Hiếu vào nhóm trước | 2 phút | Ngày 1 |
-| B3 | Gửi link mời cho team IH2 | 5 phút | Ngày 1 |
-| C1 | Tạo App "PalFish GMV Notifier" → App ID + Secret | 30 phút | Ngày 1 |
-| C2 | Request permission `send_message_to_group`, `manage_group` | 15 phút | Ngày 1 |
-| C3 | Chạy OAuth flow → access_token + refresh_token ban đầu | 30 phút | Ngày 2 (sau Zalo duyệt) |
-| C4 | Lấy `group_id` nhóm IH2 | 15 phút | Ngày 2 |
-| E1 | Paste credentials + group_id vào Admin UI Giang build | 15 phút | Ngày 4 |
-| E2 | Test E2E với Đức (nhóm test private) | 2 giờ | Ngày 4 |
-| E3 | Soft launch — leader IH2 + anh Hiếu | 3 ngày (async) | Ngày 5-7 |
-| E4 | Cutover toàn team IH2 | 15 phút | Ngày 8 |
+| # | Việc | Thời gian | Tiến độ | Ghi chú |
+|---|---|---|---|---|
+| A1 | OA Palfish Vietnam xác thực doanh nghiệp | — | ✅ Done | Đã có (194 người quan tâm) |
+| A2 | Gói OA Nâng cao hiện tại (1 GMF-100 free, hết hạn 22/08/2026) | — | ✅ Đang dùng | Auto renew **ĐANG TẮT** ⚠️ |
+| A3 | Nâng gói Tăng trưởng 2.5tr/năm (3 GMF-100 free, sẵn cho Offline) | 30 phút | ⬜ Chưa | Có thể defer đến khi Offline onboard, nhưng cần trước 22/8 |
+| A4 | Bật gia hạn tự động trên ZBS (tuỳ chọn) | 5 phút | ⬜ Chưa | Tránh quên hết hạn → cắt nhóm. Minh chưa tự ý làm, vẫn đang tắt |
+| B1 | Tạo nhóm GMF-100 "IH2 — GMV Notify" | 15 phút | ✅ Done 22/6 | Trong quota gói. Tên ≤30 ký tự |
+| B2 | Add anh Hiếu vào nhóm trước | 2 phút | ✅ Done 22/6 | Theo yêu cầu anh Hiếu |
+| B3 | Gửi link mời vào group Zalo team IH2 | 5 phút | ⬜ Chưa | Sale tự join khi rảnh |
+| C1 | Tạo App "PalFish GMV Notifier" trên developers.zalo.me → App ID + Secret | 30 phút | ✅ Done 22/6 | App ID: `83298551201629166`. KHÔNG dùng App Pancake V2 (CRM khác) |
+| C2 | Request permission `send_message_to_group`, `manage_group` | 15 phút | ✅ Done 22/6 | Tất cả quyền GMF đã duyệt |
+| C3 | Chạy OAuth flow → access_token + refresh_token ban đầu | 30 phút | 🔴 **BLOCKED** | Không thể kích hoạt app — bug Zalo portal không lưu được SĐT/email. Đã gửi ticket support Zalo (22/6) |
+| C4 | Lấy `group_id` nhóm IH2 | 15 phút | ⬜ Chờ C3 | Qua API `GET /openapi/v3.0/oa/group/list` sau khi có token |
+| E1 | Paste credentials + group_id vào Admin UI Giang build | 15 phút | ⬜ Chờ C3+C4 | |
+| E2 | Test E2E với Đức (nhóm test private) | 2 giờ | ⬜ | Ngày 4 |
+| E3 | Soft launch — leader IH2 + anh Hiếu | 3 ngày (async) | ⬜ | Ngày 5-7 |
+| E4 | Cutover toàn team IH2 | 15 phút | ⬜ | Ngày 8 |
+
+**Blocker hiện tại**: Zalo developer portal bug — không lưu được SĐT/email trong cài đặt app → không kích hoạt được app → không chạy OAuth. Đã gửi email tới `help-transfer@zalo.me` ngày 22/6. Chờ phản hồi.
+
+**Thông tin bổ sung từ setup 22/6**:
+- Domain verified: `palfish-gmv-manager-sandbox.vercel.app`
+- Callback URL: `https://palfish-gmv-manager-sandbox.vercel.app/zalo-callback`
+- OA linked: Palfish Vietnam
+- App backup (phòng app chính hỏng): PalFish Notifier, ID `376625350414150801`
+- Nhóm GMF URL: `oa.zalo.me/chat?gid=df7d5a31765c9f02c64d8&oaid=953422767266282024`
 
 **Tổng thao tác Minh**: ~5 giờ + ~1 tuần async. Không đụng env Render, không đụng code.
 

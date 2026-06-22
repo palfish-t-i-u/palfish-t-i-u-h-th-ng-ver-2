@@ -643,6 +643,9 @@ def _serialize_payment_line(
         "sale_received": row.get("sale_received") or None,
         "verified_total": row.get("verified_total") or None,
         "verified_received": row.get("verified_received") or None,
+        "confirmed_by": row.get("confirmed_by") or None,
+        "confirmed_at": row.get("confirmed_at") or None,
+        "confirmed_source": row.get("confirmed_source") or None,
         **_bill_fields(row, bill_urls, bill_assets),
     }
 
@@ -673,6 +676,9 @@ def _serialize_payment_for_list(
         "sale_received": row.get("sale_received") or None,
         "verified_total": row.get("verified_total") or None,
         "verified_received": row.get("verified_received") or None,
+        "confirmed_by": row.get("confirmed_by") or None,
+        "confirmed_at": row.get("confirmed_at") or None,
+        "confirmed_source": row.get("confirmed_source") or None,
         **_bill_fields(row, bill_urls, bill_assets),
     }
     return result
@@ -1069,7 +1075,9 @@ def _extract_payos_data(payload: dict[str, Any]) -> tuple[str, int, str]:
     return order_code, amount, description
 
 
-def _mark_line_paid(sb, line_id: str) -> dict[str, Any]:
+def _mark_line_paid(sb, line_id: str, *, actor_email: str = "system", source: str = "unknown") -> dict[str, Any]:
+    from audit import log_audit
+
     existing_res = (
         sb.table("payment_lines")
         .select("*")
@@ -1090,14 +1098,21 @@ def _mark_line_paid(sb, line_id: str) -> dict[str, Any]:
     now_iso = _iso_now()
     line_res = (
         sb.table("payment_lines")
-        .update({"status": "paid", "paid_at": now_iso, "reject_reason": None})
+        .update({
+            "status": "paid", "paid_at": now_iso, "reject_reason": None,
+            "confirmed_by": actor_email, "confirmed_at": now_iso, "confirmed_source": source,
+        })
         .eq("id", line_id)
         .execute()
     )
     if not line_res.data:
         raise HTTPException(404, "Khong tim thay payment_line")
     line = line_res.data[0]
-    totals = recompute_payment_request_totals(sb, str(line["payment_request_id"]))
+    pr_id = str(line["payment_request_id"])
+    log_audit(sb, actor_email, "recon.line_marked_paid", "payment_line", line_id, {
+        "pr_id": pr_id, "source": source,
+    })
+    totals = recompute_payment_request_totals(sb, pr_id)
     return {
         "payment_line": _serialize_payment_line(line),
         **totals,
@@ -1170,7 +1185,7 @@ async def sync_payment_line_from_payos(sb, line: dict[str, Any]) -> dict[str, An
     if not line_id:
         return None
     try:
-        result = _mark_line_paid(sb, line_id)
+        result = _mark_line_paid(sb, line_id, actor_email="system:payos", source="payos")
     except Exception as exc:
         return {"line_id": line_id, "error": str(exc)}
     return {
@@ -1261,7 +1276,7 @@ def reconcile_payment_line_webhook(sb, payload: dict[str, Any]) -> dict[str, Any
         return {"matched": False}
 
     try:
-        result = _mark_line_paid(sb, line_id)
+        result = _mark_line_paid(sb, line_id, actor_email="system:payos", source="payos")
     except Exception as exc:
         print(f"[payment_requests] webhook reconcile error: {exc}")
         return {"matched": True, "error": 1, "message": str(exc)}
@@ -1612,6 +1627,10 @@ def register_payment_request_routes(app, get_supabase) -> None:
             .eq("payment_request_id", payment_request_id)
             .execute()
         )
+        from audit import log_audit
+        log_audit(sb, actor.email, "pr.cancelled", "payment_request", payment_request_id, {
+            "reason": reason,
+        })
         return {
             "payment_request": _serialize_payment_request_list_item(
                 updated, line_res_full.data or []
@@ -1913,6 +1932,7 @@ def register_payment_request_routes(app, get_supabase) -> None:
         if amount <= 0:
             raise HTTPException(400, "amount khong hop le")
 
+        old_amount = _parse_amount(line.get("amount"))
         try:
             updated_res = (
                 sb.table("payment_lines")
@@ -1926,6 +1946,10 @@ def register_payment_request_routes(app, get_supabase) -> None:
         except Exception as exc:
             raise HTTPException(500, f"Khong cap nhat amount: {exc}") from exc
 
+        from audit import log_audit
+        log_audit(sb, actor.email, "recon.amount_changed", "payment_line", line_id, {
+            "pr_id": pr_id, "old_amount": old_amount, "new_amount": amount,
+        })
         updated_line = updated_res.data[0] if updated_res.data else {**line, "amount": amount}
         return {
             "payment_line": _serialize_payment_line(updated_line),
@@ -1962,13 +1986,23 @@ def register_payment_request_routes(app, get_supabase) -> None:
         if not payment_request_id:
             raise HTTPException(400, "payment_line thieu payment_request_id")
 
+        from audit import log_audit
+
+        old_status = _clean_text(line.get("status"))
+        now_iso = _iso_now()
         patch: dict[str, Any] = {"status": status}
         if status == "paid":
-            patch["paid_at"] = _iso_now()
+            patch["paid_at"] = now_iso
             patch["reject_reason"] = None
+            patch["confirmed_by"] = actor.email
+            patch["confirmed_at"] = now_iso
+            patch["confirmed_source"] = "manual"
         elif status == "rejected":
             patch["paid_at"] = None
             patch["reject_reason"] = _clean_text(body.reject_reason) or "Ke toan tu choi"
+            patch["confirmed_by"] = actor.email
+            patch["confirmed_at"] = now_iso
+            patch["confirmed_source"] = "manual"
         else:
             patch["paid_at"] = None
             patch["reject_reason"] = None
@@ -1986,6 +2020,10 @@ def register_payment_request_routes(app, get_supabase) -> None:
         except Exception as exc:
             raise HTTPException(500, f"Khong cap nhat transaction: {exc}") from exc
 
+        log_audit(sb, actor.email, "recon.line_status_changed", "payment_line", transaction_id, {
+            "pr_id": payment_request_id, "from_status": old_status, "to_status": status,
+            "reject_reason": patch.get("reject_reason"),
+        })
         updated_line = updated_res.data[0] if updated_res.data else {**line, **patch}
         return {
             "payment_line": _serialize_payment_line(updated_line),
