@@ -1374,7 +1374,7 @@ function ActivationDetailDrawer({
                       ? "Cần điền Order ID (kích hoạt khoá) trước khi tick cộng buổi"
                       : "";
                     return (
-                      <div style={{ padding: "10px 12px", borderRadius: 8, marginTop: 6, marginLeft: 62, marginRight: 16, ...panelStyle }}>
+                      <div style={{ padding: "10px 12px 10px 50px", borderRadius: 8, marginTop: 6, marginLeft: 12, marginRight: 12, ...panelStyle }}>
                         <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text-1, #111)", marginBottom: 6 }}>{headerText}</div>
                         {!courseActivated && (
                           <div style={{ fontSize: 12, color: "var(--caution-text, #92400e)", marginBottom: 6, fontStyle: "italic" }}>
