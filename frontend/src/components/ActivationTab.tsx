@@ -18,7 +18,7 @@ import {
 import CountryCombo from "./payment-request/CountryCombo";
 import DateRangeFilter, { EMPTY_RANGE, type DateRange, inDateRange } from "./payment-request/DateRangeFilter";
 import { Icons } from "./payment-request/Icons";
-import { formatPaymentDateFull, formatPaymentDateTime, fromApiActiveRequest, getArReferralStatus, getReferralStatus, REFERRAL_STATUS_HEADER, REFERRAL_STATUS_PANEL_STYLE, toActiveRequestPatchUidsData } from "./payment-request/paymentRequestUtils";
+import { activationAuditText, formatPaymentDateFull, formatPaymentDateTime, fromApiActiveRequest, getArReferralStatus, getReferralStatus, REFERRAL_STATUS_HEADER, REFERRAL_STATUS_PANEL_STYLE, toActiveRequestPatchUidsData } from "./payment-request/paymentRequestUtils";
 import { downloadTaxInvoiceZip } from "../utils/taxInvoiceXlsxExport";
 import type { InvoiceRow } from "./payment-flow/paymentFlowUtils";
 import "../styles/prototype-payments.css";
@@ -1354,6 +1354,14 @@ function ActivationDetailDrawer({
                     </button>
                   )}
                 </div>
+                {(() => {
+                  const auditLine = activationAuditText(course);
+                  return auditLine ? (
+                    <div style={{ fontSize: 11, color: "var(--text-3)", marginTop: 2, paddingLeft: 2 }}>
+                      {auditLine}
+                    </div>
+                  ) : null;
+                })()}
                 {course.leadSource === "gioi_thieu" &&
                   ((course.bonusSessionsReferee ?? 0) > 0 || (course.bonusSessionsReferrer ?? 0) > 0) && (() => {
                     const rs = getReferralStatus(course);

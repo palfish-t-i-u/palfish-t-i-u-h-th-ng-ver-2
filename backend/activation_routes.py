@@ -1092,6 +1092,52 @@ def _export_b4_tax_batch(sb, items: list[ExportBatchItem] | None) -> StreamingRe
     )
 
 
+def _find_course_order_id(sb, ar_id: str, course_code: str) -> str:
+    """Read current order_id for a course (for audit old-value capture)."""
+    try:
+        res = sb.table("active_requests").select("uids_data").eq("id", ar_id).limit(1).execute()
+    except Exception:
+        return ""
+    if not res.data:
+        return ""
+    for uid_block in res.data[0].get("uids_data") or []:
+        if not isinstance(uid_block, dict):
+            continue
+        for c in uid_block.get("courses") or []:
+            if isinstance(c, dict) and c.get("code") == course_code:
+                return _course_order_id(c)
+    return ""
+
+
+def _inject_course_set_by(
+    sb, ar_id: str, course_code: str,
+    set_by: str | None, set_at: str | None,
+    row: dict[str, Any],
+) -> dict[str, Any]:
+    """Write order_id_set_by/at into a course's JSONB after RPC. Returns updated row."""
+    uids_data = row.get("uids_data") or []
+    changed = False
+    for uid_block in uids_data:
+        if not isinstance(uid_block, dict):
+            continue
+        for c in uid_block.get("courses") or []:
+            if isinstance(c, dict) and c.get("code") == course_code:
+                c["order_id_set_by"] = set_by
+                c["order_id_set_at"] = set_at
+                changed = True
+                break
+        if changed:
+            break
+    if changed:
+        try:
+            upd = sb.table("active_requests").update({"uids_data": uids_data}).eq("id", ar_id).execute()
+            if upd.data:
+                return {**row, **upd.data[0]}
+        except Exception as exc:
+            print(f"[activation] inject set_by failed: {exc}")
+    return row
+
+
 def _diff_referral_courses(old_uids: list[dict[str, Any]], new_uids: list[dict[str, Any]]) -> list[dict[str, Any]]:
     old_courses = {c.get("code"): c for u in old_uids for c in (u.get("courses") or []) if isinstance(c, dict) and c.get("code")}
     new_courses = {c.get("code"): c for u in new_uids for c in (u.get("courses") or []) if isinstance(c, dict) and c.get("code")}
@@ -1111,6 +1157,42 @@ def _diff_referral_courses(old_uids: list[dict[str, Any]], new_uids: list[dict[s
         if old_ref != new_ref:
             changes.append({"code": code, "old": old_ref, "new": new_ref})
     return changes
+
+
+def _stamp_order_id_changes(
+    old_uids: list[dict[str, Any]],
+    new_uids: list[dict[str, Any]],
+    actor_email: str,
+    now: str,
+) -> list[dict[str, Any]]:
+    """Diff order_ids and inject set_by/set_at on changed courses. Returns list of changes for audit."""
+    old_courses = {
+        c.get("code"): c
+        for u in old_uids for c in (u.get("courses") or [])
+        if isinstance(c, dict) and c.get("code")
+    }
+    audit_changes: list[dict[str, Any]] = []
+    for uid_block in new_uids:
+        if not isinstance(uid_block, dict):
+            continue
+        for c in uid_block.get("courses") or []:
+            if not isinstance(c, dict) or not c.get("code"):
+                continue
+            code = c["code"]
+            old_c = old_courses.get(code) or {}
+            old_oid = _course_order_id(old_c)
+            new_oid = _course_order_id(c)
+            if old_oid == new_oid:
+                continue
+            if new_oid:
+                c["order_id_set_by"] = actor_email
+                c["order_id_set_at"] = now
+                audit_changes.append({"code": code, "action": "set", "order_id": new_oid, "old_order_id": old_oid})
+            else:
+                c["order_id_set_by"] = None
+                c["order_id_set_at"] = None
+                audit_changes.append({"code": code, "action": "cleared", "old_order_id": old_oid})
+    return audit_changes
 
 
 def register_activation_routes(app, supabase_factory):
@@ -1296,6 +1378,14 @@ def register_activation_routes(app, supabase_factory):
             if changes:
                 from audit import log_audit
                 log_audit(sb, actor.email, "referral.amount_changed", "active_request", ar_id, {"changes": changes})
+
+            oid_now = datetime.now(timezone.utc).isoformat()
+            oid_changes = _stamp_order_id_changes(current.get("uids_data") or [], uids_data, actor.email, oid_now)
+            if oid_changes:
+                from audit import log_audit
+                for oc in oid_changes:
+                    action = "activation.order_id_set" if oc["action"] == "set" else "activation.order_id_cleared"
+                    log_audit(sb, actor.email, action, "active_request_course", f"{ar_id}_{oc['code']}", oc)
 
             current_pr_id = str(current.get("pr_id") or "")
             if current_pr_id:
@@ -1556,8 +1646,12 @@ def register_activation_routes(app, supabase_factory):
 
         order_id = str(body.order_id or "").strip()
 
-        # RPC path for non-empty Order ID (atomic JSONB patch)
+        old_order_id = _find_course_order_id(sb, ar_id, course_code)
+
         from rpc_helpers import rpc_active_request_row
+        from audit import log_audit
+
+        now = datetime.now(timezone.utc).isoformat()
 
         if order_id:
             _assert_order_id_available(sb, ar_id, course_code, order_id)
@@ -1569,6 +1663,12 @@ def register_activation_routes(app, supabase_factory):
                     "p_course_code": course_code,
                     "p_order_id": order_id,
                 },
+            )
+            row = _inject_course_set_by(sb, ar_id, course_code, actor.email, now, row)
+            log_audit(
+                sb, actor.email, "activation.order_id_set",
+                "active_request_course", f"{ar_id}_{course_code}",
+                {"order_id": order_id, "old_order_id": old_order_id},
             )
             ledger_id = sync_ledger_from_ar_course(sb, ar_id, course_code)
             if ledger_id:
@@ -1589,6 +1689,12 @@ def register_activation_routes(app, supabase_factory):
             sb,
             "clear_course_order_id_atomic",
             {"p_ar_id": ar_id, "p_course_code": course_code},
+        )
+        row = _inject_course_set_by(sb, ar_id, course_code, None, None, row)
+        log_audit(
+            sb, actor.email, "activation.order_id_cleared",
+            "active_request_course", f"{ar_id}_{course_code}",
+            {"old_order_id": old_order_id},
         )
         pr_map = _fetch_prs_by_ids(sb, [str(row.get("pr_id") or "")])
         return _serialize_ar(row, pr_map.get(str(row.get("pr_id") or "")))

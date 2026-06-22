@@ -150,6 +150,10 @@ export interface ActiveCourse {
   referrerCreditedAt?: string | null;
   /** Người thực hiện cộng buổi cho người giới thiệu */
   referrerCreditedBy?: string | null;
+  /** Người gắn/sửa Order ID gần nhất */
+  orderIdSetBy?: string | null;
+  /** Thời điểm gắn/sửa Order ID gần nhất */
+  orderIdSetAt?: string | null;
 }
 
 export interface ActiveUidGroup {
@@ -256,6 +260,8 @@ export type ActiveRequestApiRow = {
       referee_credited_by?: string | null;
       referrer_credited_at?: string | null;
       referrer_credited_by?: string | null;
+      order_id_set_by?: string | null;
+      order_id_set_at?: string | null;
     }>;
   }>;
   status?: string;

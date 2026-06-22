@@ -9,6 +9,11 @@ const ACTION_LABELS: Record<string, string> = {
   "recon.amount_changed": "Sửa số tiền",
   "recon.bank_txn_matched": "Ghép giao dịch ngân hàng",
   "pr.cancelled": "Huỷ PR",
+  "activation.order_id_set": "Gắn Order ID",
+  "activation.order_id_cleared": "Xoá Order ID",
+  "referral.credit_confirmed": "Cộng buổi giới thiệu",
+  "referral.credit_revoked": "Bỏ cộng buổi giới thiệu",
+  "referral.amount_changed": "Sửa thông tin giới thiệu",
 };
 
 function fmtTime(iso: string) {
@@ -42,6 +47,9 @@ function detailText(entry: AuditLogEntry): string {
   if (p.reason) parts.push(`lý do: ${p.reason}`);
   if (p.discrepancy_amount && Number(p.discrepancy_amount) !== 0)
     parts.push(`chênh lệch: ${Number(p.discrepancy_amount).toLocaleString("vi-VN")}`);
+  if (p.order_id) parts.push(`Order ID: ${p.order_id}`);
+  if (p.old_order_id) parts.push(`cũ: ${p.old_order_id}`);
+  if (p.side) parts.push(`bên: ${p.side}`);
   return parts.join(" · ");
 }
 

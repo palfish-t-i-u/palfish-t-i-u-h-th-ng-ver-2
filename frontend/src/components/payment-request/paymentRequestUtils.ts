@@ -1,5 +1,5 @@
 import type { CSSProperties } from "react";
-import type { ActiveRequest, ActiveRequestApiRow, ActiveRequestPatchUidPayload, CreateActiveRequestPayload, PaymentAttempt, PaymentMethod, PaymentRequest, PaymentRequestStatus } from "../../types/paymentRequest";
+import type { ActiveCourse, ActiveRequest, ActiveRequestApiRow, ActiveRequestPatchUidPayload, CreateActiveRequestPayload, PaymentAttempt, PaymentMethod, PaymentRequest, PaymentRequestStatus } from "../../types/paymentRequest";
 
 export type RequestBucket = "tracking" | "created" | "cancelled";
 export type StatusFilter = "all" | "pending" | "short" | "done" | "over";
@@ -211,6 +211,13 @@ export function paymentConfirmationText(payment: PaymentAttempt): string {
   return name ? `Xác nhận lúc ${date} bởi ${name}` : `Xác nhận lúc ${date}`;
 }
 
+export function activationAuditText(course: ActiveCourse): string | null {
+  if (!course.orderIdSetBy || !course.orderIdSetAt) return null;
+  const name = emailToName(course.orderIdSetBy);
+  const date = formatPaymentDateFull(course.orderIdSetAt);
+  return date ? `Kích hoạt lúc ${date} bởi ${name}` : `Kích hoạt bởi ${name}`;
+}
+
 export function progressPercent(request: PaymentRequest) {
   if (request.target <= 0) return 0;
   return Math.min(100, Math.round((request.received / request.target) * 100));
@@ -256,6 +263,8 @@ export function fromApiActiveRequest(raw: ActiveRequestApiRow): ActiveRequest {
         refereeCreditedBy: c.referee_credited_by ?? null,
         referrerCreditedAt: c.referrer_credited_at ?? null,
         referrerCreditedBy: c.referrer_credited_by ?? null,
+        orderIdSetBy: c.order_id_set_by ?? null,
+        orderIdSetAt: c.order_id_set_at ?? null,
       })),
     })),
   };
