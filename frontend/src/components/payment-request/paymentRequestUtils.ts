@@ -94,6 +94,7 @@ export function fromApiAttempt(raw: any, idx = 0): PaymentAttempt {
     cancelledAt: raw.cancelled_at ?? raw.cancelledAt ?? null,
     rejectReason,
     confirmedBy: raw.confirmed_by ?? raw.confirmedBy ?? null,
+    confirmedByName: raw.confirmed_by_name ?? raw.confirmedByName ?? null,
     confirmedAt: raw.confirmed_at ?? raw.confirmedAt ?? null,
     confirmedSource: raw.confirmed_source ?? raw.confirmedSource ?? null,
   };
@@ -185,6 +186,29 @@ export function paymentAttemptLabel(payment: PaymentAttempt) {
   if (payment.status === "rejected") return "Bị từ chối";
   if (payment.billImage || payment.bill) return "Chờ xác nhận";
   return "Chờ chuyển";
+}
+
+function emailToName(email: string): string {
+  const local = email.split("@")[0] || email;
+  return local.charAt(0).toUpperCase() + local.slice(1);
+}
+
+/**
+ * Render dòng "Xác nhận lúc ... bởi ..." / "Xác nhận tự động lúc ..." cho 1 lần thanh toán.
+ * Ưu tiên confirmedByName (display_name từ nhan_su_sale); fallback capitalize email prefix.
+ */
+export function paymentConfirmationText(payment: PaymentAttempt): string {
+  const date = payment.paidAt ? formatPaymentDateFull(payment.paidAt) : "";
+  const source = (payment.confirmedSource || "").toLowerCase();
+  const isAuto =
+    (source && source !== "manual" && source !== "outside") ||
+    (payment.confirmedBy ? payment.confirmedBy.startsWith("system:") : false);
+  if (isAuto) {
+    return date ? `Xác nhận tự động lúc ${date}` : "Xác nhận tự động";
+  }
+  const name = payment.confirmedByName || (payment.confirmedBy ? emailToName(payment.confirmedBy) : "");
+  if (!date) return name ? `Xác nhận bởi ${name}` : "Xác nhận";
+  return name ? `Xác nhận lúc ${date} bởi ${name}` : `Xác nhận lúc ${date}`;
 }
 
 export function progressPercent(request: PaymentRequest) {

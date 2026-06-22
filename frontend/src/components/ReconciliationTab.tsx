@@ -1326,7 +1326,15 @@ export default function ReconciliationTab() {
                             </strong>
                             {drawerTxn.confirmedBy && (
                               <span style={{ marginLeft: 6, color: "var(--text-3)" }}>
-                                bởi {drawerTxn.confirmedBy.startsWith("system:") ? `Hệ thống ${drawerTxn.confirmedBy.replace("system:", "")}` : drawerTxn.confirmedBy.split("@")[0]}
+                                {drawerTxn.confirmedBy.startsWith("system:")
+                                  ? `(tự động bởi Hệ thống ${drawerTxn.confirmedBy.replace("system:", "")})`
+                                  : `bởi ${
+                                      drawerTxn.confirmedByName ||
+                                      (() => {
+                                        const local = drawerTxn.confirmedBy.split("@")[0];
+                                        return local.charAt(0).toUpperCase() + local.slice(1);
+                                      })()
+                                    }`}
                               </span>
                             )}
                             {" "}· Tiền đã về tài khoản PalFish

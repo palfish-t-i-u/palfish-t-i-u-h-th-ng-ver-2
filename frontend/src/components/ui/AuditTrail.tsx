@@ -23,8 +23,10 @@ function fmtTime(iso: string) {
   }
 }
 
-function fmtActor(email: string) {
+function fmtActor(entry: AuditLogEntry) {
+  const email = entry.actor_email;
   if (email.startsWith("system:")) return email.replace("system:", "Hệ thống ");
+  if (entry.actor_name) return entry.actor_name;
   const name = email.split("@")[0];
   return name.charAt(0).toUpperCase() + name.slice(1);
 }
@@ -74,7 +76,7 @@ export default function AuditTrail({ targetType, targetId }: AuditTrailProps) {
         {logs.map((entry) => (
           <div key={entry.id} className="flex items-start gap-2 text-xs leading-relaxed">
             <span className="shrink-0 text-gray-400 tabular-nums">{fmtTime(entry.created_at)}</span>
-            <span className="shrink-0 font-medium text-gray-700">{fmtActor(entry.actor_email)}</span>
+            <span className="shrink-0 font-medium text-gray-700">{fmtActor(entry)}</span>
             <span className="text-gray-600">
               {ACTION_LABELS[entry.action] || entry.action}
               {detailText(entry) && (

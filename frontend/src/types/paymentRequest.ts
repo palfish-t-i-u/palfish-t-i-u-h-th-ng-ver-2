@@ -32,6 +32,7 @@ export interface PaymentAttempt {
   cancelledAt?: string | null;
   rejectReason?: string | null;
   confirmedBy?: string | null;
+  confirmedByName?: string | null;
   confirmedAt?: string | null;
   confirmedSource?: string | null;
 }

@@ -27,6 +27,7 @@ import {
   getReferralStatus,
   nowStamp,
   paymentAttemptLabel,
+  paymentConfirmationText,
   REFERRAL_STATUS_HEADER,
   REFERRAL_STATUS_PANEL_STYLE,
   validateReferralBonus,
@@ -249,7 +250,7 @@ function QrRow({
           <span className="sep" />
           <code>{qr.code}</code>
           <span className="sep" />
-          <span>{qr.status === "paid" ? `Xác nhận lúc ${qr.paidAt ? formatPaymentDateFull(qr.paidAt) : ""}` : `Tạo ${qr.createdAt ? formatPaymentDateFull(qr.createdAt) : ""}`}</span>
+          <span>{qr.status === "paid" ? paymentConfirmationText(qr) : `Tạo ${qr.createdAt ? formatPaymentDateFull(qr.createdAt) : ""}`}</span>
           {qr.status === "rejected" && qr.rejectReason && (
             <>
               <span className="sep" />

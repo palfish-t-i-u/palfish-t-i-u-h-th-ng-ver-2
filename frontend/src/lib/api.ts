@@ -541,6 +541,8 @@ export interface AuditLogEntry {
   id: number;
   action: string;
   actor_email: string;
+  /** Display name từ nhan_su_sale.display_name — null nếu là system actor hoặc không tìm thấy */
+  actor_name?: string | null;
   target_type: string | null;
   target_id: string | null;
   payload: Record<string, unknown>;
