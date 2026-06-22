@@ -1357,7 +1357,7 @@ function ActivationDetailDrawer({
                 {(() => {
                   const auditLine = activationAuditText(course);
                   return auditLine ? (
-                    <div style={{ fontSize: 12, fontWeight: 600, color: "var(--success-text, #15803d)", marginTop: 4, paddingLeft: 62, paddingRight: 16 }}>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: "var(--success-text, #15803d)", marginTop: 4, paddingLeft: 16, paddingRight: 16 }}>
                       ✓ {auditLine}
                     </div>
                   ) : null;
@@ -1374,7 +1374,7 @@ function ActivationDetailDrawer({
                       ? "Cần điền Order ID (kích hoạt khoá) trước khi tick cộng buổi"
                       : "";
                     return (
-                      <div style={{ padding: "10px 12px 10px 50px", borderRadius: 8, marginTop: 6, marginLeft: 12, marginRight: 12, ...panelStyle }}>
+                      <div style={{ padding: "10px 12px 10px 16px", borderRadius: 8, marginTop: 6, marginLeft: 12, marginRight: 12, ...panelStyle }}>
                         <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text-1, #111)", marginBottom: 6 }}>{headerText}</div>
                         {!courseActivated && (
                           <div style={{ fontSize: 12, color: "var(--caution-text, #92400e)", marginBottom: 6, fontStyle: "italic" }}>
