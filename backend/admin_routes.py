@@ -1156,4 +1156,60 @@ def register_admin_routes(app, get_supabase):
 
         return {"ok": True, "upserted": len(upserts), "deleted": len(deletes)}
 
+    # ------------------------------------------------------------------
+    # Audit logs — read-only query for reconciliation audit trail
+    # ------------------------------------------------------------------
+    @app.get("/audit-logs")
+    def get_audit_logs(
+        target_type: str | None = None,
+        target_id: str | None = None,
+        action: str | None = None,
+        limit: int = 50,
+        authorization: str | None = Header(None),
+    ):
+        sb = _sb_or_503(get_supabase)
+        actor = resolve_actor(sb, authorization)
+        require_module_access(sb, actor, "reconciliation")
+        q = sb.table("audit_logs").select("*").order("created_at", desc=True).limit(min(limit, 200))
+        if target_type:
+            q = q.eq("target_type", target_type.strip())
+        if target_id:
+            q = q.eq("target_id", target_id.strip())
+        if action:
+            q = q.eq("action", action.strip())
+        res = q.execute()
+        rows = res.data or []
+
+        # Enrich actor_name (display_name tu nhan_su_sale) de FE hien ten thay vi email.
+        actor_emails: set[str] = set()
+        for row in rows:
+            email = str(row.get("actor_email") or "").strip()
+            if not email or email.startswith("system:"):
+                continue
+            actor_emails.add(email.lower())
+        name_map: dict[str, str] = {}
+        if actor_emails:
+            try:
+                staff_res = (
+                    sb.table("nhan_su_sale")
+                    .select("email, display_name, crm_name")
+                    .in_("email", list(actor_emails))
+                    .execute()
+                )
+                for s in staff_res.data or []:
+                    email = str(s.get("email") or "").strip().lower()
+                    if not email:
+                        continue
+                    display = s.get("display_name") or s.get("crm_name")
+                    if display:
+                        name_map[email] = display
+            except Exception as exc:
+                print(f"[audit_logs] actor name lookup failed: {exc}")
+
+        for row in rows:
+            email = str(row.get("actor_email") or "").strip().lower()
+            row["actor_name"] = name_map.get(email) if email else None
+
+        return {"data": rows}
+
 

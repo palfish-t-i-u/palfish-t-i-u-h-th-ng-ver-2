@@ -618,11 +618,21 @@ def _bill_fields(
     }
 
 
+def _resolve_confirmed_by_name(email: str | None, display_names: dict[str, str] | None) -> str | None:
+    if not email or email.startswith("system:"):
+        return None
+    if not display_names:
+        return None
+    return display_names.get(email.strip().lower())
+
+
 def _serialize_payment_line(
     row: dict[str, Any],
     bill_urls: dict[str, str] | None = None,
     bill_assets: dict[str, list[dict[str, str]]] | None = None,
+    display_names: dict[str, str] | None = None,
 ) -> dict[str, Any]:
+    confirmed_by = row.get("confirmed_by") or None
     return {
         "id": str(row.get("id") or ""),
         "payment_request_id": row.get("payment_request_id") or "",
@@ -643,6 +653,10 @@ def _serialize_payment_line(
         "sale_received": row.get("sale_received") or None,
         "verified_total": row.get("verified_total") or None,
         "verified_received": row.get("verified_received") or None,
+        "confirmed_by": confirmed_by,
+        "confirmed_by_name": _resolve_confirmed_by_name(confirmed_by, display_names),
+        "confirmed_at": row.get("confirmed_at") or None,
+        "confirmed_source": row.get("confirmed_source") or None,
         **_bill_fields(row, bill_urls, bill_assets),
     }
 
@@ -652,9 +666,11 @@ def _serialize_payment_for_list(
     idx: int,
     bill_urls: dict[str, str] | None = None,
     bill_assets: dict[str, list[dict[str, str]]] | None = None,
+    display_names: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     reject = row.get("reject_reason")
     paid_at = row.get("paid_at")
+    confirmed_by = row.get("confirmed_by") or None
     result = {
         "id": str(row.get("id") or ""),
         "idx": idx,
@@ -673,6 +689,10 @@ def _serialize_payment_for_list(
         "sale_received": row.get("sale_received") or None,
         "verified_total": row.get("verified_total") or None,
         "verified_received": row.get("verified_received") or None,
+        "confirmed_by": confirmed_by,
+        "confirmed_by_name": _resolve_confirmed_by_name(confirmed_by, display_names),
+        "confirmed_at": row.get("confirmed_at") or None,
+        "confirmed_source": row.get("confirmed_source") or None,
         **_bill_fields(row, bill_urls, bill_assets),
     }
     return result
@@ -683,10 +703,11 @@ def _serialize_payment_request_list_item(
     lines: list[dict[str, Any]],
     bill_urls: dict[str, str] | None = None,
     bill_assets: dict[str, list[dict[str, str]]] | None = None,
+    display_names: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     sorted_lines = sorted(lines, key=lambda item: str(item.get("created_at") or ""))
     payments = [
-        _serialize_payment_for_list(line, idx, bill_urls, bill_assets)
+        _serialize_payment_for_list(line, idx, bill_urls, bill_assets, display_names)
         for idx, line in enumerate(sorted_lines, start=1)
     ]
     done_count = sum(1 for payment in payments if payment["status"] == "paid")
@@ -722,6 +743,37 @@ def _sale_name_map(sb) -> dict[str, str]:
         if not email:
             continue
         mapping[email] = row.get("display_name") or row.get("crm_name") or email
+    return mapping
+
+
+def _build_display_names_for_lines(sb, lines: list[dict[str, Any]]) -> dict[str, str]:
+    """Batch lookup display_name cho danh sach payment_lines theo confirmed_by."""
+    emails: set[str] = set()
+    for line in lines:
+        confirmed_by = str(line.get("confirmed_by") or "").strip()
+        if not confirmed_by or confirmed_by.startswith("system:"):
+            continue
+        emails.add(confirmed_by.lower())
+    if not emails:
+        return {}
+    try:
+        res = (
+            sb.table("nhan_su_sale")
+            .select("email, display_name, crm_name")
+            .in_("email", list(emails))
+            .execute()
+        )
+    except Exception as exc:
+        print(f"[payment_requests] display name lookup failed: {exc}")
+        return {}
+    mapping: dict[str, str] = {}
+    for row in res.data or []:
+        email = str(row.get("email") or "").strip().lower()
+        if not email:
+            continue
+        display = row.get("display_name") or row.get("crm_name")
+        if display:
+            mapping[email] = display
     return mapping
 
 
@@ -1069,7 +1121,9 @@ def _extract_payos_data(payload: dict[str, Any]) -> tuple[str, int, str]:
     return order_code, amount, description
 
 
-def _mark_line_paid(sb, line_id: str) -> dict[str, Any]:
+def _mark_line_paid(sb, line_id: str, *, actor_email: str = "system", source: str = "unknown") -> dict[str, Any]:
+    from audit import log_audit
+
     existing_res = (
         sb.table("payment_lines")
         .select("*")
@@ -1083,23 +1137,36 @@ def _mark_line_paid(sb, line_id: str) -> dict[str, Any]:
     if _clean_text(existing.get("status")).lower() == "paid":
         totals = recompute_payment_request_totals(sb, str(existing["payment_request_id"]))
         return {
-            "payment_line": _serialize_payment_line(existing),
+            "payment_line": _serialize_payment_line(
+                existing,
+                display_names=_build_display_names_for_lines(sb, [existing]),
+            ),
             **totals,
         }
 
     now_iso = _iso_now()
     line_res = (
         sb.table("payment_lines")
-        .update({"status": "paid", "paid_at": now_iso, "reject_reason": None})
+        .update({
+            "status": "paid", "paid_at": now_iso, "reject_reason": None,
+            "confirmed_by": actor_email, "confirmed_at": now_iso, "confirmed_source": source,
+        })
         .eq("id", line_id)
         .execute()
     )
     if not line_res.data:
         raise HTTPException(404, "Khong tim thay payment_line")
     line = line_res.data[0]
-    totals = recompute_payment_request_totals(sb, str(line["payment_request_id"]))
+    pr_id = str(line["payment_request_id"])
+    log_audit(sb, actor_email, "recon.line_marked_paid", "payment_line", line_id, {
+        "pr_id": pr_id, "source": source,
+    })
+    totals = recompute_payment_request_totals(sb, pr_id)
     return {
-        "payment_line": _serialize_payment_line(line),
+        "payment_line": _serialize_payment_line(
+            line,
+            display_names=_build_display_names_for_lines(sb, [line]),
+        ),
         **totals,
     }
 
@@ -1170,7 +1237,7 @@ async def sync_payment_line_from_payos(sb, line: dict[str, Any]) -> dict[str, An
     if not line_id:
         return None
     try:
-        result = _mark_line_paid(sb, line_id)
+        result = _mark_line_paid(sb, line_id, actor_email="system:payos", source="payos")
     except Exception as exc:
         return {"line_id": line_id, "error": str(exc)}
     return {
@@ -1261,7 +1328,7 @@ def reconcile_payment_line_webhook(sb, payload: dict[str, Any]) -> dict[str, Any
         return {"matched": False}
 
     try:
-        result = _mark_line_paid(sb, line_id)
+        result = _mark_line_paid(sb, line_id, actor_email="system:payos", source="payos")
     except Exception as exc:
         print(f"[payment_requests] webhook reconcile error: {exc}")
         return {"matched": True, "error": 1, "message": str(exc)}
@@ -1459,13 +1526,16 @@ def register_payment_request_routes(app, get_supabase) -> None:
             except Exception as exc:
                 print(f"Khong doc duoc active_requests for PR referral_status: {exc}")
 
+        # Map ten TVTS dung cho ca sale_name (PR) lan confirmed_by_name (payment lines).
+        name_map = _sale_name_map(sb)
+
         requests = []
         for row in pr_rows:
             pr_id = str(row.get("id") or "")
             item = _serialize_payment_request_list_item(
-                row, lines_by_pr.get(pr_id, []), bill_urls, bill_assets
+                row, lines_by_pr.get(pr_id, []), bill_urls, bill_assets, name_map
             )
-            
+
             ars = ars_by_pr.get(pr_id, [])
             all_courses = []
             for ar in ars:
@@ -1474,12 +1544,11 @@ def register_payment_request_routes(app, get_supabase) -> None:
                         for c in (u.get("courses") or []):
                             if isinstance(c, dict):
                                 all_courses.append(c)
-                                
+
             item["referral_status"] = _compute_referral_status(all_courses)
             requests.append(item)
 
         # Enrich ten TVTS de FE hien cot TVTS cho leader+ ngay tren bang chinh.
-        name_map = _sale_name_map(sb)
         for item in requests:
             email = str(item.get("sale_email") or "").strip().lower()
             item["sale_name"] = name_map.get(email, "")
@@ -1541,6 +1610,7 @@ def register_payment_request_routes(app, get_supabase) -> None:
             "payment_request": _serialize_payment_request_list_item(
                 updated_row,
                 line_res.data or [],
+                display_names=_build_display_names_for_lines(sb, line_res.data or []),
             )
         }
 
@@ -1612,9 +1682,15 @@ def register_payment_request_routes(app, get_supabase) -> None:
             .eq("payment_request_id", payment_request_id)
             .execute()
         )
+        from audit import log_audit
+        log_audit(sb, actor.email, "pr.cancelled", "payment_request", payment_request_id, {
+            "reason": reason,
+        })
         return {
             "payment_request": _serialize_payment_request_list_item(
-                updated, line_res_full.data or []
+                updated,
+                line_res_full.data or [],
+                display_names=_build_display_names_for_lines(sb, line_res_full.data or []),
             )
         }
 
@@ -1672,7 +1748,9 @@ def register_payment_request_routes(app, get_supabase) -> None:
 
         updated = updated_res.data[0] if updated_res.data else {**pr_row, **patch}
         return {
-            "payment_request": _serialize_payment_request_list_item(updated, lines)
+            "payment_request": _serialize_payment_request_list_item(
+                updated, lines, display_names=_build_display_names_for_lines(sb, lines)
+            )
         }
 
     @router.post("/payment-requests/sync-pending-payos")
@@ -1913,6 +1991,7 @@ def register_payment_request_routes(app, get_supabase) -> None:
         if amount <= 0:
             raise HTTPException(400, "amount khong hop le")
 
+        old_amount = _parse_amount(line.get("amount"))
         try:
             updated_res = (
                 sb.table("payment_lines")
@@ -1926,9 +2005,16 @@ def register_payment_request_routes(app, get_supabase) -> None:
         except Exception as exc:
             raise HTTPException(500, f"Khong cap nhat amount: {exc}") from exc
 
+        from audit import log_audit
+        log_audit(sb, actor.email, "recon.amount_changed", "payment_line", line_id, {
+            "pr_id": pr_id, "old_amount": old_amount, "new_amount": amount,
+        })
         updated_line = updated_res.data[0] if updated_res.data else {**line, "amount": amount}
         return {
-            "payment_line": _serialize_payment_line(updated_line),
+            "payment_line": _serialize_payment_line(
+                updated_line,
+                display_names=_build_display_names_for_lines(sb, [updated_line]),
+            ),
             "payment_request": totals["payment_request"],
             "received": totals["received"],
             "target": totals["target"],
@@ -1962,13 +2048,23 @@ def register_payment_request_routes(app, get_supabase) -> None:
         if not payment_request_id:
             raise HTTPException(400, "payment_line thieu payment_request_id")
 
+        from audit import log_audit
+
+        old_status = _clean_text(line.get("status"))
+        now_iso = _iso_now()
         patch: dict[str, Any] = {"status": status}
         if status == "paid":
-            patch["paid_at"] = _iso_now()
+            patch["paid_at"] = now_iso
             patch["reject_reason"] = None
+            patch["confirmed_by"] = actor.email
+            patch["confirmed_at"] = now_iso
+            patch["confirmed_source"] = "manual"
         elif status == "rejected":
             patch["paid_at"] = None
             patch["reject_reason"] = _clean_text(body.reject_reason) or "Ke toan tu choi"
+            patch["confirmed_by"] = actor.email
+            patch["confirmed_at"] = now_iso
+            patch["confirmed_source"] = "manual"
         else:
             patch["paid_at"] = None
             patch["reject_reason"] = None
@@ -1986,9 +2082,16 @@ def register_payment_request_routes(app, get_supabase) -> None:
         except Exception as exc:
             raise HTTPException(500, f"Khong cap nhat transaction: {exc}") from exc
 
+        log_audit(sb, actor.email, "recon.line_status_changed", "payment_line", transaction_id, {
+            "pr_id": payment_request_id, "from_status": old_status, "to_status": status,
+            "reject_reason": patch.get("reject_reason"),
+        })
         updated_line = updated_res.data[0] if updated_res.data else {**line, **patch}
         return {
-            "payment_line": _serialize_payment_line(updated_line),
+            "payment_line": _serialize_payment_line(
+                updated_line,
+                display_names=_build_display_names_for_lines(sb, [updated_line]),
+            ),
             "payment_request": totals["payment_request"],
             "received": totals["received"],
             "target": totals["target"],
@@ -2070,6 +2173,7 @@ def register_payment_request_routes(app, get_supabase) -> None:
                 line,
                 {line_id: public_url},
                 bill_assets,
+                display_names=_build_display_names_for_lines(sb, [line]),
             ),
         }
 
@@ -2119,6 +2223,7 @@ def register_payment_request_routes(app, get_supabase) -> None:
                 merged_line,
                 {line_id: next_bill_url},
                 {line_id: next_assets},
+                display_names=_build_display_names_for_lines(sb, [merged_line]),
             )
         }
 
@@ -2234,6 +2339,7 @@ def register_payment_request_routes(app, get_supabase) -> None:
                 line,
                 {line_id: next_bill_url},
                 {line_id: next_assets},
+                display_names=_build_display_names_for_lines(sb, [line]),
             )
         }
 

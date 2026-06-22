@@ -18,7 +18,7 @@ import {
 import CountryCombo from "./payment-request/CountryCombo";
 import DateRangeFilter, { EMPTY_RANGE, type DateRange, inDateRange } from "./payment-request/DateRangeFilter";
 import { Icons } from "./payment-request/Icons";
-import { formatPaymentDateFull, formatPaymentDateTime, fromApiActiveRequest, getArReferralStatus, getReferralStatus, REFERRAL_STATUS_HEADER, REFERRAL_STATUS_PANEL_STYLE, toActiveRequestPatchUidsData } from "./payment-request/paymentRequestUtils";
+import { activationAuditText, formatPaymentDateFull, formatPaymentDateTime, fromApiActiveRequest, getArReferralStatus, getReferralStatus, REFERRAL_STATUS_HEADER, REFERRAL_STATUS_PANEL_STYLE, toActiveRequestPatchUidsData } from "./payment-request/paymentRequestUtils";
 import { downloadTaxInvoiceZip } from "../utils/taxInvoiceXlsxExport";
 import type { InvoiceRow } from "./payment-flow/paymentFlowUtils";
 import "../styles/prototype-payments.css";
@@ -1354,6 +1354,14 @@ function ActivationDetailDrawer({
                     </button>
                   )}
                 </div>
+                {(() => {
+                  const auditLine = activationAuditText(course);
+                  return auditLine ? (
+                    <div style={{ fontSize: 12, fontWeight: 600, color: "var(--success-text, #15803d)", marginTop: 4, paddingLeft: 16, paddingRight: 16 }}>
+                      ✓ {auditLine}
+                    </div>
+                  ) : null;
+                })()}
                 {course.leadSource === "gioi_thieu" &&
                   ((course.bonusSessionsReferee ?? 0) > 0 || (course.bonusSessionsReferrer ?? 0) > 0) && (() => {
                     const rs = getReferralStatus(course);
@@ -1366,7 +1374,7 @@ function ActivationDetailDrawer({
                       ? "Cần điền Order ID (kích hoạt khoá) trước khi tick cộng buổi"
                       : "";
                     return (
-                      <div style={{ padding: "10px 12px", borderRadius: 8, marginTop: 6, ...panelStyle }}>
+                      <div style={{ padding: "10px 12px 10px 16px", borderRadius: 8, marginTop: 6, marginLeft: 12, marginRight: 12, ...panelStyle }}>
                         <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text-1, #111)", marginBottom: 6 }}>{headerText}</div>
                         {!courseActivated && (
                           <div style={{ fontSize: 12, color: "var(--caution-text, #92400e)", marginBottom: 6, fontStyle: "italic" }}>

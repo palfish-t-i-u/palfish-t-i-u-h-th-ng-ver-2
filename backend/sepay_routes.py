@@ -369,15 +369,20 @@ def _process_sepay_transaction(sb, txn: dict[str, Any]) -> dict[str, Any]:
     if is_new and line_to_pay is not None:
         try:
             from payment_request_routes import recompute_payment_request_totals
+            from audit import log_audit
 
             now_iso = _iso_now()
             sb.table("payment_lines").update(
-                {"status": "paid", "paid_at": now_iso, "reject_reason": None}
+                {"status": "paid", "paid_at": now_iso, "reject_reason": None,
+                 "confirmed_by": "system:sepay", "confirmed_at": now_iso, "confirmed_source": "sepay"}
             ).eq("id", payment_line_id).execute()
 
             pr_id = str(line_to_pay.get("payment_request_id", ""))
             if pr_id:
                 recompute_payment_request_totals(sb, pr_id)
+            log_audit(sb, "system:sepay", "recon.line_marked_paid", "payment_line", payment_line_id, {
+                "pr_id": pr_id, "source": "sepay", "sepay_id": sepay_id,
+            })
         except Exception as exc:
             # Không rollback INSERT — log + chuyển bank_transactions sang needs_review
             # để kế toán xử lý tay. State invariant: bank_transactions tồn tại.
@@ -596,7 +601,8 @@ def register_sepay_routes(app, get_supabase: Callable) -> None:
             # Mark payment_line as paid
             line_res = (
                 sb.table("payment_lines")
-                .update({"status": "paid", "paid_at": now_iso, "reject_reason": None})
+                .update({"status": "paid", "paid_at": now_iso, "reject_reason": None,
+                         "confirmed_by": actor.email, "confirmed_at": now_iso, "confirmed_source": "manual"})
                 .eq("id", payment_line_id)
                 .execute()
             )
@@ -605,6 +611,10 @@ def register_sepay_routes(app, get_supabase: Callable) -> None:
                 if pr_id:
                     recompute_payment_request_totals(sb, pr_id)
 
+            from audit import log_audit
+            log_audit(sb, actor.email, "recon.bank_txn_matched", "bank_transaction", txn_id, {
+                "payment_line_id": payment_line_id, "discrepancy_amount": discrepancy_amount,
+            })
         except Exception as exc:
             if isinstance(exc, HTTPException):
                 raise

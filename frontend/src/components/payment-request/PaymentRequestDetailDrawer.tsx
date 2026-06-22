@@ -14,6 +14,7 @@ import { Icons, type IconKey } from "./Icons";
 import BillUploadZone from "./BillUploadZone";
 import VietnamAddressFields from "./VietnamAddressFields";
 import PaymentRequestStatusBadge from "./PaymentRequestStatusBadge";
+import AuditTrail from "../ui/AuditTrail";
 import { getAvailableBanks } from "../../constants/bank";
 import { useMe } from "../../hooks/useMe";
 import Combobox from "../ui/Combobox";
@@ -26,6 +27,7 @@ import {
   getReferralStatus,
   nowStamp,
   paymentAttemptLabel,
+  paymentConfirmationText,
   REFERRAL_STATUS_HEADER,
   REFERRAL_STATUS_PANEL_STYLE,
   validateReferralBonus,
@@ -248,7 +250,7 @@ function QrRow({
           <span className="sep" />
           <code>{qr.code}</code>
           <span className="sep" />
-          <span>{qr.status === "paid" ? `Xác nhận lúc ${qr.paidAt ? formatPaymentDateFull(qr.paidAt) : ""}` : `Tạo ${qr.createdAt ? formatPaymentDateFull(qr.createdAt) : ""}`}</span>
+          <span>{qr.status === "paid" ? paymentConfirmationText(qr) : `Tạo ${qr.createdAt ? formatPaymentDateFull(qr.createdAt) : ""}`}</span>
           {qr.status === "rejected" && qr.rejectReason && (
             <>
               <span className="sep" />
@@ -2230,6 +2232,10 @@ export default function PaymentRequestDetailDrawer({
               </div>
             </div>
           </div>
+        </div>
+
+        <div style={{ padding: "0 20px 12px" }}>
+          <AuditTrail targetType="payment_request" targetId={request.id} />
         </div>
 
         <div className="drawer-foot">
