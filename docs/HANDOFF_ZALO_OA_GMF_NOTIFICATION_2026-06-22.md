@@ -2,7 +2,7 @@
 
 > **Người nhận**: Đức / Đạt / Giang
 > **Người giao**: Minh
-> **Trạng thái**: 🟡 **BẢN NHÁP** — Minh sẽ sửa tiếp. Up lên sandbox để collab.
+> **Trạng thái**: 🟢 **SẴN SÀNG** — C1-C4 done, token + group verified. 3 đứa bắt đầu code D1-D5 được.
 > **Mục tiêu**: Khi thanh toán được xác nhận (auto từ PayOS/SePay hoặc kế toán tick tay) → tự động gửi tin vào group Zalo của team sale tương ứng. Tương tự khi kích hoạt khoá học.
 > **Lý do làm**: Feedback họp 21/6 từ anh Hiếu — "Trong tuần tới cần phải đẩy tự động thông tin tiền về và thông tin kích hoạt khoá học lên Zalo của IH2 và Offline."
 
@@ -115,21 +115,31 @@ Ngày 8:   Cutover toàn team IH2
 | B3 | Gửi link mời vào group Zalo team IH2 | 5 phút | ⬜ Chưa | Sale tự join khi rảnh |
 | C1 | Tạo App "PalFish GMV Notifier" trên developers.zalo.me → App ID + Secret | 30 phút | ✅ Done 22/6 | App ID: `83298551201629166`. KHÔNG dùng App Pancake V2 (CRM khác) |
 | C2 | Request permission `send_message_to_group`, `manage_group` | 15 phút | ✅ Done 22/6 | Tất cả quyền GMF đã duyệt |
-| C3 | Chạy OAuth flow → access_token + refresh_token ban đầu | 30 phút | 🔴 **BLOCKED** | Không thể kích hoạt app — bug Zalo portal không lưu được SĐT/email. Đã gửi ticket support Zalo (22/6) |
-| C4 | Lấy `group_id` nhóm IH2 | 15 phút | ⬜ Chờ C3 | Qua API `GET /openapi/v3.0/oa/group/list` sau khi có token |
+| C3 | Chạy OAuth flow → access_token + refresh_token ban đầu | 30 phút | ✅ Done 22/6 | Token lấy thành công. access_token valid 25h, refresh_token valid 90 ngày |
+| C4 | Lấy `group_id` nhóm IH2 + test gửi tin | 15 phút | ✅ Done 22/6 | group_id = `df7d5a31765c9f02c64d`. Test message OK |
 | E1 | Paste credentials + group_id vào Admin UI Giang build | 15 phút | ⬜ Chờ C3+C4 | |
 | E2 | Test E2E với Đức (nhóm test private) | 2 giờ | ⬜ | Ngày 4 |
 | E3 | Soft launch — leader IH2 + anh Hiếu | 3 ngày (async) | ⬜ | Ngày 5-7 |
 | E4 | Cutover toàn team IH2 | 15 phút | ⬜ | Ngày 8 |
 
-**Blocker hiện tại**: Zalo developer portal bug — không lưu được SĐT/email trong cài đặt app → không kích hoạt được app → không chạy OAuth. Đã gửi email tới `help-transfer@zalo.me` ngày 22/6. Chờ phản hồi.
+**Blocker hiện tại**: Không còn. C1-C4 đã xong.
 
-**Thông tin bổ sung từ setup 22/6**:
+**Thông tin từ setup 22/6**:
 - Domain verified: `palfish-gmv-manager-sandbox.vercel.app`
 - Callback URL: `https://palfish-gmv-manager-sandbox.vercel.app/zalo-callback`
 - OA linked: Palfish Vietnam
 - App backup (phòng app chính hỏng): PalFish Notifier, ID `376625350414150801`
-- Nhóm GMF URL: `oa.zalo.me/chat?gid=df7d5a31765c9f02c64d8&oaid=953422767266282024`
+- **group_id (API)**: `df7d5a31765c9f02c64d` ⚠️ gid trong URL oa.zalo.me/chat (`df7d5a31765c9f02c64d8`) KHÁC — thừa chữ `8` cuối
+- Nhóm GMF link: `https://zalo.me/g/tfymfx695`
+- API Explorer: `developers.zalo.me/tools/explorer` → chọn OA Access Token + app PalFish GMV Notifier
+- List groups: `GET https://openapi.zalo.me/v3.0/oa/group/getgroupsofoa?offset=0&count=5`
+
+**API gửi tin nhóm (Đức cần biết)**:
+```
+POST https://openapi.zalo.me/v3.0/oa/group/message
+Header: access_token: <token>
+Body: {"recipient":{"group_id":"df7d5a31765c9f02c64d"},"message":{"text":"nội dung"}}
+```
 
 **Tổng thao tác Minh**: ~5 giờ + ~1 tuần async. Không đụng env Render, không đụng code.
 
