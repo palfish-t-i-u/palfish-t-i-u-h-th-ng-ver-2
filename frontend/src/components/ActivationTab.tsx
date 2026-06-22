@@ -1357,8 +1357,8 @@ function ActivationDetailDrawer({
                 {(() => {
                   const auditLine = activationAuditText(course);
                   return auditLine ? (
-                    <div style={{ fontSize: 11, color: "var(--text-3)", marginTop: 2, paddingLeft: 2 }}>
-                      {auditLine}
+                    <div style={{ fontSize: 12, fontWeight: 600, color: "var(--success-text, #15803d)", marginTop: 4, paddingLeft: 2 }}>
+                      ✓ {auditLine}
                     </div>
                   ) : null;
                 })()}
