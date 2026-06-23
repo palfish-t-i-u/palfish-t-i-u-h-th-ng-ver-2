@@ -1398,6 +1398,19 @@
           ],
           "depart8": [],
           "order_count_2y": 1
+        },
+        {
+          "sale": "Pham Thuy Linh",
+          "team": "Linh Dam Store",
+          "sub_team": "",
+          "depart6": [
+            "HN Offline Store"
+          ],
+          "depart7": [
+            "Linh Dam Store"
+          ],
+          "depart8": [],
+          "order_count_2y": 119
         }
       ]
     },
@@ -1728,19 +1741,7 @@
       ]
     },
     "HN Offline Store": {
-      "": [
-        {
-          "sale": "Pham Thuy Linh",
-          "team": "HN Offline Store",
-          "sub_team": "",
-          "depart6": [
-            "HN Offline Store"
-          ],
-          "depart7": [],
-          "depart8": [],
-          "order_count_2y": 119
-        }
-      ]
+      "": []
     },
     "Marketing": {
       "": [

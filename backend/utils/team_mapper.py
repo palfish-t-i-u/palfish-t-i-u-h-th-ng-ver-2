@@ -71,6 +71,7 @@ TEAM_TO_CANONICAL: dict[str, str] = {
     "Offline Store": "Offline",
     "An Binh": "An Binh (Store)",
     "An Binh Store": "An Binh (Store)",
+    "HN Offline Store": "Offline",
     # Short aliases
     "IH1": "Inhouse 1",
     "IH2": "Inhouse 2",
