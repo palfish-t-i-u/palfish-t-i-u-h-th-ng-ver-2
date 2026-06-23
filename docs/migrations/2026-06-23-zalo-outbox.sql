@@ -1,5 +1,6 @@
 -- Migration SQL: Zalo OA Notification Integration
 -- Creates tables: zalo_outbox, zalo_team_groups, zalo_oa_credentials
+-- Creates standalone formatting functions: build_payment_paid_message, build_course_activated_message (Giang G1 & G2)
 -- Creates triggers on: payment_lines (paid), active_requests (activated)
 
 -- 1. Create Tables
@@ -57,25 +58,105 @@ DROP POLICY IF EXISTS "service_role bypass zalo_oa_credentials" ON public.zalo_o
 CREATE POLICY "service_role bypass zalo_oa_credentials"
   ON public.zalo_oa_credentials FOR ALL TO service_role USING (true) WITH CHECK (true);
 
--- 4. Trigger Functions and Triggers
+-- 4. Giang's SQL Functions (G1 & G2)
+
+-- G1: SQL function build_payment_paid_message(line_row)
+CREATE OR REPLACE FUNCTION public.build_payment_paid_message(line_row public.payment_lines)
+RETURNS TEXT AS $$
+DECLARE
+  v_sale_email TEXT;
+  v_customer TEXT;
+  v_sale_team TEXT;
+  v_sale_name TEXT;
+  v_amount_fmt TEXT;
+BEGIN
+  -- Lookup parent payment request and sale info
+  SELECT pr.sale_email, pr.name, ns.team, ns.display_name
+    INTO v_sale_email, v_customer, v_sale_team, v_sale_name
+    FROM public.payment_requests pr
+    LEFT JOIN public.nhan_su_sale ns ON ns.email ILIKE pr.sale_email
+    WHERE pr.id = line_row.payment_request_id
+    LIMIT 1;
+
+  -- Format amount: e.g. 1,500,000
+  v_amount_fmt := to_char(line_row.amount, 'FM999,999,999,999');
+  
+  -- Return formatted message matching specification
+  RETURN format(
+    '💰 PAID — KH %s | %sđ | sale %s | %s | %s',
+    COALESCE(v_customer, '?'),
+    v_amount_fmt,
+    COALESCE(v_sale_name, v_sale_email, '?'),
+    COALESCE(line_row.method, '?'),
+    COALESCE(to_char(COALESCE(line_row.paid_at, line_row.confirmed_at, line_row.created_at) AT TIME ZONE 'Asia/Ho_Chi_Minh', 'HH24:MI DD/MM'), '?')
+  );
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+
+-- G2: SQL function build_course_activated_message(ar_row)
+CREATE OR REPLACE FUNCTION public.build_course_activated_message(ar_row public.active_requests)
+RETURNS TEXT AS $$
+DECLARE
+  v_uid_block JSONB;
+  v_course JSONB;
+  v_courses_list TEXT := '';
+  v_sale_email TEXT;
+  v_customer_from_pr TEXT;
+  v_sale_team TEXT;
+  v_sale_name TEXT;
+BEGIN
+  -- Extract all course names from JSONB uids_data safely
+  IF ar_row.uids_data IS NOT NULL AND jsonb_typeof(ar_row.uids_data) = 'array' THEN
+    FOR v_uid_block IN SELECT * FROM jsonb_array_elements(ar_row.uids_data)
+    LOOP
+      IF jsonb_typeof(v_uid_block->'courses') = 'array' THEN
+        FOR v_course IN SELECT * FROM jsonb_array_elements(v_uid_block->'courses')
+        LOOP
+          IF v_courses_list != '' THEN
+            v_courses_list := v_courses_list || ', ';
+          END IF;
+          v_courses_list := v_courses_list || COALESCE(v_course->>'name', '?');
+        END LOOP;
+      END IF;
+    END LOOP;
+  END IF;
+
+  -- Lookup parent payment request and sale info
+  SELECT pr.sale_email, pr.name, ns.team, ns.display_name
+    INTO v_sale_email, v_customer_from_pr, v_sale_team, v_sale_name
+    FROM public.payment_requests pr
+    LEFT JOIN public.nhan_su_sale ns ON ns.email ILIKE pr.sale_email
+    WHERE pr.id = ar_row.pr_id
+    LIMIT 1;
+
+  -- Return formatted message matching specification
+  RETURN format(
+    '✅ KÍCH HOẠT — KH %s | gói %s | sale %s',
+    COALESCE(ar_row.customer_name, v_customer_from_pr, '?'),
+    CASE WHEN v_courses_list = '' THEN '?' ELSE v_courses_list END,
+    COALESCE(v_sale_name, v_sale_email, '?')
+  );
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+
+-- 5. Trigger Functions and Triggers
 
 -- Trigger 1: payment_lines (paid)
 CREATE OR REPLACE FUNCTION public.fn_payment_paid_zalo_notify()
 RETURNS TRIGGER AS $$
 DECLARE
   v_sale_email TEXT;
-  v_customer TEXT;
   v_sale_team TEXT;
-  v_sale_name TEXT;
   v_group_id TEXT;
   v_message TEXT;
-  v_amount_fmt TEXT;
 BEGIN
   -- Fire only when status transitions from not-paid to paid
   IF NEW.status = 'paid' AND (OLD.status IS NULL OR OLD.status != 'paid') THEN
-    -- Lookup parent payment request and sale info
-    SELECT pr.sale_email, pr.name, ns.team, ns.display_name
-      INTO v_sale_email, v_customer, v_sale_team, v_sale_name
+    -- Lookup parent payment request and sale team
+    SELECT pr.sale_email, ns.team
+      INTO v_sale_email, v_sale_team
       FROM public.payment_requests pr
       LEFT JOIN public.nhan_su_sale ns ON ns.email ILIKE pr.sale_email
       WHERE pr.id = NEW.payment_request_id
@@ -92,18 +173,8 @@ BEGIN
       RETURN NEW;
     END IF;
 
-    -- Format amount: e.g. 1,500,000
-    v_amount_fmt := to_char(NEW.amount, 'FM999,999,999,999');
-    
-    -- Format message matching specification
-    v_message := format(
-      '💰 PAID — KH %s | %sđ | sale %s | %s | %s',
-      COALESCE(v_customer, '?'),
-      v_amount_fmt,
-      COALESCE(v_sale_name, v_sale_email, '?'),
-      COALESCE(NEW.method, '?'),
-      COALESCE(to_char(COALESCE(NEW.paid_at, NEW.confirmed_at, NEW.created_at) AT TIME ZONE 'Asia/Ho_Chi_Minh', 'HH24:MI DD/MM'), '?')
-    );
+    -- Call Giang's SQL function G1 to build message
+    v_message := public.build_payment_paid_message(NEW);
 
     -- Insert into outbox table
     INSERT INTO public.zalo_outbox (event_type, source_table, source_id, group_id, message)
@@ -124,37 +195,16 @@ CREATE TRIGGER trg_payment_paid_zalo
 CREATE OR REPLACE FUNCTION public.fn_course_activated_zalo_notify()
 RETURNS TRIGGER AS $$
 DECLARE
-  v_uid_block JSONB;
-  v_course JSONB;
-  v_courses_list TEXT := '';
   v_sale_email TEXT;
-  v_customer_from_pr TEXT;
   v_sale_team TEXT;
-  v_sale_name TEXT;
   v_group_id TEXT;
   v_message TEXT;
 BEGIN
   -- Fire only when status transitions from not-activated to activated
   IF NEW.status = 'activated' AND (OLD.status IS NULL OR OLD.status != 'activated') THEN
-    -- Extract all course names from JSONB uids_data safely
-    IF NEW.uids_data IS NOT NULL AND jsonb_typeof(NEW.uids_data) = 'array' THEN
-      FOR v_uid_block IN SELECT * FROM jsonb_array_elements(NEW.uids_data)
-      LOOP
-        IF jsonb_typeof(v_uid_block->'courses') = 'array' THEN
-          FOR v_course IN SELECT * FROM jsonb_array_elements(v_uid_block->'courses')
-          LOOP
-            IF v_courses_list != '' THEN
-              v_courses_list := v_courses_list || ', ';
-            END IF;
-            v_courses_list := v_courses_list || COALESCE(v_course->>'name', '?');
-          END LOOP;
-        END IF;
-      END LOOP;
-    END IF;
-
-    -- Lookup parent payment request and sale info
-    SELECT pr.sale_email, pr.name, ns.team, ns.display_name
-      INTO v_sale_email, v_customer_from_pr, v_sale_team, v_sale_name
+    -- Lookup parent payment request and sale team
+    SELECT pr.sale_email, ns.team
+      INTO v_sale_email, v_sale_team
       FROM public.payment_requests pr
       LEFT JOIN public.nhan_su_sale ns ON ns.email ILIKE pr.sale_email
       WHERE pr.id = NEW.pr_id
@@ -171,13 +221,8 @@ BEGIN
       RETURN NEW;
     END IF;
 
-    -- Format message matching specification
-    v_message := format(
-      '✅ KÍCH HOẠT — KH %s | gói %s | sale %s',
-      COALESCE(NEW.customer_name, v_customer_from_pr, '?'),
-      CASE WHEN v_courses_list = '' THEN '?' ELSE v_courses_list END,
-      COALESCE(v_sale_name, v_sale_email, '?')
-    );
+    -- Call Giang's SQL function G2 to build message
+    v_message := public.build_course_activated_message(NEW);
 
     -- Insert into outbox table
     -- Since active_requests.id is TEXT, we deterministically convert it to UUID using md5
