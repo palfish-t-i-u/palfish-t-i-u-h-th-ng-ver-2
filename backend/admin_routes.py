@@ -94,6 +94,19 @@ class BulkOverrideBody(BaseModel):
     overrides: dict[str, str]  # module_key -> access_level ("full"/"read"/"none"/"reset")
 
 
+class ZaloGroupCreatePayload(BaseModel):
+    team_code: str
+    group_id: str
+    group_name: str
+    is_active: bool
+
+
+class ZaloGroupPatchPayload(BaseModel):
+    group_id: str | None = None
+    group_name: str | None = None
+    is_active: bool | None = None
+
+
 MODULE_LIST = [
     "dashboard",
     "paymentRequests",
@@ -1212,4 +1225,299 @@ def register_admin_routes(app, get_supabase):
 
         return {"data": rows}
 
+    # ------------------------------------------------------------------
+        actor = resolve_actor(sb, authorization)
+        require_min_role(actor, "system")
 
+        res = sb.table("department_permissions").select("*").execute()
+        matrix: dict[str, dict[str, str]] = {}
+        min_roles: dict[str, dict[str, str]] = {}
+        for dept in VALID_DEPARTMENTS:
+            matrix[dept] = {mod: "none" for mod in MODULE_LIST}
+            min_roles[dept] = {mod: "sale" for mod in MODULE_LIST}
+        for r in res.data or []:
+            dept = r["department"]
+            if dept in matrix:
+                matrix[dept][r["module_key"]] = r["access_level"]
+                min_roles[dept][r["module_key"]] = r.get("min_role", "sale")
+        return {"matrix": matrix, "minRoles": min_roles}
+
+    @app.patch("/admin/permissions")
+    def patch_admin_permissions(body: PermissionPatchBody, authorization: str | None = Header(None)):
+        sb = _sb_or_503(get_supabase)
+        actor = resolve_actor(sb, authorization)
+        require_min_role(actor, "system")
+
+        if body.access_level not in ("none", "read", "full"):
+            raise HTTPException(400, "Invalid access level")
+        mr = body.min_role if body.min_role in VALID_MIN_ROLES else "sale"
+
+        sb.table("department_permissions").upsert({
+            "department": body.department.strip(),
+            "module_key": body.module_key.strip(),
+            "access_level": body.access_level,
+            "min_role": mr,
+        }, on_conflict="department, module_key").execute()
+
+        return {"ok": True}
+
+    @app.post("/admin/permissions/seed")
+    def seed_admin_permissions(authorization: str | None = Header(None)):
+        sb = _sb_or_503(get_supabase)
+        actor = resolve_actor(sb, authorization)
+        require_min_role(actor, "system")
+
+        existing = sb.table("department_permissions").select("department, module_key").execute()
+        existing_keys = {(r["department"], r["module_key"]) for r in existing.data or []}
+
+        rows = []
+        for dept, modules in DEFAULT_DEPT_PERMISSIONS.items():
+            for mod, level in modules.items():
+                if (dept, mod) not in existing_keys:
+                    rows.append({"department": dept, "module_key": mod, "access_level": level})
+
+        if rows:
+            sb.table("department_permissions").insert(rows).execute()
+
+        return {"seeded": len(rows)}
+
+    @app.get("/admin/permission-overrides")
+    def get_permission_overrides(authorization: str | None = Header(None)):
+        sb = _sb_or_503(get_supabase)
+        actor = resolve_actor(sb, authorization)
+        require_min_role(actor, "system")
+
+        res = sb.table("permission_overrides").select("*").order("created_at", desc=True).execute()
+        out = []
+        for r in res.data or []:
+            out.append({
+                "email": r["user_email"],
+                "moduleKey": r["module_key"],
+                "accessLevel": r["access_level"],
+            })
+        return {"overrides": out}
+
+    @app.post("/admin/permission-overrides")
+    def post_permission_override(body: PermissionOverrideBody, authorization: str | None = Header(None)):
+        sb = _sb_or_503(get_supabase)
+        actor = resolve_actor(sb, authorization)
+        require_min_role(actor, "system")
+
+        if body.access_level not in ("none", "read", "full"):
+            raise HTTPException(400, "Invalid access level")
+
+        sb.table("permission_overrides").upsert({
+            "user_email": body.email.strip().lower(),
+            "module_key": body.module_key.strip(),
+            "access_level": body.access_level
+        }, on_conflict="user_email, module_key").execute()
+
+        return {"ok": True}
+
+    @app.delete("/admin/permission-overrides")
+    def delete_permission_override(email: str, module_key: str, authorization: str | None = Header(None)):
+        sb = _sb_or_503(get_supabase)
+        actor = resolve_actor(sb, authorization)
+        require_min_role(actor, "system")
+
+        sb.table("permission_overrides").delete().eq("user_email", email.strip().lower()).eq("module_key", module_key.strip()).execute()
+        return {"ok": True}
+
+    @app.put("/admin/permission-overrides/bulk")
+    def bulk_override(body: BulkOverrideBody, authorization: str | None = Header(None)):
+        """Set/reset all overrides for one user in a single call.
+
+        body.overrides is a dict: module_key -> access_level.
+        Use "reset" as the access_level to delete an override (revert to dept default).
+        Only modules present in the dict are touched; others are left unchanged.
+        """
+        sb = _sb_or_503(get_supabase)
+        actor = resolve_actor(sb, authorization)
+        require_min_role(actor, "system")
+
+        email = body.email.strip().lower()
+        upserts: list[dict] = []
+        deletes: list[str] = []
+
+        for mk, al in body.overrides.items():
+            mk = mk.strip()
+            if mk not in MODULE_LIST:
+                continue
+            if al == "reset":
+                deletes.append(mk)
+            elif al in ACCESS_LEVELS:
+                upserts.append({
+                    "user_email": email,
+                    "module_key": mk,
+                    "access_level": al,
+                })
+
+        if upserts:
+            sb.table("permission_overrides").upsert(
+                upserts, on_conflict="user_email, module_key"
+            ).execute()
+
+        for mk in deletes:
+            sb.table("permission_overrides").delete().eq(
+                "user_email", email
+            ).eq("module_key", mk).execute()
+
+        return {"ok": True, "upserted": len(upserts), "deleted": len(deletes)}
+
+    # ------------------------------------------------------------------
+    # Audit logs — read-only query for reconciliation audit trail
+    # ------------------------------------------------------------------
+    @app.get("/audit-logs")
+    def get_audit_logs(
+        target_type: str | None = None,
+        target_id: str | None = None,
+        action: str | None = None,
+        limit: int = 50,
+        authorization: str | None = Header(None),
+    ):
+        sb = _sb_or_503(get_supabase)
+        actor = resolve_actor(sb, authorization)
+        require_module_access(sb, actor, "reconciliation")
+        q = sb.table("audit_logs").select("*").order("created_at", desc=True).limit(min(limit, 200))
+        if target_type:
+            q = q.eq("target_type", target_type.strip())
+        if target_id:
+            q = q.eq("target_id", target_id.strip())
+        if action:
+            q = q.eq("action", action.strip())
+        res = q.execute()
+        rows = res.data or []
+
+        # Enrich actor_name (display_name tu nhan_su_sale) de FE hien ten thay vi email.
+        actor_emails: set[str] = set()
+        for row in rows:
+            email = str(row.get("actor_email") or "").strip()
+            if not email or email.startswith("system:"):
+                continue
+            actor_emails.add(email.lower())
+        name_map: dict[str, str] = {}
+        if actor_emails:
+            try:
+                staff_res = (
+                    sb.table("nhan_su_sale")
+                    .select("email, display_name, crm_name")
+                    .in_("email", list(actor_emails))
+                    .execute()
+                )
+                for s in staff_res.data or []:
+                    email = str(s.get("email") or "").strip().lower()
+                    if not email:
+                        continue
+                    display = s.get("display_name") or s.get("crm_name")
+                    if display:
+                        name_map[email] = display
+            except Exception as exc:
+                print(f"[audit_logs] actor name lookup failed: {exc}")
+
+        for row in rows:
+            email = str(row.get("actor_email") or "").strip().lower()
+            row["actor_name"] = name_map.get(email) if email else None
+
+        return {"data": rows}
+
+    # ------------------------------------------------------------------
+    # Zalo Team Groups Management (Task G5)
+    # ------------------------------------------------------------------
+    @app.get("/api/v1/admin/zalo-groups")
+    def get_zalo_groups(authorization: str | None = Header(None)):
+        sb = _sb_or_503(get_supabase)
+        actor = resolve_actor(sb, authorization)
+        require_min_role(actor, "manager")
+
+        res = sb.table("zalo_team_groups").select("*").order("updated_at", desc=True).execute()
+        return {"data": res.data or []}
+
+    @app.post("/api/v1/admin/zalo-groups")
+    def create_zalo_group(payload: ZaloGroupCreatePayload, authorization: str | None = Header(None)):
+        sb = _sb_or_503(get_supabase)
+        actor = resolve_actor(sb, authorization)
+        require_min_role(actor, "manager")
+
+        data = {
+            "team_code": payload.team_code.strip(),
+            "group_id": payload.group_id.strip(),
+            "group_name": payload.group_name.strip(),
+            "is_active": payload.is_active,
+            "updated_at": datetime.now(timezone.utc).isoformat()
+        }
+
+        try:
+            res = sb.table("zalo_team_groups").insert(data).execute()
+            if not res.data:
+                raise HTTPException(400, "Không thể thêm mới Zalo Group (Có thể team_code đã tồn tại)")
+            return {"data": res.data[0]}
+        except Exception as e:
+            raise HTTPException(400, f"Lỗi thao tác CSDL: {str(e)}")
+
+    @app.patch("/api/v1/admin/zalo-groups/{team_code}")
+    def update_zalo_group(team_code: str, payload: ZaloGroupPatchPayload, authorization: str | None = Header(None)):
+        sb = _sb_or_503(get_supabase)
+        actor = resolve_actor(sb, authorization)
+        require_min_role(actor, "manager")
+
+        patch_data = {}
+        if payload.group_id is not None:
+            patch_data["group_id"] = payload.group_id.strip()
+        if payload.group_name is not None:
+            patch_data["group_name"] = payload.group_name.strip()
+        if payload.is_active is not None:
+            patch_data["is_active"] = payload.is_active
+
+        if not patch_data:
+            raise HTTPException(400, "Không có dữ liệu cập nhật")
+
+        patch_data["updated_at"] = datetime.now(timezone.utc).isoformat()
+
+        res = sb.table("zalo_team_groups").update(patch_data).eq("team_code", team_code).execute()
+        if not res.data:
+            raise HTTPException(404, f"Không tìm thấy Zalo Group cho team_code: {team_code}")
+        
+        return {"data": res.data[0]}
+
+    @app.delete("/api/v1/admin/zalo-groups/{team_code}")
+    def delete_zalo_group(team_code: str, authorization: str | None = Header(None)):
+        sb = _sb_or_503(get_supabase)
+        actor = resolve_actor(sb, authorization)
+        require_min_role(actor, "manager")
+
+        res = sb.table("zalo_team_groups").delete().eq("team_code", team_code).execute()
+        if not res.data:
+            raise HTTPException(404, f"Không tìm thấy Zalo Group cho team_code: {team_code}")
+        
+        return {"success": True, "deleted_team_code": team_code}
+
+    # ------------------------------------------------------------------
+    # Zalo Outbox Admin (Task G6)
+    # ------------------------------------------------------------------
+    @app.get("/api/v1/admin/zalo-outbox")
+    def get_zalo_outbox(authorization: str | None = Header(None)):
+        sb = _sb_or_503(get_supabase)
+        actor = resolve_actor(sb, authorization)
+        require_min_role(actor, "manager")
+
+        res = sb.table("zalo_outbox").select("*").order("created_at", desc=True).limit(50).execute()
+        return {"data": res.data or []}
+
+    @app.post("/api/v1/admin/zalo-outbox/{msg_id}/retry")
+    def retry_zalo_outbox(msg_id: int, authorization: str | None = Header(None)):
+        sb = _sb_or_503(get_supabase)
+        actor = resolve_actor(sb, authorization)
+        require_min_role(actor, "manager")
+
+        patch_data = {
+            "retries": 0,
+            "last_error": None,
+            "next_retry_at": datetime.now(timezone.utc).isoformat(),
+            "sent_at": None
+        }
+
+        res = sb.table("zalo_outbox").update(patch_data).eq("id", msg_id).execute()
+        if not res.data:
+            raise HTTPException(404, f"Không tìm thấy tin nhắn Zalo Outbox với ID: {msg_id}")
+        
+        return {"ok": True}
