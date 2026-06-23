@@ -1353,3 +1353,15 @@ async def _register_payos_webhook_on_startup() -> None:
         print(f"[payos] confirm-webhook {webhook_url} -> {result.get('code')} {result.get('desc')}")
     except Exception as exc:
         print(f"[payos] confirm-webhook skipped: {exc}")
+
+
+@app.on_event("startup")
+async def _start_zalo_worker() -> None:
+    import asyncio
+    from zalo_outbox_worker import start_outbox_worker
+    from zalo_notifier import start_zalo_token_refresh_task
+
+    print("[zalo] starting background tasks...")
+    asyncio.create_task(start_outbox_worker(_supabase))
+    start_zalo_token_refresh_task(_supabase)
+
