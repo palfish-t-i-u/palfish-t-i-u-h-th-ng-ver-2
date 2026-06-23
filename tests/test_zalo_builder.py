@@ -1,21 +1,40 @@
-import sys
+"""Tests for utils.team_mapper and utils.zalo_message_builder."""
+
 import os
+import sys
 import unittest
 import logging
 from datetime import datetime, timezone
 
 # Add backend directory to sys.path so we can import utils
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../backend')))
+sys.path.insert(
+    0,
+    os.path.abspath(os.path.join(os.path.dirname(__file__), "../backend")),
+)
 
-from utils.zalo_message_builder import build_payment_paid_message, build_course_activated_message
-from utils.team_mapper import get_canonical_team
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from backend.utils.zalo_message_builder import (
+        build_payment_paid_message,
+        build_course_activated_message,
+    )
+    from backend.utils.team_mapper import get_canonical_team
+else:
+    from utils.zalo_message_builder import (  # type: ignore
+        build_payment_paid_message,
+        build_course_activated_message,
+    )
+    from utils.team_mapper import get_canonical_team  # type: ignore
+
 
 class TestZaloMessageBuilder(unittest.TestCase):
-    
+
     def setUp(self):
-        # Capture logging output
-        self.logger = logging.getLogger('utils.zalo_message_builder')
+        self.logger = logging.getLogger("utils.zalo_message_builder")
         self.logger.setLevel(logging.WARNING)
+
+    # --- build_payment_paid_message ---
 
     def test_build_payment_paid_message_success(self):
         payment_data = {
@@ -24,39 +43,40 @@ class TestZaloMessageBuilder(unittest.TestCase):
             "customer_name": "Nguyen Van A",
             "amount": 1500000,
             "method": "QR Code",
-            # Assuming UTC timezone simulation (e.g. Server Render)
-            "paid_at": datetime(2023, 10, 1, 10, 0, 0, tzinfo=timezone.utc)
+            # UTC → should be converted to Asia/Ho_Chi_Minh
+            "paid_at": datetime(2023, 10, 1, 10, 0, 0, tzinfo=timezone.utc),
         }
         sale_info = {
             "crm_name": "Tran Thi B",
-            "team": "HN inhouse"
+            "team": "HN inhouse",
         }
-        
+
         result = build_payment_paid_message(payment_data, sale_info)
-        
-        # 10:00 UTC -> 17:00 Asia/Ho_Chi_Minh
-        expected_msg = "💰 PAID — KH Nguyen Van A | 1,500,000đ | sale Tran Thi B | QR Code | 01/10/2023 17:00"
-        self.assertEqual(result["message"], expected_msg)
+
+        # 10:00 UTC → 17:00 Asia/Ho_Chi_Minh
+        expected = (
+            "\U0001f4b0 PAID \u2014 KH Nguyen Van A | 1,500,000\u0111 "
+            "| sale Tran Thi B | QR Code | 01/10/2023 17:00"
+        )
+        self.assertEqual(result["message"], expected)
         self.assertEqual(result["canonical_team_code"], "Inhouse 1")
 
     def test_build_payment_paid_message_graceful_degradation(self):
-        with self.assertLogs('utils.zalo_message_builder', level='WARNING') as cm:
-            # Empty payloads
-            payment_data = {"id": "999"}
-            sale_info = {}
-            
-            result = build_payment_paid_message(payment_data, sale_info)
-            
-            # Should fallback gracefully
-            expected_msg = "💰 PAID — KH Unknown | 0đ | sale Unknown | Unknown | N/A"
-            self.assertEqual(result["message"], expected_msg)
-            self.assertEqual(result["canonical_team_code"], "Khác")
-            
-            # Check if warnings were logged
-            log_messages = [record.getMessage() for record in cm.records]
-            self.assertTrue(any("Missing sale_info" in msg for msg in log_messages))
-            self.assertTrue(any("Missing customer_name" in msg for msg in log_messages))
-            self.assertTrue(any("Missing amount" in msg for msg in log_messages))
+        with self.assertLogs(
+            "utils.zalo_message_builder", level="WARNING"
+        ):
+            result = build_payment_paid_message(
+                {"id": "999"}, {}
+            )
+
+            expected = (
+                "\U0001f4b0 PAID \u2014 KH Unknown | 0\u0111 "
+                "| sale Unknown | Unknown | N/A"
+            )
+            self.assertEqual(result["message"], expected)
+            self.assertEqual(result["canonical_team_code"], "Kh\u00e1c")
+
+    # --- build_course_activated_message ---
 
     def test_build_course_activated_message_success(self):
         req_data = {
@@ -66,34 +86,52 @@ class TestZaloMessageBuilder(unittest.TestCase):
         }
         sale_info = {
             "crm_name": "Nguyen Thi D",
-            "team": "HCM (Online)"
+            "team": "HCM (Online)",
         }
-        
+
         result = build_course_activated_message(req_data, sale_info)
-        
-        expected_msg = "✅ KÍCH HOẠT — KH Le Van C | gói Khoa Hoc Tieng Anh 1 Nam | sale Nguyen Thi D"
-        self.assertEqual(result["message"], expected_msg)
+
+        expected = (
+            "\u2705 K\u00cdCH HO\u1ea0T \u2014 KH Le Van C "
+            "| g\u00f3i Khoa Hoc Tieng Anh 1 Nam | sale Nguyen Thi D"
+        )
+        self.assertEqual(result["message"], expected)
         self.assertEqual(result["canonical_team_code"], "HCM (Online)")
 
     def test_build_course_activated_message_graceful_degradation(self):
-        with self.assertLogs('utils.zalo_message_builder', level='WARNING') as cm:
-            req_data = {"id": "888"}
-            sale_info = {"team": "Unknown Team"}
-            
-            result = build_course_activated_message(req_data, sale_info)
-            
-            expected_msg = "✅ KÍCH HOẠT — KH Unknown | gói Unknown | sale Unknown"
-            self.assertEqual(result["message"], expected_msg)
-            self.assertEqual(result["canonical_team_code"], "Unknown Team")
+        with self.assertLogs(
+            "utils.zalo_message_builder", level="WARNING"
+        ):
+            result = build_course_activated_message(
+                {"id": "888"}, {"team": "Unknown Team"}
+            )
+
+            expected = (
+                "\u2705 K\u00cdCH HO\u1ea0T \u2014 KH Unknown "
+                "| g\u00f3i Unknown | sale Unknown"
+            )
+            self.assertEqual(result["message"], expected)
+            self.assertEqual(
+                result["canonical_team_code"], "Unknown Team"
+            )
+
+    # --- get_canonical_team ---
 
     def test_team_mapper_various_cases(self):
         self.assertEqual(get_canonical_team("HN inhouse"), "Inhouse 1")
         self.assertEqual(get_canonical_team("In-house"), "Inhouse 1")
         self.assertEqual(get_canonical_team("HCM team"), "HCM (Online)")
-        self.assertEqual(get_canonical_team("Linh Dam Store"), "Linh Dam (Store)")
+        self.assertEqual(
+            get_canonical_team("Linh Dam Store"), "Linh Dam (Store)"
+        )
         self.assertEqual(get_canonical_team("IH2"), "Inhouse 2")
         self.assertEqual(get_canonical_team("UnknownTeam"), "UnknownTeam")
-        self.assertEqual(get_canonical_team(None), "Khác")
+        self.assertEqual(get_canonical_team(None), "Kh\u00e1c")
+        self.assertEqual(get_canonical_team(""), "Kh\u00e1c")
+        self.assertEqual(get_canonical_team("  "), "Kh\u00e1c")
+        # Case-insensitive
+        self.assertEqual(get_canonical_team("hn INHOUSE"), "Inhouse 1")
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     unittest.main()

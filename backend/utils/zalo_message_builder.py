@@ -1,142 +1,156 @@
-"""Zalo Message Builder utility."""
+"""Zalo Message Builder — format notification messages for the Zalo OA Worker.
+
+All builder functions follow the same contract:
+    Input:  Two dicts (event data + sale info).
+    Output: {"message": str, "canonical_team_code": str}
+
+Graceful degradation: missing fields are replaced with safe defaults
+and a WARNING is logged.  Functions NEVER raise exceptions.
+"""
+
+from __future__ import annotations
 
 import logging
 from datetime import datetime
 from typing import Any
+
 try:
     from zoneinfo import ZoneInfo
 except ImportError:
-    from backports.zoneinfo import ZoneInfo
+    from backports.zoneinfo import ZoneInfo  # type: ignore[no-redef]
 
 from utils.team_mapper import get_canonical_team
 
 logger = logging.getLogger(__name__)
+
 VN_TZ = ZoneInfo("Asia/Ho_Chi_Minh")
 
+
+def _safe_get(data: dict[str, Any], key: str, default: str = "Unknown",
+              context: str = "") -> str:
+    """Get a string value from *data*, log a warning if missing."""
+    val = data.get(key)
+    if val is None or (isinstance(val, str) and not val.strip()):
+        logger.warning(
+            "Missing %s in %s (key=%r, id=%s)",
+            key, context or "payload", key, data.get("id", "?"),
+        )
+        return default
+    return str(val).strip()
+
+
 def _format_vnd(amount: Any) -> str:
-    """Format money as VND."""
+    """Format an amount as Vietnamese đồng: ``1,500,000đ``."""
     try:
-        val = int(amount)
-        return f"{val:,.0f}đ"
-    except (ValueError, TypeError):
+        n = int(amount)
+    except (TypeError, ValueError):
         return "0đ"
+    return f"{n:,}đ"
 
-def _format_time(dt: Any) -> str:
-    """Format time string safely with UTC+7 adjustment."""
-    if not dt:
+
+def _format_datetime_vn(dt_value: Any) -> str:
+    """Convert a datetime to ``dd/mm/yyyy HH:MM`` in Asia/Ho_Chi_Minh.
+
+    Accepts datetime objects or ISO-format strings.
+    Returns ``"N/A"`` on failure.
+    """
+    if dt_value is None:
         return "N/A"
     try:
-        if isinstance(dt, str):
-            # Parse common ISO formats
-            dt_obj = datetime.fromisoformat(dt.replace("Z", "+00:00"))
-        elif isinstance(dt, datetime):
-            dt_obj = dt
-        else:
-            return "N/A"
-            
-        # Ensure it has a timezone (assume UTC if naive)
-        if dt_obj.tzinfo is None:
-            dt_obj = dt_obj.replace(tzinfo=ZoneInfo("UTC"))
-            
-        # Cast to Asia/Ho_Chi_Minh
-        vn_time = dt_obj.astimezone(VN_TZ)
-        return vn_time.strftime("%d/%m/%Y %H:%M")
-    except Exception as e:
-        logger.warning(f"Failed to parse time {dt}: {e}")
-        return "N/A"
+        if isinstance(dt_value, str):
+            dt_value = datetime.fromisoformat(dt_value)
+        if isinstance(dt_value, datetime):
+            if dt_value.tzinfo is None:
+                # Assume UTC for naive datetimes (Render server default)
+                from datetime import timezone
+                dt_value = dt_value.replace(tzinfo=timezone.utc)
+            vn_dt = dt_value.astimezone(VN_TZ)
+            return vn_dt.strftime("%d/%m/%Y %H:%M")
+    except Exception as exc:
+        logger.warning("Failed to format datetime %r: %s", dt_value, exc)
+    return "N/A"
 
-def build_payment_paid_message(payment_line_data: dict, sale_info: dict) -> dict[str, str]:
+
+# -----------------------------------------------------------------------
+# Public builders
+# -----------------------------------------------------------------------
+
+
+def build_payment_paid_message(
+    payment_data: dict[str, Any],
+    sale_info: dict[str, Any],
+) -> dict[str, str]:
+    """Build the PAID notification message.
+
+    Format::
+
+        💰 PAID — KH {customer} | {amount}đ | sale {sale_name} | {method} | {time}
+
+    Returns ``{"message": ..., "canonical_team_code": ...}``.
     """
-    Builds the Zalo message for a paid payment line.
-    Expected format: 💰 PAID — KH {customer} | {amount}đ | sale {sale_name} | {method} | {time}
-    """
-    if not payment_line_data:
-        payment_line_data = {}
+    ctx = f"payment id={payment_data.get('id', '?')}"
+
     if not sale_info:
-        logger.warning("Missing sale_info, falling back to empty values.")
-        sale_info = {}
-        
-    pl_id = payment_line_data.get('id', 'Unknown')
-    pr_id = payment_line_data.get('payment_request_id', 'Unknown')
-
-    # Extract customer
-    customer = payment_line_data.get('customer_name')
-    if not customer:
-        logger.warning(f"Missing customer_name for payment {pl_id}, falling back to 'Unknown'")
-        customer = "Unknown"
-
-    # Extract amount
-    raw_amount = payment_line_data.get('amount')
-    if raw_amount is None:
-        logger.warning(f"Missing amount for payment {pl_id}, falling back to 0")
-        raw_amount = 0
-    amount_str = _format_vnd(raw_amount)
-
-    # Extract sale name
-    sale_name = sale_info.get('crm_name')
-    if not sale_name:
-        logger.warning(f"Missing sale_name for PR {pr_id}, falling back to 'Unknown'")
-        sale_name = "Unknown"
-
-    # Extract method
-    method = payment_line_data.get('method')
-    if not method:
-        logger.warning(f"Missing method for payment {pl_id}, falling back to 'Unknown'")
-        method = "Unknown"
-
-    # Extract time
-    paid_at = payment_line_data.get('paid_at')
-    if not paid_at:
-        logger.warning(f"Missing paid_at for payment {pl_id}, falling back to 'N/A'")
-    time_str = _format_time(paid_at)
-
-    message = f"💰 PAID — KH {customer} | {amount_str} | sale {sale_name} | {method} | {time_str}"
-    
-    raw_team = sale_info.get('team')
-    canonical_team = get_canonical_team(raw_team)
-
-    return {
-        "message": message,
-        "canonical_team_code": canonical_team
-    }
-
-def build_course_activated_message(active_request_data: dict, sale_info: dict) -> dict[str, str]:
-    """
-    Builds the Zalo message for a course activation.
-    Expected format: ✅ KÍCH HOẠT — KH {customer} | gói {package} | sale {sale_name}
-    """
-    if not active_request_data:
-        active_request_data = {}
-    if not sale_info:
-        logger.warning("Missing sale_info, falling back to empty values.")
+        logger.warning("Missing sale_info for %s", ctx)
         sale_info = {}
 
-    req_id = active_request_data.get('id', 'Unknown')
+    customer = _safe_get(payment_data, "customer_name", "Unknown",
+                         f"payment_data ({ctx})")
+    amount_raw = payment_data.get("amount")
+    if amount_raw is None:
+        logger.warning("Missing amount in payment_data (%s)", ctx)
+        amount_raw = 0
+    amount = _format_vnd(amount_raw)
 
-    # Extract customer
-    customer = active_request_data.get('customer_name')
-    if not customer:
-        logger.warning(f"Missing customer_name for activation {req_id}, falling back to 'Unknown'")
-        customer = "Unknown"
+    sale_name = _safe_get(sale_info, "crm_name", "Unknown",
+                          f"sale_info ({ctx})")
+    method = _safe_get(payment_data, "method", "Unknown",
+                       f"payment_data ({ctx})")
+    paid_at = payment_data.get("paid_at")
+    time_str = _format_datetime_vn(paid_at)
 
-    # Extract package
-    package = active_request_data.get('package_name')
-    if not package:
-        logger.warning(f"Missing package_name for activation {req_id}, falling back to 'Unknown'")
-        package = "Unknown"
-
-    # Extract sale name
-    sale_name = sale_info.get('crm_name')
-    if not sale_name:
-        logger.warning(f"Missing sale_name for activation {req_id}, falling back to 'Unknown'")
-        sale_name = "Unknown"
-
-    message = f"✅ KÍCH HOẠT — KH {customer} | gói {package} | sale {sale_name}"
-
-    raw_team = sale_info.get('team')
+    raw_team = sale_info.get("team")
     canonical_team = get_canonical_team(raw_team)
 
-    return {
-        "message": message,
-        "canonical_team_code": canonical_team
-    }
+    message = (
+        f"💰 PAID — KH {customer} | {amount} "
+        f"| sale {sale_name} | {method} | {time_str}"
+    )
+
+    return {"message": message, "canonical_team_code": canonical_team}
+
+
+def build_course_activated_message(
+    req_data: dict[str, Any],
+    sale_info: dict[str, Any],
+) -> dict[str, str]:
+    """Build the COURSE ACTIVATED notification message.
+
+    Format::
+
+        ✅ KÍCH HOẠT — KH {customer} | gói {package} | sale {sale_name}
+
+    Returns ``{"message": ..., "canonical_team_code": ...}``.
+    """
+    ctx = f"active_request id={req_data.get('id', '?')}"
+
+    if not sale_info:
+        logger.warning("Missing sale_info for %s", ctx)
+        sale_info = {}
+
+    customer = _safe_get(req_data, "customer_name", "Unknown",
+                         f"req_data ({ctx})")
+    package = _safe_get(req_data, "package_name", "Unknown",
+                        f"req_data ({ctx})")
+    sale_name = _safe_get(sale_info, "crm_name", "Unknown",
+                          f"sale_info ({ctx})")
+
+    raw_team = sale_info.get("team")
+    canonical_team = get_canonical_team(raw_team)
+
+    message = (
+        f"✅ KÍCH HOẠT — KH {customer} "
+        f"| gói {package} | sale {sale_name}"
+    )
+
+    return {"message": message, "canonical_team_code": canonical_team}
