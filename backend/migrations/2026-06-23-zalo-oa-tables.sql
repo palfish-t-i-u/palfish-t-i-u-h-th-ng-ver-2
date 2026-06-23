@@ -38,7 +38,8 @@ CREATE TABLE IF NOT EXISTS public.zalo_outbox (
   last_error TEXT,
   next_retry_at TIMESTAMPTZ,
   zalo_message_id TEXT,
-  UNIQUE(source_table, source_id, event_type)
+  UNIQUE(source_table, source_id, event_type),
+  CONSTRAINT zalo_outbox_event_type_check CHECK (event_type = ANY (ARRAY['payment_paid'::text, 'course_activated'::text, 'activation_urgent_reminder'::text]))
 );
 
 CREATE INDEX IF NOT EXISTS idx_zalo_outbox_pending
