@@ -1147,22 +1147,26 @@ function ActivationDetailDrawer({
                   value={draftUid.country || "VN"}
                   onChange={(v) => setUidDraftField(uidIdx, "country", v)}
                 />
-                <input
-                  value={draftUid.phone}
-                  onChange={(e) => setUidDraftField(uidIdx, "phone", e.target.value.replace(/\D/g, ""))}
-                  placeholder={findCountry(draftUid.country).exampleLocal}
-                  title="Chỉ nhập phần số, không cần mã quốc gia"
-                  style={{
-                    width: 140,
-                    fontFamily: "JetBrains Mono, monospace",
-                    fontSize: 12.5,
-                    border: "1px solid var(--border)",
-                    borderRadius: 8,
-                    padding: "7px 10px",
-                    outline: "none",
-                    background: "white",
-                  }}
-                />
+                <div>
+                  <input
+                    value={draftUid.phone}
+                    onChange={(e) => setUidDraftField(uidIdx, "phone", e.target.value.replace(/\D/g, ""))}
+                    placeholder={findCountry(draftUid.country).exampleLocal}
+                    style={{
+                      width: 140,
+                      fontFamily: "JetBrains Mono, monospace",
+                      fontSize: 12.5,
+                      border: "1px solid var(--border)",
+                      borderRadius: 8,
+                      padding: "7px 10px",
+                      outline: "none",
+                      background: "white",
+                    }}
+                  />
+                  <div style={{ fontSize: 10, color: "var(--text-2)", marginTop: 1 }}>
+                    Không cần mã quốc gia
+                  </div>
+                </div>
                 {isUidFromPr && (
                   <span className="badge is-soft-primary" style={{ fontSize: 10 }}>
                     <Icons.Check size={10} strokeWidth={2.5} /> UID từ PR

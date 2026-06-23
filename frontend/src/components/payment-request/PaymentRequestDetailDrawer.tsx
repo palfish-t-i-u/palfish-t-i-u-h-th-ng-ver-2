@@ -975,27 +975,32 @@ function ActiveRequestMiniCardV2({
                   background: "white",
                 }}
               />
-              <input
-                value={phoneDrafts[uIdx] ?? u.phone ?? ""}
-                onChange={(e) =>
-                  setPhoneDrafts((prev) => ({
-                    ...prev,
-                    [uIdx]: e.target.value.replace(/[^\d]/g, ""),
-                  }))
-                }
-                onBlur={() => commitPhone(uIdx)}
-                placeholder={findCountry(u.country).exampleLocal}
-                title="Chỉ nhập phần số, không cần mã quốc gia"
-                style={{
-                  border: "1px solid var(--border)",
-                  borderRadius: 8,
-                  padding: "7px 9px",
-                  fontFamily: "JetBrains Mono, monospace",
-                  fontSize: 12,
-                  outline: "none",
-                  background: "white",
-                }}
-              />
+              <div>
+                <input
+                  value={phoneDrafts[uIdx] ?? u.phone ?? ""}
+                  onChange={(e) =>
+                    setPhoneDrafts((prev) => ({
+                      ...prev,
+                      [uIdx]: e.target.value.replace(/[^\d]/g, ""),
+                    }))
+                  }
+                  onBlur={() => commitPhone(uIdx)}
+                  placeholder={findCountry(u.country).exampleLocal}
+                  style={{
+                    width: "100%",
+                    border: "1px solid var(--border)",
+                    borderRadius: 8,
+                    padding: "7px 9px",
+                    fontFamily: "JetBrains Mono, monospace",
+                    fontSize: 12,
+                    outline: "none",
+                    background: "white",
+                  }}
+                />
+                <div style={{ fontSize: 10.5, color: "var(--text-2)", marginTop: 2 }}>
+                  Chỉ nhập phần số, không cần mã quốc gia
+                </div>
+              </div>
               <button type="button" className="btn btn-outline btn-sm" disabled={!canAddMore} onClick={() => addCourseForUid(uIdx)}
                 title={!canAddMore ? "Đã phân bổ hết tiền đã nhận — không thể thêm gói" : "Thêm gói khoá học"}>
                 <Icons.Plus size={12} /> Thêm gói
@@ -1931,7 +1936,7 @@ export default function PaymentRequestDetailDrawer({
                       }}
                     />
                   </div>
-                  <div style={{ fontSize: 11, color: "var(--text-3)", marginTop: 2 }}>
+                  <div style={{ fontSize: 11.5, color: "var(--text-2)", marginTop: 3 }}>
                     Chỉ nhập phần số, không cần mã quốc gia
                   </div>
                 </div>
