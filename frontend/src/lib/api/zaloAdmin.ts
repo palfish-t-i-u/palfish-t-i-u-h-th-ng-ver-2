@@ -1,4 +1,4 @@
-import api from '../api';
+import { api } from '../api';
 
 // ── G4: Zalo Config ──
 
