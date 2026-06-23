@@ -6,7 +6,7 @@ import json
 import os
 import time
 import unicodedata
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -105,6 +105,18 @@ class ZaloGroupPatchPayload(BaseModel):
     group_id: str | None = None
     group_name: str | None = None
     is_active: bool | None = None
+
+
+class ZaloConfigPayload(BaseModel):
+    app_id: str
+    app_secret: str
+    access_token: str
+    refresh_token: str
+
+
+class ZaloTestMessagePayload(BaseModel):
+    group_id: str
+    message: str
 
 
 MODULE_LIST = [
@@ -1382,3 +1394,78 @@ def register_admin_routes(app, get_supabase):
             raise HTTPException(404, f"Không tìm thấy tin nhắn Zalo Outbox với ID: {msg_id}")
         
         return {"ok": True}
+
+    # ------------------------------------------------------------------
+    # Zalo OA Configuration (Task G4)
+    # ------------------------------------------------------------------
+    @app.get("/api/v1/admin/zalo-config")
+    def get_zalo_config(authorization: str | None = Header(None)):
+        sb = _sb_or_503(get_supabase)
+        actor = resolve_actor(sb, authorization)
+        require_min_role(actor, "manager")
+
+        res = sb.table("zalo_oa_credentials").select("app_id, expires_at").limit(1).execute()
+        if not res.data:
+            return {"data": None}
+
+        record = res.data[0]
+        expires_at_str = record.get("expires_at")
+        status = "good"
+
+        if expires_at_str:
+            try:
+                # Xử lý UTC iso format
+                expires_dt = datetime.fromisoformat(expires_at_str.replace("Z", "+00:00"))
+                now_dt = datetime.now(timezone.utc)
+                remaining_seconds = (expires_dt - now_dt).total_seconds()
+                if remaining_seconds <= 0:
+                    status = "expired"
+                elif remaining_seconds <= 3600:
+                    status = "expiring"
+            except Exception:
+                pass
+
+        return {
+            "data": {
+                "app_id": record.get("app_id"),
+                "expires_at": expires_at_str,
+                "status": status
+            }
+        }
+
+    @app.post("/api/v1/admin/zalo-config")
+    def upsert_zalo_config(payload: ZaloConfigPayload, authorization: str | None = Header(None)):
+        sb = _sb_or_503(get_supabase)
+        actor = resolve_actor(sb, authorization)
+        require_min_role(actor, "manager")
+
+        # Xóa cấu hình cũ và thêm cấu hình mới
+        sb.table("zalo_oa_credentials").delete().neq("id", 0).execute()
+
+        data = {
+            "app_id": payload.app_id.strip(),
+            "app_secret": payload.app_secret.strip(),
+            "access_token": payload.access_token.strip(),
+            "refresh_token": payload.refresh_token.strip(),
+            "expires_at": (datetime.now(timezone.utc) + timedelta(hours=25)).isoformat(),
+            "updated_at": datetime.now(timezone.utc).isoformat()
+        }
+
+        res = sb.table("zalo_oa_credentials").insert(data).execute()
+        if not res.data:
+            raise HTTPException(400, "Không thể lưu cấu hình Zalo OA")
+
+        return {"ok": True}
+
+    @app.post("/api/v1/admin/zalo-config/test")
+    def test_zalo_config(payload: ZaloTestMessagePayload, authorization: str | None = Header(None)):
+        sb = _sb_or_503(get_supabase)
+        actor = resolve_actor(sb, authorization)
+        require_min_role(actor, "manager")
+
+        from zalo_notifier import send_text_to_group
+        try:
+            msg_id = send_text_to_group(payload.group_id, payload.message, sb=sb)
+            return {"ok": True, "message_id": msg_id}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
