@@ -1328,6 +1328,20 @@ register_mpos_routes(app, _supabase)
 register_gateway_routes(app, _supabase)
 
 
+_zalo_token_refresh_task = None
+
+
+@app.on_event("startup")
+async def _start_zalo_token_refresh() -> None:
+    """Start daily Zalo OA token refresh guard."""
+    global _zalo_token_refresh_task
+    from zalo_notifier import start_zalo_token_refresh_task
+
+    if _zalo_token_refresh_task is None or _zalo_token_refresh_task.done():
+        _zalo_token_refresh_task = start_zalo_token_refresh_task(_supabase)
+        print("[zalo] token refresh guard started")
+
+
 @app.on_event("startup")
 async def _register_payos_webhook_on_startup() -> None:
     """Đăng ký webhook URL với PayOS khi deploy (Render / prod)."""

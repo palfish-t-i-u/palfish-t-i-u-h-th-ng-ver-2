@@ -14,10 +14,13 @@ from typing import Any, Callable
 
 import httpx
 
+from env_utils import resolve_dingtalk_webhook_url
+
 ZALO_GROUP_MESSAGE_URL = "https://openapi.zalo.me/v3.0/oa/group/message"
 ZALO_REFRESH_TOKEN_URL = "https://oauth.zaloapp.com/v4/oa/access_token"
 TOKEN_REFRESH_WINDOW = timedelta(days=7)
 HTTP_TIMEOUT = 15.0
+ALERT_TIMEOUT = 8.0
 
 
 class ZaloAPIError(RuntimeError):
@@ -334,6 +337,25 @@ async def run_daily_token_refresh_check(*, sb=None) -> bool:
     return await asyncio.to_thread(ensure_token_fresh, sb=sb)
 
 
+async def _send_refresh_failure_alert(error: Exception) -> None:
+    webhook_url = resolve_dingtalk_webhook_url()
+    if not webhook_url:
+        print(f"[zalo] token refresh alert muted: {error}")
+        return
+
+    content = (
+        "[PalFish GMV] Zalo OA token refresh failed\n"
+        f"error: {error}"
+    )
+    payload = {"msgtype": "text", "text": {"content": content}}
+    try:
+        async with httpx.AsyncClient(timeout=ALERT_TIMEOUT) as client:
+            resp = await client.post(webhook_url, json=payload)
+            resp.raise_for_status()
+    except Exception as alert_exc:
+        print(f"[zalo] token refresh alert failed: {alert_exc}; original={error}")
+
+
 def start_zalo_token_refresh_task(
     get_supabase: Callable[[], Any],
     *,
@@ -350,6 +372,7 @@ def start_zalo_token_refresh_task(
                 await run_daily_token_refresh_check(sb=get_supabase())
             except Exception as exc:
                 print(f"[zalo] token refresh check failed: {exc}")
+                await _send_refresh_failure_alert(exc)
             await asyncio.sleep(interval_seconds)
 
     return asyncio.create_task(_loop())

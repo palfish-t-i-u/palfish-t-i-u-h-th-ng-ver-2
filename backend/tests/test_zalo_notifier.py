@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 from typing import Any
+import asyncio
 
 import httpx
 import pytest
@@ -23,6 +24,21 @@ class FakeHttpClient:
         if not self.responses:
             raise AssertionError("No fake HTTP response queued")
         return self.responses.pop(0)
+
+
+class FakeAsyncHttpClient:
+    def __init__(self):
+        self.calls: list[dict[str, Any]] = []
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *_args):
+        return False
+
+    async def post(self, url: str, **kwargs):
+        self.calls.append({"url": url, **kwargs})
+        return _json(200, {"ok": True})
 
 
 class FakeZaloTable:
@@ -218,3 +234,18 @@ def test_refresh_failure_is_reported(monkeypatch):
         zalo_notifier.refresh_access_token()
 
     assert exc.value.zalo_error == -201
+
+
+def test_refresh_failure_alert_uses_dingtalk(monkeypatch):
+    import zalo_notifier
+
+    fake = FakeAsyncHttpClient()
+    monkeypatch.setenv("DINGTALK_WEBHOOK_URL_SANDBOX", "https://dingtalk.test/hook")
+    monkeypatch.setattr(zalo_notifier.httpx, "AsyncClient", lambda **_kwargs: fake)
+
+    asyncio.run(zalo_notifier._send_refresh_failure_alert(RuntimeError("boom")))
+
+    assert fake.calls[0]["url"] == "https://dingtalk.test/hook"
+    assert fake.calls[0]["json"]["msgtype"] == "text"
+    assert "Zalo OA token refresh failed" in fake.calls[0]["json"]["text"]["content"]
+    assert "boom" in fake.calls[0]["json"]["text"]["content"]
