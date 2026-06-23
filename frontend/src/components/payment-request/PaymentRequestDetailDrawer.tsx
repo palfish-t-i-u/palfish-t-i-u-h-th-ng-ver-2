@@ -167,7 +167,7 @@ function QrRow({
     : qr.method === "card"
     ? qr.bank || (qr.cardLast4 ? `•••• ${qr.cardLast4}` : "")
     : qr.method === "installment"
-    ? `${qr.installmentPlatform || "Trả góp"}${qr.installmentTotal ? ` · ${vnd(qr.installmentTotal)}` : ""}${qr.saleReceived ? ` → ${vnd(qr.saleReceived)}` : ""}`
+    ? `${qr.installmentPlatform || "Trả góp"}${qr.installmentTotal ? ` · ${vnd(qr.installmentTotal)}` : ""}`
     : "";
 
   return (
@@ -332,7 +332,6 @@ function AddPaymentForm({
   const [cardLast4, setCardLast4] = useState("");
   const [installmentPlatform, setInstallmentPlatform] = useState("");
   const [installmentTotal, setInstallmentTotal] = useState("");
-  const [saleReceivedDraft, setSaleReceivedDraft] = useState("");
   // Default "người thu" = tên sale đang login (1B-05) — vẫn cho phép sửa nếu khác
   const [cashier, setCashier] = useState(profile?.displayName || profile?.crmName || "");
   const [nameForTransfer, setNameForTransfer] = useState(pr.childName || pr.name);
@@ -357,19 +356,6 @@ function AddPaymentForm({
       setValidationError("Vui lòng nhập tổng tiền trả góp");
       return;
     }
-    if (method === "installment" && !saleReceivedDraft) {
-      setValidationError("Vui lòng nhập số tiền thực nhận về công ty");
-      return;
-    }
-    // Bug 1B-07: trả góp — thực nhận không thể lớn hơn tổng trả góp
-    if (method === "installment") {
-      const totalNum = parseInt(installmentTotal.replace(/\D/g, ""), 10) || 0;
-      const recvNum = parseInt(saleReceivedDraft.replace(/\D/g, ""), 10) || 0;
-      if (recvNum > totalNum) {
-        setValidationError("Số tiền thực nhận không thể lớn hơn tổng trả góp");
-        return;
-      }
-    }
     // Bug 1B-05: cash — bắt buộc nhập người thu
     if (method === "cash" && !cashier.trim()) {
       setValidationError("Vui lòng nhập tên người thu tiền mặt");
@@ -388,7 +374,6 @@ function AddPaymentForm({
       cardLast4: method === "card" ? cardLast4 : undefined,
       installment_platform: method === "installment" ? installmentPlatform : undefined,
       installment_total: method === "installment" ? (parseInt(installmentTotal.replace(/\D/g, ""), 10) || undefined) : undefined,
-      sale_received: method === "installment" ? (parseInt(saleReceivedDraft.replace(/\D/g, ""), 10) || undefined) : undefined,
       cashier: method === "cash" ? cashier : undefined,
       name_for_transfer: method === "qr" ? nameForTransfer : undefined,
     });
@@ -506,15 +491,6 @@ function AddPaymentForm({
                 placeholder="Số tiền KH chuyển qua app"
                 value={installmentTotal}
                 onChange={(e) => setInstallmentTotal(e.target.value.replace(/[^\d]/g, ""))}
-              />
-            </div>
-            <div className="field" style={{ flex: 1, minWidth: 160 }}>
-              <label>Thực nhận về công ty <span style={{ color: "var(--danger)" }}>*</span></label>
-              <input
-                inputMode="numeric"
-                placeholder="Sau phí nền tảng"
-                value={saleReceivedDraft}
-                onChange={(e) => setSaleReceivedDraft(e.target.value.replace(/[^\d]/g, ""))}
               />
             </div>
           </>

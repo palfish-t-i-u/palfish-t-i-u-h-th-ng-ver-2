@@ -1067,9 +1067,9 @@ export default function ReconciliationTab() {
                         </div>
                         {t.method === "installment" && t.installmentTotal != null && (
                           <div className="cell-sub">
-                            {vnd(t.installmentTotal)} → {vnd(t.saleReceived ?? 0)}
-                            {t.verifiedReceived != null && t.verifiedReceived !== t.saleReceived && (
-                              <span style={{ color: "var(--success-text)", marginLeft: 4 }}>✓ {vnd(t.verifiedReceived)}</span>
+                            KH chuyển: {vnd(t.installmentTotal)}
+                            {t.verifiedReceived != null && (
+                              <span style={{ color: "var(--success-text)", marginLeft: 4 }}>✓ thực nhận {vnd(t.verifiedReceived)}</span>
                             )}
                           </div>
                         )}
@@ -1291,7 +1291,7 @@ export default function ReconciliationTab() {
                           {drawerTxn.method === "card" &&
                             (drawerTxn.cardLast4 ? `•••• ${drawerTxn.cardLast4}` : "—")}
                           {drawerTxn.method === "installment" &&
-                            `${drawerTxn.installmentPlatform || "Trả góp"}${drawerTxn.installmentTotal != null ? ` · ${vnd(drawerTxn.installmentTotal)} → ${vnd(drawerTxn.saleReceived ?? 0)}` : ""}`}
+                            `${drawerTxn.installmentPlatform || "Trả góp"}${drawerTxn.installmentTotal != null ? ` · KH chuyển ${vnd(drawerTxn.installmentTotal)}` : ""}`}
                           {drawerTxn.method === "qr" && (drawerTxn.bank || "—")}
                         </div>
                       </div>
