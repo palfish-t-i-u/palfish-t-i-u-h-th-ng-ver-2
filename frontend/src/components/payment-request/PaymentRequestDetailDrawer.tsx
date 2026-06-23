@@ -2287,7 +2287,7 @@ export default function PaymentRequestDetailDrawer({
                 <Icons.Bell size={13} /> {remindSending ? "Đang gửi…" : !canRemind ? "Đã nhắc" : "Nhắc xuất HĐ"}
               </button>
             )}
-            {!readOnly && ready && hasActiveRequest && !activeSummary.allActivated && (
+            {!readOnly && hasActiveRequest && !activeSummary.allActivated && (
               <button
                 className="btn btn-sm btn-outline"
                 disabled={!canRemindActivation || activationRemindSending}

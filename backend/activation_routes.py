@@ -1846,13 +1846,12 @@ def register_activation_routes(app, supabase_factory):
         actor = resolve_actor(sb, authorization)
 
         pr = _fetch_payment_request(sb, pr_id)
-        target, received = _pr_amounts(pr)
-        if received < target:
-            raise HTTPException(400, "PR chưa đủ tiền, không thể nhắc kích hoạt gấp")
 
         ar_res = sb.table("active_requests").select("id, status, pr_id, uids_data").eq("pr_id", pr_id).limit(1).execute()
         ar = ar_res.data[0] if ar_res.data else None
-        if ar and ar.get("status") == "activated":
+        if not ar:
+            raise HTTPException(400, "PR chưa có Active Request")
+        if ar.get("status") == "activated":
             raise HTTPException(400, "Khóa học đã được kích hoạt")
 
         existing = sb.table("activation_reminders") \
