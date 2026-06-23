@@ -984,7 +984,8 @@ function ActiveRequestMiniCardV2({
                   }))
                 }
                 onBlur={() => commitPhone(uIdx)}
-                placeholder="Số điện thoại"
+                placeholder={findCountry(u.country).exampleLocal}
+                title="Chỉ nhập phần số, không cần mã quốc gia"
                 style={{
                   border: "1px solid var(--border)",
                   borderRadius: 8,
@@ -1919,6 +1920,7 @@ export default function PaymentRequestDetailDrawer({
                     <input
                       value={draft.phone}
                       onChange={(e) => setDraft({ ...draft, phone: e.target.value.replace(/\D/g, "") })}
+                      placeholder={findCountry(draft.country).exampleLocal}
                       style={{
                         flex: 1,
                         border: "1px solid var(--border)",
@@ -1928,6 +1930,9 @@ export default function PaymentRequestDetailDrawer({
                         fontSize: 13,
                       }}
                     />
+                  </div>
+                  <div style={{ fontSize: 11, color: "var(--text-3)", marginTop: 2 }}>
+                    Chỉ nhập phần số, không cần mã quốc gia
                   </div>
                 </div>
                 <div className="info-cell">

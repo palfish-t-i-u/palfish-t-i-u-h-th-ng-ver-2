@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import type { CreatePaymentRequestPayload, CustomerType } from "../../types/paymentRequest";
 import { LEAD_SOURCES, defaultChannelForSource, findSourceByKey, sourceHasChannels } from "../../constants/leadSource";
-import CountryCombo from "./CountryCombo";
+import CountryCombo, { findCountry } from "./CountryCombo";
 import { Icons } from "./Icons";
 import VietnamAddressFields from "./VietnamAddressFields";
 
@@ -190,10 +190,13 @@ export default function CreatePaymentRequestModal({
                 <CountryCombo value={form.country} onChange={(v) => set("country", v)} />
                 <input
                   className="phone-input"
-                  placeholder="9xx xxx xxx"
+                  placeholder={findCountry(form.country).exampleLocal}
                   value={form.phone}
                   onChange={(e) => set("phone", e.target.value.replace(/[^\d]/g, ""))}
                 />
+              </div>
+              <div style={{ fontSize: 11, color: "var(--text-3)", marginTop: 2 }}>
+                Chỉ nhập phần số, không cần mã quốc gia
               </div>
             </div>
             <div className="field">

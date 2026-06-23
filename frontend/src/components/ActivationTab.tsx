@@ -15,7 +15,7 @@ import {
   remainingReceivedAmount,
   vnd,
 } from "./payment-flow/paymentFlowUtils";
-import CountryCombo from "./payment-request/CountryCombo";
+import CountryCombo, { findCountry } from "./payment-request/CountryCombo";
 import DateRangeFilter, { EMPTY_RANGE, type DateRange, inDateRange } from "./payment-request/DateRangeFilter";
 import { Icons } from "./payment-request/Icons";
 import { activationAuditText, formatPaymentDateFull, formatPaymentDateTime, fromApiActiveRequest, getArReferralStatus, getReferralStatus, REFERRAL_STATUS_HEADER, REFERRAL_STATUS_PANEL_STYLE, toActiveRequestPatchUidsData } from "./payment-request/paymentRequestUtils";
@@ -1150,7 +1150,8 @@ function ActivationDetailDrawer({
                 <input
                   value={draftUid.phone}
                   onChange={(e) => setUidDraftField(uidIdx, "phone", e.target.value.replace(/\D/g, ""))}
-                  placeholder="9xx xxx xxx"
+                  placeholder={findCountry(draftUid.country).exampleLocal}
+                  title="Chỉ nhập phần số, không cần mã quốc gia"
                   style={{
                     width: 140,
                     fontFamily: "JetBrains Mono, monospace",
