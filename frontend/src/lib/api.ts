@@ -233,6 +233,21 @@ export const endpoints = {
         `/api/v1/invoice-reminders${status ? `?status=${status}` : ""}`
       ),
   },
+  activationUrgentRemind: {
+    create: (prId: string, note?: string) =>
+      api.post<{ ok: boolean; reminder: { id: string; payment_request_id: string; requested_at: string; requested_by_name: string; note: string | null } | null }>(
+        `/api/v1/payment-requests/${prId}/activation-urgent-remind`,
+        note ? { note } : {}
+      ),
+    status: (prId: string) =>
+      api.get<{ can_remind: boolean; last_reminder: { requested_at: string; requested_by_name: string } | null }>(
+        `/api/v1/payment-requests/${prId}/activation-urgent-remind`
+      ),
+    list: () =>
+      api.get<{ reminders: Array<{ id: string; payment_request_id: string; pr_code: string; customer_name: string; requested_by_name: string; requested_at: string; note: string | null }> }>(
+        `/api/v1/activation-urgent-reminders`
+      ),
+  },
   deliveryLog: {
     create: (arId: string, body: { channel: "email" | "zalo"; sent_to?: string; note?: string }) =>
       api.post<{ log: Record<string, unknown> }>(`/api/v1/invoices/${arId}/delivery-log`, body),

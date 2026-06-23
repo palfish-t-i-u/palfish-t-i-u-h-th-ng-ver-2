@@ -120,6 +120,49 @@ def build_payment_paid_message(
     return {"message": message, "canonical_team_code": canonical_team}
 
 
+def build_activation_urgent_reminder_message(
+    reminder_data: dict[str, Any],
+    sale_info: dict[str, Any],
+) -> dict[str, str]:
+    """Build urgent activation reminder for Zalo group.
+
+    Format::
+
+        ⚡ Cần kích hoạt khóa học GẤP
+        PR-xxxx · {customer}
+        Gói: {activated}/{total}
+        Sale nhắc: {sale_name}
+        Note: {note}
+    """
+    ctx = f"reminder pr={reminder_data.get('pr_code', '?')}"
+
+    if not sale_info:
+        logger.warning("Missing sale_info for %s", ctx)
+        sale_info = {}
+
+    pr_code = _safe_get(reminder_data, "pr_code", "?", ctx)
+    customer = _safe_get(reminder_data, "customer_name", "Unknown", ctx)
+    courses_total = reminder_data.get("courses_total", 0)
+    courses_activated = reminder_data.get("courses_activated", 0)
+    sale_name = _safe_get(sale_info, "display_name",
+                          sale_info.get("crm_name", "Unknown"), ctx)
+    note = reminder_data.get("note")
+
+    raw_team = sale_info.get("team")
+    canonical_team = get_canonical_team(raw_team)
+
+    lines = [
+        "⚡ Cần kích hoạt khóa học GẤP",
+        f"{pr_code} · {customer}",
+        f"Gói: {courses_activated}/{courses_total}",
+        f"Sale nhắc: {sale_name}",
+    ]
+    if note and str(note).strip():
+        lines.append(f"Note: {str(note).strip()}")
+
+    return {"message": "\n".join(lines), "canonical_team_code": canonical_team}
+
+
 def build_course_activated_message(
     req_data: dict[str, Any],
     sale_info: dict[str, Any],
