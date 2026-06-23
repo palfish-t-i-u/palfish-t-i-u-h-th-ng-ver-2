@@ -1,19 +1,22 @@
 import React, { useState, useEffect } from 'react';
-import { getZaloConfig, updateZaloConfig, testZaloMessage, ZaloConfigStatus, ZaloConfigPayload } from '../../lib/api/zaloAdmin';
+import { getZaloConfig, updateZaloConfig, testZaloMessage, type ZaloConfigData, type ZaloConfigPayload, type ZaloTestPayload } from '../../lib/api/zaloAdmin';
 
 export const ZaloConfigTab: React.FC = () => {
-  const [statusData, setStatusData] = useState<ZaloConfigStatus | null>(null);
-  const [config, setConfig] = useState<ZaloConfigPayload>({
-    appId: '',
-    appSecret: '',
-    accessToken: '',
-    refreshToken: '',
+  const [configData, setConfigData] = useState<ZaloConfigData | null>(null);
+  const [form, setForm] = useState<ZaloConfigPayload>({
+    app_id: '',
+    app_secret: '',
+    access_token: '',
+    refresh_token: '',
+  });
+  const [testForm, setTestForm] = useState<ZaloTestPayload>({
+    group_id: '',
+    message: 'Test từ PalFish GMV Admin',
   });
 
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isTesting, setIsTesting] = useState(false);
-  
   const [showSecrets, setShowSecrets] = useState(false);
   const [alert, setAlert] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
@@ -26,13 +29,10 @@ export const ZaloConfigTab: React.FC = () => {
       setIsLoading(true);
       setAlert(null);
       const data = await getZaloConfig();
-      setStatusData(data);
-      setConfig({
-        appId: data.appId || '',
-        appSecret: data.appSecret || '',
-        accessToken: data.accessToken || '',
-        refreshToken: data.refreshToken || '',
-      });
+      setConfigData(data);
+      if (data?.app_id) {
+        setForm((prev) => ({ ...prev, app_id: data.app_id }));
+      }
     } catch (err: any) {
       setAlert({
         type: 'error',
@@ -45,17 +45,21 @@ export const ZaloConfigTab: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!form.app_id.trim() || !form.app_secret.trim() || !form.access_token.trim() || !form.refresh_token.trim()) {
+      setAlert({ type: 'error', message: 'Vui lòng điền đầy đủ các trường' });
+      return;
+    }
     try {
       setIsSubmitting(true);
       setAlert(null);
-      await updateZaloConfig(config);
+      await updateZaloConfig(form);
       setAlert({ type: 'success', message: 'Lưu cấu hình Zalo thành công!' });
-      // Reload the status
+      setForm((prev) => ({ ...prev, app_secret: '', access_token: '', refresh_token: '' }));
       await fetchConfig();
     } catch (err: any) {
       setAlert({
         type: 'error',
-        message: err.response?.data?.detail || err.response?.data?.message || err.message || 'Lỗi khi lưu cấu hình',
+        message: err.response?.data?.detail || err.message || 'Lỗi khi lưu cấu hình',
       });
     } finally {
       setIsSubmitting(false);
@@ -63,25 +67,27 @@ export const ZaloConfigTab: React.FC = () => {
   };
 
   const handleTest = async () => {
+    if (!testForm.group_id.trim()) {
+      setAlert({ type: 'error', message: 'Nhập Group ID để test' });
+      return;
+    }
     try {
       setIsTesting(true);
       setAlert(null);
-      const result = await testZaloMessage();
-      setAlert({ type: 'success', message: `Test thành công! Result: ${JSON.stringify(result)}` });
+      const result = await testZaloMessage(testForm);
+      if (result.ok) {
+        setAlert({ type: 'success', message: `Test thành công! Message ID: ${result.message_id}` });
+      } else {
+        setAlert({ type: 'error', message: `Test thất bại: ${result.error}` });
+      }
     } catch (err: any) {
-      const errorMsg = err.response?.data?.detail || err.response?.data?.message || err.message || 'Lỗi khi test tin nhắn';
       setAlert({
         type: 'error',
-        message: `Lỗi Test Zalo: ${errorMsg}`,
+        message: err.response?.data?.detail || err.message || 'Lỗi khi test tin nhắn',
       });
     } finally {
       setIsTesting(false);
     }
-  };
-
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, value } = e.target;
-    setConfig((prev) => ({ ...prev, [name]: value }));
   };
 
   const inputType = showSecrets ? 'text' : 'password';
@@ -90,26 +96,24 @@ export const ZaloConfigTab: React.FC = () => {
     return <div className="p-4 text-gray-500">Đang tải cấu hình...</div>;
   }
 
-  // Determine styles for status
   let statusColor = 'bg-gray-50 border-gray-200 text-gray-700';
-  let statusText = 'Không xác định';
+  let statusText = 'Chưa cấu hình';
 
-  if (statusData?.status === 'good') {
+  if (configData?.status === 'good') {
     statusColor = 'bg-green-50 border-green-200 text-green-700';
     statusText = 'Đang hoạt động tốt';
-  } else if (statusData?.status === 'expiring') {
+  } else if (configData?.status === 'expiring') {
     statusColor = 'bg-yellow-50 border-yellow-200 text-yellow-700';
-    statusText = 'Sắp hết hạn (Cần refresh)';
-  } else if (statusData?.status === 'expired') {
+    statusText = 'Sắp hết hạn (< 1 giờ)';
+  } else if (configData?.status === 'expired') {
     statusColor = 'bg-red-50 border-red-200 text-red-700';
-    statusText = 'Đã hết hạn hoặc Lỗi';
+    statusText = 'Đã hết hạn';
   }
 
   return (
     <div className="max-w-4xl mx-auto space-y-6 p-4">
       <h2 className="text-2xl font-bold text-gray-800">Cấu Hình Zalo OA</h2>
 
-      {/* Alert Section */}
       {alert && (
         <div
           className={`p-4 border rounded-md shadow-sm ${
@@ -123,68 +127,59 @@ export const ZaloConfigTab: React.FC = () => {
       {/* Status Card */}
       <div className={`p-4 rounded-lg border ${statusColor} shadow-sm`}>
         <h3 className="font-semibold text-lg mb-2">Trạng thái Token</h3>
+        <p><strong>App ID:</strong> {configData?.app_id || 'N/A'}</p>
         <p><strong>Status:</strong> {statusText}</p>
-        <p><strong>Ngày hết hạn (Expires At):</strong> {statusData?.expiresAt ? new Date(statusData.expiresAt).toLocaleString('vi-VN') : 'N/A'}</p>
+        <p><strong>Hết hạn:</strong> {configData?.expires_at ? new Date(configData.expires_at).toLocaleString('vi-VN') : 'N/A'}</p>
       </div>
 
       {/* Form Section */}
       <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-        <h3 className="text-lg font-semibold mb-4 text-gray-800">Thông tin API</h3>
-        
+        <h3 className="text-lg font-semibold mb-1 text-gray-800">Cập nhật Credentials</h3>
+        <p className="text-sm text-gray-500 mb-4">Lưu sẽ thay thế toàn bộ cấu hình cũ. Token mới valid 25 giờ.</p>
+
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            
-            {/* App ID */}
             <div className="flex flex-col">
               <label className="text-sm font-medium text-gray-700 mb-1">App ID</label>
               <input
                 type="text"
-                name="appId"
-                value={config.appId}
-                onChange={handleChange}
+                value={form.app_id}
+                onChange={(e) => setForm({ ...form, app_id: e.target.value })}
                 className="px-3 py-2 border rounded-md focus:ring-2 focus:ring-blue-500 outline-none"
-                placeholder="Nhập Zalo App ID"
+                placeholder="Zalo App ID"
               />
             </div>
 
-            {/* App Secret */}
             <div className="flex flex-col">
               <label className="text-sm font-medium text-gray-700 mb-1">App Secret</label>
-              <div className="relative">
-                <input
-                  type={inputType}
-                  name="appSecret"
-                  value={config.appSecret}
-                  onChange={handleChange}
-                  className="w-full px-3 py-2 border rounded-md focus:ring-2 focus:ring-blue-500 outline-none"
-                  placeholder="Nhập App Secret"
-                />
-              </div>
+              <input
+                type={inputType}
+                value={form.app_secret}
+                onChange={(e) => setForm({ ...form, app_secret: e.target.value })}
+                className="w-full px-3 py-2 border rounded-md focus:ring-2 focus:ring-blue-500 outline-none"
+                placeholder="App Secret"
+              />
             </div>
 
-            {/* Access Token */}
             <div className="flex flex-col md:col-span-2">
               <label className="text-sm font-medium text-gray-700 mb-1">Access Token</label>
               <input
                 type={inputType}
-                name="accessToken"
-                value={config.accessToken}
-                onChange={handleChange}
+                value={form.access_token}
+                onChange={(e) => setForm({ ...form, access_token: e.target.value })}
                 className="w-full px-3 py-2 border rounded-md focus:ring-2 focus:ring-blue-500 outline-none font-mono text-sm"
-                placeholder="Nhập Access Token"
+                placeholder="Access Token (lấy từ API Explorer)"
               />
             </div>
 
-            {/* Refresh Token */}
             <div className="flex flex-col md:col-span-2">
               <label className="text-sm font-medium text-gray-700 mb-1">Refresh Token</label>
               <input
                 type={inputType}
-                name="refreshToken"
-                value={config.refreshToken}
-                onChange={handleChange}
+                value={form.refresh_token}
+                onChange={(e) => setForm({ ...form, refresh_token: e.target.value })}
                 className="w-full px-3 py-2 border rounded-md focus:ring-2 focus:ring-blue-500 outline-none font-mono text-sm"
-                placeholder="Nhập Refresh Token"
+                placeholder="Refresh Token (lấy từ API Explorer)"
               />
             </div>
           </div>
@@ -215,8 +210,24 @@ export const ZaloConfigTab: React.FC = () => {
       <div className="bg-gray-50 p-6 rounded-lg border border-gray-200">
         <h3 className="text-lg font-semibold mb-2 text-gray-800">Kiểm tra kết nối</h3>
         <p className="text-sm text-gray-600 mb-4">
-          Gửi thử một tin nhắn tới Zalo OA để kiểm tra token có hoạt động hay không.
+          Gửi thử một tin nhắn tới nhóm Zalo để kiểm tra token hoạt động.
         </p>
+        <div className="flex flex-col sm:flex-row gap-3 mb-4">
+          <input
+            type="text"
+            value={testForm.group_id}
+            onChange={(e) => setTestForm({ ...testForm, group_id: e.target.value })}
+            className="flex-1 px-3 py-2 border rounded-md text-sm font-mono focus:ring-2 focus:ring-blue-500 outline-none"
+            placeholder="Group ID (VD: df7d5a31765c9f02c64d)"
+          />
+          <input
+            type="text"
+            value={testForm.message}
+            onChange={(e) => setTestForm({ ...testForm, message: e.target.value })}
+            className="flex-1 px-3 py-2 border rounded-md text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+            placeholder="Nội dung tin nhắn test"
+          />
+        </div>
         <button
           onClick={handleTest}
           disabled={isTesting}
@@ -227,7 +238,6 @@ export const ZaloConfigTab: React.FC = () => {
           {isTesting ? 'Đang gửi...' : 'Test Gửi Tin Zalo'}
         </button>
       </div>
-
     </div>
   );
 };

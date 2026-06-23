@@ -36,6 +36,9 @@ const GatewaySyncTab = lazyRetry(() => import("../components/GatewaySyncTab"));
 const ActivationTab = lazyRetry(() => import("../components/ActivationTab"));
 const InvoiceRequestTab = lazyRetry(() => import("../components/InvoiceRequestTab"));
 const SoDoanhThuTab = lazyRetry(() => import("../components/SoDoanhThuTab"));
+const ZaloConfigTab = lazyRetry(() => import("../components/admin/ZaloConfigTab"));
+const ZaloGroupsTab = lazyRetry(() => import("../components/admin/ZaloGroupsTab"));
+const ZaloOutboxTab = lazyRetry(() => import("../components/admin/ZaloOutboxTab"));
 
 const PRELOAD_MAP: Record<string, () => Promise<unknown>> = {
   paymentRequests: () => import("../components/PaymentRequestsTab"),
@@ -68,7 +71,10 @@ type ViewId =
   | "module6"
   | "gatewaySync"
   | "authAccounts"
-  | "permissions";
+  | "permissions"
+  | "zaloConfig"
+  | "zaloGroups"
+  | "zaloOutbox";
 
 const FLOW_VIEW_MAP: Record<PaymentFlowView, ViewId> = {
   paymentRequests: "paymentRequests",
@@ -204,6 +210,18 @@ const TITLES: Record<ViewId, { title: string; subtitle?: string }> = {
     title: "Phân quyền sử dụng",
     subtitle: "Quản lý quyền truy cập module theo nhóm và cá nhân",
   },
+  zaloConfig: {
+    title: "Zalo — Cấu hình OA",
+    subtitle: "App ID, Token, kiểm tra kết nối Zalo OA",
+  },
+  zaloGroups: {
+    title: "Zalo — Nhóm thông báo",
+    subtitle: "Mapping team → nhóm Zalo GMF để gửi thông báo tự động",
+  },
+  zaloOutbox: {
+    title: "Zalo — Outbox",
+    subtitle: "50 tin nhắn gần nhất — theo dõi trạng thái gửi & retry",
+  },
 };
 
 export default function MainPage() {
@@ -234,7 +252,9 @@ function MainPageInner({
   const perms = profile?.permissions ?? {};
   const can = (key: string) => {
     // Tab con mPOS/Payoo dùng chung quyền với reconciliation (B2)
-    const k = key === "reconMpos" || key === "reconPayoo" || key === "gatewaySync" ? "reconciliation" : key;
+    const k = key === "reconMpos" || key === "reconPayoo" || key === "gatewaySync" ? "reconciliation"
+      : key === "zaloConfig" || key === "zaloGroups" || key === "zaloOutbox" ? "permissions"
+      : key;
     return isDevMode || (perms[k] ?? "none") !== "none";
   };
 
@@ -302,6 +322,17 @@ function MainPageInner({
       list.push({ id: "gatewaySync", label: "Đồng bộ mPOS / Payoo", icon: I.database,
         ...(!can("module5") && !can("module6") ? { section: "Dữ liệu" } : {}) });
 
+    // ── Zalo OA ──
+    const zaloChildren: NavChildItem[] = [];
+    if (can("permissions"))
+      zaloChildren.push({ id: "zaloConfig", label: "Cấu hình OA", subtitle: "Token & kiểm tra kết nối" });
+    if (can("permissions"))
+      zaloChildren.push({ id: "zaloGroups", label: "Nhóm thông báo", subtitle: "Mapping team → Zalo group" });
+    if (can("permissions"))
+      zaloChildren.push({ id: "zaloOutbox", label: "Outbox", subtitle: "Trạng thái gửi tin" });
+    if (zaloChildren.length > 0)
+      list.push({ id: "zaloHub", label: "Zalo OA", icon: I.team, section: "Quản trị", children: zaloChildren });
+
     // ── Tài khoản & Quyền ──
     const accountItems: NavItem[] = [];
     if (showAuthAccounts)
@@ -331,7 +362,10 @@ function MainPageInner({
     activeView === "bc01" ||
     activeView === "bc02" ||
     activeView === "bc03" ||
-    activeView === "permissions";
+    activeView === "permissions" ||
+    activeView === "zaloConfig" ||
+    activeView === "zaloGroups" ||
+    activeView === "zaloOutbox";
 
   const renderActiveView = () => {
     if (!can(activeView) && activeView !== "profile") return null;
@@ -353,6 +387,9 @@ function MainPageInner({
       case "gatewaySync": return <GatewaySyncTab />;
       case "authAccounts": return <AuthAccountsTab />;
       case "permissions": return <PermissionsTab />;
+      case "zaloConfig": return <ZaloConfigTab />;
+      case "zaloGroups": return <ZaloGroupsTab />;
+      case "zaloOutbox": return <ZaloOutboxTab />;
       default: return <PaymentRequestsTab />;
     }
   };
