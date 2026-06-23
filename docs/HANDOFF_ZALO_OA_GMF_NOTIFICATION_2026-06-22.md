@@ -2,7 +2,7 @@
 
 > **Người nhận**: Đức / Đạt / Giang
 > **Người giao**: Minh
-> **Trạng thái**: 🟡 **BẢN NHÁP** — Minh sẽ sửa tiếp. Up lên sandbox để collab.
+> **Trạng thái**: 🟢 **SẴN SÀNG** — C1-C4 done, token + group verified. 3 đứa bắt đầu code D1-D5 được.
 > **Mục tiêu**: Khi thanh toán được xác nhận (auto từ PayOS/SePay hoặc kế toán tick tay) → tự động gửi tin vào group Zalo của team sale tương ứng. Tương tự khi kích hoạt khoá học.
 > **Lý do làm**: Feedback họp 21/6 từ anh Hiếu — "Trong tuần tới cần phải đẩy tự động thông tin tiền về và thông tin kích hoạt khoá học lên Zalo của IH2 và Offline."
 
@@ -40,18 +40,19 @@ Ngày 8:   Cutover toàn team IH2
 
 | # | Trigger | File | Đã gọi `_mark_line_paid()`? |
 |---|---|---|---|
-| 1 | PayOS webhook (auto KH chuyển QR) | `backend/payment_request_routes.py:1861` → :1173 | ✅ Có |
+| 1 | SePay webhook (auto ngân hàng báo có) | `backend/sepay_routes.py:291` | ❌ Update trực tiếp |
 | 2 | Kế toán confirm tay (UI tick "Đã nhận tiền") | `backend/payment_request_routes.py:1264` | ✅ Có |
-| 3 | SePay webhook (auto VCB báo có) | `backend/sepay_routes.py:291` | ❌ Update trực tiếp |
 
-→ App-level hook không an toàn vì SePay bypass. **Phải dùng DB trigger** để bắt mọi UPDATE.
+> ⚠️ PayOS đã bỏ từ 19/6 (QĐ anh Hiếu). Hệ thống chỉ còn SePay + kế toán tick tay.
+
+→ App-level hook không an toàn vì SePay update trực tiếp. **Phải dùng DB trigger** để bắt mọi UPDATE.
 
 ---
 
 ## 2. Kiến trúc — DB trigger + outbox + worker
 
 ```
-[PayOS / SePay / Kế toán tick] → UPDATE payment_lines.status='paid'
+[SePay / Kế toán tick] → UPDATE payment_lines.status='paid'
                                        │
                                        ▼ Postgres TRIGGER (Đạt)
                           ┌────────────────────────┐
@@ -96,7 +97,7 @@ Ngày 8:   Cutover toàn team IH2
 | **V1** | Gói Nâng cao 1 GMF-100 free đủ IH2. Khi Offline onboard sẽ thiếu | Nâng gói **Tăng trưởng 2.5tr/năm** (3 GMF) khi gần Offline onboard. Hoặc nâng luôn để sẵn | Trước Offline onboard / trước 22/8 |
 | **V2** | Gói hết hạn 22/08/2026, auto renew TẮT | Quyết định gia hạn / nâng gói + BẬT auto renew | Trước 15/08/2026 |
 | **V3** | ~~App Pancake V2 đang chiếm slot~~ | ✅ Đã tạo App mới "PalFish GMV Notifier" (ID `83298551201629166`) ngày 22/6 | Done |
-| **V4** 🆕 | Bug Zalo portal: không lưu được SĐT/email → không kích hoạt app → block OAuth | Đã gửi ticket support Zalo 22/6. Chờ phản hồi | **BLOCKING** |
+| **V4** | ~~Bug Zalo portal~~ | ✅ Zalo fix 22/6, app đã kích hoạt, OAuth + test message OK | Done |
 
 ---
 
@@ -115,21 +116,41 @@ Ngày 8:   Cutover toàn team IH2
 | B3 | Gửi link mời vào group Zalo team IH2 | 5 phút | ⬜ Chưa | Sale tự join khi rảnh |
 | C1 | Tạo App "PalFish GMV Notifier" trên developers.zalo.me → App ID + Secret | 30 phút | ✅ Done 22/6 | App ID: `83298551201629166`. KHÔNG dùng App Pancake V2 (CRM khác) |
 | C2 | Request permission `send_message_to_group`, `manage_group` | 15 phút | ✅ Done 22/6 | Tất cả quyền GMF đã duyệt |
-| C3 | Chạy OAuth flow → access_token + refresh_token ban đầu | 30 phút | 🔴 **BLOCKED** | Không thể kích hoạt app — bug Zalo portal không lưu được SĐT/email. Đã gửi ticket support Zalo (22/6) |
-| C4 | Lấy `group_id` nhóm IH2 | 15 phút | ⬜ Chờ C3 | Qua API `GET /openapi/v3.0/oa/group/list` sau khi có token |
+| C3 | Chạy OAuth flow → access_token + refresh_token ban đầu | 30 phút | ✅ Done 22/6 | Token lấy thành công. access_token valid 25h, refresh_token valid 90 ngày |
+| C4 | Lấy `group_id` nhóm IH2 + test gửi tin | 15 phút | ✅ Done 22/6 | group_id = `df7d5a31765c9f02c64d`. Test message OK |
 | E1 | Paste credentials + group_id vào Admin UI Giang build | 15 phút | ⬜ Chờ C3+C4 | |
 | E2 | Test E2E với Đức (nhóm test private) | 2 giờ | ⬜ | Ngày 4 |
 | E3 | Soft launch — leader IH2 + anh Hiếu | 3 ngày (async) | ⬜ | Ngày 5-7 |
 | E4 | Cutover toàn team IH2 | 15 phút | ⬜ | Ngày 8 |
 
-**Blocker hiện tại**: Zalo developer portal bug — không lưu được SĐT/email trong cài đặt app → không kích hoạt được app → không chạy OAuth. Đã gửi email tới `help-transfer@zalo.me` ngày 22/6. Chờ phản hồi.
+**Blocker hiện tại**: Không còn. C1-C4 đã xong.
 
-**Thông tin bổ sung từ setup 22/6**:
+**Thông tin từ setup 22/6**:
 - Domain verified: `palfish-gmv-manager-sandbox.vercel.app`
 - Callback URL: `https://palfish-gmv-manager-sandbox.vercel.app/zalo-callback`
 - OA linked: Palfish Vietnam
 - App backup (phòng app chính hỏng): PalFish Notifier, ID `376625350414150801`
-- Nhóm GMF URL: `oa.zalo.me/chat?gid=df7d5a31765c9f02c64d8&oaid=953422767266282024`
+- **group_id (API)**: `df7d5a31765c9f02c64d` ⚠️ gid trong URL oa.zalo.me/chat (`df7d5a31765c9f02c64d8`) KHÁC — thừa chữ `8` cuối
+- Nhóm GMF link: `https://zalo.me/g/tfymfx695`
+- API Explorer: `developers.zalo.me/tools/explorer` → chọn OA Access Token + app PalFish GMV Notifier
+- List groups: `GET https://openapi.zalo.me/v3.0/oa/group/getgroupsofoa?offset=0&count=5`
+
+**Cách lấy Access Token + Refresh Token (dùng API Explorer — KHÔNG cần curl/code)**:
+1. Vào `developers.zalo.me` → **Công cụ** → **API Explorer**
+2. Loại access token: chọn **OA Access Token**
+3. Chọn ứng dụng: **PalFish GMV Notifier**
+4. Dropdown "Lấy Access Token" → chọn **Palfish Vietnam**
+5. Popup xác nhận hiện ra → bấm **"Tôi đã hiểu và muốn tiếp tục"**
+6. Cả Access Token + Refresh Token hiện ra → copy dùng
+
+⚠️ Lưu ý: mỗi lần lấy token mới qua Explorer, token cũ có thể bị invalidate. access_token valid 25h, refresh_token valid 90 ngày.
+
+**API gửi tin nhóm (Đức cần biết)**:
+```
+POST https://openapi.zalo.me/v3.0/oa/group/message
+Header: access_token: <token>
+Body: {"recipient":{"group_id":"df7d5a31765c9f02c64d"},"message":{"text":"nội dung"}}
+```
 
 **Tổng thao tác Minh**: ~5 giờ + ~1 tuần async. Không đụng env Render, không đụng code.
 
@@ -225,7 +246,7 @@ CREATE INDEX idx_zalo_outbox_pending ON zalo_outbox(next_retry_at) WHERE sent_at
 | G4 | ⭐ Admin UI `/admin/zalo-config` — form paste App ID/Secret/token, hiển thị trạng thái token, nút "Test gửi tin" | React + API | 4h | Ngày 2 |
 | G5 | ⭐ Admin UI `/admin/zalo-groups` — bảng mapping team↔group_id, edit inline | React + API | 2h | Ngày 3 |
 | G6 | Admin UI `/admin/zalo-outbox` — list 50 row gần nhất, status, error, nút "Retry tay" | React + API | 3h | Ngày 3 |
-| G7 | Integration test full flow (mock PayOS webhook → trigger → outbox → worker mock gửi → verify format + group đúng) | Test pass | 3h | Ngày 3 |
+| G7 | Integration test full flow (mock SePay webhook → trigger → outbox → worker mock gửi → verify format + group đúng) | Test pass | 3h | Ngày 3 |
 
 ⭐ **G4, G5, G6 quan trọng**: là giao diện Minh dùng để paste token + monitor. Nếu thiếu UI, Minh phải SSH Render set env tay → bất tiện + rủi ro.
 
@@ -294,7 +315,6 @@ Ngày 8: Cutover toàn team IH2
 
 ## 9. Lưu ý
 
-- 🟡 **Bản nháp** — Minh sẽ review/sửa tiếp. Đừng bắt đầu code dựa hoàn toàn vào doc này, chờ Minh confirm phiên bản final.
 - Các effort estimate là dự kiến của Minh — 3 đứa free push back nếu thấy không khả thi.
 - Format message ở G1/G2 chỉ là gợi ý — Minh sẽ chốt lại sau khi xem nhóm IH2 thật.
 - **Offline DEFER**: code/trigger/worker xây generic (không hard-code IH2), Giang xây Admin UI mapping → khi Offline onboard chỉ cần thêm 1 row vào `zalo_team_groups`, không sửa code.
