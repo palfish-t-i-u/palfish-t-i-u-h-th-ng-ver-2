@@ -151,10 +151,22 @@ def build_activation_urgent_reminder_message(
     raw_team = sale_info.get("team")
     canonical_team = get_canonical_team(raw_team)
 
+    pending_courses: list[dict[str, str]] = reminder_data.get("pending_courses") or []
+
+    if pending_courses:
+        display = pending_courses[:3]
+        parts = [f"{c.get('code', '?')} · {c.get('name', '(chưa có tên)')}" for c in display]
+        courses_line = f"Gói: {courses_activated}/{courses_total} — Còn: {', '.join(parts)}"
+        remainder = len(pending_courses) - 3
+        if remainder > 0:
+            courses_line += f" ... (+{remainder} gói khác)"
+    else:
+        courses_line = f"Gói: {courses_activated}/{courses_total}"
+
     lines = [
         "⚡ Cần kích hoạt khóa học GẤP",
         f"{pr_code} · {customer}",
-        f"Gói: {courses_activated}/{courses_total}",
+        courses_line,
         f"Sale nhắc: {sale_name}",
     ]
     if note and str(note).strip():

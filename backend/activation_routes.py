@@ -8,7 +8,7 @@ from __future__ import annotations
 import io
 import re
 import zipfile
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timezone, timedelta
 from typing import Any
 
 from fastapi import Body, HTTPException, Query, Header
@@ -1854,13 +1854,48 @@ def register_activation_routes(app, supabase_factory):
         if ar.get("status") == "activated":
             raise HTTPException(400, "Khóa học đã được kích hoạt")
 
-        existing = sb.table("activation_reminders") \
-            .select("id, requested_at, requested_by_name") \
+        # Parse pending courses từ uids_data trước khi check cooldown
+        pending_courses: list[dict[str, str]] = []
+        courses_total = 0
+        courses_activated = 0
+        if ar and ar.get("uids_data"):
+            uids = ar["uids_data"] if isinstance(ar["uids_data"], list) else []
+            for uid_block in uids:
+                if not isinstance(uid_block, dict):
+                    continue
+                for c in (uid_block.get("courses") or []):
+                    if not isinstance(c, dict):
+                        continue
+                    courses_total += 1
+                    if (c.get("order_id") or "").strip():
+                        courses_activated += 1
+                    else:
+                        pending_courses.append({
+                            "code": c.get("code") or "?",
+                            "name": (c.get("name") or "").strip() or "(chưa có tên gói)",
+                        })
+
+        if courses_total > 0 and not pending_courses:
+            raise HTTPException(400, "Tất cả gói đã có Order ID — không cần nhắc")
+
+        # Smart cooldown: cho nhắc lại nếu >15 phút HOẶC pending count đã giảm
+        last = sb.table("activation_reminders") \
+            .select("id, requested_at, pending_courses_snapshot") \
             .eq("payment_request_id", pr_id) \
             .is_("resolved_at", "null") \
+            .order("requested_at", desc=True) \
             .limit(1).execute()
-        if existing.data:
-            raise HTTPException(429, "Đã có lượt nhắc đang chờ xử lý")
+
+        if last.data:
+            last_row = last.data[0]
+            last_at = datetime.fromisoformat(last_row["requested_at"].replace("Z", "+00:00"))
+            elapsed = datetime.now(timezone.utc) - last_at
+            last_pending_count = len(last_row.get("pending_courses_snapshot") or [])
+            progress_made = len(pending_courses) < last_pending_count
+            cooldown_elapsed = elapsed >= timedelta(minutes=15)
+            if not progress_made and not cooldown_elapsed:
+                wait_min = int((timedelta(minutes=15) - elapsed).total_seconds() / 60) + 1
+                raise HTTPException(429, f"Đã nhắc gần đây. Đợi ~{wait_min} phút hoặc đợi Ops kích hoạt thêm gói rồi nhắc lại")
 
         sale_name = (actor.staff or {}).get("display_name") or (actor.staff or {}).get("crm_name") or actor.email
         note_text = (body.note or "").strip() if body else None
@@ -1870,16 +1905,8 @@ def register_activation_routes(app, supabase_factory):
             "requested_by": actor.user_id,
             "requested_by_name": sale_name,
             "note": note_text or None,
+            "pending_courses_snapshot": pending_courses,
         }).execute()
-
-        courses_total = 0
-        courses_activated = 0
-        if ar and ar.get("uids_data"):
-            uids = ar["uids_data"] if isinstance(ar["uids_data"], list) else []
-            for uid_block in uids:
-                courses = uid_block.get("courses", []) if isinstance(uid_block, dict) else []
-                courses_total += len(courses)
-                courses_activated += sum(1 for c in courses if isinstance(c, dict) and (c.get("order_id") or "").strip())
 
         g = sb.table("zalo_team_groups") \
             .select("group_id, is_active") \
@@ -1894,6 +1921,7 @@ def register_activation_routes(app, supabase_factory):
                 "customer_name": pr.get("name") or pr.get("child_name") or "?",
                 "courses_total": courses_total,
                 "courses_activated": courses_activated,
+                "pending_courses": pending_courses,
                 "note": note_text,
             },
             {
@@ -1929,8 +1957,14 @@ def register_activation_routes(app, supabase_factory):
             .order("requested_at", desc=True) \
             .limit(1).execute()
 
+        can_remind = True
+        if res.data:
+            last_at = datetime.fromisoformat(res.data[0]["requested_at"].replace("Z", "+00:00"))
+            elapsed = datetime.now(timezone.utc) - last_at
+            can_remind = elapsed >= timedelta(minutes=15)
+
         return {
-            "can_remind": len(res.data) == 0,
+            "can_remind": can_remind,
             "last_reminder": res.data[0] if res.data else None,
         }
 
