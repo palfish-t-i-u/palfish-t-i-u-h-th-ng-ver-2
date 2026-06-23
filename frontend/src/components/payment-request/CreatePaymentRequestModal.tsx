@@ -195,7 +195,7 @@ export default function CreatePaymentRequestModal({
                   onChange={(e) => set("phone", e.target.value.replace(/[^\d]/g, ""))}
                 />
               </div>
-              <div style={{ fontSize: 11, color: "var(--text-3)", marginTop: 2 }}>
+              <div style={{ fontSize: 11.5, color: "var(--text-2)", marginTop: 3 }}>
                 Chỉ nhập phần số, không cần mã quốc gia
               </div>
             </div>
