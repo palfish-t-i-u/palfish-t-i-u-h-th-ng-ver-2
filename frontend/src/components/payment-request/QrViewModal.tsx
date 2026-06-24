@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { BANK_INFO } from "../../constants/bank";
 import type { PaymentAttempt, PaymentRequest } from "../../types/paymentRequest";
 import { findCountry } from "./CountryCombo";
@@ -67,14 +67,22 @@ export default function QrViewModal({
 }) {
   const [copyQrState, setCopyQrState] = useState<"idle" | "copying" | "done" | "error">("idle");
   const [captureState, setCaptureState] = useState<"idle" | "capturing" | "done" | "downloaded" | "error">("idle");
+  const [imgReady, setImgReady] = useState(false);
   const captureRef = useRef<HTMLDivElement>(null);
 
-  if (!qr || !request) return null;
+  const country = qr && request ? findCountry(request.country) : null;
+  const transferCode = qr ? qr.transferContent || qr.code : "";
+  const qrImageUrl = qr ? buildQrUrl(qr.amount, transferCode) : "";
+  const fullBankText = qr ? buildFullBankText(qr.amount, transferCode) : "";
 
-  const country = findCountry(request.country);
-  const transferCode = qr.transferContent || qr.code;
-  const qrImageUrl = buildQrUrl(qr.amount, transferCode);
-  const fullBankText = buildFullBankText(qr.amount, transferCode);
+  // Reset loading state mỗi khi URL ảnh đổi (chuyển sang QR khác / sửa số tiền)
+  // → block Chụp/Copy đến khi PNG mới load xong, tránh chụp nhầm ảnh QR cũ
+  // còn đang hiển thị lúc đợi img.vietqr.io trả về.
+  useEffect(() => {
+    setImgReady(false);
+  }, [qrImageUrl]);
+
+  if (!qr || !request || !country) return null;
 
   const copy = (text: string) => navigator.clipboard?.writeText(text).catch(() => {});
 
@@ -177,14 +185,19 @@ export default function QrViewModal({
                   background: "#fff",
                   width: 240,
                   minHeight: 240,
+                  position: "relative",
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
                 }}
               >
                 <img
+                  // key buộc remount khi URL đổi → không bao giờ hiển thị PNG cũ
+                  key={qrImageUrl}
                   src={qrImageUrl}
                   alt="VietQR"
+                  onLoad={() => setImgReady(true)}
+                  onError={() => setImgReady(false)}
                   style={{
                     width: "100%",
                     height: "100%",
@@ -192,8 +205,30 @@ export default function QrViewModal({
                     display: "block",
                     objectFit: "contain",
                     background: "#fff",
+                    opacity: imgReady ? 1 : 0,
+                    transition: "opacity 120ms ease-out",
                   }}
                 />
+                {!imgReady && (
+                  <div
+                    data-qr-capture-hide="true"
+                    style={{
+                      position: "absolute",
+                      inset: 0,
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: 8,
+                      background: "#fff",
+                      color: "var(--text-3)",
+                      fontSize: 12,
+                    }}
+                  >
+                    <span style={{ fontSize: 22 }} className="animate-spin">⟳</span>
+                    <span>Đang tải QR…</span>
+                  </div>
+                )}
               </div>
 
               {/* Bank info panel */}
@@ -225,14 +260,15 @@ export default function QrViewModal({
 
           {/* Action buttons */}
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            {/* Chụp toàn bộ card QR + thông tin CK */}
+            {/* Chụp toàn bộ card QR + thông tin CK — chặn khi ảnh chưa load để không chụp nhầm QR cũ */}
             <button
               className="btn btn-primary"
               style={{ flex: 1, justifyContent: "center", minWidth: 140 }}
               onClick={handleCaptureQr}
-              disabled={captureState === "capturing"}
+              disabled={captureState === "capturing" || !imgReady}
+              title={!imgReady ? "Đợi QR tải xong rồi mới chụp" : undefined}
             >
-              <Icons.Download size={14} /> {captureLabel}
+              <Icons.Download size={14} /> {!imgReady ? "Đang tải QR…" : captureLabel}
             </button>
 
             {/* Copy ảnh QR */}
@@ -240,9 +276,10 @@ export default function QrViewModal({
               className="btn btn-outline"
               style={{ flex: 1, justifyContent: "center", minWidth: 140 }}
               onClick={copyQrState === "error" ? () => window.open(qrImageUrl, "_blank") : handleCopyQr}
-              disabled={copyQrState === "copying"}
+              disabled={copyQrState === "copying" || !imgReady}
+              title={!imgReady ? "Đợi QR tải xong rồi mới copy" : undefined}
             >
-              <Icons.QrCode size={14} /> {copyQrLabel}
+              <Icons.QrCode size={14} /> {!imgReady ? "Đang tải QR…" : copyQrLabel}
             </button>
 
             {/* Copy đầy đủ thông tin CK */}
