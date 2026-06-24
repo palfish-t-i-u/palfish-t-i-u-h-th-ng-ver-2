@@ -9,7 +9,7 @@ import time
 from datetime import date, datetime, timedelta, timezone
 from datetime import time as dt_time
 from decimal import Decimal, ROUND_HALF_UP
-from typing import Any, Callable
+from typing import Any, Callable, Iterator
 
 from revenue_routes import team_to_pivot_label, vnd_to_rmb
 
@@ -530,6 +530,53 @@ def fetch_gsheet_tab_values(
     return result.get("values") or []
 
 
+def iter_payloads_by_tab(
+    team_cache: TeamLookupCache,
+    *,
+    spreadsheet_id: str,
+    tabs: tuple[str, ...] = DEFAULT_SHEET_TABS,
+    credentials_path: str | None = None,
+    limit: int = 0,
+    log: Callable[[str], None] = _log,
+) -> Iterator[tuple[str, list[dict[str, Any]]]]:
+    total_emitted = 0
+    for tab in tabs:
+        log(f"  Tải Google Sheet tab «{tab}»…")
+        rows = fetch_gsheet_tab_values(
+            spreadsheet_id=spreadsheet_id,
+            tab=tab,
+            credentials_path=credentials_path,
+        )
+        data_rows = max(len(rows) - 1, 0)
+        log(f"  «{tab}»: {len(rows)} dòng ({data_rows} data) — đang map…")
+        tab_payloads: list[dict[str, Any]] = []
+        seen_in_tab: set[str] = set()
+        mapped = 0
+        for i, row in enumerate(rows):
+            if i == 0:
+                continue
+            payload = map_tab_row(team_cache, tab, row)
+            if not payload:
+                continue
+            fp = row_fingerprint(payload)
+            if fp in seen_in_tab:
+                continue
+            seen_in_tab.add(fp)
+            tab_payloads.append(payload)
+            mapped += 1
+            if mapped % MAP_PROGRESS_EVERY == 0:
+                log(f"  «{tab}»: đã map {mapped} dòng hợp lệ…")
+            if limit and total_emitted + mapped >= limit:
+                log(f"  Dừng sớm — limit {limit}")
+                log(f"  «{tab}»: xong — {mapped} dòng hợp lệ")
+                yield (tab, tab_payloads)
+                return
+        del rows
+        log(f"  «{tab}»: xong — {mapped} dòng hợp lệ")
+        total_emitted += mapped
+        yield (tab, tab_payloads)
+
+
 def collect_payloads_from_gsheet(
     team_cache: TeamLookupCache,
     *,
@@ -648,54 +695,69 @@ def sync_gsheet_to_ledger(
     log(f"  {team_cache.size} sale → team")
 
     log("Map dữ liệu từ Google Sheet…")
-    payloads = collect_payloads_from_gsheet(
+    log("Kiểm tra dòng đã import…")
+    existing = _load_existing_import_fingerprints(sb, log=log)
+    log("Kiểm tra loose match (uid+ngày+tiền)…")
+    loose_existing = _load_existing_loose_fps(sb, log=log)
+
+    seen_payloads: set[str] = set()
+    samples: list[dict[str, Any]] = []
+    totals = {
+        "fetched": 0,
+        "skippedExisting": 0,
+        "skippedLoose": 0,
+        "plannedInsert": 0,
+        "inserted": 0,
+    }
+    client = sb
+
+    for tab, payloads in iter_payloads_by_tab(
         team_cache,
         spreadsheet_id=sid,
         tabs=tabs,
         credentials_path=credentials_path,
         limit=limit,
         log=log,
-    )
-    log(f"Tổng {len(payloads)} dòng unique sau map")
+    ):
+        to_insert: list[dict[str, Any]] = []
+        skipped_tab = 0
+        loose_skipped_tab = 0
 
-    log("Kiểm tra dòng đã import…")
-    existing = _load_existing_import_fingerprints(sb, log=log)
+        for p in payloads:
+            fp = row_fingerprint(p)
+            if fp in seen_payloads:
+                continue
+            seen_payloads.add(fp)
+            totals["fetched"] += 1
+            if len(samples) < 3:
+                samples.append(p)
 
-    log("Kiểm tra loose match (uid+ngày+tiền)…")
-    loose_existing = _load_existing_loose_fps(sb, log=log)
+            if fp in existing:
+                skipped_tab += 1
+                continue
+            if _loose_fp(p) in loose_existing or _loose_fp_blank(p) in loose_existing:
+                loose_skipped_tab += 1
+                continue
 
-    to_insert: list[dict[str, Any]] = []
-    skipped = 0
-    loose_skipped = 0
+            p["updated_by_email"] = actor_email
+            if not p.get("created_by_email"):
+                p["created_by_email"] = actor_email
+            to_insert.append(p)
 
-    def _loose_seen(p: dict[str, Any]) -> bool:
-        """True nếu Sổ đã có dòng cùng loose key trước đợt sync này.
+        totals["skippedExisting"] += skipped_tab
+        totals["skippedLoose"] += loose_skipped_tab
+        totals["plannedInsert"] += len(to_insert)
 
-        Mỗi loose key = (UID, sale, tháng pay-time, tiền) = 1 giao dịch duy
-        nhất. Sổ có ≥1 dòng key này → mọi payload sheet cùng key đều coi là
-        phiên bản đã-sửa-trường-khác của giao dịch đó → skip toàn bộ.
-        """
-        return _loose_fp(p) in loose_existing or _loose_fp_blank(p) in loose_existing
-
-    for p in payloads:
-        if row_fingerprint(p) in existing:
-            skipped += 1
+        if dry_run or not to_insert:
+            del payloads
+            del to_insert
             continue
-        if _loose_seen(p):
-            loose_skipped += 1
-            continue
-        p["updated_by_email"] = actor_email
-        if not p.get("created_by_email"):
-            p["created_by_email"] = actor_email
-        to_insert.append(p)
 
-    inserted = 0
-    if not dry_run and to_insert:
         base_ts = datetime.now(timezone.utc)
         for idx, p in enumerate(to_insert):
             p["created_at"] = (base_ts + timedelta(milliseconds=idx)).isoformat()
         log(f"Insert {len(to_insert)} dòng mới (batch {INSERT_BATCH})…")
-        client = sb
+        inserted_tab = 0
         for i in range(0, len(to_insert), INSERT_BATCH):
             chunk = to_insert[i : i + INSERT_BATCH]
             try:
@@ -715,23 +777,36 @@ def sync_gsheet_to_ledger(
                     )
                 else:
                     raise
-            inserted += len(chunk)
-            log(f"  inserted {inserted}/{len(to_insert)}")
+            for p in chunk:
+                existing.add(row_fingerprint(p))
+                key = _loose_fp(p)
+                loose_existing[key] = loose_existing.get(key, 0) + 1
+                blank_key = _loose_fp_blank(p)
+                if blank_key != key:
+                    loose_existing[blank_key] = loose_existing.get(blank_key, 0) + 1
+            inserted_tab += len(chunk)
+            log(f"  inserted {inserted_tab}/{len(to_insert)}")
             if INSERT_PAUSE_SEC and i + INSERT_BATCH < len(to_insert):
                 time.sleep(INSERT_PAUSE_SEC)
-    elif dry_run:
-        log(f"Dry-run — sẽ insert {len(to_insert)} dòng (skip {skipped} exact + {loose_skipped} loose)")
-    else:
-        log(f"Không có dòng mới (skip {skipped} exact + {loose_skipped} loose)")
+        totals["inserted"] += inserted_tab
+        del payloads
+        del to_insert
+
+    if dry_run:
+        log(f"Dry-run — sẽ insert {totals['plannedInsert']} dòng "
+            f"(skip {totals['skippedExisting']} exact + {totals['skippedLoose']} loose)")
+    elif totals["inserted"] == 0:
+        log(f"Không có dòng mới (skip {totals['skippedExisting']} exact + "
+            f"{totals['skippedLoose']} loose)")
 
     return {
         "spreadsheetId": sid,
         "tabs": list(tabs),
-        "fetched": len(payloads),
-        "skippedExisting": skipped,
-        "skippedLoose": loose_skipped,
-        "plannedInsert": len(to_insert),
-        "inserted": inserted if not dry_run else 0,
+        "fetched": totals["fetched"],
+        "skippedExisting": totals["skippedExisting"],
+        "skippedLoose": totals["skippedLoose"],
+        "plannedInsert": totals["plannedInsert"],
+        "inserted": totals["inserted"] if not dry_run else 0,
         "dryRun": dry_run,
-        "samples": payloads[:3],
+        "samples": samples[:3],
     }
