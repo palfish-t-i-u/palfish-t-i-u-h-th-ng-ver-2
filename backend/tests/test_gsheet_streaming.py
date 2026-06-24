@@ -90,3 +90,29 @@ def test_cross_tab_exact_duplicate_inserted_once(monkeypatch):
     assert result["plannedInsert"] == 1
     assert result["inserted"] == 1
     assert len(sb.inserted) == 1
+
+
+def test_loose_dedup_against_just_inserted_row(monkeypatch):
+    """Tab 1 insert dòng A → Tab 2 có dòng A' loose-match (cùng uid+sale+
+    tháng+tiền, khác sdt) → tab 2 phải skip vì loose_existing đã được cập
+    nhật."""
+    from gsheet_ledger_import import sync_gsheet_to_ledger
+
+    p_a = _payload("SM Hanoi", sdt="81-1111111111")
+    p_a_prime = _payload("HCM REV", sdt="81-2222222222", uid="3311069834")
+
+    def fake_iter(*_args, **_kwargs):
+        yield ("SM Hanoi", [p_a])
+        yield ("HCM REV", [p_a_prime])
+
+    monkeypatch.setattr(
+        "gsheet_ledger_import.TeamLookupCache", lambda _sb: SimpleNamespace(size=0)
+    )
+    monkeypatch.setattr("gsheet_ledger_import.iter_payloads_by_tab", fake_iter)
+
+    sb = _FakeSupabase([])
+    result = sync_gsheet_to_ledger(sb, log=lambda *_a, **_k: None)
+
+    assert result["inserted"] == 1, "Chỉ p_a vào DB, p_a_prime loose-skip"
+    assert result["skippedLoose"] == 1
+    assert len(sb.inserted) == 1
