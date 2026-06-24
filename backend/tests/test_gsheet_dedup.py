@@ -62,8 +62,11 @@ def test_sync_gsheet_skips_existing_manual_ledger_row(monkeypatch):
         "ten_khach": "Test Customer",
     }
 
+    def fake_iter(*_args, **_kwargs):
+        yield ("HCM REV", [payload])
+
     monkeypatch.setattr("gsheet_ledger_import.TeamLookupCache", lambda _sb: SimpleNamespace(size=0))
-    monkeypatch.setattr("gsheet_ledger_import.collect_payloads_from_gsheet", lambda *_args, **_kwargs: [payload])
+    monkeypatch.setattr("gsheet_ledger_import.iter_payloads_by_tab", fake_iter)
 
     result = sync_gsheet_to_ledger(_FakeSupabase([manual_row]), dry_run=True, log=lambda *_args, **_kwargs: None)
 
@@ -92,8 +95,11 @@ def _gsheet_payload(**over) -> dict:
 def _run_sync(monkeypatch, ledger_rows: list[dict], payloads: list[dict]) -> dict:
     from gsheet_ledger_import import sync_gsheet_to_ledger
 
+    def fake_iter(*_args, **_kwargs):
+        yield ("SM Hanoi", list(payloads))
+
     monkeypatch.setattr("gsheet_ledger_import.TeamLookupCache", lambda _sb: SimpleNamespace(size=0))
-    monkeypatch.setattr("gsheet_ledger_import.collect_payloads_from_gsheet", lambda *_a, **_k: payloads)
+    monkeypatch.setattr("gsheet_ledger_import.iter_payloads_by_tab", fake_iter)
     return sync_gsheet_to_ledger(_FakeSupabase(ledger_rows), dry_run=True, log=lambda *_a, **_k: None)
 
 
