@@ -26,8 +26,13 @@ from admin_routes import require_module_write
 from activation_routes import _compute_referral_status
 
 from payos_qr import create_payos_payment_link, fetch_payos_payment, payos_payment_is_paid
+from audit import log_audit
 
 router = APIRouter(prefix="/api/v1", tags=["payment-requests"])
+
+# Module-level reference to the supabase factory, set by register_payment_request_routes.
+# Exposed here so tests can patch it via patch.object(payment_request_routes, "get_supabase").
+get_supabase: Callable[[], Any] = lambda: None
 
 PAYMENT_METHODS = frozenset({"qr", "cash", "card", "installment"})
 LINE_STATUSES = frozenset({"pending", "paid", "rejected"})
@@ -177,6 +182,11 @@ class TransactionStatusPatch(BaseModel):
 
 class PaymentLineAmountPatch(BaseModel):
     amount: int | str
+
+
+class PaymentLineRefreshContentBody(BaseModel):
+    """Body optional cho refresh-content. Nếu name_for_transfer = None → dùng stored hoặc default child→parent."""
+    name_for_transfer: str | None = None
 
 
 class PaymentRequestCancelBody(BaseModel):
@@ -1514,7 +1524,14 @@ def _get_user_name_by_id(sb, user_id: str) -> str:
     return user_id
 
 
-def register_payment_request_routes(app, get_supabase) -> None:
+def register_payment_request_routes(app, _get_supabase) -> None:
+    # Expose the factory at module level so tests can patch it via
+    # patch.object(payment_request_routes, "get_supabase", ...).
+    import payment_request_routes as _self
+    _self.get_supabase = _get_supabase
+    # Use the local name throughout this closure for backward compatibility.
+    get_supabase = _get_supabase
+
     @router.get("/payment-requests")
     def list_payment_requests(
         state: str | None = Query(None),
@@ -2085,6 +2102,98 @@ def register_payment_request_routes(app, get_supabase) -> None:
             "received": totals["received"],
             "target": totals["target"],
             "state": totals["state"],
+        }
+
+    @router.post("/payment-lines/{line_id}/refresh-content")
+    def refresh_payment_line_content(
+        line_id: str,
+        body: PaymentLineRefreshContentBody | None = None,
+        authorization: str | None = Header(None),
+    ):
+        import payment_request_routes as _self_mod
+        sb = _sb_or_503(_self_mod.get_supabase)
+        actor = resolve_actor(sb, authorization)
+        require_module_write(sb, actor, "paymentRequests")
+
+        line_res = (
+            sb.table("payment_lines")
+            .select("*")
+            .eq("id", line_id)
+            .limit(1)
+            .execute()
+        )
+        if not line_res.data:
+            raise HTTPException(404, "Khong tim thay payment_line")
+        line = line_res.data[0]
+
+        if _clean_text(line.get("status")).lower() != "pending":
+            raise HTTPException(400, "Chi rebuild duoc khi lan thanh toan chua thanh toan")
+        if _clean_text(line.get("method")).lower() != "qr":
+            raise HTTPException(400, "Chi rebuild duoc voi phuong thuc QR")
+
+        pr_id = str(line.get("payment_request_id") or "")
+        if not pr_id:
+            raise HTTPException(400, "payment_line thieu payment_request_id")
+
+        pr_res = sb.table("payment_requests").select("*").eq("id", pr_id).limit(1).execute()
+        if not pr_res.data:
+            raise HTTPException(404, "Khong tim thay payment_request lien quan")
+        pr_row = pr_res.data[0]
+        if not _can_access_request(sb, actor, pr_row):
+            raise HTTPException(403, "Khong co quyen rebuild payment_line nay")
+
+        explicit_name = body.name_for_transfer if body else None
+        name_for_transfer = explicit_name or line.get("name_for_transfer") or pr_row.get("child_name") or pr_row.get("name")
+        transfer_code = _clean_text(line.get("transfer_code"))
+        if not transfer_code:
+            raise HTTPException(400, "payment_line thieu transfer_code")
+
+        old_content = _clean_text(line.get("transfer_content"))
+        new_content = _build_payos_transfer_description(pr_row, name_for_transfer, transfer_code)
+
+        if new_content == old_content and (not explicit_name or explicit_name == line.get("name_for_transfer")):
+            return {
+                "payment_line": _serialize_payment_line(
+                    line,
+                    display_names=_build_display_names_for_lines(sb, [line]),
+                    pr_row=pr_row,
+                ),
+                "updated": False,
+                "old_content": old_content,
+                "new_content": new_content,
+            }
+
+        update_payload: dict[str, Any] = {"transfer_content": new_content}
+        if explicit_name is not None:
+            update_payload["name_for_transfer"] = explicit_name
+        try:
+            updated_res = (
+                sb.table("payment_lines")
+                .update(update_payload)
+                .eq("id", line_id)
+                .execute()
+            )
+        except Exception as exc:
+            raise HTTPException(500, f"Khong cap nhat duoc transfer_content: {exc}") from exc
+
+        updated_line = updated_res.data[0] if updated_res.data else {**line, **update_payload}
+
+        log_audit(sb, actor.email, "payment_line.refresh_content", "payment_line", line_id, {
+            "pr_id": pr_id,
+            "old_content": old_content,
+            "new_content": new_content,
+            "name_for_transfer": name_for_transfer,
+        })
+
+        return {
+            "payment_line": _serialize_payment_line(
+                updated_line,
+                display_names=_build_display_names_for_lines(sb, [updated_line]),
+                pr_row=pr_row,
+            ),
+            "updated": True,
+            "old_content": old_content,
+            "new_content": new_content,
         }
 
     @router.patch("/transactions/{transaction_id}/status")
