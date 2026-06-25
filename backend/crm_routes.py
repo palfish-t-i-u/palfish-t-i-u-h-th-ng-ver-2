@@ -1038,11 +1038,14 @@ def _detect_missing_dates(sb, lookback_days: int = 60) -> tuple[list[date], date
     lookback_start = range_end - timedelta(days=max(1, lookback_days) - 1)
 
     # Lấy distinct report_date trong khoảng tra cứu
+    # Supabase REST mặc định limit=1000 → nếu nhiều sale rep × nhiều ngày
+    # sẽ bị cắt, gây false-positive "ngày thiếu". Đẩy limit lên đủ lớn.
     resp = (
         sb.table("crm_sales_data")
         .select("report_date")
         .gte("report_date", lookback_start.isoformat())
         .lte("report_date", range_end.isoformat())
+        .limit(10000)
         .execute()
     )
     rows = getattr(resp, "data", None) or []
