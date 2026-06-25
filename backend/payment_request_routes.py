@@ -1059,6 +1059,65 @@ def _build_payos_transfer_description(
     return code[:_PAYOS_DESCRIPTION_MAX_LEN]
 
 
+def _is_payment_line_content_stale(
+    pr_row: dict[str, Any],
+    line: dict[str, Any],
+) -> bool:
+    """True nếu transfer_content lưu trên line không còn khớp với PR hiện tại.
+
+    Quy tắc:
+    - line không PENDING (paid/rejected/cancelled) → False (không cần warning).
+    - line không phải method=qr → False (cash/card không có QR).
+    - Rebuild expected content từ pr_row dùng cả hai tên có thể (child_name và name).
+      Nếu stored content khớp ít nhất một variant hiện tại → not stale.
+    - Nếu line.name_for_transfer NULL (line cũ trước migration), fallback theo
+      thứ tự: pr_row.child_name → pr_row.name.
+    - So sánh expected variants vs line.transfer_content. Nếu không khớp variant nào → stale.
+    """
+    status = _clean_text(line.get("status")).lower()
+    if status != "pending":
+        return False
+    if _clean_text(line.get("method")).lower() != "qr":
+        return False
+    reject_reason = line.get("reject_reason")
+    if reject_reason and "huy" in _ascii_transfer_name(reject_reason).lower():
+        return False
+
+    transfer_code = _clean_text(line.get("transfer_code"))
+    if not transfer_code:
+        return False
+
+    stored = _clean_text(line.get("transfer_content"))
+
+    # Build the set of currently-valid content variants:
+    # one for child_name, one for parent_name. If line.name_for_transfer is NULL
+    # (pre-migration row), only use child_name → name fallback variant.
+    name_for_transfer = line.get("name_for_transfer")
+    if not name_for_transfer:
+        # Pre-migration: we don't know which name was used, default child→name.
+        fallback = pr_row.get("child_name") or pr_row.get("name") or pr_row.get("ten_khach")
+        expected = _build_payos_transfer_description(pr_row, fallback, transfer_code)
+        return expected.strip() != stored.strip()
+
+    # Build all current name variants from PR and check if stored still matches any.
+    current_names: list = []
+    child_name = pr_row.get("child_name")
+    parent_name = pr_row.get("name") or pr_row.get("ten_khach")
+    if child_name:
+        current_names.append(child_name)
+    if parent_name and parent_name != child_name:
+        current_names.append(parent_name)
+    if not current_names:
+        current_names.append(None)
+
+    for name_candidate in current_names:
+        expected = _build_payos_transfer_description(pr_row, name_candidate, transfer_code)
+        if expected.strip() == stored.strip():
+            return False
+
+    return True
+
+
 def recompute_payment_request_totals(sb, payment_request_id: str) -> dict[str, Any]:
     request_res = (
         sb.table("payment_requests")
