@@ -1059,6 +1059,13 @@ def _detect_missing_dates(sb, lookback_days: int = 60) -> tuple[list[date], date
         except ValueError:
             continue
 
+    print(
+        f"[CRM DetectMissing] query rows={len(rows)} "
+        f"distinct_dates={len(existing)} "
+        f"range={lookback_start}..{range_end} "
+        f"sample_row={rows[0] if rows else 'EMPTY'}"
+    )
+
     # range_start = max(earliest data, lookback_start)
     earliest_row = (
         sb.table("crm_sales_data")
@@ -1081,6 +1088,12 @@ def _detect_missing_dates(sb, lookback_days: int = 60) -> tuple[list[date], date
         if cur not in existing:
             missing.append(cur)
         cur += timedelta(days=1)
+
+    print(
+        f"[CRM DetectMissing] earliest_date={earliest_date} "
+        f"missing={len(missing)} "
+        f"existing_dates={sorted(d.isoformat() for d in existing)[:5]}..."
+    )
 
     return missing, earliest_date, range_end
 
