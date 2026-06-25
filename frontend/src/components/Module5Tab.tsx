@@ -65,6 +65,11 @@ function Toast({ message, onClose }: { message: string; onClose: () => void }) {
   );
 }
 
+function fmtDateVN(iso: string) {
+  const [y, m, d] = iso.split("-");
+  return `${d}/${m}/${y}`;
+}
+
 export default function Module5Tab() {
   const { readOnly } = usePermission("module5");
   const [syncDate, setSyncDate] = useState(yesterdayStr());
@@ -73,6 +78,11 @@ export default function Module5Tab() {
   const [toast, setToast] = useState("");
   const [hasToken, setHasToken] = useState<boolean | null>(null);
   const [tokenUpdatedAt, setTokenUpdatedAt] = useState<string | null>(null);
+
+  const [missingDates, setMissingDates] = useState<string[] | null>(null);
+  const [missingLoading, setMissingLoading] = useState(false);
+  const [missingRange, setMissingRange] = useState<{ start: string; end: string } | null>(null);
+  const [syncMissingLoading, setSyncMissingLoading] = useState(false);
 
   const checkToken = useCallback(async () => {
     setHasToken(null);
@@ -93,9 +103,61 @@ export default function Module5Tab() {
     }
   }, []);
 
+  const checkMissing = useCallback(async () => {
+    setMissingLoading(true);
+    try {
+      const res = await endpoints.crmData.missingDates(60);
+      setMissingDates(res.data.missing_dates);
+      setMissingRange(res.data.range);
+    } catch (e: unknown) {
+      const err = e as { response?: { status?: number; data?: { detail?: string } } };
+      const detail = err.response?.data?.detail;
+      if (err.response?.status !== 404) {
+        console.warn("[Module5] missing-dates failed:", detail);
+      }
+      setMissingDates(null);
+    } finally {
+      setMissingLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     checkToken();
   }, [checkToken]);
+
+  useEffect(() => {
+    if (hasToken) checkMissing();
+  }, [hasToken, checkMissing]);
+
+  async function handleSyncMissing() {
+    if (!missingDates || missingDates.length === 0) return;
+    setSyncMissingLoading(true);
+    setError("");
+    try {
+      const res = await endpoints.crmData.syncMissing(60, 5);
+      const { days_ok, days_failed, missing_count, failed } = res.data;
+      let msg = `Đã sync ${days_ok}/${missing_count} ngày thiếu.`;
+      if (days_failed > 0) {
+        const firstErr = failed[0]?.error?.slice(0, 80) ?? "?";
+        msg += ` ${days_failed} ngày lỗi: ${firstErr}`;
+      }
+      setToast(msg);
+      await checkMissing();
+    } catch (e: unknown) {
+      const err = e as { response?: { status?: number; data?: { detail?: string } } };
+      const detail = err.response?.data?.detail;
+      if (err.response?.status === 404) {
+        setError(
+          "API /crm/sync/missing chưa có trên server — backend Render chưa deploy bản mới. "
+          + "Vào Render Dashboard → Manual Deploy, đợi ~5 phút rồi thử lại."
+        );
+      } else {
+        setError(detail || "Sync ngày thiếu thất bại. Kiểm tra log backend.");
+      }
+    } finally {
+      setSyncMissingLoading(false);
+    }
+  }
 
   async function handleSync() {
     if (!syncDate) {
@@ -153,6 +215,94 @@ export default function Module5Tab() {
         </div>
         <TokenStatus hasToken={hasToken} updatedAt={tokenUpdatedAt} />
       </div>
+
+      {hasToken && (
+        <div className="rounded-xl border border-gmv-border bg-gmv-bg p-5">
+          <div className="flex items-start justify-between gap-3 mb-3">
+            <div>
+              <p className="text-sm font-semibold text-gmv-text-strong">
+                Phát hiện ngày thiếu — tự động sync 1 lúc
+              </p>
+              <p className="mt-1 text-xs text-gmv-muted">
+                Soi 60 ngày gần nhất trong DB, chỉ sync những ngày chưa có dữ liệu.
+              </p>
+            </div>
+            <button
+              onClick={checkMissing}
+              disabled={missingLoading}
+              className="text-xs text-gmv-primary hover:underline disabled:opacity-50 transition shrink-0"
+            >
+              {missingLoading ? "Đang kiểm tra…" : "Làm mới"}
+            </button>
+          </div>
+
+          {missingLoading && missingDates === null && (
+            <div className="rounded-lg bg-gmv-canvas px-4 py-3 text-sm text-gmv-muted">
+              Đang kiểm tra dữ liệu…
+            </div>
+          )}
+
+          {!missingLoading && missingDates !== null && missingDates.length === 0 && (
+            <div className="flex items-center gap-2 rounded-lg bg-emerald-50 px-4 py-3 text-sm text-emerald-700 ring-1 ring-emerald-200">
+              <span className="h-2.5 w-2.5 rounded-full bg-emerald-500" />
+              <span>
+                <strong className="text-emerald-800">Đầy đủ data</strong>
+                {missingRange && ` (${fmtDateVN(missingRange.start)} → ${fmtDateVN(missingRange.end)})`}.
+              </span>
+            </div>
+          )}
+
+          {!missingLoading && missingDates !== null && missingDates.length > 0 && (
+            <div className="space-y-3">
+              <div className="flex items-center gap-2 rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-800 ring-1 ring-amber-200">
+                <span className="h-2.5 w-2.5 rounded-full bg-amber-500" />
+                <span>
+                  Thiếu <strong>{missingDates.length} ngày</strong>
+                  {missingRange && ` trong khoảng ${fmtDateVN(missingRange.start)} → ${fmtDateVN(missingRange.end)}`}.
+                </span>
+              </div>
+
+              <div className="rounded-lg bg-gmv-canvas px-4 py-3 ring-1 ring-gmv-border max-h-32 overflow-y-auto">
+                <div className="flex flex-wrap gap-1.5">
+                  {missingDates.map((d) => (
+                    <span
+                      key={d}
+                      className="rounded-md bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-900 ring-1 ring-amber-200"
+                    >
+                      {fmtDateVN(d)}
+                    </span>
+                  ))}
+                </div>
+              </div>
+
+              {!readOnly && (
+                <Button
+                  size="md"
+                  variant="primary"
+                  disabled={syncMissingLoading}
+                  onClick={handleSyncMissing}
+                  className="bg-amber-600 hover:bg-amber-700 disabled:opacity-50"
+                >
+                  {syncMissingLoading ? (
+                    <span className="flex items-center gap-2">
+                      <span className="animate-spin">⟳</span>
+                      Đang sync {missingDates.length} ngày…
+                    </span>
+                  ) : (
+                    <span className="flex items-center gap-2">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                        <path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.85 1.05 6.5 2.74" />
+                        <polyline points="21 3 21 9 15 9" />
+                      </svg>
+                      SYNC {missingDates.length} NGÀY THIẾU
+                    </span>
+                  )}
+                </Button>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="rounded-xl border border-gmv-border bg-gmv-bg p-5">
         <p className="mb-4 text-sm font-semibold text-gmv-text-strong">

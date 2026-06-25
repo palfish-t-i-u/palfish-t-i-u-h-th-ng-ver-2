@@ -377,6 +377,28 @@ export const endpoints = {
         end_date: endDate,
         concurrency,
       }, { timeout: 600_000 }),
+    missingDates: (lookbackDays = 60) =>
+      api.get<{
+        missing_dates: string[];
+        count: number;
+        lookback_days: number;
+        range: { start: string; end: string };
+      }>("/crm/sync/missing-dates", { params: { lookback_days: lookbackDays } }),
+    syncMissing: (lookbackDays = 60, concurrency = 5) =>
+      api.post<{
+        ok: boolean;
+        days_ok: number;
+        days_failed: number;
+        missing_count: number;
+        concurrency?: number;
+        range: { start: string; end: string };
+        results: { date: string; rows_upserted: number; rows_fetched: number }[];
+        failed: { date: string; error: string }[];
+        message?: string;
+      }>("/crm/sync/missing", {
+        lookback_days: lookbackDays,
+        concurrency,
+      }, { timeout: 600_000 }),
     exportMaster: (startDate: string, endDate: string) =>
       api.get<Blob>("/crm/export-master", {
         params: { start_date: startDate, end_date: endDate },
