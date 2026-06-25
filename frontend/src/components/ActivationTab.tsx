@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { COURSE_PACKAGES } from "../constants/coursePackages";
 import { usePaymentFlow } from "../contexts/PaymentFlowContext";
 import { usePermission } from "../hooks/usePermission";
@@ -1659,6 +1659,22 @@ export default function ActivationTab() {
   // 1.5 — filter "Thưởng giới thiệu"
   const [referralFilter, setReferralFilter] = useState<"all" | "none" | "partial" | "full" | "any">("all");
 
+  // TOP3: activation urgent reminders banner
+  type ActivationReminder = { id: string; payment_request_id: string; pr_code: string; customer_name: string; requested_by_name: string; requested_at: string; note: string | null };
+  const [reminders, setReminders] = useState<ActivationReminder[]>([]);
+  const loadReminders = useCallback(async () => {
+    try {
+      const res = await endpoints.activationUrgentRemind.list();
+      setReminders(res.data.reminders);
+    } catch { /* ignore */ }
+  }, []);
+  useEffect(() => { loadReminders(); }, [loadReminders]);
+  const reminderByPrId = useMemo(() => {
+    const m = new Map<string, ActivationReminder>();
+    for (const r of reminders) m.set(r.payment_request_id, r);
+    return m;
+  }, [reminders]);
+
   useEffect(() => {
     if (nav.openArId) {
       setOpenArId(nav.openArId);
@@ -1718,6 +1734,7 @@ export default function ActivationTab() {
       if (saved.uids.some((u) => u.courses.some((c) => c.orderId?.trim()))) {
         notifyLedgerChanged();
       }
+      loadReminders();
       return { ok: true as const, saved };
     } catch (err) {
       const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
@@ -1769,6 +1786,34 @@ export default function ActivationTab() {
             }}
           >
             {apiNote}
+          </div>
+        )}
+
+        {reminders.length > 0 && (
+          <div style={{
+            padding: "10px 14px", borderRadius: 10,
+            border: "1px solid #ffcc80", background: "#fff3e0",
+            fontSize: 12.5, marginBottom: 8,
+            display: "flex", alignItems: "flex-start", gap: 8,
+          }}>
+            <Icons.Bell size={15} style={{ color: "#e65100", flexShrink: 0, marginTop: 1 }} />
+            <div>
+              <strong style={{ color: "#e65100" }}>Sales đang nhắc kích hoạt gấp ({reminders.length})</strong>
+              <div style={{ marginTop: 4, lineHeight: 1.6 }}>
+                {reminders.map((rem) => {
+                  const dt = new Date(rem.requested_at);
+                  return (
+                    <div key={rem.id} style={{ color: "var(--text-2)" }}>
+                      <strong>{rem.customer_name || rem.pr_code}</strong>
+                      {" — nhắc bởi "}{rem.requested_by_name}
+                      {" lúc "}{dt.toLocaleDateString("vi-VN")}{" "}
+                      {dt.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })}
+                      {rem.note && <span style={{ color: "var(--text-3)" }}> · &ldquo;{rem.note}&rdquo;</span>}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
           </div>
         )}
 
@@ -1893,11 +1938,18 @@ export default function ActivationTab() {
                     </td>
                   </tr>
                 )}
-                {filtered.map((a) => (
+                {filtered.map((a) => {
+                  const rem = a.prId ? reminderByPrId.get(a.prId) : undefined;
+                  const remTip = rem
+                    ? `Sales nhắc kích hoạt lúc ${new Date(rem.requested_at).toLocaleDateString("vi-VN")} ${new Date(rem.requested_at).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })} — bởi ${rem.requested_by_name}${rem.note ? ` · "${rem.note}"` : ""}`
+                    : undefined;
+                  return (
                   <tr
                     key={a.id}
                     className={openArId === a.id ? "selected" : ""}
                     onClick={() => setOpenArId(a.id)}
+                    title={remTip}
+                    style={rem ? { borderLeft: "3px solid #e65100" } : undefined}
                   >
                     <td>
                       <span className="ar-id-pill">{a.id}</span>
@@ -1983,7 +2035,8 @@ export default function ActivationTab() {
                       </span>
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>

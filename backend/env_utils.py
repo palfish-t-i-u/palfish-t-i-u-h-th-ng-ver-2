@@ -31,3 +31,17 @@ def resolve_dingtalk_webhook_url() -> str:
 
 def dingtalk_outbound_enabled() -> bool:
     return bool(resolve_dingtalk_webhook_url())
+
+
+def zalo_oa_app_id() -> str:
+    """Return configured Zalo OA app id, accepting the legacy shorter env name."""
+    return (os.getenv("ZALO_OA_APP_ID") or os.getenv("ZALO_OA_ID") or "").strip()
+
+
+def zalo_oa_configured() -> bool:
+    """True when the minimum local/env Zalo credentials are present."""
+    return bool(
+        zalo_oa_app_id()
+        and (os.getenv("ZALO_OA_APP_SECRET") or "").strip()
+        and (os.getenv("ZALO_OA_REFRESH_TOKEN") or "").strip()
+    )

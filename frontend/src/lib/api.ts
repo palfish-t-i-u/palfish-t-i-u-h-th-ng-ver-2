@@ -240,6 +240,21 @@ export const endpoints = {
         `/api/v1/invoice-reminders${status ? `?status=${status}` : ""}`
       ),
   },
+  activationUrgentRemind: {
+    create: (prId: string, note?: string) =>
+      api.post<{ ok: boolean; reminder: { id: string; payment_request_id: string; requested_at: string; requested_by_name: string; note: string | null } | null }>(
+        `/api/v1/payment-requests/${prId}/activation-urgent-remind`,
+        note ? { note } : {}
+      ),
+    status: (prId: string) =>
+      api.get<{ can_remind: boolean; last_reminder: { requested_at: string; requested_by_name: string } | null }>(
+        `/api/v1/payment-requests/${prId}/activation-urgent-remind`
+      ),
+    list: () =>
+      api.get<{ reminders: Array<{ id: string; payment_request_id: string; pr_code: string; customer_name: string; requested_by_name: string; requested_at: string; note: string | null }> }>(
+        `/api/v1/activation-urgent-reminders`
+      ),
+  },
   deliveryLog: {
     create: (arId: string, body: { channel: "email" | "zalo"; sent_to?: string; note?: string }) =>
       api.post<{ log: Record<string, unknown> }>(`/api/v1/invoices/${arId}/delivery-log`, body),
@@ -367,6 +382,28 @@ export const endpoints = {
       }>("/crm/sync/backfill", {
         start_date: startDate,
         end_date: endDate,
+        concurrency,
+      }, { timeout: 600_000 }),
+    missingDates: (lookbackDays = 60) =>
+      api.get<{
+        missing_dates: string[];
+        count: number;
+        lookback_days: number;
+        range: { start: string; end: string };
+      }>("/crm/sync/missing-dates", { params: { lookback_days: lookbackDays } }),
+    syncMissing: (lookbackDays = 60, concurrency = 5) =>
+      api.post<{
+        ok: boolean;
+        days_ok: number;
+        days_failed: number;
+        missing_count: number;
+        concurrency?: number;
+        range: { start: string; end: string };
+        results: { date: string; rows_upserted: number; rows_fetched: number }[];
+        failed: { date: string; error: string }[];
+        message?: string;
+      }>("/crm/sync/missing", {
+        lookback_days: lookbackDays,
         concurrency,
       }, { timeout: 600_000 }),
     exportMaster: (startDate: string, endDate: string) =>

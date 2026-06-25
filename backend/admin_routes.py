@@ -6,7 +6,7 @@ import json
 import os
 import time
 import unicodedata
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -92,6 +92,31 @@ class PermissionOverrideBody(BaseModel):
 class BulkOverrideBody(BaseModel):
     email: str
     overrides: dict[str, str]  # module_key -> access_level ("full"/"read"/"none"/"reset")
+
+
+class ZaloGroupCreatePayload(BaseModel):
+    team_code: str
+    group_id: str
+    group_name: str
+    is_active: bool
+
+
+class ZaloGroupPatchPayload(BaseModel):
+    group_id: str | None = None
+    group_name: str | None = None
+    is_active: bool | None = None
+
+
+class ZaloConfigPayload(BaseModel):
+    app_id: str
+    app_secret: str
+    access_token: str
+    refresh_token: str
+
+
+class ZaloTestMessagePayload(BaseModel):
+    group_id: str
+    message: str
 
 
 MODULE_LIST = [
@@ -1212,4 +1237,235 @@ def register_admin_routes(app, get_supabase):
 
         return {"data": rows}
 
+    # ------------------------------------------------------------------
+    # Audit logs — read-only query for reconciliation audit trail
+    # ------------------------------------------------------------------
+    @app.get("/audit-logs")
+    def get_audit_logs(
+        target_type: str | None = None,
+        target_id: str | None = None,
+        action: str | None = None,
+        limit: int = 50,
+        authorization: str | None = Header(None),
+    ):
+        sb = _sb_or_503(get_supabase)
+        actor = resolve_actor(sb, authorization)
+        require_module_access(sb, actor, "reconciliation")
+        q = sb.table("audit_logs").select("*").order("created_at", desc=True).limit(min(limit, 200))
+        if target_type:
+            q = q.eq("target_type", target_type.strip())
+        if target_id:
+            q = q.eq("target_id", target_id.strip())
+        if action:
+            q = q.eq("action", action.strip())
+        res = q.execute()
+        rows = res.data or []
 
+        # Enrich actor_name (display_name tu nhan_su_sale) de FE hien ten thay vi email.
+        actor_emails: set[str] = set()
+        for row in rows:
+            email = str(row.get("actor_email") or "").strip()
+            if not email or email.startswith("system:"):
+                continue
+            actor_emails.add(email.lower())
+        name_map: dict[str, str] = {}
+        if actor_emails:
+            try:
+                staff_res = (
+                    sb.table("nhan_su_sale")
+                    .select("email, display_name, crm_name")
+                    .in_("email", list(actor_emails))
+                    .execute()
+                )
+                for s in staff_res.data or []:
+                    email = str(s.get("email") or "").strip().lower()
+                    if not email:
+                        continue
+                    display = s.get("display_name") or s.get("crm_name")
+                    if display:
+                        name_map[email] = display
+            except Exception as exc:
+                print(f"[audit_logs] actor name lookup failed: {exc}")
+
+        for row in rows:
+            email = str(row.get("actor_email") or "").strip().lower()
+            row["actor_name"] = name_map.get(email) if email else None
+
+        return {"data": rows}
+
+    # ------------------------------------------------------------------
+    # Zalo Team Groups Management (Task G5)
+    # ------------------------------------------------------------------
+    @app.get("/api/v1/admin/zalo-groups")
+    def get_zalo_groups(authorization: str | None = Header(None)):
+        sb = _sb_or_503(get_supabase)
+        actor = resolve_actor(sb, authorization)
+        require_min_role(actor, "manager")
+
+        res = sb.table("zalo_team_groups").select("*").order("updated_at", desc=True).execute()
+        return {"data": res.data or []}
+
+    @app.post("/api/v1/admin/zalo-groups")
+    def create_zalo_group(payload: ZaloGroupCreatePayload, authorization: str | None = Header(None)):
+        sb = _sb_or_503(get_supabase)
+        actor = resolve_actor(sb, authorization)
+        require_min_role(actor, "manager")
+
+        data = {
+            "team_code": payload.team_code.strip(),
+            "group_id": payload.group_id.strip(),
+            "group_name": payload.group_name.strip(),
+            "is_active": payload.is_active,
+            "updated_at": datetime.now(timezone.utc).isoformat()
+        }
+
+        try:
+            res = sb.table("zalo_team_groups").insert(data).execute()
+            if not res.data:
+                raise HTTPException(400, "Không thể thêm mới Zalo Group (Có thể team_code đã tồn tại)")
+            return {"data": res.data[0]}
+        except Exception as e:
+            raise HTTPException(400, f"Lỗi thao tác CSDL: {str(e)}")
+
+    @app.patch("/api/v1/admin/zalo-groups/{team_code}")
+    def update_zalo_group(team_code: str, payload: ZaloGroupPatchPayload, authorization: str | None = Header(None)):
+        sb = _sb_or_503(get_supabase)
+        actor = resolve_actor(sb, authorization)
+        require_min_role(actor, "manager")
+
+        patch_data = {}
+        if payload.group_id is not None:
+            patch_data["group_id"] = payload.group_id.strip()
+        if payload.group_name is not None:
+            patch_data["group_name"] = payload.group_name.strip()
+        if payload.is_active is not None:
+            patch_data["is_active"] = payload.is_active
+
+        if not patch_data:
+            raise HTTPException(400, "Không có dữ liệu cập nhật")
+
+        patch_data["updated_at"] = datetime.now(timezone.utc).isoformat()
+
+        res = sb.table("zalo_team_groups").update(patch_data).eq("team_code", team_code).execute()
+        if not res.data:
+            raise HTTPException(404, f"Không tìm thấy Zalo Group cho team_code: {team_code}")
+        
+        return {"data": res.data[0]}
+
+    @app.delete("/api/v1/admin/zalo-groups/{team_code}")
+    def delete_zalo_group(team_code: str, authorization: str | None = Header(None)):
+        sb = _sb_or_503(get_supabase)
+        actor = resolve_actor(sb, authorization)
+        require_min_role(actor, "manager")
+
+        res = sb.table("zalo_team_groups").delete().eq("team_code", team_code).execute()
+        if not res.data:
+            raise HTTPException(404, f"Không tìm thấy Zalo Group cho team_code: {team_code}")
+        
+        return {"success": True, "deleted_team_code": team_code}
+
+    # ------------------------------------------------------------------
+    # Zalo Outbox Admin (Task G6)
+    # ------------------------------------------------------------------
+    @app.get("/api/v1/admin/zalo-outbox")
+    def get_zalo_outbox(authorization: str | None = Header(None)):
+        sb = _sb_or_503(get_supabase)
+        actor = resolve_actor(sb, authorization)
+        require_min_role(actor, "manager")
+
+        res = sb.table("zalo_outbox").select("*").order("created_at", desc=True).limit(50).execute()
+        return {"data": res.data or []}
+
+    @app.post("/api/v1/admin/zalo-outbox/{msg_id}/retry")
+    def retry_zalo_outbox(msg_id: int, authorization: str | None = Header(None)):
+        sb = _sb_or_503(get_supabase)
+        actor = resolve_actor(sb, authorization)
+        require_min_role(actor, "manager")
+
+        patch_data = {
+            "retries": 0,
+            "last_error": None,
+            "next_retry_at": datetime.now(timezone.utc).isoformat(),
+            "sent_at": None
+        }
+
+        res = sb.table("zalo_outbox").update(patch_data).eq("id", msg_id).execute()
+        if not res.data:
+            raise HTTPException(404, f"Không tìm thấy tin nhắn Zalo Outbox với ID: {msg_id}")
+        
+        return {"ok": True}
+
+    # ------------------------------------------------------------------
+    # Zalo OA Configuration (Task G4)
+    # ------------------------------------------------------------------
+    @app.get("/api/v1/admin/zalo-config")
+    def get_zalo_config(authorization: str | None = Header(None)):
+        sb = _sb_or_503(get_supabase)
+        actor = resolve_actor(sb, authorization)
+        require_min_role(actor, "manager")
+
+        res = sb.table("zalo_oa_credentials").select("app_id, expires_at").limit(1).execute()
+        if not res.data:
+            return {"data": None}
+
+        record = res.data[0]
+        expires_at_str = record.get("expires_at")
+        status = "good"
+
+        if expires_at_str:
+            try:
+                # Xử lý UTC iso format
+                expires_dt = datetime.fromisoformat(expires_at_str.replace("Z", "+00:00"))
+                now_dt = datetime.now(timezone.utc)
+                remaining_seconds = (expires_dt - now_dt).total_seconds()
+                if remaining_seconds <= 0:
+                    status = "expired"
+                elif remaining_seconds <= 3600:
+                    status = "expiring"
+            except Exception:
+                pass
+
+        return {
+            "data": {
+                "app_id": record.get("app_id"),
+                "expires_at": expires_at_str,
+                "status": status
+            }
+        }
+
+    @app.post("/api/v1/admin/zalo-config")
+    def upsert_zalo_config(payload: ZaloConfigPayload, authorization: str | None = Header(None)):
+        sb = _sb_or_503(get_supabase)
+        actor = resolve_actor(sb, authorization)
+        require_min_role(actor, "manager")
+
+        # Xóa cấu hình cũ và thêm cấu hình mới
+        sb.table("zalo_oa_credentials").delete().neq("id", 0).execute()
+
+        data = {
+            "app_id": payload.app_id.strip(),
+            "app_secret": payload.app_secret.strip(),
+            "access_token": payload.access_token.strip(),
+            "refresh_token": payload.refresh_token.strip(),
+            "expires_at": (datetime.now(timezone.utc) + timedelta(hours=25)).isoformat(),
+            "updated_at": datetime.now(timezone.utc).isoformat()
+        }
+
+        res = sb.table("zalo_oa_credentials").insert(data).execute()
+        if not res.data:
+            raise HTTPException(400, "Không thể lưu cấu hình Zalo OA")
+
+        return {"ok": True}
+
+    @app.post("/api/v1/admin/zalo-config/test")
+    def test_zalo_config(payload: ZaloTestMessagePayload, authorization: str | None = Header(None)):
+        sb = _sb_or_503(get_supabase)
+        actor = resolve_actor(sb, authorization)
+        require_min_role(actor, "manager")
+
+        from zalo_notifier import send_text_to_group
+        try:
+            msg_id = send_text_to_group(payload.group_id, payload.message, sb=sb)
+            return {"ok": True, "message_id": msg_id}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}

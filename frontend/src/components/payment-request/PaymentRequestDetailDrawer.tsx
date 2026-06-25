@@ -1436,6 +1436,46 @@ function useInvoiceRemind(prId: string | null) {
   return { canRemind, lastReminder, sending, remind, errorMessage, dismissError };
 }
 
+function useActivationRemind(prId: string | null) {
+  const [canRemind, setCanRemind] = useState(true);
+  const [lastReminder, setLastReminder] = useState<{ requested_at: string; requested_by_name: string } | null>(null);
+  const [sending, setSending] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    if (!prId) return;
+    try {
+      const res = await endpoints.activationUrgentRemind.status(prId);
+      setCanRemind(res.data.can_remind);
+      setLastReminder(res.data.last_reminder);
+    } catch { /* ignore */ }
+  }, [prId]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const remind = useCallback(async (note?: string) => {
+    if (!prId || sending) return;
+    setSending(true);
+    try {
+      await endpoints.activationUrgentRemind.create(prId, note);
+      setCanRemind(false);
+      setLastReminder({ requested_at: new Date().toISOString(), requested_by_name: "Bạn" });
+    } catch (err) {
+      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      setErrorMessage(
+        typeof detail === "string" && detail
+          ? detail
+          : "Không gửi được nhắc kích hoạt gấp. Vui lòng thử lại."
+      );
+    } finally {
+      setSending(false);
+    }
+  }, [prId, sending]);
+
+  const dismissError = useCallback(() => setErrorMessage(null), []);
+  return { canRemind, lastReminder, sending, remind, errorMessage, dismissError };
+}
+
 function useDeliveryLog(arId: string | null) {
   const [logs, setLogs] = useState<Array<{ sent_at: string; channel: string; sent_to: string; sent_by_email: string }>>([]);
 
@@ -1558,6 +1598,16 @@ export default function PaymentRequestDetailDrawer({
   }, [showAdd]);
 
   const { canRemind, lastReminder, sending: remindSending, remind, errorMessage: remindError, dismissError: dismissRemindError } = useInvoiceRemind(open && request ? request.id : null);
+  const {
+    canRemind: canRemindActivation,
+    lastReminder: lastActivationReminder,
+    sending: activationRemindSending,
+    remind: remindActivation,
+    errorMessage: activationRemindError,
+    dismissError: dismissActivationRemindError,
+  } = useActivationRemind(open && request ? request.id : null);
+  const [activationNoteModalOpen, setActivationNoteModalOpen] = useState(false);
+  const [activationNote, setActivationNote] = useState("");
   const { latestLog: deliveryLog } = useDeliveryLog(open && activeRequestId ? activeRequestId : null);
 
   // PR3 (1B-04): nếu PR đã đủ tiền → hiện popup hướng dẫn thay vì mở form tạo lần TT
@@ -2293,6 +2343,21 @@ export default function PaymentRequestDetailDrawer({
                 <Icons.Bell size={13} /> {remindSending ? "Đang gửi…" : !canRemind ? "Đã nhắc" : "Nhắc xuất HĐ"}
               </button>
             )}
+            {!readOnly && hasActiveRequest && !activeSummary.allActivated && (
+              <button
+                className="btn btn-sm btn-outline"
+                disabled={!canRemindActivation || activationRemindSending}
+                onClick={() => { setActivationNote(""); setActivationNoteModalOpen(true); }}
+                title={
+                  !canRemindActivation && lastActivationReminder
+                    ? `Đã nhắc lúc ${formatPaymentDateFull(lastActivationReminder.requested_at)} bởi ${lastActivationReminder.requested_by_name}`
+                    : "Nhắc Ops kích hoạt khóa học gấp qua Zalo"
+                }
+                style={!canRemindActivation ? { opacity: 0.6 } : undefined}
+              >
+                <Icons.Bell size={13} /> {activationRemindSending ? "Đang gửi…" : !canRemindActivation ? "Đã nhắc kích hoạt" : "Nhắc kích hoạt gấp"}
+              </button>
+            )}
             {canCancel && !readOnly && (
               <button className="btn btn-outline btn-sm" style={{ color: "var(--danger)" }} onClick={onCancelRequest}>
                 <Icons.XCircle size={13} /> Huỷ Payment Request
@@ -2370,6 +2435,75 @@ export default function PaymentRequestDetailDrawer({
           </div>
         );
       })()}
+      {/* TOP3 — modal nhập note nhắc kích hoạt gấp */}
+      {activationNoteModalOpen && (
+        <div
+          className="gmv-prototype-modal-scrim"
+          onClick={() => setActivationNoteModalOpen(false)}
+          style={{ zIndex: 140 }}
+        >
+          <div className="modal" style={{ width: "min(420px, 100%)" }} onClick={(e) => e.stopPropagation()}>
+            <div className="modal-head">
+              <div><h3>Nhắc kích hoạt khóa học gấp</h3></div>
+              <button className="drawer-close" onClick={() => setActivationNoteModalOpen(false)}>
+                <Icons.Close size={16} />
+              </button>
+            </div>
+            <div className="modal-body">
+              <div style={{ fontSize: 13, color: "var(--text-2)", marginBottom: 8, lineHeight: 1.5 }}>
+                Tin nhắn sẽ được gửi tới nhóm Zalo OA để Ops xử lý gấp.
+              </div>
+              <label style={{ fontSize: 12, fontWeight: 600, color: "var(--text-3)" }}>Ghi chú (tuỳ chọn)</label>
+              <textarea
+                value={activationNote}
+                onChange={(e) => setActivationNote(e.target.value)}
+                placeholder="VD: KH cần học thứ 2 tuần sau"
+                rows={2}
+                style={{ width: "100%", marginTop: 4, padding: "8px 10px", border: "1px solid var(--border)", borderRadius: 6, fontSize: 13, resize: "vertical" }}
+              />
+            </div>
+            <div className="modal-foot">
+              <button className="btn btn-outline" onClick={() => setActivationNoteModalOpen(false)}>Huỷ</button>
+              <button
+                className="btn btn-primary"
+                disabled={activationRemindSending}
+                onClick={async () => {
+                  await remindActivation(activationNote || undefined);
+                  setActivationNoteModalOpen(false);
+                }}
+              >
+                {activationRemindSending ? "Đang gửi…" : "Gửi nhắc"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* TOP3 — popup lỗi nhắc kích hoạt */}
+      {activationRemindError && (
+        <div
+          className="gmv-prototype-modal-scrim"
+          onClick={dismissActivationRemindError}
+          style={{ zIndex: 140 }}
+        >
+          <div className="modal" style={{ width: "min(420px, 100%)" }} onClick={(e) => e.stopPropagation()}>
+            <div className="modal-head">
+              <div><h3>Không gửi được nhắc kích hoạt</h3></div>
+              <button className="drawer-close" onClick={dismissActivationRemindError}>
+                <Icons.Close size={16} />
+              </button>
+            </div>
+            <div className="modal-body">
+              <div style={{ display: "flex", gap: 10, alignItems: "flex-start", padding: "4px 0" }}>
+                <Icons.AlertCircle size={20} stroke="var(--danger, #ef4444)" />
+                <div style={{ fontSize: 13.5, lineHeight: 1.6, color: "var(--text-2)" }}>{activationRemindError}</div>
+              </div>
+            </div>
+            <div className="modal-foot">
+              <button className="btn btn-primary" onClick={dismissActivationRemindError}>Đã hiểu</button>
+            </div>
+          </div>
+        </div>
+      )}
       {/* PR3 (1B-04) — popup hướng dẫn khi PR đã đủ tiền */}
       {prFullModalOpen && (
         <div

@@ -1,0 +1,12 @@
+{
+  "id": 123456789,
+  "gateway": "SePay",
+  "transactionDate": "2026-06-16 15:30:00",
+  "accountNumber": "0123456789",
+  "subAccount": "VAA123",
+  "transferAmount": 500000,
+  "transferContent": "A1B2C thanh toan don hang",
+  "referenceNumber": "FT26167123456",
+  "description": "Thanh toan don hang A1B2C",
+  "accumulated": 10500000
+}

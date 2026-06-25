@@ -11,6 +11,14 @@ from pydantic import BaseModel
 
 from admin_routes import require_module_access, require_module_write
 from rbac import enforce_report_scope, require_min_role, resolve_actor, scope_sale_names, visible_creator_emails
+from utils.team_mapper import (
+    TEAM_PIVOT_LABELS,
+    KNOWN_BC01_TEAMS,
+    BC01_TEAM_ORDER,
+    TEAM_TO_CANONICAL,
+    team_to_pivot_label,
+    team_to_canonical,
+)
 
 DEFAULT_TY_GIA = Decimal("3700")
 
@@ -62,55 +70,6 @@ def load_team_map(sb) -> dict[str, str]:
     return team_map
 
 
-TEAM_PIVOT_LABELS: dict[str, str] = {
-    "Inhouse 1": "HN inhouse",
-    "Inhouse 2": "HN inhouse 2",
-    "HCM (Online)": "HCM team",
-    "In-house": "HN inhouse",
-    "HCM team": "HCM team",
-    "Linh Dam (Store)": "Linh Dam",
-    "Offline": "Offline",
-    "An Binh (Store)": "An Binh",
-}
-
-KNOWN_BC01_TEAMS = frozenset(
-    {
-        "Inhouse 1",
-        "Inhouse 2",
-        "HCM (Online)",
-        "Linh Dam (Store)",
-        "Offline",
-        "An Binh (Store)",
-    }
-)
-
-BC01_TEAM_ORDER = [
-    "Inhouse 1",
-    "Inhouse 2",
-    "HCM (Online)",
-    "Linh Dam (Store)",
-    "Offline",
-    "An Binh (Store)",
-    "Khác",
-]
-
-TEAM_TO_CANONICAL: dict[str, str] = {
-    "Inhouse 1": "Inhouse 1",
-    "Inhouse 2": "Inhouse 2",
-    "HCM (Online)": "HCM (Online)",
-    "In-house": "Inhouse 1",
-    "HN inhouse": "Inhouse 1",
-    "HN inhouse 2": "Inhouse 2",
-    "HCM team": "HCM (Online)",
-    "Linh Dam": "Linh Dam (Store)",
-    "Linh Dam Store": "Linh Dam (Store)",
-    "Linh Dam (Store)": "Linh Dam (Store)",
-    "Offline": "Offline",
-    "Offline Store": "Offline",
-    "An Binh": "An Binh (Store)",
-    "An Binh Store": "An Binh (Store)",
-    "An Binh (Store)": "An Binh (Store)",
-}
 
 BC02_TYPE_ORDER: list[str] = [
     "Quảng cáo",
@@ -199,29 +158,8 @@ def vnd_to_rmb(vnd: int | float, rate: Decimal = DEFAULT_TY_GIA) -> float:
     return float(r)
 
 
-def team_to_pivot_label(team: str | None) -> str:
-    t = (team or "").strip()
-    if not t:
-        return "Khác"
-    return TEAM_PIVOT_LABELS.get(t, t)
-
-
 def _is_test_email(email: str) -> bool:
     return email.strip().lower().endswith("@dev")
-
-
-def team_to_canonical(team: str | None, team_pivot_label: str | None = None) -> str:
-    t = (team or "").strip()
-    if t in TEAM_TO_CANONICAL:
-        return TEAM_TO_CANONICAL[t]
-    pl = (team_pivot_label or "").strip()
-    if pl in TEAM_TO_CANONICAL:
-        return TEAM_TO_CANONICAL[pl]
-    if t in KNOWN_BC01_TEAMS:
-        return t
-    if pl in KNOWN_BC01_TEAMS:
-        return pl
-    return "Khác"
 
 
 def _bc02_type_goc(loai: str | None, loai2: str | None) -> str:

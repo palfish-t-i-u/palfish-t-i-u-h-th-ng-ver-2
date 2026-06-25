@@ -610,6 +610,11 @@ class CrmBackfillBody(BaseModel):
     concurrency: int = BACKFILL_CONCURRENCY_DEFAULT
 
 
+class CrmSyncMissingBody(BaseModel):
+    lookback_days: int = 60
+    concurrency: int = BACKFILL_CONCURRENCY_DEFAULT
+
+
 def _default_sync_date() -> date:
     """Cron / mặc định: hôm qua (PalFish thường chốt số sau 0h)."""
     return date.today() - timedelta(days=1)
@@ -922,29 +927,21 @@ async def _run_incremental_day_sync(sb, sync_day: date) -> dict[str, Any]:
     }
 
 
-async def _run_backfill_range(
+async def _run_backfill_dates(
     sb,
-    d_start: date,
-    d_end: date,
+    days: list[date],
     *,
     concurrency: int = BACKFILL_CONCURRENCY_DEFAULT,
+    log_label: str = "Backfill",
 ) -> dict[str, Any]:
-    """
-    Backfill nhanh: 1 token + 1 dept probe, N ngày song song (semaphore).
-    ~31 ngày / 5 luồng ≈ 7 vòng × ~3s ≈ 20–40s thay vì 2–3 phút tuần tự.
-    """
+    """Backfill song song N ngày/lúc cho list bất kỳ (không cần liên tục)."""
     conc = max(1, min(int(concurrency or BACKFILL_CONCURRENCY_DEFAULT), BACKFILL_CONCURRENCY_MAX))
-
-    days: list[date] = []
-    cur = d_start
-    while cur <= d_end:
-        days.append(cur)
-        cur += timedelta(days=1)
+    days = sorted(set(days))
 
     client, bundle = await _crm_http_client(sb)
     prefs = _extract_crm_prefs(bundle.get("download_payload"))
     print(
-        f"[CRM Backfill] {d_start}→{d_end} days={len(days)} concurrency={conc} "
+        f"[CRM {log_label}] days={len(days)} concurrency={conc} "
         f"dept={prefs.get('department_id')}"
     )
 
@@ -954,6 +951,18 @@ async def _run_backfill_range(
     dept_fallback = False
     captured_dept = int(prefs.get("department_id") or VN_ORG_DEPARTMENT_ID)
     show_type_used = prefs.get("show_type")
+
+    if not days:
+        return {
+            "ok": True,
+            "days_ok": 0, "days_failed": 0, "concurrency": conc,
+            "results": [], "failed": [],
+            "sync_mode": "incremental_backfill_parallel",
+            "department_id_used": dept_id,
+            "department_id_captured": captured_dept,
+            "department_fallback": dept_fallback,
+            "show_type_used": show_type_used,
+        }
 
     sem = asyncio.Semaphore(conc)
 
@@ -975,7 +984,7 @@ async def _run_backfill_range(
 
     async with client:
         dept_id, dept_fallback, captured_dept = await _resolve_sync_department_id(
-            client, prefs, d_end
+            client, prefs, days[-1]
         )
         await asyncio.gather(*[_sync_one(d) for d in days])
 
@@ -984,7 +993,6 @@ async def _run_backfill_range(
 
     return {
         "ok": len(days_failed) == 0,
-        "period": {"start": d_start.isoformat(), "end": d_end.isoformat()},
         "days_ok": len(days_ok),
         "days_failed": len(days_failed),
         "concurrency": conc,
@@ -996,6 +1004,98 @@ async def _run_backfill_range(
         "department_fallback": dept_fallback,
         "show_type_used": show_type_used,
     }
+
+
+async def _run_backfill_range(
+    sb,
+    d_start: date,
+    d_end: date,
+    *,
+    concurrency: int = BACKFILL_CONCURRENCY_DEFAULT,
+) -> dict[str, Any]:
+    """Backfill liên tục từ d_start → d_end (inclusive)."""
+    days: list[date] = []
+    cur = d_start
+    while cur <= d_end:
+        days.append(cur)
+        cur += timedelta(days=1)
+
+    result = await _run_backfill_dates(
+        sb, days, concurrency=concurrency,
+        log_label=f"Backfill {d_start}→{d_end}",
+    )
+    result["period"] = {"start": d_start.isoformat(), "end": d_end.isoformat()}
+    return result
+
+
+def _detect_missing_dates(sb, lookback_days: int = 60) -> tuple[list[date], date, date]:
+    """
+    Soi crm_sales_data, trả (missing_dates, range_start, range_end).
+    range_end = hôm qua (palfish chốt sau 0h).
+    range_start = max(MIN(report_date), range_end - lookback_days).
+    """
+    range_end = date.today() - timedelta(days=1)
+    lookback_start = range_end - timedelta(days=max(1, lookback_days) - 1)
+
+    # PostgREST server-side max-rows=1000 ignores client .limit().
+    # Paginate with .range() to fetch all rows.
+    existing: set[date] = set()
+    page_size = 1000
+    offset = 0
+    total_fetched = 0
+    while True:
+        resp = (
+            sb.table("crm_sales_data")
+            .select("report_date")
+            .gte("report_date", lookback_start.isoformat())
+            .lte("report_date", range_end.isoformat())
+            .range(offset, offset + page_size - 1)
+            .execute()
+        )
+        rows = getattr(resp, "data", None) or []
+        total_fetched += len(rows)
+        for r in rows:
+            raw = r.get("report_date")
+            if not raw:
+                continue
+            try:
+                existing.add(date.fromisoformat(str(raw)[:10]))
+            except ValueError:
+                continue
+        if len(rows) < page_size:
+            break
+        offset += page_size
+
+    print(
+        f"[CRM DetectMissing] fetched={total_fetched} "
+        f"distinct_dates={len(existing)} "
+        f"range={lookback_start}..{range_end}"
+    )
+
+    # range_start = max(earliest data, lookback_start)
+    earliest_row = (
+        sb.table("crm_sales_data")
+        .select("report_date")
+        .order("report_date", desc=False)
+        .limit(1)
+        .execute()
+    )
+    earliest_rows = getattr(earliest_row, "data", None) or []
+    earliest_date = lookback_start
+    if earliest_rows:
+        try:
+            earliest_date = max(lookback_start, date.fromisoformat(str(earliest_rows[0]["report_date"])[:10]))
+        except (ValueError, KeyError):
+            pass
+
+    missing: list[date] = []
+    cur = earliest_date
+    while cur <= range_end:
+        if cur not in existing:
+            missing.append(cur)
+        cur += timedelta(days=1)
+
+    return missing, earliest_date, range_end
 
 
 async def fetch_live_crm_rows(
@@ -1450,6 +1550,58 @@ def register_crm_routes(app, supabase_factory):
             raise
         except Exception as exc:
             raise HTTPException(500, f"Backfill CRM thất bại: {exc}") from exc
+
+    @app.get("/crm/sync/missing-dates", tags=["CRM"])
+    async def crm_sync_missing_dates(
+        lookback_days: int = Query(60, ge=1, le=365),
+        authorization: str | None = Header(None),
+    ):
+        """Soi crm_sales_data trong N ngày gần nhất → trả list ngày thiếu (chưa sync)."""
+        sb = supabase_factory()
+        actor = resolve_actor(sb, authorization)
+        require_min_role(actor, "manager")
+
+        missing, range_start, range_end = _detect_missing_dates(sb, lookback_days)
+        return {
+            "missing_dates": [d.isoformat() for d in missing],
+            "count": len(missing),
+            "lookback_days": lookback_days,
+            "range": {"start": range_start.isoformat(), "end": range_end.isoformat()},
+        }
+
+    @app.post("/crm/sync/missing", tags=["CRM"])
+    async def crm_sync_missing(
+        body: CrmSyncMissingBody, authorization: str | None = Header(None),
+    ):
+        """Tự detect ngày thiếu trong crm_sales_data và sync song song chỉ những ngày đó."""
+        sb = supabase_factory()
+        actor = resolve_actor(sb, authorization)
+        require_min_role(actor, "manager")
+
+        missing, range_start, range_end = _detect_missing_dates(sb, body.lookback_days)
+        if not missing:
+            return {
+                "ok": True,
+                "days_ok": 0, "days_failed": 0,
+                "results": [], "failed": [],
+                "missing_count": 0,
+                "range": {"start": range_start.isoformat(), "end": range_end.isoformat()},
+                "message": "Không có ngày nào thiếu — data đầy đủ.",
+            }
+
+        try:
+            result = await _run_backfill_dates(
+                sb, missing, concurrency=body.concurrency,
+                log_label=f"SyncMissing({len(missing)})",
+            )
+        except HTTPException:
+            raise
+        except Exception as exc:
+            raise HTTPException(500, f"Sync ngày thiếu thất bại: {exc}") from exc
+
+        result["missing_count"] = len(missing)
+        result["range"] = {"start": range_start.isoformat(), "end": range_end.isoformat()}
+        return result
 
     @app.get("/crm/export-master", tags=["CRM"])
     async def export_master(

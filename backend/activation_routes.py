@@ -8,7 +8,7 @@ from __future__ import annotations
 import io
 import re
 import zipfile
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timezone, timedelta
 from typing import Any
 
 from fastapi import Body, HTTPException, Query, Header
@@ -23,6 +23,9 @@ from invoice_routes import (
 )
 from revenue_routes import sync_ledger_from_ar_course
 from rbac import resolve_actor
+from utils.zalo_message_builder import build_activation_urgent_reminder_message
+
+OPS_GROUP_TEAM_CODE = "Inhouse 2"
 
 # Parent PR must be fully paid (100% or overpaid) before course activation.
 ALLOWED_PR_STATES = frozenset({"done", "over"})
@@ -124,6 +127,10 @@ class CreditReferralBody(BaseModel):
     side: str  # "referee" or "referrer"
     credited: bool
     reason: str | None = None
+
+
+class ActivationReminderBody(BaseModel):
+    note: str | None = None
 
 
 class ExportBatchBody(BaseModel):
@@ -1824,3 +1831,174 @@ def register_activation_routes(app, supabase_factory):
         actor = resolve_actor(sb, authorization)
         items = body.items if body else None
         return _export_b4_tax_batch(sb, items)
+
+    # ── TOP3: Activation urgent reminder ──
+
+    @app.post("/api/v1/payment-requests/{pr_id}/activation-urgent-remind", tags=["Activation"])
+    def create_activation_urgent_reminder(
+        pr_id: str,
+        body: ActivationReminderBody | None = None,
+        authorization: str | None = Header(None),
+    ):
+        sb = supabase_factory()
+        if not sb:
+            raise HTTPException(503, "Supabase chưa cấu hình")
+        actor = resolve_actor(sb, authorization)
+
+        pr = _fetch_payment_request(sb, pr_id)
+
+        ar_res = sb.table("active_requests").select("id, status, pr_id, uids_data").eq("pr_id", pr_id).limit(1).execute()
+        ar = ar_res.data[0] if ar_res.data else None
+        if not ar:
+            raise HTTPException(400, "PR chưa có Active Request")
+        if ar.get("status") == "activated":
+            raise HTTPException(400, "Khóa học đã được kích hoạt")
+
+        # Parse pending courses từ uids_data trước khi check cooldown
+        pending_courses: list[dict[str, str]] = []
+        courses_total = 0
+        courses_activated = 0
+        if ar and ar.get("uids_data"):
+            uids = ar["uids_data"] if isinstance(ar["uids_data"], list) else []
+            for uid_block in uids:
+                if not isinstance(uid_block, dict):
+                    continue
+                for c in (uid_block.get("courses") or []):
+                    if not isinstance(c, dict):
+                        continue
+                    courses_total += 1
+                    if (c.get("order_id") or "").strip():
+                        courses_activated += 1
+                    else:
+                        pending_courses.append({
+                            "code": c.get("code") or "?",
+                            "name": (c.get("name") or "").strip() or "(chưa có tên gói)",
+                        })
+
+        if courses_total > 0 and not pending_courses:
+            raise HTTPException(400, "Tất cả gói đã có Order ID — không cần nhắc")
+
+        # Smart cooldown: cho nhắc lại nếu >15 phút HOẶC pending count đã giảm
+        last = sb.table("activation_reminders") \
+            .select("id, requested_at, pending_courses_snapshot") \
+            .eq("payment_request_id", pr_id) \
+            .is_("resolved_at", "null") \
+            .order("requested_at", desc=True) \
+            .limit(1).execute()
+
+        if last.data:
+            last_row = last.data[0]
+            last_at = datetime.fromisoformat(last_row["requested_at"].replace("Z", "+00:00"))
+            elapsed = datetime.now(timezone.utc) - last_at
+            last_pending_count = len(last_row.get("pending_courses_snapshot") or [])
+            progress_made = len(pending_courses) < last_pending_count
+            cooldown_elapsed = elapsed >= timedelta(minutes=15)
+            if not progress_made and not cooldown_elapsed:
+                wait_min = int((timedelta(minutes=15) - elapsed).total_seconds() / 60) + 1
+                raise HTTPException(429, f"Đã nhắc gần đây. Đợi ~{wait_min} phút hoặc đợi Ops kích hoạt thêm gói rồi nhắc lại")
+
+        sale_name = (actor.staff or {}).get("display_name") or (actor.staff or {}).get("crm_name") or actor.email
+        note_text = (body.note or "").strip() if body else None
+
+        reminder = sb.table("activation_reminders").insert({
+            "payment_request_id": pr_id,
+            "requested_by": actor.user_id,
+            "requested_by_name": sale_name,
+            "note": note_text or None,
+            "pending_courses_snapshot": pending_courses,
+        }).execute()
+
+        g = sb.table("zalo_team_groups") \
+            .select("group_id, is_active") \
+            .eq("team_code", OPS_GROUP_TEAM_CODE) \
+            .limit(1).execute()
+        if not g.data or not g.data[0].get("is_active"):
+            return {"ok": True, "zalo": "skipped_no_group", "reminder": reminder.data[0] if reminder.data else None}
+
+        result = build_activation_urgent_reminder_message(
+            {
+                "pr_code": pr_id,
+                "customer_name": pr.get("name") or pr.get("child_name") or "?",
+                "courses_total": courses_total,
+                "courses_activated": courses_activated,
+                "pending_courses": pending_courses,
+                "note": note_text,
+            },
+            {
+                "display_name": sale_name,
+                "crm_name": (actor.staff or {}).get("crm_name", ""),
+                "team": (actor.staff or {}).get("team", ""),
+            },
+        )
+        sb.table("zalo_outbox").insert({
+            "event_type": "activation_urgent_reminder",
+            "source_table": "activation_reminders",
+            "source_id": reminder.data[0]["id"] if reminder.data else "00000000-0000-0000-0000-000000000000",
+            "group_id": g.data[0]["group_id"],
+            "message": result["message"],
+        }).execute()
+
+        return {"ok": True, "reminder": reminder.data[0] if reminder.data else None}
+
+    @app.get("/api/v1/payment-requests/{pr_id}/activation-urgent-remind", tags=["Activation"])
+    def get_activation_urgent_reminder_status(
+        pr_id: str,
+        authorization: str | None = Header(None),
+    ):
+        sb = supabase_factory()
+        if not sb:
+            raise HTTPException(503, "Supabase chưa cấu hình")
+        actor = resolve_actor(sb, authorization)
+
+        res = sb.table("activation_reminders") \
+            .select("requested_at, requested_by_name") \
+            .eq("payment_request_id", pr_id) \
+            .is_("resolved_at", "null") \
+            .order("requested_at", desc=True) \
+            .limit(1).execute()
+
+        can_remind = True
+        if res.data:
+            last_at = datetime.fromisoformat(res.data[0]["requested_at"].replace("Z", "+00:00"))
+            elapsed = datetime.now(timezone.utc) - last_at
+            can_remind = elapsed >= timedelta(minutes=15)
+
+        return {
+            "can_remind": can_remind,
+            "last_reminder": res.data[0] if res.data else None,
+        }
+
+    @app.get("/api/v1/activation-urgent-reminders", tags=["Activation"])
+    def list_activation_urgent_reminders(
+        authorization: str | None = Header(None),
+    ):
+        sb = supabase_factory()
+        if not sb:
+            raise HTTPException(503, "Supabase chưa cấu hình")
+        actor = resolve_actor(sb, authorization)
+
+        res = sb.table("activation_reminders") \
+            .select("id, payment_request_id, requested_by_name, requested_at, note") \
+            .is_("resolved_at", "null") \
+            .order("requested_at", desc=True) \
+            .execute()
+
+        reminders = []
+        pr_ids = list({r["payment_request_id"] for r in (res.data or [])})
+        pr_map: dict[str, dict[str, Any]] = {}
+        if pr_ids:
+            pr_res = sb.table("payment_requests").select("id, name").in_("id", pr_ids).execute()
+            pr_map = {p["id"]: p for p in (pr_res.data or [])}
+
+        for r in (res.data or []):
+            pr_info = pr_map.get(r["payment_request_id"], {})
+            reminders.append({
+                "id": r["id"],
+                "payment_request_id": r["payment_request_id"],
+                "pr_code": r["payment_request_id"],
+                "customer_name": pr_info.get("name", ""),
+                "requested_by_name": r["requested_by_name"],
+                "requested_at": r["requested_at"],
+                "note": r.get("note"),
+            })
+        return {"reminders": reminders}
