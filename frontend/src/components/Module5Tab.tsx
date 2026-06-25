@@ -82,6 +82,7 @@ export default function Module5Tab() {
   const [missingDates, setMissingDates] = useState<string[] | null>(null);
   const [missingLoading, setMissingLoading] = useState(false);
   const [missingRange, setMissingRange] = useState<{ start: string; end: string } | null>(null);
+  const [missingError, setMissingError] = useState<string>("");
   const [syncMissingLoading, setSyncMissingLoading] = useState(false);
 
   const checkToken = useCallback(async () => {
@@ -105,17 +106,26 @@ export default function Module5Tab() {
 
   const checkMissing = useCallback(async () => {
     setMissingLoading(true);
+    setMissingError("");
     try {
       const res = await endpoints.crmData.missingDates(60);
       setMissingDates(res.data.missing_dates);
       setMissingRange(res.data.range);
     } catch (e: unknown) {
       const err = e as { response?: { status?: number; data?: { detail?: string } } };
+      const status = err.response?.status;
       const detail = err.response?.data?.detail;
-      if (err.response?.status !== 404) {
-        console.warn("[Module5] missing-dates failed:", detail);
-      }
       setMissingDates(null);
+      if (status === 404) {
+        setMissingError(
+          "API /crm/sync/missing-dates chưa có trên backend — Render đang deploy bản mới. "
+          + "Đợi ~5 phút rồi bấm Làm mới."
+        );
+      } else if (status === 403) {
+        setMissingError("Bạn cần quyền manager trở lên để dùng chức năng này.");
+      } else {
+        setMissingError(detail || "Không kiểm tra được ngày thiếu. Bấm Làm mới thử lại.");
+      }
     } finally {
       setMissingLoading(false);
     }
@@ -236,13 +246,40 @@ export default function Module5Tab() {
             </button>
           </div>
 
-          {missingLoading && missingDates === null && (
-            <div className="rounded-lg bg-gmv-canvas px-4 py-3 text-sm text-gmv-muted">
-              Đang kiểm tra dữ liệu…
+          {missingLoading && (
+            <div className="flex items-center gap-2 rounded-lg bg-gmv-canvas px-4 py-3 text-sm text-gmv-muted ring-1 ring-gmv-border">
+              <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-gmv-primary border-t-transparent" />
+              Đang quét dữ liệu 60 ngày gần nhất…
             </div>
           )}
 
-          {!missingLoading && missingDates !== null && missingDates.length === 0 && (
+          {!missingLoading && missingError && (
+            <div className="flex items-start justify-between gap-3 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700 ring-1 ring-red-200">
+              <span>
+                <strong className="text-red-800">Lỗi: </strong>{missingError}
+              </span>
+              <button
+                onClick={checkMissing}
+                className="shrink-0 rounded-md bg-red-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-red-700 transition"
+              >
+                Thử lại
+              </button>
+            </div>
+          )}
+
+          {!missingLoading && !missingError && missingDates === null && (
+            <div className="flex items-center justify-between gap-3 rounded-lg bg-gmv-canvas px-4 py-3 text-sm text-gmv-muted ring-1 ring-gmv-border">
+              <span>Chưa kiểm tra — bấm <strong>Làm mới</strong> để quét.</span>
+              <button
+                onClick={checkMissing}
+                className="shrink-0 rounded-md bg-gmv-primary px-2.5 py-1 text-xs font-semibold text-white hover:opacity-90 transition"
+              >
+                Kiểm tra ngay
+              </button>
+            </div>
+          )}
+
+          {!missingLoading && !missingError && missingDates !== null && missingDates.length === 0 && (
             <div className="flex items-center gap-2 rounded-lg bg-emerald-50 px-4 py-3 text-sm text-emerald-700 ring-1 ring-emerald-200">
               <span className="h-2.5 w-2.5 rounded-full bg-emerald-500" />
               <span>
@@ -252,7 +289,7 @@ export default function Module5Tab() {
             </div>
           )}
 
-          {!missingLoading && missingDates !== null && missingDates.length > 0 && (
+          {!missingLoading && !missingError && missingDates !== null && missingDates.length > 0 && (
             <div className="space-y-3">
               <div className="flex items-center gap-2 rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-800 ring-1 ring-amber-200">
                 <span className="h-2.5 w-2.5 rounded-full bg-amber-500" />
