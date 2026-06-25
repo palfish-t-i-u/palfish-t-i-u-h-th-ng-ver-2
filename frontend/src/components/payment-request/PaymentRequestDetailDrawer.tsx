@@ -35,6 +35,7 @@ import {
 } from "./paymentRequestUtils";
 import { nextCourseCode } from "../payment-flow/paymentFlowUtils";
 import { endpoints } from "../../lib/api";
+import PrStaleContentWarning from "./PrStaleContentWarning";
 
 const METHOD_META: Record<PaymentMethod, { cls: string; label: string; icon: IconKey; sub: string }> = {
   qr: { cls: "method-qr", label: "Chuyển khoản", icon: "QrCode", sub: "QR / chuyển khoản" },
@@ -83,6 +84,9 @@ function QrRow({
   onEditAmount,
   uploadingBillId,
   deletingBillId,
+  contentDismissed,
+  onRefreshContent,
+  onDismissStaleWarning,
 }: {
   qr: PaymentAttempt;
   onCancelQr: (qr: PaymentAttempt) => void;
@@ -93,6 +97,12 @@ function QrRow({
   onEditAmount?: (qr: PaymentAttempt, newAmount: number) => Promise<void>;
   uploadingBillId?: string | null;
   deletingBillId?: string | null;
+  /** Sticky dismiss: true = sale đã dismiss warning này trong session. */
+  contentDismissed?: boolean;
+  /** Callback rebuild content. Parent awaits this. */
+  onRefreshContent?: (line: PaymentAttempt) => Promise<void>;
+  /** Callback dismiss stale warning (sticky session). */
+  onDismissStaleWarning?: (lineId: string) => void;
 }) {
   const isQr = qr.method === "qr";
   const isCancelled = !!qr.cancelled;
@@ -170,8 +180,34 @@ function QrRow({
     ? `${qr.installmentPlatform || "Trả góp"}${qr.installmentTotal ? ` · ${vnd(qr.installmentTotal)}` : ""}`
     : "";
 
+  const [refreshLoading, setRefreshLoading] = useState(false);
+
+  const showStaleWarning =
+    qr.isContentStale === true &&
+    qr.status === "pending" &&
+    !isCancelled &&
+    contentDismissed !== true &&
+    typeof onRefreshContent === "function";
+
+  const handleRefresh = async () => {
+    if (!onRefreshContent) return;
+    setRefreshLoading(true);
+    try {
+      await onRefreshContent(qr);
+    } finally {
+      setRefreshLoading(false);
+    }
+  };
+
   return (
-    <div className="qr-row v2" style={isCancelled ? { opacity: 0.55 } : undefined}>
+    <>
+      <PrStaleContentWarning
+        visible={showStaleWarning}
+        loading={refreshLoading}
+        onRefresh={handleRefresh}
+        onDismiss={() => onDismissStaleWarning?.(qr.id)}
+      />
+      <div className="qr-row v2" style={isCancelled ? { opacity: 0.55 } : undefined}>
       <QrThumb paid={qr.status === "paid"} method={qr.method} />
       <div style={{ minWidth: 0 }}>
         <div className="qr-info-line1">
@@ -309,6 +345,7 @@ function QrRow({
         {isCancelled && <span style={{ color: "var(--text-3)", fontSize: 11.5 }}>—</span>}
       </div>
     </div>
+    </>
   );
 }
 
@@ -1478,6 +1515,7 @@ export default function PaymentRequestDetailDrawer({
   uploadingBillId,
   deletingBillId,
   readOnly = false,
+  onRefreshLineContent,
 }: {
   request: PaymentRequest | null;
   open: boolean;
@@ -1501,6 +1539,7 @@ export default function PaymentRequestDetailDrawer({
   uploadingBillId?: string | null;
   deletingBillId?: string | null;
   readOnly?: boolean;
+  onRefreshLineContent?: (line: PaymentAttempt) => Promise<void>;
 }) {
   const [showAdd, setShowAdd] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -1523,6 +1562,20 @@ export default function PaymentRequestDetailDrawer({
     setPrFullModalOpen(false);
     setHighlightTarget(false);
   }, [request?.id]);
+
+  const [dismissedStaleLineIds, setDismissedStaleLineIds] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    setDismissedStaleLineIds(new Set());
+  }, [request?.id]);
+
+  const handleDismissStale = useCallback((lineId: string) => {
+    setDismissedStaleLineIds(prev => {
+      const next = new Set(prev);
+      next.add(lineId);
+      return next;
+    });
+  }, []);
 
   // Khoá scroll nền khi drawer mở — tránh 3 scrollbar (anh feedback 19/6).
   useEffect(() => {
@@ -2178,6 +2231,9 @@ export default function PaymentRequestDetailDrawer({
                   onShowQr={onShowQr}
                   uploadingBillId={uploadingBillId}
                   deletingBillId={deletingBillId}
+                  contentDismissed={dismissedStaleLineIds.has(qr.id)}
+                  onRefreshContent={readOnly ? undefined : onRefreshLineContent}
+                  onDismissStaleWarning={handleDismissStale}
                 />
               ))}
             </div>

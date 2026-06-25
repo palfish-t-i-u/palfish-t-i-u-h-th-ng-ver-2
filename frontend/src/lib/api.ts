@@ -144,6 +144,13 @@ export const endpoints = {
         target: number;
         state: string;
       }>(`/api/v1/payment-lines/${lineId}/amount`, { amount }),
+    refreshPaymentLineContent: (lineId: string, body?: { name_for_transfer?: string | null }) =>
+      api.post<{
+        payment_line: PaymentLineApiRow;
+        updated: boolean;
+        old_content: string;
+        new_content: string;
+      }>(`/api/v1/payment-lines/${lineId}/refresh-content`, body ?? {}),
     uploadPaymentLineBill: (lineId: string, file: Blob, filename: string) => {
       const fd = new FormData();
       fd.append("file", file, filename);
