@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getZaloConfig, updateZaloConfig, testZaloMessage, type ZaloConfigData, type ZaloConfigPayload, type ZaloTestPayload } from '../../lib/api/zaloAdmin';
+import { getZaloConfig, updateZaloConfig, testZaloMessage, getZaloGroups, type ZaloConfigData, type ZaloConfigPayload, type ZaloTestPayload, type ZaloGroup } from '../../lib/api/zaloAdmin';
 
 export const ZaloConfigTab: React.FC = () => {
   const [configData, setConfigData] = useState<ZaloConfigData | null>(null);
@@ -19,10 +19,25 @@ export const ZaloConfigTab: React.FC = () => {
   const [isTesting, setIsTesting] = useState(false);
   const [showSecrets, setShowSecrets] = useState(false);
   const [alert, setAlert] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const [groups, setGroups] = useState<ZaloGroup[]>([]);
+  const [groupsLoading, setGroupsLoading] = useState(true);
 
   useEffect(() => {
     fetchConfig();
+    fetchGroups();
   }, []);
+
+  const fetchGroups = async () => {
+    try {
+      setGroupsLoading(true);
+      const data = await getZaloGroups();
+      setGroups((data ?? []).filter((g) => g.is_active));
+    } catch {
+      setGroups([]);
+    } finally {
+      setGroupsLoading(false);
+    }
+  };
 
   const fetchConfig = async () => {
     try {
@@ -68,7 +83,7 @@ export const ZaloConfigTab: React.FC = () => {
 
   const handleTest = async () => {
     if (!testForm.group_id.trim()) {
-      setAlert({ type: 'error', message: 'Nhập Group ID để test' });
+      setAlert({ type: 'error', message: 'Chọn nhóm để test' });
       return;
     }
     try {
@@ -213,13 +228,24 @@ export const ZaloConfigTab: React.FC = () => {
           Gửi thử một tin nhắn tới nhóm Zalo để kiểm tra token hoạt động.
         </p>
         <div className="flex flex-col sm:flex-row gap-3 mb-4">
-          <input
-            type="text"
-            value={testForm.group_id}
-            onChange={(e) => setTestForm({ ...testForm, group_id: e.target.value })}
-            className="flex-1 px-3 py-2 border rounded-md text-sm font-mono focus:ring-2 focus:ring-blue-500 outline-none"
-            placeholder="Group ID (VD: df7d5a31765c9f02c64d)"
-          />
+          {groupsLoading ? (
+            <div className="flex-1 px-3 py-2 border rounded-md text-sm text-gray-400 bg-gray-50">Đang tải danh sách nhóm...</div>
+          ) : groups.length === 0 ? (
+            <div className="flex-1 px-3 py-2 border rounded-md text-sm text-gray-500 bg-gray-50">
+              Chưa có nhóm nào. Thêm nhóm ở tab <strong>Nhóm thông báo</strong> trước.
+            </div>
+          ) : (
+            <select
+              value={testForm.group_id}
+              onChange={(e) => setTestForm({ ...testForm, group_id: e.target.value })}
+              className="flex-1 px-3 py-2 border rounded-md text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+            >
+              <option value="">— Chọn nhóm —</option>
+              {groups.map((g) => (
+                <option key={g.team_code} value={g.group_id}>{g.group_name}</option>
+              ))}
+            </select>
+          )}
           <input
             type="text"
             value={testForm.message}
@@ -230,9 +256,9 @@ export const ZaloConfigTab: React.FC = () => {
         </div>
         <button
           onClick={handleTest}
-          disabled={isTesting}
+          disabled={isTesting || !testForm.group_id}
           className={`px-4 py-2 rounded text-white font-medium transition-colors ${
-            isTesting ? 'bg-gray-400 cursor-not-allowed' : 'bg-green-600 hover:bg-green-700'
+            isTesting || !testForm.group_id ? 'bg-gray-400 cursor-not-allowed' : 'bg-green-600 hover:bg-green-700'
           }`}
         >
           {isTesting ? 'Đang gửi...' : 'Test Gửi Tin Zalo'}
