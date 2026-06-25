@@ -108,3 +108,29 @@ class TestStaleDetection:
         assert pr._is_payment_line_content_stale(
             _pr(name="Khac", child_name=None), line
         ) is True
+
+
+class TestSerializerExposesIsContentStale:
+    def test_list_serializer_includes_is_content_stale_true(self):
+        pr_row = _pr(phone="906698067")  # đã đổi phone
+        line = _line()
+        out = pr._serialize_payment_for_list(line, idx=1, pr_row=pr_row)
+        assert out["is_content_stale"] is True
+
+    def test_list_serializer_includes_is_content_stale_false_when_match(self):
+        out = pr._serialize_payment_for_list(_line(), idx=1, pr_row=_pr())
+        assert out["is_content_stale"] is False
+
+    def test_list_serializer_defaults_false_when_pr_row_missing(self):
+        # Backward compat: nếu caller không truyền pr_row → False (safe default)
+        out = pr._serialize_payment_for_list(_line(), idx=1)
+        assert out["is_content_stale"] is False
+
+    def test_detail_serializer_includes_is_content_stale_true(self):
+        pr_row = _pr(child_name="Đổi Tên Con")
+        out = pr._serialize_payment_line(_line(), pr_row=pr_row)
+        assert out["is_content_stale"] is True
+
+    def test_detail_serializer_defaults_false_when_pr_row_missing(self):
+        out = pr._serialize_payment_line(_line())
+        assert out["is_content_stale"] is False

@@ -631,6 +631,7 @@ def _serialize_payment_line(
     bill_urls: dict[str, str] | None = None,
     bill_assets: dict[str, list[dict[str, str]]] | None = None,
     display_names: dict[str, str] | None = None,
+    pr_row: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     confirmed_by = row.get("confirmed_by") or None
     return {
@@ -642,6 +643,7 @@ def _serialize_payment_line(
         "payos_order_code": row.get("payos_order_code") or "",
         "transfer_code": row.get("transfer_code") or "",
         "transfer_content": row.get("transfer_content") or "",
+        "name_for_transfer": row.get("name_for_transfer"),
         "qr_code": row.get("qr_code") or "",
         "checkout_url": row.get("checkout_url") or "",
         "paid_at": row.get("paid_at") or "",
@@ -657,6 +659,7 @@ def _serialize_payment_line(
         "confirmed_by_name": _resolve_confirmed_by_name(confirmed_by, display_names),
         "confirmed_at": row.get("confirmed_at") or None,
         "confirmed_source": row.get("confirmed_source") or None,
+        "is_content_stale": _is_payment_line_content_stale(pr_row, row) if pr_row else False,
         **_bill_fields(row, bill_urls, bill_assets),
     }
 
@@ -667,6 +670,7 @@ def _serialize_payment_for_list(
     bill_urls: dict[str, str] | None = None,
     bill_assets: dict[str, list[dict[str, str]]] | None = None,
     display_names: dict[str, str] | None = None,
+    pr_row: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     reject = row.get("reject_reason")
     paid_at = row.get("paid_at")
@@ -679,6 +683,7 @@ def _serialize_payment_for_list(
         "status": row.get("status") or "pending",
         "transfer_code": row.get("transfer_code") or "",
         "transfer_content": row.get("transfer_content") or "",
+        "name_for_transfer": row.get("name_for_transfer"),
         "qr_code": row.get("qr_code") or "",
         "checkout_url": row.get("checkout_url") or "",
         "paid_at": paid_at if paid_at else None,
@@ -693,6 +698,7 @@ def _serialize_payment_for_list(
         "confirmed_by_name": _resolve_confirmed_by_name(confirmed_by, display_names),
         "confirmed_at": row.get("confirmed_at") or None,
         "confirmed_source": row.get("confirmed_source") or None,
+        "is_content_stale": _is_payment_line_content_stale(pr_row, row) if pr_row else False,
         **_bill_fields(row, bill_urls, bill_assets),
     }
     return result
@@ -707,7 +713,7 @@ def _serialize_payment_request_list_item(
 ) -> dict[str, Any]:
     sorted_lines = sorted(lines, key=lambda item: str(item.get("created_at") or ""))
     payments = [
-        _serialize_payment_for_list(line, idx, bill_urls, bill_assets, display_names)
+        _serialize_payment_for_list(line, idx, bill_urls, bill_assets, display_names, pr_row=row)
         for idx, line in enumerate(sorted_lines, start=1)
     ]
     done_count = sum(1 for payment in payments if payment["status"] == "paid")
@@ -1979,7 +1985,7 @@ def register_payment_request_routes(app, get_supabase) -> None:
 
         line_row = line_res.data[0] if line_res.data else insert_row
         response: dict[str, Any] = {
-            "payment_line": _serialize_payment_line(line_row),
+            "payment_line": _serialize_payment_line(line_row, pr_row=pr_row),
             "payment_request": totals["payment_request"],
             "received": totals["received"],
             "target": totals["target"],
@@ -2073,6 +2079,7 @@ def register_payment_request_routes(app, get_supabase) -> None:
             "payment_line": _serialize_payment_line(
                 updated_line,
                 display_names=_build_display_names_for_lines(sb, [updated_line]),
+                pr_row=pr_res.data[0],
             ),
             "payment_request": totals["payment_request"],
             "received": totals["received"],
@@ -2233,6 +2240,7 @@ def register_payment_request_routes(app, get_supabase) -> None:
                 {line_id: public_url},
                 bill_assets,
                 display_names=_build_display_names_for_lines(sb, [line]),
+                pr_row=pr_res.data[0],
             ),
         }
 
@@ -2283,6 +2291,7 @@ def register_payment_request_routes(app, get_supabase) -> None:
                 {line_id: next_bill_url},
                 {line_id: next_assets},
                 display_names=_build_display_names_for_lines(sb, [merged_line]),
+                pr_row=pr_res.data[0],
             )
         }
 
@@ -2399,6 +2408,7 @@ def register_payment_request_routes(app, get_supabase) -> None:
                 {line_id: next_bill_url},
                 {line_id: next_assets},
                 display_names=_build_display_names_for_lines(sb, [line]),
+                pr_row=pr_res.data[0],
             )
         }
 
