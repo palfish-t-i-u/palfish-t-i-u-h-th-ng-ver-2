@@ -1037,33 +1037,39 @@ def _detect_missing_dates(sb, lookback_days: int = 60) -> tuple[list[date], date
     range_end = date.today() - timedelta(days=1)
     lookback_start = range_end - timedelta(days=max(1, lookback_days) - 1)
 
-    # Lấy distinct report_date trong khoảng tra cứu
-    # Supabase REST mặc định limit=1000 → nếu nhiều sale rep × nhiều ngày
-    # sẽ bị cắt, gây false-positive "ngày thiếu". Đẩy limit lên đủ lớn.
-    resp = (
-        sb.table("crm_sales_data")
-        .select("report_date")
-        .gte("report_date", lookback_start.isoformat())
-        .lte("report_date", range_end.isoformat())
-        .limit(10000)
-        .execute()
-    )
-    rows = getattr(resp, "data", None) or []
+    # PostgREST server-side max-rows=1000 ignores client .limit().
+    # Paginate with .range() to fetch all rows.
     existing: set[date] = set()
-    for r in rows:
-        raw = r.get("report_date")
-        if not raw:
-            continue
-        try:
-            existing.add(date.fromisoformat(str(raw)[:10]))
-        except ValueError:
-            continue
+    page_size = 1000
+    offset = 0
+    total_fetched = 0
+    while True:
+        resp = (
+            sb.table("crm_sales_data")
+            .select("report_date")
+            .gte("report_date", lookback_start.isoformat())
+            .lte("report_date", range_end.isoformat())
+            .range(offset, offset + page_size - 1)
+            .execute()
+        )
+        rows = getattr(resp, "data", None) or []
+        total_fetched += len(rows)
+        for r in rows:
+            raw = r.get("report_date")
+            if not raw:
+                continue
+            try:
+                existing.add(date.fromisoformat(str(raw)[:10]))
+            except ValueError:
+                continue
+        if len(rows) < page_size:
+            break
+        offset += page_size
 
     print(
-        f"[CRM DetectMissing] query rows={len(rows)} "
+        f"[CRM DetectMissing] fetched={total_fetched} "
         f"distinct_dates={len(existing)} "
-        f"range={lookback_start}..{range_end} "
-        f"sample_row={rows[0] if rows else 'EMPTY'}"
+        f"range={lookback_start}..{range_end}"
     )
 
     # range_start = max(earliest data, lookback_start)
@@ -1088,12 +1094,6 @@ def _detect_missing_dates(sb, lookback_days: int = 60) -> tuple[list[date], date
         if cur not in existing:
             missing.append(cur)
         cur += timedelta(days=1)
-
-    print(
-        f"[CRM DetectMissing] earliest_date={earliest_date} "
-        f"missing={len(missing)} "
-        f"existing_dates={sorted(d.isoformat() for d in existing)[:5]}..."
-    )
 
     return missing, earliest_date, range_end
 
