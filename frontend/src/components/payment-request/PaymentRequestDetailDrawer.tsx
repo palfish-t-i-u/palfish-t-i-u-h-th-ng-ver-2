@@ -206,6 +206,7 @@ function QrRow({
         loading={refreshLoading}
         onRefresh={handleRefresh}
         onDismiss={() => onDismissStaleWarning?.(qr.id)}
+        isLegacyLine={!qr.nameForTransfer}
       />
       <div className="qr-row v2" style={isCancelled ? { opacity: 0.55 } : undefined}>
       <QrThumb paid={qr.status === "paid"} method={qr.method} />

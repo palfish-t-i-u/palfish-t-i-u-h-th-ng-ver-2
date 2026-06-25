@@ -63,4 +63,27 @@ describe("PrStaleContentWarning", () => {
     );
     expect(screen.getByRole("alert")).toBeInTheDocument();
   });
+
+  it("isLegacyLine=true hiển thị text giải thích line cũ thay vì text đổi thông tin", () => {
+    expect.assertions(2);
+    render(
+      <PrStaleContentWarning
+        visible={true}
+        isLegacyLine={true}
+        onRefresh={() => {}}
+        onDismiss={() => {}}
+      />,
+    );
+    expect(screen.getByText(/tên KH\/tên con viết tắt từ hệ thống cũ/i)).toBeInTheDocument();
+    expect(screen.queryByText(/khách đã đổi thông tin/i)).toBeNull();
+  });
+
+  it("isLegacyLine=false (default) hiển thị text đổi thông tin chuẩn", () => {
+    expect.assertions(2);
+    render(
+      <PrStaleContentWarning visible={true} onRefresh={() => {}} onDismiss={() => {}} />,
+    );
+    expect(screen.getByText(/khách đã đổi thông tin/i)).toBeInTheDocument();
+    expect(screen.queryByText(/tên KH\/tên con viết tắt từ hệ thống cũ/i)).toBeNull();
+  });
 });
