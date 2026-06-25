@@ -97,6 +97,8 @@ export function fromApiAttempt(raw: any, idx = 0): PaymentAttempt {
     confirmedByName: raw.confirmed_by_name ?? raw.confirmedByName ?? null,
     confirmedAt: raw.confirmed_at ?? raw.confirmedAt ?? null,
     confirmedSource: raw.confirmed_source ?? raw.confirmedSource ?? null,
+    nameForTransfer: raw.name_for_transfer ?? raw.nameForTransfer ?? null,
+    isContentStale: Boolean(raw.is_content_stale ?? raw.isContentStale ?? false),
   };
 }
 

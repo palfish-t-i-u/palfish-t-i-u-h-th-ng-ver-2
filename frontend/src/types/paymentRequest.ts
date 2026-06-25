@@ -35,6 +35,10 @@ export interface PaymentAttempt {
   confirmedByName?: string | null;
   confirmedAt?: string | null;
   confirmedSource?: string | null;
+  /** Tên dùng cho nội dung CK (parent name HOẶC child name) sale chọn lúc tạo line */
+  nameForTransfer?: string | null;
+  /** True khi PR đã đổi name/phone/childName/country và transfer_content lưu không còn khớp PR hiện tại */
+  isContentStale?: boolean;
 }
 
 export interface PaymentLineApiRow {
@@ -53,6 +57,9 @@ export interface PaymentLineApiRow {
   bill_images?: string[];
   created_at?: string;
   updated_at?: string;
+  transfer_content?: string | null;
+  name_for_transfer?: string | null;
+  is_content_stale?: boolean;
 }
 
 export interface AddPaymentLineResponse {

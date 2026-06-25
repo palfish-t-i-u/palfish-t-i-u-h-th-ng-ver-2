@@ -391,6 +391,33 @@ export default function PaymentRequestsTab() {
     }
   };
 
+  const handleRefreshLineContent = async (line: PaymentAttempt) => {
+    if (!selected) return;
+    const prId = selected.id;
+    try {
+      const res = await endpoints.paymentRequests.refreshPaymentLineContent(line.id);
+      updateRequest(prId, (r) => ({
+        ...r,
+        payments: r.payments.map((p: PaymentAttempt) =>
+          p.id === line.id
+            ? {
+                ...p,
+                transferContent: res.data.payment_line.transfer_content ?? p.transferContent,
+                nameForTransfer: res.data.payment_line.name_for_transfer ?? p.nameForTransfer ?? null,
+                isContentStale: false,
+              }
+            : p
+        ),
+      }));
+    } catch (err) {
+      const msg =
+        (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ||
+        "Không cập nhật được nội dung QR.";
+      alert(String(msg));
+      throw err;
+    }
+  };
+
   const handleMarkPaid = async (qr: PaymentAttempt) => {
     if (!selected) return;
     const prId = selected.id;
@@ -796,6 +823,7 @@ export default function PaymentRequestsTab() {
         onEditingArIdChange={setEditingArId}
         onShowQr={(qr) => selected && setQrView({ qr, request: selected })}
         readOnly={readOnly}
+        onRefreshLineContent={handleRefreshLineContent}
       />
 
       <CreatePaymentRequestModal open={createOpen} onClose={() => setCreateOpen(false)} onSubmit={handleCreate} />

@@ -26,8 +26,13 @@ from admin_routes import require_module_write
 from activation_routes import _compute_referral_status
 
 from payos_qr import create_payos_payment_link, fetch_payos_payment, payos_payment_is_paid
+from audit import log_audit
 
 router = APIRouter(prefix="/api/v1", tags=["payment-requests"])
+
+# Module-level reference to the supabase factory, set by register_payment_request_routes.
+# Exposed here so tests can patch it via patch.object(payment_request_routes, "get_supabase").
+get_supabase: Callable[[], Any] = lambda: None
 
 PAYMENT_METHODS = frozenset({"qr", "cash", "card", "installment"})
 LINE_STATUSES = frozenset({"pending", "paid", "rejected"})
@@ -177,6 +182,11 @@ class TransactionStatusPatch(BaseModel):
 
 class PaymentLineAmountPatch(BaseModel):
     amount: int | str
+
+
+class PaymentLineRefreshContentBody(BaseModel):
+    """Body optional cho refresh-content. Nếu name_for_transfer = None → dùng stored hoặc default child→parent."""
+    name_for_transfer: str | None = None
 
 
 class PaymentRequestCancelBody(BaseModel):
@@ -631,6 +641,7 @@ def _serialize_payment_line(
     bill_urls: dict[str, str] | None = None,
     bill_assets: dict[str, list[dict[str, str]]] | None = None,
     display_names: dict[str, str] | None = None,
+    pr_row: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     confirmed_by = row.get("confirmed_by") or None
     return {
@@ -642,6 +653,7 @@ def _serialize_payment_line(
         "payos_order_code": row.get("payos_order_code") or "",
         "transfer_code": row.get("transfer_code") or "",
         "transfer_content": row.get("transfer_content") or "",
+        "name_for_transfer": row.get("name_for_transfer"),
         "qr_code": row.get("qr_code") or "",
         "checkout_url": row.get("checkout_url") or "",
         "paid_at": row.get("paid_at") or "",
@@ -657,6 +669,7 @@ def _serialize_payment_line(
         "confirmed_by_name": _resolve_confirmed_by_name(confirmed_by, display_names),
         "confirmed_at": row.get("confirmed_at") or None,
         "confirmed_source": row.get("confirmed_source") or None,
+        "is_content_stale": _is_payment_line_content_stale(pr_row, row) if pr_row else False,
         **_bill_fields(row, bill_urls, bill_assets),
     }
 
@@ -667,6 +680,7 @@ def _serialize_payment_for_list(
     bill_urls: dict[str, str] | None = None,
     bill_assets: dict[str, list[dict[str, str]]] | None = None,
     display_names: dict[str, str] | None = None,
+    pr_row: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     reject = row.get("reject_reason")
     paid_at = row.get("paid_at")
@@ -679,6 +693,7 @@ def _serialize_payment_for_list(
         "status": row.get("status") or "pending",
         "transfer_code": row.get("transfer_code") or "",
         "transfer_content": row.get("transfer_content") or "",
+        "name_for_transfer": row.get("name_for_transfer"),
         "qr_code": row.get("qr_code") or "",
         "checkout_url": row.get("checkout_url") or "",
         "paid_at": paid_at if paid_at else None,
@@ -693,6 +708,7 @@ def _serialize_payment_for_list(
         "confirmed_by_name": _resolve_confirmed_by_name(confirmed_by, display_names),
         "confirmed_at": row.get("confirmed_at") or None,
         "confirmed_source": row.get("confirmed_source") or None,
+        "is_content_stale": _is_payment_line_content_stale(pr_row, row) if pr_row else False,
         **_bill_fields(row, bill_urls, bill_assets),
     }
     return result
@@ -707,7 +723,7 @@ def _serialize_payment_request_list_item(
 ) -> dict[str, Any]:
     sorted_lines = sorted(lines, key=lambda item: str(item.get("created_at") or ""))
     payments = [
-        _serialize_payment_for_list(line, idx, bill_urls, bill_assets, display_names)
+        _serialize_payment_for_list(line, idx, bill_urls, bill_assets, display_names, pr_row=row)
         for idx, line in enumerate(sorted_lines, start=1)
     ]
     done_count = sum(1 for payment in payments if payment["status"] == "paid")
@@ -1057,6 +1073,65 @@ def _build_payos_transfer_description(
                 return trial
 
     return code[:_PAYOS_DESCRIPTION_MAX_LEN]
+
+
+def _is_payment_line_content_stale(
+    pr_row: dict[str, Any],
+    line: dict[str, Any],
+) -> bool:
+    """True nếu transfer_content lưu trên line không còn khớp với PR hiện tại.
+
+    Quy tắc:
+    - line không PENDING (paid/rejected/cancelled) → False (không cần warning).
+    - line không phải method=qr → False (cash/card không có QR).
+    - Rebuild expected content từ pr_row dùng cả hai tên có thể (child_name và name).
+      Nếu stored content khớp ít nhất một variant hiện tại → not stale.
+    - Nếu line.name_for_transfer NULL (line cũ trước migration), fallback theo
+      thứ tự: pr_row.child_name → pr_row.name.
+    - So sánh expected variants vs line.transfer_content. Nếu không khớp variant nào → stale.
+    """
+    status = _clean_text(line.get("status")).lower()
+    if status != "pending":
+        return False
+    if _clean_text(line.get("method")).lower() != "qr":
+        return False
+    reject_reason = line.get("reject_reason")
+    if reject_reason and "huy" in _ascii_transfer_name(reject_reason).lower():
+        return False
+
+    transfer_code = _clean_text(line.get("transfer_code"))
+    if not transfer_code:
+        return False
+
+    stored = _clean_text(line.get("transfer_content"))
+
+    # Build the set of currently-valid content variants:
+    # one for child_name, one for parent_name. If line.name_for_transfer is NULL
+    # (pre-migration row), only use child_name → name fallback variant.
+    name_for_transfer = line.get("name_for_transfer")
+    if not name_for_transfer:
+        # Pre-migration: we don't know which name was used, default child→name.
+        fallback = pr_row.get("child_name") or pr_row.get("name") or pr_row.get("ten_khach")
+        expected = _build_payos_transfer_description(pr_row, fallback, transfer_code)
+        return expected.strip() != stored.strip()
+
+    # Build all current name variants from PR and check if stored still matches any.
+    current_names: list = []
+    child_name = pr_row.get("child_name")
+    parent_name = pr_row.get("name") or pr_row.get("ten_khach")
+    if child_name:
+        current_names.append(child_name)
+    if parent_name and parent_name != child_name:
+        current_names.append(parent_name)
+    if not current_names:
+        current_names.append(None)
+
+    for name_candidate in current_names:
+        expected = _build_payos_transfer_description(pr_row, name_candidate, transfer_code)
+        if expected.strip() == stored.strip():
+            return False
+
+    return True
 
 
 def recompute_payment_request_totals(sb, payment_request_id: str) -> dict[str, Any]:
@@ -1449,7 +1524,14 @@ def _get_user_name_by_id(sb, user_id: str) -> str:
     return user_id
 
 
-def register_payment_request_routes(app, get_supabase) -> None:
+def register_payment_request_routes(app, _get_supabase) -> None:
+    # Expose the factory at module level so tests can patch it via
+    # patch.object(payment_request_routes, "get_supabase", ...).
+    import payment_request_routes as _self
+    _self.get_supabase = _get_supabase
+    # Use the local name throughout this closure for backward compatibility.
+    get_supabase = _get_supabase
+
     @router.get("/payment-requests")
     def list_payment_requests(
         state: str | None = Query(None),
@@ -1897,6 +1979,7 @@ def register_payment_request_routes(app, get_supabase) -> None:
                         "qr_code": payos_payload.get("qr_code") or "",
                         "checkout_url": payos_payload.get("checkout_url") or "",
                         "transfer_content": payos_payload.get("transfer_content") or description,
+                        "name_for_transfer": body.name_for_transfer,
                     }
                 )
             else:
@@ -1909,6 +1992,7 @@ def register_payment_request_routes(app, get_supabase) -> None:
                         "qr_code": "",
                         "checkout_url": "",
                         "transfer_content": description,
+                        "name_for_transfer": body.name_for_transfer,
                     }
                 )
 
@@ -1920,7 +2004,7 @@ def register_payment_request_routes(app, get_supabase) -> None:
 
         line_row = line_res.data[0] if line_res.data else insert_row
         response: dict[str, Any] = {
-            "payment_line": _serialize_payment_line(line_row),
+            "payment_line": _serialize_payment_line(line_row, pr_row=pr_row),
             "payment_request": totals["payment_request"],
             "received": totals["received"],
             "target": totals["target"],
@@ -2014,11 +2098,104 @@ def register_payment_request_routes(app, get_supabase) -> None:
             "payment_line": _serialize_payment_line(
                 updated_line,
                 display_names=_build_display_names_for_lines(sb, [updated_line]),
+                pr_row=pr_res.data[0],
             ),
             "payment_request": totals["payment_request"],
             "received": totals["received"],
             "target": totals["target"],
             "state": totals["state"],
+        }
+
+    @router.post("/payment-lines/{line_id}/refresh-content")
+    def refresh_payment_line_content(
+        line_id: str,
+        body: PaymentLineRefreshContentBody | None = None,
+        authorization: str | None = Header(None),
+    ):
+        import payment_request_routes as _self_mod
+        sb = _sb_or_503(_self_mod.get_supabase)
+        actor = resolve_actor(sb, authorization)
+        require_module_write(sb, actor, "paymentRequests")
+
+        line_res = (
+            sb.table("payment_lines")
+            .select("*")
+            .eq("id", line_id)
+            .limit(1)
+            .execute()
+        )
+        if not line_res.data:
+            raise HTTPException(404, "Khong tim thay payment_line")
+        line = line_res.data[0]
+
+        if _clean_text(line.get("status")).lower() != "pending":
+            raise HTTPException(400, "Chi rebuild duoc khi lan thanh toan chua thanh toan")
+        if _clean_text(line.get("method")).lower() != "qr":
+            raise HTTPException(400, "Chi rebuild duoc voi phuong thuc QR")
+
+        pr_id = str(line.get("payment_request_id") or "")
+        if not pr_id:
+            raise HTTPException(400, "payment_line thieu payment_request_id")
+
+        pr_res = sb.table("payment_requests").select("*").eq("id", pr_id).limit(1).execute()
+        if not pr_res.data:
+            raise HTTPException(404, "Khong tim thay payment_request lien quan")
+        pr_row = pr_res.data[0]
+        if not _can_access_request(sb, actor, pr_row):
+            raise HTTPException(403, "Khong co quyen rebuild payment_line nay")
+
+        explicit_name = body.name_for_transfer if body else None
+        name_for_transfer = explicit_name or line.get("name_for_transfer") or pr_row.get("child_name") or pr_row.get("name")
+        transfer_code = _clean_text(line.get("transfer_code"))
+        if not transfer_code:
+            raise HTTPException(400, "payment_line thieu transfer_code")
+
+        old_content = _clean_text(line.get("transfer_content"))
+        new_content = _build_payos_transfer_description(pr_row, name_for_transfer, transfer_code)
+
+        if new_content == old_content and (not explicit_name or explicit_name == line.get("name_for_transfer")):
+            return {
+                "payment_line": _serialize_payment_line(
+                    line,
+                    display_names=_build_display_names_for_lines(sb, [line]),
+                    pr_row=pr_row,
+                ),
+                "updated": False,
+                "old_content": old_content,
+                "new_content": new_content,
+            }
+
+        update_payload: dict[str, Any] = {"transfer_content": new_content}
+        if explicit_name is not None:
+            update_payload["name_for_transfer"] = explicit_name
+        try:
+            updated_res = (
+                sb.table("payment_lines")
+                .update(update_payload)
+                .eq("id", line_id)
+                .execute()
+            )
+        except Exception as exc:
+            raise HTTPException(500, f"Khong cap nhat duoc transfer_content: {exc}") from exc
+
+        updated_line = updated_res.data[0] if updated_res.data else {**line, **update_payload}
+
+        log_audit(sb, actor.email, "payment_line.refresh_content", "payment_line", line_id, {
+            "pr_id": pr_id,
+            "old_content": old_content,
+            "new_content": new_content,
+            "name_for_transfer": name_for_transfer,
+        })
+
+        return {
+            "payment_line": _serialize_payment_line(
+                updated_line,
+                display_names=_build_display_names_for_lines(sb, [updated_line]),
+                pr_row=pr_row,
+            ),
+            "updated": True,
+            "old_content": old_content,
+            "new_content": new_content,
         }
 
     @router.patch("/transactions/{transaction_id}/status")
@@ -2174,6 +2351,7 @@ def register_payment_request_routes(app, get_supabase) -> None:
                 {line_id: public_url},
                 bill_assets,
                 display_names=_build_display_names_for_lines(sb, [line]),
+                pr_row=pr_res.data[0],
             ),
         }
 
@@ -2224,6 +2402,7 @@ def register_payment_request_routes(app, get_supabase) -> None:
                 {line_id: next_bill_url},
                 {line_id: next_assets},
                 display_names=_build_display_names_for_lines(sb, [merged_line]),
+                pr_row=pr_res.data[0],
             )
         }
 
@@ -2340,6 +2519,7 @@ def register_payment_request_routes(app, get_supabase) -> None:
                 {line_id: next_bill_url},
                 {line_id: next_assets},
                 display_names=_build_display_names_for_lines(sb, [line]),
+                pr_row=pr_res.data[0],
             )
         }
 
