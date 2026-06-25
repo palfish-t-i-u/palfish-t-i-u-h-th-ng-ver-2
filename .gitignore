@@ -71,3 +71,6 @@ AGENTS.md
 RTK.md
 .cavemem/
 docs/feedback_9_6_2026.pdf
+
+# MCP server config — chứa app_secret (Lark, Supabase, etc), giữ local
+.mcp.json
