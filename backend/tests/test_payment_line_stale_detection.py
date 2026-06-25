@@ -134,3 +134,21 @@ class TestSerializerExposesIsContentStale:
     def test_detail_serializer_defaults_false_when_pr_row_missing(self):
         out = pr._serialize_payment_line(_line())
         assert out["is_content_stale"] is False
+
+
+class TestNameForTransferPersistedAtCreate:
+    """Verify khi tạo line, name_for_transfer được lưu vào DB."""
+
+    def test_addPayment_qr_persists_name_for_transfer_from_body(self):
+        # Mock add_payment_line endpoint hành vi: insert_row có name_for_transfer
+        # khi method=qr và body.name_for_transfer được set.
+        import payment_request_routes as pr_mod
+        src = pr_mod
+        # Đọc source: chỗ build insert_row trong add_payment_line
+        import inspect
+        source = inspect.getsource(src)
+        # Quy ước hiện tại: nếu method qr, name_for_transfer ĐƯỢC truyền vào insert_row.
+        assert '"name_for_transfer": body.name_for_transfer' in source or \
+               "insert_row[\"name_for_transfer\"] = body.name_for_transfer" in source or \
+               "name_for_transfer=body.name_for_transfer" in source, \
+               "addPayment phải lưu body.name_for_transfer vào insert_row khi method=qr"

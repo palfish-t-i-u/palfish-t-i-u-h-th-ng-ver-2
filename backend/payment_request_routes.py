@@ -1979,6 +1979,7 @@ def register_payment_request_routes(app, _get_supabase) -> None:
                         "qr_code": payos_payload.get("qr_code") or "",
                         "checkout_url": payos_payload.get("checkout_url") or "",
                         "transfer_content": payos_payload.get("transfer_content") or description,
+                        "name_for_transfer": body.name_for_transfer,
                     }
                 )
             else:
@@ -1991,6 +1992,7 @@ def register_payment_request_routes(app, _get_supabase) -> None:
                         "qr_code": "",
                         "checkout_url": "",
                         "transfer_content": description,
+                        "name_for_transfer": body.name_for_transfer,
                     }
                 )
 
