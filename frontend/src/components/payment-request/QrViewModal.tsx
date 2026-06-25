@@ -196,6 +196,10 @@ export default function QrViewModal({
                   key={qrImageUrl}
                   src={qrImageUrl}
                   alt="VietQR"
+                  // Bắt buộc cho html-to-image.toBlob: thiếu crossOrigin →
+                  // canvas bị CORS-taint → toBlob throws → clipboard không
+                  // được ghi → sale paste ra clipboard cũ (ảnh QR khách trước).
+                  crossOrigin="anonymous"
                   onLoad={() => setImgReady(true)}
                   onError={() => setImgReady(false)}
                   style={{
