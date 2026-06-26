@@ -43,8 +43,7 @@ const ZaloOutboxTab = lazyRetry(() => import("../components/admin/ZaloOutboxTab"
 const PRELOAD_MAP: Record<string, () => Promise<unknown>> = {
   paymentRequests: () => import("../components/PaymentRequestsTab"),
   reconciliation: () => import("../components/ReconciliationTab"),
-  reconMpos: () => import("../components/CardReconciliationTab"),
-  reconPayoo: () => import("../components/CardReconciliationTab"),
+  reconCard: () => import("../components/CardReconciliationTab"),
   module3: () => import("../components/ActivationTab"),
   module4: () => import("../components/InvoiceRequestTab"),
   revenueLedger: () => import("../components/SoDoanhThuTab"),
@@ -58,8 +57,7 @@ type ViewId =
   | "dashboard"
   | "paymentRequests"
   | "reconciliation"
-  | "reconMpos"
-  | "reconPayoo"
+  | "reconCard"
   | "profile"
   | "module3"
   | "module4"
@@ -178,13 +176,9 @@ const TITLES: Record<ViewId, { title: string; subtitle?: string }> = {
     title: "Đối soát giao dịch · Chuyển khoản",
     subtitle: "PayOS / SePay — kế toán xác nhận tiền CK đã về theo sao kê",
   },
-  reconMpos: {
-    title: "Đối soát giao dịch · mPOS",
-    subtitle: "Ghép giao dịch quẹt thẻ mPOS với đúng lần thanh toán của PR",
-  },
-  reconPayoo: {
-    title: "Đối soát giao dịch · Payoo",
-    subtitle: "Ghép giao dịch Payoo (online / trả góp) với đúng lần thanh toán của PR",
+  reconCard: {
+    title: "Đối soát giao dịch · Quẹt thẻ",
+    subtitle: "Ghép giao dịch mPOS & Payoo với đúng lần thanh toán của PR",
   },
   profile: { title: "Thông tin cá nhân" },
   module3: {
@@ -251,8 +245,8 @@ function MainPageInner({
 
   const perms = profile?.permissions ?? {};
   const can = (key: string) => {
-    // Tab con mPOS/Payoo dùng chung quyền với reconciliation (B2)
-    const k = key === "reconMpos" || key === "reconPayoo" || key === "gatewaySync" ? "reconciliation"
+    // Tab Quẹt thẻ (reconCard) dùng chung quyền với reconciliation (B2)
+    const k = key === "reconCard" || key === "gatewaySync" ? "reconciliation"
       : key === "zaloConfig" || key === "zaloGroups" || key === "zaloOutbox" ? "permissions"
       : key;
     return isDevMode || (perms[k] ?? "none") !== "none";
@@ -284,11 +278,9 @@ function MainPageInner({
     // ── Đối soát & Hóa đơn ── (dropdown 3 tab con: Chuyển khoản / mPOS / Payoo)
     const reconChildren: NavChildItem[] = [];
     if (showReconciliation)
-      reconChildren.push({ id: "reconciliation", label: "Chuyển khoản", subtitle: "PayOS / SePay" });
-    if (can("reconMpos"))
-      reconChildren.push({ id: "reconMpos", label: "mPOS", subtitle: "Quẹt thẻ tại máy" });
-    if (can("reconPayoo"))
-      reconChildren.push({ id: "reconPayoo", label: "Payoo", subtitle: "Thanh toán online" });
+      reconChildren.push({ id: "reconciliation", label: "Chuyển khoản", subtitle: "SePay" });
+    if (can("reconCard"))
+      reconChildren.push({ id: "reconCard", label: "Quẹt thẻ", subtitle: "mPOS / Payoo" });
     const reconItem: NavItem | null = reconChildren.length > 0
       ? { id: "reconHub", label: "Đối soát giao dịch", icon: I.history, section: "Đối soát & Hóa đơn", children: reconChildren }
       : null;
@@ -355,8 +347,7 @@ function MainPageInner({
     activeView === "dashboard" ||
     activeView === "paymentRequests" ||
     activeView === "reconciliation" ||
-    activeView === "reconMpos" ||
-    activeView === "reconPayoo" ||
+    activeView === "reconCard" ||
     activeView === "module3" ||
     activeView === "module4" ||
     activeView === "bc01" ||
@@ -373,8 +364,7 @@ function MainPageInner({
       case "dashboard": return <DashboardTab />;
       case "paymentRequests": return <PaymentRequestsTab />;
       case "reconciliation": return <ReconciliationTab />;
-      case "reconMpos": return <CardReconciliationTab lockedSource="mpos" onGoToSync={() => setActiveView("gatewaySync")} />;
-      case "reconPayoo": return <CardReconciliationTab lockedSource="payoo" onGoToSync={() => setActiveView("gatewaySync")} />;
+      case "reconCard": return <CardReconciliationTab onGoToSync={() => setActiveView("gatewaySync")} />;
       case "module3": return <ActivationTab />;
       case "module4": return <InvoiceRequestTab />;
       case "profile": return <ProfilePage />;

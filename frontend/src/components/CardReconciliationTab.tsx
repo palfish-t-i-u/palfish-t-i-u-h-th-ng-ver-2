@@ -24,6 +24,14 @@ const SOURCE_TABS: { id: GatewaySource; label: string }[] = [
   { id: "payoo", label: "Payoo" },
 ];
 
+type SourceFilter = "all" | GatewaySource;
+const SOURCE_FILTERS: { id: SourceFilter; label: string }[] = [
+  { id: "all", label: "Tất cả" },
+  { id: "mpos", label: "mPOS" },
+  { id: "payoo", label: "Payoo" },
+];
+const SOURCE_LABEL: Record<GatewaySource, string> = { mpos: "mPOS", payoo: "Payoo" };
+
 const STATUS_CHIPS: { id: StatusFilter; label: string }[] = [
   { id: "all", label: "Tất cả" },
   { id: "pending", label: "Chưa ghép" },
@@ -60,6 +68,7 @@ export default function CardReconciliationTab({
   const [txns, setTxns] = useState<GatewayTxn[]>([]);
   const [loading, setLoading] = useState(false);
   const [source, setSource] = useState<GatewaySource>(lockedSource ?? "mpos");
+  const [sourceFilter, setSourceFilter] = useState<SourceFilter>(lockedSource ?? "all");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [search, setSearch] = useState("");
   const [drawerId, setDrawerId] = useState<string | null>(null);
@@ -77,7 +86,8 @@ export default function CardReconciliationTab({
   const loadTxns = useCallback(async () => {
     setLoading(true);
     try {
-      const { data } = await endpoints.cardRecon.list({ source });
+      const params = sourceFilter === "all" ? {} : { source: sourceFilter };
+      const { data } = await endpoints.cardRecon.list(params);
       setTxns(Array.isArray(data) ? data : []);
     } catch (err) {
       console.error("[card-recon] load txns failed", err);
@@ -85,7 +95,7 @@ export default function CardReconciliationTab({
     } finally {
       setLoading(false);
     }
-  }, [source]);
+  }, [sourceFilter]);
 
   const loadSyncStatus = useCallback(async () => {
     try {
@@ -98,10 +108,11 @@ export default function CardReconciliationTab({
     }
   }, []);
 
-  // Khi nhúng làm tab con (khoá 1 kênh), đồng bộ source theo prop + đóng drawer khi đổi kênh.
+  // Khi nhúng làm tab con (khoá 1 kênh), đồng bộ source + sourceFilter theo prop + đóng drawer khi đổi kênh.
   useEffect(() => {
     if (lockedSource) {
       setSource(lockedSource);
+      setSourceFilter(lockedSource);
       setDrawerOpen(false);
     }
   }, [lockedSource]);
@@ -124,23 +135,26 @@ export default function CardReconciliationTab({
 
   const drawerTxn = useMemo(() => txns.find((t) => t.id === drawerId) ?? null, [txns, drawerId]);
 
-  const bySource = useMemo(() => txns.filter((t) => t.source === source), [txns, source]);
+  const visible = useMemo(
+    () => (sourceFilter === "all" ? txns : txns.filter((t) => t.source === sourceFilter)),
+    [txns, sourceFilter],
+  );
 
   const counts = useMemo(() => {
     let matched = 0;
     let pending = 0;
     let sum = 0;
-    for (const t of bySource) {
+    for (const t of visible) {
       sum += t.amount;
       if (t.match_status === "matched") matched++;
       else if (t.match_status === "pending") pending++;
     }
-    return { total: bySource.length, matched, pending, sum };
-  }, [bySource]);
+    return { total: visible.length, matched, pending, sum };
+  }, [visible]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return bySource.filter((t) => {
+    return visible.filter((t) => {
       if (statusFilter !== "all" && t.match_status !== statusFilter) return false;
       if (!q) return true;
       return [t.cardholder_name, t.txn_code, t.settlement_code ?? "", t.card_masked, t.matched_label ?? ""]
@@ -352,7 +366,7 @@ export default function CardReconciliationTab({
     return () => clearTimeout(t);
   }, [syncToast]);
 
-  const groupCol = source === "mpos" ? "Phiếu chi" : "Kênh / Mã đơn";
+  const groupCol = sourceFilter === "mpos" ? "Phiếu chi" : sourceFilter === "payoo" ? "Kênh / Mã đơn" : "Phiếu chi / Mã đơn";
 
   return (
     <div className="gmv-prototype">
@@ -431,40 +445,45 @@ export default function CardReconciliationTab({
           )}
         </div>
 
-        <div className="kpi-row">
-          <div className="kpi">
-            <div className="kpi-icon">
-              <Icons.Database size={16} />
+        {(() => {
+          const filterLabel = SOURCE_FILTERS.find((s) => s.id === sourceFilter)?.label ?? "Tất cả";
+          return (
+            <div className="kpi-row">
+              <div className="kpi">
+                <div className="kpi-icon">
+                  <Icons.Database size={16} />
+                </div>
+                <div className="kpi-label">Tổng giao dịch</div>
+                <div className="kpi-value">{loading ? "…" : counts.total}</div>
+                <div className="kpi-sub">{filterLabel}</div>
+              </div>
+              <div className="kpi">
+                <div className="kpi-icon" style={{ background: "var(--warning-bg)", color: "var(--warning-text)" }}>
+                  <Icons.Clock size={16} />
+                </div>
+                <div className="kpi-label">Chưa ghép</div>
+                <div className="kpi-value">{loading ? "…" : counts.pending}</div>
+                <div className="kpi-sub">Chờ kế toán đối chiếu</div>
+              </div>
+              <div className="kpi">
+                <div className="kpi-icon" style={{ background: "var(--success-bg)", color: "var(--success-text)" }}>
+                  <Icons.CheckCircle size={16} />
+                </div>
+                <div className="kpi-label">Đã ghép</div>
+                <div className="kpi-value">{loading ? "…" : counts.matched}</div>
+                <div className="kpi-sub">Khớp lần thanh toán</div>
+              </div>
+              <div className="kpi">
+                <div className="kpi-icon">
+                  <Icons.Wallet size={16} />
+                </div>
+                <div className="kpi-label">Tổng tiền</div>
+                <div className="kpi-value" style={{ fontSize: 18 }}>{loading ? "…" : vnd(counts.sum)}</div>
+                <div className="kpi-sub">Toàn bộ {filterLabel}</div>
+              </div>
             </div>
-            <div className="kpi-label">Tổng giao dịch</div>
-            <div className="kpi-value">{loading ? "…" : counts.total}</div>
-            <div className="kpi-sub">{SOURCE_TABS.find((s) => s.id === source)?.label}</div>
-          </div>
-          <div className="kpi">
-            <div className="kpi-icon" style={{ background: "var(--warning-bg)", color: "var(--warning-text)" }}>
-              <Icons.Clock size={16} />
-            </div>
-            <div className="kpi-label">Chưa ghép</div>
-            <div className="kpi-value">{loading ? "…" : counts.pending}</div>
-            <div className="kpi-sub">Chờ kế toán đối chiếu</div>
-          </div>
-          <div className="kpi">
-            <div className="kpi-icon" style={{ background: "var(--success-bg)", color: "var(--success-text)" }}>
-              <Icons.CheckCircle size={16} />
-            </div>
-            <div className="kpi-label">Đã ghép</div>
-            <div className="kpi-value">{loading ? "…" : counts.matched}</div>
-            <div className="kpi-sub">Khớp lần thanh toán</div>
-          </div>
-          <div className="kpi">
-            <div className="kpi-icon">
-              <Icons.Wallet size={16} />
-            </div>
-            <div className="kpi-label">Tổng tiền</div>
-            <div className="kpi-value" style={{ fontSize: 18 }}>{loading ? "…" : vnd(counts.sum)}</div>
-            <div className="kpi-sub">Toàn bộ {SOURCE_TABS.find((s) => s.id === source)?.label}</div>
-          </div>
-        </div>
+          );
+        })()}
 
         <div className="toolbar">
           <div className="search">
@@ -492,17 +511,17 @@ export default function CardReconciliationTab({
             {lockedSource ? (
               <div className="tabs">
                 <div className="tab active">
-                  {source === "mpos" ? "mPOS" : "Payoo"}
-                  <span className="tab-count">{loading ? "…" : bySource.length}</span>
+                  {SOURCE_LABEL[source]}
+                  <span className="tab-count">{loading ? "…" : visible.length}</span>
                 </div>
               </div>
             ) : (
               <div className="tabs">
-                {SOURCE_TABS.map((s) => {
-                  const isActive = source === s.id;
-                  const n = txns.filter((t) => t.source === s.id).length;
+                {SOURCE_FILTERS.map((s) => {
+                  const isActive = sourceFilter === s.id;
+                  const n = s.id === "all" ? txns.length : txns.filter((t) => t.source === s.id).length;
                   return (
-                    <div key={s.id} className={`tab ${isActive ? "active" : ""}`} onClick={() => setSource(s.id)}>
+                    <div key={s.id} className={`tab ${isActive ? "active" : ""}`} onClick={() => setSourceFilter(s.id)}>
                       {s.label}
                       <span className="tab-count">{loading ? "…" : n}</span>
                     </div>
@@ -518,6 +537,7 @@ export default function CardReconciliationTab({
               <thead>
                 <tr>
                   <th style={{ width: 130 }}>Thời gian</th>
+                  <th style={{ width: 90 }}>Nguồn</th>
                   <th style={{ minWidth: 200 }}>Chủ thẻ / Thẻ</th>
                   <th style={{ width: 150, textAlign: "right" }}>Số tiền</th>
                   <th style={{ width: 170 }}>{groupCol}</th>
@@ -528,7 +548,7 @@ export default function CardReconciliationTab({
               <tbody>
                 {filtered.length === 0 && (
                   <tr>
-                    <td colSpan={6}>
+                    <td colSpan={7}>
                       <div className="empty">
                         <Icons.Database size={20} />
                         <div>{loading ? "Đang tải…" : "Không có giao dịch nào khớp điều kiện lọc."}</div>
@@ -547,6 +567,14 @@ export default function CardReconciliationTab({
                       <td>
                         <div className="cell-time">{dt.date}</div>
                         <div className="time-relative">{dt.time}</div>
+                      </td>
+                      <td>
+                        <span
+                          className={`badge ${t.source === "mpos" ? "is-waiting" : "is-soft-primary"}`}
+                          style={{ fontWeight: 600 }}
+                        >
+                          {SOURCE_LABEL[t.source as GatewaySource] ?? t.source}
+                        </span>
                       </td>
                       <td>
                         <div style={{ fontWeight: 600, color: "var(--text)" }}>{t.cardholder_name}</div>
