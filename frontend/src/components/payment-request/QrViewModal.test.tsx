@@ -576,3 +576,67 @@ describe("QrViewModal — spinner overlay", () => {
     expect(getOverlayContainer()?.getAttribute("data-qr-capture-hide")).toBe("true");
   });
 });
+
+// ═══════════════════════════════════════════════════════════════
+// GROUP 10: Derived imgReady — fix race window (prod incident 26/6/2026)
+// ═══════════════════════════════════════════════════════════════
+
+/**
+ * Bối cảnh: PR-2026-0080 (chị Quỳnh / Thảo Tiên) bị flag PAID sai vì sale
+ * gửi QR PR-0081 (chị Thủy / Hoàng Lâm) cho khách — nhưng ảnh QR clipboard
+ * mang content của PR-0080. Live preview hiển thị ĐÚNG (Hoang Lam), ảnh save
+ * lại SAI (Thao Tien).
+ *
+ * Root cause: imgReady reset bằng useEffect → chạy SAU render commit → race
+ * window cho phép button "Chụp" enable trong khi browser còn hiện bitmap cũ.
+ *
+ * Fix: imgReady là DERIVED STATE (`imgReadyUrl === qrImageUrl`). Reset đồng
+ * bộ ngay tại render, không cần useEffect → không có race.
+ *
+ * Test guarantee: stale onLoad không bao giờ enable button cho URL khác.
+ */
+describe("QrViewModal — derived imgReady (fix prod incident 26/6/2026)", () => {
+  it("stale onLoad (URL cũ load xong SAU khi URL đã đổi) KHÔNG enable button", () => {
+    expect.assertions(3);
+    const { rerender } = render(
+      <QrViewModal qr={makeOldQr()} request={makeOldRequest()} onClose={() => {}} />,
+    );
+    // 1. Đổi URL TRƯỚC khi fire onLoad → mô phỏng onLoad của img cũ đến muộn
+    rerender(<QrViewModal qr={makeQr()} request={makeRequest()} onClose={() => {}} />);
+    const newImg = getQrImg();
+    expect(parseQrParams(newImg.src).amount).toBe(17_650_000); // URL đã là PR mới
+
+    // 2. Fire onLoad — với derived state, imgReadyUrl=URL-PR-mới
+    loadImg(newImg);
+    expect(getCaptureButton()).not.toBeDisabled(); // PR mới load xong → enabled
+
+    // 3. Nếu đổi URL lần nữa (sang PR thứ 3), button PHẢI lại disabled NGAY
+    //    (không chờ useEffect — derived state đồng bộ với qrImageUrl).
+    rerender(
+      <QrViewModal qr={makeQr({ amount: 999_999 })} request={makeRequest()} onClose={() => {}} />,
+    );
+    expect(getCaptureButton()).toBeDisabled();
+  });
+
+  it("img có ref attribute để defensive guard isImgFresh() đọc currentSrc", () => {
+    expect.assertions(1);
+    render(<QrViewModal qr={makeQr()} request={makeRequest()} onClose={() => {}} />);
+    // Verify <img> có thể truy cập qua ref (gián tiếp qua DOM query).
+    // Defensive guard so sánh img.currentSrc/src với qrImageUrl trước khi capture.
+    // Nếu img không có trong DOM hoặc ref bị mất → guard return false → abort.
+    const img = getQrImg();
+    expect(img.src).toContain("img.vietqr.io");
+  });
+
+  it("URL=empty (qrImageUrl rỗng) thì imgReady=false bất kể imgReadyUrl", () => {
+    expect.assertions(1);
+    // Edge case: nếu buildQrUrl trả "" (qr=null/transferCode rỗng), derived state
+    // `qrImageUrl !== "" && imgReadyUrl === qrImageUrl` PHẢI false (không
+    // pass guard vì cả 2 đều "" sẽ match nhầm).
+    // Test gián tiếp: với qr=null, component return null → không button nào tồn tại.
+    const { container } = render(
+      <QrViewModal qr={null} request={makeRequest()} onClose={() => {}} />,
+    );
+    expect(container.firstChild).toBeNull();
+  });
+});

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { BANK_INFO } from "../../constants/bank";
 import type { PaymentAttempt, PaymentRequest } from "../../types/paymentRequest";
 import { findCountry } from "./CountryCombo";
@@ -67,26 +67,40 @@ export default function QrViewModal({
 }) {
   const [copyQrState, setCopyQrState] = useState<"idle" | "copying" | "done" | "error">("idle");
   const [captureState, setCaptureState] = useState<"idle" | "capturing" | "done" | "downloaded" | "error">("idle");
-  const [imgReady, setImgReady] = useState(false);
+  // Derived state: imgReadyUrl lưu URL đã load xong. imgReady = (URL hiện tại đã load chưa).
+  // Lý do KHÔNG dùng useState+useEffect: useEffect chạy SAU render commit, tạo race window
+  // (button còn enable, browser còn hiện bitmap cũ trong vài ms) → chụp nhầm QR cũ.
+  // Prod incident 26/6/2026 (PR-0080/0081 chị Quỳnh/chị Thủy 4.7M).
+  const [imgReadyUrl, setImgReadyUrl] = useState<string>("");
+  const imgRef = useRef<HTMLImageElement>(null);
   const captureRef = useRef<HTMLDivElement>(null);
 
   const country = qr && request ? findCountry(request.country) : null;
   const transferCode = qr ? qr.transferContent || qr.code : "";
   const qrImageUrl = qr ? buildQrUrl(qr.amount, transferCode) : "";
   const fullBankText = qr ? buildFullBankText(qr.amount, transferCode) : "";
-
-  // Reset loading state mỗi khi URL ảnh đổi (chuyển sang QR khác / sửa số tiền)
-  // → block Chụp/Copy đến khi PNG mới load xong, tránh chụp nhầm ảnh QR cũ
-  // còn đang hiển thị lúc đợi img.vietqr.io trả về.
-  useEffect(() => {
-    setImgReady(false);
-  }, [qrImageUrl]);
+  const imgReady = qrImageUrl !== "" && imgReadyUrl === qrImageUrl;
 
   if (!qr || !request || !country) return null;
 
   const copy = (text: string) => navigator.clipboard?.writeText(text).catch(() => {});
 
+  // Defensive guard: img.currentSrc PHẢI khớp qrImageUrl hiện tại trước khi capture/copy.
+  // Phòng race rare khi browser còn hiện bitmap cũ dù imgReady đã true. Mismatch = abort.
+  const isImgFresh = (): boolean => {
+    const img = imgRef.current;
+    if (!img) return false;
+    // currentSrc = URL browser thực sự đã resolve/fetch; src = attribute thô.
+    // So sánh cả hai để chắc chắn DOM ⇔ state đồng bộ.
+    return img.currentSrc === qrImageUrl || img.src === qrImageUrl;
+  };
+
   const handleCopyQr = async () => {
+    if (!isImgFresh()) {
+      setCopyQrState("error");
+      setTimeout(() => setCopyQrState("idle"), 2500);
+      return;
+    }
     setCopyQrState("copying");
     const ok = await copyImageToClipboard(qrImageUrl);
     setCopyQrState(ok ? "done" : "error");
@@ -95,6 +109,11 @@ export default function QrViewModal({
 
   const handleCaptureQr = async () => {
     if (!captureRef.current) return;
+    if (!isImgFresh()) {
+      setCaptureState("error");
+      setTimeout(() => setCaptureState("idle"), 2500);
+      return;
+    }
     setCaptureState("capturing");
     try {
       const { toBlob } = await import("html-to-image");
@@ -194,14 +213,18 @@ export default function QrViewModal({
                 <img
                   // key buộc remount khi URL đổi → không bao giờ hiển thị PNG cũ
                   key={qrImageUrl}
+                  ref={imgRef}
                   src={qrImageUrl}
                   alt="VietQR"
                   // Bắt buộc cho html-to-image.toBlob: thiếu crossOrigin →
                   // canvas bị CORS-taint → toBlob throws → clipboard không
                   // được ghi → sale paste ra clipboard cũ (ảnh QR khách trước).
                   crossOrigin="anonymous"
-                  onLoad={() => setImgReady(true)}
-                  onError={() => setImgReady(false)}
+                  // Chỉ set imgReadyUrl = URL hiện tại khi load xong.
+                  // Nếu URL đã đổi (rerender), onLoad của img cũ KHÔNG còn quan trọng
+                  // vì derived imgReady = (imgReadyUrl === qrImageUrl) sẽ vẫn false.
+                  onLoad={() => setImgReadyUrl(qrImageUrl)}
+                  onError={() => setImgReadyUrl("")}
                   style={{
                     width: "100%",
                     height: "100%",
