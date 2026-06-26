@@ -111,10 +111,11 @@ def build_payment_paid_message(
 
     raw_team = sale_info.get("team")
     canonical_team = get_canonical_team(raw_team)
+    team_display = str(raw_team).strip() if raw_team and str(raw_team).strip() else "?"
 
     message = (
-        f"💰 PAID — KH {customer} | {amount} "
-        f"| sale {sale_name} | {method} | {time_str}"
+        f"💰 Đã vào - KH {customer} | Sale {sale_name} · Team {team_display} "
+        f"| {amount} | {time_str}"
     )
 
     return {"message": message, "canonical_team_code": canonical_team}
@@ -202,10 +203,11 @@ def build_course_activated_message(
 
     raw_team = sale_info.get("team")
     canonical_team = get_canonical_team(raw_team)
+    team_display = str(raw_team).strip() if raw_team and str(raw_team).strip() else "?"
 
     message = (
-        f"✅ KÍCH HOẠT — KH {customer} "
-        f"| gói {package} | sale {sale_name}"
+        f"✅ ĐÃ KÍCH HOẠT THÀNH CÔNG GÓI HỌC — KH {customer} của {sale_name} "
+        f"· Team {team_display} với gói {package}"
     )
 
     return {"message": message, "canonical_team_code": canonical_team}

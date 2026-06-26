@@ -55,8 +55,7 @@ class TestZaloMessageBuilder(unittest.TestCase):
 
         # 10:00 UTC → 17:00 Asia/Ho_Chi_Minh
         expected = (
-            "\U0001f4b0 PAID \u2014 KH Nguyen Van A | 1,500,000\u0111 "
-            "| sale Tran Thi B | QR Code | 01/10/2023 17:00"
+            "💰 Đã vào - KH Nguyen Van A | Sale Tran Thi B · Team HN inhouse | 1,500,000đ | 01/10/2023 17:00"
         )
         self.assertEqual(result["message"], expected)
         self.assertEqual(result["canonical_team_code"], "Inhouse 1")
@@ -70,8 +69,7 @@ class TestZaloMessageBuilder(unittest.TestCase):
             )
 
             expected = (
-                "\U0001f4b0 PAID \u2014 KH Unknown | 0\u0111 "
-                "| sale Unknown | Unknown | N/A"
+                "💰 Đã vào - KH Unknown | Sale Unknown · Team ? | 0đ | N/A"
             )
             self.assertEqual(result["message"], expected)
             self.assertEqual(result["canonical_team_code"], "Kh\u00e1c")
@@ -92,8 +90,8 @@ class TestZaloMessageBuilder(unittest.TestCase):
         result = build_course_activated_message(req_data, sale_info)
 
         expected = (
-            "\u2705 K\u00cdCH HO\u1ea0T \u2014 KH Le Van C "
-            "| g\u00f3i Khoa Hoc Tieng Anh 1 Nam | sale Nguyen Thi D"
+            "✅ ĐÃ KÍCH HOẠT THÀNH CÔNG GÓI HỌC — KH Le Van C "
+            "của Nguyen Thi D · Team HCM (Online) với gói Khoa Hoc Tieng Anh 1 Nam"
         )
         self.assertEqual(result["message"], expected)
         self.assertEqual(result["canonical_team_code"], "HCM (Online)")
@@ -107,8 +105,8 @@ class TestZaloMessageBuilder(unittest.TestCase):
             )
 
             expected = (
-                "\u2705 K\u00cdCH HO\u1ea0T \u2014 KH Unknown "
-                "| g\u00f3i Unknown | sale Unknown"
+                "✅ ĐÃ KÍCH HOẠT THÀNH CÔNG GÓI HỌC — KH Unknown "
+                "của Unknown · Team Unknown Team với gói Unknown"
             )
             self.assertEqual(result["message"], expected)
             self.assertEqual(
