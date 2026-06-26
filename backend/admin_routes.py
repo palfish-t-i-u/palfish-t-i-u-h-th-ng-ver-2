@@ -123,6 +123,7 @@ MODULE_LIST = [
     "dashboard",
     "paymentRequests",
     "reconciliation",
+    "reconCard",      # <-- Thêm mới phục vụ đối soát mPOS/Payoo
     "module3",
     "module4",
     "revenueLedger",
@@ -131,10 +132,13 @@ MODULE_LIST = [
     "bc03",
     "module5",
     "module6",
+    "gatewaySync",    # <-- Thêm mới phục vụ đồng bộ mPOS/Payoo
+    "zalo",           # <-- Thêm mới phục vụ quản lý phân quyền Zalo OA
     "authAccounts",
     "profile",
     "permissions",
 ]
+
 VALID_DEPARTMENTS = {"sale", "hr", "marketing", "cs"}
 ACCESS_LEVELS = {"full", "read", "none"}
 VALID_MIN_ROLES = {"sale", "leader", "manager"}
@@ -146,6 +150,7 @@ DEFAULT_DEPT_PERMISSIONS: dict[str, dict[str, str]] = {
         "revenueLedger": "read", "bc01": "read", "bc02": "read", "bc03": "read",
         "module5": "none", "module6": "full",
         "authAccounts": "none", "profile": "full", "permissions": "none",
+        "reconCard": "none", "gatewaySync": "none", "zalo": "none",
     },
     "hr": {
         "dashboard": "full", "paymentRequests": "full",
@@ -153,6 +158,7 @@ DEFAULT_DEPT_PERMISSIONS: dict[str, dict[str, str]] = {
         "revenueLedger": "full", "bc01": "full", "bc02": "full", "bc03": "full",
         "module5": "full", "module6": "full",
         "authAccounts": "full", "profile": "full", "permissions": "full",
+        "reconCard": "full", "gatewaySync": "full", "zalo": "full",
     },
     "marketing": {
         "dashboard": "read", "paymentRequests": "none",
@@ -160,6 +166,7 @@ DEFAULT_DEPT_PERMISSIONS: dict[str, dict[str, str]] = {
         "revenueLedger": "full", "bc01": "read", "bc02": "read", "bc03": "read",
         "module5": "none", "module6": "none",
         "authAccounts": "none", "profile": "full", "permissions": "none",
+        "reconCard": "none", "gatewaySync": "none", "zalo": "none",
     },
     "cs": {
         "dashboard": "read", "paymentRequests": "none",
@@ -167,6 +174,7 @@ DEFAULT_DEPT_PERMISSIONS: dict[str, dict[str, str]] = {
         "revenueLedger": "none", "bc01": "none", "bc02": "none", "bc03": "none",
         "module5": "none", "module6": "none",
         "authAccounts": "none", "profile": "full", "permissions": "none",
+        "reconCard": "none", "gatewaySync": "none", "zalo": "none",
     },
 }
 
@@ -1300,7 +1308,7 @@ def register_admin_routes(app, get_supabase):
     def get_zalo_groups(authorization: str | None = Header(None)):
         sb = _sb_or_503(get_supabase)
         actor = resolve_actor(sb, authorization)
-        require_min_role(actor, "manager")
+        require_module_access(sb, actor, "zalo")
 
         res = sb.table("zalo_team_groups").select("*").order("updated_at", desc=True).execute()
         return {"data": res.data or []}
@@ -1309,7 +1317,7 @@ def register_admin_routes(app, get_supabase):
     def create_zalo_group(payload: ZaloGroupCreatePayload, authorization: str | None = Header(None)):
         sb = _sb_or_503(get_supabase)
         actor = resolve_actor(sb, authorization)
-        require_min_role(actor, "manager")
+        require_module_write(sb, actor, "zalo")
 
         data = {
             "team_code": payload.team_code.strip(),
@@ -1331,7 +1339,7 @@ def register_admin_routes(app, get_supabase):
     def update_zalo_group(team_code: str, payload: ZaloGroupPatchPayload, authorization: str | None = Header(None)):
         sb = _sb_or_503(get_supabase)
         actor = resolve_actor(sb, authorization)
-        require_min_role(actor, "manager")
+        require_module_write(sb, actor, "zalo")
 
         patch_data = {}
         if payload.group_id is not None:
@@ -1356,7 +1364,7 @@ def register_admin_routes(app, get_supabase):
     def delete_zalo_group(team_code: str, authorization: str | None = Header(None)):
         sb = _sb_or_503(get_supabase)
         actor = resolve_actor(sb, authorization)
-        require_min_role(actor, "manager")
+        require_module_write(sb, actor, "zalo")
 
         res = sb.table("zalo_team_groups").delete().eq("team_code", team_code).execute()
         if not res.data:
@@ -1371,7 +1379,7 @@ def register_admin_routes(app, get_supabase):
     def get_zalo_outbox(authorization: str | None = Header(None)):
         sb = _sb_or_503(get_supabase)
         actor = resolve_actor(sb, authorization)
-        require_min_role(actor, "manager")
+        require_module_access(sb, actor, "zalo")
 
         res = sb.table("zalo_outbox").select("*").order("created_at", desc=True).limit(50).execute()
         return {"data": res.data or []}
@@ -1380,7 +1388,7 @@ def register_admin_routes(app, get_supabase):
     def retry_zalo_outbox(msg_id: int, authorization: str | None = Header(None)):
         sb = _sb_or_503(get_supabase)
         actor = resolve_actor(sb, authorization)
-        require_min_role(actor, "manager")
+        require_module_write(sb, actor, "zalo")
 
         patch_data = {
             "retries": 0,
@@ -1402,7 +1410,7 @@ def register_admin_routes(app, get_supabase):
     def get_zalo_config(authorization: str | None = Header(None)):
         sb = _sb_or_503(get_supabase)
         actor = resolve_actor(sb, authorization)
-        require_min_role(actor, "manager")
+        require_module_access(sb, actor, "zalo")
 
         res = sb.table("zalo_oa_credentials").select("app_id, expires_at").limit(1).execute()
         if not res.data:
@@ -1437,7 +1445,7 @@ def register_admin_routes(app, get_supabase):
     def upsert_zalo_config(payload: ZaloConfigPayload, authorization: str | None = Header(None)):
         sb = _sb_or_503(get_supabase)
         actor = resolve_actor(sb, authorization)
-        require_min_role(actor, "manager")
+        require_module_write(sb, actor, "zalo")
 
         # Xóa cấu hình cũ và thêm cấu hình mới
         sb.table("zalo_oa_credentials").delete().neq("id", 0).execute()
@@ -1461,7 +1469,7 @@ def register_admin_routes(app, get_supabase):
     def test_zalo_config(payload: ZaloTestMessagePayload, authorization: str | None = Header(None)):
         sb = _sb_or_503(get_supabase)
         actor = resolve_actor(sb, authorization)
-        require_min_role(actor, "manager")
+        require_module_write(sb, actor, "zalo")
 
         from zalo_notifier import send_text_to_group
         try:

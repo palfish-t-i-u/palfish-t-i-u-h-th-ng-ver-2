@@ -299,7 +299,7 @@ def register_gateway_routes(app, get_supabase: Callable[[], Any]) -> None:
     ):
         sb = _sb_or_503(get_supabase)
         actor = resolve_actor(sb, authorization)
-        require_module_access(sb, actor, "reconciliation")
+        require_module_access(sb, actor, "reconCard")
 
         query = sb.table("gateway_transactions").select("*").order("paid_at", desc=True).limit(500)
         if source:
@@ -339,7 +339,7 @@ def register_gateway_routes(app, get_supabase: Callable[[], Any]) -> None:
     ):
         sb = _sb_or_503(get_supabase)
         actor = resolve_actor(sb, authorization)
-        require_module_access(sb, actor, "reconciliation")
+        require_module_access(sb, actor, "reconCard")
         txn_res = sb.table("gateway_transactions").select("*").eq("id", txn_id).limit(1).execute()
         if not txn_res.data:
             raise HTTPException(404, "Khong tim thay gateway transaction")
@@ -419,7 +419,7 @@ def register_gateway_routes(app, get_supabase: Callable[[], Any]) -> None:
     def match_gateway_txn(txn_id: str, body: GatewayMatchBody, authorization: str | None = Header(None)):
         sb = _sb_or_503(get_supabase)
         actor = resolve_actor(sb, authorization)
-        require_module_write(sb, actor, "reconciliation")
+        require_module_write(sb, actor, "reconCard")
         line_id = body.payment_line_id.strip()
         if not line_id:
             raise HTTPException(400, "payment_line_id bat buoc")
@@ -457,7 +457,7 @@ def register_gateway_routes(app, get_supabase: Callable[[], Any]) -> None:
     def patch_gateway_status(txn_id: str, body: GatewayStatusBody, authorization: str | None = Header(None)):
         sb = _sb_or_503(get_supabase)
         actor = resolve_actor(sb, authorization)
-        require_module_write(sb, actor, "reconciliation")
+        require_module_write(sb, actor, "reconCard")
         status = body.match_status.strip().lower()
         if status not in VALID_STATUSES:
             raise HTTPException(400, "match_status khong hop le")
@@ -486,7 +486,7 @@ def register_gateway_routes(app, get_supabase: Callable[[], Any]) -> None:
     def gateway_sync_status(authorization: str | None = Header(None)):
         sb = _sb_or_503(get_supabase)
         actor = resolve_actor(sb, authorization)
-        require_module_access(sb, actor, "reconciliation")
+        require_module_access(sb, actor, "reconCard")
         res = (
             sb.table("gateway_transactions")
             .select("source, match_status, imported_at")
