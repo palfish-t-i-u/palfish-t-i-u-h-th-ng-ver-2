@@ -486,3 +486,68 @@
 | E2E-07 | Revenue + BC03 reporting journey | done | Minh | `e2e/journeys/revenue-reporting.spec.ts` |
 | E2E-08 | Admin smoke tests (Auth + Permissions) | done | Minh | `e2e/journeys/admin-smoke.spec.ts` |
 | E2E-09 | CRM Dashboard extended journey | done | Minh | `e2e/journeys/crm-dashboard.spec.ts` |
+
+---
+
+## Payment / QR migration (2026-06-12..19)
+
+> PayOS → SePay-only. QĐ anh Hiếu 19/6: bỏ PayOS, dùng VietQR self-gen + SePay match content.
+
+| ID | Task | Status | Owner | created_at | completed_at | Ghi chú |
+|----|------|--------|-------|------------|--------------|---------|
+| PAY-01 | SePay webhook + `bank_transactions` table | done | Giang | 2026-06-12 | 2026-06-18 | Thay PayOS webhook; `USE_PAYOS=false` |
+| PAY-02 | VietQR self-gen QR (thay PayOS hosted) | done | Minh | 2026-06-14 | 2026-06-18 | `img.vietqr.io` compact2 template |
+| PAY-03 | SePay content matching (`transfer_content`) | done | Giang | 2026-06-14 | 2026-06-18 | Match nội dung CK base36 |
+| PAY-04 | SePay key rotation (Render prod+sandbox) | done | Minh | 2026-06-18 | 2026-06-18 | Handoff Đức/Giang/Đạt update `.env` local |
+| PAY-05 | Bank transactions discrepancy migration | done | Minh | 2026-06-18 | 2026-06-18 | Sandbox done; prod chạy `2026-06-18-bank-transactions-discrepancy.sql` |
+| PAY-06 | Supabase key rotation (legacy JWT disabled) | done | Minh | 2026-06-16 | 2026-06-16 | Leak incident → chỉ dùng `sb_secret_`/`sb_publishable_` |
+
+---
+
+## Zalo OA Notification (2026-06-23..25)
+
+> BE: Giang (G1-G7). FE: AI (G4/G5/G6). 3 event types: payment_paid, course_activated, urgent_reminder.
+
+| ID | Task | Status | Owner | created_at | completed_at | Ghi chú |
+|----|------|--------|-------|------------|--------------|---------|
+| ZALO-01 | BE: Zalo OA token management + auto-refresh | done | Giang | 2026-06-23 | 2026-06-23 | `zalo_notifier.py`, refresh mỗi 24h, retry khi auth error |
+| ZALO-02 | BE: Zalo routes (config, groups, outbox, test) | done | Giang | 2026-06-23 | 2026-06-23 | `zalo_routes.py` |
+| ZALO-03 | DB: `zalo_oa_credentials`, `zalo_team_groups`, `zalo_outbox` + triggers | done | Giang | 2026-06-23 | 2026-06-23 | Migration `2026-06-23-zalo-oa-tables.sql` |
+| ZALO-04 | FE: ZaloConfigTab — credentials form + token status | done | Minh | 2026-06-23 | 2026-06-23 | `ZaloConfigTab.tsx` |
+| ZALO-05 | FE: ZaloGroupsTab — CRUD nhóm thông báo | done | Minh | 2026-06-23 | 2026-06-23 | `ZaloGroupsTab.tsx` |
+| ZALO-06 | FE: ZaloOutboxTab — lịch sử gửi + retry | done | Minh | 2026-06-23 | 2026-06-23 | `ZaloOutboxTab.tsx` |
+| ZALO-07 | ZaloConfigTab: dropdown chọn nhóm thay ô nhập Group ID | done | Minh | 2026-06-25 | 2026-06-25 | `7e54bef`; disabled test button khi chưa chọn |
+| ZALO-08 | Prod: apply migration + insert `zalo_team_groups` data | done | Minh | 2026-06-25 | 2026-06-25 | Merged main via `c5add0e`; migration applied Supabase SQL Editor |
+| ZALO-OPT | Cosmetic: icon/avatar nhóm trong dropdown | pending | — | 2026-06-25 | | Optional; cần custom dropdown thay `<select>` |
+
+---
+
+## PR Stale Content Warning (2026-06-25)
+
+> Cảnh báo khi nội dung CK (QR) lỗi thời so với thông tin KH hiện tại.
+
+| ID | Task | Status | Owner | created_at | completed_at | Ghi chú |
+|----|------|--------|-------|------------|--------------|---------|
+| STALE-01 | `PrStaleContentWarning.tsx` — banner + Cập nhật QR / Huỷ | done | Minh | 2026-06-25 | 2026-06-25 | `_is_payment_line_content_stale()` BE, FE sticky dismiss per line |
+| STALE-02 | `isLegacyLine` prop — warning riêng cho 9 line QR cũ PayOS | done | Minh | 2026-06-25 | 2026-06-25 | Detect `!qr.nameForTransfer`; text: "tên KH/tên con viết tắt từ hệ thống cũ" |
+| STALE-03 | Unit tests (8 tests) | done | Minh | 2026-06-25 | 2026-06-25 | `PrStaleContentWarning.test.tsx` |
+
+---
+
+## CRM Sync fixes (2026-06-25)
+
+| ID | Task | Status | Owner | created_at | completed_at | Ghi chú |
+|----|------|--------|-------|------------|--------------|---------|
+| CRM-FIX-01 | Paginate `_detect_missing_dates` bypass PostgREST max-rows | done | Minh | 2026-06-25 | 2026-06-25 | `1c0d840` |
+| CRM-FIX-02 | Auto-detect & sync missing CRM days | done | Minh | 2026-06-25 | 2026-06-25 | `c5add0e` merge |
+
+---
+
+## Misc fixes (2026-06-11..25)
+
+| ID | Task | Status | Owner | created_at | completed_at | Ghi chú |
+|----|------|--------|-------|------------|--------------|---------|
+| FIX-04 | Activation routes indent bug (10/14 routes missing) | done | Minh | 2026-06-19 | 2026-06-19 | `462557e`; caused by Đạt's merge |
+| FIX-05 | Sổ doanh thu: khử 101 dòng trùng | done | Minh | 2026-06-12 | 2026-06-12 | Backup `so_doanh_thu_dedup_backup_20260612` |
+| FIX-06 | Render Auto-Deploy OFF | done | Minh | 2026-06-19 | 2026-06-19 | Deploy BE bằng `bash scripts/deploy.sh sandbox` |
+| FIX-07 | Sandbox JWT broken → fixed | done | Minh | 2026-06-19 | 2026-06-19 | Key mismatch sau rotation |

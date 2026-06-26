@@ -96,15 +96,22 @@ Frontend `.env.local` points `VITE_API_BASE_URL` to either localhost:8000 (local
 - `frontend/src/components/permissions/PermissionsTab.tsx` — Dynamic RBAC matrix
 - `frontend/src/components/auth/` — Auth accounts management
 - `frontend/src/components/reports/` — BC01, BC02, BC03 reports
+- `frontend/src/components/admin/ZaloConfigTab.tsx` — Zalo OA config + test send (dropdown chọn nhóm)
+- `frontend/src/components/admin/ZaloGroupsTab.tsx` — CRUD nhóm thông báo Zalo
+- `frontend/src/components/admin/ZaloOutboxTab.tsx` — Lịch sử gửi Zalo + retry
+- `frontend/src/components/payment-request/PrStaleContentWarning.tsx` — Cảnh báo nội dung CK lỗi thời
 - `frontend/src/lib/api.ts` — All API endpoints
+- `frontend/src/lib/api/zaloAdmin.ts` — Zalo admin API (config, groups, outbox)
 
 ### Backend key modules
-- `backend/main.py` — FastAPI entry + PayOS webhook (signature verify)
+- `backend/main.py` — FastAPI entry + SePay webhook
 - `backend/rbac.py` — Unified RBAC (4-level: sale/leader/manager/system) + sub-team scoping + JWT
 - `backend/activation_routes.py` — B3: Active Request, course activation
-- `backend/payment_request_routes.py` — B1: PR CRUD, payment lines
+- `backend/payment_request_routes.py` — B1: PR CRUD, payment lines, stale content detection
 - `backend/revenue_routes.py` — M5: Sổ doanh thu, search, batch team lookup, BC01/BC02
 - `backend/crm_routes.py` — CRM hybrid/autonomous sync
+- `backend/zalo_notifier.py` — Zalo OA: send message, token auto-refresh (24h loop)
+- `backend/zalo_routes.py` — Admin: Zalo config, groups CRUD, outbox, test send
 - `backend/dashboard_routes.py` — Gamification, BXH, team/subteam, sub-team scope enforcement
 - `backend/report_routes.py` — BC03 daily/monthly
 - `backend/rpc_helpers.py` — Atomic RPCs, Postgres sequences

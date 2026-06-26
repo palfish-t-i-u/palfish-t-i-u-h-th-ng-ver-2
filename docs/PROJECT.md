@@ -9,9 +9,12 @@
 ```
 Sales (Tab 1) ──► Supabase (khach_hang, don_hang)
                         ▲
-                        │ PayOS webhook → api_pipe/payos_webhook.py
-                        │ (khớp mã KH/DH + đúng số tiền mới bật tien_ve)
-              Bank/PayOS ──► giao_dich ──► Tab 2 (poll 15s) + tab Lịch sử PayOS
+                        │ SePay webhook → bank_transactions
+                        │ (match nội dung CK base36 → xác nhận tien_ve)
+              Bank/SePay ──► giao_dich ──► Tab 2 (poll 15s)
+                        │
+                        │ Zalo OA → zalo_outbox → nhóm Zalo
+                        │ (auto notify payment_paid, course_activated)
                         │
                         └── RBAC (Sale / Leader / Manager / System)
 ```
@@ -21,9 +24,10 @@ Sales (Tab 1) ──► Supabase (khach_hang, don_hang)
 | Frontend | React 19 + Vite + TypeScript + Tailwind | [palfish-gmv-manager.vercel.app](https://palfish-gmv-manager.vercel.app) |
 | Backend API | FastAPI + Supabase client | Render (`palfish-gmv-api`) |
 | Database & Auth | Supabase PostgreSQL + Auth | Project `jozcvbbypwvzaefteoxn` |
-| QR thanh toán | VietQR (`img.vietqr.io`) | `VITE_BANK_*` |
+| QR thanh toán | VietQR self-gen (`img.vietqr.io`) | SePay match content (PayOS deprecated) |
+| Thông báo | Zalo OA API | Auto-refresh token, 3 event types |
 
-**Phân công:** Minh — Frontend, QA, Deploy, UI/UX. Giang — PayOS, CRM sync, webhook, encrypt. Đức — DB audit, RPC, dashboard gamification. Đạt — Auth/RBAC, permission endpoints.
+**Phân công:** Minh — Frontend, QA, Deploy, UI/UX. Giang — SePay, CRM sync, Zalo BE, webhook, encrypt. Đức — DB audit, RPC, dashboard gamification. Đạt — Auth/RBAC, permission endpoints.
 
 ---
 
@@ -87,10 +91,12 @@ pf-gmv-reconciliation/
 │   ├── invoice_routes.py      # M3/M4: export batch, tax ZIP
 │   ├── crm_routes.py          # CRM hybrid/autonomous sync, token encrypt
 │   ├── crm_metrics.py         # CRM sales data upsert
+│   ├── zalo_notifier.py       # Zalo OA: send message, token auto-refresh (24h loop)
+│   ├── zalo_routes.py         # Admin: Zalo config, groups CRUD, outbox, test send
 │   ├── rpc_helpers.py         # Atomic JSONB RPCs, Postgres sequence allocators
 │   ├── analytics_limits.py    # Row caps for dashboard/reports
 │   ├── env_utils.py           # APP_ENV (default=development)
-│   ├── payos_qr.py            # PayOS QR link creation
+│   ├── payos_qr.py            # PayOS QR link creation (deprecated — SePay-only since 19/6)
 │   ├── vn_staff.py            # VN personnel filter (case-insensitive + env)
 │   ├── tests/                 # 31 audit test cases (test_audit_auth/db/other)
 │   ├── scripts/               # create_test_accounts, seed_sandbox_data, etc.
@@ -135,9 +141,13 @@ pf-gmv-reconciliation/
 | `so_doanh_thu` | Sổ doanh thu M5; import gsheet/xlsx/dingtalk/tay |
 | `crm_sales_data` | CRM sales data upsert; `crm_tokens` cho sync |
 | `bc03_monthly` | BC03 daily backfill + monthly report |
+| `bank_transactions` | Giao dịch SePay webhook; match `transfer_content` → xác nhận thanh toán |
+| `zalo_oa_credentials` | Zalo OA token storage (app_id, access_token, refresh_token, expires_at) |
+| `zalo_team_groups` | Mapping team_code → Zalo group_id + group_name |
+| `zalo_outbox` | Queue tin nhắn Zalo: event_type, message, sent_at, retries |
 | `don_hang_seq` / `invoice_code_seq` / `payment_request_seq` | Postgres sequences — chống trùng mã (DB audit) |
 
-Patch (SQL Editor, thứ tự): **v1** → **v2** → **v3** → **v4** → **v5** → **v5_invoice** → **v6** → **v7** (Sổ) → **v8** (bill_images + activated) → **payment_requests** → **active_requests** → **crm_\*** → **bc03_monthly** → **db_audit_20260603** (sequences + RPCs) → **2026-06-09-top1-02** (installment fields) → **2026-06-10-top1-02** (verified fields). Cuối mỗi patch: `NOTIFY pgrst, 'reload schema'`. Xem `supabase_diagnose.sql` nếu lỗi cột.
+Patch (SQL Editor, thứ tự): **v1** → … → **v8** → **payment_requests** → **active_requests** → **crm_\*** → **bc03_monthly** → **db_audit_20260603** → **2026-06-09-top1-02** → **2026-06-10-top1-02** → **2026-06-18-bank-transactions-discrepancy** → **2026-06-23-zalo-oa-tables** (credentials + groups + outbox + triggers). Cuối mỗi patch: `NOTIFY pgrst, 'reload schema'`.
 
 ---
 
@@ -156,40 +166,43 @@ Chi tiết: `docs/WIREFRAMES.md`.
 
 ---
 
-## Tiến độ (cập nhật 2026-06-06)
+## Tiến độ (cập nhật 2026-06-25)
 
 ### Hoàn thành
 
 | Hạng mục | Chi tiết |
 |----------|----------|
-| Module 1 E2E | Tạo đơn, QR, Tab 2, bill, PayOS tab, hủy đơn — prod + local |
-| Payment Request B1–B4 | PR drawer, mini-window AR, allocation guard, QR/cash/card, reconciliation, invoice export |
+| Module 1 E2E | Tạo đơn, QR, Tab 2, bill, hủy đơn — prod + local |
+| Payment Request B1–B4 | PR drawer, mini-window AR, allocation guard, QR/cash/card, reconciliation, invoice export, stale content warning |
 | Module 3 & 4 MVP | Export batch, tax ZIP, CRM order matching |
-| Module 5 | Sổ doanh thu (search bar, batch team lookup), Sales Performance pivot, CRM sync, BC01/BC02 |
+| Module 5 | Sổ doanh thu, Sales Performance pivot, CRM sync (hybrid + autonomous), BC01/BC02, BC03 daily/monthly |
 | Dashboard gamification | BXH, today-honors, event carousel, current_user rank, team/subteam |
-| Permissions dynamic RBAC | Unified permission system, 4-level RBAC (sale/leader/manager/system), sub-team scoping, department×module matrix, personal overrides, readOnly mode |
-| Auth accounts upgrade | Detail drawer, CRM linking/unlinking, bulk delete, sub-team, CRM name priority |
-| Backend audit (22/22 tasks) | DB sequences, auth endpoints, encrypt CRM token, audit log, atomic RPCs, webhook signature — `HANDOFF_BE_AUDIT_2026-06-03.md` |
-| CRM hybrid sync | Autonomous sync, BC03 daily/monthly, CRM sales data upsert |
-| E2E testing | Playwright: CRM Sync (6 tests) + Dashboard Sales (8 tests) |
+| Permissions dynamic RBAC | 4-level RBAC, department×module matrix, personal overrides, readOnly mode, sub-team scoping |
+| Auth accounts | Detail drawer, CRM linking/unlinking, bulk delete, sub-team, CRM name priority |
+| Backend audit (22/22) | DB sequences, auth endpoints, encrypt CRM, atomic RPCs — `HANDOFF_BE_AUDIT_2026-06-03.md` |
+| SePay migration | PayOS deprecated → VietQR self-gen + SePay content match (QĐ anh Hiếu 19/6) |
+| Zalo OA notification | 3 event types (payment_paid, course_activated, urgent_reminder); admin config/groups/outbox UI; token auto-refresh 24h |
+| PR Stale Content Warning | Detect nội dung CK lỗi thời + legacy line warning cho 9 QR cũ PayOS |
+| Supabase key rotation | Legacy JWT keys disabled 16/6 sau leak; chỉ dùng `sb_secret_`/`sb_publishable_` |
+| E2E testing | Playwright: CRM Sync (6) + Dashboard Sales (8) + RBAC + journeys |
 | PalFish branding | Logo, favicon |
 | UI design system | `gmv-tokens`, `components/ui`, brand tím — `docs/DESIGN.md` |
-| Production deploy | Vercel + Render + sandbox branch workflow |
-| Perf optimizations | Lazy chunk preload on hover, shared MeProvider context (single /me fetch), batch team lookup |
-| Spec workflow | Template + hướng dẫn xuất spec từ prototype — `docs/SPEC_TEMPLATE.md`, `docs/HUONG_DAN_XUAT_SPEC.md` |
+| Production deploy | Vercel + Render (Auto-Deploy OFF, deploy via `scripts/deploy.sh`) + sandbox branch |
+| Perf optimizations | Lazy chunk preload, MeProvider, batch team lookup |
+| Trả góp | Form trả góp, kế toán xác nhận (verified_total/verified_received) |
+| Nguồn KH + loại KH | lead_source, lead_channel, customer_type, company_name, tax_id |
+| Nội dung CK | base36 code + tên con + họ tên selector trong `transfer_content` |
 
 ### Đang chờ
 
 | Hạng mục | Ghi chú |
 |----------|---------|
-| CK thật / nghiệm thu QR | STK MB trong env; PayOS + bank app — Giang |
 | AUTH-06: Siết CORS Vercel regex | Cần test Vercel preview URLs trước deploy |
 | DB-05: Transaction wrap KPI save | Đức |
-| OTHER-02: Trùng mã QR PayOS | Cần sequence hoặc random suffix |
 | M3-05: Excel layout merged header | `Report/3 file thuế/` |
-| Module bank — biến động số dư | Giang/Đức — `F2605-BANK-*` |
-| Audit log Tab 2 | Schema có, code chưa |
-| GMV locale auto-correct | Detect + fix lỗi dấu phẩy thập phân VN từ "All File Thu Hiền" |
+| Audit log Tab 2 | Schema có (`don_hang_audit`), code chưa ghi |
+| mPOS/Payoo đối soát | Scope chỉ-đối-soát, extension-fetch architecture; chờ portal access |
+| Cosmetic: Zalo group icon | Icon/avatar nhóm trong dropdown ZaloConfigTab (cần custom component) |
 
 ---
 
@@ -254,10 +267,12 @@ Local: `http://localhost:5173` (hoặc 5174/5175 nếu port bận). Cần `SYSTE
 
 - GitHub FE (ver-2): https://github.com/palfish-t-i-u/palfish-t-i-u-h-th-ng-ver-2
 - GitHub BE (Render): https://github.com/palfish-t-i-u/palfish-gmv-manager
-- Supabase ref: `jozcvbbypwvzaefteoxn`
+- Supabase prod: `jozcvbbypwvzaefteoxn` / sandbox: `pxgybyfiwywksesyogti`
 - Task board: `docs/TODO.md`
 - Backend audit: `docs/HANDOFF_BE_AUDIT_2026-06-03.md`
 - Module 3 & 4: `docs/MODULE_3_4.md`
 - Module 5: `docs/MODULE_SO_DOANH_THU.md`
 - UI / tokens: `docs/DESIGN.md`
-- Branches: `main` (production), `sandbox` (integration), `feature-duc` / `feature-dat` / `feature-kem` (dev)
+- Sandbox URL: `palfish-gmv-manager-sandbox.vercel.app`
+- Branches: `main` (production), `sandbox` (integration/soak test)
+- Render: Auto-Deploy OFF; deploy BE bằng `bash scripts/deploy.sh sandbox`
