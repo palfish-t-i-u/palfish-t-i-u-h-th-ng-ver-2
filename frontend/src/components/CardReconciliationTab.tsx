@@ -555,6 +555,7 @@ export default function CardReconciliationTab({
                   <th style={{ width: 130 }}>Thời gian</th>
                   <th style={{ width: 90 }}>Nguồn</th>
                   <th style={{ minWidth: 200 }}>Chủ thẻ / Thẻ</th>
+                  <th style={{ width: 100 }}>Hình thức</th>
                   <th style={{ width: 150, textAlign: "right" }}>Số tiền</th>
                   <th style={{ width: 170 }}>{groupCol}</th>
                   <th style={{ width: 120 }}>Trạng thái</th>
@@ -564,7 +565,7 @@ export default function CardReconciliationTab({
               <tbody>
                 {filtered.length === 0 && (
                   <tr>
-                    <td colSpan={7}>
+                    <td colSpan={8}>
                       <div className="empty">
                         <Icons.Database size={20} />
                         <div>{loading ? "Đang tải…" : "Không có giao dịch nào khớp điều kiện lọc."}</div>
@@ -594,22 +595,33 @@ export default function CardReconciliationTab({
                       </td>
                       <td>
                         <div style={{ fontWeight: 600, color: "var(--text)" }}>{t.cardholder_name}</div>
-                        <div className="cell-sub" style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                          <span>{t.card_type} · {t.card_masked}</span>
-                          {t.installment_term ? (
-                            <span style={{
-                              fontSize: 10.5,
-                              padding: "1px 6px",
-                              borderRadius: 6,
-                              background: "var(--primary-bg, #ede9fe)",
-                              color: "var(--primary, #7c3aed)",
-                              fontWeight: 600,
-                              whiteSpace: "nowrap",
-                            }}>
-                              Trả góp {t.installment_term} kỳ
-                            </span>
-                          ) : null}
-                        </div>
+                        <div className="cell-sub">{t.card_type} · {t.card_masked}</div>
+                      </td>
+                      <td>
+                        {t.installment_term ? (
+                          <span style={{
+                            fontSize: 10.5,
+                            padding: "2px 7px",
+                            borderRadius: 6,
+                            background: "var(--primary-bg, #ede9fe)",
+                            color: "var(--primary, #7c3aed)",
+                            fontWeight: 600,
+                            whiteSpace: "nowrap",
+                          }}>
+                            Trả góp {t.installment_term} kỳ
+                          </span>
+                        ) : (
+                          <span style={{
+                            fontSize: 10.5,
+                            padding: "2px 7px",
+                            borderRadius: 6,
+                            background: "var(--surface-3)",
+                            color: "var(--text-3)",
+                            fontWeight: 500,
+                          }}>
+                            Thường
+                          </span>
+                        )}
                       </td>
                       <td style={{ textAlign: "right" }}>
                         <span className="txn-amount" style={{ color: "var(--money)" }}>{vnd(t.amount)}</span>
