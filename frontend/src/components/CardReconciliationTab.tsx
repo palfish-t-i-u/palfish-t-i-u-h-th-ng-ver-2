@@ -34,6 +34,13 @@ const STATUS_CHIPS: { id: StatusFilter; label: string }[] = [
   { id: "ignored", label: "Bỏ qua" },
 ];
 
+type InstallmentFilter = "all" | "regular" | "installment";
+const INSTALLMENT_CHIPS: { id: InstallmentFilter; label: string }[] = [
+  { id: "all", label: "Tất cả" },
+  { id: "regular", label: "Thường" },
+  { id: "installment", label: "Trả góp" },
+];
+
 function RefreshIcon({ size = 14 }: { size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.9} strokeLinecap="round" strokeLinejoin="round">
@@ -65,6 +72,7 @@ export default function CardReconciliationTab({
   const [source, setSource] = useState<GatewaySource>(lockedSource ?? "mpos");
   const [sourceFilter, setSourceFilter] = useState<SourceFilter>(lockedSource ?? "all");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  const [installmentFilter, setInstallmentFilter] = useState<InstallmentFilter>("all");
   const [search, setSearch] = useState("");
   const [drawerId, setDrawerId] = useState<string | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -151,11 +159,13 @@ export default function CardReconciliationTab({
     const q = search.trim().toLowerCase();
     return visible.filter((t) => {
       if (statusFilter !== "all" && t.match_status !== statusFilter) return false;
+      if (installmentFilter === "installment" && !t.installment_term) return false;
+      if (installmentFilter === "regular" && t.installment_term) return false;
       if (!q) return true;
       return [t.cardholder_name, t.txn_code, t.settlement_code ?? "", t.card_masked, t.matched_label ?? ""]
         .some((v) => v.toLowerCase().includes(q));
     });
-  }, [visible, statusFilter, search]);
+  }, [visible, statusFilter, installmentFilter, search]);
 
   // Tải ứng viên ghép từ API mỗi khi mở drawer (BE đã xếp theo tiền + độ gần ngày).
   useEffect(() => {
@@ -499,6 +509,17 @@ export default function CardReconciliationTab({
               {c.label}
             </button>
           ))}
+          <span style={{ width: 1, height: 20, background: "var(--border)", margin: "0 4px" }} />
+          {INSTALLMENT_CHIPS.map((c) => (
+            <button
+              key={c.id}
+              type="button"
+              className={`filter-chip ${installmentFilter === c.id ? "active" : ""}`}
+              onClick={() => setInstallmentFilter(c.id)}
+            >
+              {c.label}
+            </button>
+          ))}
         </div>
 
         <div className="table-card has-tabs">
@@ -573,9 +594,21 @@ export default function CardReconciliationTab({
                       </td>
                       <td>
                         <div style={{ fontWeight: 600, color: "var(--text)" }}>{t.cardholder_name}</div>
-                        <div className="cell-sub">
-                          {t.card_type} · {t.card_masked}
-                          {t.installment_term ? ` · trả góp ${t.installment_term} kỳ` : ""}
+                        <div className="cell-sub" style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                          <span>{t.card_type} · {t.card_masked}</span>
+                          {t.installment_term ? (
+                            <span style={{
+                              fontSize: 10.5,
+                              padding: "1px 6px",
+                              borderRadius: 6,
+                              background: "var(--primary-bg, #ede9fe)",
+                              color: "var(--primary, #7c3aed)",
+                              fontWeight: 600,
+                              whiteSpace: "nowrap",
+                            }}>
+                              Trả góp {t.installment_term} kỳ
+                            </span>
+                          ) : null}
                         </div>
                       </td>
                       <td style={{ textAlign: "right" }}>
