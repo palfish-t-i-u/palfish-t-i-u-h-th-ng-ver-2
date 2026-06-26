@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import type { PaymentRequest } from "../../types/paymentRequest";
 import { Icons } from "./Icons";
-import { vnd } from "./paymentRequestUtils";
+import { displayReceived, hasUnverifiedInstallment, vnd } from "./paymentRequestUtils";
 
 export default function CancelPrModal({
   pr,
@@ -59,7 +59,7 @@ export default function CancelPrModal({
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontWeight: 600, fontSize: 13 }}>{pr.name}</div>
               <div style={{ fontSize: 12, color: "var(--text-3)" }}>
-                {vnd(pr.target)} · {pr.payments.length} lần TT đã tạo · {pr.received === 0 ? "chưa nhận tiền" : `đã nhận ${vnd(pr.received)}`}
+                {vnd(pr.target)} · {pr.payments.length} lần TT đã tạo · {displayReceived(pr) === 0 ? "chưa nhận tiền" : `đã nhận ${vnd(displayReceived(pr))}${hasUnverifiedInstallment(pr) ? " (chưa trừ phí)" : ""}`}
               </div>
             </div>
           </div>

@@ -645,6 +645,25 @@ export interface PageSlice<T> {
   to: number;
 }
 
+/** Số tiền THỰC NHẬN để hiển thị trên card.
+ *  Trả góp đã được kế toán xác nhận → dùng verifiedReceived (sau phí).
+ *  Còn lại → dùng amount (gross).
+ *  KHÔNG dùng cho tính state/remaining — chỉ để HIỂN THỊ. */
+export function displayReceived(pr: PaymentRequest): number {
+  return pr.payments.reduce((sum, p) => {
+    if (p.status !== "paid") return sum;
+    if (p.method === "installment" && p.verifiedReceived != null) return sum + p.verifiedReceived;
+    return sum + p.amount;
+  }, 0);
+}
+
+/** True khi có lần trả góp đã trả nhưng kế toán CHƯA xác nhận số sau phí. */
+export function hasUnverifiedInstallment(pr: PaymentRequest): boolean {
+  return pr.payments.some(
+    (p) => p.status === "paid" && p.method === "installment" && p.verifiedReceived == null,
+  );
+}
+
 export function paginate<T>(items: T[], rawPage: number, pageSize: number): PageSlice<T> {
   const totalPages = Math.max(1, Math.ceil(items.length / pageSize));
   const page = Math.min(Math.max(1, Math.floor(rawPage) || 1), totalPages);
