@@ -19,11 +19,6 @@ const STATUS_META: Record<MatchStatus, { cls: string; text: string }> = {
   ignored: { cls: "is-cancelled", text: "Bỏ qua" },
 };
 
-const SOURCE_TABS: { id: GatewaySource; label: string }[] = [
-  { id: "mpos", label: "mPOS" },
-  { id: "payoo", label: "Payoo" },
-];
-
 type SourceFilter = "all" | GatewaySource;
 const SOURCE_FILTERS: { id: SourceFilter; label: string }[] = [
   { id: "all", label: "Tất cả" },
@@ -160,7 +155,7 @@ export default function CardReconciliationTab({
       return [t.cardholder_name, t.txn_code, t.settlement_code ?? "", t.card_masked, t.matched_label ?? ""]
         .some((v) => v.toLowerCase().includes(q));
     });
-  }, [bySource, statusFilter, search]);
+  }, [visible, statusFilter, search]);
 
   // Tải ứng viên ghép từ API mỗi khi mở drawer (BE đã xếp theo tiền + độ gần ngày).
   useEffect(() => {

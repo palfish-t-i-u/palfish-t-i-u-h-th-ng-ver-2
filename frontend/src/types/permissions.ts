@@ -46,7 +46,8 @@ export const MODULE_LIST: ModuleDef[] = [
   { key: "dashboard", label: "Bảng thông tin", description: "Tổng quan đơn hàng, doanh thu, KPI", section: "Khách hàng & Đơn hàng" },
   { key: "paymentRequests", label: "Quản lý thanh toán", description: "Tra cứu và xác nhận thanh toán", section: "Khách hàng & Đơn hàng" },
   // ── Đối soát & Hóa đơn ──
-  { key: "reconciliation", label: "Đối soát giao dịch", description: "So khớp giao dịch với ngân hàng/cổng", section: "Đối soát & Hóa đơn" },
+  { key: "reconciliation", label: "Đối soát giao dịch (Chuyển khoản)", description: "So khớp chuyển khoản SePay", section: "Đối soát & Hóa đơn" },
+  { key: "reconCard", label: "Đối soát giao dịch mPOS/Payoo", description: "So khớp giao dịch quẹt thẻ với lần thanh toán", section: "Đối soát & Hóa đơn" },
   { key: "module3", label: "Kích hoạt khóa học", description: "Kích hoạt gói học cho học viên", section: "Đối soát & Hóa đơn" },
   { key: "module4", label: "Xuất hóa đơn", description: "Tạo và xuất hóa đơn VAT", section: "Đối soát & Hóa đơn" },
   // ── Báo cáo ──
@@ -57,6 +58,9 @@ export const MODULE_LIST: ModuleDef[] = [
   // ── Dữ liệu ──
   { key: "module5", label: "Đồng bộ CRM", description: "Sync & xuất Master Data CRM PalFish", section: "Dữ liệu" },
   { key: "module6", label: "Dashboard Sale", description: "Tổng quan hiệu suất theo team & cá nhân", section: "Dữ liệu" },
+  { key: "gatewaySync", label: "Đồng bộ mPOS/Payoo", description: "Kéo giao dịch mPOS & Payoo về app qua tiện ích", section: "Dữ liệu" },
+  // ── Quản trị ──
+  { key: "zalo", label: "Zalo OA", description: "Cấu hình OA, nhóm thông báo, outbox", section: "Quản trị" },
   // ── Tài khoản & Quyền ──
   { key: "authAccounts", label: "Tài khoản Auth", description: "Quản lý tài khoản đăng nhập", section: "Tài khoản & Quyền" },
   { key: "profile", label: "Thông tin cá nhân", description: "Hồ sơ cá nhân người dùng", section: "Tài khoản & Quyền" },
@@ -77,30 +81,34 @@ export const DEPARTMENT_LIST: DepartmentDef[] = [
 export const DEFAULT_PERMISSIONS: Record<string, Record<string, AccessLevel>> = {
   sale: {
     dashboard: "full", paymentRequests: "full",
-    reconciliation: "full", module3: "full", module4: "read",
+    reconciliation: "full", reconCard: "none", module3: "full", module4: "read",
     revenueLedger: "read", bc01: "read", bc02: "read", bc03: "read",
-    module5: "none", module6: "full",
+    module5: "none", module6: "full", gatewaySync: "none",
+    zalo: "none",
     authAccounts: "none", profile: "full",
   },
   hr: {
     dashboard: "full", paymentRequests: "full",
-    reconciliation: "full", module3: "full", module4: "full",
+    reconciliation: "full", reconCard: "full", module3: "full", module4: "full",
     revenueLedger: "full", bc01: "full", bc02: "full", bc03: "full",
-    module5: "full", module6: "full",
+    module5: "full", module6: "full", gatewaySync: "full",
+    zalo: "full",
     authAccounts: "full", profile: "full",
   },
   marketing: {
     dashboard: "read", paymentRequests: "none",
-    reconciliation: "none", module3: "none", module4: "none",
+    reconciliation: "none", reconCard: "none", module3: "none", module4: "none",
     revenueLedger: "full", bc01: "read", bc02: "read", bc03: "read",
-    module5: "none", module6: "none",
+    module5: "none", module6: "none", gatewaySync: "none",
+    zalo: "none",
     authAccounts: "none", profile: "full",
   },
   cs: {
     dashboard: "read", paymentRequests: "none",
-    reconciliation: "none", module3: "full", module4: "none",
+    reconciliation: "none", reconCard: "none", module3: "full", module4: "none",
     revenueLedger: "none", bc01: "none", bc02: "none", bc03: "none",
-    module5: "none", module6: "none",
+    module5: "none", module6: "none", gatewaySync: "none",
+    zalo: "none",
     authAccounts: "none", profile: "full",
   },
 };

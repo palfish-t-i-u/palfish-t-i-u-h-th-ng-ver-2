@@ -245,9 +245,7 @@ function MainPageInner({
 
   const perms = profile?.permissions ?? {};
   const can = (key: string) => {
-    // Tab Quẹt thẻ (reconCard) dùng chung quyền với reconciliation (B2)
-    const k = key === "reconCard" || key === "gatewaySync" ? "reconciliation"
-      : key === "zaloConfig" || key === "zaloGroups" || key === "zaloOutbox" ? "permissions"
+    const k = key === "zaloConfig" || key === "zaloGroups" || key === "zaloOutbox" ? "zalo"
       : key;
     return isDevMode || (perms[k] ?? "none") !== "none";
   };
