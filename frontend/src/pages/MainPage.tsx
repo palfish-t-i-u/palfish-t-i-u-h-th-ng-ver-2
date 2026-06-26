@@ -314,11 +314,11 @@ function MainPageInner({
 
     // ── Zalo OA ──
     const zaloChildren: NavChildItem[] = [];
-    if (can("permissions"))
+    if (can("zaloConfig"))
       zaloChildren.push({ id: "zaloConfig", label: "Cấu hình OA", subtitle: "Token & kiểm tra kết nối" });
-    if (can("permissions"))
+    if (can("zaloGroups"))
       zaloChildren.push({ id: "zaloGroups", label: "Nhóm thông báo", subtitle: "Mapping team → Zalo group" });
-    if (can("permissions"))
+    if (can("zaloOutbox"))
       zaloChildren.push({ id: "zaloOutbox", label: "Outbox", subtitle: "Trạng thái gửi tin" });
     if (zaloChildren.length > 0)
       list.push({ id: "zaloHub", label: "Zalo OA", icon: I.team, section: "Quản trị", children: zaloChildren });
