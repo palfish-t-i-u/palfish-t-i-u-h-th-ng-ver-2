@@ -21,10 +21,12 @@ import Combobox from "../ui/Combobox";
 import {
   activationSummary,
   activeRequestAllocation,
+  displayReceived,
   fmtPhone,
   formatCoursePhone,
   formatPaymentDateFull,
   getReferralStatus,
+  hasUnverifiedInstallment,
   nowStamp,
   paymentAttemptLabel,
   paymentConfirmationText,
@@ -1735,8 +1737,8 @@ export default function PaymentRequestDetailDrawer({
               <div className="summary-value">{vnd(request.target)}</div>
             </div>
             <div className="summary is-received">
-              <div className="summary-label">Đã nhận</div>
-              <div className="summary-value">{vnd(request.received)}</div>
+              <div className="summary-label">Đã nhận{hasUnverifiedInstallment(request) ? " (chưa trừ phí)" : ""}</div>
+              <div className="summary-value">{vnd(displayReceived(request))}</div>
             </div>
             <div className={`summary is-delta-${request.state}`}>
               <div className="summary-label">
