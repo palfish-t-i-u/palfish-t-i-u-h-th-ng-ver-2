@@ -608,7 +608,7 @@ export default function CardReconciliationTab({
                             fontWeight: 600,
                             whiteSpace: "nowrap",
                           }}>
-                            Trả góp {t.installment_term} kỳ
+                            Trả góp
                           </span>
                         ) : (
                           <span style={{
