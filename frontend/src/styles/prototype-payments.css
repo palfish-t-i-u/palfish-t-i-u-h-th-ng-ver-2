@@ -844,7 +844,7 @@
 /* Field inputs (drawer / modal forms) */
 .gmv-prototype .field { display: flex; flex-direction: column; gap: 5px; }
 .gmv-prototype .field label { font-size: 11px; color: var(--text-3); text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600; }
-.gmv-prototype .field input,
+.gmv-prototype .field input:not([type="checkbox"]),
 .gmv-prototype .field textarea,
 .gmv-prototype .field select {
   border: 1px solid var(--border);
@@ -981,7 +981,7 @@
 .gmv-prototype-modal-scrim .field textarea::placeholder {
   font-style: italic; color: var(--text-3);
 }
-.gmv-prototype-modal-scrim .field input,
+.gmv-prototype-modal-scrim .field input:not([type="checkbox"]),
 .gmv-prototype-modal-scrim .field textarea,
 .gmv-prototype-modal-scrim .field select {
   border: 1px solid var(--border);
