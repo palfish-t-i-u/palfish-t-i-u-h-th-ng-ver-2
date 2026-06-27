@@ -100,6 +100,7 @@ export interface PaymentRequest {
   companyName?: string;
   leadSource?: string;
   leadChannel?: string;
+  wantsInvoice?: boolean;
   target: number;
   source: string;
   createdAt: string;
@@ -214,6 +215,7 @@ export type CreatePaymentRequestPayload = {
   company_name?: string;
   lead_source?: string;
   lead_channel?: string;
+  wants_invoice?: boolean;
 };
 
 export type PatchPaymentRequestPayload = Partial<CreatePaymentRequestPayload>;

@@ -5,6 +5,7 @@ import CountryCombo, { COUNTRIES, findCountry } from "./CountryCombo";
 import { Icons } from "./Icons";
 import VietnamAddressFields from "./VietnamAddressFields";
 import Combobox from "../ui/Combobox";
+import numberToVietnameseWords from "../../lib/numberToWords";
 
 interface FormState {
   uid: string;
@@ -27,6 +28,8 @@ interface FormState {
   isForeign: boolean;
   /** Mã quốc gia khi isForeign (vd "US"). */
   foreignCountry: string;
+  /** Khách cần xuất hóa đơn → bắt buộc đủ Phường/Xã + Số nhà. */
+  wantsInvoice: boolean;
 }
 
 const INITIAL: FormState = {
@@ -48,6 +51,7 @@ const INITIAL: FormState = {
   leadChannel: "",
   isForeign: false,
   foreignCountry: "",
+  wantsInvoice: false,
 };
 
 // Danh sách quốc gia cho khách ở nước ngoài (bỏ VN), sort theo tên — hằng số module.
@@ -90,7 +94,7 @@ export default function CreatePaymentRequestModal({
   // - Khách nước ngoài (OV): chọn quốc gia.
   const addressOk = form.isForeign
     ? !!form.foreignCountry
-    : !!form.province && !!form.ward && !!form.address.trim();
+    : !form.wantsInvoice || (!!form.province && !!form.ward && !!form.address.trim());
 
   const canSubmit = !!(
     form.uid && form.name && form.phone && targetNum > 0 &&
@@ -120,6 +124,7 @@ export default function CreatePaymentRequestModal({
       company_name: form.customerType === "business" ? form.companyName.trim() || undefined : undefined,
       lead_source: form.leadSource || undefined,
       lead_channel: form.leadChannel || undefined,
+      wants_invoice: form.wantsInvoice || undefined,
     });
   };
 
@@ -244,12 +249,17 @@ export default function CreatePaymentRequestModal({
                   set("target", v);
                 }}
               />
+              {targetNum > 0 && (
+                <div style={{ fontSize: 11.5, color: "var(--text-2)", fontWeight: 600, fontStyle: "italic", marginTop: 3 }}>
+                  {numberToVietnameseWords(targetNum)}
+                </div>
+              )}
             </div>
           </div>
 
           <div className="field">
             <label>
-              Địa chỉ khách hàng <span style={{ color: "var(--danger)" }}>*</span>
+              Địa chỉ khách hàng {form.wantsInvoice && <span style={{ color: "var(--danger)" }}>*</span>}
             </label>
 
             <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
@@ -269,6 +279,24 @@ export default function CreatePaymentRequestModal({
               </button>
             </div>
 
+            {!form.isForeign && (
+              <div
+                style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6, cursor: "pointer" }}
+                onClick={() => set("wantsInvoice", !form.wantsInvoice)}
+              >
+                <input
+                  type="checkbox"
+                  checked={form.wantsInvoice}
+                  onChange={(e) => set("wantsInvoice", e.target.checked)}
+                  onClick={(e) => e.stopPropagation()}
+                  style={{ accentColor: "var(--danger)", margin: 0 }}
+                />
+                <span style={{ fontSize: 12, color: "var(--text-2)", fontWeight: 500 }}>
+                  Khách hàng cần xuất hoá đơn?
+                </span>
+              </div>
+            )}
+
             {form.isForeign ? (
               <Combobox
                 value={form.foreignCountry}
@@ -286,23 +314,25 @@ export default function CreatePaymentRequestModal({
                 onProvinceChange={(v) => set("province", v)}
                 onWardChange={(v) => set("ward", v)}
                 onAddressChange={(v) => set("address", v)}
-                requireProvince
-                requireWard
-                requireStreet
+                requireProvince={false}
+                requireWard={form.wantsInvoice}
+                requireStreet={form.wantsInvoice}
               />
             )}
-            <div
-              style={{
-                fontSize: 11.5,
-                lineHeight: 1.45,
-                marginTop: 6,
-                color: addressOk ? "var(--text-3)" : "var(--danger)",
-              }}
-            >
-              {form.isForeign
-                ? "Bắt buộc chọn quốc gia khách đang ở."
-                : "Bắt buộc điền đủ cả 3: Tỉnh/Thành, Phường/Xã và Số nhà, đường."}
-            </div>
+            {(form.isForeign || form.wantsInvoice) && (
+              <div
+                style={{
+                  fontSize: 11.5,
+                  lineHeight: 1.45,
+                  marginTop: 6,
+                  color: addressOk ? "var(--text-3)" : "var(--danger)",
+                }}
+              >
+                {form.isForeign
+                  ? "Bắt buộc chọn quốc gia khách đang ở."
+                  : "Bắt buộc điền đủ cả 3: Tỉnh/Thành, Phường/Xã và Số nhà, đường."}
+              </div>
+            )}
           </div>
 
           <div className="field">

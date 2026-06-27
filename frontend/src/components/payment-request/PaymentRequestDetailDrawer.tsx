@@ -617,6 +617,8 @@ interface DraftPr {
   companyName: string;
   leadSource: string;
   leadChannel: string;
+  isForeign: boolean;
+  wantsInvoice: boolean;
 }
 
 /**
@@ -1659,6 +1661,8 @@ export default function PaymentRequestDetailDrawer({
       companyName: request.companyName || "",
       leadSource: request.leadSource || "",
       leadChannel: request.leadChannel || "",
+      isForeign: (request.country || "VN") !== "VN",
+      wantsInvoice: request.wantsInvoice ?? false,
     });
     setEditing(true);
     setPrFullModalOpen(false);
@@ -1807,6 +1811,8 @@ export default function PaymentRequestDetailDrawer({
                       companyName: request.companyName || "",
                       leadSource: request.leadSource || "",
                       leadChannel: request.leadChannel || "",
+                      isForeign: (request.country || "VN") !== "VN",
+                      wantsInvoice: request.wantsInvoice ?? false,
                     });
                     setEditing(true);
                   }}
@@ -1853,6 +1859,7 @@ export default function PaymentRequestDetailDrawer({
                         companyName: draft.customerType === "business" ? draft.companyName || undefined : undefined,
                         leadSource: draft.leadSource || undefined,
                         leadChannel: draft.leadChannel || undefined,
+                        wantsInvoice: draft.wantsInvoice,
                       });
                       setSavingEdit(false);
                       if (!ok) return;
@@ -1935,6 +1942,12 @@ export default function PaymentRequestDetailDrawer({
                   <div className="info-cell">
                     <div className="info-label">Kênh</div>
                     <div className="info-value mono">{request.leadChannel}</div>
+                  </div>
+                )}
+                {request.wantsInvoice && (
+                  <div className="info-cell">
+                    <div className="info-label">Xuất hoá đơn</div>
+                    <div className="info-value" style={{ color: "var(--danger)" }}>Khách cần xuất HĐ</div>
                   </div>
                 )}
                 <div className="info-cell">
@@ -2050,6 +2063,44 @@ export default function PaymentRequestDetailDrawer({
                     }}
                   />
                 </div>
+                <div className="info-cell">
+                  <div className="info-label">Khách VN / Nước ngoài</div>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <button
+                      type="button"
+                      className={`btn btn-sm ${!draft.isForeign ? "btn-primary" : "btn-outline"}`}
+                      onClick={() => setDraft({ ...draft, isForeign: false, country: "VN" })}
+                    >
+                      Khách VN
+                    </button>
+                    <button
+                      type="button"
+                      className={`btn btn-sm ${draft.isForeign ? "btn-primary" : "btn-outline"}`}
+                      onClick={() => setDraft({ ...draft, isForeign: true, wantsInvoice: false })}
+                    >
+                      Khách nước ngoài
+                    </button>
+                  </div>
+                </div>
+                {!draft.isForeign && (
+                  <div className="info-cell">
+                    <div
+                      style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer" }}
+                      onClick={() => setDraft({ ...draft, wantsInvoice: !draft.wantsInvoice })}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={draft.wantsInvoice}
+                        onChange={(e) => setDraft({ ...draft, wantsInvoice: e.target.checked })}
+                        onClick={(e) => e.stopPropagation()}
+                        style={{ accentColor: "var(--danger)", margin: 0 }}
+                      />
+                      <span style={{ fontSize: 12, color: "var(--text-2)", fontWeight: 500 }}>
+                        Khách hàng cần xuất hoá đơn?
+                      </span>
+                    </div>
+                  </div>
+                )}
                 <div className="info-cell">
                   <div className="info-label">Loại KH</div>
                   <div style={{ display: "flex", gap: 8 }}>

@@ -249,6 +249,7 @@ export default function PaymentRequestsTab() {
       company_name: next.customerType === "business" ? (next.companyName || "").trim() || undefined : undefined,
       lead_source: next.leadSource || undefined,
       lead_channel: next.leadChannel || undefined,
+      wants_invoice: next.wantsInvoice ?? undefined,
     };
 
     try {

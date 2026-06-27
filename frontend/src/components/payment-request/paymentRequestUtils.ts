@@ -122,6 +122,7 @@ export function fromApiPaymentRequest(raw: any): PaymentRequest {
     companyName: raw.company_name ?? raw.companyName ?? undefined,
     leadSource: raw.lead_source ?? raw.leadSource ?? undefined,
     leadChannel: raw.lead_channel ?? raw.leadChannel ?? undefined,
+    wantsInvoice: raw.wants_invoice ?? raw.wantsInvoice ?? undefined,
     target: raw.target ?? 0,
     source: raw.source ?? "",
     saleEmail: raw.sale_email ?? raw.saleEmail ?? "",
