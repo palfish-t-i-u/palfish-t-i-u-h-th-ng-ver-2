@@ -990,6 +990,7 @@ def _ascii_transfer_name(value: Any) -> str:
     text = _clean_text(value)
     if not text:
         return ""
+    text = text.replace("Đ", "D").replace("đ", "d")
     normalized = unicodedata.normalize("NFKD", text)
     ascii_only = "".join(char for char in normalized if not unicodedata.combining(char))
     cleaned = re.sub(r"[^A-Za-z0-9 ]", "", ascii_only)

@@ -216,9 +216,9 @@ def _normalize_department(value: Any) -> str | None:
     raw = str(value or "").strip()
     if not raw:
         return None
-    normalized = unicodedata.normalize("NFKD", raw.lower())
+    lowered = raw.lower().replace("đ", "d")
+    normalized = unicodedata.normalize("NFKD", lowered)
     normalized = "".join(ch for ch in normalized if not unicodedata.combining(ch))
-    normalized = normalized.replace("đ", "d")
     normalized = " ".join(normalized.replace("_", " ").replace("-", " ").split())
     if normalized in VALID_DEPARTMENTS:
         return normalized

@@ -62,6 +62,7 @@ def _normalize_text(value: Any) -> str:
     text = str(value or "").strip().lower()
     if not text:
         return ""
+    text = text.replace("đ", "d")
     text = unicodedata.normalize("NFD", text)
     text = "".join(ch for ch in text if unicodedata.category(ch) != "Mn")
     return text
