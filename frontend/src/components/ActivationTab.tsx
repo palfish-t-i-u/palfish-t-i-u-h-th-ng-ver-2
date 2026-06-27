@@ -15,7 +15,7 @@ import {
   remainingReceivedAmount,
   vnd,
 } from "./payment-flow/paymentFlowUtils";
-import CountryCombo, { findCountry } from "./payment-request/CountryCombo";
+import CountryCombo, { COUNTRIES, findCountry } from "./payment-request/CountryCombo";
 import DateRangeFilter, { EMPTY_RANGE, type DateRange, inDateRange } from "./payment-request/DateRangeFilter";
 import { Icons } from "./payment-request/Icons";
 import { activationAuditText, formatPaymentDateFull, formatPaymentDateTime, fromApiActiveRequest, getArReferralStatus, getReferralStatus, REFERRAL_STATUS_HEADER, REFERRAL_STATUS_PANEL_STYLE, toActiveRequestPatchUidsData } from "./payment-request/paymentRequestUtils";
@@ -325,6 +325,60 @@ function ARStatusBadge({ status }: { status: ActiveRequestStatus }) {
       {meta.text}
     </span>
   );
+}
+
+type InvoiceBlocker = { key: string; text: string };
+
+// Tên các quốc gia nước ngoài (khách OV chọn lúc tạo PR → lưu vào `province`).
+// Tỉnh/TP Việt Nam không nằm trong danh sách này nên phân biệt được khách OV vs khách VN.
+const FOREIGN_COUNTRY_NAMES = new Set(
+  COUNTRIES.filter((c) => c.code !== "VN").map((c) => c.name)
+);
+
+/**
+ * Điều kiện bắt buộc để Yêu cầu xuất hoá đơn (B4) cho 1 gói học.
+ * Trả về danh sách thứ còn thiếu — rỗng nghĩa là đủ điều kiện.
+ * Địa chỉ lấy theo chain course → PR (khớp cách invoice ghép địa chỉ ở paymentFlowUtils),
+ * nên AR do kế toán tạo tay (có địa chỉ trên course) hay AR gắn PR đều check đúng.
+ */
+export function getInvoiceBlockers(
+  course: ActiveCourse,
+  pr: { province?: string; ward?: string; address?: string } | null
+): InvoiceBlocker[] {
+  const blockers: InvoiceBlocker[] = [];
+
+  if (!course.orderId?.trim()) {
+    blockers.push({ key: "order", text: "Còn thiếu Order ID — điền & lưu để kích hoạt và xuất được hoá đơn." });
+  }
+  if (!course.packageName?.trim()) {
+    blockers.push({ key: "package", text: "Còn thiếu tên gói học — điền & lưu để xuất được hoá đơn." });
+  }
+  if (!(Number(course.amount) > 0)) {
+    blockers.push({ key: "amount", text: "Còn thiếu số tiền gói học (> 0) — điền & lưu để xuất được hoá đơn." });
+  }
+
+  const province = (course.province ?? pr?.province ?? "").trim();
+  const ward = (course.ward ?? pr?.ward ?? "").trim();
+  const street = (course.address ?? pr?.address ?? "").trim();
+
+  // Khách nước ngoài (OV): `province` là tên quốc gia → quy luật riêng,
+  // chỉ cần có quốc gia là đủ, không bắt Phường/Xã + Số nhà.
+  if (FOREIGN_COUNTRY_NAMES.has(province)) {
+    return blockers;
+  }
+
+  const missingAddr: string[] = [];
+  if (!province) missingAddr.push("Tỉnh/Thành");
+  if (!ward) missingAddr.push("Phường/Xã");
+  if (!street) missingAddr.push("Số nhà, đường");
+  if (missingAddr.length) {
+    blockers.push({
+      key: "address",
+      text: `PR khách hàng này chưa đủ địa chỉ — thiếu: ${missingAddr.join(", ")}. Bổ sung ở PR để xuất được hoá đơn.`,
+    });
+  }
+
+  return blockers;
 }
 
 function ActivationDetailDrawer({
@@ -1327,16 +1381,29 @@ function ActivationDetailDrawer({
                       <button type="button" className="btn-invoice" disabled>
                         <Icons.CheckCircle size={12} /> Đã yêu cầu
                       </button>
-                    ) : (
-                      <button
-                        type="button"
-                        className="btn-invoice"
-                        title="Yêu cầu xuất hoá đơn"
-                        onClick={() => void onGoToInvoice(course.courseCode)}
-                      >
-                        <Icons.Doc size={12} /> Yêu cầu xuất
-                      </button>
-                    )}
+                    ) : (() => {
+                      const blockers = getInvoiceBlockers(course, pr);
+                      const blocked = blockers.length > 0;
+                      return (
+                        <button
+                          type="button"
+                          className="btn-invoice"
+                          disabled={blocked}
+                          style={blocked ? { opacity: 0.45, cursor: "not-allowed" } : undefined}
+                          title={
+                            blocked
+                              ? `Chưa xuất được — còn thiếu: ${blockers.map((b) => b.text).join(" ")}`
+                              : "Yêu cầu xuất hoá đơn"
+                          }
+                          onClick={() => {
+                            if (blocked) return;
+                            void onGoToInvoice(course.courseCode);
+                          }}
+                        >
+                          <Icons.Doc size={12} /> Yêu cầu xuất
+                        </button>
+                      );
+                    })()}
                   </div>
                   {!readOnly && (
                     <button
@@ -1354,6 +1421,43 @@ function ActivationDetailDrawer({
                     </button>
                   )}
                 </div>
+                {(() => {
+                  // Card cảnh báo thông minh: chỉ hiện khi gói chưa xuất/chưa yêu cầu HĐ và còn thiếu điều kiện.
+                  if (course.invoiced || course.invoiceRequestedAt) return null;
+                  const blockers = getInvoiceBlockers(course, pr);
+                  if (!blockers.length) return null;
+                  const needsAddress = blockers.some((b) => b.key === "address");
+                  return (
+                    <div
+                      style={{
+                        margin: "6px 12px 2px",
+                        padding: "9px 12px",
+                        borderRadius: 8,
+                        background: "var(--warning-bg, #fffbeb)",
+                        border: "1px solid var(--warning-border, #fde68a)",
+                      }}
+                    >
+                      <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, fontWeight: 700, color: "var(--caution-text, #92400e)", marginBottom: 4 }}>
+                        <Icons.AlertCircle size={13} /> Chưa xuất được hoá đơn — còn thiếu:
+                      </div>
+                      <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12, color: "var(--caution-text, #92400e)", lineHeight: 1.5 }}>
+                        {blockers.map((b) => (
+                          <li key={b.key}>{b.text}</li>
+                        ))}
+                      </ul>
+                      {needsAddress && onOpenPr && (
+                        <button
+                          type="button"
+                          className="btn btn-outline btn-sm"
+                          style={{ marginTop: 6 }}
+                          onClick={onOpenPr}
+                        >
+                          <Icons.Doc size={12} /> Mở PR để bổ sung địa chỉ
+                        </button>
+                      )}
+                    </div>
+                  );
+                })()}
                 {(() => {
                   const auditLine = activationAuditText(course);
                   return auditLine ? (
@@ -1571,11 +1675,32 @@ function ActivationDetailDrawer({
             <button type="button" className="btn btn-outline" onClick={requestCloseDrawer}>
               Đóng
             </button>
-            {enriched.status === "activated" && (
-              <button type="button" className="btn btn-success" onClick={onNavigateInvoice}>
-                <Icons.Doc size={14} /> Yêu cầu xuất hoá đơn (B4)
-              </button>
-            )}
+            {enriched.status === "activated" && (() => {
+              const anyBlocked = (ar?.uids ?? []).some((u) =>
+                u.courses.some(
+                  (c) => !c.invoiced && !c.invoiceRequestedAt && getInvoiceBlockers(c, pr).length > 0
+                )
+              );
+              return (
+                <button
+                  type="button"
+                  className="btn btn-success"
+                  disabled={anyBlocked}
+                  style={anyBlocked ? { opacity: 0.5, cursor: "not-allowed" } : undefined}
+                  title={
+                    anyBlocked
+                      ? "Còn gói học thiếu điều kiện xuất hoá đơn — xem cảnh báo dưới từng gói"
+                      : "Yêu cầu xuất hoá đơn cho cả AR"
+                  }
+                  onClick={() => {
+                    if (anyBlocked) return;
+                    void onNavigateInvoice();
+                  }}
+                >
+                  <Icons.Doc size={14} /> Yêu cầu xuất hoá đơn (B4)
+                </button>
+              );
+            })()}
           </div>
         </div>
       </aside>

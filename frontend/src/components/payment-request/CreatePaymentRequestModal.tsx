@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
 import type { CreatePaymentRequestPayload, CustomerType } from "../../types/paymentRequest";
 import { LEAD_SOURCES, defaultChannelForSource, findSourceByKey, sourceHasChannels } from "../../constants/leadSource";
-import CountryCombo, { findCountry } from "./CountryCombo";
+import CountryCombo, { COUNTRIES, findCountry } from "./CountryCombo";
 import { Icons } from "./Icons";
 import VietnamAddressFields from "./VietnamAddressFields";
+import Combobox from "../ui/Combobox";
 
 interface FormState {
   uid: string;
@@ -22,6 +23,12 @@ interface FormState {
   companyName: string;
   leadSource: string;
   leadChannel: string;
+  /** Khách là người Việt sống ở nước ngoài → địa chỉ chỉ chọn quốc gia. */
+  isForeign: boolean;
+  /** Mã quốc gia khi isForeign (vd "US"). */
+  foreignCountry: string;
+  /** Khách cần xuất hóa đơn → bắt buộc đủ Phường/Xã + Số nhà, đường. */
+  needsInvoice: boolean;
 }
 
 const INITIAL: FormState = {
@@ -41,7 +48,15 @@ const INITIAL: FormState = {
   companyName: "",
   leadSource: "",
   leadChannel: "",
+  isForeign: false,
+  foreignCountry: "",
+  needsInvoice: false,
 };
+
+// Danh sách quốc gia cho khách ở nước ngoài (bỏ VN), sort theo tên — hằng số module.
+const FOREIGN_COUNTRY_OPTIONS = COUNTRIES.filter((c) => c.code !== "VN")
+  .map((c) => ({ value: c.code, label: `${c.flag} ${c.name}` }))
+  .sort((a, b) => a.label.localeCompare(b.label, "vi"));
 
 export default function CreatePaymentRequestModal({
   open,
@@ -72,23 +87,35 @@ export default function CreatePaymentRequestModal({
   // Email không bắt buộc; nếu có giá trị thì phải đúng format (bug 1A-10)
   const emailTrimmed = form.email.trim();
   const emailValid = emailTrimmed === "" || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailTrimmed);
+
+  // Địa chỉ bắt buộc (kế toán 27/6):
+  // - Khách nước ngoài: chỉ cần chọn quốc gia.
+  // - Khách VN: bắt buộc Tỉnh/Thành; nếu cần hóa đơn → đủ cả Phường/Xã + Số nhà, đường.
+  const addressOk = form.isForeign
+    ? !!form.foreignCountry
+    : !!form.province &&
+      (!form.needsInvoice || (!!form.ward && !!form.address.trim()));
+
   const canSubmit = !!(
     form.uid && form.name && form.phone && targetNum > 0 &&
     form.leadSource && (!needsChannel || form.leadChannel) &&
-    emailValid
+    emailValid && addressOk
   );
 
   const handleSubmit = () => {
     if (!canSubmit) return;
+    const foreignCountryName = form.isForeign
+      ? COUNTRIES.find((c) => c.code === form.foreignCountry)?.name ?? form.foreignCountry
+      : "";
     onSubmit({
       uid: form.uid,
       name: form.name,
       child_name: form.childName.trim() || undefined,
       country: form.country,
       phone: form.phone,
-      address: form.address,
-      ward: form.ward,
-      province: form.province,
+      address: form.isForeign ? "" : form.address,
+      ward: form.isForeign ? "" : form.ward,
+      province: form.isForeign ? foreignCountryName : form.province,
       target: targetNum,
       note: form.note,
       email: form.email.trim() || undefined,
@@ -225,15 +252,92 @@ export default function CreatePaymentRequestModal({
           </div>
 
           <div className="field">
-            <label>Địa chỉ khách hàng</label>
-            <VietnamAddressFields
-              province={form.province}
-              ward={form.ward}
-              address={form.address}
-              onProvinceChange={(v) => set("province", v)}
-              onWardChange={(v) => set("ward", v)}
-              onAddressChange={(v) => set("address", v)}
-            />
+            <label>
+              Địa chỉ khách hàng <span style={{ color: "var(--danger)" }}>*</span>
+            </label>
+
+            <label
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                fontSize: 12.5,
+                color: "var(--text-2)",
+                marginBottom: 8,
+                cursor: "pointer",
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={form.isForeign}
+                onChange={(e) => {
+                  const v = e.target.checked;
+                  // Đổi chế độ → xoá dữ liệu địa chỉ của chế độ kia để tránh lẫn.
+                  setForm((f) => ({
+                    ...f,
+                    isForeign: v,
+                    province: "",
+                    ward: "",
+                    address: "",
+                    foreignCountry: "",
+                  }));
+                }}
+              />
+              Khách ở nước ngoài (người Việt sống ở nước ngoài)
+            </label>
+
+            {form.isForeign ? (
+              <Combobox
+                value={form.foreignCountry}
+                onChange={(v) => set("foreignCountry", v)}
+                options={FOREIGN_COUNTRY_OPTIONS}
+                placeholder="Quốc gia khách đang ở * — gõ để tìm"
+                emptyLabel="— Bỏ chọn —"
+                invalid={!form.foreignCountry}
+              />
+            ) : (
+              <>
+                <label
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    fontSize: 12.5,
+                    color: "var(--text-2)",
+                    marginBottom: 8,
+                    cursor: "pointer",
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={form.needsInvoice}
+                    onChange={(e) => set("needsInvoice", e.target.checked)}
+                  />
+                  Khách cần xuất hóa đơn (bắt buộc đủ Phường/Xã + Số nhà, đường)
+                </label>
+                <VietnamAddressFields
+                  province={form.province}
+                  ward={form.ward}
+                  address={form.address}
+                  onProvinceChange={(v) => set("province", v)}
+                  onWardChange={(v) => set("ward", v)}
+                  onAddressChange={(v) => set("address", v)}
+                  requireProvince
+                  requireWard={form.needsInvoice}
+                  requireStreet={form.needsInvoice}
+                />
+              </>
+            )}
+
+            {!addressOk && (
+              <div style={{ fontSize: 11.5, color: "var(--danger)", lineHeight: 1.45, marginTop: 4 }}>
+                {form.isForeign
+                  ? "Bắt buộc chọn quốc gia khách đang ở."
+                  : !form.province
+                  ? "Bắt buộc chọn Tỉnh / Thành phố."
+                  : "Khách cần hóa đơn → điền đủ Phường/Xã và Số nhà, đường."}
+              </div>
+            )}
           </div>
 
           <div className="field">

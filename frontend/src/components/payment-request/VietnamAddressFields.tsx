@@ -54,6 +54,9 @@ export default function VietnamAddressFields({
   onWardChange,
   onAddressChange,
   streetPlaceholder = "Số nhà, đường (VD: 119 Phúc Xá)",
+  requireProvince = false,
+  requireWard = false,
+  requireStreet = false,
 }: {
   province: string;
   ward: string;
@@ -62,6 +65,9 @@ export default function VietnamAddressFields({
   onWardChange: (value: string) => void;
   onAddressChange: (value: string) => void;
   streetPlaceholder?: string;
+  requireProvince?: boolean;
+  requireWard?: boolean;
+  requireStreet?: boolean;
 }) {
   const { provinces, wards, loadingWards } = useProvinceWardSelect(province);
 
@@ -86,8 +92,9 @@ export default function VietnamAddressFields({
           value={province}
           onChange={handleProvinceChange}
           options={provinceOptions}
-          placeholder="Tỉnh / Thành phố (gõ để tìm)"
+          placeholder={`Tỉnh / Thành phố${requireProvince ? " *" : " (tùy chọn)"} — gõ để tìm`}
           emptyLabel="— Bỏ chọn —"
+          invalid={requireProvince && !province}
         />
         <Combobox
           value={ward}
@@ -95,15 +102,23 @@ export default function VietnamAddressFields({
           options={wardOptions}
           disabled={!province || loadingWards}
           placeholder={
-            loadingWards ? "Đang tải phường/xã…" : "Phường / Xã (gõ để tìm)"
+            loadingWards
+              ? "Đang tải phường/xã…"
+              : `Phường / Xã${requireWard ? " *" : " (tùy chọn)"} — gõ để tìm`
           }
           emptyLabel="— Bỏ chọn —"
+          invalid={requireWard && !ward}
         />
       </div>
       <input
-        placeholder={streetPlaceholder}
+        placeholder={`${streetPlaceholder}${requireStreet ? " *" : ""}`}
         value={address}
         onChange={(e) => onAddressChange(e.target.value)}
+        style={
+          requireStreet && !address.trim()
+            ? { borderColor: "var(--danger)" }
+            : undefined
+        }
       />
     </div>
   );

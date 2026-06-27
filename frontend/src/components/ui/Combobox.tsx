@@ -15,6 +15,8 @@ type Props = {
   matchDigitsToOrdinal?: boolean;
   /** Disable input + dropdown (read-only mode). */
   disabled?: boolean;
+  /** Viền đỏ báo lỗi (vd. trường bắt buộc bỏ trống). */
+  invalid?: boolean;
 };
 
 function ordinalSuffix(n: number): string {
@@ -96,6 +98,7 @@ export default function Combobox({
   className,
   matchDigitsToOrdinal = false,
   disabled = false,
+  invalid = false,
 }: Props) {
   const listId = useId();
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -196,6 +199,7 @@ export default function Combobox({
           "gmv-field w-full min-h-10 rounded-gmv-md border border-gmv-border bg-gmv-canvas px-3 text-sm text-gmv-text-strong",
           disabled && "cursor-not-allowed bg-gmv-row-hover text-gmv-muted opacity-70"
         )}
+        style={invalid ? { borderColor: "var(--danger)" } : undefined}
         placeholder={placeholder}
         value={open ? query : value ? selectedLabel : ""}
         onFocus={() => {
