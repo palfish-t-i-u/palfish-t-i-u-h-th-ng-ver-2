@@ -2,7 +2,7 @@ import pytest
 import datetime
 import asyncio
 from unittest.mock import MagicMock, patch
-from zalo_outbox_worker import poll_and_send, RETRY_DELAYS, MAX_RETRIES
+from zalo_outbox_worker import poll_and_send, RETRY_DELAYS, MAX_RETRIES, _is_fatal_error
 from zalo_notifier import ZaloAPIError
 
 class MockSupabase:
@@ -117,6 +117,36 @@ def test_dead_after_max_retries():
         assert "network error" in sb.updates[0]["last_error"]
         assert sb.updates[0]["next_retry_at"] is None  # dead
         assert sb.last_eq == ("id", 102)
+
+
+def test_fatal_error_marks_dead_immediately():
+    row = {
+        "id": 103,
+        "group_id": "group-test",
+        "message": "hello fatal",
+        "retries": 0,
+        "sent_at": None,
+        "next_retry_at": None
+    }
+    sb = MockSupabase([row])
+    sb_factory = lambda: sb
+
+    with patch("zalo_outbox_worker.send_text_to_group",
+               side_effect=ZaloAPIError("Zalo send_group_message failed: -213", zalo_error=-213)):
+        asyncio.run(poll_and_send(sb_factory))
+
+        assert len(sb.updates) == 1
+        assert sb.updates[0]["retries"] == MAX_RETRIES
+        assert sb.updates[0]["next_retry_at"] is None
+        assert "-213" in sb.updates[0]["last_error"]
+
+
+def test_is_fatal_error():
+    assert _is_fatal_error("Zalo send_group_message failed: -213") is True
+    assert _is_fatal_error("Zalo send_group_message failed: -214") is True
+    assert _is_fatal_error("Zalo send_group_message failed: -216") is False  # -216 = auth, not fatal
+    assert _is_fatal_error("network timeout") is False
+    assert _is_fatal_error("Zalo send_group_message failed: -201") is False
 
 
 def test_worker_handles_zalo_api_error_gracefully():

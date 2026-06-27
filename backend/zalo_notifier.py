@@ -305,7 +305,7 @@ def _is_auth_error(exc: ZaloAPIError) -> bool:
     if exc.status_code == 401:
         return True
     code = _clean(exc.zalo_error)
-    return code in {"-201", "201", "401", "40101", "40102"}
+    return code in {"-201", "-216", "201", "401", "40101", "40102"}
 
 
 def send_text_to_group(group_id: str, message: str, *, sb=None) -> str:

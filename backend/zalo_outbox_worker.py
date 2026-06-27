@@ -9,6 +9,15 @@ MAX_RETRIES = 4
 POLL_INTERVAL = 30  # seconds
 BATCH_SIZE = 20
 
+FATAL_ZALO_ERRORS = {"-213", "-214", "-215"}
+
+
+def _is_fatal_error(err_msg: str) -> bool:
+    for code in FATAL_ZALO_ERRORS:
+        if f"failed: {code}" in err_msg:
+            return True
+    return False
+
 async def poll_and_send(sb_factory: Callable[[], Any]):
     """Reads pending rows from zalo_outbox, calls send_text_to_group, updates sent_at or schedules retry."""
     sb = sb_factory()
@@ -27,6 +36,7 @@ async def poll_and_send(sb_factory: Callable[[], Any]):
             .select("*")
             .is_("sent_at", "null")
             .or_(f"next_retry_at.is.null,next_retry_at.lte.{now_iso}")
+            .or_(f"retries.is.null,retries.lt.{MAX_RETRIES}")
             .order("created_at", desc=False)
             .limit(BATCH_SIZE)
             .execute()
@@ -58,15 +68,16 @@ async def poll_and_send(sb_factory: Callable[[], Any]):
         except Exception as exc:
             err_msg = str(exc)
             new_retries = retries + 1
+            is_fatal = _is_fatal_error(err_msg)
             update_payload = {
-                "retries": new_retries,
-                "last_error": err_msg
+                "retries": new_retries if not is_fatal else MAX_RETRIES,
+                "last_error": err_msg,
             }
-            
-            if new_retries >= MAX_RETRIES:
-                # Mark as dead
+
+            if is_fatal or new_retries >= MAX_RETRIES:
                 update_payload["next_retry_at"] = None
-                print(f"[zalo_worker] Message {row_id} failed permanently after {new_retries} attempts. Error: {err_msg}")
+                reason = "fatal error" if is_fatal else f"{new_retries} attempts"
+                print(f"[zalo_worker] Message {row_id} dead ({reason}). Error: {err_msg}")
             else:
                 delay = RETRY_DELAYS[min(new_retries - 1, len(RETRY_DELAYS) - 1)]
                 next_retry = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(seconds=delay)

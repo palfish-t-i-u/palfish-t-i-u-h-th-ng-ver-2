@@ -202,7 +202,7 @@ export default function CardReconciliationTab({
             setAmountLoaded(true);
           }
         });
-    }, 350);
+    }, candAmount ? 350 : 0);
     return () => {
       alive = false;
       clearTimeout(timer);
@@ -896,7 +896,7 @@ export default function CardReconciliationTab({
                           const exact = c.amount === drawerTxn.amount;
                           const isInstallment = c.method === "installment";
                           const methodLabel = isInstallment
-                            ? `Trả góp${c.installment_platform ? ` · ${c.installment_platform.toUpperCase()}` : ""}`
+                            ? `Trả góp${c.installment_platform ? ` · ${c.installment_platform}` : ""}`
                             : "Quẹt thẻ";
                           return (
                             <label

@@ -1465,6 +1465,19 @@ def register_admin_routes(app, get_supabase):
 
         return {"ok": True}
 
+    @app.post("/api/v1/admin/zalo-config/refresh")
+    def refresh_zalo_token(authorization: str | None = Header(None)):
+        sb = _sb_or_503(get_supabase)
+        actor = resolve_actor(sb, authorization)
+        require_module_write(sb, actor, "zalo")
+
+        from zalo_notifier import refresh_access_token
+        try:
+            result = refresh_access_token(sb=sb)
+            return {"ok": True, "expires_at": result.get("expires_at")}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
     @app.post("/api/v1/admin/zalo-config/test")
     def test_zalo_config(payload: ZaloTestMessagePayload, authorization: str | None = Header(None)):
         sb = _sb_or_503(get_supabase)
