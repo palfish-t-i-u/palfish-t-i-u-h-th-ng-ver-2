@@ -738,6 +738,71 @@ def _allocate_invoice_id(sb, year: int | None = None) -> str:
     return f"INV-{year_key}-1{seq:03d}"
 
 
+# Tên quốc gia nước ngoài (khách OV chọn lúc tạo PR → lưu vào cột `province`).
+# Nguồn chuẩn: frontend/src/components/payment-request/CountryCombo.tsx (COUNTRIES, code != "VN").
+# Tỉnh/TP Việt Nam không nằm trong set này nên phân biệt được khách OV vs khách trong nước.
+FOREIGN_COUNTRY_NAMES: set[str] = {
+    "United States", "United Kingdom", "China", "Japan", "South Korea", "Thailand",
+    "Singapore", "Malaysia", "Indonesia", "Philippines", "India", "Australia",
+    "New Zealand", "Canada", "Germany", "France", "Italy", "Spain", "Netherlands",
+    "Switzerland", "Sweden", "Norway", "Finland", "Denmark", "Poland", "Russia",
+    "Türkiye", "United Arab Emirates", "Saudi Arabia", "Israel", "Egypt",
+    "South Africa", "Nigeria", "Brazil", "Argentina", "Mexico", "Chile", "Peru",
+    "Colombia", "Hong Kong", "Taiwan", "Macao", "Cambodia", "Laos", "Myanmar",
+    "Bangladesh", "Pakistan", "Iran",
+}
+
+
+def _invoice_addr_parts(course: dict[str, Any], pr: dict[str, Any] | None) -> tuple[str, str, str]:
+    """Địa chỉ hiệu lực cho hoá đơn: ưu tiên course, fallback PR (khớp paymentFlowUtils)."""
+    province = _clean_text(course.get("province")) or (_clean_text(pr.get("province")) if pr else "")
+    ward = _clean_text(course.get("ward")) or (_clean_text(pr.get("ward")) if pr else "")
+    street = _clean_text(course.get("address")) or (_clean_text(pr.get("address")) if pr else "")
+    return province, ward, street
+
+
+def _invoice_address_complete(province: str, ward: str, street: str) -> bool:
+    """Đủ địa chỉ để xuất HĐ: Tỉnh + Phường + Số nhà. Khách OV (province=quốc gia) chỉ cần quốc gia."""
+    province = (province or "").strip()
+    if province in FOREIGN_COUNTRY_NAMES:
+        return True
+    return bool(province) and bool((ward or "").strip()) and bool((street or "").strip())
+
+
+def _missing_address_parts(province: str, ward: str, street: str) -> list[str]:
+    missing: list[str] = []
+    if not (province or "").strip():
+        missing.append("Tỉnh/Thành")
+    if not (ward or "").strip():
+        missing.append("Phường/Xã")
+    if not (street or "").strip():
+        missing.append("Số nhà, đường")
+    return missing
+
+
+def _course_invoice_blockers(course: dict[str, Any], pr: dict[str, Any] | None) -> list[str]:
+    """Điều kiện còn thiếu để Yêu cầu/Xuất HĐ cho 1 course. Rỗng = đủ điều kiện.
+
+    Khớp logic FE getInvoiceBlockers (ActivationTab.tsx): Order ID + tên gói + số tiền + địa chỉ.
+    """
+    blockers: list[str] = []
+    order_id = _clean_text(course.get("order_id")) or _clean_text(course.get("orderId"))
+    if not order_id:
+        blockers.append("Order ID")
+    if not _clean_text(course.get("name")):
+        blockers.append("tên gói học")
+    try:
+        amount = float(course.get("amount") or 0)
+    except (TypeError, ValueError):
+        amount = 0.0
+    if amount <= 0:
+        blockers.append("số tiền")
+    province, ward, street = _invoice_addr_parts(course, pr)
+    if not _invoice_address_complete(province, ward, street):
+        blockers.append("địa chỉ (" + ", ".join(_missing_address_parts(province, ward, street)) + ")")
+    return blockers
+
+
 def _build_invoice_course_patch(
     course: dict[str, Any],
     pr: dict[str, Any] | None,
@@ -782,10 +847,17 @@ def _build_invoice_course_patch(
     address = _clean_text(preview.get("address"))
     ward = _clean_text(preview.get("ward"))
     province = _clean_text(preview.get("province"))
-    if not name or not phone or not (address or ward or province):
+    if not name or not phone:
         raise HTTPException(
             400,
-            "Thiếu thông tin xuất hoá đơn — cần tên, SĐT và ít nhất một trường địa chỉ",
+            "Thiếu thông tin xuất hoá đơn — cần tên và SĐT khách hàng",
+        )
+    if not _invoice_address_complete(province, ward, address):
+        missing = _missing_address_parts(province, ward, address)
+        raise HTTPException(
+            400,
+            f"Chưa đủ địa chỉ để xuất hoá đơn — thiếu: {', '.join(missing)}. "
+            "Bổ sung địa chỉ ở PR (khách nước ngoài chỉ cần chọn quốc gia).",
         )
 
     return {k: v for k, v in patch.items() if v not in (None, "")}
@@ -1728,6 +1800,32 @@ def register_activation_routes(app, supabase_factory):
         from rpc_helpers import rpc_active_request_row
 
         row = res.data[0]
+
+        # Chặn yêu cầu xuất HĐ khi còn course thiếu điều kiện (Order ID / tên gói / số tiền / địa chỉ).
+        # RPC chỉ flag course đã có Order ID nên chỉ kiểm các course đó (chưa invoiced/chưa requested).
+        pr_for_check = (
+            _fetch_payment_request(sb, str(row.get("pr_id") or "")) if row.get("pr_id") else None
+        )
+        blocked_lines: list[str] = []
+        for _uid in (row.get("uids_data") or []):
+            for _course in (_uid.get("courses") or []):
+                if not isinstance(_course, dict):
+                    continue
+                if not (_clean_text(_course.get("order_id")) or _clean_text(_course.get("orderId"))):
+                    continue
+                if _course_is_invoiced(_course) or _course_invoice_requested_at(_course):
+                    continue
+                blk = _course_invoice_blockers(_course, pr_for_check)
+                if blk:
+                    label = _clean_text(_course.get("code")) or _clean_text(_course.get("name")) or "?"
+                    blocked_lines.append(f"{label}: thiếu {', '.join(blk)}")
+        if blocked_lines:
+            raise HTTPException(
+                400,
+                "Chưa thể yêu cầu xuất hoá đơn — " + "; ".join(blocked_lines)
+                + ". Bổ sung thông tin rồi thử lại.",
+            )
+
         current_time = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M")
         merged_row = rpc_active_request_row(
             sb,
