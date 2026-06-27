@@ -1,4 +1,5 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { MoneyInput } from "./ui/MoneyInput";
 import { COURSE_PACKAGES } from "../constants/coursePackages";
 import { usePaymentFlow } from "../contexts/PaymentFlowContext";
 import { usePermission } from "../hooks/usePermission";
@@ -157,7 +158,6 @@ function ARCreateModal({
   const [firstUid, setFirstUid] = useState("");
   const [pkgName, setPkgName] = useState("");
   const [amount, setAmount] = useState("");
-  const [isAmountFocused, setIsAmountFocused] = useState(false);
   const [customerName, setCustomerName] = useState("");
 
   useEffect(() => {
@@ -166,7 +166,7 @@ function ARCreateModal({
     setFirstUid("");
     setCustomerName("");
     setAmount("");
-    setIsAmountFocused(false);
+
     setPkgName("");
   }, [open]);
 
@@ -257,16 +257,9 @@ function ARCreateModal({
                 <label>
                   Số tiền khoá học <span style={{ color: "var(--danger)" }}>*</span>
                 </label>
-                <input
-                  value={isAmountFocused ? amount : amount ? Number(amount).toLocaleString("vi-VN") : ""}
-                  inputMode="numeric"
-                  pattern="[0-9]*"
-                  onFocus={() => setIsAmountFocused(true)}
-                  onBlur={() => setIsAmountFocused(false)}
-                  onChange={(e) => {
-                    const v = e.target.value.replace(/[^\d]/g, "");
-                    setAmount(v);
-                  }}
+                <MoneyInput
+                  value={amount}
+                  onValueChange={setAmount}
                   placeholder="VD: 12.000.000"
                 />
               </div>
@@ -1278,13 +1271,10 @@ function ActivationDetailDrawer({
                       placeholder="VD: 2/W- NEW 48 US-UK+2 HN"
                     />
                   </div>
-                  <input
+                  <MoneyInput
                     className="amt-input"
                     value={courseDrafts[course.courseCode]?.amount ?? (course.amount ? String(course.amount) : "")}
-                    inputMode="numeric"
-                    pattern="[0-9]*"
-                    onChange={(e) => {
-                      const v = e.target.value.replace(/[^\d]/g, "");
+                    onValueChange={(v) => {
                       setCourseDrafts((prev) => ({
                         ...prev,
                         [course.courseCode]: {

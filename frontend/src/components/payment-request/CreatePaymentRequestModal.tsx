@@ -6,6 +6,7 @@ import { Icons } from "./Icons";
 import VietnamAddressFields from "./VietnamAddressFields";
 import Combobox from "../ui/Combobox";
 import numberToVietnameseWords from "../../lib/numberToWords";
+import { MoneyInput } from "../ui/MoneyInput";
 
 interface FormState {
   uid: string;
@@ -69,12 +70,9 @@ export default function CreatePaymentRequestModal({
   onSubmit: (payload: CreatePaymentRequestPayload) => void;
 }) {
   const [form, setForm] = useState<FormState>(INITIAL);
-  const [isTargetFocused, setIsTargetFocused] = useState(false);
-
   useEffect(() => {
     if (open) {
       setForm(INITIAL);
-      setIsTargetFocused(false);
     }
   }, [open]);
 
@@ -229,23 +227,10 @@ export default function CreatePaymentRequestModal({
               <label>
                 Tổng tiền dự kiến <span style={{ color: "var(--danger)" }}>*</span>
               </label>
-              <input
+              <MoneyInput
                 placeholder="VD: 12.000.000"
-                value={
-                  isTargetFocused
-                    ? form.target
-                    : form.target
-                    ? Number(form.target).toLocaleString("vi-VN")
-                    : ""
-                }
-                inputMode="numeric"
-                pattern="[0-9]*"
-                onFocus={() => setIsTargetFocused(true)}
-                onBlur={() => setIsTargetFocused(false)}
-                onChange={(e) => {
-                  const v = e.target.value.replace(/[^\d]/g, "");
-                  set("target", v);
-                }}
+                value={form.target}
+                onValueChange={(v) => set("target", v)}
               />
               {targetNum > 0 && (
                 <div style={{ fontSize: 11.5, color: "var(--text-2)", fontWeight: 600, fontStyle: "italic", marginTop: 3 }}>

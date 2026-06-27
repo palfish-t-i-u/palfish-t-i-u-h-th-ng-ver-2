@@ -39,6 +39,7 @@ import {
 import { nextCourseCode } from "../payment-flow/paymentFlowUtils";
 import { endpoints } from "../../lib/api";
 import PrStaleContentWarning from "./PrStaleContentWarning";
+import { MoneyInput } from "../ui/MoneyInput";
 
 const METHOD_META: Record<PaymentMethod, { cls: string; label: string; icon: IconKey; sub: string }> = {
   qr: { cls: "method-qr", label: "Chuyển khoản", icon: "QrCode", sub: "QR / chuyển khoản" },
@@ -220,12 +221,10 @@ function QrRow({
           </span>
           {editingAmount ? (
             <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
-              <input
-                ref={amountInputRef}
-                type="text"
-                inputMode="numeric"
+              <MoneyInput
+                inputRef={amountInputRef}
                 value={draftAmount}
-                onChange={(e) => setDraftAmount(e.target.value.replace(/[^0-9]/g, ""))}
+                onValueChange={setDraftAmount}
                 onKeyDown={(e) => {
                   if (e.key === "Enter") handleAmountSave();
                   if (e.key === "Escape") setEditingAmount(false);
@@ -378,7 +377,6 @@ function AddPaymentForm({
   const [method, setMethod] = useState<PaymentMethod>("qr");
   const remaining = Math.max(0, pr.target - pr.received);
   const [amount, setAmount] = useState(remaining > 0 ? String(remaining) : "");
-  const [isAmountFocused, setIsAmountFocused] = useState(false);
   const [bank, setBank] = useState(availableBanks[0].alias);
   const [cardLast4, setCardLast4] = useState("");
   const [installmentPlatform, setInstallmentPlatform] = useState("");
@@ -474,16 +472,10 @@ function AddPaymentForm({
         {method !== "installment" && (
           <div className="field" style={{ flex: 1, minWidth: 180 }}>
             <label>Số tiền lần này <span style={{ color: "var(--danger)" }}>*</span></label>
-            <input
-              type="text"
+            <MoneyInput
               placeholder={`Còn thiếu: ${vnd(remaining)}`}
-              value={isAmountFocused ? amount : amount ? Number(amount).toLocaleString("vi-VN") : ""}
-              inputMode="numeric"
-              pattern="[0-9]*"
-              onFocus={() => setIsAmountFocused(true)}
-              onBlur={() => setIsAmountFocused(false)}
-              onChange={(e) => {
-                const v = e.target.value.replace(/[^\d]/g, "");
+              value={amount}
+              onValueChange={(v) => {
                 setAmount(v);
                 if (v) setValidationError("");
               }}
@@ -529,12 +521,10 @@ function AddPaymentForm({
           <>
             <div className="field" style={{ flex: 1, minWidth: 160 }}>
               <label>Tổng tiền trả góp <span style={{ color: "var(--danger)" }}>*</span></label>
-              <input
-                inputMode="numeric"
+              <MoneyInput
                 placeholder="Số tiền KH chuyển qua app"
                 value={installmentTotal}
-                onChange={(e) => {
-                  const v = e.target.value.replace(/[^\d]/g, "");
+                onValueChange={(v) => {
                   setInstallmentTotal(v);
                   if (v) setValidationError("");
                 }}
@@ -1144,17 +1134,14 @@ function ActiveRequestMiniCardV2({
                     {!editing && (
                       <div className="ar-course-amount">{vnd(c.amount || 0)}</div>
                     )}
-                    <input
+                    <MoneyInput
                       value={amountDrafts[c.courseCode] ?? (c.amount ? String(c.amount) : "")}
-                      onChange={(e) => {
+                      onValueChange={(raw) => {
                         if (courseLocked) return;
-                        const raw = e.target.value.replace(/[^\d]/g, "");
                         setAmountDrafts((prev) => ({ ...prev, [c.courseCode]: raw }));
                       }}
                       onBlur={() => commitAmount(uIdx, c.courseCode)}
                       readOnly={courseLocked}
-                      inputMode="numeric"
-                      pattern="[0-9]*"
                       placeholder="Số tiền"
                       title={courseLocked ? "Đã kích hoạt — Sales không thể đổi số tiền" : undefined}
                       style={{
@@ -1568,7 +1555,6 @@ export default function PaymentRequestDetailDrawer({
   const [showAdd, setShowAdd] = useState(false);
   const [editing, setEditing] = useState(false);
   const [savingEdit, setSavingEdit] = useState(false);
-  const [isTargetFocused, setIsTargetFocused] = useState(false);
   const [draft, setDraft] = useState<DraftPr | null>(null);
   const drawerBodyRef = useRef<HTMLDivElement | null>(null);
   const addFormRef = useRef<HTMLDivElement | null>(null);
@@ -1581,7 +1567,7 @@ export default function PaymentRequestDetailDrawer({
     setShowAdd(false);
     setEditing(false);
     setSavingEdit(false);
-    setIsTargetFocused(false);
+
     setDraft(null);
     setPrFullModalOpen(false);
     setHighlightTarget(false);
@@ -2227,23 +2213,10 @@ export default function PaymentRequestDetailDrawer({
                 </div>
                 <div className="info-cell">
                   <div className="info-label">Tổng tiền dự kiến</div>
-                  <input
-                    ref={targetInputRef}
-                    value={
-                      isTargetFocused
-                        ? draft.target
-                        : draft.target
-                        ? Number(draft.target).toLocaleString("vi-VN")
-                        : ""
-                    }
-                    inputMode="numeric"
-                    pattern="[0-9]*"
-                    onFocus={() => setIsTargetFocused(true)}
-                    onBlur={() => setIsTargetFocused(false)}
-                    onChange={(e) => {
-                      const v = e.target.value.replace(/[^\d]/g, "");
-                      setDraft({ ...draft, target: v });
-                    }}
+                  <MoneyInput
+                    inputRef={targetInputRef}
+                    value={draft.target}
+                    onValueChange={(v) => setDraft({ ...draft, target: v })}
                     style={{
                       border: highlightTarget ? "2px solid var(--warning, #f59e0b)" : "1px solid var(--border)",
                       borderRadius: 8,

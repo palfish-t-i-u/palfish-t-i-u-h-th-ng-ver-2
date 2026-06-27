@@ -4,6 +4,7 @@ import {
   fromApiExchangeRate,
   type ExchangeRateItem,
 } from "../../types/exchangeRate";
+import { MoneyInput } from "../ui/MoneyInput";
 
 const DEFAULT_RATE_FALLBACK = 3700;
 
@@ -154,11 +155,10 @@ export default function ExchangeRatesPanel() {
         <div className="mt-3 grid gap-3 md:grid-cols-[160px_180px_1fr_auto]">
           <div className="field">
             <label className="text-xs font-medium text-gmv-text">Tỷ giá VND/RMB *</label>
-            <input
-              inputMode="numeric"
+            <MoneyInput
               placeholder="VD: 3800"
-              value={form.rate ? Number(form.rate).toLocaleString("vi-VN") : ""}
-              onChange={(e) => setForm((f) => ({ ...f, rate: e.target.value.replace(/\D/g, "") }))}
+              value={form.rate}
+              onValueChange={(v) => setForm((f) => ({ ...f, rate: v }))}
               className="mt-1 w-full rounded-gmv-md border border-gmv-border bg-gmv-canvas px-2.5 py-1.5 text-sm"
             />
           </div>
