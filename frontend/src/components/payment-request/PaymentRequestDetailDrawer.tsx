@@ -383,17 +383,19 @@ function AddPaymentForm({
   ];
 
   const submit = () => {
-    const n = parseInt(String(amount).replace(/\D/g, ""), 10);
+    // For installment, the amount source is installmentTotal (the "Số tiền lần này" field is hidden)
+    const rawAmount = method === "installment" ? installmentTotal : String(amount);
+    const n = parseInt(rawAmount.replace(/\D/g, ""), 10);
     if (!n) {
-      setValidationError("Vui lòng nhập số tiền thanh toán");
+      setValidationError(
+        method === "installment"
+          ? "Vui lòng nhập tổng tiền trả góp"
+          : "Vui lòng nhập số tiền thanh toán"
+      );
       return;
     }
     if (method === "installment" && !installmentPlatform) {
       setValidationError("Vui lòng chọn nền tảng trả góp");
-      return;
-    }
-    if (method === "installment" && !installmentTotal) {
-      setValidationError("Vui lòng nhập tổng tiền trả góp");
       return;
     }
     // Bug 1B-05: cash — bắt buộc nhập người thu
@@ -458,23 +460,25 @@ function AddPaymentForm({
       </div>
 
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-        <div className="field" style={{ flex: 1, minWidth: 180 }}>
-          <label>Số tiền lần này <span style={{ color: "var(--danger)" }}>*</span></label>
-          <input
-            type="text"
-            placeholder={`Còn thiếu: ${vnd(remaining)}`}
-            value={isAmountFocused ? amount : amount ? Number(amount).toLocaleString("vi-VN") : ""}
-            inputMode="numeric"
-            pattern="[0-9]*"
-            onFocus={() => setIsAmountFocused(true)}
-            onBlur={() => setIsAmountFocused(false)}
-            onChange={(e) => {
-              const v = e.target.value.replace(/[^\d]/g, "");
-              setAmount(v);
-              if (v) setValidationError("");
-            }}
-          />
-        </div>
+        {method !== "installment" && (
+          <div className="field" style={{ flex: 1, minWidth: 180 }}>
+            <label>Số tiền lần này <span style={{ color: "var(--danger)" }}>*</span></label>
+            <input
+              type="text"
+              placeholder={`Còn thiếu: ${vnd(remaining)}`}
+              value={isAmountFocused ? amount : amount ? Number(amount).toLocaleString("vi-VN") : ""}
+              inputMode="numeric"
+              pattern="[0-9]*"
+              onFocus={() => setIsAmountFocused(true)}
+              onBlur={() => setIsAmountFocused(false)}
+              onChange={(e) => {
+                const v = e.target.value.replace(/[^\d]/g, "");
+                setAmount(v);
+                if (v) setValidationError("");
+              }}
+            />
+          </div>
+        )}
 
         {method === "qr" && (
           <>
@@ -512,6 +516,19 @@ function AddPaymentForm({
         )}
         {method === "installment" && (
           <>
+            <div className="field" style={{ flex: 1, minWidth: 160 }}>
+              <label>Tổng tiền trả góp <span style={{ color: "var(--danger)" }}>*</span></label>
+              <input
+                inputMode="numeric"
+                placeholder="Số tiền KH chuyển qua app"
+                value={installmentTotal}
+                onChange={(e) => {
+                  const v = e.target.value.replace(/[^\d]/g, "");
+                  setInstallmentTotal(v);
+                  if (v) setValidationError("");
+                }}
+              />
+            </div>
             <div className="field" style={{ flex: 1, minWidth: 140 }}>
               <label>Nền tảng trả góp <span style={{ color: "var(--danger)" }}>*</span></label>
               <select
@@ -523,15 +540,6 @@ function AddPaymentForm({
                 <option value="Payoo">Payoo</option>
                 <option value="Mpos">Mpos</option>
               </select>
-            </div>
-            <div className="field" style={{ flex: 1, minWidth: 160 }}>
-              <label>Tổng tiền trả góp <span style={{ color: "var(--danger)" }}>*</span></label>
-              <input
-                inputMode="numeric"
-                placeholder="Số tiền KH chuyển qua app"
-                value={installmentTotal}
-                onChange={(e) => setInstallmentTotal(e.target.value.replace(/[^\d]/g, ""))}
-              />
             </div>
           </>
         )}
