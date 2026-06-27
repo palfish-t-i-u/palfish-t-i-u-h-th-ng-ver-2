@@ -197,9 +197,9 @@ export default function Combobox({
         aria-disabled={disabled || undefined}
         className={cn(
           "gmv-field w-full min-h-10 rounded-gmv-md border border-gmv-border bg-gmv-canvas px-3 text-sm text-gmv-text-strong",
-          disabled && "cursor-not-allowed bg-gmv-row-hover text-gmv-muted opacity-70"
+          disabled && "cursor-not-allowed bg-gmv-row-hover text-gmv-muted opacity-70",
+          invalid && "gmv-field-invalid"
         )}
-        style={invalid ? { borderColor: "var(--danger)" } : undefined}
         placeholder={placeholder}
         value={open ? query : value ? selectedLabel : ""}
         onFocus={() => {

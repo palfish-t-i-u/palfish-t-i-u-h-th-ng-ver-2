@@ -899,6 +899,13 @@
   opacity: 0.6;
   cursor: not-allowed;
 }
+/* Ô bắt buộc đang trống — viền đỏ highlight (kiểu 1). Dùng outline (không bị
+   rule border của .vn-address-fields / Tailwind ghì như border-color). */
+.gmv-field-invalid {
+  outline: 1.5px solid var(--danger) !important;
+  outline-offset: -1.5px;
+  border-color: var(--danger) !important;
+}
 
 /* Timeline */
 .gmv-prototype .timeline { display: flex; flex-direction: column; gap: 12px; }

@@ -109,14 +109,10 @@ export default function VietnamAddressFields({
         />
       </div>
       <input
+        className={requireStreet && !address.trim() ? "gmv-field-invalid" : undefined}
         placeholder={streetPlaceholder}
         value={address}
         onChange={(e) => onAddressChange(e.target.value)}
-        style={
-          requireStreet && !address.trim()
-            ? { borderColor: "var(--danger)" }
-            : undefined
-        }
       />
     </div>
   );
