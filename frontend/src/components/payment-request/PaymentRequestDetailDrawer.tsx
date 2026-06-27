@@ -28,6 +28,7 @@ import {
   getReferralStatus,
   hasUnverifiedInstallment,
   nowStamp,
+  parsePaymentDate,
   paymentAttemptLabel,
   paymentConfirmationText,
   REFERRAL_STATUS_HEADER,
@@ -1873,14 +1874,25 @@ export default function PaymentRequestDetailDrawer({
               )}
             </div>
 
-            {!editing && request.wantsInvoice && (!request.ward || !request.address?.trim()) && (
-              <div className="match-warning" style={{ marginBottom: 10, background: "var(--warning-bg, #fffbeb)", border: "1px solid var(--warning, #f59e0b)", borderRadius: 8, padding: "10px 12px" }}>
-                <Icons.AlertCircle size={14} stroke="var(--warning, #f59e0b)" />
-                <span style={{ fontSize: 12.5, color: "var(--warning-text, #92400e)", lineHeight: 1.5 }}>
-                  Khách cần xuất HĐ — cần bổ sung đầy đủ địa chỉ (Phường/Xã + Số nhà) trước 15h ngày N+1 (N = ngày tiền hthp vào).
-                </span>
-              </div>
-            )}
+            {!editing && request.wantsInvoice && (!request.ward || !request.address?.trim()) && (() => {
+              const firstPaid = request.payments
+                .filter((p) => p.status === "paid" && p.paidAt)
+                .map((p) => parsePaymentDate(p.paidAt!))
+                .filter(Boolean)
+                .sort((a, b) => a!.getTime() - b!.getTime())[0];
+              const deadline = firstPaid
+                ? (() => { const d = new Date(firstPaid); d.setDate(d.getDate() + 1); return `${d.getDate()}/${d.getMonth() + 1}`; })()
+                : null;
+              return (
+                <div className="match-warning" style={{ marginBottom: 10, background: "var(--warning-bg, #fffbeb)", border: "1px solid var(--warning, #f59e0b)", borderRadius: 8, padding: "10px 12px" }}>
+                  <Icons.AlertCircle size={14} stroke="var(--warning, #f59e0b)" />
+                  <span style={{ fontSize: 12.5, color: "var(--warning-text, #92400e)", lineHeight: 1.5 }}>
+                    Khách cần xuất HĐ — cần bổ sung đầy đủ địa chỉ (Phường/Xã + Số nhà)
+                    {deadline ? ` trước 15h ngày ${deadline}.` : " trước 15h ngày N+1 (N = ngày tiền vào)."}
+                  </span>
+                </div>
+              );
+            })()}
 
             {!editing ? (
               <div className="info-grid">
