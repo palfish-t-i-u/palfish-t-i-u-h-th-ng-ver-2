@@ -1333,7 +1333,7 @@ _zalo_token_refresh_task = None
 
 @app.on_event("startup")
 async def _start_zalo_token_refresh() -> None:
-    """Start daily Zalo OA token refresh guard."""
+    """Start hourly Zalo OA token refresh guard."""
     global _zalo_token_refresh_task
     from zalo_notifier import start_zalo_token_refresh_task
 
@@ -1373,9 +1373,7 @@ async def _register_payos_webhook_on_startup() -> None:
 async def _start_zalo_worker() -> None:
     import asyncio
     from zalo_outbox_worker import start_outbox_worker
-    from zalo_notifier import start_zalo_token_refresh_task
 
-    print("[zalo] starting background tasks...")
+    print("[zalo] starting outbox worker...")
     asyncio.create_task(start_outbox_worker(_supabase))
-    start_zalo_token_refresh_task(_supabase)
 

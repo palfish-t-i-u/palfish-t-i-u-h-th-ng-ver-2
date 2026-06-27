@@ -272,7 +272,7 @@ def refresh_access_token(*, sb=None) -> dict[str, Any]:
     }
 
 
-def ensure_token_fresh(*, sb=None, within_days: int = 7) -> bool:
+def ensure_token_fresh(*, sb=None, within_days: int = 7, within_hours: int | None = None) -> bool:
     """Refresh token when it expires within the configured window.
 
     Returns True when a refresh was performed.
@@ -280,7 +280,8 @@ def ensure_token_fresh(*, sb=None, within_days: int = 7) -> bool:
     creds = _read_credentials(sb)
     if not creds.expires_at:
         return False
-    if creds.expires_at > _utc_now() + timedelta(days=within_days):
+    window = timedelta(hours=within_hours) if within_hours is not None else timedelta(days=within_days)
+    if creds.expires_at > _utc_now() + window:
         return False
     refresh_access_token(sb=sb)
     return True
@@ -359,17 +360,22 @@ async def _send_refresh_failure_alert(error: Exception) -> None:
 def start_zalo_token_refresh_task(
     get_supabase: Callable[[], Any],
     *,
-    interval_seconds: int = 24 * 60 * 60,
+    interval_seconds: int = 3600,
 ) -> asyncio.Task:
-    """Start a lightweight daily token refresh loop.
+    """Hourly Zalo OA token refresh guard.
 
-    The caller owns the returned task and decides whether to register it in app startup.
+    Checks every hour; only refreshes when token expires within 6 hours.
+    If refresh fails, retries next hour instead of waiting 24h.
     """
 
     async def _loop() -> None:
         while True:
             try:
-                await run_daily_token_refresh_check(sb=get_supabase())
+                refreshed = await asyncio.to_thread(
+                    ensure_token_fresh, sb=get_supabase(), within_hours=6
+                )
+                if refreshed:
+                    print("[zalo] token refreshed successfully")
             except Exception as exc:
                 print(f"[zalo] token refresh check failed: {exc}")
                 await _send_refresh_failure_alert(exc)
