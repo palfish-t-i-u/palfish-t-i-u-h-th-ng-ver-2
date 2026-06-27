@@ -9,6 +9,7 @@ import {
   type MatchStatus,
 } from "./card-recon/mockGatewayTxns";
 import { endpoints } from "../lib/api";
+import DateRangeFilter, { EMPTY_RANGE, type DateRange, inDateRange } from "./payment-request/DateRangeFilter";
 import "../styles/prototype-payments.css";
 
 type StatusFilter = "all" | MatchStatus;
@@ -78,6 +79,9 @@ export default function CardReconciliationTab({
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [picked, setPicked] = useState<string | null>(null);
   const [candSearch, setCandSearch] = useState("");
+  const [candRange, setCandRange] = useState<DateRange>(EMPTY_RANGE);
+  const [candAmount, setCandAmount] = useState("");
+  const [candIncludeAll, setCandIncludeAll] = useState(false);
   const [candidates, setCandidates] = useState<MatchCandidate[]>([]);
   const [amountLoaded, setAmountLoaded] = useState(false);
   const [manualSearching, setManualSearching] = useState(false);
@@ -168,6 +172,7 @@ export default function CardReconciliationTab({
   }, [visible, statusFilter, installmentFilter, search]);
 
   // Tải ứng viên ghép từ API mỗi khi mở drawer (BE đã xếp theo tiền + độ gần ngày).
+  // Debounce 350ms cho candAmount để tránh gọi API mỗi keystroke.
   useEffect(() => {
     if (!drawerOpen || !drawerId) return;
     const txn = txns.find((t) => t.id === drawerId);
@@ -178,24 +183,31 @@ export default function CardReconciliationTab({
     }
     let alive = true;
     setAmountLoaded(false);
-    endpoints.cardRecon
-      .matchCandidates(drawerId)
-      .then(({ data }) => {
-        if (!alive) return;
-        setCandidates(Array.isArray(data) ? data : []);
-        setAmountLoaded(true);
-      })
-      .catch((err) => {
-        console.error("[card-recon] candidates failed", err);
-        if (alive) {
-          setCandidates([]);
+    const params: { amount?: number; include_all?: boolean } = {};
+    const parsedAmt = candAmount.trim() ? parseFloat(candAmount.replace(/[^0-9.]/g, "")) : NaN;
+    if (!isNaN(parsedAmt) && parsedAmt > 0) params.amount = parsedAmt;
+    if (candIncludeAll) params.include_all = true;
+    const timer = setTimeout(() => {
+      endpoints.cardRecon
+        .matchCandidates(drawerId, params)
+        .then(({ data }) => {
+          if (!alive) return;
+          setCandidates(Array.isArray(data) ? data : []);
           setAmountLoaded(true);
-        }
-      });
+        })
+        .catch((err) => {
+          console.error("[card-recon] candidates failed", err);
+          if (alive) {
+            setCandidates([]);
+            setAmountLoaded(true);
+          }
+        });
+    }, 350);
     return () => {
       alive = false;
+      clearTimeout(timer);
     };
-  }, [drawerOpen, drawerId, txns]);
+  }, [drawerOpen, drawerId, txns, candAmount, candIncludeAll]);
 
   // Fallback: khi không có ứng viên cùng số tiền → cho tìm thủ công qua BE (T2.5).
   const isManualMode = amountLoaded && candidates.length === 0;
@@ -211,8 +223,10 @@ export default function CardReconciliationTab({
     setManualSearching(true);
     setManualSearchError("");
     const timer = setTimeout(() => {
+      const params: { search: string; include_all?: boolean } = { search: q };
+      if (candIncludeAll) params.include_all = true;
       endpoints.cardRecon
-        .matchCandidates(drawerId, { search: q })
+        .matchCandidates(drawerId, params)
         .then(({ data }) => {
           if (alive) setCandidates(Array.isArray(data) ? data : []);
         })
@@ -246,21 +260,29 @@ export default function CardReconciliationTab({
       alive = false;
       clearTimeout(timer);
     };
-  }, [isManualMode, candSearch, drawerId]);
+  }, [isManualMode, candSearch, drawerId, candIncludeAll]);
 
   const filteredCandidates = useMemo(() => {
-    if (isManualMode) return candidates;
+    let result = candidates;
+    // Client-side date range filter (applies in both auto + manual mode).
+    if (candRange.from || candRange.to) {
+      result = result.filter((c) => inDateRange(c.created_at, candRange));
+    }
+    if (isManualMode) return result;
     const q = candSearch.trim().toLowerCase();
-    if (!q) return candidates;
-    return candidates.filter((c) =>
+    if (!q) return result;
+    return result.filter((c) =>
       [c.pr_id, c.pr_name, c.uid].some((v) => (v ?? "").toLowerCase().includes(q)),
     );
-  }, [candidates, candSearch, isManualMode]);
+  }, [candidates, candSearch, isManualMode, candRange]);
 
   const openDrawer = (t: GatewayTxn) => {
     setDrawerId(t.id);
     setPicked(t.payment_line_id);
     setCandSearch("");
+    setCandRange(EMPTY_RANGE);
+    setCandAmount("");
+    setCandIncludeAll(false);
     setDrawerOpen(true);
   };
 
@@ -717,6 +739,10 @@ export default function CardReconciliationTab({
                 </div>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
                   <div className="info-cell">
+                    <div className="info-label">Khách hàng / Chủ thẻ</div>
+                    <div className="info-value">{drawerTxn.cardholder_name}</div>
+                  </div>
+                  <div className="info-cell">
                     <div className="info-label">Loại</div>
                     <div className="info-value">{drawerTxn.category}</div>
                   </div>
@@ -744,10 +770,13 @@ export default function CardReconciliationTab({
                     <div className="info-label">Mã giao dịch</div>
                     <div className="info-value mono">{drawerTxn.txn_code}</div>
                   </div>
-                  <div className="info-cell">
-                    <div className="info-label">{drawerTxn.source === "mpos" ? "Chi nhánh" : "Ngân hàng"}</div>
-                    <div className="info-value">{drawerTxn.collector_region || drawerTxn.bank || "—"}</div>
-                  </div>
+                  {/* V6 — "Ngân hàng" chỉ hiện cho Payoo; bỏ "Chi nhánh" mPOS khỏi panel */}
+                  {drawerTxn.source === "payoo" && (
+                    <div className="info-cell">
+                      <div className="info-label">Ngân hàng</div>
+                      <div className="info-value">{drawerTxn.bank || "—"}</div>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -783,13 +812,55 @@ export default function CardReconciliationTab({
 
                   <div style={{ display: "grid", gridTemplateColumns: "1.6fr 1fr", gap: 16 }}>
                     <div>
-                      <div className="search" style={{ marginBottom: 8 }}>
+                      <div className="search" style={{ marginBottom: 6 }}>
                         <Icons.Search size={14} stroke="var(--text-3)" />
                         <input
                           placeholder={isManualMode ? "Tìm theo PR-ID, tên, UID, SĐT (gõ ≥ 2 ký tự)…" : "Tìm PR / tên / UID…"}
                           value={candSearch}
                           onChange={(e) => setCandSearch(e.target.value)}
                         />
+                      </div>
+                      {/* V5 — Filter bar: amount override + status toggle + date range */}
+                      <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          placeholder="Số tiền…"
+                          value={candAmount}
+                          onChange={(e) => setCandAmount(e.target.value)}
+                          style={{
+                            width: 110, fontSize: 12, padding: "3px 7px",
+                            border: "1px solid var(--border)", borderRadius: 6,
+                            background: "var(--surface)", color: "var(--text)",
+                          }}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setCandIncludeAll(false)}
+                          style={{
+                            fontSize: 11.5, padding: "2px 8px", borderRadius: 6, cursor: "pointer",
+                            border: `1px solid ${!candIncludeAll ? "var(--primary)" : "var(--border)"}`,
+                            background: !candIncludeAll ? "var(--primary-bg, #eff6ff)" : "transparent",
+                            color: !candIncludeAll ? "var(--primary)" : "var(--text-3)",
+                            fontWeight: !candIncludeAll ? 600 : 400,
+                          }}
+                        >
+                          Chưa xác nhận
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setCandIncludeAll(true)}
+                          style={{
+                            fontSize: 11.5, padding: "2px 8px", borderRadius: 6, cursor: "pointer",
+                            border: `1px solid ${candIncludeAll ? "var(--primary)" : "var(--border)"}`,
+                            background: candIncludeAll ? "var(--primary-bg, #eff6ff)" : "transparent",
+                            color: candIncludeAll ? "var(--primary)" : "var(--text-3)",
+                            fontWeight: candIncludeAll ? 600 : 400,
+                          }}
+                        >
+                          Tất cả
+                        </button>
+                        <DateRangeFilter value={candRange} onChange={setCandRange} />
                       </div>
                       {isManualMode && (
                         <div style={{
@@ -823,6 +894,10 @@ export default function CardReconciliationTab({
                         {filteredCandidates.map((c) => {
                           const isPick = picked === c.payment_line_id;
                           const exact = c.amount === drawerTxn.amount;
+                          const isInstallment = c.method === "installment";
+                          const methodLabel = isInstallment
+                            ? `Trả góp${c.installment_platform ? ` · ${c.installment_platform.toUpperCase()}` : ""}`
+                            : "Quẹt thẻ";
                           return (
                             <label
                               key={c.payment_line_id}
@@ -853,6 +928,22 @@ export default function CardReconciliationTab({
                                     }}
                                   >
                                     trùng tiền
+                                  </span>
+                                )}
+                                {/* V3 — Method chip */}
+                                {c.method && (
+                                  <span
+                                    style={{
+                                      fontSize: 10.5,
+                                      padding: "1px 6px",
+                                      borderRadius: 6,
+                                      background: isInstallment ? "var(--warning-bg)" : "var(--surface-2)",
+                                      color: isInstallment ? "var(--warning-text)" : "var(--text-3)",
+                                      border: "1px solid var(--border)",
+                                      marginLeft: "auto",
+                                    }}
+                                  >
+                                    {methodLabel}
                                   </span>
                                 )}
                               </div>

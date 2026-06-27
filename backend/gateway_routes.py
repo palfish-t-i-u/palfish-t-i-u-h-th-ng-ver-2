@@ -335,6 +335,8 @@ def register_gateway_routes(app, get_supabase: Callable[[], Any]) -> None:
     def gateway_match_candidates(
         txn_id: str,
         search: str | None = Query(None),
+        amount: float | None = Query(None),
+        include_all: bool = Query(False),
         authorization: str | None = Header(None),
     ):
         sb = _sb_or_503(get_supabase)
@@ -344,10 +346,10 @@ def register_gateway_routes(app, get_supabase: Callable[[], Any]) -> None:
         if not txn_res.data:
             raise HTTPException(404, "Khong tim thay gateway transaction")
         txn = txn_res.data[0]
-        amount = _parse_amount(txn.get("amount"))
+        # Dùng amount từ query param nếu có (FE override), nếu không dùng amount của giao dịch.
+        effective_amount = amount if amount is not None else _parse_amount(txn.get("amount"))
         txn_paid = txn.get("paid_at")
-        # Ghép theo SỐ TIỀN (khóa mạnh) — KHÔNG lọc theo status để không ẩn lần TT đã 'paid'
-        # (giao dịch thẻ có thể ứng với lần TT đã xác nhận trong app).
+        # Lọc theo method (chỉ card/installment) + status (chỉ pending trừ khi include_all=True).
         search_text = _clean_text(search)
         if search_text:
             pattern = f"*{search_text.replace(',', ' ').strip()}*"
@@ -370,7 +372,7 @@ def register_gateway_routes(app, get_supabase: Callable[[], Any]) -> None:
             lines = line_res.data or []
         else:
             # payment_lines.amount là bigint → cast int để tránh postgrest gửi "10080000.0" (22P02).
-            amount_int = int(amount) if amount else 0
+            amount_int = int(effective_amount) if effective_amount else 0
             line_res = sb.table("payment_lines").select("*").eq("amount", amount_int).limit(100).execute()
             lines = line_res.data or []
         # Bỏ lần TT đã ghép với giao dịch gateway KHÁC (tránh ghép trùng).
@@ -386,6 +388,11 @@ def register_gateway_routes(app, get_supabase: Callable[[], Any]) -> None:
             if row.get("payment_line_id") and str(row.get("id")) != str(txn_id)
         }
         lines = [ln for ln in lines if str(ln.get("id")) not in used_line_ids]
+        # Lọc theo method: chỉ giữ card + installment (phù hợp giao dịch thẻ/trả góp).
+        lines = [ln for ln in lines if _clean_text(ln.get("method")).lower() in ("card", "installment")]
+        # Lọc theo status: mặc định chỉ pending; include_all=True thì giữ tất cả.
+        if not include_all:
+            lines = [ln for ln in lines if _clean_text(ln.get("status")).lower() == "pending"]
         # Xếp theo độ gần ngày (gần nhất trước), rồi theo created_at.
         lines.sort(key=lambda ln: (_day_diff(txn_paid, ln.get("created_at")), str(ln.get("created_at") or "")))
         lines = lines[:50]
@@ -411,6 +418,9 @@ def register_gateway_routes(app, get_supabase: Callable[[], Any]) -> None:
                     "uid": _clean_text(pr.get("uid") or pr.get("uid_khach_hang")),
                     "has_bill": bool(bill_images),
                     "bill_images": bill_images,
+                    "method": _clean_text(line.get("method")),
+                    "installment_platform": _clean_text(line.get("installment_platform")),
+                    "status": _clean_text(line.get("status")) or "pending",
                 }
             )
         return candidates
