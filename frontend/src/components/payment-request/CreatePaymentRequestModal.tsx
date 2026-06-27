@@ -85,9 +85,12 @@ export default function CreatePaymentRequestModal({
   const emailTrimmed = form.email.trim();
   const emailValid = emailTrimmed === "" || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailTrimmed);
 
-  // Địa chỉ bắt buộc khi tạo PR: chỉ cần Tỉnh/Thành (khách VN) hoặc quốc gia (khách OV).
-  // Yêu cầu đủ Phường/Xã + Số nhà cho hoá đơn được enforce ở gate AR/B4, không phải ở đây.
-  const addressOk = form.isForeign ? !!form.foreignCountry : !!form.province;
+  // Địa chỉ bắt buộc khi tạo PR:
+  // - Khách VN: đủ cả 3 ô Tỉnh/Thành + Phường/Xã + Số nhà, đường.
+  // - Khách nước ngoài (OV): chọn quốc gia.
+  const addressOk = form.isForeign
+    ? !!form.foreignCountry
+    : !!form.province && !!form.ward && !!form.address.trim();
 
   const canSubmit = !!(
     form.uid && form.name && form.phone && targetNum > 0 &&
@@ -284,8 +287,22 @@ export default function CreatePaymentRequestModal({
                 onWardChange={(v) => set("ward", v)}
                 onAddressChange={(v) => set("address", v)}
                 requireProvince
+                requireWard
+                requireStreet
               />
             )}
+            <div
+              style={{
+                fontSize: 11.5,
+                lineHeight: 1.45,
+                marginTop: 6,
+                color: addressOk ? "var(--text-3)" : "var(--danger)",
+              }}
+            >
+              {form.isForeign
+                ? "Bắt buộc chọn quốc gia khách đang ở."
+                : "Bắt buộc điền đủ cả 3: Tỉnh/Thành, Phường/Xã và Số nhà, đường."}
+            </div>
           </div>
 
           <div className="field">
