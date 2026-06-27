@@ -27,8 +27,6 @@ interface FormState {
   isForeign: boolean;
   /** Mã quốc gia khi isForeign (vd "US"). */
   foreignCountry: string;
-  /** Khách cần xuất hóa đơn → bắt buộc đủ Phường/Xã + Số nhà, đường. */
-  needsInvoice: boolean;
 }
 
 const INITIAL: FormState = {
@@ -50,7 +48,6 @@ const INITIAL: FormState = {
   leadChannel: "",
   isForeign: false,
   foreignCountry: "",
-  needsInvoice: false,
 };
 
 // Danh sách quốc gia cho khách ở nước ngoài (bỏ VN), sort theo tên — hằng số module.
@@ -88,13 +85,9 @@ export default function CreatePaymentRequestModal({
   const emailTrimmed = form.email.trim();
   const emailValid = emailTrimmed === "" || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailTrimmed);
 
-  // Địa chỉ bắt buộc (kế toán 27/6):
-  // - Khách nước ngoài: chỉ cần chọn quốc gia.
-  // - Khách VN: bắt buộc Tỉnh/Thành; nếu cần hóa đơn → đủ cả Phường/Xã + Số nhà, đường.
-  const addressOk = form.isForeign
-    ? !!form.foreignCountry
-    : !!form.province &&
-      (!form.needsInvoice || (!!form.ward && !!form.address.trim()));
+  // Địa chỉ bắt buộc khi tạo PR: chỉ cần Tỉnh/Thành (khách VN) hoặc quốc gia (khách OV).
+  // Yêu cầu đủ Phường/Xã + Số nhà cho hoá đơn được enforce ở gate AR/B4, không phải ở đây.
+  const addressOk = form.isForeign ? !!form.foreignCountry : !!form.province;
 
   const canSubmit = !!(
     form.uid && form.name && form.phone && targetNum > 0 &&
@@ -283,7 +276,7 @@ export default function CreatePaymentRequestModal({
                   }));
                 }}
               />
-              Khách ở nước ngoài (người Việt sống ở nước ngoài)
+              Khách ở nước ngoài
             </label>
 
             {form.isForeign ? (
@@ -291,52 +284,20 @@ export default function CreatePaymentRequestModal({
                 value={form.foreignCountry}
                 onChange={(v) => set("foreignCountry", v)}
                 options={FOREIGN_COUNTRY_OPTIONS}
-                placeholder="Quốc gia khách đang ở * — gõ để tìm"
+                placeholder="Chọn quốc gia"
                 emptyLabel="— Bỏ chọn —"
                 invalid={!form.foreignCountry}
               />
             ) : (
-              <>
-                <label
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 8,
-                    fontSize: 12.5,
-                    color: "var(--text-2)",
-                    marginBottom: 8,
-                    cursor: "pointer",
-                  }}
-                >
-                  <input
-                    type="checkbox"
-                    checked={form.needsInvoice}
-                    onChange={(e) => set("needsInvoice", e.target.checked)}
-                  />
-                  Khách cần xuất hóa đơn (bắt buộc đủ Phường/Xã + Số nhà, đường)
-                </label>
-                <VietnamAddressFields
-                  province={form.province}
-                  ward={form.ward}
-                  address={form.address}
-                  onProvinceChange={(v) => set("province", v)}
-                  onWardChange={(v) => set("ward", v)}
-                  onAddressChange={(v) => set("address", v)}
-                  requireProvince
-                  requireWard={form.needsInvoice}
-                  requireStreet={form.needsInvoice}
-                />
-              </>
-            )}
-
-            {!addressOk && (
-              <div style={{ fontSize: 11.5, color: "var(--danger)", lineHeight: 1.45, marginTop: 4 }}>
-                {form.isForeign
-                  ? "Bắt buộc chọn quốc gia khách đang ở."
-                  : !form.province
-                  ? "Bắt buộc chọn Tỉnh / Thành phố."
-                  : "Khách cần hóa đơn → điền đủ Phường/Xã và Số nhà, đường."}
-              </div>
+              <VietnamAddressFields
+                province={form.province}
+                ward={form.ward}
+                address={form.address}
+                onProvinceChange={(v) => set("province", v)}
+                onWardChange={(v) => set("ward", v)}
+                onAddressChange={(v) => set("address", v)}
+                requireProvince
+              />
             )}
           </div>
 

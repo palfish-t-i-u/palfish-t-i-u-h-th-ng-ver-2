@@ -1426,7 +1426,6 @@ function ActivationDetailDrawer({
                   if (course.invoiced || course.invoiceRequestedAt) return null;
                   const blockers = getInvoiceBlockers(course, pr);
                   if (!blockers.length) return null;
-                  const needsAddress = blockers.some((b) => b.key === "address");
                   return (
                     <div
                       style={{
@@ -1445,16 +1444,6 @@ function ActivationDetailDrawer({
                           <li key={b.key}>{b.text}</li>
                         ))}
                       </ul>
-                      {needsAddress && onOpenPr && (
-                        <button
-                          type="button"
-                          className="btn btn-outline btn-sm"
-                          style={{ marginTop: 6 }}
-                          onClick={onOpenPr}
-                        >
-                          <Icons.Doc size={12} /> Mở PR để bổ sung địa chỉ
-                        </button>
-                      )}
                     </div>
                   );
                 })()}

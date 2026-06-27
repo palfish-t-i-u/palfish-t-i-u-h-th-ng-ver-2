@@ -71,10 +71,12 @@ export default function VietnamAddressFields({
 }) {
   const { provinces, wards, loadingWards } = useProvinceWardSelect(province);
 
-  const provinceOptions = useMemo(
-    () => provinces.map((p) => ({ value: p.name, label: p.name })),
-    [provinces]
-  );
+  const provinceOptions = useMemo(() => {
+    const stripPrefix = (s: string) => s.replace(/^(Tỉnh|Thành phố)\s+/i, "");
+    return provinces
+      .map((p) => ({ value: p.name, label: p.name }))
+      .sort((a, b) => stripPrefix(a.label).localeCompare(stripPrefix(b.label), "vi"));
+  }, [provinces]);
   const wardOptions = useMemo(
     () => wards.map((w) => ({ value: w, label: w })),
     [wards]
@@ -92,7 +94,7 @@ export default function VietnamAddressFields({
           value={province}
           onChange={handleProvinceChange}
           options={provinceOptions}
-          placeholder={`Tỉnh / Thành phố${requireProvince ? " *" : " (tùy chọn)"} — gõ để tìm`}
+          placeholder="Tỉnh / Thành phố"
           emptyLabel="— Bỏ chọn —"
           invalid={requireProvince && !province}
         />
@@ -101,17 +103,13 @@ export default function VietnamAddressFields({
           onChange={onWardChange}
           options={wardOptions}
           disabled={!province || loadingWards}
-          placeholder={
-            loadingWards
-              ? "Đang tải phường/xã…"
-              : `Phường / Xã${requireWard ? " *" : " (tùy chọn)"} — gõ để tìm`
-          }
+          placeholder={loadingWards ? "Đang tải phường/xã…" : "Phường / Xã"}
           emptyLabel="— Bỏ chọn —"
           invalid={requireWard && !ward}
         />
       </div>
       <input
-        placeholder={`${streetPlaceholder}${requireStreet ? " *" : ""}`}
+        placeholder={streetPlaceholder}
         value={address}
         onChange={(e) => onAddressChange(e.target.value)}
         style={
