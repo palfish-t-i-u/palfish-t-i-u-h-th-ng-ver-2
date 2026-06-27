@@ -46,6 +46,12 @@ function getBillsForTxn(t: FlatTransaction): BillImage[] {
   }));
 }
 
+// Quẹt thẻ / trả góp bắt buộc có bill mới cho kế toán xác nhận (TOP2.4).
+function billRequiredButMissing(t: FlatTransaction): boolean {
+  if (t.method !== "card" && t.method !== "installment") return false;
+  return getBillsForTxn(t).length === 0 && !t.bill;
+}
+
 function parseDownloadFilename(contentDisposition: string | undefined, fallback: string) {
   if (!contentDisposition) return fallback;
   const utf8 = contentDisposition.match(/filename\*=UTF-8''([^;]+)/i);
@@ -860,10 +866,15 @@ export default function ReconciliationTab() {
                   onClick={async () => {
                     setIsBulkConfirming(true);
                     try {
-                      const toConfirm = [...selectedIds]
+                      const picked = [...selectedIds]
                         .map((key) => transactions.find((x) => x.key === key))
                         .filter((t): t is FlatTransaction => !!t);
+                      const blocked = picked.filter(billRequiredButMissing);
+                      const toConfirm = picked.filter((t) => !billRequiredButMissing(t));
                       await Promise.all(toConfirm.map((t) => handleConfirm(t)));
+                      if (blocked.length > 0) {
+                        alert(`${blocked.length} giao dịch quẹt thẻ/trả góp chưa có bill — đã bỏ qua, chưa xác nhận.`);
+                      }
                     } finally {
                       setSelectedIds(new Set());
                       setIsBulkConfirming(false);
@@ -1106,8 +1117,9 @@ export default function ReconciliationTab() {
                             <button
                               type="button"
                               className="btn-icon-success"
-                              title="Xác nhận tiền về"
-                              onClick={() => void handleConfirm(t)}
+                              title={billRequiredButMissing(t) ? "Cần ảnh bill quẹt thẻ/trả góp" : "Xác nhận tiền về"}
+                              disabled={billRequiredButMissing(t)}
+                              onClick={() => { if (!billRequiredButMissing(t)) void handleConfirm(t); }}
                             >
                               <Icons.Check size={14} strokeWidth={2.5} />
                             </button>
@@ -1278,6 +1290,13 @@ export default function ReconciliationTab() {
                           </span>
                         </div>
                       </div>
+                      {/* Sales phụ trách — kế toán biết liên hệ ai khi sai sót (TOP2.5) */}
+                      <div className="info-cell">
+                        <div className="info-label">Sales phụ trách</div>
+                        <div className="info-value">
+                          {pr.saleName || (pr.saleEmail ? pr.saleEmail.split("@")[0] : "—")}
+                        </div>
+                      </div>
                       <div className="info-cell">
                         <div className="info-label">
                           {drawerTxn.method === "cash"
@@ -1303,9 +1322,20 @@ export default function ReconciliationTab() {
                         <div className="info-label">Mã đối soát</div>
                         <div className="info-value mono">{drawerTxn.code}</div>
                       </div>
+                      {/* Sales tạo lệnh lúc — đổi nhãn cho rõ KHÔNG phải giờ tiền về (TOP2.5) */}
                       <div className="info-cell">
-                        <div className="info-label">Sales tạo lúc</div>
+                        <div className="info-label">Sales tạo lệnh lúc</div>
                         <div className="info-value mono">{formatPaymentDateFull(drawerTxn.createdAt)}</div>
+                      </div>
+                      {/* Thời gian tiền về — căn cứ đối chiếu sao kê (TOP2.5) */}
+                      <div className="info-cell">
+                        <div className="info-label">Thời gian tiền về</div>
+                        <div className="info-value mono">
+                          {(() => {
+                            const arrived = drawerTxn.paidAt || bankByLine.get(drawerTxn.id)?.transaction_date;
+                            return arrived ? formatPaymentDateFull(arrived) : <span style={{ color: "var(--text-3)" }}>Chưa ghi nhận</span>;
+                          })()}
+                        </div>
                       </div>
                       <div className="info-cell">
                         <div className="info-label">Sales upload bill</div>
@@ -1443,36 +1473,64 @@ export default function ReconciliationTab() {
                   Xác nhận sẽ cập nhật trạng thái về{" "}
                   <strong style={{ color: "var(--success-text)" }}>Đã xác nhận</strong> trên Payment Request.
                 </div>
+                {/* Banner cảnh báo thiếu bill (TOP2.4) */}
+                {status === "awaiting" && billRequiredButMissing(drawerTxn) && (
+                  <div style={{
+                    display: "flex", alignItems: "center", gap: 8,
+                    background: "var(--warning-bg)", color: "var(--warning-text)",
+                    border: "1px solid var(--warning-text)", borderRadius: 8,
+                    padding: "8px 12px", fontSize: 12.5,
+                  }}>
+                    <Icons.AlertCircle size={15} />
+                    Để được xác nhận, yêu cầu sales upload ảnh bill cho lần {drawerTxn.method === "installment" ? "trả góp" : "quẹt thẻ"} này.
+                  </div>
+                )}
                 <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", flexWrap: "wrap" }}>
-                  {status === "awaiting" && !readOnly && (
-                    <>
-                      <button
-                        type="button"
-                        className="btn btn-outline"
-                        style={{ color: "var(--danger)" }}
-                        onClick={() => handleReject(drawerTxn, "Từ chối")}
-                      >
-                        <Icons.XCircle size={14} /> Từ chối
-                      </button>
-                      <button type="button" className="btn btn-success" onClick={() => {
+                  {status === "awaiting" && !readOnly && (() => {
+                    const lockedNoBill = billRequiredButMissing(drawerTxn);
+                    return (
+                      <>
+                        <button
+                          type="button"
+                          className="btn btn-outline"
+                          style={{ color: "var(--danger)" }}
+                          onClick={() => handleReject(drawerTxn, "Từ chối")}
+                        >
+                          <Icons.XCircle size={14} /> Từ chối
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-success"
+                          disabled={lockedNoBill}
+                          title={lockedNoBill ? "Cần ảnh bill quẹt thẻ/trả góp trước khi xác nhận" : undefined}
+                          onClick={() => {
+                            const extra = drawerTxn.method === "installment" ? {
+                              verified_total: parseInt(verifiedTotalDraft, 10) || undefined,
+                              verified_received: parseInt(verifiedReceivedDraft, 10) || undefined,
+                            } : undefined;
+                            void handleConfirm(drawerTxn, extra);
+                          }}
+                        >
+                          <Icons.Check size={14} strokeWidth={2.5} /> Xác nhận tiền về
+                        </button>
+                      </>
+                    );
+                  })()}
+                  {status === "rejected" && !readOnly && (
+                    <button
+                      type="button"
+                      className="btn btn-outline"
+                      disabled={billRequiredButMissing(drawerTxn)}
+                      title={billRequiredButMissing(drawerTxn) ? "Cần ảnh bill quẹt thẻ/trả góp" : undefined}
+                      onClick={() => {
+                        if (billRequiredButMissing(drawerTxn)) return;
                         const extra = drawerTxn.method === "installment" ? {
                           verified_total: parseInt(verifiedTotalDraft, 10) || undefined,
                           verified_received: parseInt(verifiedReceivedDraft, 10) || undefined,
                         } : undefined;
                         void handleConfirm(drawerTxn, extra);
-                      }}>
-                        <Icons.Check size={14} strokeWidth={2.5} /> Xác nhận tiền về
-                      </button>
-                    </>
-                  )}
-                  {status === "rejected" && !readOnly && (
-                    <button type="button" className="btn btn-outline" onClick={() => {
-                      const extra = drawerTxn.method === "installment" ? {
-                        verified_total: parseInt(verifiedTotalDraft, 10) || undefined,
-                        verified_received: parseInt(verifiedReceivedDraft, 10) || undefined,
-                      } : undefined;
-                      void handleConfirm(drawerTxn, extra);
-                    }}>
+                      }}
+                    >
                       <Icons.Clock size={14} /> Mở lại — Xác nhận
                     </button>
                   )}

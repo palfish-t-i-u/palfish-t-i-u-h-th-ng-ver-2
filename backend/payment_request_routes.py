@@ -2221,6 +2221,17 @@ def register_payment_request_routes(app, _get_supabase) -> None:
             raise HTTPException(404, "Khong tim thay transaction")
 
         line = line_res.data[0]
+
+        # TOP2.4 soft-lock: quẹt thẻ / trả góp PHẢI có ảnh bill mới được xác nhận tiền về.
+        if status == "paid" and _clean_text(line.get("method")).lower() in ("card", "installment"):
+            bill_images = line.get("bill_images")
+            has_bill = (isinstance(bill_images, list) and len(bill_images) > 0) or bool(_clean_text(line.get("bill_image")))
+            if not has_bill:
+                raise HTTPException(
+                    400,
+                    "Lan thanh toan quet the/tra gop chua co anh bill — yeu cau sales upload bill truoc khi xac nhan.",
+                )
+
         payment_request_id = str(line.get("payment_request_id") or "")
         if not payment_request_id:
             raise HTTPException(400, "payment_line thieu payment_request_id")

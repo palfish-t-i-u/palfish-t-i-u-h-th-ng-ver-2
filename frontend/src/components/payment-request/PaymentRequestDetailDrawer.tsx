@@ -296,6 +296,16 @@ function QrRow({
               <span style={{ color: "var(--danger)", fontStyle: "italic" }}>Lý do: {qr.rejectReason}</span>
             </>
           )}
+          {/* TOP2.4: Nhắc sale upload bill cho lần TT quẹt thẻ/trả góp chờ xác nhận */}
+          {(qr.method === "card" || qr.method === "installment") && qr.status === "pending" && !qr.billImage && !qr.bill && (
+            <>
+              <span className="sep" />
+              <span style={{ color: "var(--warning-text)", fontWeight: 600, whiteSpace: "nowrap" }}>
+                <Icons.AlertCircle size={11} style={{ verticalAlign: "-1px", marginRight: 2 }} />
+                Cần ảnh bill để kế toán xác nhận
+              </span>
+            </>
+          )}
           {import.meta.env.DEV && qr.status !== "paid" && (qr.billImage || qr.bill) && (
             <>
               <span className="sep" />
