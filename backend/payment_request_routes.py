@@ -296,6 +296,7 @@ def _serialize_payment_request(row: dict[str, Any]) -> dict[str, Any]:
         "updated_at": row.get("updated_at") or "",
         "sale_email": row.get("sale_email") or "",
         "is_test": bool(row.get("is_test")),
+        "wants_invoice": bool(row.get("wants_invoice")),
     }
     if row.get("child_name"):
         result["child_name"] = row["child_name"]
