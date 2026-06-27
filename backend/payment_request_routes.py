@@ -126,6 +126,7 @@ class PaymentRequestCreate(BaseModel):
     company_name: str | None = None
     lead_source: str | None = None
     lead_channel: str | None = None
+    wants_invoice: bool | None = None
 
     uid_khach_hang: str | None = None
     ten_khach: str | None = None
@@ -151,6 +152,7 @@ class PaymentRequestPatch(BaseModel):
     company_name: str | None = None
     lead_source: str | None = None
     lead_channel: str | None = None
+    wants_invoice: bool | None = None
 
     uid_khach_hang: str | None = None
     ten_khach: str | None = None
@@ -853,6 +855,8 @@ def _payment_request_insert_row(body: PaymentRequestCreate) -> dict[str, Any]:
         row["lead_source"] = body.lead_source
     if body.lead_channel:
         row["lead_channel"] = body.lead_channel
+    if body.wants_invoice is not None:
+        row["wants_invoice"] = body.wants_invoice
     return row
 
 
@@ -925,6 +929,8 @@ def _payment_request_patch_row(body: PaymentRequestPatch, current_row: dict[str,
         patch["lead_source"] = body.lead_source or None
     if body.lead_channel is not None:
         patch["lead_channel"] = body.lead_channel or None
+    if body.wants_invoice is not None:
+        patch["wants_invoice"] = body.wants_invoice
 
     if not patch:
         return {}

@@ -974,8 +974,12 @@
 .gmv-prototype-modal-scrim .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .gmv-prototype-modal-scrim .field { display: flex; flex-direction: column; gap: 5px; }
 .gmv-prototype-modal-scrim .field label {
-  font-size: 11px; color: var(--text-3);
+  font-size: 11px; color: var(--text);
   text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600;
+}
+.gmv-prototype-modal-scrim .field input::placeholder,
+.gmv-prototype-modal-scrim .field textarea::placeholder {
+  font-style: italic; color: var(--text-3);
 }
 .gmv-prototype-modal-scrim .field input,
 .gmv-prototype-modal-scrim .field textarea,
