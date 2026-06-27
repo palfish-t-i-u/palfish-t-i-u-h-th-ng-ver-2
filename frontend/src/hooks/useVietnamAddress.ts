@@ -14,13 +14,14 @@ export function useVietnamAddress() {
   const [loadingWards, setLoadingWards] = useState(false);
 
   useEffect(() => {
-    fetch("https://provinces.open-api.vn/api/p/")
+    fetch("https://provinces.open-api.vn/api/v2/p/")
       .then((r) => r.json())
       .then((data: Province[]) => setProvinces(data))
       .catch(() => setProvinces([]));
   }, []);
 
-  // Bỏ cấp huyện — load thẳng phường/xã từ tỉnh (depth=3, flatten)
+  // Đơn vị hành chính 2 cấp (sáp nhập 2025): tỉnh → phường/xã, không còn quận/huyện.
+  // depth=2 trả thẳng data.wards; sort alphabet (locale "vi").
   const onTinhChange = useCallback(
     (name: string) => {
       setTinh(name);
@@ -29,13 +30,12 @@ export function useVietnamAddress() {
       const p = provinces.find((x) => x.name === name);
       if (!p) return;
       setLoadingWards(true);
-      fetch(`https://provinces.open-api.vn/api/p/${p.code}?depth=3`)
+      fetch(`https://provinces.open-api.vn/api/v2/p/${p.code}?depth=2`)
         .then((r) => r.json())
-        .then((data: { districts: { wards: { name: string }[] }[] }) => {
-          const allWards = (data.districts || []).flatMap((d) =>
-            (d.wards || []).map((w) => w.name)
-          );
-          setWards(allWards);
+        .then((data: { wards?: { name: string }[] }) => {
+          const names = (data.wards || []).map((w) => w.name);
+          names.sort((a, b) => a.localeCompare(b, "vi"));
+          setWards(names);
         })
         .catch(() => setWards([]))
         .finally(() => setLoadingWards(false));

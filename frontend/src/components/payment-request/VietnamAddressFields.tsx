@@ -1,18 +1,23 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import Combobox from "../ui/Combobox";
 
 interface Province {
   code: number;
   name: string;
 }
 
-/** Province + ward options from provinces.open-api.vn (same source as Tab1Form). */
+/**
+ * Province + ward options from provinces.open-api.vn — API v2 (đơn vị hành
+ * chính 2 cấp sau sáp nhập 2025: tỉnh → phường/xã, bỏ cấp quận/huyện).
+ * Tên phường/xã được sort theo alphabet (locale "vi").
+ */
 export function useProvinceWardSelect(province: string) {
   const [provinces, setProvinces] = useState<Province[]>([]);
   const [wards, setWards] = useState<string[]>([]);
   const [loadingWards, setLoadingWards] = useState(false);
 
   useEffect(() => {
-    fetch("https://provinces.open-api.vn/api/p/")
+    fetch("https://provinces.open-api.vn/api/v2/p/")
       .then((r) => r.json())
       .then((data: Province[]) => setProvinces(data))
       .catch(() => setProvinces([]));
@@ -27,13 +32,12 @@ export function useProvinceWardSelect(province: string) {
     if (!p) return;
 
     setLoadingWards(true);
-    fetch(`https://provinces.open-api.vn/api/p/${p.code}?depth=3`)
+    fetch(`https://provinces.open-api.vn/api/v2/p/${p.code}?depth=2`)
       .then((r) => r.json())
-      .then((data: { districts: { wards: { name: string }[] }[] }) => {
-        const allWards = (data.districts || []).flatMap((d) =>
-          (d.wards || []).map((w) => w.name)
-        );
-        setWards(allWards);
+      .then((data: { wards?: { name: string }[] }) => {
+        const names = (data.wards || []).map((w) => w.name);
+        names.sort((a, b) => a.localeCompare(b, "vi"));
+        setWards(names);
       })
       .catch(() => setWards([]))
       .finally(() => setLoadingWards(false));
@@ -61,6 +65,15 @@ export default function VietnamAddressFields({
 }) {
   const { provinces, wards, loadingWards } = useProvinceWardSelect(province);
 
+  const provinceOptions = useMemo(
+    () => provinces.map((p) => ({ value: p.name, label: p.name })),
+    [provinces]
+  );
+  const wardOptions = useMemo(
+    () => wards.map((w) => ({ value: w, label: w })),
+    [wards]
+  );
+
   const handleProvinceChange = (value: string) => {
     onProvinceChange(value);
     if (value !== province) onWardChange("");
@@ -69,33 +82,23 @@ export default function VietnamAddressFields({
   return (
     <div className="vn-address-fields">
       <div className="addr-row" style={{ marginBottom: 8 }}>
-        <select
+        <Combobox
           value={province}
-          onChange={(e) => handleProvinceChange(e.target.value)}
-          style={{ width: "100%" }}
-        >
-          <option value="">Tỉnh / Thành phố (tùy chọn)</option>
-          {provinces.map((p) => (
-            <option key={p.code} value={p.name}>
-              {p.name}
-            </option>
-          ))}
-        </select>
-        <select
+          onChange={handleProvinceChange}
+          options={provinceOptions}
+          placeholder="Tỉnh / Thành phố (gõ để tìm)"
+          emptyLabel="— Bỏ chọn —"
+        />
+        <Combobox
           value={ward}
+          onChange={onWardChange}
+          options={wardOptions}
           disabled={!province || loadingWards}
-          onChange={(e) => onWardChange(e.target.value)}
-          style={{ width: "100%" }}
-        >
-          <option value="">
-            {loadingWards ? "Đang tải phường/xã…" : "Phường / Xã (tùy chọn)"}
-          </option>
-          {wards.map((w) => (
-            <option key={w} value={w}>
-              {w}
-            </option>
-          ))}
-        </select>
+          placeholder={
+            loadingWards ? "Đang tải phường/xã…" : "Phường / Xã (gõ để tìm)"
+          }
+          emptyLabel="— Bỏ chọn —"
+        />
       </div>
       <input
         placeholder={streetPlaceholder}
