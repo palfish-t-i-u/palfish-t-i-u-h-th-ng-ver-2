@@ -40,6 +40,7 @@ export const LEAD_SOURCES: LeadSourceDef[] = [
     channels: [
       { code: "300461", label: "HCM Offline booth" },
       { code: "300441", label: "VN Offline booth" },
+      { code: "300511", label: "Linh Đàm Offline Store" },
       { code: "932", label: "Offline events" },
     ],
   },
