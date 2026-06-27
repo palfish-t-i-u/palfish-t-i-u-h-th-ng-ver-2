@@ -1873,6 +1873,15 @@ export default function PaymentRequestDetailDrawer({
               )}
             </div>
 
+            {!editing && request.wantsInvoice && (!request.ward || !request.address?.trim()) && (
+              <div className="match-warning" style={{ marginBottom: 10, background: "var(--warning-bg, #fffbeb)", border: "1px solid var(--warning, #f59e0b)", borderRadius: 8, padding: "10px 12px" }}>
+                <Icons.AlertCircle size={14} stroke="var(--warning, #f59e0b)" />
+                <span style={{ fontSize: 12.5, color: "var(--warning-text, #92400e)", lineHeight: 1.5 }}>
+                  Khách cần xuất HĐ — cần bổ sung đầy đủ địa chỉ (Phường/Xã + Số nhà) trước 15h ngày N+1 (N = ngày tiền hthp vào).
+                </span>
+              </div>
+            )}
+
             {!editing ? (
               <div className="info-grid">
                 <div className="info-cell">

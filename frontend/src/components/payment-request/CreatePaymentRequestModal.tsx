@@ -90,11 +90,9 @@ export default function CreatePaymentRequestModal({
   const emailValid = emailTrimmed === "" || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailTrimmed);
 
   // Địa chỉ bắt buộc khi tạo PR:
-  // - Khách VN: đủ cả 3 ô Tỉnh/Thành + Phường/Xã + Số nhà, đường.
-  // - Khách nước ngoài (OV): chọn quốc gia.
   const addressOk = form.isForeign
     ? !!form.foreignCountry
-    : !form.wantsInvoice || (!!form.province && !!form.ward && !!form.address.trim());
+    : true;
 
   const canSubmit = !!(
     form.uid && form.name && form.phone && targetNum > 0 &&
@@ -259,7 +257,7 @@ export default function CreatePaymentRequestModal({
 
           <div className="field">
             <label>
-              Địa chỉ khách hàng {form.wantsInvoice && <span style={{ color: "var(--danger)" }}>*</span>}
+              Địa chỉ khách hàng
             </label>
 
             <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
@@ -315,22 +313,16 @@ export default function CreatePaymentRequestModal({
                 onWardChange={(v) => set("ward", v)}
                 onAddressChange={(v) => set("address", v)}
                 requireProvince={false}
-                requireWard={form.wantsInvoice}
-                requireStreet={form.wantsInvoice}
               />
             )}
-            {(form.isForeign || form.wantsInvoice) && (
-              <div
-                style={{
-                  fontSize: 11.5,
-                  lineHeight: 1.45,
-                  marginTop: 6,
-                  color: addressOk ? "var(--text-3)" : "var(--danger)",
-                }}
-              >
-                {form.isForeign
-                  ? "Bắt buộc chọn quốc gia khách đang ở."
-                  : "Bắt buộc điền đủ cả 3: Tỉnh/Thành, Phường/Xã và Số nhà, đường."}
+            {form.isForeign && (
+              <div style={{ fontSize: 11.5, lineHeight: 1.45, marginTop: 6, color: addressOk ? "var(--text-3)" : "var(--danger)" }}>
+                Bắt buộc chọn quốc gia khách đang ở.
+              </div>
+            )}
+            {form.wantsInvoice && !form.isForeign && (
+              <div style={{ fontSize: 11.5, lineHeight: 1.45, marginTop: 6, color: "var(--warning-text, #92400e)" }}>
+                Cần bổ sung đầy đủ địa chỉ (Tỉnh/TP, Phường/Xã, Số nhà) trước 15h ngày N+1 để xuất HĐ.
               </div>
             )}
           </div>
