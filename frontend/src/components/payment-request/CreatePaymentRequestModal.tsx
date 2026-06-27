@@ -249,35 +249,22 @@ export default function CreatePaymentRequestModal({
               Địa chỉ khách hàng <span style={{ color: "var(--danger)" }}>*</span>
             </label>
 
-            <label
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 8,
-                fontSize: 12.5,
-                color: "var(--text-2)",
-                marginBottom: 8,
-                cursor: "pointer",
-              }}
-            >
-              <input
-                type="checkbox"
-                checked={form.isForeign}
-                onChange={(e) => {
-                  const v = e.target.checked;
-                  // Đổi chế độ → xoá dữ liệu địa chỉ của chế độ kia để tránh lẫn.
-                  setForm((f) => ({
-                    ...f,
-                    isForeign: v,
-                    province: "",
-                    ward: "",
-                    address: "",
-                    foreignCountry: "",
-                  }));
-                }}
-              />
-              Khách ở nước ngoài
-            </label>
+            <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+              <button
+                type="button"
+                className={`btn btn-sm ${!form.isForeign ? "btn-primary" : "btn-outline"}`}
+                onClick={() => setForm((f) => ({ ...f, isForeign: false, foreignCountry: "" }))}
+              >
+                Khách VN
+              </button>
+              <button
+                type="button"
+                className={`btn btn-sm ${form.isForeign ? "btn-primary" : "btn-outline"}`}
+                onClick={() => setForm((f) => ({ ...f, isForeign: true, province: "", ward: "", address: "" }))}
+              >
+                Khách nước ngoài
+              </button>
+            </div>
 
             {form.isForeign ? (
               <Combobox
