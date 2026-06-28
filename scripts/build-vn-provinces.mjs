@@ -88,12 +88,18 @@ async function main() {
 
   // Normalise: accept either PascalCase or snake_case field names
   const getCode = (obj) => obj.code ?? obj.Code;
-  const getName = (obj) => obj.name ?? obj.Name;
+  // For provinces, prefer FullName (e.g. "Thành phố Hà Nội") over short Name ("Hà Nội").
+  // This must match what the old provinces.open-api.vn API returned so existing PR records
+  // (which store full names like "Thành phố Hà Nội") continue to resolve correctly.
+  const getProvinceFullName = (obj) => obj.full_name ?? obj.FullName ?? obj.name ?? obj.Name;
+  // For wards, FullName includes the ward type prefix (e.g. "Phường Ba Đình") — use Name
+  // ("Ba Đình") which is what the old API returned for ward options.
+  const getWardName = (obj) => obj.name ?? obj.Name;
   const getWards = (obj) => obj.wards ?? obj.Wards ?? [];
 
   const provinces = raw.map((p) => {
     const code = getCode(p);
-    const name = getName(p);
+    const name = getProvinceFullName(p);
     if (code == null || typeof name !== "string") {
       throw new Error(`Bad province shape: ${JSON.stringify(p).slice(0, 200)}`);
     }
@@ -107,7 +113,7 @@ async function main() {
     const wards = getWards(p);
     if (!Array.isArray(wards)) continue;
     const names = wards.map((w) => {
-      const wName = getName(w);
+      const wName = getWardName(w);
       if (typeof wName !== "string") {
         throw new Error(`Bad ward shape in province ${code}: ${JSON.stringify(w).slice(0, 200)}`);
       }

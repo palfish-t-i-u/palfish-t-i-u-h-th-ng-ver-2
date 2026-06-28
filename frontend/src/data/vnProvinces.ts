@@ -1,5 +1,5 @@
 // Generated from vietnamese-provinces-database v4.0.0
-// Generated at: 2026-06-28T09:42:17.758Z
+// Generated at: 2026-06-28T09:45:56.067Z
 // DO NOT EDIT MANUALLY — run: node scripts/build-vn-provinces.mjs
 // Source: https://raw.githubusercontent.com/thanglequoc/vietnamese-provinces-database/master/json/simplified_json_generated_data_vn_units.json
 
@@ -13,139 +13,139 @@ export interface Province {
 export const provinces: ReadonlyArray<Province> = [
   {
     "code": 91,
-    "name": "An Giang"
+    "name": "Tỉnh An Giang"
   },
   {
     "code": 24,
-    "name": "Bắc Ninh"
+    "name": "Tỉnh Bắc Ninh"
   },
   {
     "code": 96,
-    "name": "Cà Mau"
+    "name": "Tỉnh Cà Mau"
   },
   {
     "code": 4,
-    "name": "Cao Bằng"
+    "name": "Tỉnh Cao Bằng"
   },
   {
     "code": 92,
-    "name": "Cần Thơ"
+    "name": "Thành phố Cần Thơ"
   },
   {
     "code": 48,
-    "name": "Đà Nẵng"
+    "name": "Thành phố Đà Nẵng"
   },
   {
     "code": 66,
-    "name": "Đắk Lắk"
+    "name": "Tỉnh Đắk Lắk"
   },
   {
     "code": 11,
-    "name": "Điện Biên"
+    "name": "Tỉnh Điện Biên"
   },
   {
     "code": 75,
-    "name": "Đồng Nai"
+    "name": "Thành phố Đồng Nai"
   },
   {
     "code": 82,
-    "name": "Đồng Tháp"
+    "name": "Tỉnh Đồng Tháp"
   },
   {
     "code": 52,
-    "name": "Gia Lai"
+    "name": "Tỉnh Gia Lai"
   },
   {
     "code": 1,
-    "name": "Hà Nội"
+    "name": "Thành phố Hà Nội"
   },
   {
     "code": 42,
-    "name": "Hà Tĩnh"
+    "name": "Tỉnh Hà Tĩnh"
   },
   {
     "code": 31,
-    "name": "Hải Phòng"
+    "name": "Thành phố Hải Phòng"
   },
   {
     "code": 79,
-    "name": "Hồ Chí Minh"
+    "name": "Thành phố Hồ Chí Minh"
   },
   {
     "code": 46,
-    "name": "Huế"
+    "name": "Thành phố Huế"
   },
   {
     "code": 33,
-    "name": "Hưng Yên"
+    "name": "Tỉnh Hưng Yên"
   },
   {
     "code": 56,
-    "name": "Khánh Hoà"
+    "name": "Tỉnh Khánh Hoà"
   },
   {
     "code": 12,
-    "name": "Lai Châu"
+    "name": "Tỉnh Lai Châu"
   },
   {
     "code": 20,
-    "name": "Lạng Sơn"
+    "name": "Tỉnh Lạng Sơn"
   },
   {
     "code": 15,
-    "name": "Lào Cai"
+    "name": "Tỉnh Lào Cai"
   },
   {
     "code": 68,
-    "name": "Lâm Đồng"
+    "name": "Tỉnh Lâm Đồng"
   },
   {
     "code": 40,
-    "name": "Nghệ An"
+    "name": "Tỉnh Nghệ An"
   },
   {
     "code": 37,
-    "name": "Ninh Bình"
+    "name": "Tỉnh Ninh Bình"
   },
   {
     "code": 25,
-    "name": "Phú Thọ"
+    "name": "Tỉnh Phú Thọ"
   },
   {
     "code": 51,
-    "name": "Quảng Ngãi"
+    "name": "Tỉnh Quảng Ngãi"
   },
   {
     "code": 22,
-    "name": "Quảng Ninh"
+    "name": "Tỉnh Quảng Ninh"
   },
   {
     "code": 44,
-    "name": "Quảng Trị"
+    "name": "Tỉnh Quảng Trị"
   },
   {
     "code": 14,
-    "name": "Sơn La"
+    "name": "Tỉnh Sơn La"
   },
   {
     "code": 80,
-    "name": "Tây Ninh"
+    "name": "Tỉnh Tây Ninh"
   },
   {
     "code": 19,
-    "name": "Thái Nguyên"
+    "name": "Tỉnh Thái Nguyên"
   },
   {
     "code": 38,
-    "name": "Thanh Hoá"
+    "name": "Tỉnh Thanh Hoá"
   },
   {
     "code": 8,
-    "name": "Tuyên Quang"
+    "name": "Tỉnh Tuyên Quang"
   },
   {
     "code": 86,
-    "name": "Vĩnh Long"
+    "name": "Tỉnh Vĩnh Long"
   }
 ] as const;
 
