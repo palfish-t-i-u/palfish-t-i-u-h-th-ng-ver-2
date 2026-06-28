@@ -21,7 +21,8 @@
     "e2e:headed": "npx playwright test --headed",
     "e2e:ui": "npx playwright test --ui",
     "e2e:report": "npx playwright show-report e2e-report",
-    "e2e:codegen": "npx playwright codegen http://localhost:5173"
+    "e2e:codegen": "npx playwright codegen http://localhost:5173",
+    "build:vn-provinces": "node ../scripts/build-vn-provinces.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.106.0",
@@ -41,11 +42,13 @@
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
     "@testing-library/user-event": "^14.6.1",
+    "@types/adm-zip": "^0.5.8",
     "@types/node": "^24.12.3",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.1",
     "@vitest/ui": "^4.1.7",
+    "adm-zip": "^0.5.17",
     "autoprefixer": "^10.5.0",
     "eslint": "^10.3.0",
     "eslint-plugin-react-hooks": "^7.1.1",

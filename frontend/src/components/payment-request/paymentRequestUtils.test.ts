@@ -83,7 +83,7 @@ describe("active request course package updates", () => {
       uids: [
         {
           ...ar.uids[0],
-          courses: [{ ...ar.uids[0].courses[0], orderId: "ORD-CRM-88901" }],
+          courses: [{ ...ar.uids[0].courses[0], orderId: "ORD-CRM-88901", invoiced: false }],
         },
       ],
     };
@@ -291,6 +291,293 @@ describe("paginate", () => {
     expect(s.page).toBe(1);
     expect(s.from).toBe(0);
     expect(s.to).toBe(0);
+  });
+});
+
+// ─── Referral bonus ────────────────────────────────────────────────────
+
+describe("getReferralStatus", () => {
+  it("returns 'full' when all sides credited", () => {
+    expect(getReferralStatus({
+      bonusSessionsReferee: 2,
+      bonusSessionsReferrer: 3,
+      refereeCreditedAt: "2026-06-19T10:00:00Z",
+      referrerCreditedAt: "2026-06-19T11:00:00Z",
+    })).toBe("full");
+  });
+
+  it("returns 'none' when no side credited", () => {
+    expect(getReferralStatus({
+      bonusSessionsReferee: 2,
+      bonusSessionsReferrer: 3,
+      refereeCreditedAt: null,
+      referrerCreditedAt: null,
+    })).toBe("none");
+  });
+
+  it("returns 'partial' when only referee credited", () => {
+    expect(getReferralStatus({
+      bonusSessionsReferee: 2,
+      bonusSessionsReferrer: 3,
+      refereeCreditedAt: "2026-06-19T10:00:00Z",
+      referrerCreditedAt: null,
+    })).toBe("partial");
+  });
+
+  it("returns 'partial' when only referrer credited", () => {
+    expect(getReferralStatus({
+      bonusSessionsReferee: 2,
+      bonusSessionsReferrer: 3,
+      refereeCreditedAt: null,
+      referrerCreditedAt: "2026-06-19T11:00:00Z",
+    })).toBe("partial");
+  });
+
+  it("returns 'full' when only referee has bonus and is credited", () => {
+    expect(getReferralStatus({
+      bonusSessionsReferee: 2,
+      bonusSessionsReferrer: 0,
+      refereeCreditedAt: "2026-06-19T10:00:00Z",
+      referrerCreditedAt: null,
+    })).toBe("full");
+  });
+
+  it("returns 'full' when only referrer has bonus and is credited", () => {
+    expect(getReferralStatus({
+      bonusSessionsReferee: 0,
+      bonusSessionsReferrer: 3,
+      refereeCreditedAt: null,
+      referrerCreditedAt: "2026-06-19T11:00:00Z",
+    })).toBe("full");
+  });
+
+  it("returns 'none' when both bonus are 0 (no referral)", () => {
+    expect(getReferralStatus({
+      bonusSessionsReferee: 0,
+      bonusSessionsReferrer: 0,
+    })).toBe("none");
+  });
+});
+
+describe("getArReferralStatus", () => {
+  const baseAr: ActiveRequest = {
+    id: "AR-2026-0099",
+    prId: "PR-2026-0099",
+    customerName: "Test",
+    createdAt: "2026-06-19T10:00:00Z",
+    createdBy: "admin",
+    uids: [],
+  };
+
+  it("returns null when AR has no referral courses", () => {
+    const ar: ActiveRequest = {
+      ...baseAr,
+      uids: [{
+        uid: "UID1", phone: "123", country: "VN",
+        courses: [{ courseCode: "CC-001", packageName: "Gói A", amount: 5000000, orderId: "", invoiced: false }],
+      }],
+    };
+    expect(getArReferralStatus(ar)).toBeNull();
+  });
+
+  it("returns null when leadSource=gioi_thieu but no bonus sessions", () => {
+    const ar: ActiveRequest = {
+      ...baseAr,
+      uids: [{
+        uid: "UID1", phone: "123", country: "VN",
+        courses: [{
+          courseCode: "CC-001", packageName: "Gói A", amount: 5000000, orderId: "", invoiced: false,
+          leadSource: "gioi_thieu", bonusSessionsReferee: 0, bonusSessionsReferrer: 0,
+        }],
+      }],
+    };
+    expect(getArReferralStatus(ar)).toBeNull();
+  });
+
+  it("returns 'none' when referral courses exist but none credited", () => {
+    const ar: ActiveRequest = {
+      ...baseAr,
+      uids: [{
+        uid: "UID1", phone: "123", country: "VN",
+        courses: [{
+          courseCode: "CC-001", packageName: "Gói A", amount: 5000000, orderId: "ORD-1", invoiced: false,
+          leadSource: "gioi_thieu", bonusSessionsReferee: 2, bonusSessionsReferrer: 3,
+          referrerUid: "UID2", refereeCreditedAt: null, referrerCreditedAt: null,
+        }],
+      }],
+    };
+    expect(getArReferralStatus(ar)).toBe("none");
+  });
+
+  it("returns 'full' when all referral courses fully credited", () => {
+    const ar: ActiveRequest = {
+      ...baseAr,
+      uids: [{
+        uid: "UID1", phone: "123", country: "VN",
+        courses: [{
+          courseCode: "CC-001", packageName: "Gói A", amount: 5000000, orderId: "ORD-1", invoiced: false,
+          leadSource: "gioi_thieu", bonusSessionsReferee: 2, bonusSessionsReferrer: 3,
+          referrerUid: "UID2",
+          refereeCreditedAt: "2026-06-19T10:00:00Z",
+          referrerCreditedAt: "2026-06-19T11:00:00Z",
+        }],
+      }],
+    };
+    expect(getArReferralStatus(ar)).toBe("full");
+  });
+
+  it("returns 'partial' when mixed credited status across courses", () => {
+    const ar: ActiveRequest = {
+      ...baseAr,
+      uids: [{
+        uid: "UID1", phone: "123", country: "VN",
+        courses: [
+          {
+            courseCode: "CC-001", packageName: "Gói A", amount: 5000000, orderId: "ORD-1", invoiced: false,
+            leadSource: "gioi_thieu", bonusSessionsReferee: 2, bonusSessionsReferrer: 3,
+            referrerUid: "UID2",
+            refereeCreditedAt: "2026-06-19T10:00:00Z",
+            referrerCreditedAt: "2026-06-19T11:00:00Z",
+          },
+          {
+            courseCode: "CC-002", packageName: "Gói B", amount: 3000000, orderId: "ORD-2", invoiced: false,
+            leadSource: "gioi_thieu", bonusSessionsReferee: 1, bonusSessionsReferrer: 1,
+            referrerUid: "UID2",
+            refereeCreditedAt: null, referrerCreditedAt: null,
+          },
+        ],
+      }],
+    };
+    expect(getArReferralStatus(ar)).toBe("partial");
+  });
+});
+
+describe("validateReferralBonus", () => {
+  const baseAr: ActiveRequest = {
+    id: "AR-2026-0099",
+    prId: "PR-2026-0099",
+    customerName: "Test",
+    createdAt: "2026-06-19T10:00:00Z",
+    createdBy: "admin",
+    uids: [],
+  };
+
+  it("returns empty string when no referral courses", () => {
+    const ar: ActiveRequest = {
+      ...baseAr,
+      uids: [{
+        uid: "UID1", phone: "123", country: "VN",
+        courses: [{ courseCode: "CC-001", packageName: "Gói A", amount: 5000000, orderId: "", invoiced: false }],
+      }],
+    };
+    expect(validateReferralBonus(ar)).toBe("");
+  });
+
+  it("returns empty string when referral is valid", () => {
+    const ar: ActiveRequest = {
+      ...baseAr,
+      uids: [{
+        uid: "UID1", phone: "123", country: "VN",
+        courses: [{
+          courseCode: "CC-001", packageName: "Gói A", amount: 5000000, orderId: "", invoiced: false,
+          leadSource: "gioi_thieu", bonusSessionsReferee: 2, bonusSessionsReferrer: 3,
+          referrerUid: "UID2",
+        }],
+      }],
+    };
+    expect(validateReferralBonus(ar)).toBe("");
+  });
+
+  it("returns error when referrer bonus set but no referrer UID", () => {
+    const ar: ActiveRequest = {
+      ...baseAr,
+      uids: [{
+        uid: "UID1", phone: "123", country: "VN",
+        courses: [{
+          courseCode: "CC-001", packageName: "Gói A", amount: 5000000, orderId: "", invoiced: false,
+          leadSource: "gioi_thieu", bonusSessionsReferee: 2, bonusSessionsReferrer: 3,
+          referrerUid: "",
+        }],
+      }],
+    };
+    expect(validateReferralBonus(ar)).toContain("chưa nhập UID");
+  });
+
+  it("returns error when referrer UID equals referee UID", () => {
+    const ar: ActiveRequest = {
+      ...baseAr,
+      uids: [{
+        uid: "UID1", phone: "123", country: "VN",
+        courses: [{
+          courseCode: "CC-001", packageName: "Gói A", amount: 5000000, orderId: "", invoiced: false,
+          leadSource: "gioi_thieu", bonusSessionsReferee: 2, bonusSessionsReferrer: 3,
+          referrerUid: "UID1",
+        }],
+      }],
+    };
+    expect(validateReferralBonus(ar)).toContain("phải khác UID");
+  });
+
+  it("passes when only referee bonus (no referrer bonus)", () => {
+    const ar: ActiveRequest = {
+      ...baseAr,
+      uids: [{
+        uid: "UID1", phone: "123", country: "VN",
+        courses: [{
+          courseCode: "CC-001", packageName: "Gói A", amount: 5000000, orderId: "", invoiced: false,
+          leadSource: "gioi_thieu", bonusSessionsReferee: 2, bonusSessionsReferrer: 0,
+        }],
+      }],
+    };
+    expect(validateReferralBonus(ar)).toBe("");
+  });
+});
+
+describe("toActiveRequestPatchUidsData — referral fields", () => {
+  it("includes referral fields in serialized output", () => {
+    const ar: ActiveRequest = {
+      id: "AR-2026-0099",
+      prId: "PR-2026-0099",
+      customerName: "Test",
+      createdAt: "2026-06-19T10:00:00Z",
+      createdBy: "admin",
+      uids: [{
+        uid: "UID1", phone: "123", country: "VN",
+        courses: [{
+          courseCode: "CC-001", packageName: "Gói A", amount: 5000000, orderId: "ORD-1", invoiced: false,
+          leadSource: "gioi_thieu",
+          referrerUid: "UID2",
+          bonusSessionsReferee: 2,
+          bonusSessionsReferrer: 3,
+        }],
+      }],
+    };
+    const result = toActiveRequestPatchUidsData(ar);
+    const course = result[0].courses[0];
+    expect(course.referrer_uid).toBe("UID2");
+    expect(course.bonus_sessions_referee).toBe(2);
+    expect(course.bonus_sessions_referrer).toBe(3);
+  });
+
+  it("sends undefined referral fields when not set", () => {
+    const ar: ActiveRequest = {
+      id: "AR-2026-0100",
+      prId: "PR-2026-0100",
+      customerName: "Test2",
+      createdAt: "2026-06-19T10:00:00Z",
+      createdBy: "admin",
+      uids: [{
+        uid: "UID1", phone: "123", country: "VN",
+        courses: [{
+          courseCode: "CC-001", packageName: "Gói B", amount: 3000000, orderId: "", invoiced: false,
+        }],
+      }],
+    };
+    const result = toActiveRequestPatchUidsData(ar);
+    const course = result[0].courses[0];
+    expect(course.referrer_uid).toBeUndefined();
+    expect(course.bonus_sessions_referee).toBeUndefined();
+    expect(course.bonus_sessions_referrer).toBeUndefined();
   });
 });
 
