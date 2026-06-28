@@ -24,9 +24,9 @@ const AdmZip = require("adm-zip");
 
 const VERSION = "v4.0.0";
 const ZIP_URL = `https://github.com/thanglequoc/vietnamese-provinces-database/releases/download/${VERSION}/vietnamese_provinces_database_${VERSION}_json.zip`;
-// Fallback: the JSON data lives directly in the repo (no zip release asset for v4)
-const JSON_URL =
-  "https://raw.githubusercontent.com/thanglequoc/vietnamese-provinces-database/master/json/simplified_json_generated_data_vn_units.json";
+// Fallback: the JSON data lives directly in the repo (no zip release asset for v4).
+// Pinned to tag (not master) for reproducibility — update VERSION + this URL together.
+const JSON_URL = `https://raw.githubusercontent.com/thanglequoc/vietnamese-provinces-database/${VERSION}/json/simplified_json_generated_data_vn_units.json`;
 const OUTPUT = join(REPO_ROOT, "frontend/src/data/vnProvinces.ts");
 
 const EXPECTED_PROVINCES = 34;
