@@ -1,49 +1,24 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import Combobox from "../ui/Combobox";
-
-interface Province {
-  code: number;
-  name: string;
-}
+import { provinces, wardsByProvinceCode } from "../../data/vnProvinces";
 
 /**
- * Province + ward options from provinces.open-api.vn — API v2 (đơn vị hành
- * chính 2 cấp sau sáp nhập 2025: tỉnh → phường/xã, bỏ cấp quận/huyện).
- * Tên phường/xã được sort theo alphabet (locale "vi").
+ * Province + ward options from bundled static data — generated from
+ * vietnamese-provinces-database v4.0.0 (đơn vị hành chính 2 cấp sau sáp nhập
+ * 2025: tỉnh → phường/xã, bỏ cấp quận/huyện).
+ *
+ * Wards đã pre-sort alphabet (locale "vi") trong data file.
+ * Source: docs/superpowers/specs/2026-06-28-vn-provinces-static-migration-design.md
  */
 export function useProvinceWardSelect(province: string) {
-  const [provinces, setProvinces] = useState<Province[]>([]);
-  const [wards, setWards] = useState<string[]>([]);
-  const [loadingWards, setLoadingWards] = useState(false);
-
-  useEffect(() => {
-    fetch("https://provinces.open-api.vn/api/v2/p/")
-      .then((r) => r.json())
-      .then((data: Province[]) => setProvinces(data))
-      .catch(() => setProvinces([]));
-  }, []);
-
-  useEffect(() => {
-    if (!province) {
-      setWards([]);
-      return;
-    }
+  const wards = useMemo<string[]>(() => {
+    if (!province) return [];
     const p = provinces.find((x) => x.name === province);
-    if (!p) return;
+    if (!p) return [];
+    return [...(wardsByProvinceCode[p.code] ?? [])];
+  }, [province]);
 
-    setLoadingWards(true);
-    fetch(`https://provinces.open-api.vn/api/v2/p/${p.code}?depth=2`)
-      .then((r) => r.json())
-      .then((data: { wards?: { name: string }[] }) => {
-        const names = (data.wards || []).map((w) => w.name);
-        names.sort((a, b) => a.localeCompare(b, "vi"));
-        setWards(names);
-      })
-      .catch(() => setWards([]))
-      .finally(() => setLoadingWards(false));
-  }, [province, provinces]);
-
-  return { provinces, wards, loadingWards };
+  return { provinces, wards, loadingWards: false as const };
 }
 
 export default function VietnamAddressFields({
