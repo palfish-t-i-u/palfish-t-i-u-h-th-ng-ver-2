@@ -92,9 +92,9 @@ async function main() {
   // This must match what the old provinces.open-api.vn API returned so existing PR records
   // (which store full names like "Thành phố Hà Nội") continue to resolve correctly.
   const getProvinceFullName = (obj) => obj.full_name ?? obj.FullName ?? obj.name ?? obj.Name;
-  // For wards, FullName includes the ward type prefix (e.g. "Phường Ba Đình") — use Name
-  // ("Ba Đình") which is what the old API returned for ward options.
-  const getWardName = (obj) => obj.name ?? obj.Name;
+  // For wards, also use FullName (e.g. "Phường Ba Đình") — matches old API + required for
+  // legal invoice addresses (hóa đơn GTGT phải ghi đầy đủ đơn vị hành chính).
+  const getWardName = (obj) => obj.full_name ?? obj.FullName ?? obj.name ?? obj.Name;
   const getWards = (obj) => obj.wards ?? obj.Wards ?? [];
 
   const provinces = raw.map((p) => {
