@@ -21,7 +21,8 @@
     "e2e:headed": "npx playwright test --headed",
     "e2e:ui": "npx playwright test --ui",
     "e2e:report": "npx playwright show-report e2e-report",
-    "e2e:codegen": "npx playwright codegen http://localhost:5173"
+    "e2e:codegen": "npx playwright codegen http://localhost:5173",
+    "build:vn-provinces": "node ../scripts/build-vn-provinces.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.106.0",
