@@ -561,8 +561,8 @@
 | ID | Task | Status | Owner | created_at | completed_at | Ghi chú |
 |----|------|--------|-------|------------|--------------|---------|
 | VAC-01 | Apply migration `2026-06-29-zalo-msg-use-crm-name.sql` prod | done | Minh | 2026-06-30 | 2026-06-30 | Applied via Supabase MCP — fix bug Zalo hiện email thay tên sale; COALESCE(display_name, crm_name) |
-| VAC-02 | Tách screen "Biến động số dư" riêng | pending | Giang | 2026-06-30 | | Hiện embed `ReconciliationTab` tab "CK ngoài chờ ghép" — chỉ chưa-match. Cần dedicated tab list TOÀN BỘ `bank_transactions` + filter + manual match. Spec gốc: `HANDOFF_GIANG_SEPAY_2026-06-16.md:140` + `HANDOFF_task8_casso.md` |
+| VAC-02 | ~~Tách screen "Biến động số dư"~~ | cancelled | — | 2026-06-30 | 2026-06-30 | Bỏ — tab "CK ngoài chờ ghép" đã hiện GD cần khớp tay; GD khớp được hệ thống tự làm, không cần list chung |
 | VAC-03 | BE installment: validate `sale_received ≤ installment_total` | pending | Đạt | 2026-06-30 | | Bug 1B-07 (`bug-hunt-report-2026-06-13.md:269`); chặn nhập sai trong `PaymentLineCreate` |
-| VAC-04 | Merge sandbox → main (12 commits addr static JSON + handoff docs) | pending | Đạt | 2026-06-30 | | Chạy `cd frontend && npx tsc -b && npm run build` trước; mở PR `sandbox → main` |
+| VAC-04 | Merge sandbox → main (12 commits addr static JSON + handoff docs) | pending | Giang | 2026-06-30 | | Chạy `cd frontend && npx tsc -b && npm run build` trước; mở PR `sandbox → main` |
 | VAC-05 | Cleanup fallback 3700 BE (tỷ giá) | pending | Đức | 2026-06-30 | | (1) `revenue_routes.py:776` re-query bảng thay `or 3700`; (2) `LedgerCreateBody.tyGiaVndRmb` default → None; (3) `dashboard_routes.py:40` `DEFAULT_EXCHANGE_RATE` đọc bảng |
 | VAC-06 | Cleanup fallback 3700 FE | pending | Đạt | 2026-06-30 | | `Module6Tab.tsx:254` đọc tỷ giá API thay `?? 3700` |
