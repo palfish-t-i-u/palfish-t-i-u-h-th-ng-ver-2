@@ -100,7 +100,7 @@
 
 | ID | Task | Status | created_at | completed_at | Ghi chú |
 |----|------|--------|------------|--------------|---------|
-| M3-01 | Chạy SQL v5 + v5_invoice + bucket `tax_exports` | pending | 2026-05-22 12:00 | | SQL prod done; cần bucket `tax_exports` private |
+| M3-01 | Chạy SQL v5 + v5_invoice + bucket `tax_exports` | cancelled | 2026-05-22 12:00 | 2026-06-30 | Bucket không cần — B4 trả `StreamingResponse` ZIP thẳng về browser (`invoice_routes.py:805`, `activation_routes.py:1167`). SQL v5/v5_invoice prod đã chạy. |
 | M3-02 | `backend/tax_export.py` — 3 file Excel (openpyxl) | done | 2026-05-22 12:00 | 2026-05-22 18:00 | MVP flat header; layout mẫu → **M3-05** |
 | M3-03 | API: pending-crm, crm-order, queue/unqueue, export-batch | done | 2026-05-22 12:00 | 2026-05-22 18:00 | + `POST /invoices/queue-batch` |
 | M3-04 | FE `Tab3CRMConfirm.tsx` — nhập Order ID, parser, Xuất | done | 2026-05-22 12:00 | 2026-05-22 18:00 | Toolbar **Xuất hóa đơn** hàng loạt |
@@ -551,3 +551,18 @@
 | FIX-05 | Sổ doanh thu: khử 101 dòng trùng | done | Minh | 2026-06-12 | 2026-06-12 | Backup `so_doanh_thu_dedup_backup_20260612` |
 | FIX-06 | Render Auto-Deploy OFF | done | Minh | 2026-06-19 | 2026-06-19 | Deploy BE bằng `bash scripts/deploy.sh sandbox` |
 | FIX-07 | Sandbox JWT broken → fixed | done | Minh | 2026-06-19 | 2026-06-19 | Key mismatch sau rotation |
+
+---
+
+## Kỳ nghỉ 2026-07-01..03 — Phân việc team
+
+> Audit 2026-06-30 trước khi Minh nghỉ. Toàn bộ task tháng 5/6 trước đây đã đối soát với code/Supabase/Render. Chỉ giữ lại item chưa làm thật.
+
+| ID | Task | Status | Owner | created_at | completed_at | Ghi chú |
+|----|------|--------|-------|------------|--------------|---------|
+| VAC-01 | Apply migration `2026-06-29-zalo-msg-use-crm-name.sql` prod | done | Minh | 2026-06-30 | 2026-06-30 | Applied via Supabase MCP — fix bug Zalo hiện email thay tên sale; COALESCE(display_name, crm_name) |
+| VAC-02 | Tách screen "Biến động số dư" riêng | pending | Giang | 2026-06-30 | | Hiện embed `ReconciliationTab` tab "CK ngoài chờ ghép" — chỉ chưa-match. Cần dedicated tab list TOÀN BỘ `bank_transactions` + filter + manual match. Spec gốc: `HANDOFF_GIANG_SEPAY_2026-06-16.md:140` + `HANDOFF_task8_casso.md` |
+| VAC-03 | BE installment: validate `sale_received ≤ installment_total` | pending | Đạt | 2026-06-30 | | Bug 1B-07 (`bug-hunt-report-2026-06-13.md:269`); chặn nhập sai trong `PaymentLineCreate` |
+| VAC-04 | Merge sandbox → main (12 commits addr static JSON + handoff docs) | pending | Đạt | 2026-06-30 | | Chạy `cd frontend && npx tsc -b && npm run build` trước; mở PR `sandbox → main` |
+| VAC-05 | Cleanup fallback 3700 BE (tỷ giá) | pending | Đức | 2026-06-30 | | (1) `revenue_routes.py:776` re-query bảng thay `or 3700`; (2) `LedgerCreateBody.tyGiaVndRmb` default → None; (3) `dashboard_routes.py:40` `DEFAULT_EXCHANGE_RATE` đọc bảng |
+| VAC-06 | Cleanup fallback 3700 FE | pending | Đạt | 2026-06-30 | | `Module6Tab.tsx:254` đọc tỷ giá API thay `?? 3700` |
