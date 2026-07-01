@@ -739,7 +739,7 @@ def _enrich_ledger_rows(sb, db_rows: list[dict[str, Any]]) -> list[dict[str, Any
 
     out: list[dict[str, Any]] = []
     for r in db_rows:
-        ledger = _row_to_ledger(r)
+        ledger = _row_to_ledger(r, sb)
         oid = r.get("don_hang_id")
         if oid and str(oid) in order_map:
             o = order_map[str(oid)]
@@ -756,13 +756,23 @@ def _enrich_ledger_rows(sb, db_rows: list[dict[str, Any]]) -> list[dict[str, Any
     return out
 
 
-def _row_to_ledger(row: dict[str, Any]) -> dict[str, Any]:
+def _row_to_ledger(row: dict[str, Any], sb=None) -> dict[str, Any]:
     ngay = row.get("ngay_tien_ve")
     ngay_str = ngay[:10] if isinstance(ngay, str) else (ngay.isoformat() if ngay else "")
     pay = row.get("pay_time")
     pay_str = pay[:10] if isinstance(pay, str) else ""
     if not pay_str and pay and hasattr(pay, "isoformat"):
         pay_str = pay.isoformat()[:10]
+    ty_gia_raw = row.get("ty_gia_vnd_rmb")
+    if ty_gia_raw is not None:
+        ty_gia = float(ty_gia_raw)
+    else:
+        lookup_date_str = pay_str or ngay_str
+        try:
+            lookup_date = date.fromisoformat(lookup_date_str) if lookup_date_str else None
+        except ValueError:
+            lookup_date = None
+        ty_gia = float(get_rate_for_date(sb, lookup_date)) if lookup_date else float(DEFAULT_TY_GIA)
     return {
         "id": row["id"],
         "ngayTienVe": ngay_str,
@@ -773,7 +783,7 @@ def _row_to_ledger(row: dict[str, Any]) -> dict[str, Any]:
         "goiHoc": row.get("goi_hoc") or "",
         "soTienVnd": int(row.get("so_tien_vnd") or 0),
         "gmvRmb": float(row.get("gmv_rmb") or 0),
-        "tyGiaVndRmb": float(row.get("ty_gia_vnd_rmb") or 3700),
+        "tyGiaVndRmb": ty_gia,
         "paymentMethod": row.get("payment_method") or "",
         "loai": row.get("loai") or "",
         "loai2": row.get("loai_2") or "",
@@ -1468,7 +1478,7 @@ def register_revenue_routes(app, get_supabase) -> None:
                 raise HTTPException(500, "Không tạo được dòng")
             row = res.data[0]
             _write_audit(sb, row["id"], actor, "create", None, None, payload)
-            return _row_to_ledger(row)
+            return _row_to_ledger(row, sb)
         except HTTPException:
             raise
         except Exception as exc:
@@ -1524,7 +1534,7 @@ def register_revenue_routes(app, get_supabase) -> None:
             res = sb.table("so_doanh_thu").update(patch).eq("id", row_id).execute()
             if not res.data:
                 raise HTTPException(404, "Cập nhật thất bại")
-            return _row_to_ledger(res.data[0])
+            return _row_to_ledger(res.data[0], sb)
         except HTTPException:
             raise
         except Exception as exc:
