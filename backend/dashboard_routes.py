@@ -35,7 +35,7 @@ from crm_metrics import (
 )
 from crm_routes import MAX_DAYS, fetch_live_crm_rows
 from report_routes import _load_ledger_revenue, _sale_key
-from revenue_routes import load_team_map
+from revenue_routes import get_rate_for_date, load_team_map
 
 DEFAULT_EXCHANGE_RATE = 3700
 VN_TIMEZONE = ZoneInfo("Asia/Ho_Chi_Minh")
@@ -420,6 +420,11 @@ def _load_exchange_rate(sb, d_end: str) -> int:
             return int(res.data[0].get("exchange_rate") or DEFAULT_EXCHANGE_RATE)
     except Exception as exc:
         print(f"[Dashboard] exchange_rate lookup failed: {exc}")
+    try:
+        target_date = date.fromisoformat(str(d_end)[:10])
+        return int(get_rate_for_date(sb, target_date))
+    except Exception as exc:
+        print(f"[Dashboard] exchange_rates fallback lookup failed: {exc}")
     return DEFAULT_EXCHANGE_RATE
 
 
