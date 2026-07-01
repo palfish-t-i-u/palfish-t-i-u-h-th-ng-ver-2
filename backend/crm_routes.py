@@ -97,8 +97,8 @@ CRM_DOWNLOAD_URL = (
 )
 
 MAX_DAYS = 31
-BACKFILL_CONCURRENCY_DEFAULT = 5
-BACKFILL_CONCURRENCY_MAX = 8
+BACKFILL_CONCURRENCY_DEFAULT = 3
+BACKFILL_CONCURRENCY_MAX = 3
 # Team con (vd. 越南崛起团队) đôi khi export API trả CSV chỉ header — fallback org VN
 VN_ORG_DEPARTMENT_ID = 2242153
 # show_type=2 → đủ nhân sự team con dưới org (API PalFish, không cần Export thủ công)
