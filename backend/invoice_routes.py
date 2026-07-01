@@ -11,13 +11,16 @@ Luồng:
 from __future__ import annotations
 
 import io
+import os
+import tempfile
 import zipfile
 from datetime import date, datetime, timezone
 from typing import Any
 
 from fastapi import Header, HTTPException
-from fastapi.responses import StreamingResponse
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
+from starlette.background import BackgroundTask
 
 from rbac import can_confirm_payment, resolve_actor
 from revenue_routes import sync_ledger_from_m3_order
@@ -757,14 +760,19 @@ def register_invoice_routes(app, get_supabase) -> None:
         except Exception as exc:
             raise HTTPException(500, f"Lỗi tạo file Excel: {exc}") from exc
 
-        # 5. Nén ZIP trong memory
+        # 5. Nén ZIP ra file tạm
         batch_label = today.strftime("%Y%m%d")
-        zip_buf = io.BytesIO()
-        with zipfile.ZipFile(zip_buf, "w", zipfile.ZIP_DEFLATED) as zf:
-            zf.writestr(f"01_1don_hang_{batch_label}.xlsx", excel_orders)
-            zf.writestr(f"02_khach_hang1_{batch_label}.xlsx", excel_customers)
-            zf.writestr(f"03_sanpham1_{batch_label}.xlsx", excel_products)
-        zip_buf.seek(0)
+        tmp = tempfile.NamedTemporaryFile(prefix="palfish_invoice_export_", suffix=".zip", delete=False)
+        tmp_path = tmp.name
+        tmp.close()
+        try:
+            with zipfile.ZipFile(tmp_path, "w", zipfile.ZIP_DEFLATED) as zf:
+                zf.writestr(f"01_1don_hang_{batch_label}.xlsx", excel_orders)
+                zf.writestr(f"02_khach_hang1_{batch_label}.xlsx", excel_customers)
+                zf.writestr(f"03_sanpham1_{batch_label}.xlsx", excel_products)
+        except Exception:
+            os.unlink(tmp_path)
+            raise
 
         # 6. ZIP thành công → BULK UPDATE DB (Atomic Transaction)
         try:
@@ -781,8 +789,10 @@ def register_invoice_routes(app, get_supabase) -> None:
             if not upd_res.data:
                 raise HTTPException(500, "Không lưu được trạng thái xuất hóa đơn.")
         except HTTPException:
+            os.unlink(tmp_path)
             raise
         except Exception as exc:
+            os.unlink(tmp_path)
             raise HTTPException(500, f"Lỗi cập nhật CSDL: {exc}") from exc
 
         order_ids = [pu["id"] for pu in pending_updates]
@@ -802,8 +812,8 @@ def register_invoice_routes(app, get_supabase) -> None:
 
         # 8. Trả ZIP
         filename = f"hoa_don_thue_{batch_label}_{n}don.zip"
-        return StreamingResponse(
-            zip_buf,
+        return FileResponse(
+            tmp_path,
             media_type="application/zip",
             headers={
                 "Content-Disposition": f'attachment; filename="{filename}"',
@@ -811,4 +821,5 @@ def register_invoice_routes(app, get_supabase) -> None:
                 "X-Batch-Count": str(n),
                 "X-Batch-Date": batch_label,
             },
+            background=BackgroundTask(os.unlink, tmp_path),
         )
