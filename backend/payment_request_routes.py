@@ -1958,12 +1958,18 @@ def register_payment_request_routes(app, _get_supabase) -> None:
         }
 
         if method == "installment":
+            inst_total = _parse_amount(body.installment_total) if body.installment_total is not None else None
+            sale_rec = _parse_amount(body.sale_received) if body.sale_received is not None else None
+            if sale_rec is not None and inst_total is not None:
+                if sale_rec > inst_total:
+                    raise HTTPException(400, "sale_received vượt installment_total")
+
             if body.installment_platform:
                 insert_row["installment_platform"] = body.installment_platform
-            if body.installment_total is not None:
-                insert_row["installment_total"] = _parse_amount(body.installment_total)
-            if body.sale_received is not None:
-                insert_row["sale_received"] = _parse_amount(body.sale_received)
+            if inst_total is not None:
+                insert_row["installment_total"] = inst_total
+            if sale_rec is not None:
+                insert_row["sale_received"] = sale_rec
 
         if method == "qr":
             description = _build_payos_transfer_description(

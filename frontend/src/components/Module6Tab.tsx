@@ -9,6 +9,7 @@ import { useRealtimeTable } from "../hooks/useRealtimeTable";
 import { useTeamScope } from "../hooks/useTeamScope";
 import { fmtRate, isValidSaleName, pctOf, safeDivide } from "../lib/metrics";
 import type { DashboardDailyTrends, DashboardLiveSummary } from "../types/order";
+import { fromApiExchangeRate } from "../types/exchangeRate";
 
 // --------------------------------------------------------------------------
 // Helpers
@@ -201,6 +202,23 @@ export default function Module6Tab() {
   const [teams, setTeams]       = useState<string[]>([]);
   const [sales, setSales]       = useState<string[]>([]);
   const [hasCrmData, setHasCrmData] = useState<boolean | null>(null);
+  const [exchangeRate, setExchangeRate] = useState<number>(3700);
+
+  // Load exchange rate once
+  useEffect(() => {
+    endpoints.exchangeRates.list()
+      .then((res) => {
+        const items = (res.data.rates || []).map(fromApiExchangeRate);
+        const today = todayStr();
+        const current = items.find((r) => r.effectiveFrom <= today);
+        if (current) {
+          setExchangeRate(current.rate);
+        }
+      })
+      .catch((err) => {
+        console.error("Failed to load exchange rates in Module6Tab:", err);
+      });
+  }, []);
 
   // Load filter options once
   useEffect(() => {
@@ -251,7 +269,7 @@ export default function Module6Tab() {
   const period = live?.period ?? trends?.period;
   const kpi = live?.kpi;
   const meta = live?.meta;
-  const fx = meta?.exchange_rate ?? kpi?.exchange_rate ?? 3700;
+  const fx = meta?.exchange_rate ?? kpi?.exchange_rate ?? exchangeRate;
   const revenueData = (trends?.revenue_by_date ?? []).map((d) => ({
     ...d,
     gmv_rmb: d.gmv_rmb ?? d.amount ?? 0,
