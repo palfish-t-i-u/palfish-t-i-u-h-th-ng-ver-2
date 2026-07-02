@@ -48,6 +48,30 @@ def _format_vnd(amount: Any) -> str:
     return f"{n:,}đ"
 
 
+def _format_vnd_dots(amount: Any) -> str:
+    """Format an amount with dot thousand-separators: ``8.500.000 VNĐ``.
+
+    Distinct from ``_format_vnd`` (comma separator, no space) which existing
+    messages (payment_paid) already rely on — do NOT merge the two.
+    """
+    try:
+        n = int(float(amount))
+    except (TypeError, ValueError):
+        n = 0
+    return f"{n:,}".replace(",", ".") + " VNĐ"
+
+
+def _first_nonempty(*values: Any, default: str = "") -> str:
+    """Return the first stripped, non-empty string among *values*."""
+    for value in values:
+        if value is None:
+            continue
+        text = str(value).strip()
+        if text:
+            return text
+    return default
+
+
 def _format_datetime_vn(dt_value: Any) -> str:
     """Convert a datetime to ``dd/mm/yyyy HH:MM`` in Asia/Ho_Chi_Minh.
 
@@ -209,5 +233,120 @@ def build_course_activated_message(
         f"✅ ĐÃ KÍCH HOẠT THÀNH CÔNG GÓI HỌC — KH {customer} của {sale_name} "
         f"· Team {team_display} với gói {package}"
     )
+
+    return {"message": message, "canonical_team_code": canonical_team}
+
+
+def build_activation_request_created_message(
+    ar_data: dict[str, Any],
+    pr_data: dict[str, Any],
+    sale_info: dict[str, Any],
+) -> dict[str, str]:
+    """Build the ACTIVATION REQUEST CREATED notification message.
+
+    Mirrors the handoff bàn giao format sale gửi tay:
+
+        🆕 YÊU CẦU KÍCH HOẠT KHOÁ HỌC — AR-2026-0001
+        SĐT: 84-772333555
+        UID: 3307542974
+        Thành Nam 9T, Phil 48+5 fix 2b/tuần
+        Nguồn: Kho chung - Imperia
+        Tổng: 8.500.000 VNĐ
+        Sale: Trần Thị B · Team Inhouse 2
+
+    Multiple UIDs in ``ar_data["uids_data"]`` produce multiple blocks
+    (SĐT/UID/gói/Nguồn/Tổng), separated by a blank line, under one shared
+    header/footer.  Image (bill) attachment is handled by the caller/worker,
+    not part of the text message.
+
+    Returns ``{"message": ..., "canonical_team_code": ...}``.
+    """
+    ctx = f"active_request id={ar_data.get('id', '?')}"
+
+    if not sale_info:
+        logger.warning("Missing sale_info for %s", ctx)
+        sale_info = {}
+    if not pr_data:
+        logger.warning("Missing pr_data for %s", ctx)
+        pr_data = {}
+
+    ar_id = _safe_get(ar_data, "id", "?", ctx)
+
+    child_name = _first_nonempty(
+        pr_data.get("child_name"), ar_data.get("customer_name"), pr_data.get("name"),
+        default="Unknown",
+    )
+    lead = _first_nonempty(pr_data.get("lead_channel"), pr_data.get("lead_source"), default="?")
+    pr_phone = _first_nonempty(pr_data.get("phone"))
+    pr_target = pr_data.get("target")
+
+    uids_data = ar_data.get("uids_data")
+    uid_blocks = uids_data if isinstance(uids_data, list) else []
+    if not uid_blocks:
+        logger.warning("Missing uids_data in %s", ctx)
+
+    blocks: list[str] = []
+    for uid_block in uid_blocks:
+        if not isinstance(uid_block, dict):
+            continue
+        phone = _first_nonempty(uid_block.get("phone"), pr_phone, default="?")
+        uid = _first_nonempty(uid_block.get("uid"), default="?")
+
+        courses = uid_block.get("courses")
+        courses = courses if isinstance(courses, list) else []
+
+        course_lines: list[str] = []
+        total = 0.0
+        has_amount = False
+        for course in courses:
+            if not isinstance(course, dict):
+                continue
+            course_name = _first_nonempty(course.get("name"), default="(chưa có tên gói)")
+            course_lines.append(f"{child_name}, {course_name}")
+            amount = course.get("amount")
+            if amount not in (None, ""):
+                try:
+                    total += float(amount)
+                    has_amount = True
+                except (TypeError, ValueError):
+                    logger.warning("Invalid course amount %r in %s", amount, ctx)
+        if not course_lines:
+            course_lines = [child_name]
+        if not has_amount:
+            total = float(pr_target) if pr_target not in (None, "") else 0.0
+
+        blocks.append(
+            "\n".join(
+                [
+                    f"SĐT: {phone}",
+                    f"UID: {uid}",
+                    *course_lines,
+                    f"Nguồn: {lead}",
+                    f"Tổng: {_format_vnd_dots(total)}",
+                ]
+            )
+        )
+
+    if not blocks:
+        blocks.append(
+            "\n".join(
+                [
+                    f"SĐT: {pr_phone or '?'}",
+                    "UID: ?",
+                    child_name,
+                    f"Nguồn: {lead}",
+                    f"Tổng: {_format_vnd_dots(pr_target or 0)}",
+                ]
+            )
+        )
+
+    sale_name = _safe_get(sale_info, "display_name", sale_info.get("crm_name") or "Unknown", ctx)
+    raw_team = sale_info.get("team")
+    canonical_team = get_canonical_team(raw_team)
+    team_display = str(raw_team).strip() if raw_team and str(raw_team).strip() else "?"
+
+    header = f"🆕 YÊU CẦU KÍCH HOẠT KHOÁ HỌC — {ar_id}"
+    footer = f"Sale: {sale_name} · Team {team_display}"
+    message = header + "\n" + "\n\n".join(blocks) + "\n" + footer
 
     return {"message": message, "canonical_team_code": canonical_team}

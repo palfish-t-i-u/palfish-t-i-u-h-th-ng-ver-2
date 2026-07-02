@@ -1,0 +1,180 @@
+"""
+Workstream B3 (Đức) — unit tests for build_activation_request_created_message.
+
+Run: cd backend && pytest tests/test_zalo_builder.py -v
+"""
+from __future__ import annotations
+
+from utils.zalo_message_builder import (
+    _format_vnd_dots,
+    build_activation_request_created_message,
+)
+
+
+def _full_ar_data() -> dict:
+    return {
+        "id": "AR-2026-0001",
+        "customer_name": None,
+        "uids_data": [
+            {
+                "uid": "3307542974",
+                "phone": "84-772333555",
+                "courses": [
+                    {"name": "Phil 48+5 fix 2b/tuần", "amount": 8_500_000},
+                ],
+            }
+        ],
+    }
+
+
+def _full_pr_data() -> dict:
+    return {
+        "id": "PR-2026-0001",
+        "name": None,
+        "child_name": "Thành Nam 9T",
+        "phone": None,
+        "lead_source": None,
+        "lead_channel": "Kho chung - Imperia",
+        "target": 8_500_000,
+    }
+
+
+def _full_sale_info() -> dict:
+    return {"display_name": "Trần Thị B", "crm_name": None, "team": "Inhouse 2"}
+
+
+class TestFormatVndDots:
+    def test_format_vnd_dots_basic(self):
+        assert _format_vnd_dots(8_500_000) == "8.500.000 VNĐ"
+
+    def test_format_vnd_dots_zero_or_invalid(self):
+        assert _format_vnd_dots(0) == "0 VNĐ"
+        assert _format_vnd_dots(None) == "0 VNĐ"
+        assert _format_vnd_dots("garbage") == "0 VNĐ"
+
+    def test_format_vnd_dots_does_not_use_comma(self):
+        # Regression: _format_vnd (comma, no space) must stay untouched —
+        # this is the NEW dot-separated variant only.
+        result = _format_vnd_dots(1_500_000)
+        assert "," not in result
+        assert result == "1.500.000 VNĐ"
+
+
+class TestBuildActivationRequestCreatedMessage:
+    def test_full_data_matches_handoff_sample_format(self):
+        result = build_activation_request_created_message(
+            _full_ar_data(), _full_pr_data(), _full_sale_info()
+        )
+        expected = (
+            "🆕 YÊU CẦU KÍCH HOẠT KHOÁ HỌC — AR-2026-0001\n"
+            "SĐT: 84-772333555\n"
+            "UID: 3307542974\n"
+            "Thành Nam 9T, Phil 48+5 fix 2b/tuần\n"
+            "Nguồn: Kho chung - Imperia\n"
+            "Tổng: 8.500.000 VNĐ\n"
+            "Sale: Trần Thị B · Team Inhouse 2"
+        )
+        assert result["message"] == expected
+        assert result["canonical_team_code"] == "Inhouse 2"
+
+    def test_multi_uid_produces_multiple_blocks_separated_by_blank_line(self):
+        ar_data = {
+            "id": "AR-2026-0002",
+            "customer_name": "Gia đình Nam",
+            "uids_data": [
+                {
+                    "uid": "111",
+                    "phone": "84-900000001",
+                    "courses": [{"name": "Gói A", "amount": 5_000_000}],
+                },
+                {
+                    "uid": "222",
+                    "phone": "84-900000002",
+                    "courses": [{"name": "Gói B", "amount": 3_000_000}],
+                },
+            ],
+        }
+        pr_data = {"lead_channel": "Facebook"}
+        sale_info = {"display_name": "Sale X", "team": "Offline"}
+
+        result = build_activation_request_created_message(ar_data, pr_data, sale_info)
+        message = result["message"]
+
+        assert "UID: 111" in message
+        assert "UID: 222" in message
+        # 2 blocks -> exactly one blank-line separator between them
+        assert "\n\n" in message
+        assert message.count("Nguồn: Facebook") == 2
+        assert result["canonical_team_code"] == "Offline"
+
+    def test_missing_phone_uid_lead_falls_back_to_question_mark(self):
+        ar_data = {
+            "id": "AR-2026-0003",
+            "uids_data": [{"courses": [{"name": "Gói C", "amount": 1_000_000}]}],
+        }
+        pr_data = {}
+        sale_info = {"team": "Inhouse 1"}
+
+        result = build_activation_request_created_message(ar_data, pr_data, sale_info)
+        message = result["message"]
+
+        assert "SĐT: ?" in message
+        assert "UID: ?" in message
+        assert "Nguồn: ?" in message
+
+    def test_multiple_courses_in_one_uid_each_get_own_line(self):
+        ar_data = {
+            "id": "AR-2026-0004",
+            "uids_data": [
+                {
+                    "uid": "999",
+                    "phone": "84-911111111",
+                    "courses": [
+                        {"name": "Gói A", "amount": 2_000_000},
+                        {"name": "Gói B", "amount": 3_000_000},
+                    ],
+                }
+            ],
+        }
+        pr_data = {"child_name": "Bé Sóc"}
+        sale_info = {"team": "Inhouse 2"}
+
+        result = build_activation_request_created_message(ar_data, pr_data, sale_info)
+        message = result["message"]
+
+        assert "Bé Sóc, Gói A" in message
+        assert "Bé Sóc, Gói B" in message
+        # Tổng = sum of both courses
+        assert "Tổng: 5.000.000 VNĐ" in message
+
+    def test_team_ih2_alias_resolves_to_canonical_inhouse_2(self):
+        result = build_activation_request_created_message(
+            _full_ar_data(), _full_pr_data(), {"team": "IH2", "display_name": "Sale Y"}
+        )
+        assert result["canonical_team_code"] == "Inhouse 2"
+
+    def test_amount_fallback_to_pr_target_when_course_missing_amount(self):
+        ar_data = {
+            "id": "AR-2026-0005",
+            "uids_data": [{"uid": "1", "phone": "84-1", "courses": [{"name": "Gói D"}]}],
+        }
+        pr_data = {"target": 4_200_000}
+        sale_info = {"team": "Inhouse 2"}
+
+        result = build_activation_request_created_message(ar_data, pr_data, sale_info)
+        assert "Tổng: 4.200.000 VNĐ" in result["message"]
+
+    def test_never_raises_on_empty_or_malformed_input(self):
+        # Empty dicts
+        result = build_activation_request_created_message({}, {}, {})
+        assert isinstance(result["message"], str)
+        assert result["canonical_team_code"] == "Khác"
+
+        # uids_data is not a list, courses not a list, uid_block not a dict
+        garbage_ar = {"id": "AR-X", "uids_data": "not-a-list"}
+        result2 = build_activation_request_created_message(garbage_ar, {}, {})
+        assert isinstance(result2["message"], str)
+
+        garbage_ar2 = {"id": "AR-Y", "uids_data": [{"uid": "1", "courses": "not-a-list"}, "not-a-dict"]}
+        result3 = build_activation_request_created_message(garbage_ar2, {}, {})
+        assert isinstance(result3["message"], str)

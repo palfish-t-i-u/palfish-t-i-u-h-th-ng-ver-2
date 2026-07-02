@@ -5,10 +5,12 @@ Per-course JSONB updates use Postgres jsonb_set via Supabase RPC (DB-04).
 
 from __future__ import annotations
 
+import hashlib
 import io
 import os
 import re
 import tempfile
+import uuid
 import zipfile
 from datetime import date, datetime, timezone, timedelta
 from typing import Any
@@ -26,7 +28,11 @@ from invoice_routes import (
 )
 from revenue_routes import sync_ledger_from_ar_course
 from rbac import resolve_actor
-from utils.zalo_message_builder import build_activation_urgent_reminder_message
+from utils.team_mapper import get_canonical_team
+from utils.zalo_message_builder import (
+    build_activation_request_created_message,
+    build_activation_urgent_reminder_message,
+)
 
 OPS_GROUP_TEAM_CODE = "Inhouse 2"
 
@@ -940,6 +946,119 @@ def _parse_create_ar_payload(raw: Any) -> tuple[str | None, str | None, list[Any
     return None, None, _coerce_uids_payload(raw)
 
 
+def _enqueue_activation_request_created_zalo(
+    sb, saved_ar: dict[str, Any], pr: dict[str, Any] | None
+) -> None:
+    """Enqueue Zalo 'activation_request_created' notification (best-effort).
+
+    Mirrors the urgent-reminder enqueue pattern (create_activation_urgent_reminder,
+    ~line 2018). Must NEVER raise — a Zalo failure must not fail AR creation.
+    """
+    try:
+        if pr is None:
+            print(f"[zalo] activation_request_created skip: no PR for AR {saved_ar.get('id')}")
+            return
+        if pr.get("is_test") or saved_ar.get("is_test"):
+            return
+
+        sale_email = str(pr.get("sale_email") or "").strip().lower()
+        if not sale_email:
+            print(f"[zalo] activation_request_created skip: no sale_email for AR {saved_ar.get('id')}")
+            return
+
+        staff_res = (
+            sb.table("nhan_su_sale")
+            .select("email, display_name, crm_name, team")
+            .ilike("email", sale_email)
+            .limit(1)
+            .execute()
+        )
+        staff = staff_res.data[0] if staff_res.data else None
+        team = (staff or {}).get("team") or ""
+        if not team:
+            print(f"[zalo] activation_request_created skip: sale {sale_email} has no team")
+            return
+
+        canonical_team = get_canonical_team(team)
+        g = (
+            sb.table("zalo_team_groups")
+            .select("group_id, is_active")
+            .eq("team_code", canonical_team)
+            .limit(1)
+            .execute()
+        )
+        if not g.data or not g.data[0].get("is_active"):
+            print(f"[zalo] activation_request_created skip: no active group for team {canonical_team}")
+            return
+        group_id = g.data[0]["group_id"]
+
+        bill_url: str | None = None
+        pr_id_val = str(pr.get("id") or "")
+        if pr_id_val:
+            lines_res = (
+                sb.table("payment_lines")
+                .select("bill_image, bill_images")
+                .eq("payment_request_id", pr_id_val)
+                .eq("status", "paid")
+                .order("paid_at", desc=True)
+                .limit(1)
+                .execute()
+            )
+            if lines_res.data:
+                line = lines_res.data[0]
+                bill_url = (line.get("bill_image") or "").strip() or None
+                if not bill_url:
+                    bills = line.get("bill_images")
+                    if isinstance(bills, list) and bills:
+                        bill_url = str(bills[-1]).strip() or None
+
+        pr_target, _ = _pr_amounts(pr)
+        result = build_activation_request_created_message(
+            {
+                "id": saved_ar.get("id"),
+                "customer_name": saved_ar.get("customer_name"),
+                "uids_data": saved_ar.get("uids_data"),
+            },
+            {
+                "id": pr.get("id"),
+                "name": pr.get("name"),
+                "child_name": pr.get("child_name"),
+                "phone": pr.get("phone"),
+                "lead_source": pr.get("lead_source"),
+                "lead_channel": pr.get("lead_channel"),
+                "target": pr_target,
+            },
+            {
+                "display_name": (staff or {}).get("display_name"),
+                "crm_name": (staff or {}).get("crm_name"),
+                "team": team,
+            },
+        )
+
+        ar_id = str(saved_ar.get("id") or "")
+        source_uuid = str(uuid.UUID(hashlib.md5(ar_id.encode()).hexdigest()))
+
+        try:
+            sb.table("zalo_outbox").insert(
+                {
+                    "event_type": "activation_request_created",
+                    "source_table": "active_requests",
+                    "source_id": source_uuid,
+                    "group_id": group_id,
+                    "message": result["message"],
+                    "image_url": bill_url,
+                }
+            ).execute()
+        except Exception as exc:
+            msg = str(exc).lower()
+            if "duplicate" in msg or "unique" in msg:
+                pass  # idempotent — event đã enqueue trước đó (UNIQUE source_table+source_id+event_type)
+            else:
+                raise
+    except Exception as exc:
+        print(f"[zalo] activation_request_created enqueue failed (non-fatal): {exc}")
+
+
 def _save_active_request(
     sb,
     *,
@@ -996,6 +1115,7 @@ def _save_active_request(
     saved = (res.data or [row])[0]
     if customer_name and not saved.get("customer_name"):
         saved["customer_name"] = customer_name
+    _enqueue_activation_request_created_zalo(sb, saved, pr)
     return saved, pr
 
 
