@@ -8,6 +8,7 @@ from __future__ import annotations
 from utils.zalo_message_builder import (
     _format_vnd_dots,
     build_activation_request_created_message,
+    build_course_activated_message,
 )
 
 
@@ -178,3 +179,99 @@ class TestBuildActivationRequestCreatedMessage:
         garbage_ar2 = {"id": "AR-Y", "uids_data": [{"uid": "1", "courses": "not-a-list"}, "not-a-dict"]}
         result3 = build_activation_request_created_message(garbage_ar2, {}, {})
         assert isinstance(result3["message"], str)
+
+
+class TestBuildCourseActivatedMessage:
+    """Workstream C2 (Giang) — unit tests for enriched build_course_activated_message."""
+
+    def test_full_data_produces_enriched_format(self):
+        req_data = {
+            "id": "AR-2026-0010",
+            "customer_name": "Nguyễn Văn A",
+            "uids_data": [
+                {
+                    "uid": "3307542974",
+                    "phone": "84-772333555",
+                    "courses": [
+                        {"name": "Phil 48+5 fix 2b/tuần"},
+                        {"name": "Gói Toán 12T"},
+                    ],
+                }
+            ],
+        }
+        sale_info = {"display_name": "Trần Thị B", "crm_name": "tran.b", "team": "Inhouse 2"}
+
+        result = build_course_activated_message(req_data, sale_info)
+        msg = result["message"]
+
+        assert msg.startswith("✅ ĐÃ KÍCH HOẠT THÀNH CÔNG GÓI HỌC")
+        assert "KH: Nguyễn Văn A · Sale Trần Thị B · Team Inhouse 2" in msg
+        assert "SĐT: 84-772333555 · UID: 3307542974" in msg
+        assert "Gói: Phil 48+5 fix 2b/tuần, Gói Toán 12T" in msg
+        assert result["canonical_team_code"] == "Inhouse 2"
+
+    def test_multi_uid_collects_all_phones_and_uids(self):
+        req_data = {
+            "id": "AR-2026-0011",
+            "customer_name": "Bé Sóc",
+            "uids_data": [
+                {"uid": "111", "phone": "84-900000001", "courses": [{"name": "Gói A"}]},
+                {"uid": "222", "phone": "84-900000002", "courses": [{"name": "Gói B"}]},
+            ],
+        }
+        sale_info = {"display_name": "Sale X", "team": "Offline"}
+
+        result = build_course_activated_message(req_data, sale_info)
+        msg = result["message"]
+
+        assert "SĐT: 84-900000001, 84-900000002" in msg
+        assert "UID: 111, 222" in msg
+        assert "Gói: Gói A, Gói B" in msg
+        assert result["canonical_team_code"] == "Offline"
+
+    def test_missing_uids_data_falls_back_to_question_marks(self):
+        req_data = {"id": "AR-2026-0012", "customer_name": "Test KH"}
+        sale_info = {"team": "Inhouse 2"}
+
+        result = build_course_activated_message(req_data, sale_info)
+        msg = result["message"]
+
+        assert "SĐT: ? · UID: ?" in msg
+        assert "Gói: ?" in msg
+
+    def test_phone_fallback_from_pr_data(self):
+        req_data = {
+            "id": "AR-2026-0013",
+            "customer_name": "KH Fallback",
+            "uids_data": [
+                {"uid": "999", "courses": [{"name": "Gói C"}]},  # no phone in uid_block
+            ],
+        }
+        sale_info = {"team": "Offline"}
+        pr_data = {"phone": "84-111222333"}
+
+        result = build_course_activated_message(req_data, sale_info, pr_data=pr_data)
+        msg = result["message"]
+
+        assert "SĐT: 84-111222333" in msg
+
+    def test_customer_fallback_from_pr_name(self):
+        req_data = {"id": "AR-2026-0014", "uids_data": [{"uid": "1", "courses": [{"name": "G"}]}]}
+        sale_info = {"team": "Offline"}
+        pr_data = {"name": "Khách từ PR"}
+
+        result = build_course_activated_message(req_data, sale_info, pr_data=pr_data)
+        assert "KH: Khách từ PR" in result["message"]
+
+    def test_never_raises_on_empty_input(self):
+        result = build_course_activated_message({}, {})
+        assert isinstance(result["message"], str)
+        assert result["canonical_team_code"] == "Khác"
+
+    def test_non_list_uids_data_is_safe(self):
+        result = build_course_activated_message(
+            {"id": "X", "uids_data": "not-a-list"}, {"team": "IH2"}
+        )
+        assert isinstance(result["message"], str)
+        assert "SĐT: ? · UID: ?" in result["message"]
+

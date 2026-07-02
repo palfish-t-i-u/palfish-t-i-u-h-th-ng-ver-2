@@ -203,12 +203,21 @@ def build_activation_urgent_reminder_message(
 def build_course_activated_message(
     req_data: dict[str, Any],
     sale_info: dict[str, Any],
+    *,
+    pr_data: dict[str, Any] | None = None,
 ) -> dict[str, str]:
     """Build the COURSE ACTIVATED notification message.
 
-    Format::
+    **NOTE**: The SQL function ``build_course_activated_message`` in the DB
+    trigger is the *live path* — this Python mirror must produce the exact
+    same format.  Keep them in sync whenever either is changed.
 
-        ✅ KÍCH HOẠT — KH {customer} | gói {package} | sale {sale_name}
+    Format (enriched)::
+
+        ✅ ĐÃ KÍCH HOẠT THÀNH CÔNG GÓI HỌC
+        KH: {customer} · Sale {sale_name} · Team {team}
+        SĐT: {phone} · UID: {uid1, uid2…}
+        Gói: {danh sách tên gói}
 
     Returns ``{"message": ..., "canonical_team_code": ...}``.
     """
@@ -217,24 +226,62 @@ def build_course_activated_message(
     if not sale_info:
         logger.warning("Missing sale_info for %s", ctx)
         sale_info = {}
+    if pr_data is None:
+        pr_data = {}
 
-    customer = _safe_get(req_data, "customer_name", "Unknown",
-                         f"req_data ({ctx})")
-    package = _safe_get(req_data, "package_name", "Unknown",
-                        f"req_data ({ctx})")
-    sale_name = _safe_get(sale_info, "crm_name", "Unknown",
-                          f"sale_info ({ctx})")
+    customer = _first_nonempty(
+        req_data.get("customer_name"),
+        pr_data.get("name"),
+        default="?",
+    )
+    sale_name = _first_nonempty(
+        sale_info.get("display_name"),
+        sale_info.get("crm_name"),
+        default="?",
+    )
 
     raw_team = sale_info.get("team")
     canonical_team = get_canonical_team(raw_team)
     team_display = str(raw_team).strip() if raw_team and str(raw_team).strip() else "?"
 
-    message = (
-        f"✅ ĐÃ KÍCH HOẠT THÀNH CÔNG GÓI HỌC — KH {customer} của {sale_name} "
-        f"· Team {team_display} với gói {package}"
-    )
+    pr_phone = _first_nonempty(pr_data.get("phone"))
 
-    return {"message": message, "canonical_team_code": canonical_team}
+    # --- Extract phones, UIDs, course names from uids_data ---
+    uids_data = req_data.get("uids_data")
+    uid_blocks = uids_data if isinstance(uids_data, list) else []
+
+    phones: list[str] = []
+    uids: list[str] = []
+    courses_list: list[str] = []
+
+    for uid_block in uid_blocks:
+        if not isinstance(uid_block, dict):
+            continue
+        phone = _first_nonempty(uid_block.get("phone"), pr_phone, default="?")
+        phones.append(phone)
+        uid = _first_nonempty(uid_block.get("uid"), default="?")
+        uids.append(uid)
+
+        courses = uid_block.get("courses")
+        if isinstance(courses, list):
+            for course in courses:
+                if isinstance(course, dict):
+                    courses_list.append(
+                        _first_nonempty(course.get("name"), default="?")
+                    )
+
+    phones_str = ", ".join(phones) if phones else _first_nonempty(pr_phone, default="?")
+    uids_str = ", ".join(uids) if uids else "?"
+    courses_str = ", ".join(courses_list) if courses_list else "?"
+
+    lines = [
+        "✅ ĐÃ KÍCH HOẠT THÀNH CÔNG GÓI HỌC",
+        f"KH: {customer} · Sale {sale_name} · Team {team_display}",
+        f"SĐT: {phones_str} · UID: {uids_str}",
+        f"Gói: {courses_str}",
+    ]
+
+    return {"message": "\n".join(lines), "canonical_team_code": canonical_team}
 
 
 def build_activation_request_created_message(

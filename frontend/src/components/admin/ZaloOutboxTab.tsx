@@ -19,6 +19,24 @@ function statusOf(row: ZaloOutboxRow): { label: string; cls: string } {
   return { label: "Chờ gửi", cls: "bg-blue-100 text-blue-700" };
 }
 
+const EVENT_LABELS: Record<string, string> = {
+  payment_paid: "Báo tiền về",
+  course_activated: "Kích hoạt TP",
+  activation_urgent_reminder: "Nhắc kích hoạt",
+  activation_request_created: "Y/c kích hoạt",
+};
+
+function eventLabel(eventType: string): string {
+  return EVENT_LABELS[eventType] || eventType;
+}
+
+function imageStatus(row: ZaloOutboxRow): { icon: string; title: string; cls: string } | null {
+  if (!row.image_url) return null;
+  if (row.image_sent_at) return { icon: "✅", title: `Đã gửi ảnh lúc ${formatDate(row.image_sent_at)}`, cls: "text-green-600" };
+  if (row.image_error) return { icon: "⚠", title: row.image_error, cls: "text-yellow-600" };
+  return { icon: "🕐", title: "Chờ gửi ảnh", cls: "text-blue-500" };
+}
+
 export default function ZaloOutboxTab() {
   const [rows, setRows] = useState<ZaloOutboxRow[]>([]);
   const [loading, setLoading] = useState(false);
@@ -99,6 +117,7 @@ export default function ZaloOutboxTab() {
               <th className="text-left p-2 font-medium text-gray-600">Sự kiện</th>
               <th className="text-left p-2 font-medium text-gray-600">Group</th>
               <th className="text-left p-2 font-medium text-gray-600">Nội dung</th>
+              <th className="text-center p-2 font-medium text-gray-600">📎</th>
               <th className="text-center p-2 font-medium text-gray-600">Trạng thái</th>
               <th className="text-left p-2 font-medium text-gray-600">Tạo lúc</th>
               <th className="text-left p-2 font-medium text-gray-600">Gửi lúc</th>
@@ -107,10 +126,10 @@ export default function ZaloOutboxTab() {
           </thead>
           <tbody>
             {loading && (
-              <tr><td colSpan={8} className="p-4 text-center text-gray-400">Đang tải...</td></tr>
+              <tr><td colSpan={9} className="p-4 text-center text-gray-400">Đang tải...</td></tr>
             )}
             {!loading && rows.length === 0 && (
-              <tr><td colSpan={8} className="p-4 text-center text-gray-400">Chưa có tin nhắn nào</td></tr>
+              <tr><td colSpan={9} className="p-4 text-center text-gray-400">Chưa có tin nhắn nào</td></tr>
             )}
             {rows.map((row) => {
               const st = statusOf(row);
@@ -119,7 +138,7 @@ export default function ZaloOutboxTab() {
                 <tr key={row.id} className="border-b hover:bg-gray-50">
                   <td className="p-2 font-mono text-xs text-gray-400">{row.id}</td>
                   <td className="p-2 text-xs">
-                    <span className="font-mono">{row.event_type}</span>
+                    <span className="font-mono">{eventLabel(row.event_type)}</span>
                     <br />
                     <span className="text-gray-400">{row.source_table}#{row.source_id}</span>
                   </td>
@@ -133,6 +152,13 @@ export default function ZaloOutboxTab() {
                         ⚠ {row.last_error}
                       </div>
                     )}
+                  </td>
+                  <td className="p-2 text-center text-sm">
+                    {(() => {
+                      const img = imageStatus(row);
+                      if (!img) return <span className="text-gray-300">—</span>;
+                      return <span className={img.cls} title={img.title}>{img.icon}</span>;
+                    })()}
                   </td>
                   <td className="p-2 text-center">
                     <span className={`inline-block px-1.5 py-0.5 text-xs rounded ${st.cls}`}>
