@@ -22,13 +22,15 @@ import copy
 import json
 import os
 import re
+import tempfile
 from datetime import date, datetime, timedelta, timezone
 from typing import Any
 
 import httpx
 from fastapi import Header, HTTPException, Query
-from fastapi.responses import StreamingResponse
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
+from starlette.background import BackgroundTask
 
 from crm_metrics import extract_row_metrics, is_valid_sale_name, parse_rate, sale_label, team_label
 from rbac import resolve_actor, require_min_role
@@ -97,8 +99,8 @@ CRM_DOWNLOAD_URL = (
 )
 
 MAX_DAYS = 31
-BACKFILL_CONCURRENCY_DEFAULT = 5
-BACKFILL_CONCURRENCY_MAX = 8
+BACKFILL_CONCURRENCY_DEFAULT = 3
+BACKFILL_CONCURRENCY_MAX = 3
 # Team con (vd. 越南崛起团队) đôi khi export API trả CSV chỉ header — fallback org VN
 VN_ORG_DEPARTMENT_ID = 2242153
 # show_type=2 → đủ nhân sự team con dưới org (API PalFish, không cần Export thủ công)
@@ -1614,10 +1616,15 @@ def register_crm_routes(app, supabase_factory):
 
         master_df, failed_days = await _fetch_crm_master_df(sb, d_start, d_end)
 
-        output = io.BytesIO()
-        with pd.ExcelWriter(output, engine="openpyxl") as writer:
-            master_df.to_excel(writer, index=False, sheet_name="Master")
-        output.seek(0)
+        tmp = tempfile.NamedTemporaryFile(prefix="palfish_crm_export_", suffix=".xlsx", delete=False)
+        tmp_path = tmp.name
+        tmp.close()
+        try:
+            with pd.ExcelWriter(tmp_path, engine="openpyxl") as writer:
+                master_df.to_excel(writer, index=False, sheet_name="Master")
+        except Exception:
+            os.unlink(tmp_path)
+            raise
 
         label = f"{start_date}_to_{end_date}".replace("-", "")
         filename = f"Master_Sales_Data_{label}.xlsx"
@@ -1627,8 +1634,9 @@ def register_crm_routes(app, supabase_factory):
             f"{(d_end - d_start).days + 1 - len(failed_days)} ngày OK | {len(failed_days)} ngày lỗi"
         )
 
-        return StreamingResponse(
-            output,
+        return FileResponse(
+            tmp_path,
             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+            background=BackgroundTask(os.unlink, tmp_path),
         )

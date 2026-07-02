@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Verify guardrails for VAC-03/04/05/06 — run after team fix to confirm.
+# Verify guardrails for VAC-03/04/05/06/08/09 — run after team fix to confirm.
 # Usage: bash scripts/verify_vac.sh [task]
 #        bash scripts/verify_vac.sh        # all
 #        bash scripts/verify_vac.sh VAC-03 # only VAC-03
@@ -126,6 +126,36 @@ if run_section "VAC-06"; then
   echo "[VAC-06] PASS"
 else
   echo "[VAC-06] SKIPPED (not selected)"
+  SKIPPED=$((SKIPPED + 1))
+fi
+
+# ---------------------------------------------------------------------------
+# VAC-08  CRM backfill concurrency cap (BE — Đức) — fix OOM
+# ---------------------------------------------------------------------------
+print_header "VAC-08  CRM backfill concurrency cap (pytest)"
+
+if run_section "VAC-08"; then
+  cd "$REPO_ROOT/backend"
+  pytest tests/test_vac_08_crm_concurrency_cap.py -v
+  echo ""
+  echo "[VAC-08] PASS"
+else
+  echo "[VAC-08] SKIPPED (not selected)"
+  SKIPPED=$((SKIPPED + 1))
+fi
+
+# ---------------------------------------------------------------------------
+# VAC-09  Export endpoints use FileResponse not StreamingResponse(BytesIO) (BE — Đức) — fix OOM
+# ---------------------------------------------------------------------------
+print_header "VAC-09  Export tempfile + FileResponse (pytest)"
+
+if run_section "VAC-09"; then
+  cd "$REPO_ROOT/backend"
+  pytest tests/test_vac_09_export_use_file_response.py -v
+  echo ""
+  echo "[VAC-09] PASS"
+else
+  echo "[VAC-09] SKIPPED (not selected)"
   SKIPPED=$((SKIPPED + 1))
 fi
 

@@ -6,14 +6,17 @@ Per-course JSONB updates use Postgres jsonb_set via Supabase RPC (DB-04).
 from __future__ import annotations
 
 import io
+import os
 import re
+import tempfile
 import zipfile
 from datetime import date, datetime, timezone, timedelta
 from typing import Any
 
 from fastapi import Body, HTTPException, Query, Header
-from fastapi.responses import StreamingResponse
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
+from starlette.background import BackgroundTask
 
 from invoice_routes import (
     _alloc_sequences,
@@ -1098,7 +1101,7 @@ def _collect_b4_export_queue(
     return out
 
 
-def _export_b4_tax_batch(sb, items: list[ExportBatchItem] | None) -> StreamingResponse:
+def _export_b4_tax_batch(sb, items: list[ExportBatchItem] | None) -> FileResponse:
     queue = _collect_b4_export_queue(sb, items)
     ar_map = {str(row.get("id") or ""): row for row, _, _, _ in queue}
     n = len(queue)
@@ -1157,17 +1160,23 @@ def _export_b4_tax_batch(sb, items: list[ExportBatchItem] | None) -> StreamingRe
         raise HTTPException(500, f"Lỗi tạo file Excel: {exc}") from exc
 
     batch_label = today.strftime("%Y%m%d")
-    zip_buf = io.BytesIO()
-    with zipfile.ZipFile(zip_buf, "w", zipfile.ZIP_DEFLATED) as zf:
-        zf.writestr(f"01_1don_hang_{batch_label}.xlsx", excel_orders)
-        zf.writestr(f"02_khach_hang1_{batch_label}.xlsx", excel_customers)
-        zf.writestr(f"03_sanpham1_{batch_label}.xlsx", excel_products)
-    zip_buf.seek(0)
+    tmp = tempfile.NamedTemporaryFile(prefix="palfish_b4_export_", suffix=".zip", delete=False)
+    tmp_path = tmp.name
+    tmp.close()
+    try:
+        with zipfile.ZipFile(tmp_path, "w", zipfile.ZIP_DEFLATED) as zf:
+            zf.writestr(f"01_1don_hang_{batch_label}.xlsx", excel_orders)
+            zf.writestr(f"02_khach_hang1_{batch_label}.xlsx", excel_customers)
+            zf.writestr(f"03_sanpham1_{batch_label}.xlsx", excel_products)
+    except Exception:
+        os.unlink(tmp_path)
+        raise
 
-    return StreamingResponse(
-        zip_buf,
+    return FileResponse(
+        tmp_path,
         media_type="application/zip",
         headers={"Content-Disposition": f'attachment; filename="b4_tax_export_{batch_label}.zip"'},
+        background=BackgroundTask(os.unlink, tmp_path),
     )
 
 
