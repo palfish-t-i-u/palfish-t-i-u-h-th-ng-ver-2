@@ -145,8 +145,11 @@ def fake_db():
 
 @pytest.fixture
 def client(fake_db):
+    import importlib
+    import payment_request_routes
+    pr_mod = importlib.reload(payment_request_routes)
     app = FastAPI()
-    pr.register_payment_request_routes(app, lambda: fake_db)
+    pr_mod.register_payment_request_routes(app, lambda: fake_db)
     return TestClient(app, raise_server_exceptions=False)
 
 
@@ -182,6 +185,7 @@ async def test_payment_webhook_to_zalo_outbox_flow(client, fake_db):
                 }
             )
             assert resp.status_code == 200
+            print("WEBHOOK RESP:", resp.json())
 
     # Xác nhận line đã được cập nhật thành 'paid' trong fake DB
     assert fake_db.payment_lines[0]["status"] == "paid"
