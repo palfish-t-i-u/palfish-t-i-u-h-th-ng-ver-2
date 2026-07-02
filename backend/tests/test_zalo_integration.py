@@ -10,12 +10,15 @@ Hướng dẫn chạy test:
 from __future__ import annotations
 
 import datetime
+import hashlib
+import uuid
 from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+import activation_routes
 import payment_request_routes as pr
 from zalo_outbox_worker import poll_and_send
 
@@ -223,3 +226,228 @@ async def test_payment_webhook_to_zalo_outbox_flow(client, fake_db):
     assert fake_db.outbox_db[0]["sent_at"] is not None
     assert fake_db.outbox_db[0]["zalo_message_id"] == "MSG-OK"
     assert fake_db.outbox_db[0]["last_error"] is None
+
+
+# ---------------------------------------------------------------------------
+# Workstream B (Đức) — _enqueue_activation_request_created_zalo
+# ---------------------------------------------------------------------------
+# Pure-unit tests calling the enqueue helper directly (Pattern 1) — no HTTP
+# layer needed since the helper is a standalone module function called at the
+# end of _save_active_request.
+
+def _mock_chain_table(data: list[dict]) -> MagicMock:
+    """A Supabase table mock where every chained call returns itself,
+    ending in .execute() -> MagicMock(data=data)."""
+    t = MagicMock()
+    for m in ("select", "eq", "ilike", "order", "limit"):
+        getattr(t, m).return_value = t
+    t.execute.return_value = MagicMock(data=data)
+    return t
+
+
+def _build_enqueue_sb(
+    *,
+    staff_rows: list[dict] | None = None,
+    group_rows: list[dict] | None = None,
+    line_rows: list[dict] | None = None,
+    insert_side_effect=None,
+):
+    """Build a MagicMock Supabase client routing table() calls by name.
+
+    Returns (sb, outbox_calls) — outbox_calls collects every payload passed
+    to zalo_outbox.insert(...) unless insert_side_effect raises.
+    """
+    outbox_calls: list[dict] = []
+
+    def _outbox_insert(payload: dict):
+        if insert_side_effect is not None:
+            raise insert_side_effect
+        outbox_calls.append(payload)
+        m = MagicMock()
+        m.execute.return_value = MagicMock(data=[payload])
+        return m
+
+    outbox_table = MagicMock()
+    outbox_table.insert = _outbox_insert
+
+    tables = {
+        "nhan_su_sale": _mock_chain_table(staff_rows or []),
+        "zalo_team_groups": _mock_chain_table(group_rows or []),
+        "payment_lines": _mock_chain_table(line_rows or []),
+        "zalo_outbox": outbox_table,
+    }
+
+    sb = MagicMock()
+    sb.table.side_effect = lambda name: tables.get(name, MagicMock())
+    return sb, outbox_calls
+
+
+def _sample_saved_ar(**overrides) -> dict:
+    base = {
+        "id": "AR-2026-9001",
+        "is_test": False,
+        "customer_name": None,
+        "uids_data": [
+            {
+                "uid": "123",
+                "phone": "84-900000000",
+                "courses": [{"name": "Gói A", "amount": 5_000_000}],
+            }
+        ],
+    }
+    base.update(overrides)
+    return base
+
+
+def _sample_pr(**overrides) -> dict:
+    base = {
+        "id": "PR-2026-9001",
+        "is_test": False,
+        "sale_email": "sale@test.com",
+        "name": None,
+        "child_name": "Bé An",
+        "phone": None,
+        "lead_source": None,
+        "lead_channel": "Facebook",
+        "tong_tien_phai_thu": 5_000_000,
+    }
+    base.update(overrides)
+    return base
+
+
+class TestEnqueueActivationRequestCreatedZalo:
+    def test_happy_path_inserts_outbox_row_with_image_url(self):
+        sb, outbox_calls = _build_enqueue_sb(
+            staff_rows=[
+                {"email": "sale@test.com", "display_name": "Sale A",
+                 "crm_name": "Sale A CRM", "team": "Inhouse 2"}
+            ],
+            group_rows=[{"group_id": "GID-IH2", "is_active": True}],
+            line_rows=[{"bill_image": "https://x/bill.jpg", "bill_images": None}],
+        )
+        saved_ar = _sample_saved_ar()
+        pr_row = _sample_pr()
+
+        activation_routes._enqueue_activation_request_created_zalo(sb, saved_ar, pr_row)
+
+        assert len(outbox_calls) == 1
+        payload = outbox_calls[0]
+        assert payload["event_type"] == "activation_request_created"
+        assert payload["source_table"] == "active_requests"
+        expected_uuid = str(uuid.UUID(hashlib.md5(b"AR-2026-9001").hexdigest()))
+        assert payload["source_id"] == expected_uuid
+        assert payload["group_id"] == "GID-IH2"
+        assert payload["image_url"] == "https://x/bill.jpg"
+        assert "Bé An, Gói A" in payload["message"]
+        assert "🆕 YÊU CẦU KÍCH HOẠT KHOÁ HỌC — AR-2026-9001" in payload["message"]
+
+    def test_falls_back_to_bill_images_array_when_bill_image_empty(self):
+        sb, outbox_calls = _build_enqueue_sb(
+            staff_rows=[{"email": "sale@test.com", "team": "Inhouse 2"}],
+            group_rows=[{"group_id": "GID-IH2", "is_active": True}],
+            line_rows=[{"bill_image": None, "bill_images": ["https://x/a.jpg", "https://x/b.jpg"]}],
+        )
+        activation_routes._enqueue_activation_request_created_zalo(
+            sb, _sample_saved_ar(), _sample_pr()
+        )
+        assert outbox_calls[0]["image_url"] == "https://x/b.jpg"
+
+    def test_no_bill_line_sends_text_only(self):
+        sb, outbox_calls = _build_enqueue_sb(
+            staff_rows=[{"email": "sale@test.com", "team": "Inhouse 2"}],
+            group_rows=[{"group_id": "GID-IH2", "is_active": True}],
+            line_rows=[],
+        )
+        activation_routes._enqueue_activation_request_created_zalo(
+            sb, _sample_saved_ar(), _sample_pr()
+        )
+        assert len(outbox_calls) == 1
+        assert outbox_calls[0]["image_url"] is None
+
+    def test_skip_when_pr_is_test(self):
+        sb, outbox_calls = _build_enqueue_sb(
+            staff_rows=[{"email": "sale@test.com", "team": "Inhouse 2"}],
+            group_rows=[{"group_id": "GID-IH2", "is_active": True}],
+        )
+        activation_routes._enqueue_activation_request_created_zalo(
+            sb, _sample_saved_ar(), _sample_pr(is_test=True)
+        )
+        assert outbox_calls == []
+
+    def test_skip_when_saved_ar_is_test(self):
+        sb, outbox_calls = _build_enqueue_sb(
+            staff_rows=[{"email": "sale@test.com", "team": "Inhouse 2"}],
+            group_rows=[{"group_id": "GID-IH2", "is_active": True}],
+        )
+        activation_routes._enqueue_activation_request_created_zalo(
+            sb, _sample_saved_ar(is_test=True), _sample_pr()
+        )
+        assert outbox_calls == []
+
+    def test_skip_when_pr_is_none(self):
+        sb, outbox_calls = _build_enqueue_sb()
+        activation_routes._enqueue_activation_request_created_zalo(sb, _sample_saved_ar(), None)
+        assert outbox_calls == []
+
+    def test_skip_when_sale_has_no_team(self):
+        sb, outbox_calls = _build_enqueue_sb(
+            staff_rows=[{"email": "sale@test.com", "team": None}],
+        )
+        activation_routes._enqueue_activation_request_created_zalo(
+            sb, _sample_saved_ar(), _sample_pr()
+        )
+        assert outbox_calls == []
+
+    def test_skip_when_no_active_group_for_team(self):
+        sb, outbox_calls = _build_enqueue_sb(
+            staff_rows=[{"email": "sale@test.com", "team": "Inhouse 2"}],
+            group_rows=[],
+        )
+        activation_routes._enqueue_activation_request_created_zalo(
+            sb, _sample_saved_ar(), _sample_pr()
+        )
+        assert outbox_calls == []
+
+    def test_skip_when_group_inactive(self):
+        sb, outbox_calls = _build_enqueue_sb(
+            staff_rows=[{"email": "sale@test.com", "team": "Inhouse 2"}],
+            group_rows=[{"group_id": "GID-IH2", "is_active": False}],
+        )
+        activation_routes._enqueue_activation_request_created_zalo(
+            sb, _sample_saved_ar(), _sample_pr()
+        )
+        assert outbox_calls == []
+
+    def test_duplicate_insert_is_swallowed_not_raised(self):
+        sb, _ = _build_enqueue_sb(
+            staff_rows=[{"email": "sale@test.com", "team": "Inhouse 2"}],
+            group_rows=[{"group_id": "GID-IH2", "is_active": True}],
+            insert_side_effect=Exception(
+                'duplicate key value violates unique constraint "zalo_outbox_source_table_source_id_event_type_key"'
+            ),
+        )
+        # Must not raise — idempotency swallow.
+        activation_routes._enqueue_activation_request_created_zalo(
+            sb, _sample_saved_ar(), _sample_pr()
+        )
+
+    def test_unexpected_db_exception_never_propagates(self):
+        sb = MagicMock()
+        sb.table.side_effect = RuntimeError("DB connection lost")
+        # Must not raise — enqueue is best-effort and must never fail AR creation.
+        activation_routes._enqueue_activation_request_created_zalo(
+            sb, _sample_saved_ar(), _sample_pr()
+        )
+
+    def test_non_duplicate_insert_error_is_also_swallowed_by_outer_guard(self):
+        sb, _ = _build_enqueue_sb(
+            staff_rows=[{"email": "sale@test.com", "team": "Inhouse 2"}],
+            group_rows=[{"group_id": "GID-IH2", "is_active": True}],
+            insert_side_effect=Exception("column image_url does not exist"),
+        )
+        # Not a duplicate-key error -> re-raised internally, but the outer
+        # try/except in _enqueue_activation_request_created_zalo must still
+        # swallow it so AR creation is never affected.
+        activation_routes._enqueue_activation_request_created_zalo(
+            sb, _sample_saved_ar(), _sample_pr()
+        )
