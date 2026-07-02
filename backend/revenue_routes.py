@@ -1190,7 +1190,7 @@ class LedgerCreateBody(BaseModel):
     goiHoc: str = ""
     soTienVnd: int = 0
     gmvRmb: float | None = None
-    tyGiaVndRmb: float = 3700
+    tyGiaVndRmb: float | None = None
     paymentMethod: str = ""
     loai: str = ""
     loai2: str = ""
