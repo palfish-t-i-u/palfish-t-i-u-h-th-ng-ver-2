@@ -12,7 +12,7 @@ const fs = require('fs');
 const path = require('path');
 const XLSX = require('xlsx');
 
-const SRC = 'd:\\File làm việc\\automation\\docs dự án sao kê\\ds gói học và tên sale.xlsx';
+const SRC = process.argv[2] || 'd:\\File làm việc\\automation\\docs dự án sao kê\\ds gói học và tên sale.xlsx';
 const OUT_DIR = path.resolve(__dirname, '..', 'docs');
 // NOTE: dùng xlsx từ frontend/node_modules. Chạy:
 //   cd frontend && node ../scripts/extract_hierarchy.cjs
