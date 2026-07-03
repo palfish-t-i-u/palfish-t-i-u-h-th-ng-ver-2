@@ -19,6 +19,7 @@ try:
 except ImportError:
     from backports.zoneinfo import ZoneInfo  # type: ignore[no-redef]
 
+from utils.lead_source_map import resolve_lead_label
 from utils.team_mapper import get_canonical_team
 
 logger = logging.getLogger(__name__)
@@ -323,7 +324,7 @@ def build_activation_request_created_message(
         pr_data.get("child_name"), ar_data.get("customer_name"), pr_data.get("name"),
         default="Unknown",
     )
-    lead = _first_nonempty(pr_data.get("lead_channel"), pr_data.get("lead_source"), default="?")
+    lead = resolve_lead_label(pr_data.get("lead_source"), pr_data.get("lead_channel"))
     pr_phone = _first_nonempty(pr_data.get("phone"))
     pr_target = pr_data.get("target")
 
