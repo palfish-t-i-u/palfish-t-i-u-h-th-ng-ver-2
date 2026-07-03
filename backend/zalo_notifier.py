@@ -17,6 +17,7 @@ import httpx
 from env_utils import resolve_dingtalk_webhook_url
 
 ZALO_GROUP_MESSAGE_URL = "https://openapi.zalo.me/v3.0/oa/group/message"
+ZALO_UPLOAD_IMAGE_URL = "https://openapi.zalo.me/v2.0/oa/upload/image"
 ZALO_REFRESH_TOKEN_URL = "https://oauth.zaloapp.com/v4/oa/access_token"
 TOKEN_REFRESH_WINDOW = timedelta(days=7)
 HTTP_TIMEOUT = 15.0
@@ -287,11 +288,7 @@ def ensure_token_fresh(*, sb=None, within_days: int = 7, within_hours: int | Non
     return True
 
 
-def _send_once(group_id: str, message: str, access_token: str) -> str:
-    payload = {
-        "recipient": {"group_id": group_id},
-        "message": {"text": message},
-    }
+def _send_group_payload_once(payload: dict[str, Any], access_token: str) -> str:
     headers = {
         "access_token": access_token,
         "Content-Type": "application/json",
@@ -300,6 +297,14 @@ def _send_once(group_id: str, message: str, access_token: str) -> str:
         resp = client.post(ZALO_GROUP_MESSAGE_URL, json=payload, headers=headers)
     body = _ensure_zalo_ok(resp, action="send_group_message")
     return _message_id_from_body(body)
+
+
+def _send_once(group_id: str, message: str, access_token: str) -> str:
+    payload = {
+        "recipient": {"group_id": group_id},
+        "message": {"text": message},
+    }
+    return _send_group_payload_once(payload, access_token)
 
 
 def _is_auth_error(exc: ZaloAPIError) -> bool:
@@ -331,6 +336,81 @@ def send_text_to_group(group_id: str, message: str, *, sb=None) -> str:
 
     refreshed = refresh_access_token(sb=sb)
     return _send_once(group_id, message, refreshed["access_token"])
+
+
+def _fetch_image_bytes(image_url: str) -> tuple[bytes, str]:
+    try:
+        with httpx.Client(timeout=HTTP_TIMEOUT) as client:
+            resp = client.get(image_url)
+            resp.raise_for_status()
+            content_disposition = resp.headers.get("content-disposition", "")
+            filename = "image.jpg"
+            if "filename=" in content_disposition:
+                filename = content_disposition.split("filename=")[1].strip('"\'')
+            else:
+                import urllib.parse
+                parsed = urllib.parse.urlparse(image_url)
+                path = parsed.path
+                if "/" in path:
+                    name = path.rsplit("/", 1)[-1]
+                    if "." in name:
+                        filename = name
+            return resp.content, filename
+    except Exception as exc:
+        raise ZaloAPIError(f"Khong the tai anh tu {image_url}: {exc}") from exc
+
+
+def _upload_image(image_bytes: bytes, filename: str, access_token: str) -> str:
+    headers = {"access_token": access_token}
+    files = {"file": (filename, image_bytes, "image/jpeg")}
+    with httpx.Client(timeout=HTTP_TIMEOUT) as client:
+        resp = client.post(ZALO_UPLOAD_IMAGE_URL, files=files, headers=headers)
+    body = _ensure_zalo_ok(resp, action="upload_image")
+    data = body.get("data") if isinstance(body.get("data"), dict) else {}
+    attachment_id = _clean(data.get("attachment_id"))
+    if not attachment_id:
+        raise ZaloAPIError("Zalo upload response khong co attachment_id", response_body=body)
+    return attachment_id
+
+
+def send_image_to_group(group_id: str, image_url: str, *, caption: str | None = None, sb=None) -> str:
+    """Send an image to a Zalo group. Follows same auth retry pattern as send_text_to_group."""
+    group_id = _clean(group_id)
+    image_url = _clean(image_url)
+    if not group_id:
+        raise ZaloAPIError("group_id khong duoc de trong")
+    if not image_url:
+        raise ZaloAPIError("image_url khong duoc de trong")
+
+    creds = _read_credentials(sb)
+    _validate_credentials(creds)
+
+    img_bytes, filename = _fetch_image_bytes(image_url)
+
+    def _do_send(acc_token: str) -> str:
+        attachment_id = _upload_image(img_bytes, filename, acc_token)
+        payload = {
+            "recipient": {"group_id": group_id},
+            "message": {
+                "attachment": {
+                    "type": "template",
+                    "payload": {
+                        "template_type": "media",
+                        "elements": [{"media_type": "image", "attachment_id": attachment_id}],
+                    },
+                },
+            },
+        }
+        return _send_group_payload_once(payload, acc_token)
+
+    try:
+        return _do_send(creds.access_token)
+    except ZaloAPIError as exc:
+        if not _is_auth_error(exc):
+            raise
+
+    refreshed = refresh_access_token(sb=sb)
+    return _do_send(refreshed["access_token"])
 
 
 async def run_daily_token_refresh_check(*, sb=None) -> bool:

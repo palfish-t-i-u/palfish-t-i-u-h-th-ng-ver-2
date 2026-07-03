@@ -18,6 +18,7 @@ export interface ZaloConfigPayload {
 export interface ZaloTestPayload {
   group_id: string;
   message: string;
+  image_url?: string;
 }
 
 export const getZaloConfig = async (): Promise<ZaloConfigData | null> => {
@@ -91,6 +92,9 @@ export interface ZaloOutboxRow {
   last_error: string | null;
   next_retry_at: string | null;
   zalo_message_id: string | null;
+  image_url: string | null;
+  image_sent_at: string | null;
+  image_error: string | null;
 }
 
 export const getZaloOutbox = async (): Promise<ZaloOutboxRow[]> => {

@@ -65,3 +65,9 @@ def _make_mock_supabase():
 @pytest.fixture
 def mock_supabase():
     return _make_mock_supabase()
+
+
+@pytest.fixture
+def anyio_backend():
+    return "asyncio"
+

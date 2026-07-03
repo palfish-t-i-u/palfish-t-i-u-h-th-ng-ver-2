@@ -12,6 +12,7 @@ export const ZaloConfigTab: React.FC = () => {
   const [testForm, setTestForm] = useState<ZaloTestPayload>({
     group_id: '',
     message: 'Test từ PalFish GMV Admin',
+    image_url: '',
   });
 
   const [isLoading, setIsLoading] = useState(true);
@@ -252,6 +253,15 @@ export const ZaloConfigTab: React.FC = () => {
             onChange={(e) => setTestForm({ ...testForm, message: e.target.value })}
             className="flex-1 px-3 py-2 border rounded-md text-sm focus:ring-2 focus:ring-blue-500 outline-none"
             placeholder="Nội dung tin nhắn test"
+          />
+        </div>
+        <div className="flex flex-col sm:flex-row gap-3 mb-4">
+          <input
+            type="text"
+            value={testForm.image_url || ''}
+            onChange={(e) => setTestForm({ ...testForm, image_url: e.target.value || undefined })}
+            className="flex-1 px-3 py-2 border rounded-md text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+            placeholder="Ảnh (URL) — tuỳ chọn"
           />
         </div>
         <button

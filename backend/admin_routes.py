@@ -117,6 +117,7 @@ class ZaloConfigPayload(BaseModel):
 class ZaloTestMessagePayload(BaseModel):
     group_id: str
     message: str
+    image_url: str | None = None
 
 
 MODULE_LIST = [
@@ -1487,6 +1488,14 @@ def register_admin_routes(app, get_supabase):
         from zalo_notifier import send_text_to_group
         try:
             msg_id = send_text_to_group(payload.group_id, payload.message, sb=sb)
-            return {"ok": True, "message_id": msg_id}
+            image_result = None
+            if payload.image_url:
+                from zalo_notifier import send_image_to_group
+                try:
+                    img_msg_id = send_image_to_group(payload.group_id, payload.image_url, sb=sb)
+                    image_result = {"ok": True, "message_id": img_msg_id}
+                except Exception as img_e:
+                    image_result = {"ok": False, "error": str(img_e)}
+            return {"ok": True, "message_id": msg_id, "image": image_result}
         except Exception as e:
             return {"ok": False, "error": str(e)}

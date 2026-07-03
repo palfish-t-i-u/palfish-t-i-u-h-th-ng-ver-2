@@ -65,6 +65,27 @@ async def poll_and_send(sb_factory: Callable[[], Any]):
             }).eq("id", row_id).execute()
             print(f"[zalo_worker] Message {row_id} sent successfully. Zalo Msg ID: {msg_id}")
 
+            # --- Image handling (best-effort) ---
+            image_url = (row.get("image_url") or "").strip()
+            if image_url:
+                try:
+                    from zalo_notifier import send_image_to_group
+                    await asyncio.to_thread(send_image_to_group, group_id, image_url, sb=sb)
+                    sb.table("zalo_outbox").update({
+                        "image_sent_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+                    }).eq("id", row_id).execute()
+                except Exception as img_exc:
+                    print(f"[zalo_worker] Image send failed for outbox {row_id}: {img_exc}")
+                    # Fallback: gửi link ảnh dạng text
+                    fallback_text = f"📎 Bill: {image_url}"
+                    try:
+                        await asyncio.to_thread(send_text_to_group, group_id, fallback_text, sb=sb)
+                    except Exception:
+                        pass  # best-effort
+                    sb.table("zalo_outbox").update({
+                        "image_error": str(img_exc)[:500],
+                    }).eq("id", row_id).execute()
+
         except Exception as exc:
             err_msg = str(exc)
             new_retries = retries + 1

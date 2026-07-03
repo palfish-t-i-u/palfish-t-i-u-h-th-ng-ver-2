@@ -110,6 +110,7 @@ class FakeSB:
                     "payment_request_id": "PR-1",
                     "amount": 1000,
                     "status": "pending",
+                    "method": "card",
                     "created_at": "2026-06-16T10:00:00+00:00",
                     "bill_images": ["https://bill.test/1.jpg"],
                 }
@@ -245,6 +246,7 @@ def test_gateway_match_candidates_search_finds_pr_without_amount_match():
             "payment_request_id": "PR-SEARCH",
             "amount": 1234,
             "status": "pending",
+            "method": "card",
             "created_at": "2026-06-16T10:01:00+00:00",
             "bill_images": [],
         }
