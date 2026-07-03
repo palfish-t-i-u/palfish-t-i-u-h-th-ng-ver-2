@@ -32,6 +32,10 @@ frontend/e2e/.auth/
 frontend/.env.e2e
 .vite/
 
+# Editor / máy cá nhân
+.env
+.vscode/settings.json
+
 # Backend
 backend/__pycache__/
 backend/**/__pycache__/

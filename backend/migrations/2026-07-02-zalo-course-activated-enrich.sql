@@ -78,11 +78,12 @@ BEGIN
   END IF;
 
   -- 4. Build message in new multi-line format
+  -- NULLIF(TRIM(...)) để chuỗi rỗng cũng fallback về '?' (parity với Python mirror)
   RETURN format(
     E'✅ ĐÃ KÍCH HOẠT THÀNH CÔNG GÓI HỌC\nKH: %s · Sale %s · Team %s\nSĐT: %s · UID: %s\nGói: %s',
-    COALESCE(ar_row.customer_name, v_customer_from_pr, '?'),
-    COALESCE(v_sale_name, v_sale_email, '?'),
-    COALESCE(NULLIF(v_sale_team, ''), '?'),
+    COALESCE(NULLIF(TRIM(ar_row.customer_name), ''), NULLIF(TRIM(v_customer_from_pr), ''), '?'),
+    COALESCE(NULLIF(TRIM(v_sale_name), ''), NULLIF(TRIM(v_sale_email), ''), '?'),
+    COALESCE(NULLIF(TRIM(v_sale_team), ''), '?'),
     v_phones,
     v_uids,
     CASE WHEN v_courses_list = '' THEN '?' ELSE v_courses_list END

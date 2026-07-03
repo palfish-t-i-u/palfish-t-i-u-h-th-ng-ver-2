@@ -77,10 +77,20 @@ class TestZaloMessageBuilder(unittest.TestCase):
     # --- build_course_activated_message ---
 
     def test_build_course_activated_message_success(self):
+        # Format enriched phải khớp SQL fn trong
+        # backend/migrations/2026-07-02-zalo-course-activated-enrich.sql
         req_data = {
             "id": "456",
             "customer_name": "Le Van C",
-            "package_name": "Khoa Hoc Tieng Anh 1 Nam",
+            "uids_data": [
+                {
+                    "uid": "3307542974",
+                    "phone": "84-772333555",
+                    "courses": [
+                        {"name": "Khoa Hoc Tieng Anh 1 Nam", "amount": 8500000},
+                    ],
+                },
+            ],
         }
         sale_info = {
             "crm_name": "Nguyen Thi D",
@@ -90,8 +100,10 @@ class TestZaloMessageBuilder(unittest.TestCase):
         result = build_course_activated_message(req_data, sale_info)
 
         expected = (
-            "✅ ĐÃ KÍCH HOẠT THÀNH CÔNG GÓI HỌC — KH Le Van C "
-            "của Nguyen Thi D · Team HCM (Online) với gói Khoa Hoc Tieng Anh 1 Nam"
+            "✅ ĐÃ KÍCH HOẠT THÀNH CÔNG GÓI HỌC\n"
+            "KH: Le Van C · Sale Nguyen Thi D · Team HCM (Online)\n"
+            "SĐT: 84-772333555 · UID: 3307542974\n"
+            "Gói: Khoa Hoc Tieng Anh 1 Nam"
         )
         self.assertEqual(result["message"], expected)
         self.assertEqual(result["canonical_team_code"], "HCM (Online)")
@@ -100,17 +112,17 @@ class TestZaloMessageBuilder(unittest.TestCase):
         with self.assertLogs(
             "utils.zalo_message_builder", level="WARNING"
         ):
-            result = build_course_activated_message(
-                {"id": "888"}, {"team": "Unknown Team"}
-            )
+            result = build_course_activated_message({"id": "888"}, {})
 
             expected = (
-                "✅ ĐÃ KÍCH HOẠT THÀNH CÔNG GÓI HỌC — KH Unknown "
-                "của Unknown · Team Unknown Team với gói Unknown"
+                "✅ ĐÃ KÍCH HOẠT THÀNH CÔNG GÓI HỌC\n"
+                "KH: ? · Sale ? · Team ?\n"
+                "SĐT: ? · UID: ?\n"
+                "Gói: ?"
             )
             self.assertEqual(result["message"], expected)
             self.assertEqual(
-                result["canonical_team_code"], "Unknown Team"
+                result["canonical_team_code"], "Khác"
             )
 
     # --- get_canonical_team ---
