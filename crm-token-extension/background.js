@@ -342,10 +342,16 @@ function _ddmmyyyy(d) {
   return `${p(d.getDate())}/${p(d.getMonth() + 1)}/${d.getFullYear()}`;
 }
 
-async function _fetchJsonCreds(url) {
-  const res = await fetch(url, { credentials: "include", headers: { Accept: "application/json" } });
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return res.json();
+async function _fetchJsonCreds(url, timeoutMs = 15000) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, { credentials: "include", headers: { Accept: "application/json" }, signal: ctrl.signal });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return res.json();
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 async function _fetchBase64Creds(url) {
@@ -406,8 +412,12 @@ async function syncPayoo() {
     let windowStart = new Date(windowEnd.getTime() - GATEWAY_SYNC_WINDOW_DAYS * 86400000);
     if (windowStart < stopDate) windowStart = stopDate;
 
-    const orders = await _fetchPayooWindow(windowStart, windowEnd);
-    allOrders.push(...orders);
+    try {
+      const orders = await _fetchPayooWindow(windowStart, windowEnd);
+      allOrders.push(...orders);
+    } catch (e) {
+      console.warn("[PalFish Sync] Payoo window failed:", windowStart.toISOString(), "→", windowEnd.toISOString(), e);
+    }
     windowsScanned += 1;
     windowEnd = windowStart;
   }
