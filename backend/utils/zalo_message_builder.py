@@ -73,6 +73,34 @@ def _first_nonempty(*values: Any, default: str = "") -> str:
     return default
 
 
+_COUNTRY_DIAL_CODE: dict[str, str] = {
+    "VN": "84", "CN": "86", "KR": "82", "US": "1", "JP": "81",
+    "TW": "886", "HK": "852", "SG": "65", "TH": "66", "PH": "63",
+}
+
+
+def format_phone_intl(phone: Any, country: Any = None) -> str | None:
+    """Format phone as ``{dial_code}-{local}`` (VD: ``84-353748121``).
+
+    Mirror of SQL ``public.format_phone_intl`` (migration
+    2026-07-04-zalo-phone-intl-format.sql).  Keep in sync.
+    """
+    if phone is None:
+        return None
+    raw = str(phone).strip()
+    if not raw:
+        return None
+    digits = "".join(ch for ch in raw if ch.isdigit())
+    if not digits:
+        return raw
+    cc_key = (str(country).strip().upper() if country else "VN") or "VN"
+    dial = _COUNTRY_DIAL_CODE.get(cc_key, "84")
+    digits = digits.lstrip("0")
+    if digits.startswith(dial) and len(digits) > len(dial) + 5:
+        digits = digits[len(dial):]
+    return f"{dial}-{digits}"
+
+
 def _format_datetime_vn(dt_value: Any) -> str:
     """Convert a datetime to ``dd/mm/yyyy HH:MM`` in Asia/Ho_Chi_Minh.
 
@@ -126,7 +154,10 @@ def build_payment_paid_message(
 
     customer = _first_nonempty(payment_data.get("customer_name"), default="?")
     child_name = _first_nonempty(payment_data.get("child_name"))
-    phone = _first_nonempty(payment_data.get("phone"), default="chưa cung cấp")
+    phone_fmt = format_phone_intl(
+        payment_data.get("phone"), payment_data.get("country")
+    )
+    phone = phone_fmt if phone_fmt else "chưa cung cấp"
 
     amount_raw = payment_data.get("amount")
     if amount_raw is None:
