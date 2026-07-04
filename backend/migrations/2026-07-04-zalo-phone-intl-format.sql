@@ -88,7 +88,9 @@ BEGIN
     v_header := v_header || format(' - Bé %s', TRIM(v_child));
   END IF;
 
-  v_header := v_header || format(' - ĐT: %s',
+  -- ZWSP (U+200B) after phone breaks Zalo Web phone-hyperlink auto-detection
+  -- which otherwise swallows trailing newline (dính dòng bug 4/7)
+  v_header := v_header || format(' - ĐT: %s' || E'​',
     COALESCE(NULLIF(TRIM(v_phone_fmt), ''), 'chưa cung cấp'));
 
   RETURN v_header || E'\n' ||
