@@ -20,7 +20,21 @@
     const data = event.data;
     if (!data || typeof data !== "object") return;
     if (data.type === "gateway-sync-now") {
+      if (!chrome.runtime?.id) {
+        window.postMessage({
+          type: "gateway-sync-now-result",
+          resp: { ok: false, error: "Extension đã reload — hãy refresh trang (F5) rồi thử lại." },
+        }, "*");
+        return;
+      }
       chrome.runtime.sendMessage({ type: "gateway-sync-now" }, (resp) => {
+        if (chrome.runtime.lastError) {
+          window.postMessage({
+            type: "gateway-sync-now-result",
+            resp: { ok: false, error: "Lỗi giao tiếp extension: " + chrome.runtime.lastError.message },
+          }, "*");
+          return;
+        }
         window.postMessage({ type: "gateway-sync-now-result", resp }, "*");
       });
     }
