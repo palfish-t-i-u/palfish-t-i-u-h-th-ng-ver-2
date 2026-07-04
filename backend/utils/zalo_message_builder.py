@@ -169,6 +169,19 @@ def build_payment_paid_message(
         amount_int = 0
     amount = f"{amount_int:,} VND"
 
+    method_raw = str(payment_data.get("method") or "").strip().lower()
+    if method_raw == "qr":
+        method_label = "Chuyển khoản QR"
+    elif method_raw == "cash":
+        method_label = "Tiền mặt"
+    elif method_raw == "card":
+        method_label = "Thẻ"
+    elif method_raw == "installment":
+        platform = str(payment_data.get("installment_platform") or "").strip()
+        method_label = f"Trả góp {platform}" if platform else "Trả góp"
+    else:
+        method_label = "?"
+
     sale_name = _first_nonempty(
         sale_info.get("display_name"),
         sale_info.get("crm_name"),
@@ -199,7 +212,7 @@ def build_payment_paid_message(
     message = (
         f"{header}\n"
         f"🔸 Sale {sale_name} · Team {team_display}\n"
-        f"🔸 Số tiền: {amount} lúc {time_str}"
+        f"🔸 Số tiền: {amount} lúc {time_str} - {method_label}"
     )
 
     return {"message": message, "canonical_team_code": canonical_team}
