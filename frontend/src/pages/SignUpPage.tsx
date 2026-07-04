@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth";
 import { Button, Input, Select } from "../components/ui";
 import Badge from "../components/ui/Badge";
+import { subTeamLabel } from "../lib/subTeamLabels";
 import AuthLayout from "../components/auth/AuthLayout";
 import GoogleIcon from "../components/auth/GoogleIcon";
 import "../components/auth/auth.css";
@@ -212,7 +213,7 @@ export default function SignUpPage() {
               <option value="">-- Chọn sub-team --</option>
               {subTeams.map((t) => (
                 <option key={t} value={t}>
-                  {t}
+                  {subTeamLabel(t)}
                 </option>
               ))}
             </Select>

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { endpoints } from "../../lib/api";
+import { subTeamLabel } from "../../lib/subTeamLabels";
 import type { SaleStaffRow } from "../../types/profile";
 import { Button, Input, Select } from "../ui";
 import Modal from "../ui/Modal";
@@ -112,7 +113,7 @@ export default function CrmLinkModal({ open, onClose, onConfirm, linkedCrmNames 
         >
           <option value="">Tất cả sub-team</option>
           {subTeams.map((t) => (
-            <option key={t} value={t}>{t}</option>
+            <option key={t} value={t}>{subTeamLabel(t)}</option>
           ))}
         </Select>
         <Button size="sm" variant="primary" onClick={handleSync} disabled={syncing}>
@@ -165,7 +166,7 @@ export default function CrmLinkModal({ open, onClose, onConfirm, linkedCrmNames 
                     </td>
                     <td className="font-semibold text-gmv-text-strong">{s.crmName}</td>
                     <td className="text-gmv-text">{s.team || "—"}</td>
-                    <td className="text-gmv-text">{s.subTeam || "—"}</td>
+                    <td className="text-gmv-text">{subTeamLabel(s.subTeam) || "—"}</td>
                     <td>
                       {isLinked ? (
                         <span className="aa-crm-link linked">

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { endpoints } from "../lib/api";
 import { cn } from "../lib/cn";
+import { subTeamLabel } from "../lib/subTeamLabels";
 import { useRefetchOnFocus } from "../hooks/useRefetchOnFocus";
 import { useRealtimeTable } from "../hooks/useRealtimeTable";
 import type {
@@ -451,7 +452,7 @@ function MonthRanking({ rows, loading }: { rows: DashboardSaleRow[]; loading: bo
               </div>
             </div>
             <div className="truncate text-[#4B5572]">{row.team || "—"}</div>
-            <div className="truncate text-[#4B5572]">{row.sub_team || "—"}</div>
+            <div className="truncate text-[#4B5572]">{subTeamLabel(row.sub_team) || "—"}</div>
             <div className="text-right font-extrabold text-[#101426]">{formatRevenueMillions(row.gmv_vnd)}</div>
             <div className="text-right font-semibold text-[#4B5572]">{row.order_count > 0 ? row.order_count : "—"}</div>
           </div>

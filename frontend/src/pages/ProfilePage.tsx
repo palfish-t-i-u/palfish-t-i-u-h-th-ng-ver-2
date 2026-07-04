@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useMe } from "../hooks/useMe";
 import { endpoints } from "../lib/api";
+import { subTeamLabel } from "../lib/subTeamLabels";
 import { Button, Input } from "../components/ui";
 import { Card, CardBody } from "../components/ui/Card";
 import PageSection from "../components/ui/PageSection";
@@ -130,7 +131,7 @@ export default function ProfilePage() {
               </div>
               <div>
                 <span className="text-gmv-muted">Sub-team</span>
-                <div className="font-semibold text-gmv-text-strong">{profile.subTeam || "—"}</div>
+                <div className="font-semibold text-gmv-text-strong">{subTeamLabel(profile.subTeam) || "—"}</div>
               </div>
               <div>
                 <span className="text-gmv-muted">Cấp quyền</span>

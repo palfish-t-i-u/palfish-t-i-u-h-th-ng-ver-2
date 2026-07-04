@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useMe } from "../hooks/useMe";
 import { endpoints } from "../lib/api";
+import { subTeamLabel } from "../lib/subTeamLabels";
 import type { RoleLevel, SaleStaffRow } from "../types/profile";
 import { Button, Input, Select } from "./ui";
 import Badge from "./ui/Badge";
@@ -111,7 +112,7 @@ export default function StaffCRMTab() {
                     {s.email || <span className="italic text-gmv-text-secondary">chưa link</span>}
                   </td>
                   <td className="px-4 py-2 text-gmv-text">{s.team || "—"}</td>
-                  <td className="px-4 py-2 text-gmv-text">{s.subTeam || "—"}</td>
+                  <td className="px-4 py-2 text-gmv-text">{subTeamLabel(s.subTeam) || "—"}</td>
                   <td className="px-4 py-2">
                     {canManage ? (
                       <Select

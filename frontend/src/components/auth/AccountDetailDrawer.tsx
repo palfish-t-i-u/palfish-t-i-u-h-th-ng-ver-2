@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { AuthUserRow } from "../../types/profile";
 import { endpoints } from "../../lib/api";
+import { subTeamLabel } from "../../lib/subTeamLabels";
 import { Button, Input, Select } from "../ui";
 import CrmLinkModal from "./CrmLinkModal";
 import "./auth-accounts.css";
@@ -265,7 +266,7 @@ export default function AccountDetailDrawer({ user, onClose, onUpdated, linkedCr
             </div>
             <div className="aa-summary-cell">
               <div className="aa-summary-label">Team</div>
-              <div className="aa-summary-value">{user.team || "—"}{user.subTeam ? ` · ${user.subTeam}` : ""}</div>
+              <div className="aa-summary-value">{user.team || "—"}{user.subTeam ? ` · ${subTeamLabel(user.subTeam)}` : ""}</div>
             </div>
             <div className="aa-summary-cell">
               <div className="aa-summary-label">CRM</div>
@@ -368,7 +369,7 @@ export default function AccountDetailDrawer({ user, onClose, onUpdated, linkedCr
                       <Select value={editSubTeam} onChange={(e) => setEditSubTeam(e.target.value)}>
                         <option value="">— Chọn —</option>
                         {editSubTeams.map((t) => (
-                          <option key={t} value={t}>{t}</option>
+                          <option key={t} value={t}>{subTeamLabel(t)}</option>
                         ))}
                       </Select>
                     ) : (
@@ -410,7 +411,7 @@ export default function AccountDetailDrawer({ user, onClose, onUpdated, linkedCr
                   </div>
                   <div className="aa-info-item">
                     <label>Sub-team</label>
-                    <span>{user.subTeam || "—"}</span>
+                    <span>{subTeamLabel(user.subTeam) || "—"}</span>
                   </div>
                   <div className="aa-info-item">
                     <label>Provider</label>
@@ -449,7 +450,7 @@ export default function AccountDetailDrawer({ user, onClose, onUpdated, linkedCr
                 <div className="aa-crm-card">
                   <div>
                     <div className="aa-crm-card-name">{user.crmName}</div>
-                    <div className="aa-crm-card-team">{user.team || "—"}{user.subTeam ? ` · ${user.subTeam}` : ""}</div>
+                    <div className="aa-crm-card-team">{user.team || "—"}{user.subTeam ? ` · ${subTeamLabel(user.subTeam)}` : ""}</div>
                   </div>
                   <span className="aa-crm-link linked">
                     <span className="aa-status-dot" style={{ background: "var(--gmv-ok)" }} />
