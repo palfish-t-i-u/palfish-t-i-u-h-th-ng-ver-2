@@ -342,11 +342,24 @@ function _ddmmyyyy(d) {
   return `${p(d.getDate())}/${p(d.getMonth() + 1)}/${d.getFullYear()}`;
 }
 
+async function _buildCookieHeader(url) {
+  try {
+    const cookies = await chrome.cookies.getAll({ url });
+    if (!cookies.length) return "";
+    return cookies.map((c) => `${c.name}=${c.value}`).join("; ");
+  } catch {
+    return "";
+  }
+}
+
 async function _fetchJsonCreds(url, timeoutMs = 15000) {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
-    const res = await fetch(url, { credentials: "include", headers: { Accept: "application/json" }, signal: ctrl.signal });
+    const cookie = await _buildCookieHeader(url);
+    const headers = { Accept: "application/json" };
+    if (cookie) headers.Cookie = cookie;
+    const res = await fetch(url, { headers, signal: ctrl.signal });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return res.json();
   } finally {
@@ -355,7 +368,10 @@ async function _fetchJsonCreds(url, timeoutMs = 15000) {
 }
 
 async function _fetchBase64Creds(url) {
-  const res = await fetch(url, { credentials: "include" });
+  const cookie = await _buildCookieHeader(url);
+  const headers = {};
+  if (cookie) headers.Cookie = cookie;
+  const res = await fetch(url, { headers });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const bytes = new Uint8Array(await res.arrayBuffer());
   let binary = "";
