@@ -3,6 +3,7 @@
 -- Target: PRODUCTION (jozcvbbypwvzaefteoxn) + sandbox (pxgybyfiwywksesyogti)
 -- Date: 2026-06-26
 -- Prerequisite: payment_lines, active_requests, payment_requests, nhan_su_sale exist
+-- AND functions build_payment_paid_message, build_course_activated_message exist (from 2026-06-23-zalo-oa-tables.sql)
 -- Note: Apply on sandbox first, smoke-test, then prod.
 
 -- =============================================
@@ -134,10 +135,12 @@ DROP TRIGGER IF EXISTS trg_payment_paid_dingtalk ON public.payment_lines;
 CREATE TRIGGER trg_payment_paid_dingtalk
   AFTER UPDATE ON public.payment_lines
   FOR EACH ROW
+  WHEN (NEW.status IS DISTINCT FROM OLD.status)
   EXECUTE FUNCTION fn_payment_paid_dingtalk_notify();
 
 DROP TRIGGER IF EXISTS trg_course_activated_dingtalk ON public.active_requests;
 CREATE TRIGGER trg_course_activated_dingtalk
   AFTER UPDATE ON public.active_requests
   FOR EACH ROW
+  WHEN (NEW.status IS DISTINCT FROM OLD.status)
   EXECUTE FUNCTION fn_course_activated_dingtalk_notify();
