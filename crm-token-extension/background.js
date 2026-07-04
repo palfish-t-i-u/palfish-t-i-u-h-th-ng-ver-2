@@ -49,7 +49,8 @@ const MPOS_EXPORTS = [
   },
 ];
 
-const GATEWAY_SYNC_WINDOW_DAYS = 3; // cửa sổ trượt (giảm 14→3 ngày theo feedback họp 18/6 — đủ cover trễ ngân hàng, data cũ giữ trong DB)
+const GATEWAY_SYNC_WINDOW_DAYS = 3; // mỗi lần tìm kéo 3 ngày
+const PAYOO_MAX_LOOKBACK_DAYS = 31; // Payoo portal giới hạn 31 ngày; dùng làm fallback khi chưa có watermark
 const GATEWAY_ALARM = "palfish-gateway-sync";
 
 const CRM_URL = "https://sea.pri.ibanyu.com/";
@@ -388,9 +389,47 @@ async function _pushGatewayOrders(orders, source, kind) {
   return { ok: false, error: "Không gửi được orders về backend nào" };
 }
 
-// Payoo: lật trang /api/ecom/order/ theo TotalItem, gom OrderList, đẩy JSON về backend.
+// Payoo: crawl backwards từ hôm nay về watermark (lần sync thành công gần nhất).
+// Mỗi bước lùi GATEWAY_SYNC_WINDOW_DAYS ngày, lật trang gom OrderList, rồi đẩy JSON về backend.
 async function syncPayoo() {
-  const { from, to } = _gatewayWindow();
+  const stored = await chrome.storage.local.get("payoo_last_sync_at");
+  const now = new Date();
+  const stopDate = stored.payoo_last_sync_at
+    ? new Date(stored.payoo_last_sync_at)
+    : new Date(now.getTime() - PAYOO_MAX_LOOKBACK_DAYS * 86400000);
+
+  const allOrders = [];
+  let windowEnd = now;
+  let windowsScanned = 0;
+
+  while (windowEnd > stopDate) {
+    let windowStart = new Date(windowEnd.getTime() - GATEWAY_SYNC_WINDOW_DAYS * 86400000);
+    if (windowStart < stopDate) windowStart = stopDate;
+
+    const orders = await _fetchPayooWindow(windowStart, windowEnd);
+    allOrders.push(...orders);
+    windowsScanned += 1;
+
+    windowEnd = windowStart;
+    if (windowsScanned > 30) break;
+  }
+
+  if (!allOrders.length) return { ok: true, pulled: 0, inserted: 0, windowsScanned };
+
+  const result = await _pushGatewayOrders(allOrders, "payoo", "online");
+  if (result.ok) {
+    await chrome.storage.local.set({ payoo_last_sync_at: now.toISOString() });
+  }
+  return {
+    ok: result.ok,
+    pulled: allOrders.length,
+    inserted: result.data?.inserted || 0,
+    windowsScanned,
+    error: result.error,
+  };
+}
+
+async function _fetchPayooWindow(from, to) {
   const fromSec = _epochSec(from);
   const toSec = _epochSec(to);
   const orders = [];
@@ -407,11 +446,9 @@ async function syncPayoo() {
     total = Number(data.TotalItem || 0);
     if (!list.length) break;
     pageNo += 1;
-    if (pageNo > 100) break; // chặn vòng lặp vô hạn
+    if (pageNo > 100) break;
   }
-  if (!orders.length) return { ok: true, pulled: 0, inserted: 0 };
-  const result = await _pushGatewayOrders(orders, "payoo", "online");
-  return { ok: result.ok, pulled: orders.length, inserted: result.data?.inserted || 0, error: result.error };
+  return orders;
 }
 
 // mPOS: tải 2 file export (chi tiết + danh sách phiếu chi) rồi đẩy bytes về backend.
@@ -456,7 +493,7 @@ async function runGatewaySync(trigger = "alarm") {
     payooPulled = payoo.pulled || 0;
     payooInserted = payoo.inserted || 0;
     inserted += payooInserted;
-    summary.push(payoo.ok ? `Payoo: kéo ${payoo.pulled} GD, ghi ${payoo.inserted || 0}` : `Payoo lỗi: ${payoo.error || "?"}`);
+    summary.push(payoo.ok ? `Payoo: kéo ${payoo.pulled} GD, ghi ${payoo.inserted || 0} (${payoo.windowsScanned || 1} cửa sổ)` : `Payoo lỗi: ${payoo.error || "?"}`);
   } catch (e) {
     summary.push(`Payoo lỗi: ${e}`);
   }
