@@ -14,7 +14,7 @@ def test_compute_signature_matches_dingtalk_spec():
 
     string_to_sign = f"{timestamp}\n{secret}".encode("utf-8")
     expected_raw = hmac.new(secret.encode("utf-8"), string_to_sign, hashlib.sha256).digest()
-    expected = urllib.parse.quote_plus(base64.b64encode(expected_raw))
+    expected = base64.b64encode(expected_raw).decode("utf-8")  # raw base64, no quote_plus
 
     assert sign == expected
 
@@ -61,7 +61,10 @@ def test_send_text_to_group_success(monkeypatch):
     assert msg_id  # non-empty surrogate id
     call = fake.calls[0]
     assert "timestamp=1700000000123" in call["url"]
-    assert "sign=" in call["url"]
+    # verify sign is correctly percent-encoded (urlencode encodes + as %2B, etc.)
+    expected_sign = dingtalk_notifier.compute_signature("1700000000123", "SECxyz")
+    encoded_sign = urllib.parse.quote_plus(expected_sign)
+    assert f"sign={encoded_sign}" in call["url"]
     assert call["json"] == {"msgtype": "text", "text": {"content": "hello"}}
     assert call["headers"]["Content-Type"] == "application/json"
 

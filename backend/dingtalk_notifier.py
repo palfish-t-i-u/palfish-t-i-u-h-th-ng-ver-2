@@ -15,7 +15,6 @@ from typing import Any
 
 import httpx
 
-DINGTALK_ROBOT_URL = "https://oapi.dingtalk.com/robot/send"
 HTTP_TIMEOUT = 15.0
 
 
@@ -37,7 +36,7 @@ class DingTalkAPIError(RuntimeError):
 def compute_signature(timestamp: str, secret: str) -> str:
     string_to_sign = f"{timestamp}\n{secret}".encode("utf-8")
     raw = hmac.new(secret.encode("utf-8"), string_to_sign, hashlib.sha256).digest()
-    return urllib.parse.quote_plus(base64.b64encode(raw))
+    return base64.b64encode(raw).decode("utf-8")  # plain base64, urlencode will percent-encode
 
 
 def _clean(value: Any) -> str:
@@ -87,8 +86,15 @@ def send_text_to_group(
     payload = {"msgtype": "text", "text": {"content": message}}
     headers = {"Content-Type": "application/json"}
 
-    with httpx.Client(timeout=HTTP_TIMEOUT) as client:
-        resp = client.post(signed_url, json=payload, headers=headers)
+    try:
+        with httpx.Client(timeout=HTTP_TIMEOUT) as client:
+            resp = client.post(signed_url, json=payload, headers=headers)
+    except httpx.HTTPError as exc:
+        raise DingTalkAPIError(
+            f"DingTalk network error: {exc}",
+            status_code=None,
+            response_body=None,
+        ) from exc
 
     body = _json_or_text(resp)
     if resp.status_code >= 400:
