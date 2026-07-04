@@ -192,7 +192,9 @@ def build_payment_paid_message(
     header = f"💰 ĐÃ VÀO - KH {customer}"
     if child_name:
         header += f" - Bé {child_name}"
-    header += f" - ĐT: {phone}"
+    # ZWSP (U+200B) after phone breaks Zalo Web phone-hyperlink auto-detection
+    # which otherwise swallows trailing newline (dính dòng bug 4/7)
+    header += f" - ĐT: {phone}​"
 
     message = (
         f"{header}\n"
