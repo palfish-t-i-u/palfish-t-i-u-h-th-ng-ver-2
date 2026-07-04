@@ -199,7 +199,7 @@ async def test_payment_webhook_to_zalo_outbox_flow(client, fake_db):
         "id": 1,
         "event_type": "payment_paid",
         "group_id": "ZALO-GROUP-123",
-        "message": "💰 Đã vào - KH Ngô Bá Khá | Sale Nguyễn Văn A · Team HN inhouse | 1,000,000đ | 01/10/2023 17:00",
+        "message": "💰 ĐÃ VÀO - KH Ngô Bá Khá - ĐT: 0912345678\n🔸 Sale Nguyễn Văn A · Team HN inhouse\n🔸 Số tiền: 1,000,000 VND lúc 17:00 01/10/2023",
         "created_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
         "sent_at": None,
         "next_retry_at": None,
@@ -221,9 +221,9 @@ async def test_payment_webhook_to_zalo_outbox_flow(client, fake_db):
         # Kiểm tra Group ID
         assert group_id_arg == "ZALO-GROUP-123"
         
-        assert "💰 Đã vào - KH Ngô Bá Khá" in message_arg
+        assert "💰 ĐÃ VÀO - KH Ngô Bá Khá" in message_arg
         assert "Team HN inhouse" in message_arg
-        assert "1,000,000đ" in message_arg
+        assert "1,000,000 VND" in message_arg
         assert "Sale Nguyễn Văn A" in message_arg
 
     # Kiểm tra dòng outbox đã được đánh dấu là gửi thành công
