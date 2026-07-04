@@ -1377,3 +1377,12 @@ async def _start_zalo_worker() -> None:
     print("[zalo] starting outbox worker...")
     asyncio.create_task(start_outbox_worker(_supabase))
 
+
+@app.on_event("startup")
+async def _start_dingtalk_worker() -> None:
+    import asyncio
+    from dingtalk_outbox_worker import start_outbox_worker as start_dingtalk_outbox
+
+    print("[dingtalk] starting outbox worker...")
+    asyncio.create_task(start_dingtalk_outbox(_supabase))
+

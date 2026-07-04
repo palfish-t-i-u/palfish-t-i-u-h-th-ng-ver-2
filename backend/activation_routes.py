@@ -2165,6 +2165,26 @@ def register_activation_routes(app, supabase_factory):
             "message": result["message"],
         }).execute()
 
+        # DingTalk parallel notification — best-effort, independent of Zalo
+        try:
+            dt_group = (
+                sb.table("dingtalk_team_groups")
+                .select("team_code, is_active")
+                .eq("team_code", OPS_GROUP_TEAM_CODE)
+                .limit(1)
+                .execute()
+            )
+            if dt_group.data and dt_group.data[0].get("is_active"):
+                sb.table("dingtalk_outbox").insert({
+                    "event_type": "activation_urgent_reminder",
+                    "source_table": "activation_reminders",
+                    "source_id": str(reminder.data[0]["id"]) if reminder.data else "00000000-0000-0000-0000-000000000000",
+                    "team_code": OPS_GROUP_TEAM_CODE,
+                    "message": result["message"],
+                }).execute()
+        except Exception as dt_exc:
+            print(f"[dingtalk] urgent reminder enqueue failed (non-fatal): {dt_exc}")
+
         return {"ok": True, "reminder": reminder.data[0] if reminder.data else None}
 
     @app.get("/api/v1/payment-requests/{pr_id}/activation-urgent-remind", tags=["Activation"])

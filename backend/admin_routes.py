@@ -120,6 +120,26 @@ class ZaloTestMessagePayload(BaseModel):
     image_url: str | None = None
 
 
+class DingTalkGroupCreatePayload(BaseModel):
+    team_code: str
+    webhook_url: str
+    secret: str
+    group_name: str
+    is_active: bool
+
+
+class DingTalkGroupPatchPayload(BaseModel):
+    webhook_url: str | None = None
+    secret: str | None = None
+    group_name: str | None = None
+    is_active: bool | None = None
+
+
+class DingTalkTestPayload(BaseModel):
+    team_code: str
+    message: str
+
+
 MODULE_LIST = [
     "dashboard",
     "paymentRequests",
@@ -135,6 +155,7 @@ MODULE_LIST = [
     "module6",
     "gatewaySync",    # <-- Thêm mới phục vụ đồng bộ mPOS/Payoo
     "zalo",           # <-- Thêm mới phục vụ quản lý phân quyền Zalo OA
+    "dingtalk",       # <-- Thêm mới phục vụ quản lý nhóm DingTalk
     "authAccounts",
     "profile",
     "permissions",
@@ -151,7 +172,7 @@ DEFAULT_DEPT_PERMISSIONS: dict[str, dict[str, str]] = {
         "revenueLedger": "read", "bc01": "read", "bc02": "read", "bc03": "read",
         "module5": "none", "module6": "full",
         "authAccounts": "none", "profile": "full", "permissions": "none",
-        "reconCard": "none", "gatewaySync": "none", "zalo": "none",
+        "reconCard": "none", "gatewaySync": "none", "zalo": "none", "dingtalk": "none",
     },
     "hr": {
         "dashboard": "full", "paymentRequests": "full",
@@ -159,7 +180,7 @@ DEFAULT_DEPT_PERMISSIONS: dict[str, dict[str, str]] = {
         "revenueLedger": "full", "bc01": "full", "bc02": "full", "bc03": "full",
         "module5": "full", "module6": "full",
         "authAccounts": "full", "profile": "full", "permissions": "full",
-        "reconCard": "full", "gatewaySync": "full", "zalo": "full",
+        "reconCard": "full", "gatewaySync": "full", "zalo": "full", "dingtalk": "full",
     },
     "marketing": {
         "dashboard": "read", "paymentRequests": "none",
@@ -167,7 +188,7 @@ DEFAULT_DEPT_PERMISSIONS: dict[str, dict[str, str]] = {
         "revenueLedger": "full", "bc01": "read", "bc02": "read", "bc03": "read",
         "module5": "none", "module6": "none",
         "authAccounts": "none", "profile": "full", "permissions": "none",
-        "reconCard": "none", "gatewaySync": "none", "zalo": "none",
+        "reconCard": "none", "gatewaySync": "none", "zalo": "none", "dingtalk": "none",
     },
     "cs": {
         "dashboard": "read", "paymentRequests": "none",
@@ -175,7 +196,7 @@ DEFAULT_DEPT_PERMISSIONS: dict[str, dict[str, str]] = {
         "revenueLedger": "none", "bc01": "none", "bc02": "none", "bc03": "none",
         "module5": "none", "module6": "none",
         "authAccounts": "none", "profile": "full", "permissions": "none",
-        "reconCard": "none", "gatewaySync": "none", "zalo": "none",
+        "reconCard": "none", "gatewaySync": "none", "zalo": "none", "dingtalk": "none",
     },
 }
 
@@ -1497,5 +1518,153 @@ def register_admin_routes(app, get_supabase):
                 except Exception as img_e:
                     image_result = {"ok": False, "error": str(img_e)}
             return {"ok": True, "message_id": msg_id, "image": image_result}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+    # ------------------------------------------------------------------
+    # DingTalk Team Groups Management
+    # ------------------------------------------------------------------
+    @app.get("/api/v1/admin/dingtalk-groups")
+    def get_dingtalk_groups(authorization: str | None = Header(None)):
+        sb = _sb_or_503(get_supabase)
+        actor = resolve_actor(sb, authorization)
+        require_module_access(sb, actor, "dingtalk")
+
+        res = (
+            sb.table("dingtalk_team_groups")
+            .select("team_code, webhook_url, group_name, is_active, updated_at")
+            .order("updated_at", desc=True)
+            .execute()
+        )
+        return {"data": res.data or []}
+
+    @app.post("/api/v1/admin/dingtalk-groups")
+    def create_dingtalk_group(payload: DingTalkGroupCreatePayload, authorization: str | None = Header(None)):
+        sb = _sb_or_503(get_supabase)
+        actor = resolve_actor(sb, authorization)
+        require_module_write(sb, actor, "dingtalk")
+
+        data = {
+            "team_code": payload.team_code.strip(),
+            "webhook_url": payload.webhook_url.strip(),
+            "secret": payload.secret.strip(),
+            "group_name": payload.group_name.strip(),
+            "is_active": payload.is_active,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }
+        try:
+            res = sb.table("dingtalk_team_groups").insert(data).execute()
+            if not res.data:
+                raise HTTPException(400, "Không thể thêm DingTalk group (team_code có thể đã tồn tại)")
+            row = dict(res.data[0])
+            row.pop("secret", None)
+            return {"data": row}
+        except Exception as e:
+            raise HTTPException(400, f"Lỗi CSDL: {str(e)}")
+
+    @app.patch("/api/v1/admin/dingtalk-groups/{team_code}")
+    def update_dingtalk_group(team_code: str, payload: DingTalkGroupPatchPayload, authorization: str | None = Header(None)):
+        sb = _sb_or_503(get_supabase)
+        actor = resolve_actor(sb, authorization)
+        require_module_write(sb, actor, "dingtalk")
+
+        patch_data: dict[str, Any] = {}
+        if payload.webhook_url is not None:
+            patch_data["webhook_url"] = payload.webhook_url.strip()
+        if payload.secret is not None:
+            patch_data["secret"] = payload.secret.strip()
+        if payload.group_name is not None:
+            patch_data["group_name"] = payload.group_name.strip()
+        if payload.is_active is not None:
+            patch_data["is_active"] = payload.is_active
+
+        if not patch_data:
+            raise HTTPException(400, "Không có dữ liệu cập nhật")
+
+        patch_data["updated_at"] = datetime.now(timezone.utc).isoformat()
+        res = sb.table("dingtalk_team_groups").update(patch_data).eq("team_code", team_code).execute()
+        if not res.data:
+            raise HTTPException(404, f"Không tìm thấy DingTalk Group: {team_code}")
+        row = dict(res.data[0])
+        row.pop("secret", None)
+        return {"data": row}
+
+    @app.delete("/api/v1/admin/dingtalk-groups/{team_code}")
+    def delete_dingtalk_group(team_code: str, authorization: str | None = Header(None)):
+        sb = _sb_or_503(get_supabase)
+        actor = resolve_actor(sb, authorization)
+        require_module_write(sb, actor, "dingtalk")
+
+        res = sb.table("dingtalk_team_groups").delete().eq("team_code", team_code).execute()
+        if not res.data:
+            raise HTTPException(404, f"Không tìm thấy DingTalk Group: {team_code}")
+        return {"success": True, "deleted_team_code": team_code}
+
+    # ------------------------------------------------------------------
+    # DingTalk Outbox
+    # ------------------------------------------------------------------
+    @app.get("/api/v1/admin/dingtalk-outbox")
+    def get_dingtalk_outbox(authorization: str | None = Header(None)):
+        sb = _sb_or_503(get_supabase)
+        actor = resolve_actor(sb, authorization)
+        require_module_access(sb, actor, "dingtalk")
+
+        res = (
+            sb.table("dingtalk_outbox")
+            .select("*")
+            .order("created_at", desc=True)
+            .limit(50)
+            .execute()
+        )
+        return {"data": res.data or []}
+
+    @app.post("/api/v1/admin/dingtalk-outbox/{msg_id}/retry")
+    def retry_dingtalk_outbox(msg_id: int, authorization: str | None = Header(None)):
+        sb = _sb_or_503(get_supabase)
+        actor = resolve_actor(sb, authorization)
+        require_module_write(sb, actor, "dingtalk")
+
+        patch_data = {
+            "retries": 0,
+            "last_error": None,
+            "next_retry_at": datetime.now(timezone.utc).isoformat(),
+            "sent_at": None,
+        }
+        res = sb.table("dingtalk_outbox").update(patch_data).eq("id", msg_id).execute()
+        if not res.data:
+            raise HTTPException(404, f"Không tìm thấy DingTalk Outbox: {msg_id}")
+        return {"ok": True}
+
+    # ------------------------------------------------------------------
+    # DingTalk test send
+    # ------------------------------------------------------------------
+    @app.post("/api/v1/admin/dingtalk-test")
+    def test_dingtalk_message(payload: DingTalkTestPayload, authorization: str | None = Header(None)):
+        sb = _sb_or_503(get_supabase)
+        actor = resolve_actor(sb, authorization)
+        require_module_write(sb, actor, "dingtalk")
+
+        from dingtalk_notifier import send_text_to_group
+
+        creds = (
+            sb.table("dingtalk_team_groups")
+            .select("webhook_url, secret, is_active")
+            .eq("team_code", payload.team_code)
+            .limit(1)
+            .execute()
+        )
+        if not creds.data:
+            return {"ok": False, "error": f"team_code {payload.team_code} không tồn tại"}
+        row = creds.data[0]
+        if not row.get("is_active"):
+            return {"ok": False, "error": "Group đang disable"}
+
+        try:
+            msg_id = send_text_to_group(
+                webhook_url=row["webhook_url"],
+                secret=row["secret"],
+                message=payload.message,
+            )
+            return {"ok": True, "message_id": msg_id}
         except Exception as e:
             return {"ok": False, "error": str(e)}

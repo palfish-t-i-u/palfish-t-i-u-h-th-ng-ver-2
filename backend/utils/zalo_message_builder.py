@@ -109,7 +109,12 @@ def build_payment_paid_message(
 
     Format::
 
-        💰 PAID — KH {customer} | {amount}đ | sale {sale_name} | {method} | {time}
+        💰 ĐÃ VÀO - KH {name}[ - Bé {child_name}] - ĐT: {phone|chưa cung cấp}
+        🔸 Sale {sale_name} · Team {team}
+        🔸 Số tiền: {amount} VND lúc {HH:MM DD/MM/YYYY}
+
+    Live path = SQL function ``build_payment_paid_message`` (DB trigger).
+    Keep this mirror in sync with 2026-07-04-zalo-payment-paid-format-v2.sql.
 
     Returns ``{"message": ..., "canonical_team_code": ...}``.
     """
@@ -119,28 +124,49 @@ def build_payment_paid_message(
         logger.warning("Missing sale_info for %s", ctx)
         sale_info = {}
 
-    customer = _safe_get(payment_data, "customer_name", "Unknown",
-                         f"payment_data ({ctx})")
+    customer = _first_nonempty(payment_data.get("customer_name"), default="?")
+    child_name = _first_nonempty(payment_data.get("child_name"))
+    phone = _first_nonempty(payment_data.get("phone"), default="chưa cung cấp")
+
     amount_raw = payment_data.get("amount")
     if amount_raw is None:
         logger.warning("Missing amount in payment_data (%s)", ctx)
         amount_raw = 0
-    amount = _format_vnd(amount_raw)
+    try:
+        amount_int = int(amount_raw)
+    except (TypeError, ValueError):
+        amount_int = 0
+    amount = f"{amount_int:,} VND"
 
-    sale_name = _safe_get(sale_info, "crm_name", "Unknown",
-                          f"sale_info ({ctx})")
-    method = _safe_get(payment_data, "method", "Unknown",
-                       f"payment_data ({ctx})")
+    sale_name = _first_nonempty(
+        sale_info.get("display_name"),
+        sale_info.get("crm_name"),
+        sale_info.get("email"),
+        default="?",
+    )
     paid_at = payment_data.get("paid_at")
     time_str = _format_datetime_vn(paid_at)
+    if time_str == "N/A":
+        time_str = "?"
+    else:
+        # SQL format = "HH:MM DD/MM/YYYY" — reverse Python's "DD/MM/YYYY HH:MM"
+        parts = time_str.split(" ")
+        if len(parts) == 2:
+            time_str = f"{parts[1]} {parts[0]}"
 
     raw_team = sale_info.get("team")
     canonical_team = get_canonical_team(raw_team)
     team_display = str(raw_team).strip() if raw_team and str(raw_team).strip() else "?"
 
+    header = f"💰 ĐÃ VÀO - KH {customer}"
+    if child_name:
+        header += f" - Bé {child_name}"
+    header += f" - ĐT: {phone}"
+
     message = (
-        f"💰 Đã vào - KH {customer} | Sale {sale_name} · Team {team_display} "
-        f"| {amount} | {time_str}"
+        f"{header}\n"
+        f"🔸 Sale {sale_name} · Team {team_display}\n"
+        f"🔸 Số tiền: {amount} lúc {time_str}"
     )
 
     return {"message": message, "canonical_team_code": canonical_team}

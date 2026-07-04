@@ -39,6 +39,9 @@ const SoDoanhThuTab = lazyRetry(() => import("../components/SoDoanhThuTab"));
 const ZaloConfigTab = lazyRetry(() => import("../components/admin/ZaloConfigTab"));
 const ZaloGroupsTab = lazyRetry(() => import("../components/admin/ZaloGroupsTab"));
 const ZaloOutboxTab = lazyRetry(() => import("../components/admin/ZaloOutboxTab"));
+const DingTalkConfigTab = lazyRetry(() => import("../components/admin/DingTalkConfigTab"));
+const DingTalkGroupsTab = lazyRetry(() => import("../components/admin/DingTalkGroupsTab"));
+const DingTalkOutboxTab = lazyRetry(() => import("../components/admin/DingTalkOutboxTab"));
 
 const PRELOAD_MAP: Record<string, () => Promise<unknown>> = {
   paymentRequests: () => import("../components/PaymentRequestsTab"),
@@ -72,7 +75,10 @@ type ViewId =
   | "permissions"
   | "zaloConfig"
   | "zaloGroups"
-  | "zaloOutbox";
+  | "zaloOutbox"
+  | "dingtalkConfig"
+  | "dingtalkGroups"
+  | "dingtalkOutbox";
 
 const FLOW_VIEW_MAP: Record<PaymentFlowView, ViewId> = {
   paymentRequests: "paymentRequests",
@@ -216,6 +222,18 @@ const TITLES: Record<ViewId, { title: string; subtitle?: string }> = {
     title: "Zalo — Outbox",
     subtitle: "50 tin nhắn gần nhất — theo dõi trạng thái gửi & retry",
   },
+  dingtalkConfig: {
+    title: "DingTalk — Cấu hình",
+    subtitle: "Test gửi tin tới nhóm DingTalk đã cấu hình",
+  },
+  dingtalkGroups: {
+    title: "DingTalk — Nhóm thông báo",
+    subtitle: "Mapping team → DingTalk webhook + secret",
+  },
+  dingtalkOutbox: {
+    title: "DingTalk — Outbox",
+    subtitle: "50 tin nhắn gần nhất — theo dõi trạng thái gửi & retry",
+  },
 };
 
 export default function MainPage() {
@@ -246,6 +264,7 @@ function MainPageInner({
   const perms = profile?.permissions ?? {};
   const can = (key: string) => {
     const k = key === "zaloConfig" || key === "zaloGroups" || key === "zaloOutbox" ? "zalo"
+      : key === "dingtalkConfig" || key === "dingtalkGroups" || key === "dingtalkOutbox" ? "dingtalk"
       : key;
     return isDevMode || (perms[k] ?? "none") !== "none";
   };
@@ -323,6 +342,17 @@ function MainPageInner({
     if (zaloChildren.length > 0)
       list.push({ id: "zaloHub", label: "Zalo OA", icon: I.team, section: "Quản trị", children: zaloChildren });
 
+    // ── DingTalk ──
+    const dingtalkChildren: NavChildItem[] = [];
+    if (can("dingtalkConfig"))
+      dingtalkChildren.push({ id: "dingtalkConfig", label: "Cấu hình", subtitle: "Test gửi tin" });
+    if (can("dingtalkGroups"))
+      dingtalkChildren.push({ id: "dingtalkGroups", label: "Nhóm thông báo", subtitle: "Mapping team → DingTalk group" });
+    if (can("dingtalkOutbox"))
+      dingtalkChildren.push({ id: "dingtalkOutbox", label: "Outbox", subtitle: "Trạng thái gửi tin" });
+    if (dingtalkChildren.length > 0)
+      list.push({ id: "dingtalkHub", label: "DingTalk", icon: I.team, children: dingtalkChildren });
+
     // ── Tài khoản & Quyền ──
     const accountItems: NavItem[] = [];
     if (showAuthAccounts)
@@ -354,7 +384,10 @@ function MainPageInner({
     activeView === "permissions" ||
     activeView === "zaloConfig" ||
     activeView === "zaloGroups" ||
-    activeView === "zaloOutbox";
+    activeView === "zaloOutbox" ||
+    activeView === "dingtalkConfig" ||
+    activeView === "dingtalkGroups" ||
+    activeView === "dingtalkOutbox";
 
   const renderActiveView = () => {
     if (!can(activeView) && activeView !== "profile") return null;
@@ -378,6 +411,9 @@ function MainPageInner({
       case "zaloConfig": return <ZaloConfigTab />;
       case "zaloGroups": return <ZaloGroupsTab />;
       case "zaloOutbox": return <ZaloOutboxTab />;
+      case "dingtalkConfig": return <DingTalkConfigTab />;
+      case "dingtalkGroups": return <DingTalkGroupsTab />;
+      case "dingtalkOutbox": return <DingTalkOutboxTab />;
       default: return <PaymentRequestsTab />;
     }
   };
