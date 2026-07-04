@@ -83,7 +83,7 @@ export const DingTalkGroupsTab: React.FC = () => {
 
   const handleRotateSecret = async (teamCode: string) => {
     const newSecret = window.prompt('Nhập Secret mới (SEC...):');
-    if (!newSecret) return;
+    if (!newSecret?.trim()) return;
     try {
       await updateDingTalkGroup(teamCode, { secret: newSecret.trim() });
       setAlert({ type: 'success', message: 'Cập nhật secret thành công' });
