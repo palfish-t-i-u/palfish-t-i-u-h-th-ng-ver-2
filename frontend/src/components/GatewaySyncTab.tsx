@@ -196,10 +196,10 @@ export default function GatewaySyncTab() {
     window.addEventListener("message", onResult);
     window.postMessage({ type: "gateway-sync-now" }, "*");
 
-    // Timeout 60s — extension chưa response thì coi như fail
+    // Timeout 180s — crawl backwards có thể kéo nhiều cửa sổ
     window.setTimeout(
-      () => finish(null, null, null, "Hết thời gian — extension không phản hồi (60s)"),
-      60000,
+      () => finish(null, null, null, "Hết thời gian — extension không phản hồi (180s)"),
+      180000,
     );
   };
 

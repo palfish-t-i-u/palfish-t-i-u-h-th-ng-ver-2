@@ -390,7 +390,7 @@ async function _pushGatewayOrders(orders, source, kind) {
 }
 
 // Payoo: crawl backwards từ hôm nay về watermark (lần sync thành công gần nhất).
-// Mỗi bước lùi GATEWAY_SYNC_WINDOW_DAYS ngày, lật trang gom OrderList, rồi đẩy JSON về backend.
+// Chia thành các cửa sổ 3 ngày rồi fetch SONG SONG, đẩy 1 batch JSON về backend.
 async function syncPayoo() {
   const stored = await chrome.storage.local.get("payoo_last_sync_at");
   const now = new Date();
@@ -398,21 +398,18 @@ async function syncPayoo() {
     ? new Date(stored.payoo_last_sync_at)
     : new Date(now.getTime() - PAYOO_MAX_LOOKBACK_DAYS * 86400000);
 
-  const allOrders = [];
+  const windows = [];
   let windowEnd = now;
-  let windowsScanned = 0;
-
-  while (windowEnd > stopDate) {
+  while (windowEnd > stopDate && windows.length < 30) {
     let windowStart = new Date(windowEnd.getTime() - GATEWAY_SYNC_WINDOW_DAYS * 86400000);
     if (windowStart < stopDate) windowStart = stopDate;
-
-    const orders = await _fetchPayooWindow(windowStart, windowEnd);
-    allOrders.push(...orders);
-    windowsScanned += 1;
-
+    windows.push({ from: windowStart, to: windowEnd });
     windowEnd = windowStart;
-    if (windowsScanned > 30) break;
   }
+
+  const results = await Promise.allSettled(windows.map((w) => _fetchPayooWindow(w.from, w.to)));
+  const allOrders = results.flatMap((r) => (r.status === "fulfilled" ? r.value : []));
+  const windowsScanned = windows.length;
 
   if (!allOrders.length) return { ok: true, pulled: 0, inserted: 0, windowsScanned };
 
