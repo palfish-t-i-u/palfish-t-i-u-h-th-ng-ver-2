@@ -111,7 +111,7 @@ Frontend `.env.local` points `VITE_API_BASE_URL` to either localhost:8000 (local
 - `backend/revenue_routes.py` — M5: Sổ doanh thu, search, batch team lookup, BC01/BC02
 - `backend/crm_routes.py` — CRM hybrid/autonomous sync
 - `backend/zalo_notifier.py` — Zalo OA: send message, token auto-refresh (24h loop)
-- `backend/zalo_routes.py` — Admin: Zalo config, groups CRUD, outbox, test send
+- `backend/admin_routes.py` (lines ~1329+) — Admin: Zalo config, groups CRUD, outbox, test send (no separate `zalo_routes.py`)
 - `backend/dashboard_routes.py` — Gamification, BXH, team/subteam, sub-team scope enforcement
 - `backend/report_routes.py` — BC03 daily/monthly
 - `backend/rpc_helpers.py` — Atomic RPCs, Postgres sequences
