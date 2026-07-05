@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { endpoints } from "../lib/api";
 import { formatApiError } from "../lib/apiErrors";
 import { useRefetchOnFocus } from "../hooks/useRefetchOnFocus";
@@ -116,6 +116,161 @@ function filterParams(from: string, to: string, loaiFilter: string, teamFilter: 
     search: search || undefined,
   };
 }
+
+export type LedgerCellCtx = {
+  deletingId: string | null;
+  openEdit: (row: RevenueLedgerRow) => void;
+  handleDelete: (row: RevenueLedgerRow) => void;
+};
+
+export type LedgerColumnDef = {
+  key: string;
+  label: string;
+  thClass?: string;
+  hideable: boolean;
+  renderTd: (row: RevenueLedgerRow, ctx: LedgerCellCtx) => ReactNode;
+};
+
+// Nguồn sự thật duy nhất cho cột: header + body + colSpan đều derive từ đây.
+export const LEDGER_COLUMNS: readonly LedgerColumnDef[] = [
+  {
+    key: "userName",
+    label: "User Name",
+    thClass: "min-w-[9rem]",
+    hideable: false,
+    renderTd: (row) => (
+      <Td className="text-left">
+        <div className="font-medium text-gmv-text-strong">{row.tenKhach || "—"}</div>
+        <Badge tone={row.loaiNhap === "tu_dong" ? "primary" : "neutral"} className="mt-1">
+          {row.loaiNhap === "tu_dong" ? "M3" : "Tay"}
+        </Badge>
+      </Td>
+    ),
+  },
+  {
+    key: "phone",
+    label: "Phone",
+    hideable: true,
+    renderTd: (row) => <Td className="text-left text-sm">{row.sdt || "—"}</Td>,
+  },
+  {
+    key: "uid",
+    label: "UID",
+    hideable: true,
+    renderTd: (row) => <Td className="text-left text-sm">{row.uid || "—"}</Td>,
+  },
+  {
+    key: "payTime",
+    label: "Pay Time",
+    hideable: true,
+    renderTd: (row) => (
+      <Td className="whitespace-nowrap text-sm">{fmtPayTime(row.payTime || row.ngayTienVe)}</Td>
+    ),
+  },
+  {
+    key: "realPay",
+    label: "Real Pay (VND)",
+    thClass: "min-w-[9.5rem]",
+    hideable: true,
+    renderTd: (row) => (
+      <Td className="min-w-[9.5rem] px-3 text-right text-sm font-medium tabular-nums">
+        <span className="inline-block max-w-full break-all leading-snug">
+          {formatVndNumber(row.soTienVnd) || "—"}
+        </span>
+      </Td>
+    ),
+  },
+  {
+    key: "infoCode",
+    label: "Nội dung CK",
+    thClass: "min-w-[10rem]",
+    hideable: true,
+    renderTd: (row) => <Td className="text-left text-xs font-mono">{row.infoCode || "—"}</Td>,
+  },
+  {
+    key: "orderId",
+    label: "ID đơn hàng",
+    thClass: "min-w-[7rem]",
+    hideable: true,
+    renderTd: (row) => <Td className="text-left text-sm font-mono">{orderIdDisplay(row)}</Td>,
+  },
+  {
+    key: "paymentMethod",
+    label: "Payment method",
+    hideable: true,
+    renderTd: (row) => (
+      <Td className="text-center">
+        {row.paymentMethod ? (
+          <span
+            className={cn(ledgerPillBase, paymentMethodCellClass(row.paymentMethod))}
+            title={row.paymentMethod}
+          >
+            {row.paymentMethod}
+          </span>
+        ) : (
+          "—"
+        )}
+      </Td>
+    ),
+  },
+  {
+    key: "type",
+    label: "Type",
+    hideable: true,
+    renderTd: (row) => (
+      <Td className="text-center">
+        {typeDisplayLabel(row.loai, row.loai2) !== "—" ? (
+          <span
+            className={cn(ledgerPillBase, typeCellClass(row.loai, row.loai2))}
+            title={typeDisplayLabel(row.loai, row.loai2)}
+          >
+            {typeDisplayLabel(row.loai, row.loai2)}
+          </span>
+        ) : (
+          "—"
+        )}
+      </Td>
+    ),
+  },
+  {
+    key: "sales",
+    label: "Sales",
+    hideable: true,
+    renderTd: (row) => <Td className="text-left text-sm">{row.saleCrmName || "—"}</Td>,
+  },
+  {
+    key: "team",
+    label: "Team",
+    hideable: true,
+    renderTd: (row) => <Td className="text-left text-sm">{row.team || "—"}</Td>,
+  },
+  {
+    key: "actions",
+    label: "Thao tác",
+    thClass: "min-w-[9rem]",
+    hideable: true,
+    renderTd: (row, ctx) => (
+      <Td>
+        <div className="flex flex-wrap justify-center gap-1.5">
+          <Button type="button" size="sm" variant="ghost" onClick={() => ctx.openEdit(row)}>
+            Chỉnh sửa
+          </Button>
+          {row.loaiNhap === "tay" && (
+            <Button
+              type="button"
+              size="sm"
+              variant="danger"
+              disabled={ctx.deletingId === row.id}
+              onClick={() => ctx.handleDelete(row)}
+            >
+              {ctx.deletingId === row.id ? "…" : "Xóa"}
+            </Button>
+          )}
+        </div>
+      </Td>
+    ),
+  },
+];
 
 export default function SoDoanhThuTab() {
   const { readOnly } = usePermission("revenueLedger");
@@ -386,6 +541,12 @@ export default function SoDoanhThuTab() {
     }
   }
 
+  // readOnly: loại hẳn cột Thao tác khỏi cả header + body (fix bug lệch cột cũ).
+  // Step 6 (sau khi useColumnVisibility hook merge) sẽ thay visibleColumns bằng bản filter theo hook.
+  const baseColumns = readOnly ? LEDGER_COLUMNS.filter((c) => c.key !== "actions") : LEDGER_COLUMNS;
+  const visibleColumns = baseColumns;
+  const cellCtx: LedgerCellCtx = { deletingId, openEdit, handleDelete };
+
   return (
     <div className="min-w-0 space-y-4 overflow-x-hidden">
       <p className="text-xs text-gmv-muted">
@@ -549,24 +710,17 @@ export default function SoDoanhThuTab() {
         <Table className="min-w-[1280px]">
           <thead>
             <Tr>
-              <Th className={cn(stickyTableHead, stickyTableHeadTop, "min-w-[9rem]")}>User Name</Th>
-              <Th className={cn(stickyTableHead, stickyTableHeadTop)}>Phone</Th>
-              <Th className={cn(stickyTableHead, stickyTableHeadTop)}>UID</Th>
-              <Th className={cn(stickyTableHead, stickyTableHeadTop)}>Pay Time</Th>
-              <Th className={cn(stickyTableHead, stickyTableHeadTop, "min-w-[9.5rem]")}>Real Pay (VND)</Th>
-              <Th className={cn(stickyTableHead, stickyTableHeadTop, "min-w-[10rem]")}>Nội dung CK</Th>
-              <Th className={cn(stickyTableHead, stickyTableHeadTop, "min-w-[7rem]")}>ID đơn hàng</Th>
-              <Th className={cn(stickyTableHead, stickyTableHeadTop)}>Payment method</Th>
-              <Th className={cn(stickyTableHead, stickyTableHeadTop)}>Type</Th>
-              <Th className={cn(stickyTableHead, stickyTableHeadTop)}>Sales</Th>
-              <Th className={cn(stickyTableHead, stickyTableHeadTop)}>Team</Th>
-              <Th className={cn(stickyTableHead, stickyTableHeadTop, "min-w-[9rem]")}>Thao tác</Th>
+              {visibleColumns.map((c) => (
+                <Th key={c.key} className={cn(stickyTableHead, stickyTableHeadTop, c.thClass)}>
+                  {c.label}
+                </Th>
+              ))}
             </Tr>
           </thead>
           <tbody>
             {rows.length === 0 && !loading && (
               <Tr>
-                <Td colSpan={12} className="text-center text-gmv-muted">
+                <Td colSpan={visibleColumns.length} className="text-center text-gmv-muted">
                   {hasActiveFilter
                     ? "Không có dòng trong khoảng đã lọc — thử Reset bộ lọc hoặc mở rộng ngày."
                     : "Chưa có dòng — bấm Thêm dòng hoặc xác nhận M3."}
@@ -575,73 +729,14 @@ export default function SoDoanhThuTab() {
             )}
             {rows.map((row) => (
               <Tr key={row.id} className={deletingId === row.id ? "opacity-60" : ""}>
-                <Td className="text-left">
-                  <div className="font-medium text-gmv-text-strong">{row.tenKhach || "—"}</div>
-                  <Badge tone={row.loaiNhap === "tu_dong" ? "primary" : "neutral"} className="mt-1">
-                    {row.loaiNhap === "tu_dong" ? "M3" : "Tay"}
-                  </Badge>
-                </Td>
-                <Td className="text-left text-sm">{row.sdt || "—"}</Td>
-                <Td className="text-left text-sm">{row.uid || "—"}</Td>
-                <Td className="whitespace-nowrap text-sm">{fmtPayTime(row.payTime || row.ngayTienVe)}</Td>
-                <Td className="min-w-[9.5rem] px-3 text-right text-sm font-medium tabular-nums">
-                  <span className="inline-block max-w-full break-all leading-snug">
-                    {formatVndNumber(row.soTienVnd) || "—"}
-                  </span>
-                </Td>
-                <Td className="text-left text-xs font-mono">{row.infoCode || "—"}</Td>
-                <Td className="text-left text-sm font-mono">{orderIdDisplay(row)}</Td>
-                <Td className="text-center">
-                  {row.paymentMethod ? (
-                    <span
-                      className={cn(ledgerPillBase, paymentMethodCellClass(row.paymentMethod))}
-                      title={row.paymentMethod}
-                    >
-                      {row.paymentMethod}
-                    </span>
-                  ) : (
-                    "—"
-                  )}
-                </Td>
-                <Td className="text-center">
-                  {typeDisplayLabel(row.loai, row.loai2) !== "—" ? (
-                    <span
-                      className={cn(ledgerPillBase, typeCellClass(row.loai, row.loai2))}
-                      title={typeDisplayLabel(row.loai, row.loai2)}
-                    >
-                      {typeDisplayLabel(row.loai, row.loai2)}
-                    </span>
-                  ) : (
-                    "—"
-                  )}
-                </Td>
-                <Td className="text-left text-sm">{row.saleCrmName || "—"}</Td>
-                <Td className="text-left text-sm">{row.team || "—"}</Td>
-                {!readOnly && (
-                  <Td>
-                    <div className="flex flex-wrap justify-center gap-1.5">
-                      <Button type="button" size="sm" variant="ghost" onClick={() => openEdit(row)}>
-                        Chỉnh sửa
-                      </Button>
-                      {row.loaiNhap === "tay" && (
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="danger"
-                          disabled={deletingId === row.id}
-                          onClick={() => handleDelete(row)}
-                        >
-                          {deletingId === row.id ? "…" : "Xóa"}
-                        </Button>
-                      )}
-                    </div>
-                  </Td>
-                )}
+                {visibleColumns.map((c) => (
+                  <Fragment key={c.key}>{c.renderTd(row, cellCtx)}</Fragment>
+                ))}
               </Tr>
             ))}
             {hasMore && (
               <Tr ref={loadMoreRef}>
-                <Td colSpan={12} className="py-3 text-center text-sm text-gmv-muted">
+                <Td colSpan={visibleColumns.length} className="py-3 text-center text-sm text-gmv-muted">
                   {loadingMore ? "Đang tải thêm…" : "Cuộn xuống để tải thêm"}
                 </Td>
               </Tr>
