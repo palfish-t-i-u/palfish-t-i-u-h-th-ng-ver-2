@@ -618,13 +618,6 @@ export default function SoDoanhThuTab() {
         <Button variant="ghost" onClick={resetFilters} disabled={!hasActiveFilter && !draftDirty}>
           Reset bộ lọc
         </Button>
-        <ColumnVisibilityMenu
-          columns={baseColumns.map((c) => ({ key: c.key, label: c.label, hideable: c.hideable }))}
-          isVisible={isVisible}
-          onToggle={toggle}
-          onShowAll={showAll}
-          visibleCount={visibleCount}
-        />
         {!readOnly && (
           <Tooltip content={GSHEET_SYNC_TOOLTIP} align="end" panelClassName="max-w-md">
             <Button
@@ -709,17 +702,26 @@ export default function SoDoanhThuTab() {
         )}
       </div>
 
-      <p className="text-xs text-gmv-muted">
-        {appliedSearch
-          ? totalCount > 0
-            ? <>Tìm thấy {totalCount.toLocaleString("vi-VN")} dòng cho "<span className="font-medium text-gmv-text">{appliedSearch}</span>"{loadingMore && " · đang tải thêm…"}</>
-            : <>Không tìm thấy dòng nào cho "<span className="font-medium text-gmv-text">{appliedSearch}</span>"</>
-          : <>Hiển thị {rows.length.toLocaleString("vi-VN")} / {totalCount.toLocaleString("vi-VN")} dòng{loadingMore && " · đang tải thêm…"}</>
-        }
-        {visibleCount < baseColumns.length && (
-          <> · {baseColumns.length - visibleCount} cột đang ẩn</>
-        )}
-      </p>
+      <div className="flex items-center justify-between">
+        <p className="text-xs text-gmv-muted">
+          {appliedSearch
+            ? totalCount > 0
+              ? <>Tìm thấy {totalCount.toLocaleString("vi-VN")} dòng cho "<span className="font-medium text-gmv-text">{appliedSearch}</span>"{loadingMore && " · đang tải thêm…"}</>
+              : <>Không tìm thấy dòng nào cho "<span className="font-medium text-gmv-text">{appliedSearch}</span>"</>
+            : <>Hiển thị {rows.length.toLocaleString("vi-VN")} / {totalCount.toLocaleString("vi-VN")} dòng{loadingMore && " · đang tải thêm…"}</>
+          }
+          {visibleCount < baseColumns.length && (
+            <> · {baseColumns.length - visibleCount} cột đang ẩn</>
+          )}
+        </p>
+        <ColumnVisibilityMenu
+          columns={baseColumns.map((c) => ({ key: c.key, label: c.label, hideable: c.hideable }))}
+          isVisible={isVisible}
+          onToggle={toggle}
+          onShowAll={showAll}
+          visibleCount={visibleCount}
+        />
+      </div>
 
       <TableScrollWrap>
         <Table className="min-w-[1280px]">
