@@ -21,11 +21,13 @@ import LedgerFormModal, {
 import LedgerSummaryCards from "./LedgerSummaryCards";
 import { usePermission } from "../hooks/usePermission";
 import { useMe } from "../hooks/useMe";
+import { useColumnVisibility } from "../hooks/useColumnVisibility";
 import Button from "./ui/Button";
 import Badge from "./ui/Badge";
 import Tooltip from "./ui/Tooltip";
 import { Input } from "./ui/Input";
 import Modal from "./ui/Modal";
+import ColumnVisibilityMenu from "./ui/ColumnVisibilityMenu";
 import ExchangeRatesPanel from "./admin/ExchangeRatesPanel";
 import {
   Table,
@@ -542,9 +544,12 @@ export default function SoDoanhThuTab() {
   }
 
   // readOnly: loại hẳn cột Thao tác khỏi cả header + body (fix bug lệch cột cũ).
-  // Step 6 (sau khi useColumnVisibility hook merge) sẽ thay visibleColumns bằng bản filter theo hook.
   const baseColumns = readOnly ? LEDGER_COLUMNS.filter((c) => c.key !== "actions") : LEDGER_COLUMNS;
-  const visibleColumns = baseColumns;
+  const { isVisible, toggle, showAll, visibleCount } = useColumnVisibility(
+    "soDoanhThu",
+    baseColumns.map((c) => c.key)
+  );
+  const visibleColumns = baseColumns.filter((c) => isVisible(c.key));
   const cellCtx: LedgerCellCtx = { deletingId, openEdit, handleDelete };
 
   return (
@@ -613,6 +618,13 @@ export default function SoDoanhThuTab() {
         <Button variant="ghost" onClick={resetFilters} disabled={!hasActiveFilter && !draftDirty}>
           Reset bộ lọc
         </Button>
+        <ColumnVisibilityMenu
+          columns={baseColumns.map((c) => ({ key: c.key, label: c.label, hideable: c.hideable }))}
+          isVisible={isVisible}
+          onToggle={toggle}
+          onShowAll={showAll}
+          visibleCount={visibleCount}
+        />
         {!readOnly && (
           <Tooltip content={GSHEET_SYNC_TOOLTIP} align="end" panelClassName="max-w-md">
             <Button
@@ -704,6 +716,9 @@ export default function SoDoanhThuTab() {
             : <>Không tìm thấy dòng nào cho "<span className="font-medium text-gmv-text">{appliedSearch}</span>"</>
           : <>Hiển thị {rows.length.toLocaleString("vi-VN")} / {totalCount.toLocaleString("vi-VN")} dòng{loadingMore && " · đang tải thêm…"}</>
         }
+        {visibleCount < baseColumns.length && (
+          <> · {baseColumns.length - visibleCount} cột đang ẩn</>
+        )}
       </p>
 
       <TableScrollWrap>
