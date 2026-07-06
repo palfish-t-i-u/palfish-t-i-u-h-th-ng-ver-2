@@ -68,7 +68,7 @@ class TestBuildActivationRequestCreatedMessage:
         )
         expected = (
             "🆕 YÊU CẦU KÍCH HOẠT KHOÁ HỌC — AR-2026-0001\n"
-            "SĐT: 84-772333555\n"
+            "SĐT: 84-772333555​\n"
             "UID: 3307542974\n"
             "Thành Nam 9T, Phil 48+5 fix 2b/tuần\n"
             "Nguồn: Kho chung - Imperia\n"
@@ -179,6 +179,53 @@ class TestBuildActivationRequestCreatedMessage:
         garbage_ar2 = {"id": "AR-Y", "uids_data": [{"uid": "1", "courses": "not-a-list"}, "not-a-dict"]}
         result3 = build_activation_request_created_message(garbage_ar2, {}, {})
         assert isinstance(result3["message"], str)
+
+    def test_phone_local_with_leading_zero_normalized_to_intl(self):
+        ar = {"id": "AR-T1", "uids_data": [{"uid": "1", "phone": "0933903310",
+              "courses": [{"name": "G", "amount": 1_000_000}]}]}
+        r = build_activation_request_created_message(ar, {}, {"team": "Inhouse 2"})
+        assert "SĐT: 84-933903310" in r["message"]
+
+    def test_phone_local_without_leading_zero_normalized_to_intl(self):
+        ar = {"id": "AR-T2", "uids_data": [{"uid": "1", "phone": "933903310",
+              "courses": [{"name": "G", "amount": 1_000_000}]}]}
+        r = build_activation_request_created_message(ar, {}, {"team": "Inhouse 2"})
+        assert "SĐT: 84-933903310" in r["message"]
+
+    def test_phone_already_intl_is_idempotent(self):
+        ar = {"id": "AR-T3", "uids_data": [{"uid": "1", "phone": "84-772333555",
+              "courses": [{"name": "G", "amount": 1_000_000}]}]}
+        r = build_activation_request_created_message(ar, {}, {"team": "Inhouse 2"})
+        assert "SĐT: 84-772333555" in r["message"]
+
+    def test_phone_empty_or_none_becomes_question_mark(self):
+        ar = {"id": "AR-T4", "uids_data": [{"uid": "1", "phone": "",
+              "courses": [{"name": "G", "amount": 1_000_000}]}]}
+        r = build_activation_request_created_message(ar, {"phone": None}, {"team": "Inhouse 2"})
+        assert "SĐT: ?" in r["message"]
+
+    def test_multi_uid_each_phone_normalized_independently(self):
+        ar = {"id": "AR-T5", "uids_data": [
+            {"uid": "111", "phone": "0933903310", "courses": [{"name": "A", "amount": 1}]},
+            {"uid": "222", "phone": "84-900000002", "courses": [{"name": "B", "amount": 2}]},
+        ]}
+        r = build_activation_request_created_message(ar, {}, {"team": "Offline"})
+        assert "SĐT: 84-933903310" in r["message"]
+        assert "SĐT: 84-900000002" in r["message"]
+
+    def test_pr_country_threaded_for_overseas_customer(self):
+        ar = {"id": "AR-T6", "uids_data": [{"uid": "1", "phone": "0812345678",
+              "courses": [{"name": "G", "amount": 1}]}]}
+        pr = {"country": "TH"}
+        r = build_activation_request_created_message(ar, pr, {"team": "Offline"})
+        assert "SĐT: 66-812345678" in r["message"]
+
+    def test_uid_block_country_overrides_pr_country(self):
+        ar = {"id": "AR-T7", "uids_data": [{"uid": "1", "phone": "13800138000",
+              "country": "CN", "courses": [{"name": "G", "amount": 1}]}]}
+        pr = {"country": "VN"}
+        r = build_activation_request_created_message(ar, pr, {"team": "Offline"})
+        assert "SĐT: 86-13800138000" in r["message"]
 
 
 class TestBuildCourseActivatedMessage:

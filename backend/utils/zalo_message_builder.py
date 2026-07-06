@@ -409,7 +409,11 @@ def build_activation_request_created_message(
     for uid_block in uid_blocks:
         if not isinstance(uid_block, dict):
             continue
-        phone = _first_nonempty(uid_block.get("phone"), pr_phone, default="?")
+        phone_country = _first_nonempty(uid_block.get("country"), pr_data.get("country"))
+        phone_fmt = format_phone_intl(
+            _first_nonempty(uid_block.get("phone"), pr_phone), phone_country or None
+        )
+        phone = phone_fmt if phone_fmt else "?"
         uid = _first_nonempty(uid_block.get("uid"), default="?")
 
         courses = uid_block.get("courses")
@@ -438,7 +442,7 @@ def build_activation_request_created_message(
         blocks.append(
             "\n".join(
                 [
-                    f"SĐT: {phone}",
+                    f"SĐT: {phone}​",
                     f"UID: {uid}",
                     *course_lines,
                     f"Nguồn: {lead}",
@@ -451,7 +455,7 @@ def build_activation_request_created_message(
         blocks.append(
             "\n".join(
                 [
-                    f"SĐT: {pr_phone or '?'}",
+                    f"SĐT: {format_phone_intl(pr_phone, pr_data.get('country')) or '?'}​",
                     "UID: ?",
                     child_name,
                     f"Nguồn: {lead}",
