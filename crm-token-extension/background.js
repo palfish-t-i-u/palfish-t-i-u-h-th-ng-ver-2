@@ -367,19 +367,25 @@ async function _fetchJsonCreds(url, timeoutMs = 15000) {
   }
 }
 
-async function _fetchBase64Creds(url) {
-  const cookie = await _buildCookieHeader(url);
-  const headers = {};
-  if (cookie) headers.Cookie = cookie;
-  const res = await fetch(url, { headers });
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  const bytes = new Uint8Array(await res.arrayBuffer());
-  let binary = "";
-  const chunk = 0x8000;
-  for (let i = 0; i < bytes.length; i += chunk) {
-    binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
+async function _fetchBase64Creds(url, timeoutMs = 30000) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    const cookie = await _buildCookieHeader(url);
+    const headers = {};
+    if (cookie) headers.Cookie = cookie;
+    const res = await fetch(url, { headers, signal: ctrl.signal });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const bytes = new Uint8Array(await res.arrayBuffer());
+    let binary = "";
+    const chunk = 0x8000;
+    for (let i = 0; i < bytes.length; i += chunk) {
+      binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
+    }
+    return btoa(binary);
+  } finally {
+    clearTimeout(timer);
   }
-  return btoa(binary);
 }
 
 async function _pushGatewayOrders(orders, source, kind) {
@@ -506,14 +512,29 @@ async function syncMpos() {
 
 async function runGatewaySync(trigger = "alarm") {
   _saveState("idle", `Đang đồng bộ mPOS/Payoo… (${trigger})`);
+
+  // Thiếu mã bí mật → báo lỗi NGAY, không sync mù rồi hiện xanh giả
+  const ingestToken = await _getGatewayIngestToken();
+  if (!ingestToken) {
+    const err = "Chưa cấu hình mã bí mật — mở popup tiện ích PalFish GMV Sync, dán Extension Secret rồi bấm Lưu.";
+    _saveState("error", err);
+    return {
+      ok: false, error: err, inserted: 0,
+      mposInserted: 0, payooInserted: 0, payooPulled: 0,
+      mposOk: false, summary: [err], summaryStr: err,
+    };
+  }
+
   const summary = [];
   let inserted = 0;
   let payooPulled = 0;
   let payooInserted = 0;
   let mposInserted = 0;
   let mposOk = false;
+  let payooOk = false;
   try {
     const payoo = await syncPayoo();
+    payooOk = !!payoo.ok;
     payooPulled = payoo.pulled || 0;
     payooInserted = payoo.inserted || 0;
     inserted += payooInserted;
@@ -523,8 +544,7 @@ async function runGatewaySync(trigger = "alarm") {
   }
   try {
     const mpos = await syncMpos();
-    const okFiles = mpos.filter((r) => r.ok);
-    mposOk = okFiles.length > 0;
+    mposOk = mpos.length > 0 && mpos.every((r) => r.ok);
     mposInserted = mpos.reduce((sum, r) => sum + (r.inserted || 0), 0);
     inserted += mposInserted;
     const detail = mpos.map((r) => `${r.kind}${r.ok ? `✓${r.inserted || 0}` : `✗(${r.error || "?"})`}`).join(" ");
@@ -532,9 +552,14 @@ async function runGatewaySync(trigger = "alarm") {
   } catch (e) {
     summary.push(`mPOS lỗi: ${e}`);
   }
+  const allOk = payooOk && mposOk;
   const summaryStr = summary.join(" · ");
-  _saveState("ok", `Đồng bộ ${new Date().toLocaleTimeString("vi-VN")} — ${summaryStr}`);
-  return { ok: true, inserted, mposInserted, payooInserted, payooPulled, mposOk, summary, summaryStr };
+  _saveState(allOk ? "ok" : "error", `Đồng bộ ${new Date().toLocaleTimeString("vi-VN")} — ${summaryStr}`);
+  return {
+    ok: allOk,
+    error: allOk ? undefined : (payooOk || mposOk ? "Một phần đồng bộ thất bại — xem chi tiết" : "Đồng bộ thất bại — xem chi tiết"),
+    inserted, mposInserted, payooInserted, payooPulled, mposOk, summary, summaryStr,
+  };
 }
 
 // Tự đồng bộ định kỳ (cron NẰM TRONG extension, không phải server cron)

@@ -10,7 +10,11 @@ const FIRST_SEEN_STORAGE_KEY = "gw_ext_first_seen";
 const ONBOARDING_STEPS: [string, string][] = [
   [
     "Cài tiện ích vào trình duyệt",
-    "Bạn tải file .zip ở dưới, giải nén, rồi nạp vào Chrome theo hướng dẫn 5 bước trong tab này.",
+    "Bạn tải file .zip ở dưới, giải nén, rồi nạp vào Chrome theo hướng dẫn 6 bước trong tab này.",
+  ],
+  [
+    "Dán mã bí mật (Extension Secret)",
+    'Bạn bấm icon tiện ích "PalFish GMV Sync" trên thanh công cụ trình duyệt, dán mã bí mật (xin từ quản trị viên qua tin nhắn riêng) vào ô Extension Secret rồi bấm "Lưu mã bí mật". Chỉ cần làm 1 lần — thiếu mã này thì giao dịch không đẩy về app được.',
   ],
   [
     "Đăng nhập mPOS",
@@ -74,6 +78,7 @@ const STEPS: [string, string][] = [
   ["Mở trang tiện ích Chrome", "Gõ chrome://extensions vào thanh địa chỉ → Enter."],
   ["Bật chế độ nhà phát triển", 'Bật công tắc "Developer mode" (góc trên bên phải).'],
   ["Nạp tiện ích", 'Bấm "Load unpacked" → chọn đúng thư mục vừa giải nén.'],
+  ["Dán mã bí mật", 'Bấm icon tiện ích "PalFish GMV Sync" trên thanh trình duyệt → dán Extension Secret (xin từ quản trị viên) → bấm "Lưu mã bí mật".'],
   ["Đăng nhập mPOS / Payoo", "Mở mpos.vn và portal.payoo.vn, đăng nhập như thường ngày. Tiện ích tự kéo dữ liệu giao dịch về app."],
 ];
 
@@ -427,7 +432,7 @@ export default function GatewaySyncTab() {
           <p style={{ color: "var(--text-2)" }}>
             Chào bạn — đây là hướng dẫn lần đầu để dùng tiện ích đồng bộ giao dịch{" "}
             <strong style={{ color: "var(--text)" }}>mPOS</strong> &{" "}
-            <strong style={{ color: "var(--text)" }}>Payoo</strong> về app. Bạn làm theo 5 bước dưới đây.
+            <strong style={{ color: "var(--text)" }}>Payoo</strong> về app. Bạn làm theo 6 bước dưới đây.
           </p>
 
           <ol style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 12 }}>
