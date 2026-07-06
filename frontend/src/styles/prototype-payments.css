@@ -1979,6 +1979,30 @@
 
 /* ===== TVTS filter dropdown (TVTS-02) ===== */
 .gmv-prototype .tvts-filter { position: relative; display: inline-block; }
+
+/* Trigger nổi bật hơn dãy chip trạng thái: tint primary, icon + text cùng màu (currentColor).
+   Contrast: primary-700 (#4a39c7) trên primary-50 (#efedfe) ≈ 7.3:1 — pass WCAG AA/AAA.
+   Khi đang lọc (.active): nền primary-600 (#5b48e0) + chữ trắng ≈ 5.8:1 — pass AA. */
+.gmv-prototype .tvts-filter > .filter-chip {
+  background: var(--primary-50);
+  border-color: var(--primary-100);
+  color: var(--primary-700);
+  font-weight: 600;
+}
+.gmv-prototype .tvts-filter > .filter-chip:hover {
+  background: var(--primary-100);
+  border-color: var(--primary);
+  color: var(--primary-700);
+}
+.gmv-prototype .tvts-filter > .filter-chip.active {
+  background: var(--primary-600);
+  border-color: var(--primary-600);
+  color: #ffffff;
+}
+.gmv-prototype .tvts-filter > .filter-chip:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
 .gmv-prototype .tvts-filter__count {
   font-weight: 600; background: white; color: var(--primary-700);
   padding: 1px 7px; border-radius: 999px; font-size: 11.5px; margin-left: 2px;
