@@ -61,7 +61,7 @@ export default function ColumnVisibilityMenu({
         </span>
       </Button>
       {open && (
-        <div className="absolute left-0 top-full z-20 mt-1 min-w-[220px] rounded-gmv-md border border-gmv-border bg-gmv-canvas py-2 shadow-gmv-1">
+        <div className="absolute right-0 top-full z-40 mt-1 min-w-[220px] rounded-gmv-md border border-gmv-border bg-gmv-canvas py-2 shadow-gmv-1">
           <div className="flex items-center justify-between gap-3 border-b border-gmv-border px-3.5 pb-2">
             <span className="text-sm font-medium text-gmv-text-strong">Chọn cột hiển thị</span>
             <button
