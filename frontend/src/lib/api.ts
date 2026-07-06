@@ -478,6 +478,7 @@ export const endpoints = {
       phone?: string;
       department?: string;
       team?: string;
+      sub_team?: string;
       crmName?: string;
       role?: string;
       is_activated?: boolean;
