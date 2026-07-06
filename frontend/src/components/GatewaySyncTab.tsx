@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Icons } from "./payment-request/Icons";
 import { formatPaymentDateFull } from "./payment-request/paymentRequestUtils";
-import { LAST_SYNC_AT, isExtInstalled, setExtInstalled } from "./card-recon/mockGatewayTxns";
+import { EXT_VERSION_KEY, LAST_SYNC_AT, getExtVersion, isExtInstalled, setExtInstalled } from "./card-recon/mockGatewayTxns";
 import Modal from "./ui/Modal";
 import "../styles/prototype-payments.css";
 
@@ -94,6 +94,8 @@ export default function GatewaySyncTab() {
   const [syncError, setSyncError] = useState<string | null>(initialStored?.error ?? null);
   const [storedInserted, setStoredInserted] = useState<StoredSyncResult | null>(initialStored);
   const [showOnboarding, setShowOnboarding] = useState(false);
+  const [installedVersion, setInstalledVersion] = useState<string | null>(getExtVersion());
+  const [latestVersion, setLatestVersion] = useState<string | null>(null);
 
   useEffect(() => {
     try {
@@ -103,6 +105,22 @@ export default function GatewaySyncTab() {
     } catch {
       /* localStorage disabled — skip onboarding */
     }
+  }, []);
+
+  // Version mới nhất do scripts/build_extension_zip.py sinh cùng lúc với zip — cùng deploy nên không lệch
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/ext-version.json", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (!cancelled && typeof data?.version === "string") setLatestVersion(data.version);
+      })
+      .catch(() => {
+        /* thiếu file / offline — im lặng, không cảnh báo sai */
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const closeOnboarding = () => {
@@ -116,7 +134,10 @@ export default function GatewaySyncTab() {
   const openOnboarding = () => setShowOnboarding(true);
 
   useEffect(() => {
-    const refresh = () => setInstalled(isExtInstalled());
+    const refresh = () => {
+      setInstalled(isExtInstalled());
+      setInstalledVersion(getExtVersion());
+    };
     const reloadStored = () => {
       const next = loadStoredSyncResult();
       setStoredInserted(next);
@@ -188,6 +209,15 @@ export default function GatewaySyncTab() {
       const data = ev.data;
       if (!data || data.type !== "gateway-sync-now-result") return;
       const resp = data.resp || {};
+      // Extension 1.3.1+ gửi kèm version tại thời điểm sync — chính xác hơn cờ localStorage
+      if (typeof resp.extVersion === "string") {
+        setInstalledVersion(resp.extVersion);
+        try {
+          localStorage.setItem(EXT_VERSION_KEY, resp.extVersion);
+        } catch {
+          /* ignore */
+        }
+      }
       const inserted = typeof resp.inserted === "number" ? resp.inserted : null;
       const detail = typeof resp.summaryStr === "string" ? resp.summaryStr : null;
       const mposInserted = typeof resp.mposInserted === "number" ? resp.mposInserted : null;
@@ -312,6 +342,34 @@ export default function GatewaySyncTab() {
               )}
             </div>
           </div>
+          {installed && latestVersion && (
+            installedVersion !== latestVersion ? (
+              <div
+                style={{
+                  marginTop: 10,
+                  fontSize: 12.5,
+                  color: "var(--warning-text)",
+                  background: "var(--warning-bg)",
+                  borderRadius: 8,
+                  padding: "8px 12px",
+                  lineHeight: 1.6,
+                }}
+              >
+                <Icons.AlertCircle size={14} /> <strong>Cần cập nhật tiện ích!</strong>{" "}
+                Phiên bản trên máy bạn: <strong>{installedVersion ?? "không rõ"}</strong> · Phiên bản mới nhất:{" "}
+                <strong>{latestVersion}</strong>
+                <div style={{ marginTop: 4, fontSize: 11.5, opacity: 0.9 }}>
+                  Cách cập nhật: tải zip mới ở dưới → giải nén ĐÈ vào đúng thư mục tiện ích cũ → mở chrome://extensions
+                  → bấm nút Làm mới (⟳) trên thẻ PalFish GMV Sync → tải lại trang này (F5). Mã bí mật đã lưu sẽ giữ
+                  nguyên.
+                </div>
+              </div>
+            ) : (
+              <div style={{ marginTop: 8, fontSize: 11.5, color: "var(--text-3)" }}>
+                Phiên bản tiện ích: {installedVersion} — mới nhất
+              </div>
+            )
+          )}
           {(synced != null || syncDetail || syncError) && (
             <div
               style={{

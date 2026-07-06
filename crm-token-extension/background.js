@@ -49,6 +49,8 @@ const MPOS_EXPORTS = [
   },
 ];
 
+const EXT_VERSION = chrome.runtime.getManifest().version; // FE so với /ext-version.json để nhắc cập nhật
+
 const GATEWAY_SYNC_WINDOW_DAYS = 3; // mỗi lần tìm kéo 3 ngày
 const PAYOO_MAX_LOOKBACK_DAYS = 31; // Payoo portal giới hạn 31 ngày; dùng làm fallback khi chưa có watermark
 const GATEWAY_ALARM = "palfish-gateway-sync";
@@ -522,6 +524,7 @@ async function runGatewaySync(trigger = "alarm") {
       ok: false, error: err, inserted: 0,
       mposInserted: 0, payooInserted: 0, payooPulled: 0,
       mposOk: false, summary: [err], summaryStr: err,
+      extVersion: EXT_VERSION,
     };
   }
 
@@ -559,6 +562,7 @@ async function runGatewaySync(trigger = "alarm") {
     ok: allOk,
     error: allOk ? undefined : (payooOk || mposOk ? "Một phần đồng bộ thất bại — xem chi tiết" : "Đồng bộ thất bại — xem chi tiết"),
     inserted, mposInserted, payooInserted, payooPulled, mposOk, summary, summaryStr,
+    extVersion: EXT_VERSION,
   };
 }
 

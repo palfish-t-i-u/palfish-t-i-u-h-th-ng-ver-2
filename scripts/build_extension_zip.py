@@ -13,6 +13,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "crm-token-extension"
 OUT = ROOT / "frontend" / "public" / "palfish-gmv-sync.zip"
+VERSION_OUT = ROOT / "frontend" / "public" / "ext-version.json"
 FILES = ["manifest.json", "background.js", "content-app-flag.js", "popup.html", "popup.js"]
 
 
@@ -25,7 +26,9 @@ def main() -> int:
     with zipfile.ZipFile(OUT, "w", zipfile.ZIP_DEFLATED) as z:
         for name in FILES:
             z.write(SRC / name, name)
-    print(f"OK: {OUT.relative_to(ROOT)} (extension v{version}, {len(FILES)} files)")
+    # FE fetch file nay de so voi version dang cai (localStorage gw_ext_version) -> nhac cap nhat
+    VERSION_OUT.write_text(json.dumps({"version": version}) + "\n", encoding="utf-8")
+    print(f"OK: {OUT.relative_to(ROOT)} + {VERSION_OUT.name} (extension v{version}, {len(FILES)} files)")
     return 0
 
 
