@@ -1024,6 +1024,7 @@ def _enqueue_activation_request_created_zalo(
                 "name": pr.get("name"),
                 "child_name": pr.get("child_name"),
                 "phone": pr.get("phone"),
+                "country": pr.get("country") or "VN",
                 "lead_source": pr.get("lead_source"),
                 "lead_channel": pr.get("lead_channel"),
                 "target": pr_target,
