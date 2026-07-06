@@ -13,18 +13,21 @@ const DEPARTMENTS = [
 const TEAMS_BY_DEPT: Record<string, string[]> = {
   sale: [
     "Inhouse 1",
-    "An Binh Store",
     "Inhouse 2",
-    "Team 1",
     "HCM (Online)",
-    "Linh Dam Store",
-    "Khác / Chưa phân loại",
-    "HN Inhouse",
-    "Team 2",
-    "Group KL",
     "HN Offline Store",
+    "Group KL",
+    "HN Inhouse",
     "Marketing",
+    "Team 1",
+    "Team 2",
+    "Khác / Chưa phân loại",
   ],
+};
+
+const SUBTEAMS_BY_TEAM: Record<string, string[]> = {
+  "Inhouse 1": ["Team 1", "Team 2", "Team 3", "Team 4", "Team 5", "Sales"],
+  "HN Offline Store": ["Linh Dam Store", "An Binh Store"],
 };
 
 const ROLES = [
@@ -46,6 +49,7 @@ interface Form {
   phone: string;
   department: string;
   team: string;
+  sub_team: string;
   role: string;
   is_activated: boolean;
 }
@@ -57,6 +61,7 @@ const INITIAL: Form = {
   phone: "",
   department: "",
   team: "",
+  sub_team: "",
   role: "user",
   is_activated: false,
 };
@@ -68,11 +73,13 @@ export default function CreateAccountModal({ open, onClose, onCreated }: Props) 
 
   const teams = TEAMS_BY_DEPT[form.department] ?? [];
   const showTeam = teams.length > 0;
+  const subTeams = SUBTEAMS_BY_TEAM[form.team] ?? [];
 
   function set<K extends keyof Form>(field: K, value: Form[K]) {
     setForm((f) => {
       const next = { ...f, [field]: value };
-      if (field === "department") next.team = "";
+      if (field === "department") { next.team = ""; next.sub_team = ""; }
+      if (field === "team") next.sub_team = "";
       return next;
     });
   }
@@ -102,6 +109,7 @@ export default function CreateAccountModal({ open, onClose, onCreated }: Props) 
         phone: form.phone.trim() || undefined,
         department: form.department || undefined,
         team: form.team || undefined,
+        sub_team: form.sub_team || undefined,
         role: form.role,
         is_activated: form.is_activated,
       });
@@ -213,6 +221,24 @@ export default function CreateAccountModal({ open, onClose, onCreated }: Props) 
             )}
           </div>
         </div>
+
+        {/* Sub-team */}
+        {subTeams.length > 0 && (
+          <div>
+            <label className="mb-1 block text-xs font-semibold text-gmv-text-strong">
+              Sub-team
+            </label>
+            <Select
+              value={form.sub_team}
+              onChange={(e) => set("sub_team", e.target.value)}
+            >
+              <option value="">-- Chọn sub-team --</option>
+              {subTeams.map((t) => (
+                <option key={t} value={t}>{t}</option>
+              ))}
+            </Select>
+          </div>
+        )}
 
         {/* Role + Activate */}
         <div className="grid grid-cols-2 gap-3">

@@ -20,11 +20,9 @@ const TEAMS_BY_DEPT: Record<string, string[]> = {
     "Inhouse 1",
     "Inhouse 2",
     "HCM (Online)",
-    "Linh Dam Store",
-    "An Binh Store",
+    "HN Offline Store",
     "Group KL",
     "HN Inhouse",
-    "HN Offline Store",
     "Marketing",
     "Team 1",
     "Team 2",
@@ -34,6 +32,7 @@ const TEAMS_BY_DEPT: Record<string, string[]> = {
 
 const SUBTEAMS_BY_TEAM: Record<string, string[]> = {
   "Inhouse 1": ["Team 1", "Team 2", "Team 3", "Team 4", "Team 5", "Sales"],
+  "HN Offline Store": ["Linh Dam Store", "An Binh Store"],
 };
 
 interface FormState {

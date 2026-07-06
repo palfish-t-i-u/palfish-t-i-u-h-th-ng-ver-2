@@ -883,7 +883,14 @@ def register_admin_routes(app, get_supabase):
         if updated_metadata != current_metadata:
             attrs["user_metadata"] = updated_metadata
 
-        if not attrs and not crm_name and not unlink_crm:
+        staff_crm_to_update = crm_name or existing_crm_name
+        staff_patch: dict[str, Any] = {}
+        if crm_name:
+            staff_patch["email"] = target_email
+        if role_value is not None and staff_crm_to_update:
+            staff_patch["role"] = role_value
+
+        if not attrs and not staff_patch and not crm_name and not unlink_crm:
             raise HTTPException(400, "Không có trường cần cập nhật")
 
         try:
@@ -894,17 +901,10 @@ def register_admin_routes(app, get_supabase):
                     sb.table("nhan_su_sale").update({"email": None}).eq(
                         "crm_name", old_crm_name
                     ).execute()
-            else:
-                staff_crm_to_update = crm_name or existing_crm_name
-                staff_patch: dict[str, Any] = {}
-                if crm_name:
-                    staff_patch["email"] = target_email
-                if role_value is not None and staff_crm_to_update:
-                    staff_patch["role"] = role_value
-                if staff_patch and staff_crm_to_update:
-                    sb.table("nhan_su_sale").update(staff_patch).eq(
-                        "crm_name", staff_crm_to_update
-                    ).execute()
+            elif staff_patch and staff_crm_to_update:
+                sb.table("nhan_su_sale").update(staff_patch).eq(
+                    "crm_name", staff_crm_to_update
+                ).execute()
         except Exception as exc:
             raise HTTPException(500, str(exc)) from exc
 

@@ -68,11 +68,9 @@ const TEAMS_BY_DEPT: Record<string, string[]> = {
     "Inhouse 1",
     "Inhouse 2",
     "HCM (Online)",
-    "Linh Dam Store",
-    "An Binh Store",
+    "HN Offline Store",
     "Group KL",
     "HN Inhouse",
-    "HN Offline Store",
     "Marketing",
     "Team 1",
     "Team 2",
@@ -82,6 +80,7 @@ const TEAMS_BY_DEPT: Record<string, string[]> = {
 
 const SUBTEAMS_BY_TEAM: Record<string, string[]> = {
   "Inhouse 1": ["Team 1", "Team 2", "Team 3", "Team 4", "Team 5", "Sales"],
+  "HN Offline Store": ["Linh Dam Store", "An Binh Store"],
 };
 
 function normalizeDeptKey(raw: string | null | undefined): string {
@@ -167,8 +166,12 @@ export default function AccountDetailDrawer({ user, onClose, onUpdated, linkedCr
       await endpoints.admin.patchAuthUser(user!.id, patch);
       setEditing(false);
       onUpdated();
-    } catch {
-      setError("Không lưu được thay đổi.");
+    } catch (err: unknown) {
+      const msg =
+        err && typeof err === "object" && "response" in err
+          ? ((err as { response?: { data?: { detail?: string } } }).response?.data?.detail ?? "Không lưu được thay đổi.")
+          : "Không lưu được thay đổi.";
+      setError(msg);
     } finally {
       setSaving(false);
     }
