@@ -22,9 +22,6 @@ import {
   isBackendLineId,
 } from "./payment-request/paymentRequestUtils";
 import AuditTrail from "./ui/AuditTrail";
-import useIsMobile from "../hooks/useIsMobile";
-import ReconTxnCards from "./reconciliation/ReconTxnCards";
-import ReconBankCards from "./reconciliation/ReconBankCards";
 import "../styles/prototype-payments.css";
 
 type TabId = "awaiting" | "confirmed" | "cancelled" | "ckOutside" | "all";
@@ -518,8 +515,6 @@ export default function ReconciliationTab() {
     [billModal.lineId]
   );
 
-  const isMobile = useIsMobile();
-
   const setDownloadStatusTransient = (msg: string, timeoutMs = 1800) => {
     setBillDownloadStatus(msg);
     window.setTimeout(() => {
@@ -893,14 +888,6 @@ export default function ReconciliationTab() {
           )}
 
           {tab === "ckOutside" ? (
-            isMobile ? (
-              <div className="mobile-card-list p-2">
-                <div style={{ padding: "10px 14px 8px", fontSize: 12, color: "var(--text-2)" }}>
-                  Tiền vào TK công ty không khớp lần TT nào. Bấm <strong>Ghép</strong> để gắn vào PR.
-                </div>
-                <ReconBankCards txns={bankPendingTxns} readOnly={readOnly} onMatch={openBankMatch} />
-              </div>
-            ) : (
             <div className="tbl-wrap">
               <div style={{ padding: "10px 14px", fontSize: 12, color: "var(--text-2)", background: "var(--surface-3, #f1f5f9)", borderBottom: "1px solid var(--border)" }}>
                 Tiền vào TK công ty không khớp lần TT nào (không có mã app hoặc mã sai). Kế toán bấm <strong>Ghép</strong> để gắn vào đúng lần TT của PR.
@@ -976,29 +963,6 @@ export default function ReconciliationTab() {
                   )}
                 </tbody>
               </table>
-            </div>
-            )
-          ) : (
-          isMobile ? (
-            <div className="mobile-card-list p-2">
-              <ReconTxnCards
-                transactions={filtered}
-                drawerTxnKey={drawerOpen ? drawerTxn?.key ?? null : null}
-                readOnly={readOnly}
-                selectedIds={selectedIds}
-                onSelect={(t) => { setDrawerTxn(t); setDrawerOpen(true); }}
-                onToggleSelect={(key) => {
-                  setSelectedIds((prev) => {
-                    const next = new Set(prev);
-                    if (next.has(key)) next.delete(key);
-                    else next.add(key);
-                    return next;
-                  });
-                }}
-                onConfirm={(t) => { if (!billRequiredButMissing(t)) void handleConfirm(t); }}
-                onReject={(t) => handleReject(t)}
-                billRequiredButMissing={billRequiredButMissing}
-              />
             </div>
           ) : (
           <div className="tbl-wrap">
@@ -1180,7 +1144,6 @@ export default function ReconciliationTab() {
               </tbody>
             </table>
           </div>
-          )
           )}
         </div>
       </div>

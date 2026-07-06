@@ -18,8 +18,6 @@ import {
 import { downloadApiTaxZip, downloadTaxInvoiceZip } from "../utils/taxInvoiceXlsxExport";
 import { endpoints } from "../lib/api";
 import "../styles/prototype-payments.css";
-import useIsMobile from "../hooks/useIsMobile";
-import InvoiceRowCards from "./invoice/InvoiceRowCards";
 
 const CUSTOMER_TYPE_META = {
   individual: { label: "Cá nhân", cls: "is-active" },
@@ -219,7 +217,6 @@ export default function InvoiceRequestTab() {
   const [bulkExporting, setBulkExporting] = useState(false);
   const [confirmBulkIssue, setConfirmBulkIssue] = useState(false);
   const [bulkError, setBulkError] = useState("");
-  const isMobile = useIsMobile();
 
   type Reminder = { id: string; payment_request_id: string; pr_code: string; customer_name: string; requested_by_name: string; requested_at: string; note: string | null };
   const [reminders, setReminders] = useState<Reminder[]>([]);
@@ -356,12 +353,10 @@ export default function InvoiceRequestTab() {
   return (
     <div className="gmv-prototype">
       <div className="page">
-        {!isMobile && (
-          <div style={{ fontSize: 12.5, color: "var(--text-3)", maxWidth: 720, lineHeight: 1.55, marginBottom: 4 }}>
-            Mỗi <strong style={{ color: "var(--text-2)" }}>Course Code</strong> có Order ID → một hoá đơn (INV). Sau xuất, tải{" "}
-            <strong style={{ color: "var(--text-2)" }}>ZIP 3 file Excel</strong> kê khai thuế (don_hang, khach_hang, san_pham).
-          </div>
-        )}
+        <div style={{ fontSize: 12.5, color: "var(--text-3)", maxWidth: 720, lineHeight: 1.55, marginBottom: 4 }}>
+          Mỗi <strong style={{ color: "var(--text-2)" }}>Course Code</strong> có Order ID → một hoá đơn (INV). Sau xuất, tải{" "}
+          <strong style={{ color: "var(--text-2)" }}>ZIP 3 file Excel</strong> kê khai thuế (don_hang, khach_hang, san_pham).
+        </div>
 
         {reminders.length > 0 && (
           <div
@@ -581,206 +576,180 @@ export default function InvoiceRequestTab() {
             </div>
           )}
 
-          {isMobile ? (
-            <div className="mobile-card-list p-2">
-              <InvoiceRowCards
-                rows={filtered}
-                tab={tab}
-                openKey={openKey}
-                selectedKeys={selectedKeys}
-                onSelect={setOpenKey}
-                onToggleSelect={(key) => {
-                  setSelectedKeys((prev) => {
-                    const next = new Set(prev);
-                    if (next.has(key)) next.delete(key);
-                    else next.add(key);
-                    return next;
-                  });
-                }}
-                onIssue={(r) => void issueInvoiceForCourse(r.ar.id, r.course.courseCode)}
-                isRowComplete={isRowComplete}
-                defaultsFor={defaultsFor}
-                readOnly={readOnly}
-                remindedPrMap={remindedPrMap}
-                emptyText={tab === "pending" ? "Không có hoá đơn nào đang chờ xuất." : "Chưa có hoá đơn nào."}
-              />
-            </div>
-          ) : (
-            <div className="tbl-wrap">
-              <table className="tbl">
-                <thead>
-                  <tr>
-                    {(tab === "pending" || tab === "issued") && (
-                      <th className="check-col" onClick={(e) => e.stopPropagation()}>
-                        <input
-                          type="checkbox"
-                          checked={
-                            filtered.length > 0 &&
-                            filtered
-                              .filter((r) => tab === "pending" ? isRowComplete(r) : r.course.invoiced)
-                              .every((r) => selectedKeys.has(r.key))
-                          }
-                          onChange={() => {
-                            const sel = filtered.filter((r) =>
-                              tab === "pending" ? isRowComplete(r) : r.course.invoiced
-                            );
-                            const all = sel.length > 0 && sel.every((r) => selectedKeys.has(r.key));
-                            setSelectedKeys(all ? new Set() : new Set(sel.map((r) => r.key)));
-                          }}
-                        />
-                      </th>
-                    )}
-                    <th>Tên khách</th>
-                    <th>SĐT</th>
-                    <th>UID</th>
-                    <th>Địa chỉ</th>
-                    <th style={{ textAlign: "right" }}>Số tiền</th>
-                    <th>{tab === "issued" ? "Mã INV" : "Course Code"}</th>
-                    <th>Thời gian</th>
-                    <th style={{ textAlign: "center" }}>Loại KH</th>
-                    <th />
-                  </tr>
-                </thead>
-                <tbody>
-                  {filtered.length === 0 && (
-                    <tr>
-                      <td colSpan={tab === "pending" || tab === "issued" ? 10 : 9}>
-                        <div className="empty">
-                          <Icons.Doc size={20} />
-                          <div>
-                            {tab === "pending"
-                              ? "Không có hoá đơn nào đang chờ xuất."
-                              : "Chưa có hoá đơn nào được phát hành."}
-                          </div>
-                        </div>
-                      </td>
-                    </tr>
+          <div className="tbl-wrap">
+            <table className="tbl">
+              <thead>
+                <tr>
+                  {(tab === "pending" || tab === "issued") && (
+                    <th className="check-col" onClick={(e) => e.stopPropagation()}>
+                      <input
+                        type="checkbox"
+                        checked={
+                          filtered.length > 0 &&
+                          filtered
+                            .filter((r) => tab === "pending" ? isRowComplete(r) : r.course.invoiced)
+                            .every((r) => selectedKeys.has(r.key))
+                        }
+                        onChange={() => {
+                          const sel = filtered.filter((r) =>
+                            tab === "pending" ? isRowComplete(r) : r.course.invoiced
+                          );
+                          const all = sel.length > 0 && sel.every((r) => selectedKeys.has(r.key));
+                          setSelectedKeys(all ? new Set() : new Set(sel.map((r) => r.key)));
+                        }}
+                      />
+                    </th>
                   )}
-                  {filtered.map((r) => {
-                    const d = defaultsFor(r)!;
-                    const country = findCountry(d.country);
-                    const complete = isRowComplete(r);
-                    return (
-                      <tr
-                        key={r.key}
-                        className={openKey === r.key ? "selected" : ""}
-                        onClick={() => setOpenKey(r.key)}
-                      >
-                        {tab === "pending" && (
-                          <td className="check-col" onClick={(e) => e.stopPropagation()}>
-                            <input
-                              type="checkbox"
-                              disabled={!complete}
-                              checked={selectedKeys.has(r.key)}
-                              onChange={() => {
-                                setSelectedKeys((prev) => {
-                                  const next = new Set(prev);
-                                  if (next.has(r.key)) next.delete(r.key);
-                                  else next.add(r.key);
-                                  return next;
-                                });
-                              }}
-                            />
-                          </td>
-                        )}
-                        {tab === "issued" && (
-                          <td className="check-col" onClick={(e) => e.stopPropagation()}>
-                            <input
-                              type="checkbox"
-                              checked={selectedKeys.has(r.key)}
-                              onChange={() => {
-                                setSelectedKeys((prev) => {
-                                  const next = new Set(prev);
-                                  if (next.has(r.key)) next.delete(r.key);
-                                  else next.add(r.key);
-                                  return next;
-                                });
-                              }}
-                            />
-                          </td>
-                        )}
-                        <td>
-                          <div className="cell-name">
-                            {d.name}
-                            {(() => {
-                              const rem = remindedPrMap.get(r.ar.prId || "");
-                              if (!rem || r.course.invoiced) return null;
-                              const dt = new Date(rem.requested_at);
-                              const tip = `Sales nhắc xuất HĐ lúc ${dt.toLocaleDateString("vi-VN")} ${dt.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })} — bởi ${rem.requested_by_name}${rem.note ? ` · "${rem.note}"` : ""}`;
-                              return (
-                                <span className="remind-badge" title={tip}>
-                                  <Icons.Bell size={11} /> Nhắc
-                                </span>
-                              );
-                            })()}
-                          </div>
+                  <th>Tên khách</th>
+                  <th>SĐT</th>
+                  <th>UID</th>
+                  <th>Địa chỉ</th>
+                  <th style={{ textAlign: "right" }}>Số tiền</th>
+                  <th>{tab === "issued" ? "Mã INV" : "Course Code"}</th>
+                  <th>Thời gian</th>
+                  <th style={{ textAlign: "center" }}>Loại KH</th>
+                  <th />
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.length === 0 && (
+                  <tr>
+                    <td colSpan={tab === "pending" || tab === "issued" ? 10 : 9}>
+                      <div className="empty">
+                        <Icons.Doc size={20} />
+                        <div>
+                          {tab === "pending"
+                            ? "Không có hoá đơn nào đang chờ xuất."
+                            : "Chưa có hoá đơn nào được phát hành."}
+                        </div>
+                      </div>
+                    </td>
+                  </tr>
+                )}
+                {filtered.map((r) => {
+                  const d = defaultsFor(r)!;
+                  const country = findCountry(d.country);
+                  const complete = isRowComplete(r);
+                  return (
+                    <tr
+                      key={r.key}
+                      className={openKey === r.key ? "selected" : ""}
+                      onClick={() => setOpenKey(r.key)}
+                    >
+                      {tab === "pending" && (
+                        <td className="check-col" onClick={(e) => e.stopPropagation()}>
+                          <input
+                            type="checkbox"
+                            disabled={!complete}
+                            checked={selectedKeys.has(r.key)}
+                            onChange={() => {
+                              setSelectedKeys((prev) => {
+                                const next = new Set(prev);
+                                if (next.has(r.key)) next.delete(r.key);
+                                else next.add(r.key);
+                                return next;
+                              });
+                            }}
+                          />
                         </td>
-                        <td>
-                          <span className="cell-phone">
-                            {country.flag} {country.dial} {fmtPhone(d.phone)}
-                          </span>
+                      )}
+                      {tab === "issued" && (
+                        <td className="check-col" onClick={(e) => e.stopPropagation()}>
+                          <input
+                            type="checkbox"
+                            checked={selectedKeys.has(r.key)}
+                            onChange={() => {
+                              setSelectedKeys((prev) => {
+                                const next = new Set(prev);
+                                if (next.has(r.key)) next.delete(r.key);
+                                else next.add(r.key);
+                                return next;
+                              });
+                            }}
+                          />
                         </td>
-                        <td>
-                          <span className="cell-mono">{r.uidObj.uid}</span>
-                        </td>
-                        <td>
-                          <div className="cell-sub" title={formatAddress(r.pr, r)}>
-                            {formatAddress(r.pr, r)}
-                          </div>
-                        </td>
-                        <td style={{ textAlign: "right" }}>
-                          <span style={{ fontWeight: 700, color: "var(--money)" }}>{vnd(r.course.amount)}</span>
-                        </td>
-                        <td>
-                          {r.course.invoiced ? (
-                            <span className="invoice-chip">
-                              <Icons.Doc size={11} /> {r.course.invoiceId}
-                            </span>
-                          ) : (
-                            <span className="code-chip cc">
-                              <Icons.Sparkle size={11} /> {r.course.courseCode}
-                            </span>
-                          )}
-                        </td>
-                        <td>
+                      )}
+                      <td>
+                        <div className="cell-name">
+                          {d.name}
                           {(() => {
-                            const ts = formatPaymentDateTime(
-                              r.course.invoiced ? r.course.invoicedAt || "" : r.ar.createdAt
-                            );
+                            const rem = remindedPrMap.get(r.ar.prId || "");
+                            if (!rem || r.course.invoiced) return null;
+                            const dt = new Date(rem.requested_at);
+                            const tip = `Sales nhắc xuất HĐ lúc ${dt.toLocaleDateString("vi-VN")} ${dt.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })} — bởi ${rem.requested_by_name}${rem.note ? ` · "${rem.note}"` : ""}`;
                             return (
-                              <>
-                                <div className="cell-time">{ts.date}</div>
-                                {ts.time ? <div className="time-relative">{ts.time}</div> : null}
-                              </>
+                              <span className="remind-badge" title={tip}>
+                                <Icons.Bell size={11} /> Nhắc
+                              </span>
                             );
                           })()}
-                        </td>
-                        <td style={{ textAlign: "center" }}>
-                          <CustomerTypeBadge type={d.customerType} />
-                        </td>
-                        <td onClick={(e) => e.stopPropagation()}>
-                          {tab === "pending" && complete ? (
-                            <button
-                              type="button"
-                              className="btn btn-primary btn-sm"
-                              title="Xuất hoá đơn"
-                              onClick={() => void issueInvoiceForCourse(r.ar.id, r.course.courseCode)}
-                            >
-                              <Icons.Doc size={13} /> Xuất HĐ
-                            </button>
-                          ) : (
-                            <span className="row-action">
-                              <Icons.ChevronRight size={15} />
-                            </span>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
+                        </div>
+                      </td>
+                      <td>
+                        <span className="cell-phone">
+                          {country.flag} {country.dial} {fmtPhone(d.phone)}
+                        </span>
+                      </td>
+                      <td>
+                        <span className="cell-mono">{r.uidObj.uid}</span>
+                      </td>
+                      <td>
+                        <div className="cell-sub" title={formatAddress(r.pr, r)}>
+                          {formatAddress(r.pr, r)}
+                        </div>
+                      </td>
+                      <td style={{ textAlign: "right" }}>
+                        <span style={{ fontWeight: 700, color: "var(--money)" }}>{vnd(r.course.amount)}</span>
+                      </td>
+                      <td>
+                        {r.course.invoiced ? (
+                          <span className="invoice-chip">
+                            <Icons.Doc size={11} /> {r.course.invoiceId}
+                          </span>
+                        ) : (
+                          <span className="code-chip cc">
+                            <Icons.Sparkle size={11} /> {r.course.courseCode}
+                          </span>
+                        )}
+                      </td>
+                      <td>
+                        {(() => {
+                          const ts = formatPaymentDateTime(
+                            r.course.invoiced ? r.course.invoicedAt || "" : r.ar.createdAt
+                          );
+                          return (
+                            <>
+                              <div className="cell-time">{ts.date}</div>
+                              {ts.time ? <div className="time-relative">{ts.time}</div> : null}
+                            </>
+                          );
+                        })()}
+                      </td>
+                      <td style={{ textAlign: "center" }}>
+                        <CustomerTypeBadge type={d.customerType} />
+                      </td>
+                      <td onClick={(e) => e.stopPropagation()}>
+                        {tab === "pending" && complete ? (
+                          <button
+                            type="button"
+                            className="btn btn-primary btn-sm"
+                            title="Xuất hoá đơn"
+                            onClick={() => void issueInvoiceForCourse(r.ar.id, r.course.courseCode)}
+                          >
+                            <Icons.Doc size={13} /> Xuất HĐ
+                          </button>
+                        ) : (
+                          <span className="row-action">
+                            <Icons.ChevronRight size={15} />
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
 
