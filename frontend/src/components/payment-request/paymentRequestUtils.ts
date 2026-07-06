@@ -693,3 +693,70 @@ export function pageItems(page: number, totalPages: number): Array<number | "...
   return out;
 }
 
+// ===== TVTS filter (bộ lọc tạm thời theo TVTS — TVTS-01) =====
+
+/** Bucket cho PR không có sale_email (data cũ / data test). */
+export const UNKNOWN_TVTS_KEY = "__unknown_tvts__";
+
+export interface TvtsOption {
+  /** saleEmail chuẩn hoá (trim + lowercase), hoặc UNKNOWN_TVTS_KEY */
+  key: string;
+  /** Tên hiển thị: saleName > phần trước @ của email > "Không rõ TVTS" */
+  label: string;
+  /** Số PR thuộc TVTS này trong danh sách đang thấy (tính mọi bucket, kể cả Đã huỷ) */
+  count: number;
+}
+
+/** Key định danh TVTS của 1 PR — dùng saleEmail vì ổn định hơn saleName (saleName chỉ có ở response danh sách). */
+export function tvtsKeyOf(r: PaymentRequest): string {
+  const email = (r.saleEmail ?? "").trim().toLowerCase();
+  return email || UNKNOWN_TVTS_KEY;
+}
+
+/** Label TVTS của 1 PR — cùng fallback với cột TVTS trong bảng (PaymentRequestTable). */
+export function tvtsLabelOf(r: PaymentRequest): string {
+  if (r.saleName) return r.saleName;
+  const email = (r.saleEmail ?? "").trim();
+  if (email.includes("@")) return email.split("@")[0];
+  return email || "Không rõ TVTS";
+}
+
+/**
+ * Danh sách option cho dropdown lọc TVTS.
+ * - Unique theo key; nếu PR đầu tiên gặp thiếu saleName thì lấy saleName từ PR sau (nếu có)
+ * - Sort A→Z theo locale "vi"; bucket "Không rõ TVTS" luôn nằm cuối
+ */
+export function deriveTvtsOptions(requests: PaymentRequest[]): TvtsOption[] {
+  const map = new Map<string, { label: string; count: number; hasName: boolean }>();
+  for (const r of requests) {
+    const key = tvtsKeyOf(r);
+    const existing = map.get(key);
+    if (!existing) {
+      map.set(key, { label: tvtsLabelOf(r), count: 1, hasName: !!r.saleName });
+    } else {
+      existing.count += 1;
+      if (!existing.hasName && r.saleName) {
+        existing.label = r.saleName;
+        existing.hasName = true;
+      }
+    }
+  }
+  const options = [...map.entries()].map(([key, v]) => ({ key, label: v.label, count: v.count }));
+  return options.sort((a, b) => {
+    if (a.key === UNKNOWN_TVTS_KEY) return 1;
+    if (b.key === UNKNOWN_TVTS_KEY) return -1;
+    return a.label.localeCompare(b.label, "vi");
+  });
+}
+
+/**
+ * Áp bộ lọc TVTS. selected rỗng = không lọc — trả về ĐÚNG reference mảng đầu vào
+ * (bất biến quan trọng: giữ ổn định useMemo phía PaymentRequestsTab).
+ */
+export function applyTvtsFilter(
+  requests: PaymentRequest[],
+  selected: ReadonlySet<string>
+): PaymentRequest[] {
+  if (selected.size === 0) return requests;
+  return requests.filter((r) => selected.has(tvtsKeyOf(r)));
+}

@@ -228,6 +228,7 @@ export default function PaymentRequestTable({
                   {showTvts && (
                     <td>
                       <span
+                        data-testid="pr-tvts-cell"
                         style={{ fontSize: 12.5, color: "var(--text-2)", fontWeight: 500 }}
                         title={p.saleEmail || undefined}
                       >

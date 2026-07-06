@@ -24,10 +24,13 @@ import PaymentRequestTable from "./payment-request/PaymentRequestTable";
 import PaymentRequestToolbar from "./payment-request/PaymentRequestToolbar";
 import QrViewModal from "./payment-request/QrViewModal";
 import Modal from "./ui/Modal";
+import TvtsFilterDropdown from "./payment-request/TvtsFilterDropdown";
 import {
   type RequestBucket,
   type StatusFilter,
+  applyTvtsFilter,
   buildArByPrId,
+  deriveTvtsOptions,
   fromApiAttempt,
   fromApiPaymentRequest,
   isBackendLineId,
@@ -69,6 +72,9 @@ export default function PaymentRequestsTab() {
   const [dateRange, setDateRange] = useState<DateRange>(EMPTY_RANGE);
   const [tab, setTab] = useState<RequestBucket>("tracking");
   const [hideTest, setHideTest] = useState(true);
+  // Bộ lọc TVTS tạm thời (leader+): useState thường — chủ ý KHÔNG persist,
+  // F5/thoát app/chuyển tab là về mặc định (spec: bộ lọc kiểu Google Sheet)
+  const [tvtsSelected, setTvtsSelected] = useState<ReadonlySet<string>>(new Set());
   const [page, setPage] = useState(1);
   const [createOpen, setCreateOpen] = useState(false);
   const [cancelTarget, setCancelTarget] = useState<PaymentRequest | null>(null);
@@ -123,22 +129,30 @@ export default function PaymentRequestsTab() {
     [requests, hideTest]
   );
 
+  // Options từ visibleRequests (TRƯỚC khi lọc) — panel luôn liệt kê đủ mọi TVTS đang có data
+  const tvtsOptions = useMemo(() => deriveTvtsOptions(visibleRequests), [visibleRequests]);
+  // Chèn filter TVTS trên visibleRequests → KPI/chips/tabs/bảng đều phản ánh (chốt C3)
+  const tvtsFiltered = useMemo(
+    () => applyTvtsFilter(visibleRequests, tvtsSelected),
+    [visibleRequests, tvtsSelected]
+  );
+
   const trackingRequests = useMemo(
-    () => visibleRequests.filter((r) => r.state !== "cancelled"),
-    [visibleRequests]
+    () => tvtsFiltered.filter((r) => r.state !== "cancelled"),
+    [tvtsFiltered]
   );
   const cancelledRequests = useMemo(
-    () => visibleRequests.filter((r) => r.state === "cancelled"),
-    [visibleRequests]
+    () => tvtsFiltered.filter((r) => r.state === "cancelled"),
+    [tvtsFiltered]
   );
   const createdRequests = useMemo(
-    () => visibleRequests.filter((r) => r.state !== "cancelled" && arByPrId[r.id]),
-    [visibleRequests, arByPrId]
+    () => tvtsFiltered.filter((r) => r.state !== "cancelled" && arByPrId[r.id]),
+    [tvtsFiltered, arByPrId]
   );
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return visibleRequests.filter((r) => {
+    return tvtsFiltered.filter((r) => {
       if (tab === "cancelled") {
         if (r.state !== "cancelled") return false;
       } else {
@@ -150,12 +164,12 @@ export default function PaymentRequestsTab() {
       if (!q) return true;
       return [r.id, r.name, r.uid, r.phone].some((v) => v.toLowerCase().includes(q));
     });
-  }, [visibleRequests, tab, status, dateRange, search, arByPrId]);
+  }, [tvtsFiltered, tab, status, dateRange, search, arByPrId]);
 
   // Đổi tab/filter → về trang 1; danh sách co lại thì paginate tự clamp
   useEffect(() => {
     setPage(1);
-  }, [tab, status, dateRange, search, hideTest]);
+  }, [tab, status, dateRange, search, hideTest, tvtsSelected]);
 
   const pageSlice = useMemo(() => paginate(filtered, page, PAGE_SIZE), [filtered, page]);
 
@@ -759,6 +773,15 @@ export default function PaymentRequestsTab() {
           onStatus={setStatus}
           onDateRange={setDateRange}
           onHideTestChange={setHideTest}
+          tvtsFilter={
+            showTvts ? (
+              <TvtsFilterDropdown
+                options={tvtsOptions}
+                selected={tvtsSelected}
+                onChange={setTvtsSelected}
+              />
+            ) : undefined
+          }
         />
 
         {apiNote && (
