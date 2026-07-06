@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import DateRangeFilter, { type DateRange } from "./DateRangeFilter";
 import { Icons } from "./Icons";
 import type { StatusFilter } from "./paymentRequestUtils";
@@ -20,6 +21,7 @@ export default function PaymentRequestToolbar({
   onStatus,
   onDateRange,
   onHideTestChange,
+  tvtsFilter,
 }: {
   search: string;
   status: StatusFilter;
@@ -31,6 +33,7 @@ export default function PaymentRequestToolbar({
   onStatus: (value: StatusFilter) => void;
   onDateRange: (value: DateRange) => void;
   onHideTestChange?: (value: boolean) => void;
+  tvtsFilter?: ReactNode;
 }) {
   return (
     <div className="toolbar">
@@ -67,6 +70,7 @@ export default function PaymentRequestToolbar({
             </span>
           </button>
         ))}
+      {tvtsFilter}
       <div style={{ marginLeft: "auto", display: "flex", gap: 6, alignItems: "center" }}>
         {onHideTestChange && (
           <label style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12, color: "var(--text-2)", cursor: "pointer", userSelect: "none" }}>
