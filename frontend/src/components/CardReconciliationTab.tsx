@@ -10,6 +10,8 @@ import {
 } from "./card-recon/mockGatewayTxns";
 import { endpoints } from "../lib/api";
 import DateRangeFilter, { EMPTY_RANGE, type DateRange, inDateRange } from "./payment-request/DateRangeFilter";
+import CardReconRowCards from "./card-recon/CardReconRowCards";
+import useIsMobile from "../hooks/useIsMobile";
 import "../styles/prototype-payments.css";
 
 type StatusFilter = "all" | MatchStatus;
@@ -68,6 +70,7 @@ export default function CardReconciliationTab({
   lockedSource?: GatewaySource;
   onGoToSync?: () => void;
 }) {
+  const isMobile = useIsMobile();
   const [txns, setTxns] = useState<GatewayTxn[]>([]);
   const [loading, setLoading] = useState(false);
   const [source, setSource] = useState<GatewaySource>(lockedSource ?? "mpos");
@@ -417,12 +420,14 @@ export default function CardReconciliationTab({
         </div>
       )}
       <div className="page page--fit">
+        {!isMobile && (
         <div style={{ fontSize: 12.5, color: "var(--text-3)", maxWidth: 760, lineHeight: 1.55, marginBottom: 4 }}>
           Giao dịch quẹt thẻ <strong style={{ color: "var(--text-2)" }}>mPOS</strong> &{" "}
           <strong style={{ color: "var(--text-2)" }}>Payoo</strong> được đồng bộ tự động về đây. Kế toán đối chiếu từng
           giao dịch với ảnh bill sales gửi rồi <strong style={{ color: "var(--text-2)" }}>ghép vào đúng lần thanh toán</strong>{" "}
           của Payment Request.
         </div>
+        )}
 
         <div
           style={{
@@ -570,7 +575,12 @@ export default function CardReconciliationTab({
             <span className="right-meta">{loading ? "Đang tải…" : `${filtered.length} kết quả`}</span>
           </div>
 
-          <div className="tbl-wrap">
+          {isMobile ? (
+            <div className="mobile-card-list">
+              <CardReconRowCards rows={filtered} loading={loading} onOpen={openDrawer} />
+            </div>
+          ) : null}
+          <div className="tbl-wrap desktop-only">
             <table className="tbl">
               <thead>
                 <tr>

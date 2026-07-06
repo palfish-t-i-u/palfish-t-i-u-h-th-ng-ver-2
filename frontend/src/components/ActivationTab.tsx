@@ -3,6 +3,8 @@ import { MoneyInput } from "./ui/MoneyInput";
 import { COURSE_PACKAGES } from "../constants/coursePackages";
 import { usePaymentFlow } from "../contexts/PaymentFlowContext";
 import { usePermission } from "../hooks/usePermission";
+import useIsMobile from "../hooks/useIsMobile";
+import ActivationRowCards from "./activation/ActivationRowCards";
 import { endpoints } from "../lib/api";
 import { notifyLedgerChanged } from "../lib/ledgerEvents";
 import type { ActiveRequest, ActiveCourse, ActiveUidGroup, PaymentRequest } from "../types/paymentRequest";
@@ -1823,6 +1825,8 @@ export default function ActivationTab() {
     });
   }, [rows, tab, search, dateRange, referralFilter]);
 
+  const isMobile = useIsMobile();
+
   const openAr = openArId ? activeRequests.find((a) => a.id === openArId) ?? null : null;
   const openPr = openAr?.prId ? requests.find((p) => p.id === openAr.prId) ?? null : null;
   const persistActiveRequest = async (next: ActiveRequest) => {
@@ -1863,13 +1867,15 @@ export default function ActivationTab() {
     <div className="gmv-prototype">
       <div className="page">
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, marginBottom: 4 }}>
-          <div style={{ fontSize: 12.5, color: "var(--text-3)", maxWidth: 720, lineHeight: 1.55 }}>
-            Sau khi PR đủ tiền, tạo <strong style={{ color: "var(--text-2)" }}>Active Request</strong> và điền{" "}
-            <strong style={{ color: "var(--text-2)" }}>Order ID CRM</strong> cho từng Course Code.{" "}
-            <strong style={{ color: "var(--text-2)" }}>Lưu Order ID</strong> → ghi ngay vào{" "}
-            <strong style={{ color: "var(--text-2)" }}>Sổ doanh thu</strong> (tab Báo cáo, lọc theo Pay Time PR). Khi đủ Order ID →
-            sang B4 xuất hoá đơn.
-          </div>
+          {!isMobile && (
+            <div style={{ fontSize: 12.5, color: "var(--text-3)", maxWidth: 720, lineHeight: 1.55 }}>
+              Sau khi PR đủ tiền, tạo <strong style={{ color: "var(--text-2)" }}>Active Request</strong> và điền{" "}
+              <strong style={{ color: "var(--text-2)" }}>Order ID CRM</strong> cho từng Course Code.{" "}
+              <strong style={{ color: "var(--text-2)" }}>Lưu Order ID</strong> → ghi ngay vào{" "}
+              <strong style={{ color: "var(--text-2)" }}>Sổ doanh thu</strong> (tab Báo cáo, lọc theo Pay Time PR). Khi đủ Order ID →
+              sang B4 xuất hoá đơn.
+            </div>
+          )}
           {!readOnly && (
             <button type="button" className="btn btn-primary" onClick={() => setCreateOpen(true)}>
               <Icons.Plus size={15} strokeWidth={2.3} /> Tạo Active Request
@@ -2015,135 +2021,147 @@ export default function ActivationTab() {
             <span className="right-meta">{filtered.length} kết quả</span>
           </div>
 
-          <div className="tbl-wrap">
-            <table className="tbl">
-              <thead>
-                <tr>
-                  <th>AR-ID</th>
-                  <th>PR-ID</th>
-                  <th>Khách hàng</th>
-                  <th style={{ textAlign: "center" }}>UID</th>
-                  <th style={{ textAlign: "right" }}>Tổng tiền</th>
-                  <th style={{ textAlign: "center" }}>Order ID</th>
-                  <th>Trạng thái</th>
-                  <th>Thưởng GT</th>
-                  <th>Tạo lúc</th>
-                  <th />
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.length === 0 && (
+          {isMobile ? (
+            <div className="mobile-card-list p-2">
+              <ActivationRowCards
+                rows={filtered}
+                openArId={openArId}
+                onSelect={setOpenArId}
+                reminderByPrId={reminderByPrId}
+                emptyText="Chưa có Active Request nào khớp với điều kiện lọc."
+              />
+            </div>
+          ) : (
+            <div className="tbl-wrap">
+              <table className="tbl">
+                <thead>
                   <tr>
-                    <td colSpan={10}>
-                      <div className="empty">
-                        <Icons.Sparkle size={20} />
-                        <div>Chưa có Active Request nào khớp với điều kiện lọc.</div>
-                      </div>
-                    </td>
+                    <th>AR-ID</th>
+                    <th>PR-ID</th>
+                    <th>Khách hàng</th>
+                    <th style={{ textAlign: "center" }}>UID</th>
+                    <th style={{ textAlign: "right" }}>Tổng tiền</th>
+                    <th style={{ textAlign: "center" }}>Order ID</th>
+                    <th>Trạng thái</th>
+                    <th>Thưởng GT</th>
+                    <th>Tạo lúc</th>
+                    <th />
                   </tr>
-                )}
-                {filtered.map((a) => {
-                  const rem = a.prId ? reminderByPrId.get(a.prId) : undefined;
-                  const remTip = rem
-                    ? `Sales nhắc kích hoạt lúc ${new Date(rem.requested_at).toLocaleDateString("vi-VN")} ${new Date(rem.requested_at).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })} — bởi ${rem.requested_by_name}${rem.note ? ` · "${rem.note}"` : ""}`
-                    : undefined;
-                  return (
-                  <tr
-                    key={a.id}
-                    className={openArId === a.id ? "selected" : ""}
-                    onClick={() => setOpenArId(a.id)}
-                    title={remTip}
-                    style={rem ? { borderLeft: "3px solid #e65100" } : undefined}
-                  >
-                    <td>
-                      <span className="ar-id-pill">{a.id}</span>
-                    </td>
-                    <td>
-                      {a.prId ? (
-                        <span className="pr-id-pill" style={{ fontSize: 11.5 }}>
-                          {a.prId}
-                        </span>
-                      ) : (
-                        <span style={{ color: "var(--text-3)", fontSize: 12 }}>— Standalone —</span>
-                      )}
-                    </td>
-                    <td>
-                      <div className="cell-name">{a.customerName}</div>
-                      <div className="cell-sub">UID: {a.uids[0]?.uid || "—"}</div>
-                    </td>
-                    <td style={{ textAlign: "center" }}>
-                      <span className="qr-count">
-                        <span className="num-done">{a.uids.length}</span>
-                      </span>
-                    </td>
-                    <td style={{ textAlign: "right" }}>
-                      <span style={{ fontWeight: 700, color: "var(--money)" }}>{vnd(a.total)}</span>
-                    </td>
-                    <td style={{ textAlign: "center" }}>
-                      <span className="qr-count">
-                        <span
-                          className="num-done"
-                          style={{
-                            color: a.orderedCount === a.totalCourses ? "var(--success-text)" : "var(--warning-text)",
-                          }}
-                        >
-                          {a.orderedCount}
-                        </span>
-                        <span className="slash">/</span>
-                        <span className="num-total">{a.totalCourses}</span>
-                      </span>
-                    </td>
-                    <td>
-                      <ARStatusBadge status={a.status} />
-                    </td>
-                    <td>
-                      {(() => {
-                        const rs = getArReferralStatus(a);
-                        if (rs === null) {
-                          return <span style={{ color: "var(--text-3)", fontSize: 12 }}>—</span>;
-                        }
-                        const cfg = {
-                          full: { bg: "var(--success-bg)", color: "var(--success-text)", label: "Đã cộng" },
-                          partial: { bg: "var(--caution-bg, #fef9c3)", color: "var(--caution-text, #92400e)", label: "1 phần" },
-                          none: { bg: "var(--danger-bg, #fee2e2)", color: "var(--danger-text, #b91c1c)", label: "Chưa cộng" },
-                        }[rs];
-                        return (
-                          <span style={{
-                            fontSize: 11,
-                            padding: "2px 8px",
-                            borderRadius: 6,
-                            background: cfg.bg,
-                            color: cfg.color,
-                            fontWeight: 600,
-                            whiteSpace: "nowrap",
-                          }}>
-                            {cfg.label}
+                </thead>
+                <tbody>
+                  {filtered.length === 0 && (
+                    <tr>
+                      <td colSpan={10}>
+                        <div className="empty">
+                          <Icons.Sparkle size={20} />
+                          <div>Chưa có Active Request nào khớp với điều kiện lọc.</div>
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                  {filtered.map((a) => {
+                    const rem = a.prId ? reminderByPrId.get(a.prId) : undefined;
+                    const remTip = rem
+                      ? `Sales nhắc kích hoạt lúc ${new Date(rem.requested_at).toLocaleDateString("vi-VN")} ${new Date(rem.requested_at).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })} — bởi ${rem.requested_by_name}${rem.note ? ` · "${rem.note}"` : ""}`
+                      : undefined;
+                    return (
+                    <tr
+                      key={a.id}
+                      className={openArId === a.id ? "selected" : ""}
+                      onClick={() => setOpenArId(a.id)}
+                      title={remTip}
+                      style={rem ? { borderLeft: "3px solid #e65100" } : undefined}
+                    >
+                      <td>
+                        <span className="ar-id-pill">{a.id}</span>
+                      </td>
+                      <td>
+                        {a.prId ? (
+                          <span className="pr-id-pill" style={{ fontSize: 11.5 }}>
+                            {a.prId}
                           </span>
-                        );
-                      })()}
-                    </td>
-                    <td>
-                      {(() => {
-                        const ts = formatPaymentDateTime(a.createdAt);
-                        return (
-                          <>
-                            <div className="cell-time">{ts.date}</div>
-                            {ts.time ? <div className="time-relative">{ts.time}</div> : null}
-                          </>
-                        );
-                      })()}
-                    </td>
-                    <td>
-                      <span className="row-action">
-                        <Icons.ChevronRight size={15} />
-                      </span>
-                    </td>
-                  </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+                        ) : (
+                          <span style={{ color: "var(--text-3)", fontSize: 12 }}>— Standalone —</span>
+                        )}
+                      </td>
+                      <td>
+                        <div className="cell-name">{a.customerName}</div>
+                        <div className="cell-sub">UID: {a.uids[0]?.uid || "—"}</div>
+                      </td>
+                      <td style={{ textAlign: "center" }}>
+                        <span className="qr-count">
+                          <span className="num-done">{a.uids.length}</span>
+                        </span>
+                      </td>
+                      <td style={{ textAlign: "right" }}>
+                        <span style={{ fontWeight: 700, color: "var(--money)" }}>{vnd(a.total)}</span>
+                      </td>
+                      <td style={{ textAlign: "center" }}>
+                        <span className="qr-count">
+                          <span
+                            className="num-done"
+                            style={{
+                              color: a.orderedCount === a.totalCourses ? "var(--success-text)" : "var(--warning-text)",
+                            }}
+                          >
+                            {a.orderedCount}
+                          </span>
+                          <span className="slash">/</span>
+                          <span className="num-total">{a.totalCourses}</span>
+                        </span>
+                      </td>
+                      <td>
+                        <ARStatusBadge status={a.status} />
+                      </td>
+                      <td>
+                        {(() => {
+                          const rs = getArReferralStatus(a);
+                          if (rs === null) {
+                            return <span style={{ color: "var(--text-3)", fontSize: 12 }}>—</span>;
+                          }
+                          const cfg = {
+                            full: { bg: "var(--success-bg)", color: "var(--success-text)", label: "Đã cộng" },
+                            partial: { bg: "var(--caution-bg, #fef9c3)", color: "var(--caution-text, #92400e)", label: "1 phần" },
+                            none: { bg: "var(--danger-bg, #fee2e2)", color: "var(--danger-text, #b91c1c)", label: "Chưa cộng" },
+                          }[rs];
+                          return (
+                            <span style={{
+                              fontSize: 11,
+                              padding: "2px 8px",
+                              borderRadius: 6,
+                              background: cfg.bg,
+                              color: cfg.color,
+                              fontWeight: 600,
+                              whiteSpace: "nowrap",
+                            }}>
+                              {cfg.label}
+                            </span>
+                          );
+                        })()}
+                      </td>
+                      <td>
+                        {(() => {
+                          const ts = formatPaymentDateTime(a.createdAt);
+                          return (
+                            <>
+                              <div className="cell-time">{ts.date}</div>
+                              {ts.time ? <div className="time-relative">{ts.time}</div> : null}
+                            </>
+                          );
+                        })()}
+                      </td>
+                      <td>
+                        <span className="row-action">
+                          <Icons.ChevronRight size={15} />
+                        </span>
+                      </td>
+                    </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       </div>
 
