@@ -293,15 +293,35 @@ export default function AppShell({
               </Badge>
             )}
             {headerExtras}
-            {userRole && <Badge tone="neutral">{userRole}</Badge>}
+            {userRole && (
+              <Badge tone="neutral" className="max-md:hidden">
+                {userRole}
+              </Badge>
+            )}
             <span className="hidden text-xs text-gmv-muted sm:inline">{userEmail || "dev@local"}</span>
             {onSignOut && (
               <button
                 type="button"
                 onClick={onSignOut}
-                className="min-h-[44px] rounded-gmv-md border border-gmv-border bg-gmv-canvas px-3 py-1.5 text-xs font-medium text-gmv-text-strong hover:bg-gmv-bg"
+                aria-label="Đăng xuất"
+                className="flex min-h-[44px] items-center rounded-gmv-md border border-gmv-border bg-gmv-canvas px-3 py-1.5 text-xs font-medium text-gmv-text-strong hover:bg-gmv-bg max-md:px-2.5"
               >
-                Đăng xuất
+                <svg
+                  className="md:hidden"
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                  <polyline points="16 17 21 12 16 7" />
+                  <line x1="21" y1="12" x2="9" y2="12" />
+                </svg>
+                <span className="max-md:hidden">Đăng xuất</span>
               </button>
             )}
           </div>

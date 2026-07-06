@@ -72,4 +72,41 @@ describe("AppShell bottom nav", () => {
     fireEvent.click(within(nav).getByText("Đốisoát"));
     expect(onSelect).toHaveBeenCalledWith("reconciliation");
   });
+
+  it("nút Đăng xuất có aria-label và text ẩn trên mobile", () => {
+    render(
+      <AppShell
+        items={makeItems(3)}
+        activeId="tab0"
+        onSelect={() => {}}
+        title="T"
+        userRole="BÁN HÀNG"
+        onSignOut={() => {}}
+      >
+        <div />
+      </AppShell>
+    );
+    const btn = screen.getByRole("button", { name: "Đăng xuất" });
+    expect(btn.querySelector("span.max-md\\:hidden")).toHaveTextContent("Đăng xuất");
+    expect(btn.querySelector("svg.md\\:hidden")).not.toBeNull();
+  });
+
+  it("badge role wrapper tem max-md:hidden", () => {
+    const { container } = render(
+      <AppShell
+        items={makeItems(3)}
+        activeId="tab0"
+        onSelect={() => {}}
+        title="T"
+        userRole="BÁN HÀNG"
+        onSignOut={() => {}}
+      >
+        <div />
+      </AppShell>
+    );
+    // Badge wrapper (the span/div rendered by Badge) must carry max-md:hidden
+    const badgeEl = container.querySelector("[class*='max-md:hidden']");
+    expect(badgeEl).not.toBeNull();
+    expect(badgeEl?.textContent).toContain("BÁN HÀNG");
+  });
 });
