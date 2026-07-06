@@ -19,3 +19,5 @@ export {
 } from "./Table";
 export { default as Modal } from "./Modal";
 export { default as PageSection } from "./PageSection";
+export { RowCard, RowCardList } from "./RowCard";
+export type { RowCardMeta } from "./RowCard";

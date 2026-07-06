@@ -2041,3 +2041,10 @@
   padding: 1px 7px; border-radius: 999px;
 }
 .gmv-prototype .tvts-filter__empty { padding: 10px 12px; font-size: 12.5px; color: var(--text-3); }
+
+/* ── Mobile: drawer chiếm toàn màn hình ── */
+@media (max-width: 767px) {
+  .gmv-prototype .drawer {
+    width: 100vw;
+  }
+}

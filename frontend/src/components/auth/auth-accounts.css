@@ -1003,3 +1003,10 @@
   color: var(--gmv-danger);
   word-break: break-word;
 }
+
+/* ── Mobile: drawer chiếm toàn màn hình ── */
+@media (max-width: 767px) {
+  .aa-drawer {
+    width: 100vw;
+  }
+}
