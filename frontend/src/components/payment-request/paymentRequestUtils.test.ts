@@ -116,7 +116,10 @@ describe("active request course package updates", () => {
       payments: [],
     };
 
-    expect(buildCreateActiveRequestPayload(pr).uids[0].courses[0].amount).toBe(2000);
+    const payload = buildCreateActiveRequestPayload(pr, "2/W-NEW 24 PHI+2 HN");
+    expect(payload.uids[0].courses[0].amount).toBe(2000);
+    // 7/7 — tên gói bắt buộc, không còn gửi name rỗng lên BE
+    expect(payload.uids[0].courses[0].name).toBe("2/W-NEW 24 PHI+2 HN");
   });
 
   it("detects when active request courses exceed linked payment request received money", () => {

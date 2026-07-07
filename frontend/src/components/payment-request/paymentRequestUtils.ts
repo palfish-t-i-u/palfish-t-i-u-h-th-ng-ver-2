@@ -281,14 +281,15 @@ export function buildArByPrId(ars: ActiveRequest[]): Record<string, ActiveReques
   return map;
 }
 
-export function buildCreateActiveRequestPayload(pr: PaymentRequest): CreateActiveRequestPayload {
+export function buildCreateActiveRequestPayload(pr: PaymentRequest, packageName: string): CreateActiveRequestPayload {
   return {
     uids: [
       {
         uid: pr.uid,
         phone: pr.phone,
         country: pr.country,
-        courses: [{ name: "", amount: Math.max(0, pr.received) }],
+        // Tên gói bắt buộc — BE chặn tạo AR khi name rỗng (tin Zalo bắn ngay lúc tạo)
+        courses: [{ name: packageName.trim(), amount: Math.max(0, pr.received) }],
       },
     ],
   };

@@ -77,7 +77,7 @@ type PaymentFlowContextValue = {
   ) => Promise<{ payment: PaymentAttempt; request: PaymentRequest } | null>;
   confirmTransaction: (prId: string, paymentId: string, extra?: { verified_total?: number; verified_received?: number }) => Promise<void>;
   rejectTransaction: (prId: string, paymentId: string, rejectReason?: string) => Promise<void>;
-  handleCreateActiveRequest: (pr: PaymentRequest) => Promise<ActiveRequest>;
+  handleCreateActiveRequest: (pr: PaymentRequest, packageName: string) => Promise<ActiveRequest>;
   handleCreateActiveRequestFromForm: (data: {
     prId: string | null;
     customerName: string;
@@ -369,11 +369,11 @@ export function PaymentFlowProvider({
   );
 
   const handleCreateActiveRequest = useCallback(
-    async (pr: PaymentRequest) => {
+    async (pr: PaymentRequest, packageName: string) => {
       try {
         const res = await endpoints.paymentRequests.createActiveRequest(
           pr.id,
-          buildCreateActiveRequestPayload(pr)
+          buildCreateActiveRequestPayload(pr, packageName)
         );
         const ar = fromApiActiveRequest(res.data);
         if (!ar.customerName) ar.customerName = pr.name;
