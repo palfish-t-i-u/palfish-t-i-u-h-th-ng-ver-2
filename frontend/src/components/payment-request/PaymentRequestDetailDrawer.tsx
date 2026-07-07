@@ -9,7 +9,7 @@ import type {
   PaymentRequest,
 } from "../../types/paymentRequest";
 import { COURSE_PACKAGES } from "../../constants/coursePackages";
-import CountryCombo, { findCountry } from "./CountryCombo";
+import CountryCombo, { COUNTRIES, findCountry } from "./CountryCombo";
 import { Icons, type IconKey } from "./Icons";
 import BillUploadZone from "./BillUploadZone";
 import VietnamAddressFields from "./VietnamAddressFields";
@@ -601,6 +601,7 @@ interface DraftPr {
   province: string;
   ward: string;
   address: string;
+  foreignCountry: string;
   target: string;
   note: string;
   taxId: string;
@@ -611,6 +612,10 @@ interface DraftPr {
   isForeign: boolean;
   wantsInvoice: boolean;
 }
+
+const FOREIGN_COUNTRY_OPTIONS = COUNTRIES.filter((c) => c.code !== "VN")
+  .map((c) => ({ value: c.code, label: `${c.flag} ${c.name}` }))
+  .sort((a, b) => a.label.localeCompare(b.label, "vi"));
 
 /**
  * AR mini-window cho Sales view — gọn nhẹ, hiện ngay trong drawer PR.
@@ -1538,7 +1543,7 @@ export default function PaymentRequestDetailDrawer({
   onEditAmount?: (qr: PaymentAttempt, newAmount: number) => Promise<void>;
   onBillFile: (qr: PaymentAttempt, file: File) => void | Promise<void>;
   onBillView: (qr: PaymentAttempt) => void;
-  onCreateActiveRequest: (packageName: string) => void;
+  onCreateActiveRequest: () => void;
   onCancelRequest: () => void;
   activeRequestId?: string | null;
   activeRequest?: ActiveRequest | null;
@@ -1562,9 +1567,6 @@ export default function PaymentRequestDetailDrawer({
   const [prFullModalOpen, setPrFullModalOpen] = useState(false);
   const [highlightTarget, setHighlightTarget] = useState(false);
   const targetInputRef = useRef<HTMLInputElement | null>(null);
-  // 7/7 — bắt buộc chọn tên gói TRƯỚC khi tạo AR (tin Zalo bắn ngay lúc tạo)
-  const [arPackageModalOpen, setArPackageModalOpen] = useState(false);
-  const [arPackageName, setArPackageName] = useState("");
 
   useEffect(() => {
     setShowAdd(false);
@@ -1574,8 +1576,6 @@ export default function PaymentRequestDetailDrawer({
     setDraft(null);
     setPrFullModalOpen(false);
     setHighlightTarget(false);
-    setArPackageModalOpen(false);
-    setArPackageName("");
   }, [request?.id]);
 
   const [dismissedStaleLineIds, setDismissedStaleLineIds] = useState<Set<string>>(new Set());
@@ -1636,6 +1636,7 @@ export default function PaymentRequestDetailDrawer({
   };
   const handleOpenEditForTarget = () => {
     if (!request) return;
+    const isForeign = (request.country || "VN") !== "VN";
     setDraft({
       uid: request.uid,
       name: request.name,
@@ -1643,9 +1644,12 @@ export default function PaymentRequestDetailDrawer({
       country: request.country || "VN",
       phone: request.phone,
       email: request.email || "",
-      province: request.province || "",
-      ward: request.ward || "",
-      address: request.address || "",
+      province: isForeign ? "" : (request.province || ""),
+      ward: isForeign ? "" : (request.ward || ""),
+      address: isForeign ? "" : (request.address || ""),
+      foreignCountry: isForeign
+        ? (COUNTRIES.find((c) => c.name === request.province)?.code || "")
+        : "",
       target: String(request.target),
       note: request.note || "",
       taxId: request.taxId || "",
@@ -1653,7 +1657,7 @@ export default function PaymentRequestDetailDrawer({
       companyName: request.companyName || "",
       leadSource: request.leadSource || "",
       leadChannel: request.leadChannel || "",
-      isForeign: (request.country || "VN") !== "VN",
+      isForeign,
       wantsInvoice: request.wantsInvoice ?? false,
     });
     setEditing(true);
@@ -1786,6 +1790,7 @@ export default function PaymentRequestDetailDrawer({
                 <button
                   className="btn btn-outline btn-sm"
                   onClick={() => {
+                    const isForeign = (request.country || "VN") !== "VN";
                     setDraft({
                       uid: request.uid,
                       name: request.name,
@@ -1793,9 +1798,12 @@ export default function PaymentRequestDetailDrawer({
                       country: request.country || "VN",
                       phone: request.phone,
                       email: request.email || "",
-                      province: request.province || "",
-                      ward: request.ward || "",
-                      address: request.address || "",
+                      province: isForeign ? "" : (request.province || ""),
+                      ward: isForeign ? "" : (request.ward || ""),
+                      address: isForeign ? "" : (request.address || ""),
+                      foreignCountry: isForeign
+                        ? (COUNTRIES.find((c) => c.name === request.province)?.code || "")
+                        : "",
                       target: String(request.target),
                       note: request.note || "",
                       taxId: request.taxId || "",
@@ -1803,7 +1811,7 @@ export default function PaymentRequestDetailDrawer({
                       companyName: request.companyName || "",
                       leadSource: request.leadSource || "",
                       leadChannel: request.leadChannel || "",
-                      isForeign: (request.country || "VN") !== "VN",
+                      isForeign,
                       wantsInvoice: request.wantsInvoice ?? false,
                     });
                     setEditing(true);
@@ -1833,6 +1841,9 @@ export default function PaymentRequestDetailDrawer({
                       const targetNum =
                         Number(String(draft.target).replace(/\D/g, "")) || request.target;
                       setSavingEdit(true);
+                      const foreignCountryName = draft.isForeign
+                        ? (COUNTRIES.find((c) => c.code === draft.foreignCountry)?.name ?? draft.foreignCountry)
+                        : "";
                       const ok = await onUpdatePr({
                         ...request,
                         uid: draft.uid,
@@ -1841,9 +1852,9 @@ export default function PaymentRequestDetailDrawer({
                         country: draft.country,
                         phone: draft.phone,
                         email: draft.email,
-                        province: draft.province,
-                        ward: draft.ward,
-                        address: draft.address,
+                        province: draft.isForeign ? foreignCountryName : draft.province,
+                        ward: draft.isForeign ? "" : draft.ward,
+                        address: draft.isForeign ? "" : draft.address,
                         target: targetNum,
                         note: draft.note,
                         taxId: draft.taxId || undefined,
@@ -2081,7 +2092,7 @@ export default function PaymentRequestDetailDrawer({
                     <button
                       type="button"
                       className={`btn btn-sm ${!draft.isForeign ? "btn-primary" : "btn-outline"}`}
-                      onClick={() => setDraft({ ...draft, isForeign: false, country: "VN" })}
+                      onClick={() => setDraft({ ...draft, isForeign: false, country: "VN", foreignCountry: "" })}
                     >
                       Khách VN
                     </button>
@@ -2207,14 +2218,30 @@ export default function PaymentRequestDetailDrawer({
                 )}
                 <div className="info-cell full">
                   <div className="info-label">Địa chỉ khách hàng</div>
-                  <VietnamAddressFields
-                    province={draft.province}
-                    ward={draft.ward}
-                    address={draft.address}
-                    onProvinceChange={(v) => setDraft({ ...draft, province: v })}
-                    onWardChange={(v) => setDraft({ ...draft, ward: v })}
-                    onAddressChange={(v) => setDraft({ ...draft, address: v })}
-                  />
+                  {draft.isForeign ? (
+                    <Combobox
+                      value={draft.foreignCountry}
+                      onChange={(v) => setDraft({ ...draft, foreignCountry: v })}
+                      options={FOREIGN_COUNTRY_OPTIONS}
+                      placeholder="Chọn quốc gia"
+                      emptyLabel="— Bỏ chọn —"
+                      invalid={!draft.foreignCountry}
+                    />
+                  ) : (
+                    <VietnamAddressFields
+                      province={draft.province}
+                      ward={draft.ward}
+                      address={draft.address}
+                      onProvinceChange={(v) => setDraft({ ...draft, province: v })}
+                      onWardChange={(v) => setDraft({ ...draft, ward: v })}
+                      onAddressChange={(v) => setDraft({ ...draft, address: v })}
+                    />
+                  )}
+                  {draft.isForeign && (
+                    <div style={{ fontSize: 11.5, color: draft.foreignCountry ? "var(--text-3)" : "var(--danger)", fontWeight: 600, marginTop: 3 }}>
+                      Bắt buộc chọn quốc gia khách đang ở.
+                    </div>
+                  )}
                 </div>
                 <div className="info-cell">
                   <div className="info-label">Tổng tiền dự kiến</div>
@@ -2450,70 +2477,13 @@ export default function PaymentRequestDetailDrawer({
               className={`btn ${ready && !hasActiveRequest ? "btn-success" : "btn-outline"}`}
               disabled={!ready || hasActiveRequest}
               title={!ready ? "Cần thu đủ 100% số tiền trước khi kích hoạt" : hasActiveRequest ? activeSummary.buttonLabel : "Tạo Active Request và chọn gói khoá học"}
-              onClick={() => {
-                setArPackageName("");
-                setArPackageModalOpen(true);
-              }}
+              onClick={onCreateActiveRequest}
             >
               <Icons.CheckSquare size={14} /> {hasActiveRequest ? activeSummary.buttonLabel : "Kích hoạt khoá học"}
             </button>}
           </div>
         </div>
       </aside>
-      {/* 7/7 — modal bắt buộc chọn gói học trước khi tạo AR (chặn tin Zalo "(chưa có tên gói)") */}
-      {arPackageModalOpen && (
-        <div
-          className="gmv-prototype-modal-scrim"
-          onClick={() => setArPackageModalOpen(false)}
-          style={{ zIndex: 140 }}
-        >
-          <div className="modal" style={{ width: "min(480px, 100%)" }} onClick={(e) => e.stopPropagation()}>
-            <div className="modal-head">
-              <div>
-                <h3>Chọn gói học để kích hoạt</h3>
-                <div style={{ fontSize: 12, color: "var(--text-3)", marginTop: 2 }}>
-                  Tên gói sẽ gửi kèm thông báo cho Ops — bắt buộc điền trước khi tạo yêu cầu.
-                </div>
-              </div>
-              <button className="drawer-close" onClick={() => setArPackageModalOpen(false)}>
-                <Icons.Close size={16} />
-              </button>
-            </div>
-            <div className="modal-body">
-              <div className="field">
-                <label>
-                  Gói học <span style={{ color: "var(--danger)" }}>*</span>
-                </label>
-                <Combobox
-                  value={arPackageName}
-                  onChange={setArPackageName}
-                  options={COURSE_PACKAGE_OPTIONS}
-                  placeholder="Chọn hoặc gõ tên gói học..."
-                  emptyLabel="Chưa chọn gói"
-                />
-              </div>
-            </div>
-            <div className="modal-foot">
-              <button type="button" className="btn btn-outline" onClick={() => setArPackageModalOpen(false)}>
-                Huỷ
-              </button>
-              <button
-                type="button"
-                className="btn btn-success"
-                disabled={!arPackageName.trim()}
-                style={!arPackageName.trim() ? { opacity: 0.4, cursor: "not-allowed" } : undefined}
-                onClick={() => {
-                  if (!arPackageName.trim()) return;
-                  setArPackageModalOpen(false);
-                  onCreateActiveRequest(arPackageName.trim());
-                }}
-              >
-                <Icons.CheckSquare size={14} /> Tạo yêu cầu kích hoạt
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
       {/* 2-03 — popup khi BE chặn nhắc xuất HĐ (PR chưa đủ tiền) */}
       {remindError && (() => {
         const m = /PR chua thu du tien \((\d+)\/(\d+)\)/.exec(remindError);
