@@ -8,6 +8,8 @@ import {
   type DingTalkGroup,
   type DingTalkGroupCreate,
 } from '../../lib/api/dingtalkAdmin';
+import useIsMobile from '../../hooks/useIsMobile';
+import DingTalkGroupCards from './DingTalkGroupCards';
 
 const EMPTY_FORM: DingTalkGroupCreate = {
   team_code: '',
@@ -18,6 +20,7 @@ const EMPTY_FORM: DingTalkGroupCreate = {
 };
 
 export const DingTalkGroupsTab: React.FC = () => {
+  const isMobile = useIsMobile();
   const [groups, setGroups] = useState<DingTalkGroup[]>([]);
   const [loading, setLoading] = useState(true);
   const [form, setForm] = useState<DingTalkGroupCreate>(EMPTY_FORM);
@@ -121,7 +124,15 @@ export const DingTalkGroupsTab: React.FC = () => {
 
       <div className="bg-white p-4 rounded-lg border border-gray-200">
         <h3 className="font-semibold text-gray-800 mb-3">Danh sách nhóm</h3>
-        {loading ? (
+        {isMobile ? (
+          <DingTalkGroupCards
+            groups={groups}
+            loading={loading}
+            onToggle={handleToggleActive}
+            onRotateSecret={handleRotateSecret}
+            onDelete={handleDelete}
+          />
+        ) : loading ? (
           <div className="text-gray-500">Đang tải...</div>
         ) : groups.length === 0 ? (
           <div className="text-gray-500">Chưa có nhóm nào.</div>

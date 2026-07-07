@@ -4,6 +4,8 @@ import {
   retryZaloOutbox,
   type ZaloOutboxRow,
 } from "../../lib/api/zaloAdmin";
+import useIsMobile from "../../hooks/useIsMobile";
+import ZaloOutboxCards from "./ZaloOutboxCards";
 
 function formatDate(iso?: string | null): string {
   if (!iso) return "—";
@@ -38,6 +40,7 @@ function imageStatus(row: ZaloOutboxRow): { icon: string; title: string; cls: st
 }
 
 export default function ZaloOutboxTab() {
+  const isMobile = useIsMobile();
   const [rows, setRows] = useState<ZaloOutboxRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -109,6 +112,15 @@ export default function ZaloOutboxTab() {
         </button>
       </div>
 
+      {isMobile ? (
+        <ZaloOutboxCards
+          rows={rows}
+          loading={loading}
+          retrying={retrying}
+          onRetry={handleRetry}
+          formatDate={formatDate}
+        />
+      ) : (
       <div className="overflow-x-auto">
         <table className="w-full text-sm border-collapse">
           <thead>
@@ -184,6 +196,7 @@ export default function ZaloOutboxTab() {
           </tbody>
         </table>
       </div>
+      )}
     </div>
   );
 }

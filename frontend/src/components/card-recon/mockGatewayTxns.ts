@@ -189,3 +189,14 @@ export function setExtInstalled(v: boolean): void {
     // ignore (SSR / private mode)
   }
 }
+
+// Version extension đang cài — content-app-flag.js ghi mỗi lần load trang app.
+export const EXT_VERSION_KEY = "gw_ext_version";
+
+export function getExtVersion(): string | null {
+  try {
+    return localStorage.getItem(EXT_VERSION_KEY);
+  } catch {
+    return null;
+  }
+}

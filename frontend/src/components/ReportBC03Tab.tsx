@@ -3,6 +3,7 @@ import { endpoints } from "../lib/api";
 import { useRefetchOnFocus } from "../hooks/useRefetchOnFocus";
 import { useRealtimeTable } from "../hooks/useRealtimeTable";
 import { useTeamScope } from "../hooks/useTeamScope";
+import useIsMobile from "../hooks/useIsMobile";
 import { isValidSaleName } from "../lib/metrics";
 import { cn } from "../lib/cn";
 import type { Bc03DailyRevenue, Bc03Report, Bc03StaffOption, DashboardLiveSummary } from "../types/order";
@@ -513,6 +514,7 @@ function InlineKpiInput({
 
 export default function ReportBC03Tab() {
   const { teamFilters, defaultTeam, isRestricted } = useTeamScope();
+  const isMobile = useIsMobile();
   const [monthKey, setMonthKey] = useState(currentMonthKey);
   const [filterMode, setFilterMode] = useState<FilterMode>("month");
   const initialMonth = monthRange(currentMonthKey());
@@ -879,9 +881,11 @@ export default function ReportBC03Tab() {
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 className="text-xl font-bold text-gmv-text-strong">BC03 — Báo cáo tổng bộ</h2>
-          <p className="mt-1 text-sm text-gmv-muted">
-            Mặc định cả tháng · Có thể lọc theo khoảng ngày · KPI sửa trực tiếp trên bảng
-          </p>
+          {!isMobile && (
+            <p className="mt-1 text-sm text-gmv-muted">
+              Mặc định cả tháng · Có thể lọc theo khoảng ngày · KPI sửa trực tiếp trên bảng
+            </p>
+          )}
         </div>
         {report && (
           <p className="text-xs text-gmv-muted">

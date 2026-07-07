@@ -1,6 +1,7 @@
 import { Fragment, useCallback, useEffect, useState } from "react";
 import { endpoints } from "../../lib/api";
 import { useTeamScope } from "../../hooks/useTeamScope";
+import useIsMobile from "../../hooks/useIsMobile";
 import type { RevenueKeyDataResponse } from "../../types/revenue";
 import Button from "../ui/Button";
 import { Input } from "../ui/Input";
@@ -41,6 +42,7 @@ const stickyDateCell = "sticky left-0 z-20 bg-gmv-canvas text-left font-medium s
 
 export default function BC02KeyDataReport() {
   const { teamFilters, defaultTeam, isRestricted } = useTeamScope();
+  const isMobile = useIsMobile();
   const [data, setData] = useState<RevenueKeyDataResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -74,16 +76,18 @@ export default function BC02KeyDataReport() {
 
   return (
     <div className="min-w-0 space-y-4 overflow-x-hidden">
-      <p className="text-sm text-gmv-muted">
-        BC02 — GMV theo ngày và loại nguồn (tab GMV sheet Hiếu).
-        Team lọc theo cột <strong>TEAM</strong> trên SM Hanoi (cột AH) — khớp COUNTIFS tab GMV, không theo roster sale hiện tại.
-        {data?.scopeLabel && (
-          <>
-            {" "}
-            Phạm vi: <strong>{data.scopeLabel}</strong>
-          </>
-        )}
-      </p>
+      {!isMobile && (
+        <p className="text-sm text-gmv-muted">
+          BC02 — GMV theo ngày và loại nguồn (tab GMV sheet Hiếu).
+          Team lọc theo cột <strong>TEAM</strong> trên SM Hanoi (cột AH) — khớp COUNTIFS tab GMV, không theo roster sale hiện tại.
+          {data?.scopeLabel && (
+            <>
+              {" "}
+              Phạm vi: <strong>{data.scopeLabel}</strong>
+            </>
+          )}
+        </p>
+      )}
 
       <div className="flex flex-wrap items-end gap-3">
         <label className="text-sm text-gmv-muted">

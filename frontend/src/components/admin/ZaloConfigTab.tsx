@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { getZaloConfig, updateZaloConfig, testZaloMessage, getZaloGroups, type ZaloConfigData, type ZaloConfigPayload, type ZaloTestPayload, type ZaloGroup } from '../../lib/api/zaloAdmin';
+import useIsMobile from '../../hooks/useIsMobile';
 
 export const ZaloConfigTab: React.FC = () => {
+  const isMobile = useIsMobile();
   const [configData, setConfigData] = useState<ZaloConfigData | null>(null);
   const [form, setForm] = useState<ZaloConfigPayload>({
     app_id: '',
@@ -151,7 +153,9 @@ export const ZaloConfigTab: React.FC = () => {
       {/* Form Section */}
       <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
         <h3 className="text-lg font-semibold mb-1 text-gray-800">Cập nhật Credentials</h3>
-        <p className="text-sm text-gray-500 mb-4">Lưu sẽ thay thế toàn bộ cấu hình cũ. Token mới valid 25 giờ.</p>
+        {!isMobile && (
+          <p className="text-sm text-gray-500 mb-4">Lưu sẽ thay thế toàn bộ cấu hình cũ. Token mới valid 25 giờ.</p>
+        )}
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -225,9 +229,11 @@ export const ZaloConfigTab: React.FC = () => {
       {/* Test Section */}
       <div className="bg-gray-50 p-6 rounded-lg border border-gray-200">
         <h3 className="text-lg font-semibold mb-2 text-gray-800">Kiểm tra kết nối</h3>
-        <p className="text-sm text-gray-600 mb-4">
-          Gửi thử một tin nhắn tới nhóm Zalo để kiểm tra token hoạt động.
-        </p>
+        {!isMobile && (
+          <p className="text-sm text-gray-600 mb-4">
+            Gửi thử một tin nhắn tới nhóm Zalo để kiểm tra token hoạt động.
+          </p>
+        )}
         <div className="flex flex-col sm:flex-row gap-3 mb-4">
           {groupsLoading ? (
             <div className="flex-1 px-3 py-2 border rounded-md text-sm text-gray-400 bg-gray-50">Đang tải danh sách nhóm...</div>

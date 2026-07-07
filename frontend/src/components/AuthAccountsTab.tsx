@@ -7,6 +7,8 @@ import { TableWrap } from "./ui/Table";
 import CreateAccountModal from "./auth/CreateAccountModal";
 import AccountDetailDrawer from "./auth/AccountDetailDrawer";
 import DeleteAccountsModal from "./auth/DeleteAccountsModal";
+import useIsMobile from "../hooks/useIsMobile";
+import AuthAccountCards from "./auth/AuthAccountCards";
 import "./auth/auth-accounts.css";
 
 const ROLE_OPTIONS = [
@@ -129,6 +131,7 @@ const KpiIcons = {
 export default function AuthAccountsTab() {
   const { profile } = useMe();
   const canManage = profile?.canManageStaff ?? false;
+  const isMobile = useIsMobile();
 
   const [authUsers, setAuthUsers] = useState<AuthUserRow[]>([]);
   const [loading, setLoading] = useState(false);
@@ -371,84 +374,93 @@ export default function AuthAccountsTab() {
       {error && <p className="text-sm text-gmv-danger mb-3">{error}</p>}
       {loading && <p className="text-sm text-gmv-muted">Đang tải…</p>}
 
-      {/* Table */}
+      {/* Table / Cards */}
       {!loading && (
-        <TableWrap>
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-gmv-border bg-gmv-table-head text-left text-xs font-semibold uppercase tracking-wide text-gmv-muted">
-                <th className="px-4 py-3">Email</th>
-                <th className="px-4 py-3">Họ tên trên CRM</th>
-                <th className="px-4 py-3">SĐT</th>
-                <th className="px-4 py-3">Đội</th>
-                <th className="px-4 py-3">Team</th>
-                <th className="px-4 py-3">CRM liên kết</th>
-                <th className="px-4 py-3">Đăng nhập cuối</th>
-                <th className="px-4 py-3">Vai trò</th>
-                <th className="px-4 py-3">Trạng thái</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map((u) => {
-                const st = statusOf(u);
-                return (
-                  <tr
-                    key={u.id}
-                    className="border-b border-gmv-border last:border-0 hover:bg-gmv-row-hover aa-row-clickable"
-                    onClick={() => setDrawerUser(u)}
-                  >
-                    <td className="px-4 py-2 font-medium text-gmv-text-strong">{u.email}</td>
-                    <td className="px-4 py-2 text-gmv-text">{u.crmName || u.fullName || "—"}</td>
-                    <td className="px-4 py-2 text-gmv-text">{u.phone || "—"}</td>
-                    <td className="px-4 py-2">
-                      <span className={`aa-dept-badge ${deptClass(u)}`}>{deptLabel(u)}</span>
-                    </td>
-                    <td className="px-4 py-2 text-gmv-text">{u.team || "—"}</td>
-                    <td className="px-4 py-2">
-                      {u.crmName ? (
-                        <span className="aa-crm-link linked">
-                          <span className="aa-status-dot" style={{ background: "var(--gmv-ok)" }} />
-                          Đã liên kết
+        isMobile ? (
+          <AuthAccountCards
+            users={filtered}
+            onSelect={setDrawerUser}
+            statusOf={statusOf}
+            deptLabel={deptLabel}
+          />
+        ) : (
+          <TableWrap>
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-gmv-border bg-gmv-table-head text-left text-xs font-semibold uppercase tracking-wide text-gmv-muted">
+                  <th className="px-4 py-3">Email</th>
+                  <th className="px-4 py-3">Họ tên trên CRM</th>
+                  <th className="px-4 py-3">SĐT</th>
+                  <th className="px-4 py-3">Đội</th>
+                  <th className="px-4 py-3">Team</th>
+                  <th className="px-4 py-3">CRM liên kết</th>
+                  <th className="px-4 py-3">Đăng nhập cuối</th>
+                  <th className="px-4 py-3">Vai trò</th>
+                  <th className="px-4 py-3">Trạng thái</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map((u) => {
+                  const st = statusOf(u);
+                  return (
+                    <tr
+                      key={u.id}
+                      className="border-b border-gmv-border last:border-0 hover:bg-gmv-row-hover aa-row-clickable"
+                      onClick={() => setDrawerUser(u)}
+                    >
+                      <td className="px-4 py-2 font-medium text-gmv-text-strong">{u.email}</td>
+                      <td className="px-4 py-2 text-gmv-text">{u.crmName || u.fullName || "—"}</td>
+                      <td className="px-4 py-2 text-gmv-text">{u.phone || "—"}</td>
+                      <td className="px-4 py-2">
+                        <span className={`aa-dept-badge ${deptClass(u)}`}>{deptLabel(u)}</span>
+                      </td>
+                      <td className="px-4 py-2 text-gmv-text">{u.team || "—"}</td>
+                      <td className="px-4 py-2">
+                        {u.crmName ? (
+                          <span className="aa-crm-link linked">
+                            <span className="aa-status-dot" style={{ background: "var(--gmv-ok)" }} />
+                            Đã liên kết
+                          </span>
+                        ) : (
+                          <span className="aa-crm-link unlinked">
+                            <span className="aa-status-dot" style={{ background: "var(--gmv-border)" }} />
+                            Chưa liên kết
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-4 py-2 text-gmv-text">
+                        {u.lastSignIn
+                          ? new Date(u.lastSignIn).toLocaleString("vi-VN", {
+                              day: "2-digit",
+                              month: "2-digit",
+                              year: "numeric",
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            })
+                          : "—"}
+                      </td>
+                      <td className="px-4 py-2">
+                        <span className={`aa-role-badge ${roleClass(u.staffRole)}`}>
+                          <span className="aa-role-dot" />
+                          {roleLabel(u.staffRole)}
                         </span>
-                      ) : (
-                        <span className="aa-crm-link unlinked">
-                          <span className="aa-status-dot" style={{ background: "var(--gmv-border)" }} />
-                          Chưa liên kết
+                      </td>
+                      <td className="px-4 py-2">
+                        <span className={`aa-status ${st}`}>
+                          <span className="aa-status-dot" />
+                          {statusLabel(st)}
                         </span>
-                      )}
-                    </td>
-                    <td className="px-4 py-2 text-gmv-text">
-                      {u.lastSignIn
-                        ? new Date(u.lastSignIn).toLocaleString("vi-VN", {
-                            day: "2-digit",
-                            month: "2-digit",
-                            year: "numeric",
-                            hour: "2-digit",
-                            minute: "2-digit",
-                          })
-                        : "—"}
-                    </td>
-                    <td className="px-4 py-2">
-                      <span className={`aa-role-badge ${roleClass(u.staffRole)}`}>
-                        <span className="aa-role-dot" />
-                        {roleLabel(u.staffRole)}
-                      </span>
-                    </td>
-                    <td className="px-4 py-2">
-                      <span className={`aa-status ${st}`}>
-                        <span className="aa-status-dot" />
-                        {statusLabel(st)}
-                      </span>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-          {filtered.length === 0 && (
-            <p className="px-4 py-6 text-sm text-gmv-muted">Không có tài khoản phù hợp.</p>
-          )}
-        </TableWrap>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+            {filtered.length === 0 && (
+              <p className="px-4 py-6 text-sm text-gmv-muted">Không có tài khoản phù hợp.</p>
+            )}
+          </TableWrap>
+        )
       )}
 
       {/* Create Account Modal */}
