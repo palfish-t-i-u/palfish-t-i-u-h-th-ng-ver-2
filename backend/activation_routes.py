@@ -241,6 +241,26 @@ def _assign_course_codes(uids_in: list[Any], pr_id: str) -> list[dict[str, Any]]
     return out
 
 
+def _assert_course_names_present(uids_data: list[dict[str, Any]]) -> None:
+    """Chặn tạo AR khi có gói chưa điền tên (feedback 7/7).
+
+    Tin Zalo 'yêu cầu kích hoạt' bắn ngay lúc tạo AR — thiếu tên gói thì Ops
+    không biết kích hoạt gói gì. Chỉ áp cho luồng TẠO; sửa AR (PATCH) không chặn
+    vì flow thêm gói mới trong drawer lưu nháp với tên rỗng trước khi điền.
+    """
+    missing = [
+        c.get("code") or "?"
+        for u in uids_data
+        for c in (u.get("courses") or [])
+        if not str(c.get("name") or "").strip()
+    ]
+    if missing:
+        raise HTTPException(
+            400,
+            "Chưa chọn tên gói học — cần điền tên gói cho từng khoá trước khi gửi yêu cầu kích hoạt",
+        )
+
+
 def _derive_status(uids_data: list[dict[str, Any]]) -> str:
     """Tính AR status từ uids_data.
 
@@ -1076,6 +1096,7 @@ def _save_active_request(
 
     ar_id = _next_ar_id(sb)
     uids_data = _assign_course_codes(uids_in, pr_id or ar_id)
+    _assert_course_names_present(uids_data)
 
     # Validate: tổng tiền gói học không được vượt số tiền thực nhận
     if pr is not None:
@@ -2136,10 +2157,19 @@ def register_activation_routes(app, supabase_factory):
             "pending_courses_snapshot": pending_courses,
         }).execute()
 
+        # Route theo team của sale (giống tin AR-created) — feedback 7/7: sale IH1
+        # nhắc GẤP nhưng tin bắn sang nhóm IH2 & OFF. Fallback nhóm Ops khi team
+        # chưa có nhóm Zalo riêng (Offline/HCM hiện dùng chung nhóm Inhouse 2).
+        sale_canonical_team = get_canonical_team((actor.staff or {}).get("team"))
         g = sb.table("zalo_team_groups") \
             .select("group_id, is_active") \
-            .eq("team_code", OPS_GROUP_TEAM_CODE) \
+            .eq("team_code", sale_canonical_team) \
             .limit(1).execute()
+        if not g.data or not g.data[0].get("is_active"):
+            g = sb.table("zalo_team_groups") \
+                .select("group_id, is_active") \
+                .eq("team_code", OPS_GROUP_TEAM_CODE) \
+                .limit(1).execute()
         if not g.data or not g.data[0].get("is_active"):
             return {"ok": True, "zalo": "skipped_no_group", "reminder": reminder.data[0] if reminder.data else None}
 
@@ -2168,19 +2198,29 @@ def register_activation_routes(app, supabase_factory):
 
         # DingTalk parallel notification — best-effort, independent of Zalo
         try:
+            dt_team_code = sale_canonical_team
             dt_group = (
                 sb.table("dingtalk_team_groups")
                 .select("team_code, is_active")
-                .eq("team_code", OPS_GROUP_TEAM_CODE)
+                .eq("team_code", dt_team_code)
                 .limit(1)
                 .execute()
             )
+            if not dt_group.data or not dt_group.data[0].get("is_active"):
+                dt_team_code = OPS_GROUP_TEAM_CODE
+                dt_group = (
+                    sb.table("dingtalk_team_groups")
+                    .select("team_code, is_active")
+                    .eq("team_code", dt_team_code)
+                    .limit(1)
+                    .execute()
+                )
             if dt_group.data and dt_group.data[0].get("is_active"):
                 sb.table("dingtalk_outbox").insert({
                     "event_type": "activation_urgent_reminder",
                     "source_table": "activation_reminders",
                     "source_id": str(reminder.data[0]["id"]) if reminder.data else "00000000-0000-0000-0000-000000000000",
-                    "team_code": OPS_GROUP_TEAM_CODE,
+                    "team_code": dt_team_code,
                     "message": result["message"],
                 }).execute()
         except Exception as dt_exc:
