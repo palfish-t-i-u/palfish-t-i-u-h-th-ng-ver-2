@@ -1543,7 +1543,7 @@ export default function PaymentRequestDetailDrawer({
   onEditAmount?: (qr: PaymentAttempt, newAmount: number) => Promise<void>;
   onBillFile: (qr: PaymentAttempt, file: File) => void | Promise<void>;
   onBillView: (qr: PaymentAttempt) => void;
-  onCreateActiveRequest: () => void;
+  onCreateActiveRequest: (packageName: string) => void;
   onCancelRequest: () => void;
   activeRequestId?: string | null;
   activeRequest?: ActiveRequest | null;
@@ -1567,6 +1567,9 @@ export default function PaymentRequestDetailDrawer({
   const [prFullModalOpen, setPrFullModalOpen] = useState(false);
   const [highlightTarget, setHighlightTarget] = useState(false);
   const targetInputRef = useRef<HTMLInputElement | null>(null);
+  // 7/7 — bắt buộc chọn tên gói TRƯỚC khi tạo AR (tin Zalo bắn ngay lúc tạo)
+  const [arPackageModalOpen, setArPackageModalOpen] = useState(false);
+  const [arPackageName, setArPackageName] = useState("");
 
   useEffect(() => {
     setShowAdd(false);
@@ -1576,6 +1579,8 @@ export default function PaymentRequestDetailDrawer({
     setDraft(null);
     setPrFullModalOpen(false);
     setHighlightTarget(false);
+    setArPackageModalOpen(false);
+    setArPackageName("");
   }, [request?.id]);
 
   const [dismissedStaleLineIds, setDismissedStaleLineIds] = useState<Set<string>>(new Set());
@@ -2477,13 +2482,69 @@ export default function PaymentRequestDetailDrawer({
               className={`btn ${ready && !hasActiveRequest ? "btn-success" : "btn-outline"}`}
               disabled={!ready || hasActiveRequest}
               title={!ready ? "Cần thu đủ 100% số tiền trước khi kích hoạt" : hasActiveRequest ? activeSummary.buttonLabel : "Tạo Active Request và chọn gói khoá học"}
-              onClick={onCreateActiveRequest}
+              onClick={() => {
+                setArPackageName("");
+                setArPackageModalOpen(true);
+              }}
             >
               <Icons.CheckSquare size={14} /> {hasActiveRequest ? activeSummary.buttonLabel : "Kích hoạt khoá học"}
             </button>}
           </div>
         </div>
       </aside>
+      {arPackageModalOpen && (
+        <div
+          className="gmv-prototype-modal-scrim"
+          onClick={() => setArPackageModalOpen(false)}
+          style={{ zIndex: 140 }}
+        >
+          <div className="modal" style={{ width: "min(480px, 100%)" }} onClick={(e) => e.stopPropagation()}>
+            <div className="modal-head">
+              <div>
+                <h3>Chọn gói học để kích hoạt</h3>
+                <div style={{ fontSize: 12, color: "var(--text-3)", marginTop: 2 }}>
+                  Tên gói sẽ gửi kèm thông báo cho Ops — bắt buộc điền trước khi tạo yêu cầu.
+                </div>
+              </div>
+              <button className="drawer-close" onClick={() => setArPackageModalOpen(false)}>
+                <Icons.Close size={16} />
+              </button>
+            </div>
+            <div className="modal-body">
+              <div className="field">
+                <label>
+                  Gói học <span style={{ color: "var(--danger)" }}>*</span>
+                </label>
+                <Combobox
+                  value={arPackageName}
+                  onChange={setArPackageName}
+                  options={COURSE_PACKAGE_OPTIONS}
+                  placeholder="Chọn hoặc gõ tên gói học..."
+                  emptyLabel="Chưa chọn gói"
+                />
+              </div>
+            </div>
+            <div className="modal-foot">
+              <button type="button" className="btn btn-outline" onClick={() => setArPackageModalOpen(false)}>
+                Huỷ
+              </button>
+              <button
+                type="button"
+                className="btn btn-success"
+                disabled={!arPackageName.trim()}
+                style={!arPackageName.trim() ? { opacity: 0.4, cursor: "not-allowed" } : undefined}
+                onClick={() => {
+                  if (!arPackageName.trim()) return;
+                  setArPackageModalOpen(false);
+                  onCreateActiveRequest(arPackageName.trim());
+                }}
+              >
+                <Icons.CheckSquare size={14} /> Tạo yêu cầu kích hoạt
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {/* 2-03 — popup khi BE chặn nhắc xuất HĐ (PR chưa đủ tiền) */}
       {remindError && (() => {
         const m = /PR chua thu du tien \((\d+)\/(\d+)\)/.exec(remindError);
