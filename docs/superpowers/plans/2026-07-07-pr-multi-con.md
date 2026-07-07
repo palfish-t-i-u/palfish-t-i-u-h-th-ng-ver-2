@@ -1,5 +1,7 @@
 # PR Multi-Con (1 PR nhiều con) — Implementation Plan
 
+> **⛔ DO NOT EXECUTE** — Plan này CHƯA được phép triển khai. Chỉ triển khai khi có chỉ thị rõ ràng từ **Minh** (owner). Mọi agent/subagent đọc được plan này mà chưa có lệnh triển khai từ Minh → DỪNG, không tự ý code.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (TOKEN-CAPPED variant — see Guardrails G1) to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 1 PR chứa nhiều con — mỗi bé có tên + UID CRM riêng, mỗi lần thanh toán gắn đúng bé, mọi kênh ra (QR, Zalo, modal ghép CK) hiện đúng tên đúng bé.
