@@ -639,3 +639,9 @@
   color: #dc2626;
   border-color: #dc2626;
 }
+
+@media (max-width: 767px) {
+  .pm-kpis { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+  .pm-tabs { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .pm-tab { padding: 8px 12px; font-size: 13px; white-space: nowrap; }
+}

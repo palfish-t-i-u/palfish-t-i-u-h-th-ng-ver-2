@@ -7,6 +7,8 @@ import {
   type ZaloGroup,
   type ZaloGroupCreate,
 } from "../../lib/api/zaloAdmin";
+import useIsMobile from "../../hooks/useIsMobile";
+import ZaloGroupCards from "./ZaloGroupCards";
 
 function formatDate(iso?: string): string {
   if (!iso) return "—";
@@ -23,6 +25,7 @@ const EMPTY_FORM: ZaloGroupCreate = {
 };
 
 export default function ZaloGroupsTab() {
+  const isMobile = useIsMobile();
   const [rows, setRows] = useState<ZaloGroup[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -188,6 +191,16 @@ export default function ZaloGroupsTab() {
         </form>
       )}
 
+      {isMobile ? (
+        <ZaloGroupCards
+          groups={rows}
+          loading={loading}
+          onEdit={startEdit}
+          onDelete={handleDelete}
+          formatDate={formatDate}
+          canManage={true}
+        />
+      ) : (
       <div className="overflow-x-auto">
         <table className="w-full text-sm border-collapse">
           <thead>
@@ -283,6 +296,7 @@ export default function ZaloGroupsTab() {
           </tbody>
         </table>
       </div>
+      )}
     </div>
   );
 }

@@ -5,6 +5,9 @@ import { useRefetchOnFocus } from "../hooks/useRefetchOnFocus";
 import { useRealtimeTable } from "../hooks/useRealtimeTable";
 import { cn } from "../lib/cn";
 import { formatVndNumber } from "../lib/vndFormat";
+import useIsMobile from "../hooks/useIsMobile";
+import LedgerRowCards from "./LedgerRowCards";
+import { fmtPayTime, orderIdDisplay } from "../lib/ledgerFormat";
 import {
   ledgerPillBase,
   paymentMethodCellClass,
@@ -74,13 +77,6 @@ const GSHEET_SYNC_CONFIRM =
   "• Lần sau (đã sync phần lớn): khoảng 2–5 phút\n\n" +
   "Không đóng tab và không bấm lại nút trong lúc chờ.";
 
-function fmtPayTime(iso: string) {
-  if (!iso) return "—";
-  const [y, m, d] = iso.slice(0, 10).split("-");
-  if (!y || !m || !d) return iso;
-  return `${d}/${m}/${y}`;
-}
-
 function rowToForm(row: RevenueLedgerRow): LedgerFormState {
   return {
     ngayTienVe: row.ngayTienVe,
@@ -103,10 +99,6 @@ function rowToForm(row: RevenueLedgerRow): LedgerFormState {
 function todayIso() {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-}
-
-function orderIdDisplay(row: RevenueLedgerRow) {
-  return row.crmOrderId || row.maDonHang || "—";
 }
 
 function filterParams(from: string, to: string, loaiFilter: string, teamFilter: string, search?: string) {
@@ -551,6 +543,7 @@ export default function SoDoanhThuTab() {
   );
   const visibleColumns = baseColumns.filter((c) => isVisible(c.key));
   const cellCtx: LedgerCellCtx = { deletingId, openEdit, handleDelete };
+  const isMobile = useIsMobile();
 
   return (
     <div className="min-w-0 space-y-4 overflow-x-hidden">
@@ -714,53 +707,75 @@ export default function SoDoanhThuTab() {
             <> · {baseColumns.length - visibleCount} cột đang ẩn</>
           )}
         </p>
-        <ColumnVisibilityMenu
-          columns={baseColumns.map((c) => ({ key: c.key, label: c.label, hideable: c.hideable }))}
-          isVisible={isVisible}
-          onToggle={toggle}
-          onShowAll={showAll}
-          visibleCount={visibleCount}
-        />
+        {!isMobile && (
+          <ColumnVisibilityMenu
+            columns={baseColumns.map((c) => ({ key: c.key, label: c.label, hideable: c.hideable }))}
+            isVisible={isVisible}
+            onToggle={toggle}
+            onShowAll={showAll}
+            visibleCount={visibleCount}
+          />
+        )}
       </div>
 
-      <TableScrollWrap>
-        <Table className="min-w-[1280px]">
-          <thead>
-            <Tr>
-              {visibleColumns.map((c) => (
-                <Th key={c.key} className={cn(stickyTableHead, stickyTableHeadTop, c.thClass)}>
-                  {c.label}
-                </Th>
-              ))}
-            </Tr>
-          </thead>
-          <tbody>
-            {rows.length === 0 && !loading && (
+      {isMobile ? (
+        <LedgerRowCards
+          rows={rows}
+          readOnly={readOnly}
+          deletingId={deletingId}
+          onEdit={openEdit}
+          onDelete={handleDelete}
+          hasMore={hasMore}
+          loadingMore={loadingMore}
+          onLoadMore={loadMore}
+          emptyText={
+            loading
+              ? "Đang tải…"
+              : hasActiveFilter
+                ? "Không có dòng trong khoảng đã lọc — thử Reset bộ lọc hoặc mở rộng ngày."
+                : "Chưa có dòng — bấm Thêm dòng hoặc xác nhận M3."
+          }
+        />
+      ) : (
+        <TableScrollWrap>
+          <Table className="min-w-[1280px]">
+            <thead>
               <Tr>
-                <Td colSpan={visibleColumns.length} className="text-center text-gmv-muted">
-                  {hasActiveFilter
-                    ? "Không có dòng trong khoảng đã lọc — thử Reset bộ lọc hoặc mở rộng ngày."
-                    : "Chưa có dòng — bấm Thêm dòng hoặc xác nhận M3."}
-                </Td>
-              </Tr>
-            )}
-            {rows.map((row) => (
-              <Tr key={row.id} className={deletingId === row.id ? "opacity-60" : ""}>
                 {visibleColumns.map((c) => (
-                  <Fragment key={c.key}>{c.renderTd(row, cellCtx)}</Fragment>
+                  <Th key={c.key} className={cn(stickyTableHead, stickyTableHeadTop, c.thClass)}>
+                    {c.label}
+                  </Th>
                 ))}
               </Tr>
-            ))}
-            {hasMore && (
-              <Tr ref={loadMoreRef}>
-                <Td colSpan={visibleColumns.length} className="py-3 text-center text-sm text-gmv-muted">
-                  {loadingMore ? "Đang tải thêm…" : "Cuộn xuống để tải thêm"}
-                </Td>
-              </Tr>
-            )}
-          </tbody>
-        </Table>
-      </TableScrollWrap>
+            </thead>
+            <tbody>
+              {rows.length === 0 && !loading && (
+                <Tr>
+                  <Td colSpan={visibleColumns.length} className="text-center text-gmv-muted">
+                    {hasActiveFilter
+                      ? "Không có dòng trong khoảng đã lọc — thử Reset bộ lọc hoặc mở rộng ngày."
+                      : "Chưa có dòng — bấm Thêm dòng hoặc xác nhận M3."}
+                  </Td>
+                </Tr>
+              )}
+              {rows.map((row) => (
+                <Tr key={row.id} className={deletingId === row.id ? "opacity-60" : ""}>
+                  {visibleColumns.map((c) => (
+                    <Fragment key={c.key}>{c.renderTd(row, cellCtx)}</Fragment>
+                  ))}
+                </Tr>
+              ))}
+              {hasMore && (
+                <Tr ref={loadMoreRef}>
+                  <Td colSpan={visibleColumns.length} className="py-3 text-center text-sm text-gmv-muted">
+                    {loadingMore ? "Đang tải thêm…" : "Cuộn xuống để tải thêm"}
+                  </Td>
+                </Tr>
+              )}
+            </tbody>
+          </Table>
+        </TableScrollWrap>
+      )}
 
       <LedgerFormModal
         open={modalOpen}

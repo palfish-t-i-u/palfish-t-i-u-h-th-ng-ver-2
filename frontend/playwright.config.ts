@@ -106,7 +106,18 @@ export default defineConfig({
         storageState: path.resolve(__dirname, "e2e/.auth/user.json"),
       },
       dependencies: ["auth-setup"],
-      testIgnore: [/journeys/, /auth.*\.setup/, /rbac-/],
+      testIgnore: [/journeys/, /auth.*\.setup/, /rbac-/, /mobile-/],
+    },
+
+    // ── Mobile viewport (Pixel 5 = chromium, không cần cài webkit) ──
+    {
+      name: "mobile",
+      testMatch: /mobile-.*\.spec\.ts/,
+      use: {
+        ...devices["Pixel 5"],
+        storageState: path.resolve(__dirname, "e2e/.auth/user.json"),
+      },
+      dependencies: ["auth-setup"],
     },
   ],
 

@@ -5,8 +5,11 @@ import {
   retryDingTalkOutbox,
   type DingTalkOutboxRow,
 } from '../../lib/api/dingtalkAdmin';
+import useIsMobile from '../../hooks/useIsMobile';
+import DingTalkOutboxCards from './DingTalkOutboxCards';
 
 export const DingTalkOutboxTab: React.FC = () => {
+  const isMobile = useIsMobile();
   const [rows, setRows] = useState<DingTalkOutboxRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [alert, setAlert] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
@@ -57,7 +60,13 @@ export const DingTalkOutboxTab: React.FC = () => {
         </div>
       )}
 
-      {loading ? (
+      {isMobile ? (
+        <DingTalkOutboxCards
+          rows={rows}
+          loading={loading}
+          onRetry={handleRetry}
+        />
+      ) : loading ? (
         <div className="text-gray-500">Đang tải...</div>
       ) : rows.length === 0 ? (
         <div className="text-gray-500">Chưa có tin nhắn nào.</div>

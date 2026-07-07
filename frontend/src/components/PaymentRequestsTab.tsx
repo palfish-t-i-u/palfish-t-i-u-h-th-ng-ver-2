@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import "../styles/prototype-payments.css";
 import { usePaymentFlow } from "../contexts/PaymentFlowContext";
 import { useMe } from "../hooks/useMe";
+import useIsMobile from "../hooks/useIsMobile";
 import { usePermission } from "../hooks/usePermission";
 import { endpoints } from "../lib/api";
 import { compressImageFile } from "../lib/imageCompress";
@@ -745,14 +746,18 @@ export default function PaymentRequestsTab() {
     updateActiveRequest(arId, updater);
   };
 
+  const isMobile = useIsMobile();
+
   return (
     <div className="gmv-prototype">
       <div className="page page--fit">
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
-          <div style={{ fontSize: 12.5, color: "var(--text-3)", maxWidth: 640, lineHeight: 1.55 }}>
-            Mỗi <strong style={{ color: "var(--text-2)" }}>Payment Request</strong> đại diện cho một thương vụ. Một PR có thể gồm{" "}
-            <strong style={{ color: "var(--text-2)" }}>nhiều lần thanh toán</strong> (chuyển khoản nhiều lần hoặc 1 lần CK cho nhiều đơn). Khi đủ 100% sẽ chuyển sang bước Active Request.
-          </div>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
+          {!isMobile && (
+            <div style={{ fontSize: 12.5, color: "var(--text-3)", maxWidth: 640, lineHeight: 1.55 }}>
+              Mỗi <strong style={{ color: "var(--text-2)" }}>Payment Request</strong> đại diện cho một thương vụ. Một PR có thể gồm{" "}
+              <strong style={{ color: "var(--text-2)" }}>nhiều lần thanh toán</strong> (chuyển khoản nhiều lần hoặc 1 lần CK cho nhiều đơn). Khi đủ 100% sẽ chuyển sang bước Active Request.
+            </div>
+          )}
           {!readOnly && (
             <button className="btn btn-primary" onClick={() => setCreateOpen(true)}>
               <Icons.Plus size={15} strokeWidth={2.3} /> Tạo Payment Request

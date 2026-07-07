@@ -1003,3 +1003,18 @@
   color: var(--gmv-danger);
   word-break: break-word;
 }
+
+/* ── Mobile: drawer chiếm toàn màn hình ── */
+@media (max-width: 767px) {
+  .aa-drawer {
+    width: 100vw;
+  }
+}
+
+/* ── GĐ 3: Mobile accounting screens ── */
+@media (max-width: 767px) {
+  .aa-kpis { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+  .aa-search { max-width: none; min-width: 0; width: 100%; }
+  .aa-tabs { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .aa-tab { padding: 8px 12px; font-size: 13px; white-space: nowrap; }
+}

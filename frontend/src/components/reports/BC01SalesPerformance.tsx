@@ -1,6 +1,7 @@
 import { Fragment, useCallback, useEffect, useState } from "react";
 import { endpoints } from "../../lib/api";
 import { useTeamScope } from "../../hooks/useTeamScope";
+import useIsMobile from "../../hooks/useIsMobile";
 import type { RevenuePivotResponse } from "../../types/revenue";
 import Button from "../ui/Button";
 import { GmvDataBarCell } from "../ui/DataBar";
@@ -68,6 +69,7 @@ const stickyRightTotalCell = cn(stickyTableCellRight, "right-0 min-w-[5.5rem] fo
 const monthTd = "p-0 align-middle";
 
 export default function BC01SalesPerformance() {
+  const isMobile = useIsMobile();
   const { teamFilters, defaultTeam, isRestricted } = useTeamScope();
   const [data, setData] = useState<RevenuePivotResponse | null>(null);
   const [loading, setLoading] = useState(false);
@@ -104,11 +106,13 @@ export default function BC01SalesPerformance() {
 
   return (
     <div className="min-w-0 space-y-4 overflow-x-hidden">
-      <p className="text-sm text-gmv-muted">
-        BC01 — GMV (RMB) theo team × sale × tháng (cột tháng = ngày tiền về). Lọc khoảng ngày
-        theo Pay Time; nguồn <strong>Sổ doanh thu</strong> (= HNxHCM GMV). Thanh xanh dưới số =
-        % GMV của sale so với tổng team trong cùng tháng.
-      </p>
+      {!isMobile && (
+        <p className="text-sm text-gmv-muted">
+          BC01 — GMV (RMB) theo team × sale × tháng (cột tháng = ngày tiền về). Lọc khoảng ngày
+          theo Pay Time; nguồn <strong>Sổ doanh thu</strong> (= HNxHCM GMV). Thanh xanh dưới số =
+          % GMV của sale so với tổng team trong cùng tháng.
+        </p>
+      )}
 
       <div className="flex flex-wrap items-end gap-3">
         <label className="text-sm text-gmv-muted">

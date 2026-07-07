@@ -26,13 +26,14 @@ export default function Modal({ open, onClose, title, children, className, overl
 
   return (
     <div
-      className={cn("fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4", overlayClassName)}
+      className={cn("fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4 max-md:items-end max-md:p-0", overlayClassName)}
       onClick={onClose}
       role="presentation"
     >
       <div
         className={cn(
           "max-h-[90vh] w-full overflow-y-auto rounded-gmv-lg bg-gmv-canvas p-6 shadow-gmv-2",
+          "max-md:max-h-[92vh] max-md:max-w-none max-md:rounded-b-none max-md:p-4",
           wide ? "max-w-3xl" : "max-w-lg",
           className
         )}

@@ -412,15 +412,15 @@ function MonthRanking({ rows, loading }: { rows: DashboardSaleRow[]; loading: bo
         title={`Bảng xếp hạng tháng ${new Date().getMonth() + 1}`}
         action={<span className="rounded-full bg-[#F0EBFF] px-3 py-1 text-xs font-bold text-[#6C5CE7]">{rows.length} sales</span>}
       />
-      <div className="grid grid-cols-[44px_minmax(140px,1.4fr)_minmax(88px,0.8fr)_minmax(88px,0.8fr)_80px_64px] gap-2 border-b border-[#E8EAF2] px-4 py-1.5 text-[10px] font-extrabold uppercase tracking-wide text-[#9AA1B3]">
+      <div className="grid grid-cols-[44px_minmax(140px,1.4fr)_minmax(88px,0.8fr)_minmax(88px,0.8fr)_80px_64px] gap-2 border-b border-[#E8EAF2] px-4 py-1.5 text-[10px] font-extrabold uppercase tracking-wide text-[#9AA1B3] max-md:grid-cols-[36px_minmax(0,1fr)_78px_60px] max-md:px-3">
         <span>Hạng</span>
         <span>Nhân viên</span>
-        <span>Team</span>
-        <span>Subteam</span>
+        <span className="max-md:hidden">Team</span>
+        <span className="max-md:hidden">Subteam</span>
         <span className="text-right">Doanh thu</span>
         <span className="text-right">Đơn b.động</span>
       </div>
-      <div className="min-h-0 flex-1 divide-y divide-[#E8EAF2] overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-[#c4b5fd]">
+      <div className="min-h-0 flex-1 divide-y divide-[#E8EAF2] overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-[#c4b5fd] max-md:overflow-visible">
         {loading && rows.length === 0 ? <div className="py-8 text-center text-sm text-gmv-muted">Đang tải bảng xếp hạng...</div> : null}
         {!loading && rows.length === 0 ? <div className="py-8 text-center text-sm text-gmv-muted">Chưa có dữ liệu tháng này.</div> : null}
         {rows.map((row, index) => (
@@ -428,6 +428,7 @@ function MonthRanking({ rows, loading }: { rows: DashboardSaleRow[]; loading: bo
             key={`${row.sale_crm_name}-${row.rank}`}
             className={cn(
               "grid min-h-[38px] grid-cols-[44px_minmax(140px,1.4fr)_minmax(88px,0.8fr)_minmax(88px,0.8fr)_80px_64px] items-center gap-2 px-4 text-[13px]",
+              "max-md:grid-cols-[36px_minmax(0,1fr)_78px_60px] max-md:px-3",
               index === 0 && "bg-[#FFF9EC]",
               index === 1 && "bg-[#F8FAFF]",
               index === 2 && "bg-[#FFF6F1]"
@@ -449,10 +450,13 @@ function MonthRanking({ rows, loading }: { rows: DashboardSaleRow[]; loading: bo
               </span>
               <div className="min-w-0">
                 <div className="truncate font-extrabold text-[#101426]">{row.sale_crm_name}</div>
+                <div className="truncate text-[11px] text-[#8A92A6] md:hidden">
+                  {[row.team, subTeamLabel(row.sub_team)].filter(Boolean).join(" · ") || "—"}
+                </div>
               </div>
             </div>
-            <div className="truncate text-[#4B5572]">{row.team || "—"}</div>
-            <div className="truncate text-[#4B5572]">{subTeamLabel(row.sub_team) || "—"}</div>
+            <div className="truncate text-[#4B5572] max-md:hidden">{row.team || "—"}</div>
+            <div className="truncate text-[#4B5572] max-md:hidden">{subTeamLabel(row.sub_team) || "—"}</div>
             <div className="text-right font-extrabold text-[#101426]">{formatRevenueMillions(row.gmv_vnd)}</div>
             <div className="text-right font-semibold text-[#4B5572]">{row.order_count > 0 ? row.order_count : "—"}</div>
           </div>
@@ -663,9 +667,9 @@ export default function DashboardTab() {
   }, [rows, summary]);
 
   return (
-    <div className="min-w-0 bg-[#F4F5F8] p-0 text-[#101426] md:p-1 h-[calc(100vh-64px-48px)] overflow-hidden">
-      <div className="grid h-full gap-3 xl:grid-cols-[minmax(0,1.05fr)_minmax(380px,0.9fr)]">
-        <div className="flex min-w-0 flex-col gap-3 overflow-hidden">
+    <div className="min-w-0 bg-[#F4F5F8] p-0 text-[#101426] md:p-1 h-[calc(100vh-64px-48px)] overflow-hidden max-md:h-auto max-md:overflow-visible">
+      <div className="grid h-full gap-3 xl:grid-cols-[minmax(0,1.05fr)_minmax(380px,0.9fr)] max-md:h-auto">
+        <div className="flex min-w-0 flex-col gap-3 overflow-hidden max-md:overflow-visible">
           <CommissionCard commission={summary?.commission} />
           {usingFallback ? (
             <div className="shrink-0 rounded-[12px] border border-amber-200 bg-amber-50 px-4 py-2 text-sm font-medium text-amber-800">
@@ -675,7 +679,7 @@ export default function DashboardTab() {
           <TodayHonors rows={salesData.today} loading={loading} />
           <MonthRanking rows={salesData.month} loading={loading} />
         </div>
-        <div className="flex min-w-0 flex-col gap-3 overflow-hidden">
+        <div className="flex min-w-0 flex-col gap-3 overflow-hidden max-md:overflow-visible">
           <RankPositionCard currentUser={summary?.current_user} ranking={salesData.month} />
           <WeeklyRewards tasks={summary?.tasks ?? []} />
           <InternalEvents events={summary?.events} />

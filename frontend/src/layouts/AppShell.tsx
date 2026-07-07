@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { useCallback, useEffect, useState } from "react";
 import Badge from "../components/ui/Badge";
 import { cn } from "../lib/cn";
+import MobileNavSheet from "./MobileNavSheet";
 
 export interface NavChildItem {
   id: string;
@@ -86,8 +87,8 @@ function NavButton({
       type="button"
       onMouseEnter={() => onHover?.(it.id)}
       onClick={() => {
-        if (hasChildren && onToggleExpand && !collapsed) onToggleExpand();
-        else if (hasChildren && collapsed) onSelect(it.children![0].id);
+        if (hasChildren && onToggleExpand && !collapsed && !compact) onToggleExpand();
+        else if (hasChildren) onSelect(it.children![0].id);
         else onSelect(it.id);
       }}
       className={cn(
@@ -138,6 +139,13 @@ export default function AppShell({
   const reportParentId = items.find((it) => it.children?.some((c) => c.id === activeId))?.id;
   const [expandedIds, setExpandedIds] = useState<Set<string>>(() => new Set(reportParentId ? [reportParentId] : []));
   const [collapsed, setCollapsed] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
+  const showMore = items.length > 5;
+  const pinnedItems = showMore ? items.slice(0, 4) : items;
+  const overflowItems = showMore ? items.slice(4) : [];
+  const overflowActive = overflowItems.some(
+    (it) => it.id === activeId || (it.children?.some((c) => c.id === activeId) ?? false)
+  );
 
   const toggleCollapse = useCallback(() => {
     setCollapsed((prev) => !prev);
@@ -285,15 +293,35 @@ export default function AppShell({
               </Badge>
             )}
             {headerExtras}
-            {userRole && <Badge tone="neutral">{userRole}</Badge>}
+            {userRole && (
+              <Badge tone="neutral" className="max-md:hidden">
+                {userRole}
+              </Badge>
+            )}
             <span className="hidden text-xs text-gmv-muted sm:inline">{userEmail || "dev@local"}</span>
             {onSignOut && (
               <button
                 type="button"
                 onClick={onSignOut}
-                className="min-h-[44px] rounded-gmv-md border border-gmv-border bg-gmv-canvas px-3 py-1.5 text-xs font-medium text-gmv-text-strong hover:bg-gmv-bg"
+                aria-label="Đăng xuất"
+                className="flex min-h-[44px] items-center rounded-gmv-md border border-gmv-border bg-gmv-canvas px-3 py-1.5 text-xs font-medium text-gmv-text-strong hover:bg-gmv-bg max-md:px-2.5"
               >
-                Đăng xuất
+                <svg
+                  className="md:hidden"
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                  <polyline points="16 17 21 12 16 7" />
+                  <line x1="21" y1="12" x2="9" y2="12" />
+                </svg>
+                <span className="max-md:hidden">Đăng xuất</span>
               </button>
             )}
           </div>
@@ -308,7 +336,7 @@ export default function AppShell({
         className="fixed bottom-0 left-0 right-0 z-30 flex border-t border-gmv-border bg-gmv-canvas px-1 py-1 shadow-gmv-2 md:hidden"
         aria-label="Điều hướng chính"
       >
-        {items.slice(0, 5).map((it) => (
+        {pinnedItems.map((it) => (
           <div key={it.id} className="min-w-0 flex-1">
             <NavButton
               it={it}
@@ -319,7 +347,35 @@ export default function AppShell({
             />
           </div>
         ))}
+        {showMore && (
+          <div className="min-w-0 flex-1">
+            <button
+              type="button"
+              onClick={() => setMoreOpen(true)}
+              className={cn(
+                "flex min-h-[44px] w-full flex-col items-center gap-1 px-1 py-2 text-[10px] font-medium transition",
+                overflowActive ? "bg-gmv-primary-soft text-gmv-primary" : "text-gmv-text"
+              )}
+            >
+              <span className={overflowActive ? "text-gmv-primary" : "text-gmv-muted"}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                  <circle cx="5" cy="12" r="1.5" />
+                  <circle cx="12" cy="12" r="1.5" />
+                  <circle cx="19" cy="12" r="1.5" />
+                </svg>
+              </span>
+              <span className="max-w-full truncate leading-tight">Thêm</span>
+            </button>
+          </div>
+        )}
       </nav>
+      <MobileNavSheet
+        open={moreOpen}
+        onClose={() => setMoreOpen(false)}
+        items={items}
+        activeId={activeId}
+        onSelect={onSelect}
+      />
     </div>
     </div>
   );
