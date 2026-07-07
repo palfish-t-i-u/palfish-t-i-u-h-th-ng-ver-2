@@ -12,27 +12,48 @@ function getApiBaseUrl(): string {
   return env.E2E_API_URL || "http://localhost:8000";
 }
 
-function getAccessToken(): string {
+function tryGetAccessToken(): string | null {
   const authFile = path.resolve(__dirname, "../.auth/user.json");
-  if (!fs.existsSync(authFile)) {
-    throw new Error("Auth file not found — run auth-setup first");
-  }
+  if (!fs.existsSync(authFile)) return null;
   const state = JSON.parse(fs.readFileSync(authFile, "utf-8"));
   // Supabase stores token in localStorage under sb-*-auth-token
   for (const entry of state.origins ?? []) {
     for (const item of entry.localStorage ?? []) {
       if (item.name?.includes("auth-token")) {
-        const parsed = JSON.parse(item.value);
-        return parsed.access_token;
+        try {
+          const parsed = JSON.parse(item.value);
+          if (parsed.access_token) return parsed.access_token;
+        } catch {
+          // malformed entry — skip
+        }
       }
     }
   }
-  throw new Error("No access token found in auth storage state");
+  return null;
+}
+
+function getAccessToken(): string {
+  const token = tryGetAccessToken();
+  if (token) return token;
+  throw new Error(
+    "No access token found in auth storage state — tests that call the real API " +
+      "must run against a Supabase-backed environment (not dev-mode localhost). " +
+      "Run auth-setup against the sandbox URL or set E2E_EMAIL/PASSWORD to a real account."
+  );
 }
 
 export class E2eApiClient {
   private baseUrl: string;
   private token: string;
+
+  /**
+   * Returns true when a real Supabase JWT exists in the auth state file.
+   * Use this to skip API-dependent tests in local dev-mode runs:
+   *   test.skip(!E2eApiClient.isAvailable(), "Requires real Supabase auth (not dev mode)");
+   */
+  static isAvailable(): boolean {
+    return tryGetAccessToken() !== null;
+  }
 
   constructor() {
     this.baseUrl = getApiBaseUrl();
@@ -85,6 +106,23 @@ export class E2eApiClient {
 
   async cancelPR(id: string): Promise<void> {
     await this.request("POST", `/api/v1/payment-requests/${id}/cancel`);
+  }
+
+  async createPaymentLine(
+    prId: string,
+    data: { amount: number; method?: string }
+  ): Promise<{ id: string; code: string; transferContent: string }> {
+    const res = await this.request<{
+      payment_line: { id: string; transfer_code: string; transfer_content: string };
+    }>("POST", `/api/v1/payment-requests/${prId}/payment-lines`, {
+      amount: data.amount,
+      method: data.method ?? "qr",
+    });
+    return {
+      id: res.payment_line.id,
+      code: res.payment_line.transfer_code,
+      transferContent: res.payment_line.transfer_content,
+    };
   }
 
   // ── Active Requests ──
