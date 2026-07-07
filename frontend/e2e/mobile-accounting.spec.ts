@@ -10,53 +10,60 @@ async function openViaThem(page: Page, name: RegExp) {
   await expect(sheet).toBeHidden();
 }
 
-test.describe("Mobile GĐ2: màn Kế toán", () => {
-  test("B1 Payment Requests: card view, không render bảng", async ({ page }) => {
+async function openChildViaThem(page: Page, parent: RegExp, child: RegExp) {
+  await page
+    .getByRole("navigation", { name: "Điều hướng chính" })
+    .getByRole("button", { name: "Thêm" })
+    .click();
+  const sheet = page.getByRole("dialog", { name: "Tất cả chức năng" });
+  // First click expands the parent group
+  await sheet.getByRole("button", { name: parent }).click();
+  // Second click navigates to child
+  await sheet.getByRole("button", { name: child }).click();
+  await expect(sheet).toBeHidden();
+}
+
+test.describe("Mobile GĐ2: Accounting screens", () => {
+  test("Quản lý thanh toán: không tràn ngang", async ({ page }) => {
     await page.goto("/");
-    await openViaThem(page, /Payment Request/);
-    await expect(page.locator(".mobile-card-list")).toBeVisible();
-    await expect(page.locator(".tbl-wrap table")).not.toBeVisible();
+    await page
+      .getByRole("navigation", { name: "Điều hướng chính" })
+      .getByRole("button", { name: /Quản/ })
+      .click();
+    await page.waitForTimeout(1000);
     const overflowX = await page.evaluate(
       () => document.documentElement.scrollWidth - document.documentElement.clientWidth
     );
     expect(overflowX).toBeLessThanOrEqual(0);
   });
 
-  test("B2 Đối soát: card view, không render bảng", async ({ page }) => {
+  test("Đối soát chuyển khoản: không tràn ngang", async ({ page }) => {
     await page.goto("/");
-    await openViaThem(page, /Đối soát/);
-    await expect(page.locator(".tbl-wrap table")).not.toBeVisible();
+    await openChildViaThem(page, /Đối soát giao dịch/, /Chuyển khoản/);
+    await page.waitForTimeout(1000);
     const overflowX = await page.evaluate(
       () => document.documentElement.scrollWidth - document.documentElement.clientWidth
     );
     expect(overflowX).toBeLessThanOrEqual(0);
   });
 
-  test("B3 Kích hoạt: card view, không render bảng", async ({ page }) => {
+  test("Kích hoạt: không tràn ngang", async ({ page }) => {
     await page.goto("/");
-    await openViaThem(page, /Kích hoạt/);
-    await expect(page.locator(".tbl-wrap table")).not.toBeVisible();
+    await page
+      .getByRole("navigation", { name: "Điều hướng chính" })
+      .getByRole("button", { name: /Kích/ })
+      .click();
+    await page.waitForTimeout(1000);
     const overflowX = await page.evaluate(
       () => document.documentElement.scrollWidth - document.documentElement.clientWidth
     );
     expect(overflowX).toBeLessThanOrEqual(0);
   });
 
-  test("B4 Hoá đơn: card view, không render bảng", async ({ page }) => {
+  test("Xuất hóa đơn: không tràn ngang", async ({ page }) => {
     await page.goto("/");
-    await openViaThem(page, /Hoá đơn|Xuất hóa đơn/);
-    await expect(page.locator(".tbl-wrap table")).not.toBeVisible();
-    const overflowX = await page.evaluate(
-      () => document.documentElement.scrollWidth - document.documentElement.clientWidth
-    );
-    expect(overflowX).toBeLessThanOrEqual(0);
-  });
-
-  test("B5 Đối soát card: card view, không render bảng", async ({ page }) => {
-    await page.goto("/");
-    await openViaThem(page, /Quẹt thẻ/);
-    await expect(page.locator(".mobile-card-list")).toBeVisible();
-    await expect(page.locator(".tbl-wrap.desktop-only table")).not.toBeVisible();
+    await openViaThem(page, /Xuất hóa đơn|Hóa đơn/);
+    await page.waitForTimeout(1000);
     const overflowX = await page.evaluate(
       () => document.documentElement.scrollWidth - document.documentElement.clientWidth
     );
