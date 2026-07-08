@@ -1437,11 +1437,14 @@ def register_admin_routes(app, get_supabase):
         if row.data[0].get("sent_at"):
             raise HTTPException(400, "Tin nhắn đã gửi, không thể huỷ")
 
-        sb.table("zalo_outbox").update({
+        patch_data = {
             "retries": 99,
             "last_error": "Cancelled by admin",
             "next_retry_at": None,
-        }).eq("id", msg_id).execute()
+        }
+        res = sb.table("zalo_outbox").update(patch_data).eq("id", msg_id).execute()
+        if not res.data:
+            raise HTTPException(404, f"Không tìm thấy tin nhắn Zalo Outbox với ID: {msg_id}")
 
         return {"ok": True}
 
