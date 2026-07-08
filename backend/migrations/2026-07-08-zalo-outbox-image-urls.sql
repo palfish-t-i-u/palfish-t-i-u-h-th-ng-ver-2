@@ -40,11 +40,11 @@ BEGIN
 
     v_message := public.build_course_activated_message(NEW);
 
-    -- Aggregate all bill URLs from paid lines of this PR, oldest-first, deduped
-    SELECT jsonb_agg(DISTINCT u ORDER BY u)
+    -- Aggregate all bill URLs from paid lines of this PR, deduped
+    SELECT jsonb_agg(DISTINCT u)
       INTO v_image_urls
       FROM (
-        SELECT unnest(pl.bill_images::text[]) AS u
+        SELECT jsonb_array_elements_text(pl.bill_images) AS u
           FROM public.payment_lines pl
          WHERE pl.payment_request_id = NEW.pr_id
            AND pl.status = 'paid'

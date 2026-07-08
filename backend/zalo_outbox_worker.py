@@ -49,30 +49,22 @@ async def _process_row(row: dict, sb: Any) -> None:
             image_url_list = []
 
         if image_url_list:
-            from zalo_notifier import send_image_to_group
-            errors = []
-            sent_any = False
-            for img_url in image_url_list:
+            img_update: dict = {}
+            try:
+                from zalo_notifier import send_images_to_group
+                await asyncio.to_thread(send_images_to_group, group_id, image_url_list, sb=sb)
+                img_update["image_sent_at"] = datetime.datetime.now(datetime.timezone.utc).isoformat()
+            except Exception as img_exc:
+                print(f"[zalo_worker] Image send failed for outbox {row_id}: {img_exc}")
+                img_update["image_error"] = str(img_exc)[:500]
+                # Fallback: send all bill links as one text message
+                links = "\n".join(f"📎 Bill #{i+1}: {u}" for i, u in enumerate(image_url_list))
                 try:
-                    await asyncio.to_thread(send_image_to_group, group_id, img_url, sb=sb)
-                    sent_any = True
-                except Exception as img_exc:
-                    print(f"[zalo_worker] Image send failed for outbox {row_id} url={img_url}: {img_exc}")
-                    errors.append(str(img_exc)[:200])
-                    # Fallback: send text link for this image
-                    try:
-                        await asyncio.to_thread(
-                            send_text_to_group, group_id, f"📎 Bill: {img_url}", sb=sb
-                        )
-                    except Exception:
-                        pass  # best-effort
-            update_payload: dict = {}
-            if sent_any:
-                update_payload["image_sent_at"] = datetime.datetime.now(datetime.timezone.utc).isoformat()
-            if errors:
-                update_payload["image_error"] = "; ".join(errors)[:500]
-            if update_payload:
-                sb.table("zalo_outbox").update(update_payload).eq("id", row_id).execute()
+                    await asyncio.to_thread(send_text_to_group, group_id, links, sb=sb)
+                except Exception:
+                    pass
+            if img_update:
+                sb.table("zalo_outbox").update(img_update).eq("id", row_id).execute()
 
     except Exception as exc:
         err_msg = str(exc)
