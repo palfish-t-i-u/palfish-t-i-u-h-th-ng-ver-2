@@ -10,6 +10,125 @@
 
 ---
 
+## Decision Record — 7/7/2026 (hands-on testing lần 1)
+
+### Webhook Robot → KHÔNG khả thi
+
+Custom Robot (webhook) đã bị DingTalk **deprecated 10/2023** — không tạo mới được. Plan ban đầu (webhook approach) cần rewrite.
+
+### Enterprise Robot API — hướng đúng, nhưng group bị chặn
+
+Đã tạo Enterprise Internal App "GMV_Notifier" trong org "PalFish GMV Test":
+- **1:1 messages**: HOẠT ĐỘNG — `POST api.dingtalk.com/v1.0/robot/oToMessages/batchSend`
+- **Group messages**: BỊ CHẶN — robot không hiện trong Group Robot Management
+
+**Root cause**: Org "PalFish GMV Test" = **Standard (free) + Uncertified**. DingTalk yêu cầu org đã **xác thực doanh nghiệp** (certified) để Enterprise Robot hiện trong group.
+
+### Credentials (test org + VN org)
+
+- **Test org** (PalFish GMV Test): Client ID `dingjfbmnl6zrujipa4k`
+- **VN org** (Palfish Vietnam): Client ID `dinguif7zs8jf7pxykez`
+- User IDs: Minh `235717171365-1572920914`, 秋贤 `235719672202-176110588`
+- Access token endpoint: `POST api.dingtalk.com/v1.0/oauth2/accessToken` (expires 2h)
+
+---
+
+## Decision Record — 8/7/2026 (nghiên cứu chuyên sâu + quyết định anh Hiếu)
+
+### Xác nhận cả 2 org đều bị chặn
+
+Đã test trên cả 2 org:
+- **PalFish GMV Test** (test org) → Uncertified → robot KHÔNG hiện trong Group Robot Management
+- **Palfish Vietnam** (VN org) → Uncertified → CÙNG hiện tượng
+
+Cả 2 org đều là **Standard (free) + Uncertified (未认证)**. Group type đúng (Enterprise Group / Internal Group), app đã publish thành công.
+
+### Phương án bị loại bỏ
+
+| Phương án | Lý do loại |
+|-----------|-----------|
+| **Dùng org PalFish TQ (北京读我科技有限公司)** | Robot chỉ hoạt động trong group của CÙNG org. Các nhóm thông báo (báo kích hoạt khóa học, v.v.) thuộc org **Palfish Vietnam**, không phải org TQ → không dùng được |
+| **1:1 messages thay group** | Vô dụng — không đáp ứng yêu cầu gửi tin nhắn vào **nhóm** DingTalk. Mỗi user phải nhắn robot trước, và tin nhắn riêng lẻ không ai đọc |
+| **RPA (VPS + DingTalk desktop)** | Không đáp ứng request dồn dập (burst notifications). Phải tải ảnh bill từ GMV/database để đính kèm. DingTalk không có bản web (chỉ desktop/mobile). Chi phí VPS rẻ (~pikamc.vn) nhưng giải pháp quá mong manh cho production |
+
+### Phương án còn lại: Xác thực doanh nghiệp (Enterprise Certification)
+
+**Chi phí**: 299 CNY/năm (~1 triệu VNĐ)
+**Thời gian duyệt**: 1-3 ngày làm việc
+**Yêu cầu**: Giấy phép kinh doanh + CMND/CCCD người đại diện pháp luật
+
+**Hỗ trợ doanh nghiệp nước ngoài**: DingTalk chấp nhận giấy phép kinh doanh Việt Nam cho xác thực 中级认证 (trung cấp). Palfish Vietnam dùng giấy phép KD VN.
+
+**Lưu ý**: Nếu org PalFish TQ đã dùng giấy phép KD TQ, chi nhánh VN phải dùng giấy phép KD VN riêng (1 giấy phép/org).
+
+### ⚠️ CẢNH BÁO: Không chắc chắn 100% certification sẽ fix
+
+Bằng chứng xác thực sẽ mở robot cho group đến từ:
+- **Community Q&A** trên DingTalk developer forums — nhiều người báo cùng triệu chứng, và nói certification fix
+- **Loại suy** — trang xác thực liệt kê nhiều tính năng nâng cao cho org certified
+
+Tuy nhiên:
+- **Bảng quyền lợi xác thực chính thức** (official certification benefits) KHÔNG liệt kê "robot" hay "group robot" trong danh sách quyền lợi
+- **Tài liệu tiếng Anh chính thức** (help.dingtalk.io) KHÔNG đề cập certification là điều kiện tiên quyết để thêm bot vào group. Chỉ yêu cầu: configure bot + publish app + Internal Group
+- Chưa có nguồn **chính thức (official)** xác nhận rõ ràng
+
+→ **Đã liên hệ DingTalk support** để xác nhận trước khi chi tiền (xem mục Liên hệ bên dưới).
+
+### Quyết định anh Hiếu (8/7/2026)
+
+> "Thì xác thực doanh nghiệp thôi, 1tr rẻ mà"
+
+**→ APPROVED**: Tiến hành xác thực doanh nghiệp cho org Palfish Vietnam. Chờ DingTalk support xác nhận rồi nhờ chị Trang (admin org) submit.
+
+### Pricing tiers (DingTalk for Business)
+
+| Tier | Giá/năm | API calls/tháng | Robot in group? |
+|------|---------|-----------------|----------------|
+| Standard (free) | 0 | 10,000 | CÓ nếu org **certified** (5,000 Webhook/Stream calls) |
+| Professional | ¥9,800 | 500,000 | Có |
+| Exclusive | custom | custom | Có |
+
+**Kết luận quan trọng**: Standard edition CÓ hỗ trợ robot (5,000 calls/tháng miễn phí). Vấn đề KHÔNG phải tier trả phí — mà là **certification**.
+
+### Liên hệ DingTalk support
+
+- **Email chính thức**: `questions@service.dingtalk.com` (từ footer dingtalk.io)
+- **Form liên hệ**: Đã submit form trên `dingtalk-global.com/contact` (site hợp lệ của Alibaba Group) — 8/7/2026
+- **Nội dung hỏi**: Xác nhận certification có mở tính năng Enterprise Robot trong group không
+
+### Hướng dẫn chị Trang submit xác thực
+
+1. Đăng nhập DingTalk Admin Console → Tổ chức → Xác minh doanh nghiệp
+2. Quét QR bằng DingTalk mobile (admin account)
+3. Chọn **中级认证** (trung cấp) — phù hợp doanh nghiệp nước ngoài
+4. Upload: Giấy phép kinh doanh VN + CMND/CCCD người đại diện
+5. Thanh toán 299 CNY (~1 triệu VNĐ)
+6. Chờ 1-3 ngày làm việc → DingTalk duyệt
+
+### Rate limits
+
+- Robot: max **20 messages/phút** — vượt quá bị throttle 10 phút
+- Standard tier: **5,000 calls/tháng** (~165 msg/ngày) — đủ cho traffic hiện tại PalFish
+- Không có tài liệu chính thức nào của DingTalk đề cập spam detection cho việc gõ tin nhắn thủ công/RPA
+
+### Tài liệu tham khảo
+
+- Biểu phí + yêu cầu xác minh: tài liệu AliDocs (user đã xem trực tiếp trên mobile DingTalk)
+- DingTalk Developer Console: `https://open-dev.dingtalk.com`
+- DingTalk English docs: `https://help.dingtalk.io/open/dingstart/basic-concepts-beta`
+- DingTalk contact (Alibaba): `https://dingtalk-global.com/contact`
+- DingTalk support email: `questions@service.dingtalk.com`
+
+### Next steps
+
+1. **Chờ DingTalk support trả lời** xác nhận certification fix robot-in-group
+2. Nếu xác nhận → nhờ chị Trang submit xác thực org Palfish Vietnam
+3. Sau khi org certified → test thêm robot vào group → lấy `openConversationId`
+4. Code BE pipeline (Task 1-6 trong plan này)
+5. Code FE admin tabs (Task 7-11)
+
+---
+
 ## Pre-flight Requirements (do trước khi code)
 
 Bước này KHÔNG phải task code — chỉ list để engineer biết.
