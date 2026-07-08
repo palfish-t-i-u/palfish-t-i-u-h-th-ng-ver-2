@@ -1286,10 +1286,11 @@ def register_revenue_routes(app, get_supabase) -> None:
             team = (team_filter or "").strip() or None
             role = (actor.role or "sale").lower().strip()
             scoped_emails: list[str] | None = None
-            if role in ("sale", "leader"):
+            has_staff = actor.staff is not None
+            if role in ("sale", "leader") and has_staff:
                 scoped_emails = visible_creator_emails(sb, actor) or [actor.email.lower()]
                 team, _sub_team = enforce_report_scope(actor, team)
-            elif role == "manager":
+            elif role == "manager" and has_staff:
                 team, _sub_team = enforce_report_scope(actor, team)
             search_term = (search or "").strip() or None
             if team:
@@ -1354,10 +1355,11 @@ def register_revenue_routes(app, get_supabase) -> None:
             team = (team_filter or "").strip() or None
             role = (actor.role or "sale").lower().strip()
             scoped_emails: list[str] | None = None
-            if role in ("sale", "leader"):
+            has_staff = actor.staff is not None
+            if role in ("sale", "leader") and has_staff:
                 scoped_emails = visible_creator_emails(sb, actor) or [actor.email.lower()]
                 team, _sub_team = enforce_report_scope(actor, team)
-            elif role == "manager":
+            elif role == "manager" and has_staff:
                 team, _sub_team = enforce_report_scope(actor, team)
             summary_rows = _fetch_ledger_summary_rows(
                 sb,
@@ -1570,7 +1572,7 @@ def register_revenue_routes(app, get_supabase) -> None:
         sb = _sb()
         actor = resolve_actor(sb, authorization)
         require_module_access(sb, actor, "bc01")
-        team_filter, sub_team = enforce_report_scope(actor, team_filter)
+        team_filter, sub_team = enforce_report_scope(actor, team_filter) if actor.staff is not None else ((team_filter or "").strip() or None, None)
         try:
             rows = _fetch_so_doanh_thu(
                 sb,
@@ -1597,7 +1599,7 @@ def register_revenue_routes(app, get_supabase) -> None:
         sb = _sb()
         actor = resolve_actor(sb, authorization)
         require_module_access(sb, actor, "bc02")
-        team_filter, sub_team = enforce_report_scope(actor, team_filter)
+        team_filter, sub_team = enforce_report_scope(actor, team_filter) if actor.staff is not None else ((team_filter or "").strip() or None, None)
         try:
             rows = _fetch_so_doanh_thu(
                 sb,

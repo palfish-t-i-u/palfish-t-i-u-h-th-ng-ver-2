@@ -333,8 +333,8 @@ export default function SoDoanhThuTab() {
         fetchPage(0, true),
       ]);
       setSummary(summaryRes.data);
-    } catch {
-      setError("Không tải được Sổ doanh thu.");
+    } catch (err) {
+      setError(formatApiError(err, "Không tải được Sổ doanh thu."));
       setRows([]);
       setSummary(null);
     } finally {

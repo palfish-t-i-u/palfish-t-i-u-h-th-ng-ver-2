@@ -413,6 +413,54 @@ def send_image_to_group(group_id: str, image_url: str, *, caption: str | None = 
     return _do_send(refreshed["access_token"])
 
 
+def send_images_to_group(group_id: str, image_urls: list[str], *, sb=None) -> str:
+    """Send multiple images as a single Zalo message (media template with N elements)."""
+    group_id = _clean(group_id)
+    if not group_id:
+        raise ZaloAPIError("group_id khong duoc de trong")
+    urls = [u for u in image_urls if _clean(u)]
+    if not urls:
+        raise ZaloAPIError("image_urls khong duoc de trong")
+    if len(urls) == 1:
+        return send_image_to_group(group_id, urls[0], sb=sb)
+
+    creds = _read_credentials(sb)
+    _validate_credentials(creds)
+
+    fetched = []
+    for url in urls:
+        img_bytes, filename = _fetch_image_bytes(url)
+        fetched.append((img_bytes, filename))
+
+    def _do_send(acc_token: str) -> str:
+        elements = []
+        for img_bytes, filename in fetched:
+            aid = _upload_image(img_bytes, filename, acc_token)
+            elements.append({"media_type": "image", "attachment_id": aid})
+        payload = {
+            "recipient": {"group_id": group_id},
+            "message": {
+                "attachment": {
+                    "type": "template",
+                    "payload": {
+                        "template_type": "media",
+                        "elements": elements,
+                    },
+                },
+            },
+        }
+        return _send_group_payload_once(payload, acc_token)
+
+    try:
+        return _do_send(creds.access_token)
+    except ZaloAPIError as exc:
+        if not _is_auth_error(exc):
+            raise
+
+    refreshed = refresh_access_token(sb=sb)
+    return _do_send(refreshed["access_token"])
+
+
 async def run_daily_token_refresh_check(*, sb=None) -> bool:
     """Async wrapper for scheduler/worker integration."""
     return await asyncio.to_thread(ensure_token_fresh, sb=sb)

@@ -26,6 +26,10 @@ logger = logging.getLogger(__name__)
 
 VN_TZ = ZoneInfo("Asia/Ho_Chi_Minh")
 
+# Events currently active on Zalo — only these go to zalo_outbox.
+# activation_request_created + activation_urgent_reminder are paused.
+ZALO_ENABLED_EVENTS: frozenset[str] = frozenset({"payment_paid", "course_activated"})
+
 
 def _safe_get(data: dict[str, Any], key: str, default: str = "Unknown",
               context: str = "") -> str:
