@@ -13,8 +13,9 @@ function eventLabel(eventType: string): string {
   return EVENT_LABELS[eventType] || eventType;
 }
 
-function statusTone(row: ZaloOutboxRow): { tone: "ok" | "danger" | "warn" | "primary"; label: string } {
+function statusTone(row: ZaloOutboxRow): { tone: "ok" | "danger" | "warn" | "primary" | "neutral"; label: string } {
   if (row.sent_at) return { tone: "ok", label: "Đã gửi" };
+  if (row.retries >= 99) return { tone: "neutral", label: "Đã huỷ" };
   if (row.retries >= 4) return { tone: "danger", label: "Dead" };
   if (row.retries > 0) return { tone: "warn", label: `Retry ${row.retries}/4` };
   return { tone: "primary", label: "Chờ gửi" };
@@ -25,6 +26,8 @@ interface Props {
   loading: boolean;
   retrying: number | null;
   onRetry: (id: number) => void;
+  cancelling?: number | null;
+  onCancel?: (id: number) => void;
   formatDate: (iso?: string | null) => string;
 }
 
@@ -33,6 +36,8 @@ export default function ZaloOutboxCards({
   loading,
   retrying,
   onRetry,
+  cancelling,
+  onCancel,
   formatDate,
 }: Props) {
   if (loading) {
@@ -83,13 +88,24 @@ export default function ZaloOutboxCards({
             meta={metaItems}
             actions={
               canRetry ? (
-                <button
-                  onClick={() => onRetry(row.id)}
-                  disabled={retrying === row.id}
-                  className="min-h-[44px] px-2 text-xs rounded bg-yellow-50 text-yellow-700 hover:bg-yellow-100 disabled:opacity-50"
-                >
-                  {retrying === row.id ? "..." : "Retry"}
-                </button>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => onRetry(row.id)}
+                    disabled={retrying === row.id}
+                    className="min-h-[44px] px-2 text-xs rounded bg-yellow-50 text-yellow-700 hover:bg-yellow-100 disabled:opacity-50"
+                  >
+                    {retrying === row.id ? "..." : "Retry"}
+                  </button>
+                  {row.retries < 99 && onCancel && (
+                    <button
+                      onClick={() => onCancel(row.id)}
+                      disabled={cancelling === row.id}
+                      className="min-h-[44px] px-2 text-xs rounded bg-red-50 text-red-600 hover:bg-red-100 disabled:opacity-50"
+                    >
+                      {cancelling === row.id ? "..." : "Huỷ"}
+                    </button>
+                  )}
+                </div>
               ) : undefined
             }
           />

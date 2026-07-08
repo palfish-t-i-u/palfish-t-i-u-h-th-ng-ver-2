@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import {
   getZaloOutbox,
   retryZaloOutbox,
+  cancelZaloOutbox,
   type ZaloOutboxRow,
 } from "../../lib/api/zaloAdmin";
 import useIsMobile from "../../hooks/useIsMobile";
@@ -16,6 +17,7 @@ function formatDate(iso?: string | null): string {
 
 function statusOf(row: ZaloOutboxRow): { label: string; cls: string } {
   if (row.sent_at) return { label: "Đã gửi", cls: "bg-green-100 text-green-700" };
+  if (row.retries >= 99) return { label: "Đã huỷ", cls: "bg-gray-100 text-gray-500" };
   if (row.retries >= 4) return { label: "Dead", cls: "bg-red-100 text-red-700" };
   if (row.retries > 0) return { label: `Retry ${row.retries}/4`, cls: "bg-yellow-100 text-yellow-700" };
   return { label: "Chờ gửi", cls: "bg-blue-100 text-blue-700" };
@@ -46,6 +48,7 @@ export default function ZaloOutboxTab() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [retrying, setRetrying] = useState<number | null>(null);
+  const [cancelling, setCancelling] = useState<number | null>(null);
 
   const load = async () => {
     setLoading(true);
@@ -80,6 +83,20 @@ export default function ZaloOutboxTab() {
       setError(err.response?.data?.detail || err.message || "Lỗi retry");
     } finally {
       setRetrying(null);
+    }
+  };
+
+  const handleCancel = async (id: number) => {
+    setCancelling(id);
+    setError(null);
+    try {
+      await cancelZaloOutbox(id);
+      flash(`Đã huỷ tin #${id}`);
+      await load();
+    } catch (err: any) {
+      setError(err.response?.data?.detail || err.message || "Lỗi huỷ tin");
+    } finally {
+      setCancelling(null);
     }
   };
 
@@ -118,6 +135,8 @@ export default function ZaloOutboxTab() {
           loading={loading}
           retrying={retrying}
           onRetry={handleRetry}
+          cancelling={cancelling}
+          onCancel={handleCancel}
           formatDate={formatDate}
         />
       ) : (
@@ -179,15 +198,26 @@ export default function ZaloOutboxTab() {
                   </td>
                   <td className="p-2 text-xs text-gray-400 whitespace-nowrap">{formatDate(row.created_at)}</td>
                   <td className="p-2 text-xs text-gray-400 whitespace-nowrap">{formatDate(row.sent_at)}</td>
-                  <td className="p-2 text-center">
+                  <td className="p-2 text-center space-x-1">
                     {canRetry && (
-                      <button
-                        onClick={() => handleRetry(row.id)}
-                        disabled={retrying === row.id}
-                        className="px-2 py-0.5 text-xs rounded bg-yellow-50 text-yellow-700 hover:bg-yellow-100 disabled:opacity-50"
-                      >
-                        {retrying === row.id ? "..." : "Retry"}
-                      </button>
+                      <>
+                        <button
+                          onClick={() => handleRetry(row.id)}
+                          disabled={retrying === row.id}
+                          className="px-2 py-0.5 text-xs rounded bg-yellow-50 text-yellow-700 hover:bg-yellow-100 disabled:opacity-50"
+                        >
+                          {retrying === row.id ? "..." : "Retry"}
+                        </button>
+                        {row.retries < 99 && (
+                          <button
+                            onClick={() => handleCancel(row.id)}
+                            disabled={cancelling === row.id}
+                            className="px-2 py-0.5 text-xs rounded bg-red-50 text-red-600 hover:bg-red-100 disabled:opacity-50"
+                          >
+                            {cancelling === row.id ? "..." : "Huỷ"}
+                          </button>
+                        )}
+                      </>
                     )}
                   </td>
                 </tr>
