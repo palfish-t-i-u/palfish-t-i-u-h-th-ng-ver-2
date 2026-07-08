@@ -1425,6 +1425,26 @@ def register_admin_routes(app, get_supabase):
         
         return {"ok": True}
 
+    @app.post("/api/v1/admin/zalo-outbox/{msg_id}/cancel")
+    def cancel_zalo_outbox(msg_id: int, authorization: str | None = Header(None)):
+        sb = _sb_or_503(get_supabase)
+        actor = resolve_actor(sb, authorization)
+        require_module_write(sb, actor, "zalo")
+
+        row = sb.table("zalo_outbox").select("sent_at").eq("id", msg_id).execute()
+        if not row.data:
+            raise HTTPException(404, f"Không tìm thấy tin nhắn Zalo Outbox với ID: {msg_id}")
+        if row.data[0].get("sent_at"):
+            raise HTTPException(400, "Tin nhắn đã gửi, không thể huỷ")
+
+        sb.table("zalo_outbox").update({
+            "retries": 99,
+            "last_error": "Cancelled by admin",
+            "next_retry_at": None,
+        }).eq("id", msg_id).execute()
+
+        return {"ok": True}
+
     # ------------------------------------------------------------------
     # Zalo OA Configuration (Task G4)
     # ------------------------------------------------------------------
