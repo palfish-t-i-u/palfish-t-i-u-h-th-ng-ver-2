@@ -61,24 +61,26 @@ Cả 2 org đều là **Standard (free) + Uncertified (未认证)**. Group type 
 
 **Lưu ý**: Nếu org PalFish TQ đã dùng giấy phép KD TQ, chi nhánh VN phải dùng giấy phép KD VN riêng (1 giấy phép/org).
 
-### ⚠️ CẢNH BÁO: Không chắc chắn 100% certification sẽ fix
+### ✅ CONFIRMED: Certification là điều kiện bắt buộc (9/7/2026)
 
-Bằng chứng xác thực sẽ mở robot cho group đến từ:
-- **Community Q&A** trên DingTalk developer forums — nhiều người báo cùng triệu chứng, và nói certification fix
-- **Loại suy** — trang xác thực liệt kê nhiều tính năng nâng cao cho org certified
+**Nguồn xác nhận: DingTalk AI Agent chính thức** (thuộc org 北京读我科技有限公司, truy cập qua DingTalk app):
 
-Tuy nhiên:
-- **Bảng quyền lợi xác thực chính thức** (official certification benefits) KHÔNG liệt kê "robot" hay "group robot" trong danh sách quyền lợi
-- **Tài liệu tiếng Anh chính thức** (help.dingtalk.io) KHÔNG đề cập certification là điều kiện tiên quyết để thêm bot vào group. Chỉ yêu cầu: configure bot + publish app + Internal Group
-- Chưa có nguồn **chính thức (official)** xác nhận rõ ràng
+> "Yes, completing Enterprise Certification (企业认证) is required for your Enterprise Robot to appear and be usable in group chats on DingTalk."
 
-→ **Đã liên hệ DingTalk support** để xác nhận trước khi chi tiền (xem mục Liên hệ bên dưới).
+Chi tiết từ AI Agent:
+- Org unverified → robot chỉ dùng được **1:1**, KHÔNG hiện trong group Robot Management
+- Certification unlock: **Group robot installation**, custom domain binding, enhanced admin controls, API quotas cho `group_message`, `group_robot_added`
+- Sau certification 1-3 ngày → robot **tự động** hiện và cài được vào group
+
+**Lưu ý**: Tài liệu developer docs (open.dingtalk.com, developerpedia) KHÔNG ghi rõ điều kiện này. Trang quyền lợi certification chính thức cũng không liệt kê "robot". Nhưng AI Agent chính thức của DingTalk xác nhận rõ ràng — đây là restriction không được document trong developer docs.
+
+**Kiểm chứng thực tế**: App GMV_Notifier đạt 9/9 điều kiện trong docs (sub-admin, đúng loại app, robot enabled, config đầy đủ, publish robot config, publish version, 可见范围=全员员工, Enterprise Group, owner thêm) → vẫn "No robots available" → chỉ còn certification.
 
 ### Quyết định anh Hiếu (8/7/2026)
 
 > "Thì xác thực doanh nghiệp thôi, 1tr rẻ mà"
 
-**→ APPROVED**: Tiến hành xác thực doanh nghiệp cho org Palfish Vietnam. Chờ DingTalk support xác nhận rồi nhờ chị Trang (admin org) submit.
+**→ APPROVED**: Tiến hành xác thực doanh nghiệp cho org Palfish Vietnam.
 
 ### Pricing tiers (DingTalk for Business)
 
@@ -96,14 +98,40 @@ Tuy nhiên:
 - **Form liên hệ**: Đã submit form trên `dingtalk-global.com/contact` (site hợp lệ của Alibaba Group) — 8/7/2026
 - **Nội dung hỏi**: Xác nhận certification có mở tính năng Enterprise Robot trong group không
 
-### Hướng dẫn chị Trang submit xác thực
+### ⚠️ Vấn đề tên org không khớp (phát hiện 9/7/2026)
 
-1. Đăng nhập DingTalk Admin Console → Tổ chức → Xác minh doanh nghiệp
-2. Quét QR bằng DingTalk mobile (admin account)
-3. Chọn **中级认证** (trung cấp) — phù hợp doanh nghiệp nước ngoài
-4. Upload: Giấy phép kinh doanh VN + CMND/CCCD người đại diện
-5. Thanh toán 299 CNY (~1 triệu VNĐ)
-6. Chờ 1-3 ngày làm việc → DingTalk duyệt
+Tên trên DingTalk: **Palfish Vietnam**
+Tên trên giấy ĐKKD: **PALFISH SINGAPORE - VIETNAM CO.,LTD** (tiếng Việt: CÔNG TY TNHH TRƯỜNG QUỐC TẾ PALFISH SINGAPORE - VIETNAM)
+MST: 0110315588
+
+DingTalk AI Agent xác nhận: tên không khớp = **#1 nguyên nhân bị từ chối** certification. Phải đổi tên org trên DingTalk cho khớp giấy ĐKKD **trước khi** submit.
+
+### Hướng dẫn chị Trang — Checklist xác thực doanh nghiệp
+
+**Bước 0 (BẮT BUỘC trước khi submit):** Đổi tên tổ chức trên DingTalk
+- Admin Console → Settings → Organization Info → Organization Name
+- Đổi từ "Palfish Vietnam" → **CÔNG TY TNHH TRƯỜNG QUỐC TẾ PALFISH SINGAPORE - VIETNAM**
+- Phải dùng tên tiếng Việt (tên chính thức trên giấy ĐKKD), KHÔNG dùng tên tiếng Anh
+- DingTalk hỗ trợ Unicode/dấu tiếng Việt đầy đủ
+- Có thể mất tới 24h để hệ thống cập nhật xong
+
+**Bước 1:** Chuẩn bị giấy tờ
+- Giấy chứng nhận đăng ký doanh nghiệp (ảnh/scan rõ nét, còn hiệu lực)
+- CCCD hoặc Passport của **người đại diện pháp luật** (tên + số phải khớp giấy ĐKKD)
+- Không cần dịch thuật, không cần công chứng
+
+**Bước 2:** Vào DingTalk Admin Console → Tổ chức → Xác minh doanh nghiệp
+- Quét QR bằng DingTalk mobile (admin account)
+- Chọn **中级认证** (Intermediate Certification)
+
+**Bước 3:** Upload giấy tờ + điền thông tin theo form
+
+**Bước 4:** Thanh toán 299 CNY (~1 triệu VNĐ)
+- Chấp nhận VISA/Mastercard/PayPal
+
+**Bước 5:** Chờ duyệt 1-3 ngày làm việc
+- Nhận thông báo qua email + DingTalk system notification
+- Sau khi duyệt → robot tự hiện trong group, không cần làm gì thêm
 
 ### Rate limits
 
