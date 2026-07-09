@@ -3,6 +3,7 @@ import hmac
 import json
 import os
 import random
+import threading
 import re
 import uuid
 from pathlib import Path
@@ -212,24 +213,38 @@ FALLBACK_PACKAGES = [
     "新签-菲教-特惠-18单元",
 ]
 
-def _supabase():
-    url = os.getenv("SUPABASE_URL", "").strip()
-    key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "").strip()
-    if not url or not key:
-        return None
-    if "YOUR_PROJECT" in url or "PASTE_" in key or key.startswith("YOUR_"):
-        return None
-    try:
-        from supabase import create_client
-        from supabase._sync.client import SupabaseException
+_sb_instance = None
+_sb_lock = threading.Lock()
 
-        return create_client(url, key)
-    except SupabaseException as exc:
-        print(f"Supabase client init failed: {exc}")
-        return None
-    except Exception as exc:
-        print(f"Supabase client init failed: {exc}")
-        return None
+
+def _supabase():
+    """Process-wide singleton Supabase client.
+
+    Per-request create_client() leaked ~150MB/h under load (httpx pools
+    never closed) and OOM'd the 512MB Render instance — 2026-07-09.
+    Safe to share: service-role usage is stateless and each .table()/.rpc()
+    call builds a fresh request builder on a thread-safe httpx client.
+    """
+    global _sb_instance
+    if _sb_instance is not None:
+        return _sb_instance
+    with _sb_lock:
+        if _sb_instance is not None:
+            return _sb_instance
+        url = os.getenv("SUPABASE_URL", "").strip()
+        key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "").strip()
+        if not url or not key:
+            return None
+        if "YOUR_PROJECT" in url or "PASTE_" in key or key.startswith("YOUR_"):
+            return None
+        try:
+            from supabase import create_client
+
+            _sb_instance = create_client(url, key)
+            return _sb_instance
+        except Exception as exc:
+            print(f"Supabase client init failed: {exc}")
+            return None
 
 
 def _next_ma_don(sb=None) -> str:
@@ -497,7 +512,7 @@ def _create_order_supabase(sb, body: CreateOrderBody) -> dict[str, Any]:
         "trang_thai": "cho_thanh_toan",
         "tien_ve": False,
         "don_crm": False,
-        "created_by": body.createdBy,
+        "created_by": ((body.createdBy or "").strip().lower() or None),
         "dat_coc": bool(body.datCoc),
         "lead_kenh": (body.leadKenh or "").strip() or None,
         "uid_phu": uid_phu_clean,
@@ -528,20 +543,25 @@ def _create_order_supabase(sb, body: CreateOrderBody) -> dict[str, Any]:
 
 
 def _list_orders_supabase(
-    sb, allowed_creators: list[str] | None = None
+    sb, allowed_creators: list[str] | None = None,
+    limit: int = 1000, offset: int = 0,
 ) -> list[dict[str, Any]]:
+    query = sb.table("don_hang").select("*, khach_hang(*)")
+    if allowed_creators is not None:
+        # Scope filter phải nằm trong SQL, TRƯỚC limit — lọc sau limit làm
+        # sale mất đơn cũ. Đơn không có created_by thì ai cũng thấy (legacy).
+        quoted = ",".join(
+            '"{}"'.format(e.replace('"', "").replace(",", "").strip().lower())
+            for e in [""] + list(allowed_creators)
+        )
+        query = query.or_(f"created_by.is.null,created_by.in.({quoted})")
     res = (
-        sb.table("don_hang")
-        .select("*, khach_hang(*)")
-        .order("created_at", desc=True)
+        query.order("created_at", desc=True)
+        .range(offset, offset + limit - 1)
         .execute()
     )
     out = []
     for row in res.data or []:
-        if allowed_creators is not None:
-            creator = (row.get("created_by") or "").strip().lower()
-            if creator and creator not in allowed_creators:
-                continue
         kh = row.pop("khach_hang", None) if isinstance(row, dict) else None
         out.append(_row_to_order(row, kh))
     return out
@@ -663,14 +683,14 @@ async def list_packages():
 
 
 @app.get("/orders")
-def list_orders(authorization: str = Header(...)):
+def list_orders(authorization: str = Header(...), limit: int = Query(1000, ge=1, le=1000), offset: int = Query(0, ge=0)):
     sb = _supabase()
     actor = resolve_actor(sb, authorization) if sb else None
     allowed = visible_creator_emails(sb, actor) if sb and actor else None
 
     if sb:
         try:
-            return {"orders": _list_orders_supabase(sb, allowed)}
+            return {"orders": _list_orders_supabase(sb, allowed, limit=limit, offset=offset)}
         except Exception as exc:
             print(f"Supabase list_orders: {exc}")
             raise HTTPException(500, f"Lỗi đọc đơn hàng: {exc}") from exc
@@ -1335,6 +1355,11 @@ async def _start_zalo_worker() -> None:
 @app.on_event("startup")
 async def _start_dingtalk_worker() -> None:
     import asyncio
+
+    if os.getenv("DINGTALK_WORKER_ENABLED", "").strip().lower() != "true":
+        print("[dingtalk] outbox worker disabled — set DINGTALK_WORKER_ENABLED=true after DingTalk setup (dingtalk_outbox table + webhook groups)")
+        return
+
     from dingtalk_outbox_worker import start_outbox_worker as start_dingtalk_outbox
 
     print("[dingtalk] starting outbox worker...")
