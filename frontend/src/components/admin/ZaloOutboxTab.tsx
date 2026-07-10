@@ -28,6 +28,7 @@ const EVENT_LABELS: Record<string, string> = {
   course_activated: "Kích hoạt TP",
   activation_urgent_reminder: "Nhắc kích hoạt",
   activation_request_created: "Y/c kích hoạt",
+  bill_uploaded: "Ảnh bill",
 };
 
 function eventLabel(eventType: string): string {
