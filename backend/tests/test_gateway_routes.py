@@ -291,6 +291,12 @@ def test_gateway_match_auto_confirms_non_card_method_without_bill():
     assert sb.tables["payment_lines"][0]["status"] == "paid"
     assert sb.tables["payment_lines"][0]["verified_total"] == 1000
     assert sb.tables["payment_lines"][0]["verified_received"] == 990
+    # Regression 10/7: payment_lines.verified_total/received la bigint tren DB
+    # that — gui float (vd 1000.0) bi PostgREST tu choi (22P02 invalid input
+    # syntax for type bigint). FakeSB khong serialize JSON nen chi assert ==
+    # se khong bat duoc — phai check type int tuong minh.
+    assert isinstance(sb.tables["payment_lines"][0]["verified_total"], int)
+    assert isinstance(sb.tables["payment_lines"][0]["verified_received"], int)
 
 
 def test_gateway_match_idempotent_when_line_already_paid():
@@ -504,6 +510,8 @@ def test_gateway_match_auto_confirm_copies_net_amount():
     assert sb.tables["payment_lines"][0]["status"] == "paid"
     assert sb.tables["payment_lines"][0].get("verified_total") == 20000
     assert sb.tables["payment_lines"][0].get("verified_received") == 19500
+    assert isinstance(sb.tables["payment_lines"][0]["verified_total"], int)
+    assert isinstance(sb.tables["payment_lines"][0]["verified_received"], int)
 
 
 def test_gateway_match_auto_confirm_no_net_amount():
@@ -546,3 +554,41 @@ def test_mark_line_paid_extra_none_backward_compat():
     assert sb.tables["payment_lines"][0]["status"] == "paid"
     assert sb.tables["payment_lines"][0]["confirmed_source"] == "payos"
     assert "verified_received" not in sb.tables["payment_lines"][0]
+
+
+def test_gateway_match_verified_amounts_are_int_not_float():
+    """Regression bug thật 10/7 (prod/sandbox): gateway_transactions.amount/
+    net_amount tu mpos_import.py co the la float (vd 9828000.0). payment_lines.
+    verified_total/verified_received la cot bigint tren DB that — PostgREST
+    tu choi float co dau thap phan voi loi 22P02 'invalid input syntax for
+    type bigint'. match_gateway_txn phai ep int truoc khi gui, khong duoc de
+    lot float."""
+    sb = FakeSB()
+    sb.tables["gateway_transactions"].append(
+        {
+            "id": "txn-float",
+            "source": "mpos",
+            "category": "Tra gop",
+            "txn_code": "mpos-float",
+            "amount": 9_828_000.0,
+            "net_amount": 9_582_785.7,
+            "match_status": "pending",
+            "paid_at": "2026-06-16T10:05:00+00:00",
+        }
+    )
+    client = build_client(sb)
+
+    with patch("gateway_routes.resolve_actor", return_value=ACTOR):
+        with patch("gateway_routes.require_module_write"):
+            match_resp = client.patch(
+                "/api/v1/gateway-txns/txn-float/match",
+                json={"payment_line_id": "line-1"},
+            )
+
+    assert match_resp.status_code == 200
+    line = sb.tables["payment_lines"][0]
+    assert line["status"] == "paid"
+    assert isinstance(line["verified_total"], int), f"verified_total phai la int, dang la {type(line['verified_total'])}"
+    assert isinstance(line["verified_received"], int), f"verified_received phai la int, dang la {type(line['verified_received'])}"
+    assert line["verified_total"] == 9_828_000
+    assert line["verified_received"] == 9_582_785

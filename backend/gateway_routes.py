@@ -476,7 +476,10 @@ def register_gateway_routes(app, get_supabase: Callable[[], Any]) -> None:
             gw_net = _parse_amount(txn_row.get("net_amount"))
             net_extra = {}
             if gw_net > 0:
-                net_extra = {"verified_total": gw_amount, "verified_received": gw_net}
+                # payment_lines.verified_total/verified_received la bigint —
+                # PostgREST tu choi float co dau thap phan (vd "9828000.0")
+                # voi loi 22P02. Ep int truoc khi gui.
+                net_extra = {"verified_total": int(gw_amount), "verified_received": int(gw_net)}
 
             _mark_line_paid(
                 sb, line_id, actor_email=actor.email, source="gateway",
