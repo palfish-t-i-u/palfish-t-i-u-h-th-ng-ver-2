@@ -85,6 +85,9 @@ export default function CardReconciliationTab({
   const [candRange, setCandRange] = useState<DateRange>(EMPTY_RANGE);
   const [candAmount, setCandAmount] = useState("");
   const [candIncludeAll, setCandIncludeAll] = useState(false);
+  // Tick "Khớp tiền" (mặc định BẬT): chỉ hiện lần TT trùng đúng số tiền GD.
+  // Bỏ tick → bỏ ràng buộc số tiền, liệt kê mọi lần TT thẻ/trả góp (cho phí mPOS lệch tiền).
+  const [candMatchAmount, setCandMatchAmount] = useState(true);
   const [candidates, setCandidates] = useState<MatchCandidate[]>([]);
   const [amountLoaded, setAmountLoaded] = useState(false);
   const [manualSearching, setManualSearching] = useState(false);
@@ -186,9 +189,14 @@ export default function CardReconciliationTab({
     }
     let alive = true;
     setAmountLoaded(false);
-    const params: { amount?: number; include_all?: boolean } = {};
-    const parsedAmt = candAmount.trim() ? parseFloat(candAmount.replace(/[^0-9.]/g, "")) : NaN;
-    if (!isNaN(parsedAmt) && parsedAmt > 0) params.amount = parsedAmt;
+    const params: { amount?: number; include_all?: boolean; match_amount?: boolean } = {};
+    if (candMatchAmount) {
+      const parsedAmt = candAmount.trim() ? parseFloat(candAmount.replace(/[^0-9.]/g, "")) : NaN;
+      if (!isNaN(parsedAmt) && parsedAmt > 0) params.amount = parsedAmt;
+    } else {
+      // Bỏ ràng buộc số tiền — bỏ qua ô "Số tiền…" override.
+      params.match_amount = false;
+    }
     if (candIncludeAll) params.include_all = true;
     const timer = setTimeout(() => {
       endpoints.cardRecon
@@ -210,7 +218,7 @@ export default function CardReconciliationTab({
       alive = false;
       clearTimeout(timer);
     };
-  }, [drawerOpen, drawerId, txns, candAmount, candIncludeAll]);
+  }, [drawerOpen, drawerId, txns, candAmount, candIncludeAll, candMatchAmount]);
 
   // Fallback: khi không có ứng viên cùng số tiền → cho tìm thủ công qua BE (T2.5).
   const isManualMode = amountLoaded && candidates.length === 0;
@@ -286,6 +294,7 @@ export default function CardReconciliationTab({
     setCandRange(EMPTY_RANGE);
     setCandAmount("");
     setCandIncludeAll(false);
+    setCandMatchAmount(true);
     setDrawerOpen(true);
   };
 
@@ -830,20 +839,39 @@ export default function CardReconciliationTab({
                           onChange={(e) => setCandSearch(e.target.value)}
                         />
                       </div>
-                      {/* V5 — Filter bar: amount override + status toggle + date range */}
+                      {/* V5 — Filter bar: match-amount toggle + amount override + status toggle + date range */}
                       <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
-                        <input
-                          type="text"
-                          inputMode="numeric"
-                          placeholder="Số tiền…"
-                          value={candAmount}
-                          onChange={(e) => setCandAmount(e.target.value)}
+                        <label
                           style={{
-                            width: 110, fontSize: 12, padding: "3px 7px",
-                            border: "1px solid var(--border)", borderRadius: 6,
-                            background: "var(--surface)", color: "var(--text)",
+                            display: "flex", alignItems: "center", gap: 4, fontSize: 11.5,
+                            cursor: "pointer", userSelect: "none",
+                            color: candMatchAmount ? "var(--primary)" : "var(--text-3)",
+                            fontWeight: candMatchAmount ? 600 : 400,
                           }}
-                        />
+                          title="Bật: chỉ hiện lần TT trùng đúng số tiền giao dịch. Tắt: hiện mọi lần TT thẻ/trả góp (khi phí làm lệch tiền)."
+                        >
+                          <input
+                            type="checkbox"
+                            checked={candMatchAmount}
+                            onChange={(e) => setCandMatchAmount(e.target.checked)}
+                            style={{ accentColor: "var(--primary)", cursor: "pointer" }}
+                          />
+                          Khớp tiền
+                        </label>
+                        {candMatchAmount && (
+                          <input
+                            type="text"
+                            inputMode="numeric"
+                            placeholder="Số tiền…"
+                            value={candAmount}
+                            onChange={(e) => setCandAmount(e.target.value)}
+                            style={{
+                              width: 110, fontSize: 12, padding: "3px 7px",
+                              border: "1px solid var(--border)", borderRadius: 6,
+                              background: "var(--surface)", color: "var(--text)",
+                            }}
+                          />
+                        )}
                         <button
                           type="button"
                           onClick={() => setCandIncludeAll(false)}
@@ -882,7 +910,9 @@ export default function CardReconciliationTab({
                           borderRadius: 6,
                           marginBottom: 8,
                         }}>
-                          Không có lần thanh toán nào cùng số tiền. Gõ PR-ID, tên KH, UID hoặc SĐT để tìm thủ công.
+                          {candMatchAmount
+                            ? "Không có lần thanh toán nào cùng số tiền. Gõ PR-ID, tên KH, UID hoặc SĐT để tìm thủ công."
+                            : "Không có lần thanh toán thẻ/trả góp nào. Gõ PR-ID, tên KH, UID hoặc SĐT để tìm thủ công."}
                         </div>
                       )}
                       <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 260, overflowY: "auto" }}>

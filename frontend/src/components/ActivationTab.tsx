@@ -421,6 +421,9 @@ function ActivationDetailDrawer({
   const [addUidDialogOpen, setAddUidDialogOpen] = useState(false);
   const [newUidValue, setNewUidValue] = useState("");
   const [newUidError, setNewUidError] = useState("");
+  // Multi-con: UID mới của bé nào — "" = chưa chọn, "__new__" = gõ tên bé mới
+  const [newUidChildName, setNewUidChildName] = useState("");
+  const [newChildNameInput, setNewChildNameInput] = useState("");
   const arBodyScrollRef = useRef<HTMLDivElement | null>(null);
   const [canScrollUp, setCanScrollUp] = useState(false);
   const [canScrollDown, setCanScrollDown] = useState(false);
@@ -759,7 +762,7 @@ function ActivationDetailDrawer({
     });
   };
 
-  const addUid = async (nextUidValue: string) => {
+  const addUid = async (nextUidValue: string, childName?: string) => {
     const newCode = nextCourseCode(ar);
     const remaining = pr ? receivedRemaining : 0;
     return await persistStructure("add-uid", {
@@ -768,6 +771,8 @@ function ActivationDetailDrawer({
         ...ar.uids,
         {
           uid: nextUidValue,
+          // Multi-con: gắn tên bé vào block — Zalo/hiển thị theo đúng bé
+          ...(childName ? { name: childName } : {}),
           phone: "",
           country: "VN",
           courses: [{ courseCode: newCode, packageName: "", amount: remaining || 0, orderId: "", invoiced: false }],
@@ -780,8 +785,14 @@ function ActivationDetailDrawer({
     if (locked) return;
     setNewUidValue("");
     setNewUidError("");
+    setNewUidChildName("");
+    setNewChildNameInput("");
     setAddUidDialogOpen(true);
   };
+
+  // Multi-con: PR liên kết có ≥2 bé → bắt buộc chọn UID này của bé nào
+  const prChildren = (pr?.children ?? []).filter((c) => c.name);
+  const requireChildPick = prChildren.length >= 2;
 
   const submitAddUid = async () => {
     const uid = newUidValue.trim();
@@ -793,11 +804,18 @@ function ActivationDetailDrawer({
       setNewUidError("UID này đã tồn tại trong Active Request.");
       return;
     }
-    const ok = await addUid(uid);
+    const childName = newUidChildName === "__new__" ? newChildNameInput.trim() : newUidChildName;
+    if (requireChildPick && !childName) {
+      setNewUidError("PR này có nhiều bé — hãy chọn UID này của bé nào.");
+      return;
+    }
+    const ok = await addUid(uid, childName || undefined);
     if (!ok) return;
     setAddUidDialogOpen(false);
     setNewUidValue("");
     setNewUidError("");
+    setNewUidChildName("");
+    setNewChildNameInput("");
   };
 
   const copyArId = async () => {
@@ -1173,6 +1191,15 @@ function ActivationDetailDrawer({
                 >
                   UID #{uidIdx + 1}
                 </div>
+                {uidObj.name && (
+                  <span
+                    className="badge"
+                    title="UID này của bé"
+                    style={{ background: "var(--primary-50)", color: "var(--primary-700)", whiteSpace: "nowrap" }}
+                  >
+                    {uidObj.name}
+                  </span>
+                )}
                 <input
                   className="uid-mono"
                   value={draftUid.uid}
@@ -1598,6 +1625,37 @@ function ActivationDetailDrawer({
                       <div style={{ marginTop: 8, color: "var(--danger)", fontSize: 12 }}>{newUidError}</div>
                     ) : null}
                   </div>
+                  {(requireChildPick || prChildren.length > 0) && (
+                    <div className="field" style={{ marginTop: 12 }}>
+                      <label>
+                        Của bé nào?{requireChildPick && <span style={{ color: "var(--danger)" }}> *</span>}
+                      </label>
+                      <select
+                        value={newUidChildName}
+                        onChange={(e) => {
+                          setNewUidChildName(e.target.value);
+                          if (newUidError) setNewUidError("");
+                        }}
+                      >
+                        <option value="">— Chọn bé —</option>
+                        {prChildren.map((c, i) => (
+                          <option key={i} value={c.name}>{c.name}</option>
+                        ))}
+                        <option value="__new__">+ Bé khác (gõ tên)</option>
+                      </select>
+                      {newUidChildName === "__new__" && (
+                        <input
+                          style={{ marginTop: 8 }}
+                          value={newChildNameInput}
+                          placeholder="Tên bé *"
+                          onChange={(e) => {
+                            setNewChildNameInput(e.target.value);
+                            if (newUidError) setNewUidError("");
+                          }}
+                        />
+                      )}
+                    </div>
+                  )}
                 </div>
                 <div className="modal-foot">
                   <button

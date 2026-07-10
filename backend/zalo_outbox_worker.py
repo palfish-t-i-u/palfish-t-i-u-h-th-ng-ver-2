@@ -111,6 +111,7 @@ async def poll_and_send(sb_factory: Callable[[], Any]):
             .or_(f"next_retry_at.is.null,next_retry_at.lte.{now_iso}")
             .or_(f"retries.is.null,retries.lt.{MAX_RETRIES}")
             .order("created_at", desc=False)
+            .order("id", desc=False)
             .limit(BATCH_SIZE)
             .execute()
         )

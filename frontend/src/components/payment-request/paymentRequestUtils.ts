@@ -1,8 +1,8 @@
 import type { CSSProperties } from "react";
-import type { ActiveCourse, ActiveRequest, ActiveRequestApiRow, ActiveRequestPatchUidPayload, CreateActiveRequestPayload, PaymentAttempt, PaymentMethod, PaymentRequest, PaymentRequestStatus } from "../../types/paymentRequest";
+import type { ActiveCourse, ActiveRequest, ActiveRequestApiRow, ActiveRequestPatchUidPayload, ArDraftRow, CreateActiveRequestPayload, CreateActiveRequestUidPayload, PaymentAttempt, PaymentMethod, PaymentRequest, PaymentRequestStatus } from "../../types/paymentRequest";
 
 export type RequestBucket = "tracking" | "created" | "cancelled";
-export type StatusFilter = "all" | "pending" | "short" | "done" | "over" | "unmatched_card";
+export type StatusFilter = "all" | "pending" | "short" | "done" | "over";
 
 export const METHOD_LABEL: Record<PaymentMethod, string> = {
   qr: "Chuyển khoản",
@@ -99,6 +99,7 @@ export function fromApiAttempt(raw: any, idx = 0): PaymentAttempt {
     confirmedSource: raw.confirmed_source ?? raw.confirmedSource ?? null,
     nameForTransfer: raw.name_for_transfer ?? raw.nameForTransfer ?? null,
     isContentStale: Boolean(raw.is_content_stale ?? raw.isContentStale ?? false),
+    studentName: raw.student_name ?? raw.studentName ?? null,
   };
 }
 
@@ -109,6 +110,13 @@ export function fromApiPaymentRequest(raw: any): PaymentRequest {
     id: raw.id ?? "",
     name: raw.name ?? "",
     childName: raw.child_name ?? raw.childName ?? undefined,
+    // Multi-con: BE trả children = [bé 1 + bé phụ]; response cũ không có → undefined
+    children: Array.isArray(raw.children)
+      ? raw.children
+          .filter((c: unknown): c is { name: string; uid?: string | null } =>
+            !!c && typeof c === "object" && typeof (c as { name?: unknown }).name === "string")
+          .map((c: { name: string; uid?: string | null }) => ({ name: c.name, uid: c.uid ?? null }))
+      : undefined,
     uid: raw.uid ?? "",
     phone: raw.phone ?? "",
     country: raw.country ?? "VN",
@@ -244,6 +252,7 @@ export function fromApiActiveRequest(raw: ActiveRequestApiRow): ActiveRequest {
     createdBy: "",
     uids: (raw.uids_data ?? []).map((u) => ({
       uid: u.uid ?? "",
+      ...(u.name ? { name: u.name } : {}),
       phone: u.phone ?? "",
       country: u.country ?? "VN",
       courses: (u.courses ?? []).map((c) => ({
@@ -281,18 +290,29 @@ export function buildArByPrId(ars: ActiveRequest[]): Record<string, ActiveReques
   return map;
 }
 
-export function buildCreateActiveRequestPayload(pr: PaymentRequest, packageName: string): CreateActiveRequestPayload {
-  return {
-    uids: [
-      {
-        uid: pr.uid,
+/** Modal AR mở rộng (10/7): gom các dòng {bé, gói, tiền} thành uid-block.
+ *  Cùng bé (childName+uid) → 1 block nhiều courses. Tên gói bắt buộc —
+ *  BE chặn tạo AR khi name rỗng (tin Zalo bắn ngay lúc tạo). */
+export function buildCreateActiveRequestPayload(pr: PaymentRequest, rows: ArDraftRow[]): CreateActiveRequestPayload {
+  const blocks = new Map<string, CreateActiveRequestUidPayload>();
+  for (const row of rows) {
+    const key = `${row.childName.trim()}|${row.uid.trim()}`;
+    let block = blocks.get(key);
+    if (!block) {
+      block = {
+        uid: row.uid.trim(),
         phone: pr.phone,
         country: pr.country,
-        // Tên gói bắt buộc — BE chặn tạo AR khi name rỗng (tin Zalo bắn ngay lúc tạo)
-        courses: [{ name: packageName.trim(), amount: Math.max(0, pr.received) }],
-      },
-    ],
-  };
+        courses: [],
+      };
+      const name = row.childName.trim();
+      // Tên bé chỉ gửi khi có — PR 1 con không tên giữ payload y hệt cũ (G3)
+      if (name) block.name = name;
+      blocks.set(key, block);
+    }
+    block.courses.push({ name: row.packageName.trim(), amount: Math.max(0, Math.round(row.amount)) });
+  }
+  return { uids: [...blocks.values()] };
 }
 
 export function activeRequestAllocation(ar: ActiveRequest, pr: PaymentRequest | null | undefined) {
@@ -410,6 +430,7 @@ export function updateActiveCoursePackage(
 export function toActiveRequestPatchUidsData(ar: ActiveRequest): ActiveRequestPatchUidPayload[] {
   return ar.uids.map((u) => ({
     uid: u.uid,
+    ...(u.name ? { name: u.name } : {}),
     phone: u.phone,
     country: u.country,
     courses: u.courses.map((c) => ({
@@ -663,17 +684,6 @@ export function displayReceived(pr: PaymentRequest): number {
 export function hasUnverifiedInstallment(pr: PaymentRequest): boolean {
   return pr.payments.some(
     (p) => p.status === "paid" && p.method === "installment" && p.verifiedReceived == null,
-  );
-}
-
-/** True khi PR còn ≥1 lần quẹt thẻ/trả góp CHƯA ghép giao dịch (chưa xác nhận tiền về),
- *  bất kể PR đang Đủ/Thiếu/Thừa tiền — bộ lọc cho kế toán tìm PR cần ghép. */
-export function hasUnmatchedCardLine(pr: PaymentRequest): boolean {
-  return pr.payments.some(
-    (p) =>
-      !p.cancelled &&
-      (p.method === "card" || p.method === "installment") &&
-      p.status === "pending",
   );
 }
 

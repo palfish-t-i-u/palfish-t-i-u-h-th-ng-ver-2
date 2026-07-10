@@ -699,7 +699,7 @@ def register_sepay_routes(app, get_supabase: Callable) -> None:
 
         lines_query = (
             sb.table("payment_lines")
-            .select("id, payment_request_id, amount, method, status, transfer_code, created_at")
+            .select("id, payment_request_id, amount, method, status, transfer_code, created_at, student_name")
             .in_("status", ["pending", "paid"])
             .order("created_at", desc=True)
             .limit(500)
@@ -767,7 +767,7 @@ def register_sepay_routes(app, get_supabase: Callable) -> None:
                 "pr_name": pr.get("name", ""),
                 "pr_uid": pr.get("uid", ""),
                 "pr_phone": pr.get("phone", ""),
-                "child_name": pr.get("child_name") or "",
+                "child_name": line.get("student_name") or pr.get("child_name") or "",
                 "sale_name": sale_name_map.get(sale_email, sale_email),
                 "team_name": team_by_email.get(sale_email, ""),
                 "amount": _parse_amount(line.get("amount", 0)),

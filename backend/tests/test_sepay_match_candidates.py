@@ -84,6 +84,17 @@ class FakeSB:
                     "transfer_code": "TT002",
                     "created_at": "2026-06-18T10:05:00+00:00",
                 },
+                {
+                    # Multi-con: line gắn bé phụ qua student_name
+                    "id": "line-be-bo",
+                    "payment_request_id": "PR-1",
+                    "amount": 7000000,
+                    "method": "transfer",
+                    "status": "pending",
+                    "transfer_code": "TT003",
+                    "created_at": "2026-06-18T10:10:00+00:00",
+                    "student_name": "Be Bo",
+                },
             ],
             "payment_requests": [
                 {
@@ -162,3 +173,21 @@ def test_bank_candidates_enrichment_amount_exact_and_discrepancy():
     assert match.status_code == 200
     assert match.json()["discrepancy_amount"] == 500
     assert sb.tables["bank_transactions"][0]["discrepancy_amount"] == 500
+
+
+def test_candidate_child_name_prefers_line_student_name():
+    """Multi-con: line có student_name → candidate hiện tên bé đó, không phải bé 1."""
+    sb = FakeSB()
+    client = build_client(sb)
+
+    with patch("sepay_routes.resolve_actor", return_value=ACTOR):
+        with patch("sepay_routes.require_module_write"):
+            candidates = client.get(
+                "/api/v1/bank-transactions/txn-bank-1/match-candidates?amount_exact=7000000"
+            )
+
+    assert candidates.status_code == 200
+    rows = candidates.json()
+    assert len(rows) == 1
+    assert rows[0]["payment_line_id"] == "line-be-bo"
+    assert rows[0]["child_name"] == "Be Bo"

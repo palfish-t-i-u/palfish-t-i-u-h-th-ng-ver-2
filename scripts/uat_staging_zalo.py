@@ -103,6 +103,15 @@ CASES: dict[str, dict] = {
         "expect_image_sent": False,
         "expect_image_error": False,
     },
+    "E": {
+        "label": "bill_uploaded → text 🧾 + ảnh bill (multi qua image_urls)",
+        "event_type": "bill_uploaded",
+        "message": "🧾 BILL - PR-2026-UAT5",
+        "image_url": None,
+        "image_urls": [VALID_BILL],
+        "expect_image_sent": True,
+        "expect_image_error": False,
+    },
 }
 
 
@@ -138,6 +147,8 @@ def insert_case(sb, case_key: str) -> int:
         "message": TEST_PREFIX + c["message"],
         "image_url": c["image_url"],
     }
+    if c.get("image_urls"):
+        payload["image_urls"] = c["image_urls"]
     resp = sb.table("zalo_outbox").insert(payload).execute()
     row_id = resp.data[0]["id"]
     print(f"  [+] outbox row inserted: id={row_id} event={c['event_type']}")

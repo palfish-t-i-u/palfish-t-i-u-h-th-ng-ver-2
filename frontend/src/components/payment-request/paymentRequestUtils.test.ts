@@ -1,14 +1,15 @@
 import { describe, expect, it } from "vitest";
-import type { ActiveRequest, ActiveRequestApiRow, PaymentAttempt, PaymentRequest } from "../../types/paymentRequest";
+import type { ActiveRequest, ActiveRequestApiRow, PaymentRequest } from "../../types/paymentRequest";
 import {
   activationSummary,
   activeRequestAllocation,
   buildCreateActiveRequestPayload,
   formatCoursePhone,
   fromApiActiveRequest,
+  fromApiAttempt,
+  fromApiPaymentRequest,
   getArReferralStatus,
   getReferralStatus,
-  hasUnmatchedCardLine,
   pageItems,
   paginate,
   toActiveRequestPatchUidsData,
@@ -117,10 +118,75 @@ describe("active request course package updates", () => {
       payments: [],
     };
 
-    const payload = buildCreateActiveRequestPayload(pr, "2/W-NEW 24 PHI+2 HN");
+    // 10/7 — modal AR mở rộng: builder nhận danh sách dòng {bé, gói, tiền}
+    const payload = buildCreateActiveRequestPayload(pr, [
+      { childName: "", uid: pr.uid, packageName: "2/W-NEW 24 PHI+2 HN", amount: pr.received },
+    ]);
+    expect(payload.uids).toHaveLength(1);
+    expect(payload.uids[0].uid).toBe(pr.uid);
+    // PR 1 con không tên → không gửi key name (payload y hệt flow cũ — G3)
+    expect(payload.uids[0].name).toBeUndefined();
     expect(payload.uids[0].courses[0].amount).toBe(2000);
     // 7/7 — tên gói bắt buộc, không còn gửi name rỗng lên BE
     expect(payload.uids[0].courses[0].name).toBe("2/W-NEW 24 PHI+2 HN");
+  });
+
+  it("2 bé → 2 uid block, mỗi block mang name bé (modal AR mở rộng)", () => {
+    const pr: PaymentRequest = {
+      id: "PR-2026-0070",
+      name: "Me Hai Be",
+      uid: "u1",
+      phone: "0912345678",
+      country: "VN",
+      address: "Hanoi",
+      target: 2000,
+      source: "manual",
+      createdAt: "2026-07-10T00:00:00.000Z",
+      received: 2000,
+      doneCount: 1,
+      totalCount: 1,
+      delta: 0,
+      state: "done",
+      payments: [],
+    };
+    const payload = buildCreateActiveRequestPayload(pr, [
+      { childName: "Bé Một", uid: "u1", packageName: "Gói A", amount: 1200 },
+      { childName: "Bé Hai", uid: "", packageName: "Gói B", amount: 800 },
+    ]);
+    expect(payload.uids).toHaveLength(2);
+    expect(payload.uids[0]).toMatchObject({ uid: "u1", name: "Bé Một" });
+    expect(payload.uids[0].courses).toEqual([{ name: "Gói A", amount: 1200 }]);
+    expect(payload.uids[1]).toMatchObject({ uid: "", name: "Bé Hai" });
+    expect(payload.uids[1].courses).toEqual([{ name: "Gói B", amount: 800 }]);
+  });
+
+  it("2 gói cùng 1 bé → 1 block 2 courses", () => {
+    const pr: PaymentRequest = {
+      id: "PR-2026-0071",
+      name: "Me Mot Be",
+      uid: "u1",
+      phone: "0912345678",
+      country: "VN",
+      address: "Hanoi",
+      target: 2000,
+      source: "manual",
+      createdAt: "2026-07-10T00:00:00.000Z",
+      received: 2000,
+      doneCount: 1,
+      totalCount: 1,
+      delta: 0,
+      state: "done",
+      payments: [],
+    };
+    const payload = buildCreateActiveRequestPayload(pr, [
+      { childName: "Bé Một", uid: "u1", packageName: "Gói A", amount: 1500 },
+      { childName: "Bé Một", uid: "u1", packageName: "Gói phụ", amount: 500 },
+    ]);
+    expect(payload.uids).toHaveLength(1);
+    expect(payload.uids[0].courses).toEqual([
+      { name: "Gói A", amount: 1500 },
+      { name: "Gói phụ", amount: 500 },
+    ]);
   });
 
   it("detects when active request courses exceed linked payment request received money", () => {
@@ -764,53 +830,39 @@ describe("getArReferralStatus", () => {
   });
 });
 
-// ─── Bộ lọc "Chưa ghép thẻ/TG" (10/7) ────────────────────────────────────
-describe("hasUnmatchedCardLine", () => {
-  const line = (overrides: Partial<PaymentAttempt>): PaymentAttempt => ({
-    id: "l1",
-    idx: 1,
-    amount: 1_000_000,
-    status: "pending",
-    createdAt: "2026-07-01T00:00:00Z",
-    code: "ABCDE",
-    bill: false,
-    method: "card",
-    ...overrides,
-  });
-  const pr = (payments: PaymentAttempt[]): PaymentRequest =>
-    ({ id: "PR-X", payments } as PaymentRequest);
-
-  it("true khi có lần quẹt thẻ đang pending (chưa ghép)", () => {
-    expect(hasUnmatchedCardLine(pr([line({ method: "card" })]))).toBe(true);
+describe("multi-con mappers (10/7)", () => {
+  it("maps children và studentName từ API", () => {
+    const pr = fromApiPaymentRequest({
+      id: "PR-1", name: "Me", uid: "u1", phone: "09",
+      children: [{ name: "Bé Một", uid: "u1" }, { name: "Bé Hai", uid: null }],
+    });
+    expect(pr.children).toEqual([
+      { name: "Bé Một", uid: "u1" },
+      { name: "Bé Hai", uid: null },
+    ]);
+    const line = fromApiAttempt({ id: "l1", student_name: "Bé Hai" });
+    expect(line.studentName).toBe("Bé Hai");
   });
 
-  it("true khi có lần trả góp đang pending — dù PR đã đủ tiền từ line khác", () => {
-    expect(
-      hasUnmatchedCardLine(
-        pr([
-          line({ id: "qr1", method: "qr", status: "paid" }),
-          line({ id: "inst1", method: "installment", status: "pending" }),
-        ])
-      )
-    ).toBe(true);
+  it("children undefined khi API không trả (PR cũ)", () => {
+    const pr = fromApiPaymentRequest({ id: "PR-1", name: "Me", uid: "u1", phone: "09" });
+    expect(pr.children).toBeUndefined();
+    const line = fromApiAttempt({ id: "l1" });
+    expect(line.studentName).toBeNull();
   });
 
-  it("false khi line thẻ đã xác nhận (đã ghép)", () => {
-    expect(hasUnmatchedCardLine(pr([line({ status: "paid" })]))).toBe(false);
-  });
-
-  it("false khi line thẻ đã huỷ / bị từ chối", () => {
-    expect(hasUnmatchedCardLine(pr([line({ status: "rejected", cancelled: true })]))).toBe(false);
-    expect(hasUnmatchedCardLine(pr([line({ status: "rejected" })]))).toBe(false);
-  });
-
-  it("false khi chỉ có QR/tiền mặt pending (không phải thẻ/trả góp)", () => {
-    expect(
-      hasUnmatchedCardLine(pr([line({ method: "qr" }), line({ id: "l2", method: "cash" })]))
-    ).toBe(false);
-  });
-
-  it("false khi không có lần thanh toán nào", () => {
-    expect(hasUnmatchedCardLine(pr([]))).toBe(false);
+  it("AR mapper round-trip giữ name của uid block", () => {
+    const arMapped = fromApiActiveRequest({
+      id: "AR-1", pr_id: "PR-1",
+      uids_data: [
+        { uid: "u1", courses: [{ code: "CC-1", name: "Gói A", amount: 1 }] },
+        { uid: "u2", name: "Bé Hai", courses: [{ code: "CC-2", name: "Gói B", amount: 2 }] },
+      ],
+    });
+    expect(arMapped.uids[0].name).toBeUndefined();
+    expect(arMapped.uids[1].name).toBe("Bé Hai");
+    const patch = toActiveRequestPatchUidsData(arMapped);
+    expect(patch[0].name).toBeUndefined();
+    expect(patch[1].name).toBe("Bé Hai");
   });
 });

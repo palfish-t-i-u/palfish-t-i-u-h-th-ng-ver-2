@@ -10,6 +10,7 @@ import { compressImageFile } from "../lib/imageCompress";
 import type {
   ActiveRequest,
   AddPaymentAttemptPayload,
+  ArDraftRow,
   CreatePaymentRequestPayload,
   PatchPaymentRequestPayload,
   PaymentAttempt,
@@ -34,7 +35,6 @@ import {
   deriveTvtsOptions,
   fromApiAttempt,
   fromApiPaymentRequest,
-  hasUnmatchedCardLine,
   isBackendLineId,
   normalizeRequest,
   nowStamp,
@@ -161,14 +161,7 @@ export default function PaymentRequestsTab() {
         if (r.state === "cancelled") return false;
         if (tab === "created" && !arByPrId[r.id]) return false;
       }
-      if (tab !== "cancelled" && status !== "all") {
-        // "unmatched_card" lọc theo LINE (thẻ/trả góp chưa ghép) — độc lập trạng thái tiền của PR
-        if (status === "unmatched_card") {
-          if (!hasUnmatchedCardLine(r)) return false;
-        } else if (r.state !== status) {
-          return false;
-        }
-      }
+      if (tab !== "cancelled" && status !== "all" && r.state !== status) return false;
       if (!inDateRange(r.createdAt, dateRange)) return false;
       if (!q) return true;
       return [r.id, r.name, r.uid, r.phone].some((v) => v.toLowerCase().includes(q));
@@ -208,12 +201,6 @@ export default function PaymentRequestsTab() {
         label: "Thừa",
         count: trackingRequests.filter((r) => r.state === "over").length,
         color: "var(--warning)",
-      },
-      {
-        id: "unmatched_card" as StatusFilter,
-        label: "Chưa ghép thẻ/TG",
-        count: trackingRequests.filter(hasUnmatchedCardLine).length,
-        color: "var(--primary)",
       },
     ],
     [trackingRequests]
@@ -279,6 +266,11 @@ export default function PaymentRequestsTab() {
       lead_source: next.leadSource || undefined,
       lead_channel: next.leadChannel || undefined,
       wants_invoice: next.wantsInvoice ?? undefined,
+      // Multi-con: gửi children khi PR có ≥2 bé HOẶC trước đó có ≥2 bé (mảng 1 phần tử = xoá bé phụ)
+      children:
+        next.children && (next.children.length > 1 || (previous?.children?.length ?? 0) > 1)
+          ? next.children.map((c) => ({ name: c.name.trim(), uid: (c.uid || "").trim() || null }))
+          : undefined,
     };
 
     try {
@@ -744,11 +736,11 @@ export default function PaymentRequestsTab() {
     }
   };
 
-  const onCreateActiveRequest = async (packageName: string) => {
+  const onCreateActiveRequest = async (rows: ArDraftRow[]) => {
     if (!selected || arByPrId[selected.id]) return;
     // Inline AR mini-window: tạo xong → giữ drawer mở, không navigate sang tab Kích hoạt khoá học
     // Context state cập nhật → drawer tự re-render với AR card mới
-    await handleCreateActiveRequest(selected, packageName);
+    await handleCreateActiveRequest(selected, rows);
   };
 
   // Local-only update — KHÔNG gọi server mỗi keystroke (race condition: response chậm

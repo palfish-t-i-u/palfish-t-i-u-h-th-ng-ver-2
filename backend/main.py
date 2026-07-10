@@ -600,6 +600,15 @@ def _record_bank_payment(sb, info_code: str, amount: int, bank_content: str, ban
 
 @app.get("/healthz")
 def health():
+    """Liveness probe cho Render — PHẢI trả lời tức thì, KHÔNG chạm DB.
+    Render giết instance nếu health check không đáp trong 5s; việc ping Supabase
+    ở đây gây restart storm dưới tải cao (2026-07-10). Chẩn đoán sâu (ping DB,
+    format key, ...) chuyển sang /healthz/deep."""
+    return {"status": "ok", "app_env": app_env(), "sandbox": is_sandbox_env()}
+
+
+@app.get("/healthz/deep")
+def health_deep():
     url = os.getenv("SUPABASE_URL", "").strip()
     key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "").strip()
     # Project ref từ URL (không phải secret) — để chẩn đoán backend trỏ đúng project nào
@@ -620,7 +629,7 @@ def health():
                 sb.table("payment_requests").select("id").limit(1).execute()
                 db_reachable = True
         except Exception as exc:
-            print(f"[healthz] DB ping failed: {exc}")
+            print(f"[healthz/deep] DB ping failed: {exc}")
     payos_ok = bool(os.getenv("PAYOS_CLIENT_ID", "").strip())
     api_pipe_env = (_REPO_ROOT / "api_pipe" / ".env").is_file()
     return {

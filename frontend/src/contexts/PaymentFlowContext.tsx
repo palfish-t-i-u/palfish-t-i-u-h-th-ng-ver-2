@@ -16,6 +16,7 @@ import { useRealtimeTable } from "../hooks/useRealtimeTable";
 import type {
   ActiveRequest,
   AddPaymentAttemptPayload,
+  ArDraftRow,
   CreatePaymentRequestPayload,
   CreateActiveRequestPayload,
   PatchPaymentRequestPayload,
@@ -77,7 +78,7 @@ type PaymentFlowContextValue = {
   ) => Promise<{ payment: PaymentAttempt; request: PaymentRequest } | null>;
   confirmTransaction: (prId: string, paymentId: string, extra?: { verified_total?: number; verified_received?: number }) => Promise<void>;
   rejectTransaction: (prId: string, paymentId: string, rejectReason?: string) => Promise<void>;
-  handleCreateActiveRequest: (pr: PaymentRequest, packageName: string) => Promise<ActiveRequest>;
+  handleCreateActiveRequest: (pr: PaymentRequest, rows: ArDraftRow[]) => Promise<ActiveRequest>;
   handleCreateActiveRequestFromForm: (data: {
     prId: string | null;
     customerName: string;
@@ -369,11 +370,11 @@ export function PaymentFlowProvider({
   );
 
   const handleCreateActiveRequest = useCallback(
-    async (pr: PaymentRequest, packageName: string) => {
+    async (pr: PaymentRequest, rows: ArDraftRow[]) => {
       try {
         const res = await endpoints.paymentRequests.createActiveRequest(
           pr.id,
-          buildCreateActiveRequestPayload(pr, packageName)
+          buildCreateActiveRequestPayload(pr, rows)
         );
         const ar = fromApiActiveRequest(res.data);
         if (!ar.customerName) ar.customerName = pr.name;

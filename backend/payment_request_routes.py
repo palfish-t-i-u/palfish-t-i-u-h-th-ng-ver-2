@@ -127,6 +127,7 @@ class PaymentRequestCreate(BaseModel):
     lead_source: str | None = None
     lead_channel: str | None = None
     wants_invoice: bool | None = None
+    children: list[dict] | None = None  # [{name, uid?}] — bé 1 + bé 2+; BE tách bé 1 vào child_name/uid
 
     uid_khach_hang: str | None = None
     ten_khach: str | None = None
@@ -153,6 +154,7 @@ class PaymentRequestPatch(BaseModel):
     lead_source: str | None = None
     lead_channel: str | None = None
     wants_invoice: bool | None = None
+    children: list[dict] | None = None  # [{name, uid?}] — như Create; None = không đổi
 
     uid_khach_hang: str | None = None
     ten_khach: str | None = None
@@ -170,6 +172,7 @@ class PaymentLineCreate(BaseModel):
     installment_platform: str | None = None
     installment_total: int | str | None = None
     sale_received: int | str | None = None
+    student_name: str | None = None  # multi-con: lần TT của bé nào (None = bé 1)
 
     so_tien: int | str | None = None
     hinh_thuc: str | None = None
@@ -300,6 +303,12 @@ def _serialize_payment_request(row: dict[str, Any]) -> dict[str, Any]:
     }
     if row.get("child_name"):
         result["child_name"] = row["child_name"]
+    # Multi-con: children = bé 1 (child_name/uid) + extra_children
+    children = [{"name": row.get("child_name") or "", "uid": row.get("uid") or None}]
+    for extra in (row.get("extra_children") or []):
+        if isinstance(extra, dict) and extra.get("name"):
+            children.append({"name": extra["name"], "uid": extra.get("uid")})
+    result["children"] = children
     return result
 
 
@@ -541,7 +550,13 @@ def _fetch_bill_assets_fast(
 
     fallback = _build_bill_assets_from_storage_fallback(sb, wanted)
     if fallback:
-        _bill_assets_cache["assets_by_line"] = dict(fallback)
+        existing = _bill_assets_cache.get("assets_by_line")
+        if not isinstance(existing, dict):
+            existing = {}
+        # Merge: fallback là kết quả từng-line (thường 1 line), KHÔNG được xoá
+        # các line khác đang cache — nếu không route drawer/download báo nhầm
+        # "không có bill" cho line kế tiếp (bug mất bill 2026-07-10).
+        _bill_assets_cache["assets_by_line"] = {**existing, **fallback}
         _bill_assets_cache["expires_at"] = now + _BILL_STORAGE_CACHE_TTL_SECONDS
     return fallback
 
@@ -553,6 +568,19 @@ def _bill_urls_from_assets(bill_assets: dict[str, list[dict[str, str]]]) -> dict
             continue
         out[line_id] = str(assets[-1].get("url") or "").strip()
     return out
+
+
+def _maybe_enqueue_bill_uploaded_zalo(sb, line: dict) -> None:
+    """Line đã paid + vừa có bill mới → enqueue tin ảnh bill Zalo (best-effort, không chặn upload).
+
+    Logic thật nằm trong SQL fn enqueue_bill_uploaded_zalo (migration 2026-07-10):
+    tự check status/bill/group và tự chống trùng — Python chỉ gọi RPC.
+    """
+    try:
+        if (str(line.get("status") or "").strip().lower()) == "paid":
+            sb.rpc("enqueue_bill_uploaded_zalo", {"p_line_id": line.get("id")}).execute()
+    except Exception as exc:
+        print(f"[zalo] enqueue bill_uploaded failed for line {line.get('id')}: {exc}")
 
 
 def _persist_bill_image(sb, line_id: str, public_url: str) -> bool:
@@ -668,6 +696,7 @@ def _serialize_payment_line(
         "sale_received": row.get("sale_received") or None,
         "verified_total": row.get("verified_total") or None,
         "verified_received": row.get("verified_received") or None,
+        "student_name": row.get("student_name") or None,
         "confirmed_by": confirmed_by,
         "confirmed_by_name": _resolve_confirmed_by_name(confirmed_by, display_names),
         "confirmed_at": row.get("confirmed_at") or None,
@@ -707,6 +736,7 @@ def _serialize_payment_for_list(
         "sale_received": row.get("sale_received") or None,
         "verified_total": row.get("verified_total") or None,
         "verified_received": row.get("verified_received") or None,
+        "student_name": row.get("student_name") or None,
         "confirmed_by": confirmed_by,
         "confirmed_by_name": _resolve_confirmed_by_name(confirmed_by, display_names),
         "confirmed_at": row.get("confirmed_at") or None,
@@ -805,6 +835,45 @@ def _can_access_request(sb, actor: Any, pr_row: dict[str, Any]) -> bool:
     return bool(row_email) and row_email in allowed
 
 
+def _parse_children(raw: list | None) -> tuple[str | None, list[dict] | None]:
+    """Tách children FE gửi → (child_name bé 1, extra_children bé 2+).
+
+    Trả (None, None) nếu FE không gửi children (giữ flow cũ)."""
+    if raw is None:
+        return None, None
+    cleaned: list[dict] = []
+    for item in raw:
+        if not isinstance(item, dict):
+            raise HTTPException(400, "children phai la danh sach {name, uid}")
+        name = _clean_text(item.get("name"))
+        if not name:
+            raise HTTPException(400, "Ten con khong duoc de trong")
+        uid = _clean_text(item.get("uid")) or None
+        cleaned.append({"name": name, "uid": uid})
+    if not cleaned:
+        return None, None
+    names = [c["name"] for c in cleaned]
+    if len(names) != len(set(names)):
+        raise HTTPException(400, "Ten cac con khong duoc trung nhau")
+    return cleaned[0]["name"], (cleaned[1:] or None)
+
+
+def _child_rename_map(old_extra: list | None, new_extra: list | None) -> dict[str, str]:
+    """Map tên cũ → tên mới cho bé phụ, khớp theo uid (ưu tiên) rồi theo vị trí."""
+    renames: dict[str, str] = {}
+    old_list = [e for e in (old_extra or []) if isinstance(e, dict)]
+    new_list = [e for e in (new_extra or []) if isinstance(e, dict)]
+    for i, new in enumerate(new_list):
+        old = None
+        if new.get("uid"):
+            old = next((o for o in old_list if o.get("uid") == new["uid"]), None)
+        if old is None and i < len(old_list):
+            old = old_list[i]
+        if old and old.get("name") and new.get("name") and old["name"] != new["name"]:
+            renames[old["name"]] = new["name"]
+    return renames
+
+
 def _payment_request_insert_row(body: PaymentRequestCreate) -> dict[str, Any]:
     uid = _clean_text(body.uid or body.uid_khach_hang)
     name = _clean_text(body.name or body.ten_khach)
@@ -842,7 +911,13 @@ def _payment_request_insert_row(body: PaymentRequestCreate) -> dict[str, Any]:
     child_name = _clean_text(body.child_name)
     if child_name:
         row["child_name"] = child_name
-    
+    # Multi-con: children ưu tiên hơn child_name đơn khi FE gửi
+    first_name, extra = _parse_children(body.children)
+    if first_name:
+        row["child_name"] = first_name
+    if extra:
+        row["extra_children"] = extra
+
     ct = _clean_text(body.customer_type) or "individual"
     if ct not in ("individual", "business"):
         raise HTTPException(400, "customer_type phai la 'individual' hoac 'business'")
@@ -902,6 +977,12 @@ def _payment_request_patch_row(body: PaymentRequestPatch, current_row: dict[str,
         patch["email"] = _clean_text(body.email)
     if body.child_name is not None:
         patch["child_name"] = _clean_text(body.child_name) or None
+    if body.children is not None:
+        # Multi-con: children ghi đè cả child_name (bé 1) lẫn extra_children (bé 2+)
+        first_name, extra = _parse_children(body.children)
+        if first_name:
+            patch["child_name"] = first_name
+        patch["extra_children"] = extra  # None = xóa hết bé phụ
     if body.tax_id is not None:
         patch["tax_id"] = _clean_text(body.tax_id) or None
 
@@ -1131,6 +1212,10 @@ def _is_payment_line_content_stale(
         current_names.append(child_name)
     if parent_name and parent_name != child_name:
         current_names.append(parent_name)
+    # Multi-con: tên bé phụ cũng là biến thể hợp lệ của nội dung CK
+    for extra in (pr_row.get("extra_children") or []):
+        if isinstance(extra, dict) and _clean_text(extra.get("name")):
+            current_names.append(extra["name"])
     if not current_names:
         current_names.append(None)
 
@@ -1595,15 +1680,6 @@ def register_payment_request_routes(app, _get_supabase) -> None:
             except Exception as exc:
                 raise HTTPException(500, f"Khong doc duoc payment_lines: {exc}") from exc
 
-        all_line_ids = [
-            str(line.get("id") or "")
-            for lines in lines_by_pr.values()
-            for line in lines
-            if line.get("id")
-        ]
-        bill_assets = _fetch_bill_assets_fast(sb, all_line_ids)
-        bill_urls = _bill_urls_from_assets(bill_assets)
-
         ars_by_pr: dict[str, list[dict[str, Any]]] = {pr_id: [] for pr_id in pr_ids}
         if pr_ids:
             try:
@@ -1627,7 +1703,7 @@ def register_payment_request_routes(app, _get_supabase) -> None:
         for row in pr_rows:
             pr_id = str(row.get("id") or "")
             item = _serialize_payment_request_list_item(
-                row, lines_by_pr.get(pr_id, []), bill_urls, bill_assets, name_map
+                row, lines_by_pr.get(pr_id, []), {}, {}, name_map
             )
 
             ars = ars_by_pr.get(pr_id, [])
@@ -1686,6 +1762,16 @@ def register_payment_request_routes(app, _get_supabase) -> None:
             raise HTTPException(500, f"Khong cap nhat duoc payment_request: {exc}") from exc
 
         updated_row = updated_res.data[0] if updated_res.data else {**current_row, **patch}
+
+        # Multi-con: đổi tên bé phụ → cập nhật student_name các line đã gắn bé đó
+        if "extra_children" in patch:
+            renames = _child_rename_map(current_row.get("extra_children"), patch.get("extra_children"))
+            for old_name, new_name in renames.items():
+                try:
+                    sb.table("payment_lines").update({"student_name": new_name}) \
+                      .eq("payment_request_id", payment_request_id).eq("student_name", old_name).execute()
+                except Exception as exc:
+                    print(f"[pr-multi-con] rename propagate failed: {exc}")
 
         # target thay doi co the anh huong state => recompute theo payment_lines.
         if "target" in patch:
@@ -1960,6 +2046,10 @@ def register_payment_request_routes(app, _get_supabase) -> None:
             "transfer_code": transfer_code,
             "is_test": bool(pr_row.get("is_test")),
         }
+        # Multi-con: lần TT gắn bé nào (None/rỗng = bé 1)
+        student_name = _clean_text(body.student_name) or None
+        if student_name:
+            insert_row["student_name"] = student_name
 
         if method == "installment":
             inst_total = _parse_amount(body.installment_total) if body.installment_total is not None else None
@@ -2378,7 +2468,9 @@ def register_payment_request_routes(app, _get_supabase) -> None:
                 line = updated_res.data
         except Exception:
             pass
-            
+
+        _maybe_enqueue_bill_uploaded_zalo(sb, line)
+
         bill_assets = _fetch_bill_assets_fast(sb, [line_id], force_refresh=True)
         return {
             "billImage": public_url,

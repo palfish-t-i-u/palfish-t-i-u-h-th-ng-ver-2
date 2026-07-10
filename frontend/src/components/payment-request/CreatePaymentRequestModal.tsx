@@ -31,6 +31,8 @@ interface FormState {
   foreignCountry: string;
   /** Khách cần xuất hóa đơn → bắt buộc đủ Phường/Xã + Số nhà. */
   wantsInvoice: boolean;
+  /** Multi-con: bé thứ 2 trở đi (bé 1 = childName). */
+  extraChildren: { name: string; uid: string }[];
 }
 
 const INITIAL: FormState = {
@@ -53,6 +55,7 @@ const INITIAL: FormState = {
   isForeign: false,
   foreignCountry: "",
   wantsInvoice: false,
+  extraChildren: [],
 };
 
 // Danh sách quốc gia cho khách ở nước ngoài (bỏ VN), sort theo tên — hằng số module.
@@ -92,10 +95,19 @@ export default function CreatePaymentRequestModal({
     ? !!form.foreignCountry
     : true;
 
+  // Multi-con: có bé phụ → bé 1 phải có tên, tên bé phụ không rỗng, không trùng nhau
+  const extraNames = form.extraChildren.map((c) => c.name.trim());
+  const allChildNames = [form.childName.trim(), ...extraNames].filter(Boolean);
+  const childrenOk =
+    form.extraChildren.length === 0 ||
+    (!!form.childName.trim() &&
+      extraNames.every(Boolean) &&
+      new Set(allChildNames).size === allChildNames.length);
+
   const canSubmit = !!(
     form.uid && form.name && form.phone && targetNum > 0 &&
     form.leadSource && (!needsChannel || form.leadChannel) &&
-    emailValid && addressOk
+    emailValid && addressOk && childrenOk
   );
 
   const handleSubmit = () => {
@@ -121,8 +133,23 @@ export default function CreatePaymentRequestModal({
       lead_source: form.leadSource || undefined,
       lead_channel: form.leadChannel || undefined,
       wants_invoice: form.wantsInvoice || undefined,
+      // Multi-con: chỉ gửi children khi có bé phụ (giữ flow cũ cho PR 1 con)
+      children: form.extraChildren.length > 0
+        ? [
+            { name: form.childName.trim(), uid: form.uid.trim() || null },
+            ...form.extraChildren.map((c) => ({ name: c.name.trim(), uid: c.uid.trim() || null })),
+          ]
+        : undefined,
     });
   };
+
+  const setExtraChild = (i: number, next: { name: string; uid: string }) =>
+    setForm((f) => ({
+      ...f,
+      extraChildren: f.extraChildren.map((c, j) => (j === i ? next : c)),
+    }));
+  const removeExtraChild = (i: number) =>
+    setForm((f) => ({ ...f, extraChildren: f.extraChildren.filter((_, j) => j !== i) }));
 
   return (
     <div className="gmv-prototype-modal-scrim" onClick={onClose}>
@@ -155,7 +182,7 @@ export default function CreatePaymentRequestModal({
           </div>
 
           <div className="field">
-            <label>Tên con (học viên)</label>
+            <label>Tên con (học viên){form.extraChildren.length > 0 && <span style={{ color: "var(--danger)" }}> *</span>}</label>
             <input
               placeholder="VD: Nguyễn Minh Anh"
               value={form.childName}
@@ -164,6 +191,39 @@ export default function CreatePaymentRequestModal({
             <div style={{ fontSize: 11.5, color: "var(--text-3)", lineHeight: 1.45, marginTop: 4 }}>
               Nếu để trống, nội dung chuyển khoản sẽ dùng tên khách hàng.
             </div>
+            {form.extraChildren.map((c, i) => (
+              <div key={i} style={{ display: "flex", gap: 8, marginTop: 8 }}>
+                <input
+                  style={{ flex: 1 }}
+                  placeholder={`Tên con thứ ${i + 2} *`}
+                  value={c.name}
+                  onChange={(e) => setExtraChild(i, { ...c, name: e.target.value })}
+                />
+                <input
+                  style={{ flex: 1 }}
+                  placeholder="UID CRM của bé (nếu có)"
+                  value={c.uid}
+                  onChange={(e) => setExtraChild(i, { ...c, uid: e.target.value })}
+                />
+                <button type="button" className="btn btn-ghost btn-sm" title="Xoá bé này"
+                  onClick={() => removeExtraChild(i)}>
+                  <Icons.Close size={14} />
+                </button>
+              </div>
+            ))}
+            <button
+              type="button"
+              className="btn btn-outline btn-sm"
+              style={{ marginTop: 8 }}
+              onClick={() => set("extraChildren", [...form.extraChildren, { name: "", uid: "" }])}
+            >
+              <Icons.Plus size={13} /> Thêm con (PH có nhiều bé học)
+            </button>
+            {!childrenOk && (
+              <div style={{ fontSize: 11.5, color: "var(--danger)", lineHeight: 1.45, marginTop: 4 }}>
+                Có bé phụ → phải điền tên bé 1 + tên từng bé phụ, không trùng nhau.
+              </div>
+            )}
           </div>
 
           <div className="field-row">
