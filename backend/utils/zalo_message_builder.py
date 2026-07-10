@@ -143,10 +143,15 @@ def build_payment_paid_message(
 
         💰 ĐÃ VÀO - KH {name}[ - Bé {child_name}] - ĐT: {phone|chưa cung cấp}
         🔸 Sale {sale_name} · Team {team}
-        🔸 Số tiền: {amount} VND lúc {HH:MM DD/MM/YYYY}
+        🔸 {Số tiền|Thực nhận|Số tiền (Gross)}: {amount} VND lúc {HH:MM DD/MM/YYYY}
 
     Live path = SQL function ``build_payment_paid_message`` (DB trigger).
-    Keep this mirror in sync with 2026-07-04-zalo-payment-paid-format-v2.sql.
+    Keep this mirror in sync with 2026-07-10-zalo-payment-paid-net-amount.sql.
+
+    Số tiền hiển thị: card/installment ưu tiên ``verified_received`` (thực
+    nhận sau phí mPOS/Payoo) nếu có, label "Thực nhận"; không có thì fallback
+    "amount" (gộp), label "Số tiền (Gross)". Method khác (cash/qr) luôn dùng
+    "amount" với label "Số tiền" — không có khái niệm phí ở 2 method đó.
 
     Returns ``{"message": ..., "canonical_team_code": ...}``.
     """
@@ -163,17 +168,25 @@ def build_payment_paid_message(
     )
     phone = phone_fmt if phone_fmt else "chưa cung cấp"
 
-    amount_raw = payment_data.get("amount")
-    if amount_raw is None:
-        logger.warning("Missing amount in payment_data (%s)", ctx)
-        amount_raw = 0
+    method_raw = str(payment_data.get("method") or "").strip().lower()
+    verified_received = payment_data.get("verified_received")
+    is_fee_method = method_raw in ("card", "installment")
+
+    if is_fee_method and verified_received not in (None, ""):
+        amount_label = "Thực nhận"
+        amount_source = verified_received
+    else:
+        amount_label = "Số tiền (Gross)" if is_fee_method else "Số tiền"
+        amount_source = payment_data.get("amount")
+        if amount_source is None:
+            logger.warning("Missing amount in payment_data (%s)", ctx)
+            amount_source = 0
     try:
-        amount_int = int(amount_raw)
+        amount_int = int(amount_source)
     except (TypeError, ValueError):
         amount_int = 0
     amount = f"{amount_int:,} VND"
 
-    method_raw = str(payment_data.get("method") or "").strip().lower()
     if method_raw == "qr":
         method_label = "Chuyển khoản QR"
     elif method_raw == "cash":
@@ -216,7 +229,7 @@ def build_payment_paid_message(
     message = (
         f"{header}\n"
         f"🔸 Sale {sale_name} · Team {team_display}\n"
-        f"🔸 Số tiền: {amount} lúc {time_str} - {method_label}"
+        f"🔸 {amount_label}: {amount} lúc {time_str} - {method_label}"
     )
 
     return {"message": message, "canonical_team_code": canonical_team}
