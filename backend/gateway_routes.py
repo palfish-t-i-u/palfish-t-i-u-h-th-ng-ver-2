@@ -436,6 +436,7 @@ def register_gateway_routes(app, get_supabase: Callable[[], Any]) -> None:
         line_res = sb.table("payment_lines").select("*").eq("id", line_id).limit(1).execute()
         if not line_res.data:
             raise HTTPException(404, "Khong tim thay payment_line")
+        line_row = line_res.data[0]
         now_iso = _iso_now()
         res = (
             sb.table("gateway_transactions")
@@ -452,14 +453,34 @@ def register_gateway_routes(app, get_supabase: Callable[[], Any]) -> None:
         )
         if not res.data:
             raise HTTPException(404, "Khong tim thay gateway transaction")
-        pr_id = _clean_text(line_res.data[0].get("payment_request_id"))
+        pr_id = _clean_text(line_row.get("payment_request_id"))
+
+        # Ghép giao dịch thật (mPOS/Payoo) = bằng chứng thanh toán đã tới —
+        # tự động xác nhận payment_line, mirror luồng SePay
+        # (manual_match_bank_transaction). TRỪ khi line quẹt thẻ/trả góp
+        # chưa có ảnh bill — giữ nguyên soft-lock TOP2.4, không bypass.
+        method = _clean_text(line_row.get("method")).lower()
+        bill_images = line_row.get("bill_images")
+        has_bill = (
+            (isinstance(bill_images, list) and len(bill_images) > 0)
+            or bool(_clean_text(line_row.get("bill_image")))
+        )
+        already_paid = _clean_text(line_row.get("status")).lower() == "paid"
+        can_auto_confirm = not already_paid and (method not in ("card", "installment") or has_bill)
+
+        if can_auto_confirm:
+            from payment_request_routes import _mark_line_paid
+
+            _mark_line_paid(sb, line_id, actor_email=actor.email, source="gateway")
+            line_res = sb.table("payment_lines").select("*").eq("id", line_id).limit(1).execute()
+
         pr = {}
         if pr_id:
             pr_res = sb.table("payment_requests").select("*").eq("id", pr_id).limit(1).execute()
             pr = (pr_res.data or [{}])[0]
         log_audit(sb, actor.email, "recon.txn_matched", "gateway_txn", txn_id, {
             "payment_line_id": line_id, "pr_id": pr_id,
-            "amount": _parse_amount(line_res.data[0].get("amount")),
+            "amount": _parse_amount(line_row.get("amount")),
         })
         return _serialize_gateway_txn(res.data[0], line=line_res.data[0], pr=pr)
 
