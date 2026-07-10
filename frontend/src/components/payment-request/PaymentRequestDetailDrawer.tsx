@@ -9,7 +9,7 @@ import type {
   PaymentRequest,
 } from "../../types/paymentRequest";
 import { COURSE_PACKAGES } from "../../constants/coursePackages";
-import CountryCombo, { findCountry } from "./CountryCombo";
+import CountryCombo, { COUNTRIES, findCountry } from "./CountryCombo";
 import { Icons, type IconKey } from "./Icons";
 import BillUploadZone from "./BillUploadZone";
 import VietnamAddressFields from "./VietnamAddressFields";
@@ -40,6 +40,7 @@ import { nextCourseCode } from "../payment-flow/paymentFlowUtils";
 import { endpoints } from "../../lib/api";
 import PrStaleContentWarning from "./PrStaleContentWarning";
 import { MoneyInput } from "../ui/MoneyInput";
+import { findPaidLinesWithoutBill } from "./billGuardUtils";
 
 const METHOD_META: Record<PaymentMethod, { cls: string; label: string; icon: IconKey; sub: string }> = {
   qr: { cls: "method-qr", label: "Chuyển khoản", icon: "QrCode", sub: "QR / chuyển khoản" },
@@ -601,6 +602,7 @@ interface DraftPr {
   province: string;
   ward: string;
   address: string;
+  foreignCountry: string;
   target: string;
   note: string;
   taxId: string;
@@ -611,6 +613,10 @@ interface DraftPr {
   isForeign: boolean;
   wantsInvoice: boolean;
 }
+
+const FOREIGN_COUNTRY_OPTIONS = COUNTRIES.filter((c) => c.code !== "VN")
+  .map((c) => ({ value: c.code, label: `${c.flag} ${c.name}` }))
+  .sort((a, b) => a.label.localeCompare(b.label, "vi"));
 
 /**
  * AR mini-window cho Sales view — gọn nhẹ, hiện ngay trong drawer PR.
@@ -1565,6 +1571,9 @@ export default function PaymentRequestDetailDrawer({
   // 7/7 — bắt buộc chọn tên gói TRƯỚC khi tạo AR (tin Zalo bắn ngay lúc tạo)
   const [arPackageModalOpen, setArPackageModalOpen] = useState(false);
   const [arPackageName, setArPackageName] = useState("");
+  // bill guard — chặn tạo AR khi còn line paid thiếu ảnh bill
+  const [missingBillsPopupOpen, setMissingBillsPopupOpen] = useState(false);
+  const [missingBillLines, setMissingBillLines] = useState<{ line_id: string; amount: number }[]>([]);
 
   useEffect(() => {
     setShowAdd(false);
@@ -1576,6 +1585,8 @@ export default function PaymentRequestDetailDrawer({
     setHighlightTarget(false);
     setArPackageModalOpen(false);
     setArPackageName("");
+    setMissingBillsPopupOpen(false);
+    setMissingBillLines([]);
   }, [request?.id]);
 
   const [dismissedStaleLineIds, setDismissedStaleLineIds] = useState<Set<string>>(new Set());
@@ -1636,6 +1647,7 @@ export default function PaymentRequestDetailDrawer({
   };
   const handleOpenEditForTarget = () => {
     if (!request) return;
+    const isForeign = (request.country || "VN") !== "VN";
     setDraft({
       uid: request.uid,
       name: request.name,
@@ -1643,9 +1655,12 @@ export default function PaymentRequestDetailDrawer({
       country: request.country || "VN",
       phone: request.phone,
       email: request.email || "",
-      province: request.province || "",
-      ward: request.ward || "",
-      address: request.address || "",
+      province: isForeign ? "" : (request.province || ""),
+      ward: isForeign ? "" : (request.ward || ""),
+      address: isForeign ? "" : (request.address || ""),
+      foreignCountry: isForeign
+        ? (COUNTRIES.find((c) => c.name === request.province)?.code || "")
+        : "",
       target: String(request.target),
       note: request.note || "",
       taxId: request.taxId || "",
@@ -1653,7 +1668,7 @@ export default function PaymentRequestDetailDrawer({
       companyName: request.companyName || "",
       leadSource: request.leadSource || "",
       leadChannel: request.leadChannel || "",
-      isForeign: (request.country || "VN") !== "VN",
+      isForeign,
       wantsInvoice: request.wantsInvoice ?? false,
     });
     setEditing(true);
@@ -1786,6 +1801,7 @@ export default function PaymentRequestDetailDrawer({
                 <button
                   className="btn btn-outline btn-sm"
                   onClick={() => {
+                    const isForeign = (request.country || "VN") !== "VN";
                     setDraft({
                       uid: request.uid,
                       name: request.name,
@@ -1793,9 +1809,12 @@ export default function PaymentRequestDetailDrawer({
                       country: request.country || "VN",
                       phone: request.phone,
                       email: request.email || "",
-                      province: request.province || "",
-                      ward: request.ward || "",
-                      address: request.address || "",
+                      province: isForeign ? "" : (request.province || ""),
+                      ward: isForeign ? "" : (request.ward || ""),
+                      address: isForeign ? "" : (request.address || ""),
+                      foreignCountry: isForeign
+                        ? (COUNTRIES.find((c) => c.name === request.province)?.code || "")
+                        : "",
                       target: String(request.target),
                       note: request.note || "",
                       taxId: request.taxId || "",
@@ -1803,7 +1822,7 @@ export default function PaymentRequestDetailDrawer({
                       companyName: request.companyName || "",
                       leadSource: request.leadSource || "",
                       leadChannel: request.leadChannel || "",
-                      isForeign: (request.country || "VN") !== "VN",
+                      isForeign,
                       wantsInvoice: request.wantsInvoice ?? false,
                     });
                     setEditing(true);
@@ -1833,6 +1852,9 @@ export default function PaymentRequestDetailDrawer({
                       const targetNum =
                         Number(String(draft.target).replace(/\D/g, "")) || request.target;
                       setSavingEdit(true);
+                      const foreignCountryName = draft.isForeign
+                        ? (COUNTRIES.find((c) => c.code === draft.foreignCountry)?.name ?? draft.foreignCountry)
+                        : "";
                       const ok = await onUpdatePr({
                         ...request,
                         uid: draft.uid,
@@ -1841,9 +1863,9 @@ export default function PaymentRequestDetailDrawer({
                         country: draft.country,
                         phone: draft.phone,
                         email: draft.email,
-                        province: draft.province,
-                        ward: draft.ward,
-                        address: draft.address,
+                        province: draft.isForeign ? foreignCountryName : draft.province,
+                        ward: draft.isForeign ? "" : draft.ward,
+                        address: draft.isForeign ? "" : draft.address,
                         target: targetNum,
                         note: draft.note,
                         taxId: draft.taxId || undefined,
@@ -2081,7 +2103,7 @@ export default function PaymentRequestDetailDrawer({
                     <button
                       type="button"
                       className={`btn btn-sm ${!draft.isForeign ? "btn-primary" : "btn-outline"}`}
-                      onClick={() => setDraft({ ...draft, isForeign: false, country: "VN" })}
+                      onClick={() => setDraft({ ...draft, isForeign: false, country: "VN", foreignCountry: "" })}
                     >
                       Khách VN
                     </button>
@@ -2207,14 +2229,30 @@ export default function PaymentRequestDetailDrawer({
                 )}
                 <div className="info-cell full">
                   <div className="info-label">Địa chỉ khách hàng</div>
-                  <VietnamAddressFields
-                    province={draft.province}
-                    ward={draft.ward}
-                    address={draft.address}
-                    onProvinceChange={(v) => setDraft({ ...draft, province: v })}
-                    onWardChange={(v) => setDraft({ ...draft, ward: v })}
-                    onAddressChange={(v) => setDraft({ ...draft, address: v })}
-                  />
+                  {draft.isForeign ? (
+                    <Combobox
+                      value={draft.foreignCountry}
+                      onChange={(v) => setDraft({ ...draft, foreignCountry: v })}
+                      options={FOREIGN_COUNTRY_OPTIONS}
+                      placeholder="Chọn quốc gia"
+                      emptyLabel="— Bỏ chọn —"
+                      invalid={!draft.foreignCountry}
+                    />
+                  ) : (
+                    <VietnamAddressFields
+                      province={draft.province}
+                      ward={draft.ward}
+                      address={draft.address}
+                      onProvinceChange={(v) => setDraft({ ...draft, province: v })}
+                      onWardChange={(v) => setDraft({ ...draft, ward: v })}
+                      onAddressChange={(v) => setDraft({ ...draft, address: v })}
+                    />
+                  )}
+                  {draft.isForeign && (
+                    <div style={{ fontSize: 11.5, color: draft.foreignCountry ? "var(--text-3)" : "var(--danger)", fontWeight: 600, marginTop: 3 }}>
+                      Bắt buộc chọn quốc gia khách đang ở.
+                    </div>
+                  )}
                 </div>
                 <div className="info-cell">
                   <div className="info-label">Tổng tiền dự kiến</div>
@@ -2451,6 +2489,12 @@ export default function PaymentRequestDetailDrawer({
               disabled={!ready || hasActiveRequest}
               title={!ready ? "Cần thu đủ 100% số tiền trước khi kích hoạt" : hasActiveRequest ? activeSummary.buttonLabel : "Tạo Active Request và chọn gói khoá học"}
               onClick={() => {
+                const missingLines = findPaidLinesWithoutBill(request.payments ?? []);
+                if (missingLines.length > 0) {
+                  setMissingBillLines(missingLines.map((l) => ({ line_id: l.id, amount: l.amount ?? 0 })));
+                  setMissingBillsPopupOpen(true);
+                  return;
+                }
                 setArPackageName("");
                 setArPackageModalOpen(true);
               }}
@@ -2460,7 +2504,6 @@ export default function PaymentRequestDetailDrawer({
           </div>
         </div>
       </aside>
-      {/* 7/7 — modal bắt buộc chọn gói học trước khi tạo AR (chặn tin Zalo "(chưa có tên gói)") */}
       {arPackageModalOpen && (
         <div
           className="gmv-prototype-modal-scrim"
@@ -2509,6 +2552,43 @@ export default function PaymentRequestDetailDrawer({
                 }}
               >
                 <Icons.CheckSquare size={14} /> Tạo yêu cầu kích hoạt
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* bill guard — popup chặn tạo AR khi còn paid line thiếu ảnh bill */}
+      {missingBillsPopupOpen && (
+        <div
+          className="gmv-prototype-modal-scrim"
+          onClick={() => setMissingBillsPopupOpen(false)}
+          style={{ zIndex: 140 }}
+        >
+          <div className="modal" style={{ width: "min(480px, 100%)" }} onClick={(e) => e.stopPropagation()}>
+            <div className="modal-head">
+              <div>
+                <h3>Thiếu ảnh bill</h3>
+                <div style={{ fontSize: 12, color: "var(--text-3)", marginTop: 2 }}>
+                  Vui lòng up bill cho các lần thanh toán dưới đây trước khi tạo yêu cầu kích hoạt.
+                </div>
+              </div>
+              <button className="drawer-close" onClick={() => setMissingBillsPopupOpen(false)}>
+                <Icons.Close size={16} />
+              </button>
+            </div>
+            <div className="modal-body">
+              <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: 8 }}>
+                {missingBillLines.map((l, i) => (
+                  <li key={l.line_id} style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", borderBottom: "1px solid var(--border)" }}>
+                    <span style={{ color: "var(--text-2)" }}>Lần #{i + 1}</span>
+                    <span style={{ fontWeight: 600 }}>{l.amount.toLocaleString("vi-VN")} đ</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <div className="modal-foot">
+              <button type="button" className="btn btn-outline" onClick={() => setMissingBillsPopupOpen(false)}>
+                Đã hiểu
               </button>
             </div>
           </div>

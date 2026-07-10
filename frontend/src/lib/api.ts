@@ -64,11 +64,9 @@ export const endpoints = {
     patch: (
       id: string,
       body: { tienVe?: boolean; donCRM?: boolean; billImage?: string | null },
-      operatorRole = "sale",
       timeout?: number
     ) =>
       api.patch<Order>(`/orders/${id}`, body, {
-        headers: { "X-Operator-Role": operatorRole },
         ...(timeout ? { timeout } : {}),
       }),
     cancel: (id: string) => api.post<Order>(`/orders/${id}/cancel`),

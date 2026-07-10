@@ -105,3 +105,7 @@ export const getZaloOutbox = async (): Promise<ZaloOutboxRow[]> => {
 export const retryZaloOutbox = async (msgId: number): Promise<void> => {
   await api.post(`/api/v1/admin/zalo-outbox/${msgId}/retry`);
 };
+
+export const cancelZaloOutbox = async (msgId: number): Promise<void> => {
+  await api.post(`/api/v1/admin/zalo-outbox/${msgId}/cancel`);
+};

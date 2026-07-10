@@ -790,3 +790,22 @@
 - `HANDOFF_DAT_INVOICE_REMIND.md` — §5–§7: smart throttle, FE complete, BE bugs fixed.
 - `TODO.md` — block Feedback 10/6 (F1006-01..09).
 - `CHANGELOG.md` — entry này.
+
+---
+
+## 2026-07-07 — Fix QR capture nhúng bitmap cũ (incident PR-2026-0135/0136)
+
+**Root cause:** `html-to-image` cache resource theo URL đã cắt query params (`getCacheKey` trong `dataurl.js`). Mọi QR vietqr.io chỉ khác nhau ở query (`amount`, `addInfo`) → capture thứ 2 trong phiên nhúng bitmap QR của lần đầu. Incident tương tự 23/6 (PR-0080/0081).
+
+**Frontend**
+- `QrViewModal.tsx` — `toBlob` thêm `includeQueryParams: true` (fix root cause); refactor `handleCopyQr` inline fetch+verify; thêm `verifyQrBlob` helper + `"verifyfail"` UI state cho cả 2 nút.
+- `qrVerify.ts` (mới) — EMV TLV parser (`parseEmvTlv`, `extractEmvAddInfo`, `extractEmvAmount`) + `verifyQrPayload` + `decodeQrFromBlob` (jsqr, retry scales). Fail-closed guardrail: mọi ảnh QR rời app phải decode khớp `code` + `amount` của line hiện tại.
+- `QrViewModal.test.tsx` — GROUP 11 (regression `includeQueryParams`), GROUP 12 (guard behavior: mismatch/unreadable/ok cho cả 2 nút, 5 tests).
+- `qrVerify.test.ts` (mới) — 8 unit tests EMV parser (incident case, malformed, missing tag).
+- `e2e/qr-capture.spec.ts` (mới) — 3 E2E tests: tái hiện incident (2 QR captures same session), guard fail-closed; dùng `page.route` intercept vietqr.io để deterministic.
+- `e2e/helpers/api-client.ts` — thêm `createPaymentLine()`.
+- `payment-request/CLAUDE.md` (mới) — ghi chú guard architecture cho AI workers.
+
+**Deps**
+- `jsqr` (runtime, ~40KB lazy import) — decode QR từ blob trong browser.
+- `qrcode`, `pngjs`, `@types/qrcode`, `@types/pngjs` (dev, chỉ E2E).

@@ -3,6 +3,7 @@ import hmac
 import json
 import os
 import random
+import threading
 import re
 import uuid
 from pathlib import Path
@@ -34,7 +35,7 @@ from sepay_routes import register_sepay_routes
 from mpos_import import register_mpos_routes
 from gateway_routes import register_gateway_routes
 
-CANCEL_ANY_ROLES = {"manager", "system", "ops"}
+CANCEL_ANY_ROLES = {"manager", "system"}
 PAYOS_MAX_SAFE_ORDER_CODE = 9_007_199_254_740_991
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -212,27 +213,38 @@ FALLBACK_PACKAGES = [
     "新签-菲教-特惠-18单元",
 ]
 
-OPS_ROLES = {"ops", "system"}
+_sb_instance = None
+_sb_lock = threading.Lock()
 
 
 def _supabase():
-    url = os.getenv("SUPABASE_URL", "").strip()
-    key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "").strip()
-    if not url or not key:
-        return None
-    if "YOUR_PROJECT" in url or "PASTE_" in key or key.startswith("YOUR_"):
-        return None
-    try:
-        from supabase import create_client
-        from supabase._sync.client import SupabaseException
+    """Process-wide singleton Supabase client.
 
-        return create_client(url, key)
-    except SupabaseException as exc:
-        print(f"Supabase client init failed: {exc}")
-        return None
-    except Exception as exc:
-        print(f"Supabase client init failed: {exc}")
-        return None
+    Per-request create_client() leaked ~150MB/h under load (httpx pools
+    never closed) and OOM'd the 512MB Render instance — 2026-07-09.
+    Safe to share: service-role usage is stateless and each .table()/.rpc()
+    call builds a fresh request builder on a thread-safe httpx client.
+    """
+    global _sb_instance
+    if _sb_instance is not None:
+        return _sb_instance
+    with _sb_lock:
+        if _sb_instance is not None:
+            return _sb_instance
+        url = os.getenv("SUPABASE_URL", "").strip()
+        key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "").strip()
+        if not url or not key:
+            return None
+        if "YOUR_PROJECT" in url or "PASTE_" in key or key.startswith("YOUR_"):
+            return None
+        try:
+            from supabase import create_client
+
+            _sb_instance = create_client(url, key)
+            return _sb_instance
+        except Exception as exc:
+            print(f"Supabase client init failed: {exc}")
+            return None
 
 
 def _next_ma_don(sb=None) -> str:
@@ -339,11 +351,6 @@ class BankSimulateBody(BaseModel):
     amount: int | None = None
     noiDung: str | None = None
     maGiaoDichBank: str | None = None
-
-
-def _require_ops(role: str | None) -> None:
-    if (role or "").lower() not in OPS_ROLES:
-        raise HTTPException(403, "Chỉ bộ phận hệ thống được xác nhận tiền về thủ công")
 
 
 def _create_order_mem(body: CreateOrderBody) -> dict[str, Any]:
@@ -505,7 +512,7 @@ def _create_order_supabase(sb, body: CreateOrderBody) -> dict[str, Any]:
         "trang_thai": "cho_thanh_toan",
         "tien_ve": False,
         "don_crm": False,
-        "created_by": body.createdBy,
+        "created_by": ((body.createdBy or "").strip().lower() or None),
         "dat_coc": bool(body.datCoc),
         "lead_kenh": (body.leadKenh or "").strip() or None,
         "uid_phu": uid_phu_clean,
@@ -536,20 +543,25 @@ def _create_order_supabase(sb, body: CreateOrderBody) -> dict[str, Any]:
 
 
 def _list_orders_supabase(
-    sb, allowed_creators: list[str] | None = None
+    sb, allowed_creators: list[str] | None = None,
+    limit: int = 1000, offset: int = 0,
 ) -> list[dict[str, Any]]:
+    query = sb.table("don_hang").select("*, khach_hang(*)")
+    if allowed_creators is not None:
+        # Scope filter phải nằm trong SQL, TRƯỚC limit — lọc sau limit làm
+        # sale mất đơn cũ. Đơn không có created_by thì ai cũng thấy (legacy).
+        quoted = ",".join(
+            '"{}"'.format(e.replace('"', "").replace(",", "").strip().lower())
+            for e in [""] + list(allowed_creators)
+        )
+        query = query.or_(f"created_by.is.null,created_by.in.({quoted})")
     res = (
-        sb.table("don_hang")
-        .select("*, khach_hang(*)")
-        .order("created_at", desc=True)
+        query.order("created_at", desc=True)
+        .range(offset, offset + limit - 1)
         .execute()
     )
     out = []
     for row in res.data or []:
-        if allowed_creators is not None:
-            creator = (row.get("created_by") or "").strip().lower()
-            if creator and creator not in allowed_creators:
-                continue
         kh = row.pop("khach_hang", None) if isinstance(row, dict) else None
         out.append(_row_to_order(row, kh))
     return out
@@ -671,21 +683,14 @@ async def list_packages():
 
 
 @app.get("/orders")
-def list_orders(authorization: str | None = Header(None)):
+def list_orders(authorization: str = Header(...), limit: int = Query(1000, ge=1, le=1000), offset: int = Query(0, ge=0)):
     sb = _supabase()
-    allowed: list[str] | None = None
-    if sb and authorization:
-        try:
-            actor = resolve_actor(sb, authorization)
-            allowed = visible_creator_emails(sb, actor)
-        except HTTPException:
-            raise
-        except Exception as exc:
-            print(f"orders RBAC: {exc}")
+    actor = resolve_actor(sb, authorization) if sb else None
+    allowed = visible_creator_emails(sb, actor) if sb and actor else None
 
     if sb:
         try:
-            return {"orders": _list_orders_supabase(sb, allowed)}
+            return {"orders": _list_orders_supabase(sb, allowed, limit=limit, offset=offset)}
         except Exception as exc:
             print(f"Supabase list_orders: {exc}")
             raise HTTPException(500, f"Lỗi đọc đơn hàng: {exc}") from exc
@@ -702,11 +707,12 @@ def list_orders(authorization: str | None = Header(None)):
 
 
 @app.post("/orders", status_code=201)
-def create_order(body: CreateOrderBody):
+def create_order(body: CreateOrderBody, authorization: str = Header(...)):
     if not body.uid.strip():
         raise HTTPException(400, "UID CRM là bắt buộc — mọi đơn phải gắn với khách đã có trên CRM.")
     sb = _supabase()
     if sb:
+        resolve_actor(sb, authorization)
         try:
             return _create_order_supabase(sb, body)
         except Exception as exc:
@@ -732,23 +738,20 @@ def create_order(body: CreateOrderBody):
 def patch_order(
     order_id: str,
     body: PatchOrderBody,
-    x_operator_role: str | None = Header(None, alias="X-Operator-Role"),
-    authorization: str | None = Header(None),
+    authorization: str = Header(...),
 ):
-    if body.tienVe is not None:
-        sb_check = _supabase()
-        if sb_check and authorization:
-            try:
-                actor = resolve_actor(sb_check, authorization)
-                require_module_write(sb_check, actor, "dashboard")
-                if not can_confirm_payment(actor):
-                    raise HTTPException(403, "Chỉ bộ phận hệ thống được xác nhận tiền về thủ công")
-            except HTTPException:
-                raise
-        else:
-            _require_ops(x_operator_role)
-
     sb = _supabase()
+    if body.tienVe is not None:
+        if sb:
+            actor = resolve_actor(sb, authorization)
+            require_module_write(sb, actor, "dashboard")
+            if not can_confirm_payment(actor):
+                raise HTTPException(403, "Chỉ bộ phận hệ thống được xác nhận tiền về thủ công")
+        else:
+            raise HTTPException(503, "Supabase chưa cấu hình")
+    elif sb:
+        resolve_actor(sb, authorization)
+
     if sb:
         try:
             patch: dict[str, Any] = {}
@@ -797,31 +800,18 @@ def patch_order(
 @app.post("/orders/{order_id}/cancel")
 def cancel_order(
     order_id: str,
-    authorization: str | None = Header(None),
-    x_operator_role: str | None = Header(None, alias="X-Operator-Role"),
+    authorization: str = Header(...),
 ):
-    """Cancel order (trang_thai='huy'). RBAC: sale/leader own only, manager/system/ops any.
+    """Cancel order (trang_thai='huy'). RBAC: sale/leader own only, manager/system any.
     Blocked if tien_ve=true (force manual refund flow)."""
     sb = _supabase()
     if not sb:
-        row = _orders_mem.get(order_id)
-        if not row:
-            raise HTTPException(404, "Order not found")
-        if row.get("tienVe"):
-            raise HTTPException(409, "Đơn đã ghi nhận tiền về — không thể huỷ tự động. Liên hệ ops xử lý hoàn tiền.")
-        row["trangThai"] = "huy"
-        return row
+        raise HTTPException(503, "Supabase chưa cấu hình")
 
-    actor_role = (x_operator_role or "").lower()
-    actor_email: str | None = None
-    if authorization:
-        try:
-            actor = resolve_actor(sb, authorization)
-            require_module_write(sb, actor, "dashboard")
-            actor_role = actor.role.lower()
-            actor_email = (actor.email or "").lower()
-        except HTTPException:
-            raise
+    actor = resolve_actor(sb, authorization)
+    require_module_write(sb, actor, "dashboard")
+    actor_role = actor.role.lower()
+    actor_email = (actor.email or "").lower()
 
     res = sb.table("don_hang").select("*").eq("id", order_id).limit(1).execute()
     if not res.data:
@@ -864,14 +854,18 @@ def cancel_order(
 
 
 @app.post("/info-code", status_code=201)
-def create_info_code(body: InfoCodeBody):
+def create_info_code(body: InfoCodeBody, authorization: str = Header(...)):
+    sb = _supabase()
+    if sb:
+        resolve_actor(sb, authorization)
     created = create_order(
         CreateOrderBody(
             uid=body.uid,
             tenKhach=body.customerName,
             tongTien=body.amount,
             nguon="Gia hạn",
-        )
+        ),
+        authorization=authorization,
     )
     return {
         "infoCode": created["infoCode"],
@@ -884,23 +878,22 @@ def create_info_code(body: InfoCodeBody):
 
 
 @app.get("/info-code/{code}/status")
-def info_code_status(code: str):
+def info_code_status(code: str, authorization: str = Header(...)):
     sb = _supabase()
     if sb:
+        resolve_actor(sb, authorization)
         found = _find_don_by_info(sb, code)
         if found:
             paid = bool(found["don"].get("tien_ve"))
             return {"infoCode": code, "status": "MATCHED" if paid else "PENDING"}
-    for row in _orders_mem.values():
-        if row["infoCode"] == code or row["maDonHang"] in code:
-            return {"infoCode": row["infoCode"], "status": "MATCHED" if row["tienVe"] else "PENDING"}
     return {"infoCode": code, "status": "PENDING"}
 
 
 @app.get("/webhook/events")
-def webhook_events(limit: int = 50):
+def webhook_events(limit: int = 50, authorization: str = Header(...)):
     sb = _supabase()
     if sb:
+        resolve_actor(sb, authorization)
         try:
             res = (
                 sb.table("giao_dich")
@@ -922,33 +915,19 @@ def webhook_events(limit: int = 50):
             return {"events": events}
         except Exception as exc:
             print(f"giao_dich list: {exc}")
-    matched = [o for o in _orders_mem.values() if o.get("tienVe")]
-    events = [
-        {
-            "id": o["id"],
-            "type": "BANK_CREDIT",
-            "amount": o["tongTien"],
-            "infoCode": o["infoCode"],
-            "ts": o.get("createdAt"),
-        }
-        for o in matched[-limit:]
-    ]
-    return {"events": events}
+    return {"events": []}
 
 
 @app.post("/crm/activate")
-def crm_activate(body: CrmBody):
+def crm_activate(body: CrmBody, authorization: str = Header(...)):
     sb = _supabase()
     if sb:
+        resolve_actor(sb, authorization)
         found = _find_don_by_info(sb, body.infoCode)
         if found:
             sb.table("don_hang").update({"don_crm": True, "trang_thai": "da_tao_crm"}).eq(
                 "id", found["don"]["id"]
             ).execute()
-            return {"infoCode": body.infoCode, "activated": True}
-    for row in _orders_mem.values():
-        if row["infoCode"] == body.infoCode:
-            row["donCRM"] = True
             return {"infoCode": body.infoCode, "activated": True}
     return {"infoCode": body.infoCode, "activated": False}
 
@@ -1141,7 +1120,7 @@ async def payos_webhook(request: Request):
 
 @app.get("/payos/transactions")
 def list_payos_transactions(
-    authorization: str | None = Header(None),
+    authorization: str = Header(...),
     limit: int = 100,
     from_date: str | None = Query(None, alias="from"),
     to_date: str | None = Query(None, alias="to"),
@@ -1153,15 +1132,8 @@ def list_payos_transactions(
     if not sb:
         return {"transactions": []}
 
-    allowed: list[str] | None = None
-    if authorization:
-        try:
-            actor = resolve_actor(sb, authorization)
-            allowed = visible_creator_emails(sb, actor)
-        except HTTPException:
-            raise
-        except Exception as exc:
-            print(f"payos RBAC: {exc}")
+    actor = resolve_actor(sb, authorization)
+    allowed = visible_creator_emails(sb, actor)
 
     try:
         query = sb.table("giao_dich").select(
@@ -1208,6 +1180,8 @@ def list_payos_transactions(
                 }
             )
         return {"transactions": out}
+    except HTTPException:
+        raise
     except Exception as exc:
         print(f"payos list: {exc}")
         raise HTTPException(500, f"Lỗi đọc giao dịch: {exc}") from exc
@@ -1217,21 +1191,14 @@ def list_payos_transactions(
 async def upload_order_bill(
     order_id: str,
     file: UploadFile = File(...),
-    authorization: str | None = Header(None),
+    authorization: str = Header(...),
 ):
     """Upload bill multipart → Supabase Storage bucket 'bills' → set don_hang.bill_image = public URL."""
     sb = _supabase()
     if not sb:
         raise HTTPException(503, "Supabase chưa cấu hình — không upload được Storage")
 
-    # Auth optional but resolved for audit purposes (no RBAC gate for own bill upload yet)
-    if authorization:
-        try:
-            resolve_actor(sb, authorization)
-        except HTTPException:
-            raise
-        except Exception as exc:
-            print(f"bill upload auth: {exc}")
+    resolve_actor(sb, authorization)
 
     content = await file.read()
     if not content:
@@ -1281,12 +1248,19 @@ async def upload_order_bill(
 
 
 @app.post("/webhook/bank-simulate")
-def bank_simulate(body: BankSimulateBody):
+def bank_simulate(body: BankSimulateBody, authorization: str = Header(...)):
     """
-    Test luồng tiền về khi chưa có PayOS:
-    tạo bản ghi giao_dich + bật tien_ve trên don_hang (theo mô hình Giang).
+    Test luồng tiền về — CHỈ sandbox.
+    Tạo bản ghi giao_dich + bật tien_ve trên don_hang.
     """
+    if not is_sandbox_env():
+        raise HTTPException(403, "bank-simulate chỉ khả dụng trong môi trường sandbox")
+
     sb = _supabase()
+    if sb:
+        actor = resolve_actor(sb, authorization)
+        require_module_write(sb, actor, "dashboard")
+
     content = body.noiDung or body.infoCode
     tx_id = body.maGiaoDichBank or f"SIM-{uuid.uuid4().hex[:8]}"
     if sb:
@@ -1381,6 +1355,11 @@ async def _start_zalo_worker() -> None:
 @app.on_event("startup")
 async def _start_dingtalk_worker() -> None:
     import asyncio
+
+    if os.getenv("DINGTALK_WORKER_ENABLED", "").strip().lower() != "true":
+        print("[dingtalk] outbox worker disabled — set DINGTALK_WORKER_ENABLED=true after DingTalk setup (dingtalk_outbox table + webhook groups)")
+        return
+
     from dingtalk_outbox_worker import start_outbox_worker as start_dingtalk_outbox
 
     print("[dingtalk] starting outbox worker...")

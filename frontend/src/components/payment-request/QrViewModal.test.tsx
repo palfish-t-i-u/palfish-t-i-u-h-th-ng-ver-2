@@ -20,11 +20,25 @@
  *  - imgUrl assertions dùng URLSearchParams parse, không substring match,
  *    để tránh false positive khi URL encoding thay đổi.
  */
-import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PaymentAttempt, PaymentRequest } from "../../types/paymentRequest";
 import { BANK_INFO } from "../../constants/bank";
 import QrViewModal from "./QrViewModal";
+
+// ─────────────────────────── html-to-image mock ───────────────────────────
+// GROUP 11 + 12 require this. Mock hoisted before any test runs.
+vi.mock("html-to-image", () => ({
+  toBlob: vi.fn(async () => new Blob(["fake-png"], { type: "image/png" })),
+}));
+
+// ─────────────────────────── qrVerify mock ────────────────────────────────
+// GROUP 12: dynamic import("./qrVerify") inside verifyQrBlob is intercepted
+// by vi.mock at the top level. Tests configure per-case via vi.mocked().
+vi.mock("./qrVerify", () => ({
+  decodeQrFromBlob: vi.fn(async () => "fake-payload"),
+  verifyQrPayload: vi.fn(() => true),
+}));
 
 // ─────────────────────────── Fixtures ───────────────────────────
 
@@ -121,10 +135,10 @@ function errorImg(img: HTMLImageElement) {
 }
 
 function getCaptureButton(): HTMLButtonElement {
-  // Primary action — match by Vietnamese label OR loading label
+  // Primary action — match by Vietnamese label, loading label, or error/verifyfail labels
   const btn = screen.getAllByRole("button").find((b) => {
     const t = b.textContent ?? "";
-    return /Chụp mã QR|Đang tải QR/.test(t) && b.className.includes("btn-primary");
+    return /Chụp mã QR|Đang tải QR|Đang chụp|Đã copy ảnh|Clipboard lỗi|Lỗi — thử lại|QR không khớp nội dung/.test(t) && b.className.includes("btn-primary");
   });
   if (!btn) throw new Error("Capture button not found");
   return btn as HTMLButtonElement;
@@ -133,9 +147,9 @@ function getCaptureButton(): HTMLButtonElement {
 function getCopyButton(): HTMLButtonElement {
   const btn = screen.getAllByRole("button").find((b) => {
     const t = b.textContent ?? "";
-    // "Copy mã QR" (idle) OR "Đang tải QR..." (loading) — distinguished from
-    // "Copy nội dung CK" which has different text & icon
-    return (/Copy mã QR|Đang tải QR/.test(t)) && !/nội dung CK/.test(t);
+    // "Copy mã QR" (idle) OR "Đang tải QR..." (loading) OR status labels —
+    // distinguished from "Copy nội dung CK" which has different text & icon
+    return (/Copy mã QR|Đang tải QR|Đang copy|Đã copy ảnh QR|QR không khớp/.test(t)) && !/nội dung CK/.test(t);
   });
   if (!btn) throw new Error("Copy QR button not found");
   return btn as HTMLButtonElement;
@@ -638,5 +652,240 @@ describe("QrViewModal — derived imgReady (fix prod incident 26/6/2026)", () =>
       <QrViewModal qr={null} request={makeRequest()} onClose={() => {}} />,
     );
     expect(container.firstChild).toBeNull();
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════
+// GROUP 11: includeQueryParams guardrail (incident 7/7/2026)
+// ═══════════════════════════════════════════════════════════════
+
+/**
+ * Root cause: html-to-image caches fetched resources bằng URL đã cắt query
+ * params (getCacheKey dùng url.replace để bỏ query string). Tất cả QR vietqr.io
+ * chỉ khác nhau ở query (amount, addInfo) → capture thứ 2 trong phiên nhúng
+ * bitmap QR cũ. includeQueryParams: true buộc cache key = full URL.
+ *
+ * Test này là bức tường chặn regression: nếu ai đó xoá `includeQueryParams`
+ * khỏi options → test FAIL ngay → nhắc đọc comment trong source.
+ */
+describe("QrViewModal — includeQueryParams guardrail (incident 7/7/2026)", () => {
+  afterEach(() => {
+    Object.defineProperty(navigator, "clipboard", {
+      value: undefined,
+      writable: true,
+      configurable: true,
+    });
+  });
+
+  it("toBlob được gọi với includeQueryParams: true và pixelRatio: 2", async () => {
+    // Get the mocked toBlob reference BEFORE the test runs
+    const htmlToImage = await import("html-to-image");
+    const toBlobMock = vi.mocked(htmlToImage.toBlob);
+    toBlobMock.mockClear();
+
+    // Mock navigator.clipboard.write để handleCaptureQr không crash sau toBlob
+    Object.defineProperty(navigator, "clipboard", {
+      value: { write: vi.fn(async () => {}) },
+      writable: true,
+      configurable: true,
+    });
+
+    render(<QrViewModal qr={makeQr()} request={makeRequest()} onClose={() => {}} />);
+
+    // Load ảnh để enable nút
+    loadImg(getQrImg());
+
+    // Click "Chụp mã QR"
+    fireEvent.click(getCaptureButton());
+
+    // Đợi async handler hoàn tất (dynamic import + toBlob)
+    await waitFor(() => {
+      expect(toBlobMock).toHaveBeenCalledTimes(1);
+    });
+
+    // Verify options truyền vào toBlob có includeQueryParams: true
+    expect(toBlobMock).toHaveBeenCalledWith(
+      expect.any(HTMLDivElement),
+      expect.objectContaining({ includeQueryParams: true, pixelRatio: 2 }),
+    );
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════
+// GROUP 12: QR guard behavior (verifyQrBlob wired into handlers)
+// ═══════════════════════════════════════════════════════════════
+
+/**
+ * Tests verify that verifyQrBlob is wired into both handleCaptureQr and
+ * handleCopyQr. When the guard returns a non-ok verdict, clipboard.write
+ * must NOT be called and the correct error label must appear.
+ *
+ * vi.mock("./qrVerify") at module scope intercepts the dynamic import inside
+ * verifyQrBlob. Per-test overrides use vi.mocked().mockResolvedValue /
+ * vi.mocked().mockReturnValue so each test controls the guard independently.
+ */
+describe("QrViewModal — GROUP 12: QR guard behavior (verifyQrBlob wired into handlers)", () => {
+  beforeEach(async () => {
+    // Reset qrVerify mocks to default pass-through before each test
+    const qrVerify = await import("./qrVerify");
+    vi.mocked(qrVerify.decodeQrFromBlob).mockResolvedValue("fake-payload");
+    vi.mocked(qrVerify.verifyQrPayload).mockReturnValue(true);
+  });
+
+  afterEach(() => {
+    // Restore clipboard mock to avoid leaking between tests
+    Object.defineProperty(navigator, "clipboard", {
+      value: undefined,
+      writable: true,
+      configurable: true,
+    });
+    vi.unstubAllGlobals();
+  });
+
+  it("capture path: mismatch → clipboard NOT called, label shows exact error text", async () => {
+    const qrVerify = await import("./qrVerify");
+    vi.mocked(qrVerify.decodeQrFromBlob).mockResolvedValue("mismatch-payload");
+    vi.mocked(qrVerify.verifyQrPayload).mockReturnValue(false);
+
+    const clipboardWrite = vi.fn(async () => {});
+    Object.defineProperty(navigator, "clipboard", {
+      value: { write: clipboardWrite },
+      writable: true,
+      configurable: true,
+    });
+
+    render(<QrViewModal qr={makeQr()} request={makeRequest()} onClose={() => {}} />);
+    loadImg(getQrImg());
+    fireEvent.click(getCaptureButton());
+
+    await waitFor(() => {
+      const label = getCaptureButton().textContent ?? "";
+      if (!label.includes("QR không khớp nội dung — bấm F5 rồi thử lại")) {
+        throw new Error(`Expected verifyfail label, got: "${label}"`);
+      }
+    });
+    // Clipboard must NOT have been called — guard blocked it
+    expect(clipboardWrite).toHaveBeenCalledTimes(0);
+    // Label must show exact verifyfail text
+    expect(getCaptureButton().textContent).toContain("QR không khớp nội dung — bấm F5 rồi thử lại");
+  });
+
+  it("capture path: unreadable (decodeQrFromBlob returns null) → clipboard NOT called, shows error state", async () => {
+    const qrVerify = await import("./qrVerify");
+    vi.mocked(qrVerify.decodeQrFromBlob).mockResolvedValue(null);
+
+    const clipboardWrite = vi.fn(async () => {});
+    Object.defineProperty(navigator, "clipboard", {
+      value: { write: clipboardWrite },
+      writable: true,
+      configurable: true,
+    });
+
+    render(<QrViewModal qr={makeQr()} request={makeRequest()} onClose={() => {}} />);
+    loadImg(getQrImg());
+    fireEvent.click(getCaptureButton());
+
+    await waitFor(() => {
+      const label = getCaptureButton().textContent ?? "";
+      if (!label.includes("Lỗi — thử lại")) {
+        throw new Error(`Expected error label, got: "${label}"`);
+      }
+    });
+    // Clipboard must NOT have been called
+    expect(clipboardWrite).toHaveBeenCalledTimes(0);
+    expect(getCaptureButton().textContent).toContain("Lỗi — thử lại");
+  });
+
+  it("capture path: ok → clipboard.write called exactly 1 time, blob passes guard", async () => {
+    const qrVerify = await import("./qrVerify");
+    vi.mocked(qrVerify.decodeQrFromBlob).mockResolvedValue("good-payload");
+    vi.mocked(qrVerify.verifyQrPayload).mockReturnValue(true);
+
+    const clipboardWrite = vi.fn(async () => {});
+    // jsdom has no ClipboardItem — stub it so new ClipboardItem(...) doesn't throw
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    vi.stubGlobal("ClipboardItem", class MockClipboardItem { constructor(public items: any) {} });
+    Object.defineProperty(navigator, "clipboard", {
+      value: { write: clipboardWrite },
+      writable: true,
+      configurable: true,
+    });
+
+    render(<QrViewModal qr={makeQr()} request={makeRequest()} onClose={() => {}} />);
+    loadImg(getQrImg());
+    fireEvent.click(getCaptureButton());
+
+    // Wait for clipboard.write to be called (guard passed, ok path executed)
+    await waitFor(() => {
+      if (clipboardWrite.mock.calls.length !== 1) {
+        throw new Error(`Expected clipboard.write called once, got ${clipboardWrite.mock.calls.length}`);
+      }
+    });
+    expect(clipboardWrite).toHaveBeenCalledTimes(1);
+    // After done state the button shows success label
+    expect(getCaptureButton().textContent).toContain("Đã copy ảnh — paste vào chat!");
+  });
+
+  it("copy path: mismatch → clipboard NOT called, label shows exact error text", async () => {
+    const qrVerify = await import("./qrVerify");
+    vi.mocked(qrVerify.decodeQrFromBlob).mockResolvedValue("mismatch-payload");
+    vi.mocked(qrVerify.verifyQrPayload).mockReturnValue(false);
+
+    const clipboardWrite = vi.fn(async () => {});
+    Object.defineProperty(navigator, "clipboard", {
+      value: { write: clipboardWrite },
+      writable: true,
+      configurable: true,
+    });
+    // handleCopyQr calls fetch internally — mock global fetch to return a PNG blob
+    vi.stubGlobal("fetch", vi.fn(async () => ({
+      blob: async () => new Blob(["fake-png"], { type: "image/png" }),
+    })));
+
+    render(<QrViewModal qr={makeQr()} request={makeRequest()} onClose={() => {}} />);
+    loadImg(getQrImg());
+    fireEvent.click(getCopyButton());
+
+    await waitFor(() => {
+      const label = getCopyButton().textContent ?? "";
+      if (!label.includes("QR không khớp — F5 thử lại")) {
+        throw new Error(`Expected verifyfail copy label, got: "${label}"`);
+      }
+    });
+    // Clipboard must NOT have been called
+    expect(clipboardWrite).toHaveBeenCalledTimes(0);
+    expect(getCopyButton().textContent).toContain("QR không khớp — F5 thử lại");
+  });
+
+  it("verifyQrBlob called with exact { transferCode: qr.code, amount: qr.amount }", async () => {
+    const qrVerify = await import("./qrVerify");
+    vi.mocked(qrVerify.decodeQrFromBlob).mockResolvedValue("good-payload");
+    vi.mocked(qrVerify.verifyQrPayload).mockReturnValue(true);
+
+    // Stub ClipboardItem so the write path doesn't throw
+    vi.stubGlobal("ClipboardItem", vi.fn((items: Record<string, Blob>) => ({ items })));
+    const clipboardWrite = vi.fn(async () => {});
+    Object.defineProperty(navigator, "clipboard", {
+      value: { write: clipboardWrite },
+      writable: true,
+      configurable: true,
+    });
+
+    render(<QrViewModal qr={makeQr()} request={makeRequest()} onClose={() => {}} />);
+    loadImg(getQrImg());
+    fireEvent.click(getCaptureButton());
+
+    // Wait for the async handler to complete by checking the mock was called
+    await waitFor(() => {
+      if (!vi.mocked(qrVerify.verifyQrPayload).mock.calls.length) {
+        throw new Error("verifyQrPayload not yet called");
+      }
+    });
+
+    // verifyQrPayload must be called with transferCode = qr.code ("FHETL"), not transferContent
+    expect(vi.mocked(qrVerify.verifyQrPayload)).toHaveBeenCalledWith(
+      expect.any(String),
+      { transferCode: "FHETL", amount: 17_650_000 },
+    );
   });
 });

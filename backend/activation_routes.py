@@ -32,6 +32,7 @@ from utils.team_mapper import get_canonical_team
 from utils.zalo_message_builder import (
     build_activation_request_created_message,
     build_activation_urgent_reminder_message,
+    ZALO_ENABLED_EVENTS,
 )
 
 OPS_GROUP_TEAM_CODE = "Inhouse 2"
@@ -975,6 +976,9 @@ def _enqueue_activation_request_created_zalo(
     ~line 2018). Must NEVER raise — a Zalo failure must not fail AR creation.
     """
     try:
+        if "activation_request_created" not in ZALO_ENABLED_EVENTS:
+            print("[zalo] activation_request_created skipped (not in ZALO_ENABLED_EVENTS)")
+            return
         if pr is None:
             print(f"[zalo] activation_request_created skip: no PR for AR {saved_ar.get('id')}")
             return
@@ -1080,6 +1084,37 @@ def _enqueue_activation_request_created_zalo(
         print(f"[zalo] activation_request_created enqueue failed (non-fatal): {exc}")
 
 
+def _assert_all_paid_lines_have_bill(sb, pr: dict) -> None:
+    """Raise 422 if any confirmed payment line on this PR is missing a bill image."""
+    pr_id = str(pr.get("id") or "")
+    if not pr_id:
+        return
+    lines_res = (
+        sb.table("payment_lines")
+        .select("id, amount, bill_image, bill_images")
+        .eq("payment_request_id", pr_id)
+        .eq("status", "paid")
+        .execute()
+    )
+    missing = []
+    for line in (lines_res.data or []):
+        has_bill = bool((line.get("bill_image") or "").strip())
+        if not has_bill:
+            imgs = line.get("bill_images")
+            has_bill = isinstance(imgs, list) and len(imgs) > 0
+        if not has_bill:
+            missing.append({"line_id": line["id"], "amount": line.get("amount")})
+    if missing:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "MISSING_BILLS",
+                "message": f"{len(missing)} lần thanh toán chưa có ảnh bill. Vui lòng up bill trước khi tạo yêu cầu kích hoạt.",
+                "missing_lines": missing,
+            },
+        )
+
+
 def _save_active_request(
     sb,
     *,
@@ -1093,6 +1128,7 @@ def _save_active_request(
         pr = _fetch_payment_request(sb, pr_id)
         if require_paid_pr:
             _assert_pr_paid(pr)
+        _assert_all_paid_lines_have_bill(sb, pr)
 
     ar_id = _next_ar_id(sb)
     uids_data = _assign_course_codes(uids_in, pr_id or ar_id)
@@ -2188,13 +2224,14 @@ def register_activation_routes(app, supabase_factory):
                 "team": (actor.staff or {}).get("team", ""),
             },
         )
-        sb.table("zalo_outbox").insert({
-            "event_type": "activation_urgent_reminder",
-            "source_table": "activation_reminders",
-            "source_id": reminder.data[0]["id"] if reminder.data else "00000000-0000-0000-0000-000000000000",
-            "group_id": g.data[0]["group_id"],
-            "message": result["message"],
-        }).execute()
+        if "activation_urgent_reminder" in ZALO_ENABLED_EVENTS:
+            sb.table("zalo_outbox").insert({
+                "event_type": "activation_urgent_reminder",
+                "source_table": "activation_reminders",
+                "source_id": reminder.data[0]["id"] if reminder.data else "00000000-0000-0000-0000-000000000000",
+                "group_id": g.data[0]["group_id"],
+                "message": result["message"],
+            }).execute()
 
         # DingTalk parallel notification — best-effort, independent of Zalo
         try:

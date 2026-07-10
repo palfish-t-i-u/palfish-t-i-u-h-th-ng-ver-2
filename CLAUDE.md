@@ -121,3 +121,15 @@ Frontend `.env.local` points `VITE_API_BASE_URL` to either localhost:8000 (local
 - `docs/SPEC_TEMPLATE.md` — Mẫu spec (dùng khi nhận prototype từ anh Hiếu)
 - `docs/HUONG_DAN_XUAT_SPEC.md` — Prompt cho Claude Design xuất spec
 - `docs/DESIGN.md` — Design tokens, UI components, rules
+- `docs/learnings/` — Extracted reasoning from past solved problems (Problem/Trap/Insight/Rule format)
+
+## Learning Law
+
+**Before** starting a non-trivial bug fix or architecture change, check for prior learnings:
+```bash
+grep -rl "relevant_file_or_keyword" docs/learnings/
+```
+If hits found, read them first — past traps save hours.
+
+**After** every non-trivial solved problem, run the `extract-approach` skill before moving on.
+A solution without its learnings note is unfinished work.

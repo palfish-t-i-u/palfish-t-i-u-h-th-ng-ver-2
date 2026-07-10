@@ -9,6 +9,8 @@ from typing import Any
 import httpx
 from fastapi import HTTPException
 
+_http = httpx.Client(timeout=15)
+
 ROLE_RANK = {"sale": 1, "ops": 2, "leader": 2, "manager": 3, "system": 4}
 OPS_ROLES = {"ops", "system"}
 
@@ -83,17 +85,16 @@ def _auth_user_from_jwt(token: str) -> dict[str, Any] | None:
     if not url or not key:
         return None
     try:
-        with httpx.Client(timeout=15) as client:
-            res = client.get(
-                f"{url}/auth/v1/user",
-                headers={
-                    "Authorization": f"Bearer {token}",
-                    "apikey": key,
-                },
-            )
-            if res.status_code != 200:
-                return None
-            return res.json()
+        res = _http.get(
+            f"{url}/auth/v1/user",
+            headers={
+                "Authorization": f"Bearer {token}",
+                "apikey": key,
+            },
+        )
+        if res.status_code != 200:
+            return None
+        return res.json()
     except Exception as exc:
         print(f"JWT user lookup failed: {exc}")
         return None

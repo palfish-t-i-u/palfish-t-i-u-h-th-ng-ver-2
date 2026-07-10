@@ -22,17 +22,6 @@ function buildFullBankText(amount: number, transferCode: string): string {
   ].join("\n");
 }
 
-async function copyImageToClipboard(url: string): Promise<boolean> {
-  try {
-    const resp = await fetch(url);
-    const blob = await resp.blob();
-    const pngBlob = blob.type === "image/png" ? blob : new Blob([await blob.arrayBuffer()], { type: "image/png" });
-    await navigator.clipboard.write([new ClipboardItem({ "image/png": pngBlob })]);
-    return true;
-  } catch {
-    return false;
-  }
-}
 
 function BankInfoRow({ label, value, onCopy }: { label: string; value: string; onCopy?: () => void }) {
   return (
@@ -65,8 +54,8 @@ export default function QrViewModal({
   request: PaymentRequest | null;
   onClose: () => void;
 }) {
-  const [copyQrState, setCopyQrState] = useState<"idle" | "copying" | "done" | "error">("idle");
-  const [captureState, setCaptureState] = useState<"idle" | "capturing" | "done" | "downloaded" | "error">("idle");
+  const [copyQrState, setCopyQrState] = useState<"idle" | "copying" | "done" | "error" | "verifyfail">("idle");
+  const [captureState, setCaptureState] = useState<"idle" | "capturing" | "done" | "downloaded" | "error" | "verifyfail">("idle");
   // Derived state: imgReadyUrl lưu URL đã load xong. imgReady = (URL hiện tại đã load chưa).
   // Lý do KHÔNG dùng useState+useEffect: useEffect chạy SAU render commit, tạo race window
   // (button còn enable, browser còn hiện bitmap cũ trong vài ms) → chụp nhầm QR cũ.
@@ -95,6 +84,17 @@ export default function QrViewModal({
     return img.currentSrc === qrImageUrl || img.src === qrImageUrl;
   };
 
+  const verifyQrBlob = async (blob: Blob): Promise<"ok" | "mismatch" | "unreadable"> => {
+    if (!qr.code) { console.warn("[QR-GUARD] line không có code — skip verify"); return "ok"; }
+    try {
+      const { decodeQrFromBlob, verifyQrPayload } = await import("./qrVerify");
+      const payload = await decodeQrFromBlob(blob);
+      if (!payload) return "unreadable";
+      return verifyQrPayload(payload, { transferCode: qr.code, amount: qr.amount })
+        ? "ok" : "mismatch";
+    } catch { return "unreadable"; }
+  };
+
   const handleCopyQr = async () => {
     if (!isImgFresh()) {
       setCopyQrState("error");
@@ -102,8 +102,22 @@ export default function QrViewModal({
       return;
     }
     setCopyQrState("copying");
-    const ok = await copyImageToClipboard(qrImageUrl);
-    setCopyQrState(ok ? "done" : "error");
+    try {
+      const resp = await fetch(qrImageUrl);
+      const blob = await resp.blob();
+      const verdict = await verifyQrBlob(blob);
+      if (verdict !== "ok") {
+        console.error(`[QR-GUARD] chặn copy: ${verdict}`, { expected: transferCode, url: qrImageUrl });
+        setCopyQrState("verifyfail");
+        setTimeout(() => setCopyQrState("idle"), 4000);
+        return;
+      }
+      const pngBlob = blob.type === "image/png" ? blob : new Blob([await blob.arrayBuffer()], { type: "image/png" });
+      await navigator.clipboard.write([new ClipboardItem({ "image/png": pngBlob })]);
+      setCopyQrState("done");
+    } catch {
+      setCopyQrState("error");
+    }
     setTimeout(() => setCopyQrState("idle"), 2500);
   };
 
@@ -120,10 +134,23 @@ export default function QrViewModal({
       const blob = await toBlob(captureRef.current, {
         backgroundColor: "#ffffff",
         pixelRatio: 2,
+        // Incident 7/7/2026 (PR-2026-0135/0136): html-to-image cache resource theo
+        // URL ĐÃ CẮT query params (getCacheKey trong dataurl.js). Mọi QR vietqr.io
+        // chỉ khác nhau ở query → capture thứ 2 trong phiên nhúng bitmap QR cũ.
+        // includeQueryParams: true buộc cache key = full URL. KHÔNG ĐƯỢC BỎ.
+        includeQueryParams: true,
         filter: (node) =>
           !(node instanceof HTMLElement && node.dataset.qrCaptureHide === "true"),
       });
       if (!blob) throw new Error("toBlob returned null");
+
+      const verdict = await verifyQrBlob(blob);
+      if (verdict !== "ok") {
+        console.error(`[QR-GUARD] chặn capture: ${verdict}`, { expected: transferCode, url: qrImageUrl });
+        setCaptureState(verdict === "mismatch" ? "verifyfail" : "error");
+        setTimeout(() => setCaptureState("idle"), 4000);
+        return;
+      }
 
       let copied = false;
       try {
@@ -160,6 +187,8 @@ export default function QrViewModal({
     ? "Đã copy ảnh QR!"
     : copyQrState === "error"
     ? "Không hỗ trợ — tải về"
+    : copyQrState === "verifyfail"
+    ? "QR không khớp — F5 thử lại"
     : "Copy mã QR";
 
   const captureLabel = captureState === "capturing"
@@ -170,6 +199,8 @@ export default function QrViewModal({
     ? "Clipboard lỗi — đã tải ảnh"
     : captureState === "error"
     ? "Lỗi — thử lại"
+    : captureState === "verifyfail"
+    ? "QR không khớp nội dung — bấm F5 rồi thử lại"
     : "Chụp mã QR";
 
   return (
