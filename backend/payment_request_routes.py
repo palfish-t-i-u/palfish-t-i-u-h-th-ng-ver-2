@@ -1204,7 +1204,7 @@ def _extract_payos_data(payload: dict[str, Any]) -> tuple[str, int, str]:
     return order_code, amount, description
 
 
-def _mark_line_paid(sb, line_id: str, *, actor_email: str = "system", source: str = "unknown") -> dict[str, Any]:
+def _mark_line_paid(sb, line_id: str, *, actor_email: str = "system", source: str = "unknown", extra: dict[str, Any] | None = None) -> dict[str, Any]:
     from audit import log_audit
 
     existing_res = (
@@ -1228,12 +1228,16 @@ def _mark_line_paid(sb, line_id: str, *, actor_email: str = "system", source: st
         }
 
     now_iso = _iso_now()
+    patch = {
+        "status": "paid", "paid_at": now_iso, "reject_reason": None,
+        "confirmed_by": actor_email, "confirmed_at": now_iso, "confirmed_source": source,
+    }
+    if extra:
+        patch.update(extra)
+
     line_res = (
         sb.table("payment_lines")
-        .update({
-            "status": "paid", "paid_at": now_iso, "reject_reason": None,
-            "confirmed_by": actor_email, "confirmed_at": now_iso, "confirmed_source": source,
-        })
+        .update(patch)
         .eq("id", line_id)
         .execute()
     )
