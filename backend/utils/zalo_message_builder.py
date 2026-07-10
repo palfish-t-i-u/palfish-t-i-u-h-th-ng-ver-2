@@ -162,7 +162,8 @@ def build_payment_paid_message(
         sale_info = {}
 
     customer = _first_nonempty(payment_data.get("customer_name"), default="?")
-    child_name = _first_nonempty(payment_data.get("child_name"))
+    # Multi-con: lần TT gắn bé nào (student_name) thì báo tên bé đó
+    child_name = _first_nonempty(payment_data.get("student_name"), payment_data.get("child_name"))
     phone_fmt = format_phone_intl(
         payment_data.get("phone"), payment_data.get("country")
     )
@@ -432,6 +433,8 @@ def build_activation_request_created_message(
         )
         phone = phone_fmt if phone_fmt else "?"
         uid = _first_nonempty(uid_block.get("uid"), default="?")
+        # Multi-con: block có tên bé riêng thì dùng, không thì fallback bé 1 của PR
+        block_child = _first_nonempty(uid_block.get("name"), child_name)
 
         courses = uid_block.get("courses")
         courses = courses if isinstance(courses, list) else []
@@ -443,7 +446,7 @@ def build_activation_request_created_message(
             if not isinstance(course, dict):
                 continue
             course_name = _first_nonempty(course.get("name"), default="(chưa có tên gói)")
-            course_lines.append(f"{child_name}, {course_name}")
+            course_lines.append(f"{block_child}, {course_name}")
             amount = course.get("amount")
             if amount not in (None, ""):
                 try:
@@ -452,7 +455,7 @@ def build_activation_request_created_message(
                 except (TypeError, ValueError):
                     logger.warning("Invalid course amount %r in %s", amount, ctx)
         if not course_lines:
-            course_lines = [child_name]
+            course_lines = [block_child]
         if not has_amount:
             total = float(pr_target) if pr_target not in (None, "") else 0.0
 

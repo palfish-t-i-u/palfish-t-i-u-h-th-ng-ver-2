@@ -400,3 +400,45 @@ class TestBuildPaymentPaidMessageNetAmount:
         assert isinstance(result["message"], str)
         assert "🔸 Số tiền: 0 VND" in result["message"]
 
+
+class TestMultiChildNames:
+    """Multi-con (10/7) — tin Zalo hiện đúng tên bé theo lần TT / uid-block.
+    Plan: docs/superpowers/plans/2026-07-10-pr-multi-con-va-ar-modal-mo-rong.md"""
+
+    def test_payment_paid_prefers_line_student_name(self):
+        result = build_payment_paid_message(
+            {
+                "customer_name": "Me Bé", "child_name": "Bé Một",
+                "student_name": "Bé Hai", "amount": 100000, "method": "cash",
+                "phone": "0912345678",
+            },
+            {"display_name": "Sale A", "team": "Inhouse 1"},
+        )
+        assert "Bé Hai" in result["message"]
+        assert "Bé Một" not in result["message"]
+
+    def test_payment_paid_falls_back_to_child_name(self):
+        result = build_payment_paid_message(
+            {
+                "customer_name": "Me Bé", "child_name": "Bé Một",
+                "amount": 100000, "method": "cash", "phone": "0912345678",
+            },
+            {"team": "Inhouse 1"},
+        )
+        assert "Bé Một" in result["message"]
+
+    def test_activation_created_uses_block_name(self):
+        result = build_activation_request_created_message(
+            {"id": "AR-1", "uids_data": [
+                {"uid": "u1", "courses": [{"name": "Gói A", "amount": 1000}]},
+                {"uid": "u2", "name": "Bé Hai", "courses": [{"name": "Gói B", "amount": 2000}]},
+            ]},
+            {"id": "PR-1", "child_name": "Bé Một", "phone": "0912345678",
+             "country": "VN", "target": 3000},
+            {"display_name": "Sale A", "team": "Inhouse 2"},
+        )
+        msg = result["message"]
+        # Block không có name → fallback child_name PR (hành vi cũ); block có name → tên bé đó
+        assert "Bé Một, Gói A" in msg
+        assert "Bé Hai, Gói B" in msg
+
