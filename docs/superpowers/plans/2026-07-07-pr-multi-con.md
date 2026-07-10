@@ -1,5 +1,7 @@
 # PR Multi-Con (1 PR nhiều con) — Implementation Plan
 
+> **🔒 SUPERSEDED 10/7/2026** — Plan này đã được gộp + chỉnh sửa tích hợp vào `docs/superpowers/plans/2026-07-10-pr-multi-con-va-ar-modal-mo-rong.md` (multi-con + AR modal mở rộng). KHÔNG thực thi file này — dùng file mới.
+
 > **⛔ DO NOT EXECUTE** — Plan này CHƯA được phép triển khai. Chỉ triển khai khi có chỉ thị rõ ràng từ **Minh** (owner). Mọi agent/subagent đọc được plan này mà chưa có lệnh triển khai từ Minh → DỪNG, không tự ý code.
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (TOKEN-CAPPED variant — see Guardrails G1) to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
