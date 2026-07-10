@@ -222,6 +222,104 @@ def test_gateway_match_candidates_and_match_flow():
     assert match_resp.status_code == 200
     assert match_resp.json()["match_status"] == "matched"
     assert sb.tables["gateway_transactions"][0]["payment_line_id"] == "line-1"
+    # PR-2026-0170 bug (08/07): ghép giao dịch xong phải tự xác nhận payment_line
+    # khi đã có bill — không được để mãi "Chờ xác nhận" như trước.
+    assert sb.tables["payment_lines"][0]["status"] == "paid"
+    assert sb.tables["payment_lines"][0]["confirmed_source"] == "gateway"
+
+
+def test_gateway_match_does_not_auto_confirm_card_without_bill():
+    """Soft-lock TOP2.4 giữ nguyên: quẹt thẻ/trả góp chưa có bill thì KHÔNG
+    được tự xác nhận dù đã ghép giao dịch — line vẫn phải ở "pending"."""
+    sb = FakeSB()
+    sb.tables["payment_lines"][0]["bill_images"] = []
+    sb.tables["gateway_transactions"].append(
+        {
+            "id": "txn-nobill",
+            "source": "mpos",
+            "category": "Quet the",
+            "txn_code": "mpos-nobill",
+            "amount": 1000,
+            "match_status": "pending",
+            "paid_at": "2026-06-16T10:05:00+00:00",
+        }
+    )
+    client = build_client(sb)
+
+    with patch("gateway_routes.resolve_actor", return_value=ACTOR):
+        with patch("gateway_routes.require_module_write"):
+            match_resp = client.patch(
+                "/api/v1/gateway-txns/txn-nobill/match",
+                json={"payment_line_id": "line-1"},
+            )
+
+    assert match_resp.status_code == 200
+    assert match_resp.json()["match_status"] == "matched"
+    assert sb.tables["gateway_transactions"][0]["payment_line_id"] == "line-1"
+    assert sb.tables["payment_lines"][0]["status"] == "pending"
+    assert "confirmed_source" not in sb.tables["payment_lines"][0]
+
+
+def test_gateway_match_auto_confirms_non_card_method_without_bill():
+    """Method khác card/installment (vd chuyển khoản online) không bị soft-lock
+    bill — ghép xong là xác nhận luôn."""
+    sb = FakeSB()
+    sb.tables["payment_lines"][0]["method"] = "qr"
+    sb.tables["payment_lines"][0]["bill_images"] = []
+    sb.tables["gateway_transactions"].append(
+        {
+            "id": "txn-qr",
+            "source": "payoo",
+            "category": "Trực tuyến",
+            "txn_code": "payoo-qr",
+            "amount": 1000,
+            "match_status": "pending",
+            "paid_at": "2026-06-16T10:05:00+00:00",
+        }
+    )
+    client = build_client(sb)
+
+    with patch("gateway_routes.resolve_actor", return_value=ACTOR):
+        with patch("gateway_routes.require_module_write"):
+            match_resp = client.patch(
+                "/api/v1/gateway-txns/txn-qr/match",
+                json={"payment_line_id": "line-1"},
+            )
+
+    assert match_resp.status_code == 200
+    assert sb.tables["payment_lines"][0]["status"] == "paid"
+
+
+def test_gateway_match_idempotent_when_line_already_paid():
+    """Ghép vào 1 line đã "paid" từ trước (vd 2 giao dịch ghép nhầm cùng 1 line)
+    không được lỗi, không double-confirm."""
+    sb = FakeSB()
+    sb.tables["payment_lines"][0]["status"] = "paid"
+    sb.tables["payment_lines"][0]["confirmed_source"] = "manual"
+    sb.tables["gateway_transactions"].append(
+        {
+            "id": "txn-already-paid",
+            "source": "mpos",
+            "category": "Quet the",
+            "txn_code": "mpos-already-paid",
+            "amount": 1000,
+            "match_status": "pending",
+            "paid_at": "2026-06-16T10:05:00+00:00",
+        }
+    )
+    client = build_client(sb)
+
+    with patch("gateway_routes.resolve_actor", return_value=ACTOR):
+        with patch("gateway_routes.require_module_write"):
+            match_resp = client.patch(
+                "/api/v1/gateway-txns/txn-already-paid/match",
+                json={"payment_line_id": "line-1"},
+            )
+
+    assert match_resp.status_code == 200
+    assert sb.tables["payment_lines"][0]["status"] == "paid"
+    # Khong bi ghi de nguon xac nhan cu boi luot ghep gateway sau
+    assert sb.tables["payment_lines"][0]["confirmed_source"] == "manual"
 
 
 def test_gateway_match_candidates_search_finds_pr_without_amount_match():
