@@ -273,6 +273,7 @@ def test_gateway_match_auto_confirms_non_card_method_without_bill():
             "category": "Trực tuyến",
             "txn_code": "payoo-qr",
             "amount": 1000,
+            "net_amount": 990,
             "match_status": "pending",
             "paid_at": "2026-06-16T10:05:00+00:00",
         }
@@ -288,6 +289,8 @@ def test_gateway_match_auto_confirms_non_card_method_without_bill():
 
     assert match_resp.status_code == 200
     assert sb.tables["payment_lines"][0]["status"] == "paid"
+    assert sb.tables["payment_lines"][0]["verified_total"] == 1000
+    assert sb.tables["payment_lines"][0]["verified_received"] == 990
 
 
 def test_gateway_match_idempotent_when_line_already_paid():
@@ -472,3 +475,74 @@ def test_gateway_ingest_orders_rejects_bad_token():
             json={"orders": []},
         )
     assert resp.status_code == 401
+
+
+def test_gateway_match_auto_confirm_copies_net_amount():
+    sb = FakeSB()
+    sb.tables["gateway_transactions"].append(
+        {
+            "id": "txn-net",
+            "source": "mpos",
+            "category": "Quet the",
+            "txn_code": "mpos-net",
+            "amount": 20000,
+            "net_amount": 19500,
+            "match_status": "pending",
+            "paid_at": "2026-06-16T10:05:00+00:00",
+        }
+    )
+    client = build_client(sb)
+
+    with patch("gateway_routes.resolve_actor", return_value=ACTOR):
+        with patch("gateway_routes.require_module_write"):
+            match_resp = client.patch(
+                "/api/v1/gateway-txns/txn-net/match",
+                json={"payment_line_id": "line-1"},
+            )
+
+    assert match_resp.status_code == 200
+    assert sb.tables["payment_lines"][0]["status"] == "paid"
+    assert sb.tables["payment_lines"][0].get("verified_total") == 20000
+    assert sb.tables["payment_lines"][0].get("verified_received") == 19500
+
+
+def test_gateway_match_auto_confirm_no_net_amount():
+    sb = FakeSB()
+    sb.tables["gateway_transactions"].append(
+        {
+            "id": "txn-no-net",
+            "source": "mpos",
+            "category": "Quet the",
+            "txn_code": "mpos-no-net",
+            "amount": 20000,
+            "net_amount": 0,
+            "match_status": "pending",
+            "paid_at": "2026-06-16T10:05:00+00:00",
+        }
+    )
+    client = build_client(sb)
+
+    with patch("gateway_routes.resolve_actor", return_value=ACTOR):
+        with patch("gateway_routes.require_module_write"):
+            match_resp = client.patch(
+                "/api/v1/gateway-txns/txn-no-net/match",
+                json={"payment_line_id": "line-1"},
+            )
+
+    assert match_resp.status_code == 200
+    assert sb.tables["payment_lines"][0]["status"] == "paid"
+    assert "verified_received" not in sb.tables["payment_lines"][0]
+    assert "verified_total" not in sb.tables["payment_lines"][0]
+
+
+def test_mark_line_paid_extra_none_backward_compat():
+    from payment_request_routes import _mark_line_paid
+
+    sb = FakeSB()
+    # Call directly like payos webhook does
+    res = _mark_line_paid(sb, "line-1", actor_email="system:payos", source="payos")
+
+    assert res["payment_line"]["status"] == "paid"
+    assert sb.tables["payment_lines"][0]["status"] == "paid"
+    assert sb.tables["payment_lines"][0]["confirmed_source"] == "payos"
+    assert "verified_received" not in sb.tables["payment_lines"][0]
