@@ -564,6 +564,19 @@ def _bill_urls_from_assets(bill_assets: dict[str, list[dict[str, str]]]) -> dict
     return out
 
 
+def _maybe_enqueue_bill_uploaded_zalo(sb, line: dict) -> None:
+    """Line đã paid + vừa có bill mới → enqueue tin ảnh bill Zalo (best-effort, không chặn upload).
+
+    Logic thật nằm trong SQL fn enqueue_bill_uploaded_zalo (migration 2026-07-10):
+    tự check status/bill/group và tự chống trùng — Python chỉ gọi RPC.
+    """
+    try:
+        if (str(line.get("status") or "").strip().lower()) == "paid":
+            sb.rpc("enqueue_bill_uploaded_zalo", {"p_line_id": line.get("id")}).execute()
+    except Exception as exc:
+        print(f"[zalo] enqueue bill_uploaded failed for line {line.get('id')}: {exc}")
+
+
 def _persist_bill_image(sb, line_id: str, public_url: str) -> bool:
     """Try DB column first; ignore if schema patch not applied yet."""
     try:
@@ -2458,7 +2471,9 @@ def register_payment_request_routes(app, _get_supabase) -> None:
                 line = updated_res.data
         except Exception:
             pass
-            
+
+        _maybe_enqueue_bill_uploaded_zalo(sb, line)
+
         bill_assets = _fetch_bill_assets_fast(sb, [line_id], force_refresh=True)
         return {
             "billImage": public_url,

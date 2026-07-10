@@ -26,9 +26,10 @@ logger = logging.getLogger(__name__)
 
 VN_TZ = ZoneInfo("Asia/Ho_Chi_Minh")
 
-# Events currently active on Zalo — only these go to zalo_outbox.
-# activation_request_created + activation_urgent_reminder are paused.
-ZALO_ENABLED_EVENTS: frozenset[str] = frozenset({"payment_paid", "course_activated"})
+# Events currently active on Zalo — only these go to zalo_outbox (Python paths).
+# NOTE: DB triggers KHÔNG bị gate bởi set này; course_activated tắt bằng migration Phase 2.
+# activation_request_created + activation_urgent_reminder are paused (9/7).
+ZALO_ENABLED_EVENTS: frozenset[str] = frozenset({"payment_paid", "course_activated", "bill_uploaded"})
 
 
 def _safe_get(data: dict[str, Any], key: str, default: str = "Unknown",
