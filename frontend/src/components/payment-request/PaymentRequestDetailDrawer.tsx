@@ -3,6 +3,7 @@ import { LEAD_SOURCES, defaultChannelForSource, findSourceByKey, sourceHasChanne
 import type {
   ActiveRequest,
   AddPaymentAttemptPayload,
+  ArDraftRow,
   CustomerType,
   PaymentAttempt,
   PaymentMethod,
@@ -1583,7 +1584,7 @@ export default function PaymentRequestDetailDrawer({
   onEditAmount?: (qr: PaymentAttempt, newAmount: number) => Promise<void>;
   onBillFile: (qr: PaymentAttempt, file: File) => void | Promise<void>;
   onBillView: (qr: PaymentAttempt) => void;
-  onCreateActiveRequest: (packageName: string) => void;
+  onCreateActiveRequest: (rows: ArDraftRow[]) => void;
   onCancelRequest: () => void;
   activeRequestId?: string | null;
   activeRequest?: ActiveRequest | null;
@@ -1608,8 +1609,9 @@ export default function PaymentRequestDetailDrawer({
   const [highlightTarget, setHighlightTarget] = useState(false);
   const targetInputRef = useRef<HTMLInputElement | null>(null);
   // 7/7 — bắt buộc chọn tên gói TRƯỚC khi tạo AR (tin Zalo bắn ngay lúc tạo)
+  // 10/7 — modal mở rộng: nhiều dòng {bé, gói, tiền} thay vì 1 ô gói đơn
   const [arPackageModalOpen, setArPackageModalOpen] = useState(false);
-  const [arPackageName, setArPackageName] = useState("");
+  const [arDraftRows, setArDraftRows] = useState<ArDraftRow[]>([]);
   // bill guard — chặn tạo AR khi còn line paid thiếu ảnh bill
   const [missingBillsPopupOpen, setMissingBillsPopupOpen] = useState(false);
   const [missingBillLines, setMissingBillLines] = useState<{ line_id: string; idx: number; amount: number }[]>([]);
@@ -1623,7 +1625,7 @@ export default function PaymentRequestDetailDrawer({
     setPrFullModalOpen(false);
     setHighlightTarget(false);
     setArPackageModalOpen(false);
-    setArPackageName("");
+    setArDraftRows([]);
     setMissingBillsPopupOpen(false);
     setMissingBillLines([]);
   }, [request?.id]);
@@ -2610,7 +2612,16 @@ export default function PaymentRequestDetailDrawer({
                   setMissingBillsPopupOpen(true);
                   return;
                 }
-                setArPackageName("");
+                // Seed 1 dòng / bé: bé 1 tạm nhận toàn bộ tiền đã thu, bé 2+ = 0 — sale tự chia lại
+                const kids = request.children?.length
+                  ? request.children
+                  : [{ name: request.childName ?? "", uid: request.uid }];
+                setArDraftRows(kids.map((c, i) => ({
+                  childName: c.name ?? "",
+                  uid: c.uid ?? "",
+                  packageName: "",
+                  amount: i === 0 ? Math.max(0, request.received) : 0,
+                })));
                 setArPackageModalOpen(true);
               }}
             >
@@ -2619,18 +2630,31 @@ export default function PaymentRequestDetailDrawer({
           </div>
         </div>
       </aside>
-      {arPackageModalOpen && (
+      {arPackageModalOpen && (() => {
+        const arChildren = request.children ?? [];
+        const arMultiChild = arChildren.length >= 2;
+        const arTotal = arDraftRows.reduce((s, r) => s + (r.amount || 0), 0);
+        const arReceived = Math.max(0, request.received);
+        const arRemaining = arReceived - arTotal;
+        const arRowsValid = arDraftRows.length > 0 && arDraftRows.every(
+          (r) => r.packageName.trim() && r.amount > 0 && (!arMultiChild || r.childName.trim())
+        );
+        const arValid = arRowsValid && arRemaining >= 0;
+        const setArRow = (i: number, patch: Partial<ArDraftRow>) =>
+          setArDraftRows((rows) => rows.map((r, j) => (j === i ? { ...r, ...patch } : r)));
+        return (
         <div
           className="gmv-prototype-modal-scrim"
           onClick={() => setArPackageModalOpen(false)}
           style={{ zIndex: 140 }}
         >
-          <div className="modal" style={{ width: "min(480px, 100%)" }} onClick={(e) => e.stopPropagation()}>
+          <div className="modal" style={{ width: "min(600px, 100%)" }} onClick={(e) => e.stopPropagation()}>
             <div className="modal-head">
               <div>
                 <h3>Chọn gói học để kích hoạt</h3>
                 <div style={{ fontSize: 12, color: "var(--text-3)", marginTop: 2 }}>
                   Tên gói sẽ gửi kèm thông báo cho Ops — bắt buộc điền trước khi tạo yêu cầu.
+                  {arMultiChild && " PR này có nhiều bé — mỗi dòng là 1 gói cho 1 bé."}
                 </div>
               </div>
               <button className="drawer-close" onClick={() => setArPackageModalOpen(false)}>
@@ -2638,17 +2662,79 @@ export default function PaymentRequestDetailDrawer({
               </button>
             </div>
             <div className="modal-body">
-              <div className="field">
-                <label>
-                  Gói học <span style={{ color: "var(--danger)" }}>*</span>
-                </label>
-                <Combobox
-                  value={arPackageName}
-                  onChange={setArPackageName}
-                  options={COURSE_PACKAGE_OPTIONS}
-                  placeholder="Chọn hoặc gõ tên gói học..."
-                  emptyLabel="Chưa chọn gói"
-                />
+              {arDraftRows.map((row, i) => (
+                <div key={i} style={{ display: "flex", gap: 8, alignItems: "flex-end", marginBottom: 10 }}>
+                  {arMultiChild && (
+                    <div className="field" style={{ flex: "0 0 150px", marginBottom: 0 }}>
+                      <label>Bé</label>
+                      <select
+                        value={row.childName}
+                        onChange={(e) => {
+                          const kid = arChildren.find((c) => c.name === e.target.value);
+                          setArRow(i, { childName: e.target.value, uid: kid?.uid ?? "" });
+                        }}
+                      >
+                        {arChildren.map((c, j) => (
+                          <option key={j} value={c.name}>{c.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+                  <div className="field" style={{ flex: 1, marginBottom: 0 }}>
+                    <label>Gói học <span style={{ color: "var(--danger)" }}>*</span></label>
+                    <Combobox
+                      value={row.packageName}
+                      onChange={(v) => setArRow(i, { packageName: v })}
+                      options={COURSE_PACKAGE_OPTIONS}
+                      placeholder="Chọn hoặc gõ tên gói học..."
+                      emptyLabel="Chưa chọn gói"
+                    />
+                  </div>
+                  <div className="field" style={{ flex: "0 0 140px", marginBottom: 0 }}>
+                    <label>Số tiền (đ)</label>
+                    <MoneyInput
+                      value={row.amount ? String(row.amount) : ""}
+                      onValueChange={(digits) => setArRow(i, { amount: Number(digits || 0) })}
+                    />
+                  </div>
+                  {arDraftRows.length > 1 && (
+                    <button
+                      type="button"
+                      className="btn btn-ghost btn-sm"
+                      title="Xoá dòng này"
+                      style={{ marginBottom: 4 }}
+                      onClick={() => setArDraftRows((rows) => rows.filter((_, j) => j !== i))}
+                    >
+                      <Icons.Close size={14} />
+                    </button>
+                  )}
+                </div>
+              ))}
+              <button
+                type="button"
+                className="btn btn-outline btn-sm"
+                onClick={() => setArDraftRows((rows) => [...rows, {
+                  childName: arChildren[0]?.name ?? "",
+                  uid: arChildren[0]?.uid ?? "",
+                  packageName: "",
+                  amount: 0,
+                }])}
+              >
+                <Icons.Plus size={13} /> Thêm gói{arMultiChild ? " / bé" : ""}
+              </button>
+              <div style={{ marginTop: 12, fontSize: 12.5 }}>
+                Đã phân bổ <strong>{arTotal.toLocaleString("vi-VN")} đ</strong> / thực nhận{" "}
+                <strong>{arReceived.toLocaleString("vi-VN")} đ</strong>
+                {arRemaining > 0 && (
+                  <span style={{ color: "var(--text-3)" }}>
+                    {" "}— còn {arRemaining.toLocaleString("vi-VN")} đ chưa phân bổ (có thể phân bổ nốt ở tab Kích hoạt)
+                  </span>
+                )}
+                {arRemaining < 0 && (
+                  <span style={{ color: "var(--danger)" }}>
+                    {" "}— vượt {Math.abs(arRemaining).toLocaleString("vi-VN")} đ so với tiền thực nhận
+                  </span>
+                )}
               </div>
             </div>
             <div className="modal-foot">
@@ -2658,12 +2744,12 @@ export default function PaymentRequestDetailDrawer({
               <button
                 type="button"
                 className="btn btn-success"
-                disabled={!arPackageName.trim()}
-                style={!arPackageName.trim() ? { opacity: 0.4, cursor: "not-allowed" } : undefined}
+                disabled={!arValid}
+                style={!arValid ? { opacity: 0.4, cursor: "not-allowed" } : undefined}
                 onClick={() => {
-                  if (!arPackageName.trim()) return;
+                  if (!arValid) return;
                   setArPackageModalOpen(false);
-                  onCreateActiveRequest(arPackageName.trim());
+                  onCreateActiveRequest(arDraftRows);
                 }}
               >
                 <Icons.CheckSquare size={14} /> Tạo yêu cầu kích hoạt
@@ -2671,7 +2757,8 @@ export default function PaymentRequestDetailDrawer({
             </div>
           </div>
         </div>
-      )}
+        );
+      })()}
       {/* bill guard — popup chặn tạo AR khi còn paid line thiếu ảnh bill */}
       {missingBillsPopupOpen && (
         <div

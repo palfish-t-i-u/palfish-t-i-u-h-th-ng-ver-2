@@ -1,5 +1,5 @@
 import type { CSSProperties } from "react";
-import type { ActiveCourse, ActiveRequest, ActiveRequestApiRow, ActiveRequestPatchUidPayload, CreateActiveRequestPayload, PaymentAttempt, PaymentMethod, PaymentRequest, PaymentRequestStatus } from "../../types/paymentRequest";
+import type { ActiveCourse, ActiveRequest, ActiveRequestApiRow, ActiveRequestPatchUidPayload, ArDraftRow, CreateActiveRequestPayload, CreateActiveRequestUidPayload, PaymentAttempt, PaymentMethod, PaymentRequest, PaymentRequestStatus } from "../../types/paymentRequest";
 
 export type RequestBucket = "tracking" | "created" | "cancelled";
 export type StatusFilter = "all" | "pending" | "short" | "done" | "over" | "unmatched_card";
@@ -290,18 +290,29 @@ export function buildArByPrId(ars: ActiveRequest[]): Record<string, ActiveReques
   return map;
 }
 
-export function buildCreateActiveRequestPayload(pr: PaymentRequest, packageName: string): CreateActiveRequestPayload {
-  return {
-    uids: [
-      {
-        uid: pr.uid,
+/** Modal AR mở rộng (10/7): gom các dòng {bé, gói, tiền} thành uid-block.
+ *  Cùng bé (childName+uid) → 1 block nhiều courses. Tên gói bắt buộc —
+ *  BE chặn tạo AR khi name rỗng (tin Zalo bắn ngay lúc tạo). */
+export function buildCreateActiveRequestPayload(pr: PaymentRequest, rows: ArDraftRow[]): CreateActiveRequestPayload {
+  const blocks = new Map<string, CreateActiveRequestUidPayload>();
+  for (const row of rows) {
+    const key = `${row.childName.trim()}|${row.uid.trim()}`;
+    let block = blocks.get(key);
+    if (!block) {
+      block = {
+        uid: row.uid.trim(),
         phone: pr.phone,
         country: pr.country,
-        // Tên gói bắt buộc — BE chặn tạo AR khi name rỗng (tin Zalo bắn ngay lúc tạo)
-        courses: [{ name: packageName.trim(), amount: Math.max(0, pr.received) }],
-      },
-    ],
-  };
+        courses: [],
+      };
+      const name = row.childName.trim();
+      // Tên bé chỉ gửi khi có — PR 1 con không tên giữ payload y hệt cũ (G3)
+      if (name) block.name = name;
+      blocks.set(key, block);
+    }
+    block.courses.push({ name: row.packageName.trim(), amount: Math.max(0, Math.round(row.amount)) });
+  }
+  return { uids: [...blocks.values()] };
 }
 
 export function activeRequestAllocation(ar: ActiveRequest, pr: PaymentRequest | null | undefined) {

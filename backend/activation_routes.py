@@ -91,6 +91,7 @@ class ActiveRequestPatchCoursePayload(BaseModel):
 
 class ActiveRequestPatchUidPayload(BaseModel):
     uid: str = Field(..., min_length=1)
+    name: str | None = None  # multi-con: tên bé của block (None = bé 1 / fallback PR.child_name)
     phone: str | None = ""
     country: str | None = "VN"
     courses: list[ActiveRequestPatchCoursePayload] = Field(default_factory=list)
@@ -193,6 +194,9 @@ def _normalize_uid_block(raw: dict[str, Any]) -> dict[str, Any]:
         "uid": str(raw.get("uid") or "").strip(),
         "courses": [],
     }
+    # Multi-con: giữ tên bé của block — Zalo builder render đúng bé (modal AR mở rộng)
+    if raw.get("name") not in (None, ""):
+        block["name"] = str(raw.get("name")).strip()
     if raw.get("phone") not in (None, ""):
         block["phone"] = str(raw.get("phone")).strip()
     if raw.get("country") not in (None, ""):
@@ -1358,6 +1362,41 @@ def _export_b4_tax_batch(sb, items: list[ExportBatchItem] | None) -> FileRespons
     )
 
 
+def _writeback_child_uids(extra_children: list, uids_data: list) -> bool:
+    """UID nhập ở B3 ghi ngược vào extra_children của PR khi bé trùng tên còn thiếu uid."""
+    changed = False
+    for uid_block in uids_data or []:
+        if not isinstance(uid_block, dict):
+            continue
+        name = str(uid_block.get("name") or "").strip()
+        uid = str(uid_block.get("uid") or "").strip()
+        if not name or not uid:
+            continue
+        for child in extra_children or []:
+            if isinstance(child, dict) and child.get("name") == name and not child.get("uid"):
+                child["uid"] = uid
+                changed = True
+    return changed
+
+
+def _writeback_child_uids_to_pr(sb, ar_row: dict[str, Any]) -> None:
+    """Best-effort: đồng bộ UID từ uids_data về PR.extra_children. KHÔNG raise."""
+    try:
+        pr_id = str(ar_row.get("pr_id") or "")
+        if not pr_id:
+            return
+        res = sb.table("payment_requests").select("extra_children").eq("id", pr_id).limit(1).execute()
+        if not res.data:
+            return
+        extra = res.data[0].get("extra_children") or []
+        if not extra:
+            return
+        if _writeback_child_uids(extra, ar_row.get("uids_data") or []):
+            sb.table("payment_requests").update({"extra_children": extra}).eq("id", pr_id).execute()
+    except Exception as exc:
+        print(f"[pr-multi-con] uid write-back failed: {exc}")
+
+
 def _find_course_order_id(sb, ar_id: str, course_code: str) -> str:
     """Read current order_id for a course (for audit old-value capture)."""
     try:
@@ -1703,6 +1742,7 @@ def register_activation_routes(app, supabase_factory):
                 row = rpc_out.get("row") or {}
                 merged = {**current, **row}
                 _sync_ledger_courses_from_uids(sb, ar_id, merged.get("uids_data") or [])
+                _writeback_child_uids_to_pr(sb, merged)
                 extra: dict[str, Any] = {}
                 if body.customer_name is not None:
                     customer_name = str(body.customer_name or "").strip()
@@ -1757,6 +1797,7 @@ def register_activation_routes(app, supabase_factory):
         merged = {**current, **saved, **patch}
         if guarded_uids is not None:
             _sync_ledger_courses_from_uids(sb, ar_id, merged.get("uids_data") or guarded_uids)
+            _writeback_child_uids_to_pr(sb, merged)
         pr_map = _fetch_prs_by_ids(sb, [str(merged.get("pr_id") or "")])
         return _serialize_ar(merged, pr_map.get(str(merged.get("pr_id") or "")))
 

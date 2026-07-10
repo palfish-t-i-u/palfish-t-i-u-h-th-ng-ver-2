@@ -10,6 +10,7 @@ import { compressImageFile } from "../lib/imageCompress";
 import type {
   ActiveRequest,
   AddPaymentAttemptPayload,
+  ArDraftRow,
   CreatePaymentRequestPayload,
   PatchPaymentRequestPayload,
   PaymentAttempt,
@@ -749,11 +750,11 @@ export default function PaymentRequestsTab() {
     }
   };
 
-  const onCreateActiveRequest = async (packageName: string) => {
+  const onCreateActiveRequest = async (rows: ArDraftRow[]) => {
     if (!selected || arByPrId[selected.id]) return;
     // Inline AR mini-window: tạo xong → giữ drawer mở, không navigate sang tab Kích hoạt khoá học
     // Context state cập nhật → drawer tự re-render với AR card mới
-    await handleCreateActiveRequest(selected, packageName);
+    await handleCreateActiveRequest(selected, rows);
   };
 
   // Local-only update — KHÔNG gọi server mỗi keystroke (race condition: response chậm

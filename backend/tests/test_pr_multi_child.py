@@ -108,3 +108,42 @@ class TestStudentNamePerLine:
     def test_rename_map_empty_when_no_change(self):
         same = [{"name": "Bé Hai", "uid": "u2"}]
         assert _child_rename_map(same, same) == {}
+
+
+class TestArUidName:
+    """Batch C: uids_data[].name — nhận ở cả CREATE (modal AR mở rộng) lẫn PATCH (B3)."""
+
+    def test_ar_uid_payload_accepts_name(self):
+        from activation_routes import ActiveRequestPatchUidPayload
+        p = ActiveRequestPatchUidPayload(uid="u2", name="Bé Hai")
+        assert p.name == "Bé Hai"
+
+    def test_normalize_uid_block_keeps_name(self):
+        from activation_routes import _normalize_uid_block
+        block = _normalize_uid_block({"uid": "u2", "name": "Bé Hai", "phone": "09"})
+        assert block["name"] == "Bé Hai"
+
+    def test_normalize_uid_block_no_name_key_when_absent(self):
+        from activation_routes import _normalize_uid_block
+        block = _normalize_uid_block({"uid": "u1", "phone": "09"})
+        assert "name" not in block  # shape cũ giữ nguyên (G3)
+
+    def test_assign_course_codes_preserves_name(self):
+        from activation_routes import _assign_course_codes
+        out = _assign_course_codes(
+            [{"uid": "u2", "name": "Bé Hai", "courses": [{"name": "Gói B", "amount": 1000}]}],
+            "PR-2026-0001",
+        )
+        assert out[0]["name"] == "Bé Hai"
+        assert out[0]["courses"][0]["code"] == "CC-0001-001"
+
+    def test_writeback_fills_missing_uid(self):
+        from activation_routes import _writeback_child_uids
+        extra = [{"name": "Bé Hai", "uid": None}]
+        changed = _writeback_child_uids(extra, [{"uid": "u2", "name": "Bé Hai"}])
+        assert changed is True and extra[0]["uid"] == "u2"
+
+    def test_writeback_no_change_when_uid_set(self):
+        from activation_routes import _writeback_child_uids
+        extra = [{"name": "Bé Hai", "uid": "u9"}]
+        assert _writeback_child_uids(extra, [{"uid": "u2", "name": "Bé Hai"}]) is False

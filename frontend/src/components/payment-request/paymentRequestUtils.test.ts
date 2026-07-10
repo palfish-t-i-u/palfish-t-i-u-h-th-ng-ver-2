@@ -119,10 +119,75 @@ describe("active request course package updates", () => {
       payments: [],
     };
 
-    const payload = buildCreateActiveRequestPayload(pr, "2/W-NEW 24 PHI+2 HN");
+    // 10/7 — modal AR mở rộng: builder nhận danh sách dòng {bé, gói, tiền}
+    const payload = buildCreateActiveRequestPayload(pr, [
+      { childName: "", uid: pr.uid, packageName: "2/W-NEW 24 PHI+2 HN", amount: pr.received },
+    ]);
+    expect(payload.uids).toHaveLength(1);
+    expect(payload.uids[0].uid).toBe(pr.uid);
+    // PR 1 con không tên → không gửi key name (payload y hệt flow cũ — G3)
+    expect(payload.uids[0].name).toBeUndefined();
     expect(payload.uids[0].courses[0].amount).toBe(2000);
     // 7/7 — tên gói bắt buộc, không còn gửi name rỗng lên BE
     expect(payload.uids[0].courses[0].name).toBe("2/W-NEW 24 PHI+2 HN");
+  });
+
+  it("2 bé → 2 uid block, mỗi block mang name bé (modal AR mở rộng)", () => {
+    const pr: PaymentRequest = {
+      id: "PR-2026-0070",
+      name: "Me Hai Be",
+      uid: "u1",
+      phone: "0912345678",
+      country: "VN",
+      address: "Hanoi",
+      target: 2000,
+      source: "manual",
+      createdAt: "2026-07-10T00:00:00.000Z",
+      received: 2000,
+      doneCount: 1,
+      totalCount: 1,
+      delta: 0,
+      state: "done",
+      payments: [],
+    };
+    const payload = buildCreateActiveRequestPayload(pr, [
+      { childName: "Bé Một", uid: "u1", packageName: "Gói A", amount: 1200 },
+      { childName: "Bé Hai", uid: "", packageName: "Gói B", amount: 800 },
+    ]);
+    expect(payload.uids).toHaveLength(2);
+    expect(payload.uids[0]).toMatchObject({ uid: "u1", name: "Bé Một" });
+    expect(payload.uids[0].courses).toEqual([{ name: "Gói A", amount: 1200 }]);
+    expect(payload.uids[1]).toMatchObject({ uid: "", name: "Bé Hai" });
+    expect(payload.uids[1].courses).toEqual([{ name: "Gói B", amount: 800 }]);
+  });
+
+  it("2 gói cùng 1 bé → 1 block 2 courses", () => {
+    const pr: PaymentRequest = {
+      id: "PR-2026-0071",
+      name: "Me Mot Be",
+      uid: "u1",
+      phone: "0912345678",
+      country: "VN",
+      address: "Hanoi",
+      target: 2000,
+      source: "manual",
+      createdAt: "2026-07-10T00:00:00.000Z",
+      received: 2000,
+      doneCount: 1,
+      totalCount: 1,
+      delta: 0,
+      state: "done",
+      payments: [],
+    };
+    const payload = buildCreateActiveRequestPayload(pr, [
+      { childName: "Bé Một", uid: "u1", packageName: "Gói A", amount: 1500 },
+      { childName: "Bé Một", uid: "u1", packageName: "Gói phụ", amount: 500 },
+    ]);
+    expect(payload.uids).toHaveLength(1);
+    expect(payload.uids[0].courses).toEqual([
+      { name: "Gói A", amount: 1500 },
+      { name: "Gói phụ", amount: 500 },
+    ]);
   });
 
   it("detects when active request courses exceed linked payment request received money", () => {
