@@ -9,6 +9,7 @@ from utils.zalo_message_builder import (
     _format_vnd_dots,
     build_activation_request_created_message,
     build_course_activated_message,
+    build_payment_paid_message,
 )
 
 
@@ -321,4 +322,81 @@ class TestBuildCourseActivatedMessage:
         )
         assert isinstance(result["message"], str)
         assert "SĐT: ? · UID: ?" in result["message"]
+
+
+class TestBuildPaymentPaidMessageNetAmount:
+    """Task B (10/7) — báo tiền quẹt thẻ/trả góp ưu tiên verified_received
+    (thực nhận sau phí), fallback amount (gross) khi không có. Xem
+    docs/superpowers/plans/2026-07-10-bao-tien-net-amount.md."""
+
+    def _payment_data(self, **overrides) -> dict:
+        base = {
+            "id": "line-1",
+            "customer_name": "Phạm Thị Kiều Oanh",
+            "child_name": "Phạm Bảo Khánh",
+            "phone": "767836839",
+            "amount": 19_160_000,
+            "method": "card",
+            "paid_at": "2026-07-10T03:48:00+00:00",
+        }
+        base.update(overrides)
+        return base
+
+    def test_card_with_verified_received_shows_thuc_nhan(self):
+        result = build_payment_paid_message(
+            self._payment_data(verified_received=18_681_000),
+            {"display_name": "Nguyen Thi Hang Nga", "team": "Inhouse 1"},
+        )
+        assert "🔸 Thực nhận: 18,681,000 VND" in result["message"]
+        assert "Gross" not in result["message"]
+
+    def test_card_without_verified_received_falls_back_to_gross(self):
+        result = build_payment_paid_message(
+            self._payment_data(),  # không có verified_received
+            {"team": "Inhouse 1"},
+        )
+        assert "🔸 Số tiền (Gross): 19,160,000 VND" in result["message"]
+        assert "Thực nhận" not in result["message"]
+
+    def test_installment_with_verified_received_shows_thuc_nhan(self):
+        result = build_payment_paid_message(
+            self._payment_data(
+                method="installment", installment_platform="Payoo",
+                verified_received=9_500_000, amount=10_000_000,
+            ),
+            {"team": "Inhouse 2"},
+        )
+        assert "🔸 Thực nhận: 9,500,000 VND" in result["message"]
+        assert "Trả góp Payoo" in result["message"]
+
+    def test_cash_method_unaffected_by_verified_received(self):
+        """Tiền mặt không có khái niệm phí — verified_received (nếu lỡ có) KHÔNG
+        được áp dụng, label/số phải giữ nguyên 'Số tiền' + amount gộp."""
+        result = build_payment_paid_message(
+            self._payment_data(method="cash", verified_received=999),
+            {"team": "Inhouse 1"},
+        )
+        assert "🔸 Số tiền: 19,160,000 VND" in result["message"]
+        assert "Thực nhận" not in result["message"]
+        assert "Gross" not in result["message"]
+
+    def test_qr_method_unaffected_by_verified_received(self):
+        result = build_payment_paid_message(
+            self._payment_data(method="qr", verified_received=999),
+            {"team": "Inhouse 1"},
+        )
+        assert "🔸 Số tiền: 19,160,000 VND" in result["message"]
+        assert "Thực nhận" not in result["message"]
+
+    def test_verified_received_empty_string_treated_as_missing(self):
+        result = build_payment_paid_message(
+            self._payment_data(verified_received=""),
+            {"team": "Inhouse 1"},
+        )
+        assert "🔸 Số tiền (Gross): 19,160,000 VND" in result["message"]
+
+    def test_never_raises_on_empty_input(self):
+        result = build_payment_paid_message({}, {})
+        assert isinstance(result["message"], str)
+        assert "🔸 Số tiền: 0 VND" in result["message"]
 
