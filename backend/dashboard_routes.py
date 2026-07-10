@@ -843,7 +843,7 @@ def register_dashboard_routes(app, supabase_factory):
             try:
                 staff_res = (
                     sb.table("nhan_su_sale")
-                    .select("email, crm_name, team, sub_team, department")
+                    .select("email, crm_name, team, sub_team")
                     .in_("email", emails)
                     .eq("is_active", True)
                     .execute()
@@ -854,7 +854,6 @@ def register_dashboard_routes(app, supabase_factory):
                 for row in staff_res.data or []:
                     team = str(row.get("team") or "").strip()
                     sub_team = str(row.get("sub_team") or "").strip()
-                    dept = str(row.get("department") or "").strip()
                     crm_name = str(row.get("crm_name") or "").strip()
                     email = str(row.get("email") or "").strip().lower()
                     if team:
@@ -862,8 +861,6 @@ def register_dashboard_routes(app, supabase_factory):
                         depts.add(team)
                     if sub_team:
                         teams.add(sub_team)
-                    if dept:
-                        depts.add(dept)
                     if crm_name:
                         sales.add(crm_name)
                     elif email:
