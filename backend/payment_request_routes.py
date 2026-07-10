@@ -1674,15 +1674,6 @@ def register_payment_request_routes(app, _get_supabase) -> None:
             except Exception as exc:
                 raise HTTPException(500, f"Khong doc duoc payment_lines: {exc}") from exc
 
-        all_line_ids = [
-            str(line.get("id") or "")
-            for lines in lines_by_pr.values()
-            for line in lines
-            if line.get("id")
-        ]
-        bill_assets = _fetch_bill_assets_fast(sb, all_line_ids)
-        bill_urls = _bill_urls_from_assets(bill_assets)
-
         ars_by_pr: dict[str, list[dict[str, Any]]] = {pr_id: [] for pr_id in pr_ids}
         if pr_ids:
             try:
@@ -1706,7 +1697,7 @@ def register_payment_request_routes(app, _get_supabase) -> None:
         for row in pr_rows:
             pr_id = str(row.get("id") or "")
             item = _serialize_payment_request_list_item(
-                row, lines_by_pr.get(pr_id, []), bill_urls, bill_assets, name_map
+                row, lines_by_pr.get(pr_id, []), {}, {}, name_map
             )
 
             ars = ars_by_pr.get(pr_id, [])
