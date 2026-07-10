@@ -6,6 +6,8 @@ import {
   buildCreateActiveRequestPayload,
   formatCoursePhone,
   fromApiActiveRequest,
+  fromApiAttempt,
+  fromApiPaymentRequest,
   getArReferralStatus,
   getReferralStatus,
   hasUnmatchedCardLine,
@@ -812,5 +814,42 @@ describe("hasUnmatchedCardLine", () => {
 
   it("false khi không có lần thanh toán nào", () => {
     expect(hasUnmatchedCardLine(pr([]))).toBe(false);
+  });
+});
+
+describe("multi-con mappers (10/7)", () => {
+  it("maps children và studentName từ API", () => {
+    const pr = fromApiPaymentRequest({
+      id: "PR-1", name: "Me", uid: "u1", phone: "09",
+      children: [{ name: "Bé Một", uid: "u1" }, { name: "Bé Hai", uid: null }],
+    });
+    expect(pr.children).toEqual([
+      { name: "Bé Một", uid: "u1" },
+      { name: "Bé Hai", uid: null },
+    ]);
+    const line = fromApiAttempt({ id: "l1", student_name: "Bé Hai" });
+    expect(line.studentName).toBe("Bé Hai");
+  });
+
+  it("children undefined khi API không trả (PR cũ)", () => {
+    const pr = fromApiPaymentRequest({ id: "PR-1", name: "Me", uid: "u1", phone: "09" });
+    expect(pr.children).toBeUndefined();
+    const line = fromApiAttempt({ id: "l1" });
+    expect(line.studentName).toBeNull();
+  });
+
+  it("AR mapper round-trip giữ name của uid block", () => {
+    const arMapped = fromApiActiveRequest({
+      id: "AR-1", pr_id: "PR-1",
+      uids_data: [
+        { uid: "u1", courses: [{ code: "CC-1", name: "Gói A", amount: 1 }] },
+        { uid: "u2", name: "Bé Hai", courses: [{ code: "CC-2", name: "Gói B", amount: 2 }] },
+      ],
+    });
+    expect(arMapped.uids[0].name).toBeUndefined();
+    expect(arMapped.uids[1].name).toBe("Bé Hai");
+    const patch = toActiveRequestPatchUidsData(arMapped);
+    expect(patch[0].name).toBeUndefined();
+    expect(patch[1].name).toBe("Bé Hai");
   });
 });

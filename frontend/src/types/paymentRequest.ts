@@ -39,6 +39,8 @@ export interface PaymentAttempt {
   nameForTransfer?: string | null;
   /** True khi PR đã đổi name/phone/childName/country và transfer_content lưu không còn khớp PR hiện tại */
   isContentStale?: boolean;
+  /** Multi-con: lần TT của bé nào (null = bé 1 / child_name của PR) */
+  studentName?: string | null;
 }
 
 export interface PaymentLineApiRow {
@@ -83,10 +85,18 @@ export interface CreatePrResponse {
 
 export type CustomerType = "individual" | "business";
 
+/** Multi-con: 1 bé trên PR (bé 1 = childName/uid của PR, bé 2+ từ extra_children) */
+export interface PrChild {
+  name: string;
+  uid: string | null;
+}
+
 export interface PaymentRequest {
   id: string;
   name: string;
   childName?: string;
+  /** Multi-con: danh sách đầy đủ các bé (bé 1 + bé phụ). Undefined với response cũ. */
+  children?: PrChild[];
   uid: string;
   phone: string;
   country: string;
@@ -166,6 +176,8 @@ export interface ActiveCourse {
 
 export interface ActiveUidGroup {
   uid: string;
+  /** Multi-con: tên bé của block này (undefined = bé 1 / fallback child_name PR) */
+  name?: string;
   phone: string;
   country: string;
   courses: ActiveCourse[];
@@ -196,6 +208,8 @@ export type AddPaymentAttemptPayload = {
   sale_received?: number;
   cashier?: string;
   name_for_transfer?: string;
+  /** Multi-con: lần TT của bé nào (bỏ qua = bé 1) */
+  student_name?: string;
 };
 
 export type CreatePaymentRequestPayload = {
@@ -216,6 +230,8 @@ export type CreatePaymentRequestPayload = {
   lead_source?: string;
   lead_channel?: string;
   wants_invoice?: boolean;
+  /** Multi-con: [{name, uid?}] bé 1 + bé 2+; BE tách bé 1 vào child_name/uid */
+  children?: { name: string; uid?: string | null }[];
 };
 
 export type PatchPaymentRequestPayload = Partial<CreatePaymentRequestPayload>;
@@ -228,9 +244,19 @@ export type CreateActiveRequestCoursePayload = {
 
 export type CreateActiveRequestUidPayload = {
   uid: string;
+  /** Multi-con: tên bé — BE giữ trong uids_data, Zalo builder render đúng bé */
+  name?: string;
   phone?: string;
   country?: string;
   courses: CreateActiveRequestCoursePayload[];
+};
+
+/** 1 dòng trong modal "Kích hoạt khoá học" mở rộng: 1 gói gán cho 1 bé */
+export type ArDraftRow = {
+  childName: string;   // "" khi PR không có tên con (fallback bé 1)
+  uid: string;         // "" = bé chưa có UID CRM (Ops điền ở B3 → write-back)
+  packageName: string;
+  amount: number;      // VND
 };
 
 export type CreateActiveRequestPayload = {
@@ -244,6 +270,7 @@ export type ActiveRequestApiRow = {
   customer_name?: string;
   uids_data?: Array<{
     uid?: string;
+    name?: string;
     phone?: string;
     country?: string;
     courses?: Array<{
@@ -280,6 +307,7 @@ export type ActiveRequestApiRow = {
 
 export type ActiveRequestPatchUidPayload = {
   uid: string;
+  name?: string;
   phone?: string;
   country?: string;
   courses: Array<{

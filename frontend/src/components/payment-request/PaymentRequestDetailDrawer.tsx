@@ -92,6 +92,7 @@ function QrRow({
   contentDismissed,
   onRefreshContent,
   onDismissStaleWarning,
+  studentBadge,
 }: {
   qr: PaymentAttempt;
   onCancelQr: (qr: PaymentAttempt) => void;
@@ -108,6 +109,8 @@ function QrRow({
   onRefreshContent?: (line: PaymentAttempt) => Promise<void>;
   /** Callback dismiss stale warning (sticky session). */
   onDismissStaleWarning?: (lineId: string) => void;
+  /** Multi-con: tên bé của lần TT này — chỉ truyền khi PR có ≥2 bé. */
+  studentBadge?: string;
 }) {
   const isQr = qr.method === "qr";
   const isCancelled = !!qr.cancelled;
@@ -220,6 +223,11 @@ function QrRow({
           <span style={{ fontWeight: 600, color: "var(--text-3)", fontSize: 11.5, textTransform: "uppercase", letterSpacing: "0.05em", whiteSpace: "nowrap" }}>
             Lần #{qr.idx}
           </span>
+          {studentBadge && (
+            <span className="badge" title="Lần thanh toán của bé này" style={{ background: "var(--primary-50)", color: "var(--primary-700)", whiteSpace: "nowrap" }}>
+              <Icons.User size={10} /> {studentBadge}
+            </span>
+          )}
           {editingAmount ? (
             <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
               <MoneyInput
@@ -386,10 +394,19 @@ function AddPaymentForm({
   const [cashier, setCashier] = useState(profile?.displayName || profile?.crmName || "");
   const [nameForTransfer, setNameForTransfer] = useState(pr.childName || pr.name);
   const [validationError, setValidationError] = useState("");
+  // Multi-con: PR có ≥2 bé → chọn lần TT của bé nào ("" = bé 1)
+  const children = pr.children ?? [];
+  const multiChild = children.length >= 2;
+  const [studentName, setStudentName] = useState("");
 
+  const childNameOptions = multiChild
+    ? children.filter((c) => c.name).map((c) => ({ value: c.name, label: `Con: ${c.name}` }))
+    : pr.childName
+    ? [{ value: pr.childName, label: `Con: ${pr.childName}` }]
+    : [];
   const nameOptions = [
     { value: pr.name, label: `KH: ${pr.name}` },
-    ...(pr.childName ? [{ value: pr.childName, label: `Con: ${pr.childName}` }] : []),
+    ...childNameOptions,
   ];
 
   const submit = () => {
@@ -428,6 +445,7 @@ function AddPaymentForm({
       installment_total: method === "installment" ? (parseInt(installmentTotal.replace(/\D/g, ""), 10) || undefined) : undefined,
       cashier: method === "cash" ? cashier : undefined,
       name_for_transfer: method === "qr" ? nameForTransfer : undefined,
+      student_name: studentName || undefined,
     });
   };
 
@@ -470,6 +488,25 @@ function AddPaymentForm({
       </div>
 
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+        {multiChild && (
+          <div className="field" style={{ flex: 1, minWidth: 160 }}>
+            <label>Của con nào?</label>
+            <select
+              value={studentName}
+              onChange={(e) => {
+                setStudentName(e.target.value);
+                // QR: nội dung CK mặc định theo bé được chọn
+                if (e.target.value) setNameForTransfer(e.target.value);
+              }}
+            >
+              {children.map((c, i) => (
+                <option key={i} value={i === 0 ? "" : c.name}>
+                  {c.name}{i === 0 ? " (mặc định)" : ""}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
         {method !== "installment" && (
           <div className="field" style={{ flex: 1, minWidth: 180 }}>
             <label>Số tiền lần này <span style={{ color: "var(--danger)" }}>*</span></label>
@@ -596,6 +633,8 @@ interface DraftPr {
   uid: string;
   name: string;
   childName: string;
+  /** Multi-con: bé thứ 2 trở đi (bé 1 = childName/uid của PR) */
+  extraChildren: { name: string; uid: string }[];
   country: string;
   phone: string;
   email: string;
@@ -1652,6 +1691,7 @@ export default function PaymentRequestDetailDrawer({
       uid: request.uid,
       name: request.name,
       childName: request.childName || "",
+      extraChildren: (request.children ?? []).slice(1).map((c) => ({ name: c.name, uid: c.uid ?? "" })),
       country: request.country || "VN",
       phone: request.phone,
       email: request.email || "",
@@ -1806,6 +1846,7 @@ export default function PaymentRequestDetailDrawer({
                       uid: request.uid,
                       name: request.name,
                       childName: request.childName || "",
+                      extraChildren: (request.children ?? []).slice(1).map((c) => ({ name: c.name, uid: c.uid ?? "" })),
                       country: request.country || "VN",
                       phone: request.phone,
                       email: request.email || "",
@@ -1855,11 +1896,28 @@ export default function PaymentRequestDetailDrawer({
                       const foreignCountryName = draft.isForeign
                         ? (COUNTRIES.find((c) => c.code === draft.foreignCountry)?.name ?? draft.foreignCountry)
                         : "";
+                      // Multi-con: gửi children khi PR đang/từng có bé phụ (mảng 1 phần tử = xoá hết bé phụ)
+                      const wasMulti = (request.children?.length ?? 0) > 1;
+                      const nextChildren = draft.extraChildren.length > 0 || wasMulti
+                        ? [
+                            { name: draft.childName.trim(), uid: draft.uid.trim() || null },
+                            ...draft.extraChildren.map((c) => ({ name: c.name.trim(), uid: c.uid.trim() || null })),
+                          ]
+                        : undefined;
+                      if (nextChildren) {
+                        const names = nextChildren.map((c) => c.name).filter(Boolean);
+                        if (names.length !== nextChildren.length || new Set(names).size !== names.length) {
+                          alert("Có bé phụ → phải điền tên bé 1 + tên từng bé, không trùng nhau.");
+                          setSavingEdit(false);
+                          return;
+                        }
+                      }
                       const ok = await onUpdatePr({
                         ...request,
                         uid: draft.uid,
                         name: draft.name,
                         childName: draft.childName || undefined,
+                        ...(nextChildren ? { children: nextChildren } : {}),
                         country: draft.country,
                         phone: draft.phone,
                         email: draft.email,
@@ -1917,10 +1975,16 @@ export default function PaymentRequestDetailDrawer({
                   <div className="info-label">Tên khách hàng</div>
                   <div className="info-value">{request.name}</div>
                 </div>
-                {request.childName && (
+                {(request.childName || (request.children?.length ?? 0) >= 2) && (
                   <div className="info-cell">
-                    <div className="info-label">Tên con (học viên)</div>
-                    <div className="info-value">{request.childName}</div>
+                    <div className="info-label">
+                      {(request.children?.length ?? 0) >= 2 ? `Các con (${request.children!.length} bé)` : "Tên con (học viên)"}
+                    </div>
+                    <div className="info-value">
+                      {(request.children?.length ?? 0) >= 2
+                        ? request.children!.map((c) => c.name).filter(Boolean).join(", ")
+                        : request.childName}
+                    </div>
                   </div>
                 )}
                 <div className="info-cell">
@@ -2045,7 +2109,7 @@ export default function PaymentRequestDetailDrawer({
                   />
                 </div>
                 <div className="info-cell">
-                  <div className="info-label">Tên con (học viên)</div>
+                  <div className="info-label">Tên con (học viên){draft.extraChildren.length > 0 ? " — bé 1" : ""}</div>
                   <input
                     value={draft.childName}
                     onChange={(e) => setDraft({ ...draft, childName: e.target.value })}
@@ -2058,6 +2122,52 @@ export default function PaymentRequestDetailDrawer({
                       fontSize: 13,
                     }}
                   />
+                  {draft.extraChildren.map((c, i) => {
+                    // Bé đã có lần thanh toán gắn tên → không cho xoá (đổi tên OK, tự lan sang line)
+                    const hasLines = (request.payments ?? []).some(
+                      (p) => !p.cancelled && (p.studentName || "") === c.name && c.name !== ""
+                    );
+                    return (
+                      <div key={i} style={{ display: "flex", gap: 6, marginTop: 6 }}>
+                        <input
+                          value={c.name}
+                          placeholder={`Tên bé ${i + 2} *`}
+                          onChange={(e) => setDraft({
+                            ...draft,
+                            extraChildren: draft.extraChildren.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)),
+                          })}
+                          style={{ flex: 1, border: "1px solid var(--border)", borderRadius: 8, padding: "8px 10px", font: "inherit", fontSize: 13 }}
+                        />
+                        <input
+                          value={c.uid}
+                          placeholder="UID bé (nếu có)"
+                          onChange={(e) => setDraft({
+                            ...draft,
+                            extraChildren: draft.extraChildren.map((x, j) => (j === i ? { ...x, uid: e.target.value } : x)),
+                          })}
+                          style={{ width: 110, border: "1px solid var(--border)", borderRadius: 8, padding: "8px 10px", font: "inherit", fontFamily: "JetBrains Mono, monospace", fontSize: 12.5 }}
+                        />
+                        <button
+                          type="button"
+                          className="btn btn-ghost btn-sm"
+                          disabled={hasLines}
+                          title={hasLines ? "Bé đã có lần thanh toán — không thể xoá" : "Xoá bé này"}
+                          style={hasLines ? { opacity: 0.4, cursor: "not-allowed" } : undefined}
+                          onClick={() => setDraft({ ...draft, extraChildren: draft.extraChildren.filter((_, j) => j !== i) })}
+                        >
+                          <Icons.Close size={13} />
+                        </button>
+                      </div>
+                    );
+                  })}
+                  <button
+                    type="button"
+                    className="btn btn-outline btn-sm"
+                    style={{ marginTop: 6 }}
+                    onClick={() => setDraft({ ...draft, extraChildren: [...draft.extraChildren, { name: "", uid: "" }] })}
+                  >
+                    <Icons.Plus size={12} /> Thêm con
+                  </button>
                 </div>
                 <div className="info-cell">
                   <div className="info-label">Số điện thoại</div>
@@ -2343,6 +2453,11 @@ export default function PaymentRequestDetailDrawer({
                   contentDismissed={dismissedStaleLineIds.has(qr.id)}
                   onRefreshContent={readOnly ? undefined : onRefreshLineContent}
                   onDismissStaleWarning={handleDismissStale}
+                  studentBadge={
+                    (request.children?.length ?? 0) >= 2
+                      ? qr.studentName || request.children![0]?.name || undefined
+                      : undefined
+                  }
                 />
               ))}
             </div>

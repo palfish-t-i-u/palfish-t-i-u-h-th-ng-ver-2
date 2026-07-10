@@ -99,6 +99,7 @@ export function fromApiAttempt(raw: any, idx = 0): PaymentAttempt {
     confirmedSource: raw.confirmed_source ?? raw.confirmedSource ?? null,
     nameForTransfer: raw.name_for_transfer ?? raw.nameForTransfer ?? null,
     isContentStale: Boolean(raw.is_content_stale ?? raw.isContentStale ?? false),
+    studentName: raw.student_name ?? raw.studentName ?? null,
   };
 }
 
@@ -109,6 +110,13 @@ export function fromApiPaymentRequest(raw: any): PaymentRequest {
     id: raw.id ?? "",
     name: raw.name ?? "",
     childName: raw.child_name ?? raw.childName ?? undefined,
+    // Multi-con: BE trả children = [bé 1 + bé phụ]; response cũ không có → undefined
+    children: Array.isArray(raw.children)
+      ? raw.children
+          .filter((c: unknown): c is { name: string; uid?: string | null } =>
+            !!c && typeof c === "object" && typeof (c as { name?: unknown }).name === "string")
+          .map((c: { name: string; uid?: string | null }) => ({ name: c.name, uid: c.uid ?? null }))
+      : undefined,
     uid: raw.uid ?? "",
     phone: raw.phone ?? "",
     country: raw.country ?? "VN",
@@ -244,6 +252,7 @@ export function fromApiActiveRequest(raw: ActiveRequestApiRow): ActiveRequest {
     createdBy: "",
     uids: (raw.uids_data ?? []).map((u) => ({
       uid: u.uid ?? "",
+      ...(u.name ? { name: u.name } : {}),
       phone: u.phone ?? "",
       country: u.country ?? "VN",
       courses: (u.courses ?? []).map((c) => ({
@@ -410,6 +419,7 @@ export function updateActiveCoursePackage(
 export function toActiveRequestPatchUidsData(ar: ActiveRequest): ActiveRequestPatchUidPayload[] {
   return ar.uids.map((u) => ({
     uid: u.uid,
+    ...(u.name ? { name: u.name } : {}),
     phone: u.phone,
     country: u.country,
     courses: u.courses.map((c) => ({
