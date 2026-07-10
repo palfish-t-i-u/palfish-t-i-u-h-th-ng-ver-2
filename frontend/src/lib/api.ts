@@ -533,7 +533,7 @@ export const endpoints = {
   cardRecon: {
     list: (params?: { source?: GatewaySource; status?: string; q?: string; from?: string; to?: string }) =>
       api.get<GatewayTxn[]>("/api/v1/gateway-txns", { params }),
-    matchCandidates: (txnId: string, params?: { search?: string; amount?: number; include_all?: boolean }) =>
+    matchCandidates: (txnId: string, params?: { search?: string; amount?: number; include_all?: boolean; match_amount?: boolean }) =>
       api.get<MatchCandidate[]>(`/api/v1/gateway-txns/${txnId}/match-candidates`, { params }),
     match: (txnId: string, paymentLineId: string) =>
       api.patch<GatewayTxn>(`/api/v1/gateway-txns/${txnId}/match`, { payment_line_id: paymentLineId }),

@@ -2,7 +2,7 @@ import type { CSSProperties } from "react";
 import type { ActiveCourse, ActiveRequest, ActiveRequestApiRow, ActiveRequestPatchUidPayload, ArDraftRow, CreateActiveRequestPayload, CreateActiveRequestUidPayload, PaymentAttempt, PaymentMethod, PaymentRequest, PaymentRequestStatus } from "../../types/paymentRequest";
 
 export type RequestBucket = "tracking" | "created" | "cancelled";
-export type StatusFilter = "all" | "pending" | "short" | "done" | "over" | "unmatched_card";
+export type StatusFilter = "all" | "pending" | "short" | "done" | "over";
 
 export const METHOD_LABEL: Record<PaymentMethod, string> = {
   qr: "Chuyển khoản",
@@ -684,17 +684,6 @@ export function displayReceived(pr: PaymentRequest): number {
 export function hasUnverifiedInstallment(pr: PaymentRequest): boolean {
   return pr.payments.some(
     (p) => p.status === "paid" && p.method === "installment" && p.verifiedReceived == null,
-  );
-}
-
-/** True khi PR còn ≥1 lần quẹt thẻ/trả góp CHƯA ghép giao dịch (chưa xác nhận tiền về),
- *  bất kể PR đang Đủ/Thiếu/Thừa tiền — bộ lọc cho kế toán tìm PR cần ghép. */
-export function hasUnmatchedCardLine(pr: PaymentRequest): boolean {
-  return pr.payments.some(
-    (p) =>
-      !p.cancelled &&
-      (p.method === "card" || p.method === "installment") &&
-      p.status === "pending",
   );
 }
 

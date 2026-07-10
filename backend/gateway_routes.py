@@ -337,6 +337,7 @@ def register_gateway_routes(app, get_supabase: Callable[[], Any]) -> None:
         search: str | None = Query(None),
         amount: float | None = Query(None),
         include_all: bool = Query(False),
+        match_amount: bool = Query(True),
         authorization: str | None = Header(None),
     ):
         sb = _sb_or_503(get_supabase)
@@ -369,6 +370,15 @@ def register_gateway_routes(app, get_supabase: Callable[[], Any]) -> None:
             if not pr_ids:
                 return []
             line_res = sb.table("payment_lines").select("*").in_("payment_request_id", pr_ids).limit(100).execute()
+            lines = line_res.data or []
+        elif not match_amount:
+            # Bỏ tick "Khớp tiền" → KHÔNG ràng buộc số tiền: liệt kê mọi lần TT thẻ/trả góp.
+            # Lọc method + status ngay tại DB để giảm tải (bảng payment_lines lớn dần).
+            # Giới hạn 200 dòng gần nhất — kế toán ghép GD gần, dòng cũ hơn hiếm khi cần.
+            q = sb.table("payment_lines").select("*").in_("method", ["card", "installment"])
+            if not include_all:
+                q = q.eq("status", "pending")
+            line_res = q.order("created_at", desc=True).limit(200).execute()
             lines = line_res.data or []
         else:
             # payment_lines.amount là bigint → cast int để tránh postgrest gửi "10080000.0" (22P02).
