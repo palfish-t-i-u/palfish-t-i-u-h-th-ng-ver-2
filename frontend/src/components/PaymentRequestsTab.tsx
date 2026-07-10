@@ -34,6 +34,7 @@ import {
   deriveTvtsOptions,
   fromApiAttempt,
   fromApiPaymentRequest,
+  hasUnmatchedCardLine,
   isBackendLineId,
   normalizeRequest,
   nowStamp,
@@ -160,7 +161,14 @@ export default function PaymentRequestsTab() {
         if (r.state === "cancelled") return false;
         if (tab === "created" && !arByPrId[r.id]) return false;
       }
-      if (tab !== "cancelled" && status !== "all" && r.state !== status) return false;
+      if (tab !== "cancelled" && status !== "all") {
+        // "unmatched_card" lọc theo LINE (thẻ/trả góp chưa ghép) — độc lập trạng thái tiền của PR
+        if (status === "unmatched_card") {
+          if (!hasUnmatchedCardLine(r)) return false;
+        } else if (r.state !== status) {
+          return false;
+        }
+      }
       if (!inDateRange(r.createdAt, dateRange)) return false;
       if (!q) return true;
       return [r.id, r.name, r.uid, r.phone].some((v) => v.toLowerCase().includes(q));
@@ -200,6 +208,12 @@ export default function PaymentRequestsTab() {
         label: "Thừa",
         count: trackingRequests.filter((r) => r.state === "over").length,
         color: "var(--warning)",
+      },
+      {
+        id: "unmatched_card" as StatusFilter,
+        label: "Chưa ghép thẻ/TG",
+        count: trackingRequests.filter(hasUnmatchedCardLine).length,
+        color: "var(--primary)",
       },
     ],
     [trackingRequests]

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { ActiveRequest, ActiveRequestApiRow, PaymentRequest } from "../../types/paymentRequest";
+import type { ActiveRequest, ActiveRequestApiRow, PaymentAttempt, PaymentRequest } from "../../types/paymentRequest";
 import {
   activationSummary,
   activeRequestAllocation,
@@ -8,6 +8,7 @@ import {
   fromApiActiveRequest,
   getArReferralStatus,
   getReferralStatus,
+  hasUnmatchedCardLine,
   pageItems,
   paginate,
   toActiveRequestPatchUidsData,
@@ -760,5 +761,56 @@ describe("getArReferralStatus", () => {
       ],
     }] };
     expect(getArReferralStatus(ar)).toBe("partial");
+  });
+});
+
+// ─── Bộ lọc "Chưa ghép thẻ/TG" (10/7) ────────────────────────────────────
+describe("hasUnmatchedCardLine", () => {
+  const line = (overrides: Partial<PaymentAttempt>): PaymentAttempt => ({
+    id: "l1",
+    idx: 1,
+    amount: 1_000_000,
+    status: "pending",
+    createdAt: "2026-07-01T00:00:00Z",
+    code: "ABCDE",
+    bill: false,
+    method: "card",
+    ...overrides,
+  });
+  const pr = (payments: PaymentAttempt[]): PaymentRequest =>
+    ({ id: "PR-X", payments } as PaymentRequest);
+
+  it("true khi có lần quẹt thẻ đang pending (chưa ghép)", () => {
+    expect(hasUnmatchedCardLine(pr([line({ method: "card" })]))).toBe(true);
+  });
+
+  it("true khi có lần trả góp đang pending — dù PR đã đủ tiền từ line khác", () => {
+    expect(
+      hasUnmatchedCardLine(
+        pr([
+          line({ id: "qr1", method: "qr", status: "paid" }),
+          line({ id: "inst1", method: "installment", status: "pending" }),
+        ])
+      )
+    ).toBe(true);
+  });
+
+  it("false khi line thẻ đã xác nhận (đã ghép)", () => {
+    expect(hasUnmatchedCardLine(pr([line({ status: "paid" })]))).toBe(false);
+  });
+
+  it("false khi line thẻ đã huỷ / bị từ chối", () => {
+    expect(hasUnmatchedCardLine(pr([line({ status: "rejected", cancelled: true })]))).toBe(false);
+    expect(hasUnmatchedCardLine(pr([line({ status: "rejected" })]))).toBe(false);
+  });
+
+  it("false khi chỉ có QR/tiền mặt pending (không phải thẻ/trả góp)", () => {
+    expect(
+      hasUnmatchedCardLine(pr([line({ method: "qr" }), line({ id: "l2", method: "cash" })]))
+    ).toBe(false);
+  });
+
+  it("false khi không có lần thanh toán nào", () => {
+    expect(hasUnmatchedCardLine(pr([]))).toBe(false);
   });
 });

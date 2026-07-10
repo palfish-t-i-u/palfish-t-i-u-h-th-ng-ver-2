@@ -8,6 +8,8 @@ const ACTION_LABELS: Record<string, string> = {
   "recon.line_status_changed": "Đổi trạng thái thanh toán",
   "recon.amount_changed": "Sửa số tiền",
   "recon.bank_txn_matched": "Ghép giao dịch ngân hàng",
+  "payment_line.bill_uploaded": "Up ảnh bill",
+  "payment_line.bill_deleted": "Xoá ảnh bill",
   "pr.cancelled": "Huỷ PR",
   "activation.order_id_set": "Gắn Order ID",
   "activation.order_id_cleared": "Xoá Order ID",
@@ -50,6 +52,9 @@ function detailText(entry: AuditLogEntry): string {
   if (p.order_id) parts.push(`Order ID: ${p.order_id}`);
   if (p.old_order_id) parts.push(`cũ: ${p.old_order_id}`);
   if (p.side) parts.push(`bên: ${p.side}`);
+  if (p.filename) parts.push(String(p.filename));
+  if (p.mode === "all") parts.push("xoá tất cả");
+  if (p.remaining_count !== undefined) parts.push(`còn lại: ${p.remaining_count} ảnh`);
   return parts.join(" · ");
 }
 

@@ -2362,6 +2362,13 @@ def register_payment_request_routes(app, _get_supabase) -> None:
         except Exception as exc:
             raise HTTPException(500, f"Lỗi lưu trữ bill atomic: {exc}") from exc
 
+        # 10/7: ghi vết thời gian up bill — phục vụ đối soát / truy vết bug
+        log_audit(sb, actor.email, "payment_line.bill_uploaded", "payment_line", line_id, {
+            "pr_id": pr_id,
+            "bill_url": public_url,
+            "filename": file.filename or "",
+        })
+
         _invalidate_bill_storage_cache()
         
         # Read the newly saved line state
@@ -2423,6 +2430,14 @@ def register_payment_request_routes(app, _get_supabase) -> None:
             _persist_bill_image(sb, line_id, next_bill_url)
         except Exception as exc:
             raise HTTPException(500, f"Loi cap nhat bill_image sau khi xoa: {exc}") from exc
+
+        # 10/7: ghi vết thời gian xoá bill — phục vụ đối soát / truy vết bug
+        log_audit(sb, actor.email, "payment_line.bill_deleted", "payment_line", line_id, {
+            "pr_id": pr_id,
+            "mode": "latest",
+            "deleted_url": latest.get("url") or "",
+            "remaining_count": len(next_assets),
+        })
 
         merged_line = {**line, "bill_image": next_bill_url}
         return {
@@ -2533,6 +2548,21 @@ def register_payment_request_routes(app, _get_supabase) -> None:
             sb.table("payment_lines").update(patch).eq("id", line_id).execute()
         except Exception as exc:
             raise HTTPException(500, f"Loi cap nhat database sau khi xoa: {exc}") from exc
+
+        # 10/7: ghi vết thời gian xoá bill — phục vụ đối soát / truy vết bug
+        delete_mode = (
+            "all" if body.delete_all
+            else "index" if body.index is not None
+            else "url" if (body.bill_url or "").strip()
+            else "latest"
+        )
+        log_audit(sb, actor.email, "payment_line.bill_deleted", "payment_line", line_id, {
+            "pr_id": pr_id,
+            "mode": delete_mode,
+            "deleted_url": url_to_remove or None,
+            "deleted_count": len(paths_to_remove) if body.delete_all else 1,
+            "remaining_count": len(bill_images) if bill_images else len(next_assets),
+        })
 
         # Read the newly saved line state
         try:

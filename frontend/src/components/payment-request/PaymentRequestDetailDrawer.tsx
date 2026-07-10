@@ -413,9 +413,9 @@ function AddPaymentForm({
       setValidationError("Vui lòng nhập tên người thu tiền mặt");
       return;
     }
-    // Bug 1B-06: card — bắt buộc 4 số cuối thẻ (đủ 4 chữ số)
-    if (method === "card" && cardLast4.length !== 4) {
-      setValidationError("Vui lòng nhập đủ 4 số cuối thẻ");
+    // 10/7: 4 số cuối thẻ KHÔNG bắt buộc nữa — nhưng nếu đã nhập thì phải đủ 4 chữ số
+    if (method === "card" && cardLast4.length > 0 && cardLast4.length !== 4) {
+      setValidationError("4 số cuối thẻ nếu điền phải đủ 4 chữ số");
       return;
     }
     setValidationError("");
@@ -423,7 +423,7 @@ function AddPaymentForm({
       amount: n,
       method,
       bank: method === "qr" || method === "card" ? bank : undefined,
-      cardLast4: method === "card" ? cardLast4 : undefined,
+      cardLast4: method === "card" && cardLast4.length === 4 ? cardLast4 : undefined,
       installment_platform: method === "installment" ? installmentPlatform : undefined,
       installment_total: method === "installment" ? (parseInt(installmentTotal.replace(/\D/g, ""), 10) || undefined) : undefined,
       cashier: method === "cash" ? cashier : undefined,
@@ -510,7 +510,7 @@ function AddPaymentForm({
         )}
         {method === "card" && (
           <div className="field" style={{ flex: 1, minWidth: 180 }}>
-            <label>4 số cuối thẻ</label>
+            <label>4 số cuối thẻ <span style={{ color: "var(--text-3)", fontWeight: 400 }}>(không bắt buộc)</span></label>
             <input
               value={cardLast4}
               onChange={(e) => setCardLast4(e.target.value.replace(/\D/g, "").slice(0, 4))}
@@ -1573,7 +1573,7 @@ export default function PaymentRequestDetailDrawer({
   const [arPackageName, setArPackageName] = useState("");
   // bill guard — chặn tạo AR khi còn line paid thiếu ảnh bill
   const [missingBillsPopupOpen, setMissingBillsPopupOpen] = useState(false);
-  const [missingBillLines, setMissingBillLines] = useState<{ line_id: string; amount: number }[]>([]);
+  const [missingBillLines, setMissingBillLines] = useState<{ line_id: string; idx: number; amount: number }[]>([]);
 
   useEffect(() => {
     setShowAdd(false);
@@ -2491,7 +2491,7 @@ export default function PaymentRequestDetailDrawer({
               onClick={() => {
                 const missingLines = findPaidLinesWithoutBill(request.payments ?? []);
                 if (missingLines.length > 0) {
-                  setMissingBillLines(missingLines.map((l) => ({ line_id: l.id, amount: l.amount ?? 0 })));
+                  setMissingBillLines(missingLines.map((l) => ({ line_id: l.id, idx: l.idx, amount: l.amount ?? 0 })));
                   setMissingBillsPopupOpen(true);
                   return;
                 }
@@ -2578,9 +2578,10 @@ export default function PaymentRequestDetailDrawer({
             </div>
             <div className="modal-body">
               <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: 8 }}>
-                {missingBillLines.map((l, i) => (
+                {missingBillLines.map((l) => (
                   <li key={l.line_id} style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", borderBottom: "1px solid var(--border)" }}>
-                    <span style={{ color: "var(--text-2)" }}>Lần #{i + 1}</span>
+                    {/* idx = số thứ tự thật của lần TT (BE đánh, tính cả lần đã huỷ) — không dùng index mảng đã lọc */}
+                    <span style={{ color: "var(--text-2)" }}>Lần #{l.idx}</span>
                     <span style={{ fontWeight: 600 }}>{l.amount.toLocaleString("vi-VN")} đ</span>
                   </li>
                 ))}
