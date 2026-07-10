@@ -92,3 +92,26 @@ def test_list_payment_requests_does_not_list_storage(monkeypatch):
     payment = res.json()["requests"][0]["payments"][0]
     assert payment["bill"] is True
     assert payment["bill_image"] == "https://x/bill.jpg"
+
+
+def test_single_line_cache_refresh_preserves_other_lines(monkeypatch):
+    """force_refresh 1 line KHÔNG được xoá cache của line khác."""
+    import payment_request_routes as prr
+
+    prr._bill_assets_cache["assets_by_line"] = {
+        "OTHER": [{"url": "u-other", "path": "payment-lines/OTHER/bill.jpg"}]
+    }
+    prr._bill_assets_cache["expires_at"] = 0.0
+
+    # Ép fast-path (storage.objects) "fail" như prod → đi fallback per-line.
+    monkeypatch.setattr(prr, "_build_bill_assets_from_storage_objects", lambda sb: {})
+    monkeypatch.setattr(
+        prr, "_build_bill_assets_from_storage_fallback",
+        lambda sb, wanted: {"L1": [{"url": "u-l1", "path": "payment-lines/L1/bill.jpg"}]},
+    )
+
+    out = prr._fetch_bill_assets_fast(MagicMock(), ["L1"], force_refresh=True)
+
+    assert out["L1"][0]["url"] == "u-l1"
+    # Line OTHER phải còn trong cache sau refresh 1-line.
+    assert prr._bill_assets_cache["assets_by_line"].get("OTHER"), "cache bị xoá line khác"

@@ -550,7 +550,13 @@ def _fetch_bill_assets_fast(
 
     fallback = _build_bill_assets_from_storage_fallback(sb, wanted)
     if fallback:
-        _bill_assets_cache["assets_by_line"] = dict(fallback)
+        existing = _bill_assets_cache.get("assets_by_line")
+        if not isinstance(existing, dict):
+            existing = {}
+        # Merge: fallback là kết quả từng-line (thường 1 line), KHÔNG được xoá
+        # các line khác đang cache — nếu không route drawer/download báo nhầm
+        # "không có bill" cho line kế tiếp (bug mất bill 2026-07-10).
+        _bill_assets_cache["assets_by_line"] = {**existing, **fallback}
         _bill_assets_cache["expires_at"] = now + _BILL_STORAGE_CACHE_TTL_SECONDS
     return fallback
 
