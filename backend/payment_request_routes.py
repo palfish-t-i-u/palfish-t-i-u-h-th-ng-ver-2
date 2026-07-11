@@ -779,6 +779,11 @@ def _group_lines_by_request(lines: list[dict[str, Any]]) -> dict[str, list[dict[
     return grouped
 
 
+def _chunked(items: list, size: int) -> list[list]:
+    """Chia list thành lô — in_() với >100 uuid làm query string phình ~19KB, dễ vượt giới hạn proxy."""
+    return [items[i : i + size] for i in range(0, len(items), size)]
+
+
 def _sale_name_map(sb) -> dict[str, str]:
     """Map email (lower) -> ten TVTS (display_name/crm_name) tu nhan_su_sale."""
     try:
@@ -1639,7 +1644,7 @@ def register_payment_request_routes(app, _get_supabase) -> None:
     ):
         sb = _sb_or_503(get_supabase)
         actor = resolve_actor(sb, authorization)
-        query = sb.table("payment_requests").select("*")
+        query = sb.table("payment_requests").select("*", count="exact")
         allowed_emails = visible_creator_emails(sb, actor)
         if allowed_emails is not None:
             query = query.in_("sale_email", allowed_emails)
@@ -1663,36 +1668,42 @@ def register_payment_request_routes(app, _get_supabase) -> None:
             raise HTTPException(500, f"Khong doc duoc payment_requests: {exc}") from exc
 
         pr_rows = pr_res.data or []
+        total = pr_res.count if pr_res.count is not None else len(pr_rows)
         if not pr_rows:
-            return {"requests": []}
+            return {"requests": [], "total": total}
 
         pr_ids = [str(row.get("id") or "") for row in pr_rows if row.get("id")]
         lines_by_pr: dict[str, list[dict[str, Any]]] = {pr_id: [] for pr_id in pr_ids}
         if pr_ids:
             try:
-                line_res = (
-                    sb.table("payment_lines")
-                    .select("*")
-                    .in_("payment_request_id", pr_ids)
-                    .execute()
-                )
-                lines_by_pr = _group_lines_by_request(line_res.data or [])
+                all_line_rows: list[dict[str, Any]] = []
+                for chunk in _chunked(pr_ids, 100):
+                    line_res = (
+                        sb.table("payment_lines")
+                        .select("*")
+                        .in_("payment_request_id", chunk)
+                        .execute()
+                    )
+                    all_line_rows.extend(line_res.data or [])
+                grouped = _group_lines_by_request(all_line_rows)
+                lines_by_pr.update(grouped)
             except Exception as exc:
                 raise HTTPException(500, f"Khong doc duoc payment_lines: {exc}") from exc
 
         ars_by_pr: dict[str, list[dict[str, Any]]] = {pr_id: [] for pr_id in pr_ids}
         if pr_ids:
             try:
-                ar_res = (
-                    sb.table("active_requests")
-                    .select("pr_id, uids_data")
-                    .in_("pr_id", pr_ids)
-                    .execute()
-                )
-                for ar in (ar_res.data or []):
-                    pid = str(ar.get("pr_id") or "")
-                    if pid in ars_by_pr:
-                        ars_by_pr[pid].append(ar)
+                for chunk in _chunked(pr_ids, 100):
+                    ar_res = (
+                        sb.table("active_requests")
+                        .select("pr_id, uids_data")
+                        .in_("pr_id", chunk)
+                        .execute()
+                    )
+                    for ar in (ar_res.data or []):
+                        pid = str(ar.get("pr_id") or "")
+                        if pid in ars_by_pr:
+                            ars_by_pr[pid].append(ar)
             except Exception as exc:
                 print(f"Khong doc duoc active_requests for PR referral_status: {exc}")
 
@@ -1723,7 +1734,7 @@ def register_payment_request_routes(app, _get_supabase) -> None:
             email = str(item.get("sale_email") or "").strip().lower()
             item["sale_name"] = name_map.get(email, "")
 
-        return {"requests": requests}
+        return {"requests": requests, "total": total}
 
     @router.patch("/payment-requests/{payment_request_id}")
     def patch_payment_request(
