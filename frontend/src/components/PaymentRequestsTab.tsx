@@ -153,7 +153,8 @@ export default function PaymentRequestsTab() {
   );
 
   const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
+    const norm = (s: string) => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+    const q = norm(search.trim());
     return tvtsFiltered.filter((r) => {
       if (tab === "cancelled") {
         if (r.state !== "cancelled") return false;
@@ -164,7 +165,7 @@ export default function PaymentRequestsTab() {
       if (tab !== "cancelled" && status !== "all" && r.state !== status) return false;
       if (!inDateRange(r.createdAt, dateRange)) return false;
       if (!q) return true;
-      return [r.id, r.name, r.uid, r.phone].some((v) => v.toLowerCase().includes(q));
+      return [r.id, r.name, r.uid, r.phone].some((v) => norm(v).includes(q));
     });
   }, [tvtsFiltered, tab, status, dateRange, search, arByPrId]);
 
