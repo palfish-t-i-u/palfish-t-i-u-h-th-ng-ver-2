@@ -14,6 +14,7 @@ import httpx
 from dotenv import load_dotenv
 from fastapi import FastAPI, File, Header, HTTPException, Query, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from pydantic import BaseModel
 
 from activation_routes import register_activation_routes
@@ -76,6 +77,7 @@ _origins = list(
     }
 )
 
+app.add_middleware(GZipMiddleware, minimum_size=1024)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_origins,
