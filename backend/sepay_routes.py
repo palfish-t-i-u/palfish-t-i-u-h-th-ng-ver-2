@@ -468,8 +468,15 @@ def register_sepay_routes(app, get_supabase: Callable) -> None:
             print(f"[sepay] webhook processed: sepay_id={result.get('sepay_id')}, "
                   f"status={result.get('status')}, skipped={result.get('skipped')}")
         except Exception as exc:
-            # Log lỗi nhưng VẪN trả 200 để SePay không retry vô hạn
-            print(f"[sepay] webhook processing error: {exc}")
+            err_msg = str(exc).lower()
+            is_transient = any(kw in err_msg for kw in (
+                "connectionterminated", "connection", "timeout",
+                "timed out", "too many", "rate limit", "503", "502",
+            ))
+            if is_transient:
+                print(f"[sepay] webhook TRANSIENT error (trả 500 để SePay retry): {exc}")
+                raise HTTPException(500, "Transient DB error — please retry")
+            print(f"[sepay] webhook processing error (permanent, trả 200): {exc}")
 
         # Response PHẢI đúng format theo spec SePay
         return {"success": True}
