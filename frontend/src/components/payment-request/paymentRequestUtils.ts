@@ -543,6 +543,24 @@ export function parsePaymentDate(dateStr: string): Date | null {
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
+const PENDING_QR_POLL_WINDOW_DAYS = 30;
+
+/**
+ * Gate bật poll 30s chờ SePay webhook. Chỉ xét PR tạo trong 30 ngày —
+ * QR pending bỏ quên ở PR cũ sẽ giữ poll chạy vĩnh viễn cho mọi user
+ * (GĐ1 load-all nạp cả PR cũ nên rủi ro này thành hiện thực).
+ * PR cũ có khách CK thật vẫn được realtime subscription (payment_lines) bắt.
+ */
+export function hasPendingQrPayments(requests: PaymentRequest[], now: Date = new Date()): boolean {
+  const cutoff = now.getTime() - PENDING_QR_POLL_WINDOW_DAYS * 24 * 60 * 60 * 1000;
+  return requests.some((pr) => {
+    if (pr.state === "cancelled") return false;
+    const created = parsePaymentDate(pr.createdAt);
+    if (created && created.getTime() < cutoff) return false;
+    return pr.payments.some((p) => !p.cancelled && p.method === "qr" && p.status === "pending");
+  });
+}
+
 const VN_TZ = "Asia/Ho_Chi_Minh";
 
 /** Display parts for table cells — always in Vietnam timezone (UTC+7). */
