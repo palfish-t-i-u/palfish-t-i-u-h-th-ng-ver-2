@@ -195,6 +195,7 @@ export interface ActiveRequest {
 export interface PaymentRequestsListResponse {
   requests: PaymentRequest[];
   activeRequests: ActiveRequest[];
+  total?: number;
 }
 
 export type AddPaymentAttemptPayload = {

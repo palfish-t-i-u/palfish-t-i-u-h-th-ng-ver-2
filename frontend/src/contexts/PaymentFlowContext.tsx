@@ -11,6 +11,11 @@ import {
 } from "react";
 import { endpoints } from "../lib/api";
 import { notifyLedgerChanged } from "../lib/ledgerEvents";
+import {
+  fetchAllPaymentRequests,
+  PR_TOTAL_WARN_THRESHOLD,
+  type RawPrRow,
+} from "../lib/fetchAllPaymentRequests";
 import { useRefetchOnFocus } from "../hooks/useRefetchOnFocus";
 import { useRealtimeTable } from "../hooks/useRealtimeTable";
 import type {
@@ -28,6 +33,7 @@ import {
   createLocalActiveRequestFromForm,
   fromApiActiveRequest,
   fromApiPaymentRequest,
+  hasPendingQrPayments,
   isBackendLineId,
   mergeAddPaymentLineResponse,
   normalizeRequest,
@@ -108,12 +114,6 @@ const PaymentFlowContext = createContext<PaymentFlowContextValue | null>(null);
 
 const POLL_MS = 30_000;
 
-function hasPendingQrPayments(requests: PaymentRequest[]) {
-  return requests.some((pr) =>
-    pr.state !== "cancelled" &&
-    pr.payments.some((p) => !p.cancelled && p.method === "qr" && p.status === "pending")
-  );
-}
 
 export function PaymentFlowProvider({
   children,
@@ -149,11 +149,20 @@ export function PaymentFlowProvider({
     let nextRequests: PaymentRequest[] = [];
     let prOk = false;
     try {
-      const response = await endpoints.paymentRequests.list();
-      nextRequests = (response.data.requests ?? []).map((r) =>
-        normalizeRequest(fromApiPaymentRequest(r))
-      );
+      const all = await fetchAllPaymentRequests(async (limit, offset) => {
+        const response = await endpoints.paymentRequests.list({ limit, offset });
+        return { requests: (response.data.requests ?? []) as unknown as RawPrRow[], total: response.data.total };
+      });
+      nextRequests = all.requests.map((r) => normalizeRequest(fromApiPaymentRequest(r)));
       prOk = true;
+      if (all.incomplete) {
+        notes.push("Danh sách PR tải chưa đủ — sẽ tự đồng bộ lại, hoặc bấm tải lại trang.");
+      }
+      if (all.total !== null && all.total > PR_TOTAL_WARN_THRESHOLD) {
+        console.warn(
+          `[pr-list] total=${all.total} vượt ${PR_TOTAL_WARN_THRESHOLD} — trigger GĐ2 (slim list), xem docs/superpowers/plans/2026-07-11-pr-list-slim-lazy-gd2.md`
+        );
+      }
     } catch {
       notes.push("GET /payment-requests chưa sẵn sàng.");
     }

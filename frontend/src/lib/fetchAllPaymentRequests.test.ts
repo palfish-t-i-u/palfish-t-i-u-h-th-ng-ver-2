@@ -37,7 +37,7 @@ describe("fetchAllPaymentRequests", () => {
 
   it("dedupe id trùng ở ranh trang (PR mới tạo giữa 2 lần fetch làm trang trượt)", async () => {
     const rows = Array.from({ length: 600 }, (_, i) => row(i));
-    const fetcher = vi.fn(async (limit: number, offset: number): Promise<PrListPage> => {
+    const fetcher = vi.fn(async (_limit: number, offset: number): Promise<PrListPage> => {
       if (offset === 0) return { requests: rows.slice(0, 500), total: 600 };
       // trang 2 lặp lại phần tử cuối trang 1 (trượt offset)
       return { requests: rows.slice(499, 600), total: 600 };
@@ -59,6 +59,7 @@ describe("fetchAllPaymentRequests", () => {
     const rows = Array.from({ length: 700 }, (_, i) => row(i));
     const fetcher = vi.fn(async (limit: number, offset: number): Promise<PrListPage> => ({
       requests: rows.slice(offset, offset + limit),
+      // total intentionally omitted — tests rollback-safe path
     }));
     const res = await fetchAllPaymentRequests(fetcher);
     expect(res.requests).toHaveLength(700);
@@ -80,7 +81,7 @@ describe("fetchAllPaymentRequests", () => {
   });
 
   it("trang lỗi 2 lần liên tiếp → throw (all-or-nothing, không hiển thị số thiếu)", async () => {
-    const fetcher = vi.fn(async (limit: number, offset: number): Promise<PrListPage> => {
+    const fetcher = vi.fn(async (_limit: number, offset: number): Promise<PrListPage> => {
       if (offset === 500) throw new Error("network");
       return { requests: Array.from({ length: 500 }, (_, i) => row(i)), total: 600 };
     });
