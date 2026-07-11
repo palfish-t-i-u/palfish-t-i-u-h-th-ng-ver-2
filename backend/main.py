@@ -1368,7 +1368,7 @@ async def _start_dingtalk_worker() -> None:
     import asyncio
 
     if os.getenv("DINGTALK_WORKER_ENABLED", "").strip().lower() != "true":
-        print("[dingtalk] outbox worker disabled — set DINGTALK_WORKER_ENABLED=true after DingTalk setup (dingtalk_outbox table + webhook groups)")
+        print("[dingtalk] outbox worker disabled — set DINGTALK_WORKER_ENABLED=true after DingTalk setup (dingtalk_outbox table + team groups)")
         return
 
     from dingtalk_outbox_worker import start_outbox_worker as start_dingtalk_outbox

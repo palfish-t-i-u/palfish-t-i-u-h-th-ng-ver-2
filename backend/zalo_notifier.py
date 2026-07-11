@@ -14,7 +14,7 @@ from typing import Any, Callable
 
 import httpx
 
-from env_utils import resolve_dingtalk_webhook_url
+from env_utils import dingtalk_outbound_enabled
 
 ZALO_GROUP_MESSAGE_URL = "https://openapi.zalo.me/v3.0/oa/group/message"
 ZALO_UPLOAD_IMAGE_URL = "https://openapi.zalo.me/v2.0/oa/upload/image"
@@ -467,20 +467,28 @@ async def run_daily_token_refresh_check(*, sb=None) -> bool:
 
 
 async def _send_refresh_failure_alert(error: Exception) -> None:
-    webhook_url = resolve_dingtalk_webhook_url()
-    if not webhook_url:
+    if not dingtalk_outbound_enabled():
         print(f"[zalo] token refresh alert muted: {error}")
         return
 
+    import os
+    alert_group = (os.getenv("DINGTALK_ALERT_CONVERSATION_ID") or "").strip()
+    if not alert_group:
+        print(f"[zalo] token refresh alert muted (no alert group): {error}")
+        return
+
+    from dingtalk_notifier import send_group_message
     content = (
         "[PalFish GMV] Zalo OA token refresh failed\n"
         f"error: {error}"
     )
-    payload = {"msgtype": "text", "text": {"content": content}}
     try:
-        async with httpx.AsyncClient(timeout=ALERT_TIMEOUT) as client:
-            resp = await client.post(webhook_url, json=payload)
-            resp.raise_for_status()
+        await asyncio.to_thread(
+            send_group_message,
+            open_conversation_id=alert_group,
+            message=content,
+            title="Zalo Token Alert",
+        )
     except Exception as alert_exc:
         print(f"[zalo] token refresh alert failed: {alert_exc}; original={error}")
 

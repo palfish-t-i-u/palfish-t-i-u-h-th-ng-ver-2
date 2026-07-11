@@ -68,17 +68,18 @@ async def test_poll_marks_sent_on_success():
         "id": 1,
         "team_code": "TEAM_A",
         "message": "hi",
+        "event_type": "activation_request_created",
         "retries": 0,
     }]
     sb = _SB(rows)
 
-    with patch("dingtalk_outbox_worker._load_team_credentials",
-               return_value=("https://oapi.dingtalk.com/robot/send?access_token=T", "SEC")):
-        with patch("dingtalk_outbox_worker.send_text_to_group", return_value="dt-1700"):
+    with patch("dingtalk_outbox_worker._load_team_group",
+               return_value="cid123"):
+        with patch("dingtalk_outbox_worker.send_group_message", return_value="pqk-abc"):
             await poll_and_send(lambda: sb)
 
     sent_call = next(c for c in sb._table.updater.calls if c["payload"].get("sent_at"))
-    assert sent_call["payload"]["dingtalk_message_id"] == "dt-1700"
+    assert sent_call["payload"]["dingtalk_message_id"] == "pqk-abc"
     assert sent_call["payload"]["last_error"] is None
 
 
@@ -90,13 +91,14 @@ async def test_poll_schedules_retry_on_failure():
         "id": 5,
         "team_code": "TEAM_A",
         "message": "hi",
+        "event_type": "activation_request_created",
         "retries": 0,
     }]
     sb = _SB(rows)
 
-    with patch("dingtalk_outbox_worker._load_team_credentials",
-               return_value=("https://oapi.dingtalk.com/robot/send?access_token=T", "SEC")):
-        with patch("dingtalk_outbox_worker.send_text_to_group",
+    with patch("dingtalk_outbox_worker._load_team_group",
+               return_value="cid123"):
+        with patch("dingtalk_outbox_worker.send_group_message",
                    side_effect=RuntimeError("network")):
             await poll_and_send(lambda: sb)
 
@@ -114,13 +116,14 @@ async def test_poll_dead_letters_after_max_retries():
         "id": 9,
         "team_code": "TEAM_A",
         "message": "hi",
+        "event_type": "course_activated",
         "retries": MAX_RETRIES - 1,
     }]
     sb = _SB(rows)
 
-    with patch("dingtalk_outbox_worker._load_team_credentials",
-               return_value=("https://oapi.dingtalk.com/robot/send?access_token=T", "SEC")):
-        with patch("dingtalk_outbox_worker.send_text_to_group",
+    with patch("dingtalk_outbox_worker._load_team_group",
+               return_value="cid123"):
+        with patch("dingtalk_outbox_worker.send_group_message",
                    side_effect=RuntimeError("still broken")):
             await poll_and_send(lambda: sb)
 

@@ -13,8 +13,7 @@ import DingTalkGroupCards from './DingTalkGroupCards';
 
 const EMPTY_FORM: DingTalkGroupCreate = {
   team_code: '',
-  webhook_url: '',
-  secret: '',
+  open_conversation_id: '',
   group_name: '',
   is_active: true,
 };
@@ -44,8 +43,8 @@ export const DingTalkGroupsTab: React.FC = () => {
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!form.team_code.trim() || !form.webhook_url.trim() || !form.secret.trim() || !form.group_name.trim()) {
-      setAlert({ type: 'error', message: 'Điền đủ team_code, webhook_url, secret, group_name' });
+    if (!form.team_code.trim() || !form.open_conversation_id.trim() || !form.group_name.trim()) {
+      setAlert({ type: 'error', message: 'Điền đủ team_code, open_conversation_id, group_name' });
       return;
     }
     try {
@@ -84,18 +83,6 @@ export const DingTalkGroupsTab: React.FC = () => {
     }
   };
 
-  const handleRotateSecret = async (teamCode: string) => {
-    const newSecret = window.prompt('Nhập Secret mới (SEC...):');
-    if (!newSecret?.trim()) return;
-    try {
-      await updateDingTalkGroup(teamCode, { secret: newSecret.trim() });
-      setAlert({ type: 'success', message: 'Cập nhật secret thành công' });
-    } catch (err: unknown) {
-      const e = err as { response?: { data?: { detail?: string } }; message?: string };
-      setAlert({ type: 'error', message: e.response?.data?.detail || e.message || 'Lỗi cập nhật' });
-    }
-  };
-
   return (
     <div className="max-w-5xl mx-auto p-4 space-y-6">
       <h2 className="text-2xl font-bold text-gray-800">DingTalk — Nhóm thông báo</h2>
@@ -110,8 +97,7 @@ export const DingTalkGroupsTab: React.FC = () => {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <input className="px-3 py-2 border rounded-md" placeholder="team_code (vd: SALE_HCM)" value={form.team_code} onChange={(e) => setForm({ ...form, team_code: e.target.value })} />
           <input className="px-3 py-2 border rounded-md" placeholder="Group name (mô tả)" value={form.group_name} onChange={(e) => setForm({ ...form, group_name: e.target.value })} />
-          <input className="px-3 py-2 border rounded-md md:col-span-2 font-mono text-sm" placeholder="Webhook URL (https://oapi.dingtalk.com/robot/send?access_token=...)" value={form.webhook_url} onChange={(e) => setForm({ ...form, webhook_url: e.target.value })} />
-          <input className="px-3 py-2 border rounded-md md:col-span-2 font-mono text-sm" type="password" placeholder="Secret (SEC...)" value={form.secret} onChange={(e) => setForm({ ...form, secret: e.target.value })} />
+          <input className="px-3 py-2 border rounded-md md:col-span-2 font-mono text-sm" placeholder="openConversationId (cid...)" value={form.open_conversation_id} onChange={(e) => setForm({ ...form, open_conversation_id: e.target.value })} />
           <label className="flex items-center gap-2">
             <input type="checkbox" checked={form.is_active} onChange={(e) => setForm({ ...form, is_active: e.target.checked })} />
             Bật ngay
@@ -129,7 +115,6 @@ export const DingTalkGroupsTab: React.FC = () => {
             groups={groups}
             loading={loading}
             onToggle={handleToggleActive}
-            onRotateSecret={handleRotateSecret}
             onDelete={handleDelete}
           />
         ) : loading ? (
@@ -142,7 +127,7 @@ export const DingTalkGroupsTab: React.FC = () => {
               <tr>
                 <th className="px-2 py-2 text-left">team_code</th>
                 <th className="px-2 py-2 text-left">group_name</th>
-                <th className="px-2 py-2 text-left">webhook (mask)</th>
+                <th className="px-2 py-2 text-left">conversationId</th>
                 <th className="px-2 py-2">active</th>
                 <th className="px-2 py-2"></th>
               </tr>
@@ -152,14 +137,13 @@ export const DingTalkGroupsTab: React.FC = () => {
                 <tr key={g.team_code} className="border-t">
                   <td className="px-2 py-2 font-mono">{g.team_code}</td>
                   <td className="px-2 py-2">{g.group_name}</td>
-                  <td className="px-2 py-2 font-mono text-xs">{g.webhook_url.slice(0, 60)}…</td>
+                  <td className="px-2 py-2 font-mono text-xs">{g.open_conversation_id}</td>
                   <td className="px-2 py-2 text-center">
                     <button onClick={() => handleToggleActive(g)} className={`px-2 py-1 rounded text-xs ${g.is_active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
                       {g.is_active ? 'On' : 'Off'}
                     </button>
                   </td>
-                  <td className="px-2 py-2 text-right space-x-2">
-                    <button onClick={() => handleRotateSecret(g.team_code)} className="text-blue-600 text-xs hover:underline">Rotate secret</button>
+                  <td className="px-2 py-2 text-right">
                     <button onClick={() => handleDelete(g.team_code)} className="text-red-600 text-xs hover:underline">Xóa</button>
                   </td>
                 </tr>

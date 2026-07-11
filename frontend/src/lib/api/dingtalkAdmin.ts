@@ -3,7 +3,7 @@ import { api } from '../api';
 
 export interface DingTalkGroup {
   team_code: string;
-  webhook_url: string;
+  open_conversation_id: string;
   group_name: string;
   is_active: boolean;
   updated_at: string;
@@ -11,15 +11,13 @@ export interface DingTalkGroup {
 
 export interface DingTalkGroupCreate {
   team_code: string;
-  webhook_url: string;
-  secret: string;
+  open_conversation_id: string;
   group_name: string;
   is_active: boolean;
 }
 
 export interface DingTalkGroupPatch {
-  webhook_url?: string;
-  secret?: string;
+  open_conversation_id?: string;
   group_name?: string;
   is_active?: boolean;
 }

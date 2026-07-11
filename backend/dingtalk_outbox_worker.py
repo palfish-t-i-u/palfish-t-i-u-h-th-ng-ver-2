@@ -1,7 +1,7 @@
 """Background worker that drains dingtalk_outbox.
 
-Mirrors zalo_outbox_worker but resolves per-team webhook/secret from
-dingtalk_team_groups instead of a global token.
+Resolves per-team open_conversation_id from dingtalk_team_groups,
+then sends via enterprise robot API (OAuth token + OrgGroupSend).
 """
 
 import asyncio
@@ -9,18 +9,25 @@ import datetime
 import traceback
 from typing import Any, Callable
 
-from dingtalk_notifier import DingTalkAPIError, send_text_to_group
+from dingtalk_notifier import DingTalkAPIError, send_group_message
 
 RETRY_DELAYS = [30, 120, 300, 900]  # seconds
 MAX_RETRIES = 4
 POLL_INTERVAL = 30
 BATCH_SIZE = 20
 
+EVENT_TITLES = {
+    "activation_request_created": "Yêu cầu kích hoạt khoá học",
+    "course_activated": "Kích hoạt thành công",
+    "activation_urgent_reminder": "Nhắc kích hoạt gấp",
+}
 
-def _load_team_credentials(sb, team_code: str) -> tuple[str, str]:
+
+def _load_team_group(sb, team_code: str) -> str:
+    """Return open_conversation_id for team_code, or raise."""
     res = (
         sb.table("dingtalk_team_groups")
-        .select("webhook_url, secret, is_active")
+        .select("open_conversation_id, is_active")
         .eq("team_code", team_code)
         .limit(1)
         .execute()
@@ -31,7 +38,7 @@ def _load_team_credentials(sb, team_code: str) -> tuple[str, str]:
     row = rows[0]
     if not row.get("is_active"):
         raise DingTalkAPIError(f"team_code {team_code} bi disable")
-    return row["webhook_url"], row["secret"]
+    return row["open_conversation_id"]
 
 
 async def poll_and_send(sb_factory: Callable[[], Any]) -> None:
@@ -63,15 +70,17 @@ async def poll_and_send(sb_factory: Callable[[], Any]) -> None:
         row_id = row["id"]
         team_code = row["team_code"]
         message = row["message"]
+        event_type = row.get("event_type", "")
         retries = row["retries"] or 0
 
         try:
-            webhook_url, secret = _load_team_credentials(sb, team_code)
+            open_conversation_id = _load_team_group(sb, team_code)
+            title = EVENT_TITLES.get(event_type, "")
             msg_id = await asyncio.to_thread(
-                send_text_to_group,
-                webhook_url=webhook_url,
-                secret=secret,
+                send_group_message,
+                open_conversation_id=open_conversation_id,
                 message=message,
+                title=title,
             )
             sb.table("dingtalk_outbox").update({
                 "sent_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),

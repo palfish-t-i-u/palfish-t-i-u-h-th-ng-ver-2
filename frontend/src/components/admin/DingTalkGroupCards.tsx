@@ -7,7 +7,6 @@ interface Props {
   groups: DingTalkGroup[];
   loading: boolean;
   onToggle: (g: DingTalkGroup) => void;
-  onRotateSecret: (teamCode: string) => void;
   onDelete: (teamCode: string) => void;
 }
 
@@ -15,7 +14,6 @@ export default function DingTalkGroupCards({
   groups,
   loading,
   onToggle,
-  onRotateSecret,
   onDelete,
 }: Props) {
   if (loading) {
@@ -36,10 +34,10 @@ export default function DingTalkGroupCards({
           }
           meta={[
             {
-              label: "Webhook",
+              label: "Conversation ID",
               value: (
                 <span className="font-mono text-xs">
-                  {g.webhook_url.slice(0, 60)}…
+                  {g.open_conversation_id}
                 </span>
               ),
             },
@@ -61,12 +59,6 @@ export default function DingTalkGroupCards({
                 }`}
               >
                 {g.is_active ? "Tắt" : "Bật"}
-              </button>
-              <button
-                onClick={() => onRotateSecret(g.team_code)}
-                className="min-h-[44px] px-2 rounded text-xs text-blue-600 hover:bg-blue-50"
-              >
-                Rotate secret
               </button>
               <button
                 onClick={() => onDelete(g.team_code)}

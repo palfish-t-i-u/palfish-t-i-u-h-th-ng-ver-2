@@ -349,8 +349,10 @@ def build_course_activated_message(
     for uid_block in uid_blocks:
         if not isinstance(uid_block, dict):
             continue
-        phone = _first_nonempty(uid_block.get("phone"), pr_phone, default="?")
-        phones.append(phone)
+        raw_phone = _first_nonempty(uid_block.get("phone"), pr_phone)
+        phone_country = _first_nonempty(uid_block.get("country"), pr_data.get("country"))
+        phone_fmt = format_phone_intl(raw_phone, phone_country or None)
+        phones.append(phone_fmt if phone_fmt else raw_phone or "?")
         uid = _first_nonempty(uid_block.get("uid"), default="?")
         uids.append(uid)
 
@@ -362,7 +364,11 @@ def build_course_activated_message(
                         _first_nonempty(course.get("name"), default="?")
                     )
 
-    phones_str = ", ".join(phones) if phones else _first_nonempty(pr_phone, default="?")
+    if not phones:
+        fallback_fmt = format_phone_intl(pr_phone, pr_data.get("country"))
+        phones_str = fallback_fmt if fallback_fmt else (pr_phone or "?")
+    else:
+        phones_str = ", ".join(phones)
     uids_str = ", ".join(uids) if uids else "?"
     courses_str = ", ".join(courses_list) if courses_list else "?"
 

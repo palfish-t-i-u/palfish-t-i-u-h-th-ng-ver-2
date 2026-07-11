@@ -61,8 +61,8 @@ export const DingTalkConfigTab: React.FC = () => {
 
       {!isMobile && (
         <div className="bg-blue-50 border border-blue-200 rounded-md p-4 text-sm text-blue-900 space-y-2">
-          <p><strong>DingTalk khác Zalo:</strong> không có "OA token" toàn cục. Mỗi nhóm DingTalk có 1 robot riêng với webhook URL + secret.</p>
-          <p>Cấu hình URL/secret tại tab <strong>Nhóm thông báo</strong>. Tab này chỉ dùng để test gửi sau khi đã thêm nhóm.</p>
+          <p><strong>DingTalk Enterprise Robot:</strong> credentials (client_id, client_secret, robot_code) cấu hình qua env vars. Mỗi team map tới 1 openConversationId.</p>
+          <p>Thêm/quản lý nhóm tại tab <strong>Nhóm thông báo</strong>. Tab này chỉ dùng để test gửi sau khi đã thêm nhóm.</p>
         </div>
       )}
 

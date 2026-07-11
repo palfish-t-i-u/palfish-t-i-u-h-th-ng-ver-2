@@ -122,15 +122,13 @@ class ZaloTestMessagePayload(BaseModel):
 
 class DingTalkGroupCreatePayload(BaseModel):
     team_code: str
-    webhook_url: str
-    secret: str
+    open_conversation_id: str
     group_name: str
     is_active: bool
 
 
 class DingTalkGroupPatchPayload(BaseModel):
-    webhook_url: str | None = None
-    secret: str | None = None
+    open_conversation_id: str | None = None
     group_name: str | None = None
     is_active: bool | None = None
 
@@ -1555,7 +1553,7 @@ def register_admin_routes(app, get_supabase):
 
         res = (
             sb.table("dingtalk_team_groups")
-            .select("team_code, webhook_url, group_name, is_active, updated_at")
+            .select("team_code, open_conversation_id, group_name, is_active, updated_at")
             .order("updated_at", desc=True)
             .execute()
         )
@@ -1569,8 +1567,7 @@ def register_admin_routes(app, get_supabase):
 
         data = {
             "team_code": payload.team_code.strip(),
-            "webhook_url": payload.webhook_url.strip(),
-            "secret": payload.secret.strip(),
+            "open_conversation_id": payload.open_conversation_id.strip(),
             "group_name": payload.group_name.strip(),
             "is_active": payload.is_active,
             "updated_at": datetime.now(timezone.utc).isoformat(),
@@ -1579,9 +1576,7 @@ def register_admin_routes(app, get_supabase):
             res = sb.table("dingtalk_team_groups").insert(data).execute()
             if not res.data:
                 raise HTTPException(400, "Không thể thêm DingTalk group (team_code có thể đã tồn tại)")
-            row = dict(res.data[0])
-            row.pop("secret", None)
-            return {"data": row}
+            return {"data": res.data[0]}
         except Exception as e:
             raise HTTPException(400, f"Lỗi CSDL: {str(e)}")
 
@@ -1592,10 +1587,8 @@ def register_admin_routes(app, get_supabase):
         require_module_write(sb, actor, "dingtalk")
 
         patch_data: dict[str, Any] = {}
-        if payload.webhook_url is not None:
-            patch_data["webhook_url"] = payload.webhook_url.strip()
-        if payload.secret is not None:
-            patch_data["secret"] = payload.secret.strip()
+        if payload.open_conversation_id is not None:
+            patch_data["open_conversation_id"] = payload.open_conversation_id.strip()
         if payload.group_name is not None:
             patch_data["group_name"] = payload.group_name.strip()
         if payload.is_active is not None:
@@ -1608,9 +1601,7 @@ def register_admin_routes(app, get_supabase):
         res = sb.table("dingtalk_team_groups").update(patch_data).eq("team_code", team_code).execute()
         if not res.data:
             raise HTTPException(404, f"Không tìm thấy DingTalk Group: {team_code}")
-        row = dict(res.data[0])
-        row.pop("secret", None)
-        return {"data": row}
+        return {"data": res.data[0]}
 
     @app.delete("/api/v1/admin/dingtalk-groups/{team_code}")
     def delete_dingtalk_group(team_code: str, authorization: str | None = Header(None)):
@@ -1667,11 +1658,11 @@ def register_admin_routes(app, get_supabase):
         actor = resolve_actor(sb, authorization)
         require_module_write(sb, actor, "dingtalk")
 
-        from dingtalk_notifier import send_text_to_group
+        from dingtalk_notifier import send_group_message
 
         creds = (
             sb.table("dingtalk_team_groups")
-            .select("webhook_url, secret, is_active")
+            .select("open_conversation_id, is_active")
             .eq("team_code", payload.team_code)
             .limit(1)
             .execute()
@@ -1683,10 +1674,10 @@ def register_admin_routes(app, get_supabase):
             return {"ok": False, "error": "Group đang disable"}
 
         try:
-            msg_id = send_text_to_group(
-                webhook_url=row["webhook_url"],
-                secret=row["secret"],
+            msg_id = send_group_message(
+                open_conversation_id=row["open_conversation_id"],
                 message=payload.message,
+                title="Test DingTalk",
             )
             return {"ok": True, "message_id": msg_id}
         except Exception as e:

@@ -565,7 +565,10 @@
 
 /* Info grid */
 .gmv-prototype .info-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px 22px; }
-.gmv-prototype .info-cell { display: flex; flex-direction: column; gap: 4px; }
+.gmv-prototype .info-cell { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.gmv-prototype .info-cell input,
+.gmv-prototype .info-cell select,
+.gmv-prototype .info-cell textarea { width: 100%; }
 .gmv-prototype .info-label {
   font-size: 11px; color: var(--text-3);
   text-transform: uppercase; letter-spacing: 0.06em; font-weight: 600;

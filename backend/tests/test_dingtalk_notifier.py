@@ -1,22 +1,5 @@
-import base64
-import hashlib
-import hmac
-import urllib.parse
+import json
 import pytest
-
-
-def test_compute_signature_matches_dingtalk_spec():
-    import dingtalk_notifier
-
-    timestamp = "1700000000000"
-    secret = "SECabc123"
-    sign = dingtalk_notifier.compute_signature(timestamp, secret)
-
-    string_to_sign = f"{timestamp}\n{secret}".encode("utf-8")
-    expected_raw = hmac.new(secret.encode("utf-8"), string_to_sign, hashlib.sha256).digest()
-    expected = base64.b64encode(expected_raw).decode("utf-8")  # raw base64, no quote_plus
-
-    assert sign == expected
 
 
 class _FakeResp:
@@ -45,55 +28,123 @@ class _FakeClient:
         return self._responses.pop(0)
 
 
-def test_send_text_to_group_success(monkeypatch):
+TOKEN_RESP = _FakeResp(200, {"accessToken": "TKN_123", "expireIn": 7200})
+SEND_OK_RESP = _FakeResp(200, {"processQueryKey": "pqk-abc"})
+
+
+def _reset_token_cache():
     import dingtalk_notifier
+    dingtalk_notifier._cached_token = ""
+    dingtalk_notifier._token_expires_at = 0
 
-    fake = _FakeClient([_FakeResp(200, {"errcode": 0, "errmsg": "ok"})])
+
+@pytest.fixture(autouse=True)
+def _set_dingtalk_env(monkeypatch):
+    monkeypatch.setenv("DINGTALK_CLIENT_ID", "test_cid")
+    monkeypatch.setenv("DINGTALK_CLIENT_SECRET", "test_csecret")
+    monkeypatch.setenv("DINGTALK_ROBOT_CODE", "test_rc")
+
+
+def test_get_access_token_success(monkeypatch):
+    import dingtalk_notifier
+    _reset_token_cache()
+
+    fake = _FakeClient([TOKEN_RESP])
     monkeypatch.setattr(dingtalk_notifier.httpx, "Client", lambda **_: fake)
-    monkeypatch.setattr(dingtalk_notifier.time, "time", lambda: 1700000000.123)
 
-    msg_id = dingtalk_notifier.send_text_to_group(
-        webhook_url="https://oapi.dingtalk.com/robot/send?access_token=TKN",
-        secret="SECxyz",
+    token = dingtalk_notifier.get_access_token(client_id="CID", client_secret="CSE")
+    assert token == "TKN_123"
+    assert fake.calls[0]["json"] == {"appKey": "CID", "appSecret": "CSE"}
+
+
+def test_send_group_message_text(monkeypatch):
+    import dingtalk_notifier
+    _reset_token_cache()
+
+    fake = _FakeClient([TOKEN_RESP, SEND_OK_RESP])
+    monkeypatch.setattr(dingtalk_notifier.httpx, "Client", lambda **_: fake)
+
+    msg_id = dingtalk_notifier.send_group_message(
+        open_conversation_id="cid123",
         message="hello",
+        robot_code="RC",
     )
 
-    assert msg_id  # non-empty surrogate id
-    call = fake.calls[0]
-    assert "timestamp=1700000000123" in call["url"]
-    # verify sign is correctly percent-encoded (urlencode encodes + as %2B, etc.)
-    expected_sign = dingtalk_notifier.compute_signature("1700000000123", "SECxyz")
-    encoded_sign = urllib.parse.quote_plus(expected_sign)
-    assert f"sign={encoded_sign}" in call["url"]
-    assert call["json"] == {"msgtype": "text", "text": {"content": "hello"}}
-    assert call["headers"]["Content-Type"] == "application/json"
+    assert msg_id == "pqk-abc"
+    send_call = fake.calls[1]
+    assert send_call["headers"]["x-acs-dingtalk-access-token"] == "TKN_123"
+    body = send_call["json"]
+    assert body["msgKey"] == "sampleText"
+    assert body["robotCode"] == "RC"
+    assert body["openConversationId"] == "cid123"
+    assert json.loads(body["msgParam"]) == {"content": "hello"}
 
 
-def test_send_text_raises_on_errcode(monkeypatch):
+def test_send_group_message_markdown(monkeypatch):
     import dingtalk_notifier
+    _reset_token_cache()
 
-    fake = _FakeClient([_FakeResp(200, {"errcode": 310000, "errmsg": "sign not match"})])
+    fake = _FakeClient([TOKEN_RESP, SEND_OK_RESP])
+    monkeypatch.setattr(dingtalk_notifier.httpx, "Client", lambda **_: fake)
+
+    dingtalk_notifier.send_group_message(
+        open_conversation_id="cid123",
+        message="# heading",
+        title="Test Title",
+        robot_code="RC",
+    )
+
+    body = fake.calls[1]["json"]
+    assert body["msgKey"] == "sampleMarkdown"
+    params = json.loads(body["msgParam"])
+    assert params["title"] == "Test Title"
+    assert params["text"] == "# heading"
+
+
+def test_send_raises_on_http_error(monkeypatch):
+    import dingtalk_notifier
+    _reset_token_cache()
+
+    fake = _FakeClient([TOKEN_RESP, _FakeResp(500, {"errmsg": "boom"})])
     monkeypatch.setattr(dingtalk_notifier.httpx, "Client", lambda **_: fake)
 
     with pytest.raises(dingtalk_notifier.DingTalkAPIError) as exc:
-        dingtalk_notifier.send_text_to_group(
-            webhook_url="https://oapi.dingtalk.com/robot/send?access_token=TKN",
-            secret="SECxyz",
+        dingtalk_notifier.send_group_message(
+            open_conversation_id="cid123",
             message="hello",
-        )
-    assert exc.value.dingtalk_errcode == 310000
-
-
-def test_send_text_raises_on_http_error(monkeypatch):
-    import dingtalk_notifier
-
-    fake = _FakeClient([_FakeResp(500, {"errmsg": "boom"})])
-    monkeypatch.setattr(dingtalk_notifier.httpx, "Client", lambda **_: fake)
-
-    with pytest.raises(dingtalk_notifier.DingTalkAPIError) as exc:
-        dingtalk_notifier.send_text_to_group(
-            webhook_url="https://oapi.dingtalk.com/robot/send?access_token=TKN",
-            secret="SECxyz",
-            message="hello",
+            robot_code="RC",
         )
     assert exc.value.status_code == 500
+
+
+def test_send_raises_on_empty_fields():
+    import dingtalk_notifier
+
+    with pytest.raises(dingtalk_notifier.DingTalkAPIError, match="open_conversation_id"):
+        dingtalk_notifier.send_group_message(open_conversation_id="", message="hi", robot_code="RC")
+
+    with pytest.raises(dingtalk_notifier.DingTalkAPIError, match="message"):
+        dingtalk_notifier.send_group_message(open_conversation_id="cid", message="", robot_code="RC")
+
+
+def test_token_caching(monkeypatch):
+    import dingtalk_notifier
+    _reset_token_cache()
+
+    call_count = 0
+    original_responses = [
+        TOKEN_RESP, SEND_OK_RESP,
+        SEND_OK_RESP,
+    ]
+    fake = _FakeClient(original_responses)
+    monkeypatch.setattr(dingtalk_notifier.httpx, "Client", lambda **_: fake)
+
+    dingtalk_notifier.send_group_message(
+        open_conversation_id="cid1", message="a", robot_code="RC",
+    )
+    dingtalk_notifier.send_group_message(
+        open_conversation_id="cid2", message="b", robot_code="RC",
+    )
+
+    token_calls = [c for c in fake.calls if "oauth2" in c["url"]]
+    assert len(token_calls) == 1

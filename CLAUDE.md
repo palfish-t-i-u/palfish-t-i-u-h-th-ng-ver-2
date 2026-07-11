@@ -83,38 +83,23 @@ Frontend `.env.local` points `VITE_API_BASE_URL` to either localhost:8000 (local
 
 ## Project Structure
 
-### Frontend key components
-- `frontend/src/components/DashboardTab.tsx` — Bảng thông tin (gamification, BXH, events)
-- `frontend/src/components/Module5Tab.tsx` — M5: Đồng bộ CRM
-- `frontend/src/components/Module6Tab.tsx` — M6: Dashboard Sale (hiệu suất)
-- `frontend/src/components/SoDoanhThuTab.tsx` — Sổ doanh thu
-- `frontend/src/components/DoanhThuSaleTab.tsx` — Sales Performance pivot
-- `frontend/src/components/PaymentRequestsTab.tsx` — B1: PR (Payment Requests)
-- `frontend/src/components/ReconciliationTab.tsx` — B2: Đối soát
-- `frontend/src/components/ActivationTab.tsx` — B3: Kích hoạt khóa học
-- `frontend/src/components/InvoiceRequestTab.tsx` — B4: Xuất hóa đơn
-- `frontend/src/components/permissions/PermissionsTab.tsx` — Dynamic RBAC matrix
-- `frontend/src/components/auth/` — Auth accounts management
-- `frontend/src/components/reports/` — BC01, BC02, BC03 reports
-- `frontend/src/components/admin/ZaloConfigTab.tsx` — Zalo OA config + test send (dropdown chọn nhóm)
-- `frontend/src/components/admin/ZaloGroupsTab.tsx` — CRUD nhóm thông báo Zalo
-- `frontend/src/components/admin/ZaloOutboxTab.tsx` — Lịch sử gửi Zalo + retry
-- `frontend/src/components/payment-request/PrStaleContentWarning.tsx` — Cảnh báo nội dung CK lỗi thời
-- `frontend/src/lib/api.ts` — All API endpoints
-- `frontend/src/lib/api/zaloAdmin.ts` — Zalo admin API (config, groups, outbox)
+**IMPORTANT — Trước khi sửa một module, đọc `MODULES.md` (root)**: bản đồ đầy đủ module → file (FE + BE + tests + docs). Đừng quét codebase để tìm file khi index đã có. Khi thêm/xóa/di chuyển file, cập nhật `MODULES.md`.
 
-### Backend key modules
-- `backend/main.py` — FastAPI entry + SePay webhook
-- `backend/rbac.py` — Unified RBAC (4-level: sale/leader/manager/system) + sub-team scoping + JWT
-- `backend/activation_routes.py` — B3: Active Request, course activation
-- `backend/payment_request_routes.py` — B1: PR CRUD, payment lines, stale content detection
-- `backend/revenue_routes.py` — M5: Sổ doanh thu, search, batch team lookup, BC01/BC02
-- `backend/crm_routes.py` — CRM hybrid/autonomous sync
-- `backend/zalo_notifier.py` — Zalo OA: send message, token auto-refresh (24h loop)
-- `backend/admin_routes.py` (lines ~1329+) — Admin: Zalo config, groups CRUD, outbox, test send (no separate `zalo_routes.py`)
-- `backend/dashboard_routes.py` — Gamification, BXH, team/subteam, sub-team scope enforcement
-- `backend/report_routes.py` — BC03 daily/monthly
-- `backend/rpc_helpers.py` — Atomic RPCs, Postgres sequences
+Tóm tắt module (chi tiết trong `MODULES.md`):
+- **Bảng thông tin + Dashboard Sale** — DashboardTab, Module6Tab / `dashboard_routes.py`
+- **Quản lý thanh toán B1–B4** — PaymentRequests → Đối soát → Kích hoạt → Xuất hóa đơn / `payment_request_routes.py`, `activation_routes.py`, `invoice_routes.py`
+- **Đối soát thẻ mPOS/Payoo** — CardReconciliationTab, GatewaySyncTab / `gateway_routes.py`, `mpos_import.py`
+- **Sổ doanh thu** — SoDoanhThuTab / `revenue_routes.py` + import GSheet/xlsx
+- **Đồng bộ CRM (M5)** — Module5Tab / `crm_routes.py`
+- **Báo cáo BC01/BC02/BC03** — reports/ / `revenue_routes.py`, `report_routes.py`
+- **Thông báo Zalo + DingTalk** — admin/ / `zalo_notifier.py`, `dingtalk_notifier.py`, workers, `admin_routes.py`
+- **RBAC + Auth** — permissions/, auth/ / `rbac.py`, `admin_routes.py`
+
+Module có business rules riêng — CLAUDE.md trong thư mục tự load khi đọc file:
+- `frontend/src/components/payment-request/CLAUDE.md` — PR lifecycle, allocation guard, stale content, bill soft-lock
+- `frontend/src/components/admin/CLAUDE.md` — Zalo/DingTalk: token refresh, outbox retry, event routing
+
+⚠️ Legacy không còn mount (xem cuối `MODULES.md`): Module3Tab, Module4Tab, PayosHistoryTab, DoanhThuSaleTab, StaffCRMTab.
 
 ### Key docs
 - `docs/PROJECT.md` — Kiến trúc, tiến độ, schema, phân quyền

@@ -153,7 +153,7 @@ export default function PaymentRequestsTab() {
   );
 
   const filtered = useMemo(() => {
-    const norm = (s: string) => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+    const norm = (s: string) => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/đ/g, "d");
     const q = norm(search.trim());
     return tvtsFiltered.filter((r) => {
       if (tab === "cancelled") {

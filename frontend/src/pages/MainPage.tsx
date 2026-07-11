@@ -228,7 +228,7 @@ const TITLES: Record<ViewId, { title: string; subtitle?: string }> = {
   },
   dingtalkGroups: {
     title: "DingTalk — Nhóm thông báo",
-    subtitle: "Mapping team → DingTalk webhook + secret",
+    subtitle: "Mapping team → DingTalk openConversationId",
   },
   dingtalkOutbox: {
     title: "DingTalk — Outbox",

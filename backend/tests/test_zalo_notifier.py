@@ -239,13 +239,19 @@ def test_refresh_failure_is_reported(monkeypatch):
 def test_refresh_failure_alert_uses_dingtalk(monkeypatch):
     import zalo_notifier
 
-    fake = FakeAsyncHttpClient()
-    monkeypatch.setenv("DINGTALK_WEBHOOK_URL_SANDBOX", "https://dingtalk.test/hook")
-    monkeypatch.setattr(zalo_notifier.httpx, "AsyncClient", lambda **_kwargs: fake)
+    monkeypatch.setenv("DINGTALK_CLIENT_ID", "test_cid")
+    monkeypatch.setenv("DINGTALK_CLIENT_SECRET", "test_csecret")
+    monkeypatch.setenv("DINGTALK_ALERT_CONVERSATION_ID", "cid_alert_123")
 
-    asyncio.run(zalo_notifier._send_refresh_failure_alert(RuntimeError("boom")))
+    sent = []
+    def fake_send(*, open_conversation_id, message, title=""):
+        sent.append({"cid": open_conversation_id, "message": message, "title": title})
+        return "pqk-test"
 
-    assert fake.calls[0]["url"] == "https://dingtalk.test/hook"
-    assert fake.calls[0]["json"]["msgtype"] == "text"
-    assert "Zalo OA token refresh failed" in fake.calls[0]["json"]["text"]["content"]
-    assert "boom" in fake.calls[0]["json"]["text"]["content"]
+    from unittest.mock import patch
+    with patch("dingtalk_notifier.send_group_message", fake_send):
+        asyncio.run(zalo_notifier._send_refresh_failure_alert(RuntimeError("boom")))
+
+    assert sent[0]["cid"] == "cid_alert_123"
+    assert "Zalo OA token refresh failed" in sent[0]["message"]
+    assert "boom" in sent[0]["message"]
