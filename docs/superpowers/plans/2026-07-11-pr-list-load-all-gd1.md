@@ -749,3 +749,207 @@ git checkout sandbox
 | Rollback an toàn 2 chiều | BE giữ default limit=100 (FE cũ chạy được); FE có nhánh total=null (BE cũ chạy được) | cả hai |
 | Số nhảy sau deploy | Báo team trước khi lên prod | Task 7 Step 3 |
 | Tiền sử OOM | Check memory plateau Render sau deploy | Task 7 Step 5 |
+
+> Xem thêm guardrails bổ sung trong Addendum 2026-07-11.
+
+---
+
+## Addendum 2026-07-11 — Vá GĐ1 (từ nghiên cứu scale 10k PR)
+
+GĐ1 (Task 1-7 ở trên) **đã merge main và chạy prod** — nội dung task cũ giữ nguyên làm lịch sử, KHÔNG sửa. Nghiên cứu scale 190→10.000 PR (báo cáo đã qua judge panel, là nguồn chân lý: `docs/RESEARCH_SCALE_10K_PR_2026-07-11.md`, mục 4 phần "Vá GĐ1") phát hiện 4 gap trong bản GĐ1 đã ship: (1) load-all bắn không giới hạn request song song + retry-ngay không backoff, (2) chunk `in_()` BE vẫn dính cap 1000 rows im lặng, (3) `loadData()` bị 3 nguồn trigger (poll 30s / realtime 3 bảng / refetch-on-focus) gọi chồng nhau — sẽ thành bão refetch khi backfill GĐ2 bắn event per-row, (4) trigger GĐ2 chỉ là `console.warn` trong DevTools — không ai nhìn thấy.
+
+**Tổng effort: ~1,5 ngày-dev** (A1: 0,5 — A2: 0,25 — A3: 0,5 — A4: 0,25). **Task A3 BẮT BUỘC deploy trước khi chạy backfill GĐ2.**
+
+---
+
+### Task A1: FE — trần concurrency 4-6 + retry backoff jitter + partial-fail banner
+
+**Bối cảnh:** `fetchAllPaymentRequests` hiện bắn `Promise.all` toàn bộ trang song song không giới hạn (`frontend/src/lib/fetchAllPaymentRequests.ts:62`) và `fetchPageWithRetry` retry-ngay-đúng-1-lần không backoff (dòng 27-33) — 10k PR = 20 trang đập BE cùng lúc, BE nghẹn thì retry lập tức đập tiếp. Trang fail sau retry → throw toàn bộ (all-or-nothing), lần load đầu tiên sau F5 sẽ ra list trống.
+
+**Files:**
+- Modify: `frontend/src/lib/fetchAllPaymentRequests.ts` — `fetchPageWithRetry` (dòng 27-33), khối `Promise.all` (dòng 57-63), return type (dòng 47-52)
+- Modify: `frontend/src/contexts/PaymentFlowContext.tsx` — khối try/catch trong `loadData` (dòng 149-168): đọc field partial mới, push note "tải lại"
+- Test: `frontend/src/lib/fetchAllPaymentRequests.test.ts` (thêm tests + sửa 1 test cũ)
+
+- [ ] **Step 1: Viết failing tests**
+
+Thêm vào `fetchAllPaymentRequests.test.ts` (fetcher instrumented đếm in-flight, dùng `vi.useFakeTimers()` cho backoff):
+1. 20 trang → số request in-flight đồng thời không bao giờ vượt trần (4-6, chọn hằng `PR_FETCH_CONCURRENCY = 5`).
+2. Trang fail 2 lần rồi thành công lần 3 → kết quả đủ; khoảng cách giữa các lần retry tăng dần (backoff ~500ms × 2^attempt ± jitter).
+3. Trang (khác trang đầu) fail đủ 3 lần → KHÔNG throw: trả `partial: true` + `failedOffsets` chứa offset hỏng, các trang đã nạp vẫn có mặt.
+4. Trang ĐẦU (offset 0) fail đủ 3 lần → vẫn throw (không có gì hiển thị, caller giữ state cũ — giữ nguyên guardrail gốc).
+5. SỬA test cũ `"trang lỗi 2 lần liên tiếp → throw"` (semantics đổi có chủ đích): thành "trang giữa fail 3 lần → partial, không throw".
+
+- [ ] **Step 2: Chạy — FAIL**
+
+Run: `cd frontend && npx vitest run src/lib/fetchAllPaymentRequests.test.ts`
+
+- [ ] **Step 3: Implement**
+
+Trong `fetchAllPaymentRequests.ts`: worker-pool `PR_FETCH_CONCURRENCY = 5` thay `Promise.all` phẳng; `fetchPageWithRetry` → tối đa 3 lần, delay `500 * 2 ** attempt * (0.5 + Math.random())`; trang non-first hết retry → ghi vào `failedOffsets` thay vì throw. Return thêm `partial: boolean` + `failedOffsets: number[]`; `incomplete` giữ nguyên semantics cũ. Trong `PaymentFlowContext.tsx` (`loadData`, dòng 149-168): `all.partial` → `notes.push("Một phần danh sách PR chưa tải được — bấm tải lại trang.")` — vẫn `setRequests` với phần đã nạp, KHÔNG để list trống.
+
+- [ ] **Step 4: Chạy — PASS + typecheck**
+
+Run: `cd frontend && npx vitest run src/lib/fetchAllPaymentRequests.test.ts && npx tsc -b`
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add frontend/src/lib/fetchAllPaymentRequests.ts frontend/src/lib/fetchAllPaymentRequests.test.ts frontend/src/contexts/PaymentFlowContext.tsx
+git commit -m "fix(pr-list): tran concurrency 5 + retry backoff jitter + partial banner (va GD1 A1)"
+```
+
+---
+
+### Task A2: BE — guard silent-truncate trong chunk `in_()`
+
+**Bối cảnh:** Chunk 100 id chống query-string dài, nhưng MỖI chunk vẫn là 1 lượt `.execute()` dính cap 1000 rows PostgREST: 100 PR trả góp 15-30 line ≈ 1.500-3.000 lines → chunk trả đúng 1000 rows và **im lặng vứt phần còn lại** (KPI/chip sai không ai biết). Judge đã bác phương án "tách chunk 50" (PR trả góp nhiều line vẫn vượt trần) — phương án đúng: loop `.range()` nội bộ trong từng chunk.
+
+**Files:**
+- Modify: `backend/payment_request_routes.py` — khối fetch `payment_lines` (dòng 1677-1691) + khối fetch `active_requests` (dòng 1693-1708) trong `list_payment_requests`
+- Test: `backend/tests/test_pr_list_load_all.py` (thêm tests)
+
+- [ ] **Step 1: Viết failing tests**
+
+Thêm vào `test_pr_list_load_all.py` (fake supabase cho `payment_lines` hỗ trợ `.range(a, b)` — lượt đầu trả đúng 1000 rows, lượt sau trả phần dư):
+1. Chunk trả đúng 1000 rows → endpoint tự gọi tiếp `.range()` và response gộp ĐỦ toàn bộ lines (không mất row nào).
+2. Lượt trả đúng 1000 rows → có log ERROR chứa sentinel `[cap-1000]` (bắt qua `caplog`/`capsys`) — khớp monitoring "Sentinel cap-1000" mục 6 của báo cáo.
+3. Chunk trả <1000 rows → đúng 1 lượt query, không loop thừa.
+
+- [ ] **Step 2: Chạy — FAIL**
+
+Run: `cd backend && python -m pytest tests/test_pr_list_load_all.py -v`
+
+- [ ] **Step 3: Implement**
+
+Thay thân loop chunk (cả `payment_lines` dòng 1680-1687 lẫn `active_requests` dòng 1696-1702) bằng loop `.range()` nội bộ — cần `.order("id")` để range ổn định:
+
+```python
+for chunk in _chunked(pr_ids, 100):
+    page = 0
+    while True:
+        res = (
+            sb.table("payment_lines").select("*")
+            .in_("payment_request_id", chunk)
+            .order("id")
+            .range(page * 1000, page * 1000 + 999)
+            .execute()
+        )
+        rows = res.data or []
+        all_line_rows.extend(rows)
+        if len(rows) < 1000:
+            break
+        print(f"[cap-1000] ERROR payment_lines chunk tra dung 1000 rows — loop range lay not (page={page})")
+        page += 1
+```
+
+(Có thể gói thành helper `_in_chunk_fetch_all(sb, table, select_cols, in_col, ids)` đặt cạnh `_chunked` dòng 782 để dùng chung 2 chỗ.)
+
+- [ ] **Step 4: Chạy — PASS**
+
+Run: `cd backend && python -m pytest tests/test_pr_list_load_all.py tests/test_health_check_and_bill_column.py -v`
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add backend/payment_request_routes.py backend/tests/test_pr_list_load_all.py
+git commit -m "fix(pr-list): guard silent-truncate chunk in_() — loop range noi bo + log ERROR (va GD1 A2)"
+```
+
+---
+
+### Task A3: FE — single-flight + debounce 2s cho `loadData()` ⚠️ BẮT BUỘC deploy trước backfill GĐ2
+
+**Bối cảnh:** `loadData()` (`frontend/src/contexts/PaymentFlowContext.tsx:141-199`) hiện được gọi từ 3 nguồn độc lập: poll 30s (dòng 209-215), realtime 3 bảng `payment_requests`/`payment_lines`/`active_requests` (dòng 226-229), refetch-on-focus (dòng 231). `loadDataSeqRef` (dòng 133, check dòng 182) chỉ DROP kết quả stale sau khi request đã bay — mỗi trigger vẫn bắn nguyên 1 lượt load-all. **Backfill GĐ2 chạy set-based vẫn bắn realtime event per-row** (judge đã sửa fact này — báo cáo mục 4 "Sửa plan GĐ2" điểm 4): mỗi event → 1 lượt load-all toàn bộ PR × mọi user đang mở tab = bão request tự tạo. Vì vậy task này là mitigation BẮT BUỘC phải nằm trên prod TRƯỚC khi backfill GĐ2 chạy.
+
+**Files:**
+- Create: `frontend/src/lib/refetchGuard.ts` (single-flight + trailing debounce 2s, testable thuần túy)
+- Test: `frontend/src/lib/refetchGuard.test.ts` (tạo mới)
+- Modify: `frontend/src/contexts/PaymentFlowContext.tsx` — bọc `loadData` (dòng 141-199) + `silentRefetch` (dòng 217-220) qua guard; poll/realtime/focus (dòng 209-231) giữ nguyên chỗ gọi
+
+- [ ] **Step 1: Viết failing tests**
+
+Tạo `refetchGuard.test.ts` (dùng `vi.useFakeTimers()`):
+1. 5 trigger dồn trong 2s → đúng 1 lần chạy fn (debounce trailing).
+2. Trigger đến KHI fn đang chạy (single-flight) → không chạy chồng; queue đúng 1 lần chạy lại sau khi xong (coalesce, không tích lũy N lần).
+3. Trigger cách nhau >2s → mỗi trigger 1 lần chạy bình thường.
+4. fn throw → guard không kẹt (lần trigger sau vẫn chạy được).
+
+- [ ] **Step 2: Chạy — FAIL**
+
+Run: `cd frontend && npx vitest run src/lib/refetchGuard.test.ts`
+
+- [ ] **Step 3: Implement**
+
+`refetchGuard.ts`: factory `createRefetchGuard(fn, { debounceMs: 2000 })` trả về hàm trigger — giữ 1 timer trailing + cờ `running` + cờ `pendingRerun`. Trong `PaymentFlowContext.tsx`: `silentRefetch` (poll + realtime + focus đi chung) đổi thành gọi qua guard bọc `loadData({ silent: true })`; user action tường minh (nút tải lại / sau mutation) gọi thẳng `loadData` — vẫn hưởng single-flight, bỏ qua debounce. Giữ nguyên `persistCooldownRef` (dòng 218) và `loadDataSeqRef` (lớp chống stale cuối cùng).
+
+- [ ] **Step 4: Chạy — PASS + typecheck + full unit**
+
+Run: `cd frontend && npx vitest run src/lib/refetchGuard.test.ts && npx tsc -b && npm run test`
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add frontend/src/lib/refetchGuard.ts frontend/src/lib/refetchGuard.test.ts frontend/src/contexts/PaymentFlowContext.tsx
+git commit -m "fix(pr-list): single-flight + debounce 2s loadData — mitigation bao realtime backfill GD2 (va GD1 A3)"
+```
+
+---
+
+### Task A4: Thay `console.warn` total>1500 bằng telemetry BE
+
+**Bối cảnh:** Trigger GĐ2 hiện là `console.warn` trong `loadData` (`frontend/src/contexts/PaymentFlowContext.tsx:161-165`, ngưỡng `PR_TOTAL_WARN_THRESHOLD = 1500` tại `frontend/src/lib/fetchAllPaymentRequests.ts:23`) — chỉ hiện trong DevTools của user, ops không bao giờ thấy. Chuyển về BE: log JSON + ghi bảng `notifications` throttle 1 lần/ngày.
+
+**Ràng buộc kênh (judge đã chốt — báo cáo mục 7 điểm 10):** KHÔNG dùng `zalo_outbox` làm kênh ops — đó là kênh nghiệp vụ khách hàng, nhét ops alert dễ sinh lỗi con đúng chỗ nhạy nhất. Nối DingTalk outbox CHỈ SAU khi 2 migration DingTalk đã áp prod đúng thứ tự (`backend/migrations/2026-06-26-dingtalk-tables.sql` → `2026-07-11-dingtalk-enterprise-robot.sql` — quick win #7 của báo cáo); trước đó dùng bảng `notifications` là đủ.
+
+**Files:**
+- Modify: `backend/payment_request_routes.py` — trong `list_payment_requests`, sau khi có `total` (dòng 1671): nếu `offset == 0 and total > 1500` → log JSON + insert `notifications` (pattern insert sẵn có: `backend/activation_routes.py:721` — cột `user_email`, `kind`, `payload`)
+- Modify: `frontend/src/contexts/PaymentFlowContext.tsx` — XÓA khối `console.warn` (dòng 161-165) + import `PR_TOTAL_WARN_THRESHOLD` (dòng 16)
+- Test: `backend/tests/test_pr_list_load_all.py` (thêm tests)
+
+- [ ] **Step 1: Viết failing tests**
+
+Thêm vào `test_pr_list_load_all.py`:
+1. `total=1600` (offset 0) → stdout có log JSON 1 dòng chứa `"pr_total"` + `"threshold"` (parse được bằng `json.loads`), và có insert vào `notifications` với `kind="pr_total_warn"`.
+2. Throttle: fake `notifications` đã có row `pr_total_warn` trong ngày → KHÔNG insert lần 2 (vẫn log JSON).
+3. `total=190` → không log, không insert.
+4. `offset>0` → không làm gì (chỉ trang đầu mang total tin cậy, tránh spam từ các trang song song).
+
+- [ ] **Step 2: Chạy — FAIL**
+
+Run: `cd backend && python -m pytest tests/test_pr_list_load_all.py -v`
+
+- [ ] **Step 3: Implement**
+
+Helper `_emit_pr_total_telemetry(sb, total)` cạnh list endpoint: `print(json.dumps({"event": "pr_total", "total": total, "threshold": 1500, "plan": "docs/superpowers/plans/2026-07-11-pr-list-slim-lazy-gd2.md"}))`; throttle = SELECT `notifications` `kind=pr_total_warn` có `created_at` >= đầu ngày (UTC) → tồn tại thì bỏ qua insert; insert `{"user_email": <admin ops>, "kind": "pr_total_warn", "payload": {"total": ..., "threshold": 1500}}`. Mọi lỗi telemetry nuốt bằng try/except — KHÔNG được làm gãy list endpoint. FE: xóa khối warn dòng 161-165 (giữ `PR_TOTAL_WARN_THRESHOLD` export trong `fetchAllPaymentRequests.ts` nếu còn nơi khác dùng, hết nơi dùng thì xóa luôn).
+
+- [ ] **Step 4: Chạy — PASS + FE regression**
+
+Run: `cd backend && python -m pytest tests/test_pr_list_load_all.py -v`
+Run: `cd frontend && npx tsc -b && npm run test`
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add backend/payment_request_routes.py backend/tests/test_pr_list_load_all.py frontend/src/contexts/PaymentFlowContext.tsx frontend/src/lib/fetchAllPaymentRequests.ts
+git commit -m "feat(pr-list): telemetry BE total>1500 — log JSON + notifications throttle 1/ngay (va GD1 A4)"
+```
+
+---
+
+### Guardrails bổ sung (Addendum)
+
+| Guardrail | Cơ chế | Ở đâu |
+|---|---|---|
+| Chống đập BE khi list phình | Trần concurrency 5 (worker-pool thay `Promise.all` phẳng) | `fetchAllPaymentRequests` (A1) |
+| Chống retry-storm | Backoff exponential + jitter, tối đa 3 lần/trang | `fetchAllPaymentRequests` (A1) |
+| Không để list trống khi 1 trang chết | Trang giữa fail 3 lần → partial + banner "tải lại"; trang đầu fail → throw giữ state cũ | `loadData` (A1) |
+| Sentinel cap-1000 phía BE | Chunk `in_()` loop `.range()` nội bộ + log ERROR `[cap-1000]` | list endpoint (A2) |
+| Chống bão refetch (poll + realtime + focus) | Single-flight + debounce 2s, coalesce trigger chồng | `refetchGuard` (A3) — **deploy TRƯỚC backfill GĐ2** |
+| Trigger GĐ2 ops nhìn thấy được | Log JSON BE + `notifications` throttle 1 lần/ngày; không dùng zalo_outbox | list endpoint (A4) |
+
+### Tham chiếu quick wins tuần này liên quan endpoint list (không thuộc addendum, không lặp spec)
+
+| # (báo cáo mục 3) | Việc | File | Ghi chú |
+|---|---|---|---|
+| 6 | `count='exact'` chỉ khi `offset==0` | `backend/payment_request_routes.py:1647` | Loop load-all hiện bắn count exact trên MỌI trang — chỉ trang đầu cần `total`. Chi tiết spec ở báo cáo mục 3; FE đã rollback-safe với `total` optional nên làm độc lập được. |
