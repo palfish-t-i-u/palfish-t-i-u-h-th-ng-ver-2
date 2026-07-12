@@ -249,7 +249,7 @@ export default function GatewaySyncTab() {
           </div>
         </div>
         {/* Page header: description + channel badges */}
-        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, marginBottom: 12 }}>
+        <div className="gateway-header-row" style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, marginBottom: 12 }}>
           <div style={{ fontSize: 12.5, color: "var(--text-3)", maxWidth: 720, lineHeight: 1.55 }}>
             Cài <strong style={{ color: "var(--text-2)" }}>1 lần</strong> tiện ích trình duyệt để app tự kéo giao dịch{" "}
             <strong style={{ color: "var(--text-2)" }}>mPOS</strong> & <strong style={{ color: "var(--text-2)" }}>Payoo</strong>{" "}

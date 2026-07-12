@@ -2058,7 +2058,7 @@
   .gmv-prototype .kpi { padding: 10px 12px; }
   .gmv-prototype .kpi-value { font-size: 18px; }
   .gmv-prototype .kpi-sub { font-size: 10.5px; }
-  .gmv-prototype .toolbar .search { width: 100%; min-width: 0; }
+  .gmv-prototype .toolbar .search { flex: 1 1 100%; min-width: 0; max-width: none; }
   .gmv-prototype .table-head.with-tabs { overflow-x: auto; -webkit-overflow-scrolling: touch; }
   .gmv-prototype .table-head .tabs { flex-shrink: 0; }
   .gmv-prototype .table-head .right-meta { display: none; }
@@ -2227,4 +2227,62 @@
 .gateway-sync-mobile-hint { display: none; }
 @media (max-width: 767px) {
   .gateway-sync-mobile-hint { display: block; }
+}
+
+/* ════════════════════════════════════════════════════════════════
+   PASS MẬT ĐỘ MOBILE (12/7) — fix "chật & dồn nén" theo feedback anh Hiếu
+   Nguyên tắc: chỉ trong @media max-767; desktop 0 delta.
+   ════════════════════════════════════════════════════════════════ */
+@media (max-width: 767px) {
+  /* ── B1 drawer: header section "Kích hoạt khoá học" bị ép 4 dòng ──
+     panel-head/ar-mini-head là flex nowrap → h4 bị nén. Cho wrap + h4 full-width. */
+  .gmv-prototype .drawer .panel-head {
+    flex-wrap: wrap;
+    gap: 6px;
+    row-gap: 8px;
+  }
+  .gmv-prototype .drawer .panel-head > h4 {
+    flex: 1 1 100%;
+    min-width: 0;
+    font-size: 15px;
+  }
+  .gmv-prototype .drawer .panel-head > h4 .num-pill { flex: 0 0 auto; }
+  .gmv-prototype .ar-mini-head h4 { font-size: 15px; }
+  /* Tooltip gợi ý "Bấm để sửa…" tràn mép phải + chỉ có nghĩa khi hover → ẩn trên mobile */
+  .gmv-prototype .ar-cue-tooltip { display: none !important; }
+
+  /* ── drawer-foot: nhóm nút không wrap → tràn ngang. Cho wrap (KHÔNG ép column
+     để foot 2-nút đơn giản như recon-drawer giữ nguyên nằm ngang) ── */
+  .gmv-prototype .drawer-foot { flex-wrap: wrap; row-gap: 10px; }
+  .gmv-prototype .drawer-foot > div { flex-wrap: wrap; }
+
+  /* ── B1 drawer: hàng AR-id · badge · nút Sửa tràn ngang → cho wrap ── */
+  .gmv-prototype .ar-mini-head > div { flex-wrap: wrap; }
+
+  /* ── ĐSGD thẻ: sync-bar (mô tả bị nén 1 chữ, nút tràn) → stack dọc ── */
+  .gmv-prototype .card-sync-bar {
+    flex-wrap: wrap;
+    align-items: flex-start;
+    row-gap: 8px;
+  }
+  .gmv-prototype .card-sync-desc { flex: 1 1 100%; }
+  .gmv-prototype .card-sync-actions {
+    margin-left: 0 !important;
+    width: 100%;
+    flex-wrap: wrap;
+  }
+  .gmv-prototype .card-sync-actions .btn { flex: 1 1 auto; }
+
+  /* ── ĐSGD thẻ drawer-center: 2 cột (ghép | ảnh bill) bị nén → 1 cột ── */
+  .gmv-prototype .card-match-grid { grid-template-columns: 1fr !important; }
+  .gmv-prototype .card-info-grid { grid-template-columns: 1fr !important; }
+
+  /* ── GatewaySync header: mô tả + badge kênh + nút → stack dọc ── */
+  .gmv-prototype .gateway-header-row { flex-direction: column; align-items: stretch; }
+  .gmv-prototype .gateway-header-row > div { flex-wrap: wrap; }
+
+  /* ── Sub-tabs (Chờ xác nhận · CK ngoài chờ ghép) quá to → giảm density để
+     2 tab vừa 375px; vẫn giữ overflow-x auto ở trên cho case 3 tab ── */
+  .gmv-prototype .table-head .tab { padding: 10px 9px; font-size: 12.5px; gap: 5px; }
+  .gmv-prototype .table-head .tab .tab-count { padding: 1px 6px; }
 }

@@ -439,6 +439,7 @@ export default function CardReconciliationTab({
         )}
 
         <div
+          className="card-sync-bar"
           style={{
             display: "flex",
             alignItems: "center",
@@ -457,8 +458,8 @@ export default function CardReconciliationTab({
               <span style={{ color: "var(--text-2)" }}>
                 Đồng bộ gần nhất: <strong>{lastSync ?? "chưa có"}</strong>
               </span>
-              <span style={{ color: "var(--text-3)" }}>· Tự động tải định kỳ qua tiện ích trình duyệt · Bấm "Đồng bộ ngay" sẽ kéo cả mPOS lẫn Payoo</span>
-              <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
+              <span className="card-sync-desc" style={{ color: "var(--text-3)" }}>· Tự động tải định kỳ qua tiện ích trình duyệt · Bấm "Đồng bộ ngay" sẽ kéo cả mPOS lẫn Payoo</span>
+              <div className="card-sync-actions" style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
                 <button type="button" className="btn btn-outline btn-sm" onClick={() => onGoToSync?.()}>
                   <Icons.AlertCircle size={13} /> Hướng dẫn đồng bộ
                 </button>
@@ -756,7 +757,7 @@ export default function CardReconciliationTab({
                 <div className="panel-head" style={{ marginBottom: 10 }}>
                   <h4>Thông tin giao dịch</h4>
                 </div>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                <div className="card-info-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
                   <div className="info-cell">
                     <div className="info-label">Khách hàng / Chủ thẻ</div>
                     <div className="info-value">{drawerTxn.cardholder_name}</div>
@@ -829,7 +830,7 @@ export default function CardReconciliationTab({
                     Gợi ý theo số tiền + ngày gần. Đối chiếu ảnh bill sales gửi trước khi ghép.
                   </div>
 
-                  <div style={{ display: "grid", gridTemplateColumns: "1.6fr 1fr", gap: 16 }}>
+                  <div className="card-match-grid" style={{ display: "grid", gridTemplateColumns: "1.6fr 1fr", gap: 16 }}>
                     <div>
                       <div className="search" style={{ marginBottom: 6 }}>
                         <Icons.Search size={14} stroke="var(--text-3)" />
