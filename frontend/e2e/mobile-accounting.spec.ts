@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { assertClosedDrawerPassthrough, assertDrawerHealthy, assertNoHorizontalOverflow } from "./helpers/mobile";
 
 async function openViaThem(page: Page, name: RegExp) {
   await page
@@ -137,5 +138,90 @@ test.describe("Mobile GĐ2: Accounting screens", () => {
     expect(overflowX).toBeLessThanOrEqual(0);
     const hint = page.locator(".gateway-sync-mobile-hint");
     await expect(hint).toBeVisible({ timeout: 3_000 }).catch(() => {});
+  });
+
+  // Task 3: B3 ActivationTab ar-drawer nội dung
+  test("B3 ar-drawer nội dung không vỡ/nén", async ({ page }) => {
+    await page.goto("/");
+    await page
+      .getByRole("navigation", { name: "Điều hướng chính" })
+      .getByRole("button", { name: /Kích/ })
+      .click();
+    await page.waitForTimeout(1500);
+    const card = page.locator(".ar-row-card, [data-ar-id]").first();
+    const hasCard = await card.isVisible({ timeout: 5000 }).catch(() => false);
+    test.skip(!hasCard, "no AR data — seed sandbox");
+    await card.click();
+    await page.waitForTimeout(800);
+    const drawer = page.locator(".ar-drawer.open, aside.ar-drawer").first();
+    await assertDrawerHealthy(page, drawer);
+    await drawer.locator("button.drawer-close, [aria-label='Đóng']").first().click();
+    await page.waitForTimeout(400);
+    await assertClosedDrawerPassthrough(page, ".ar-drawer");
+  });
+
+  // Task 3: B4 InvoiceRequestTab invoice-drawer nội dung
+  test("B4 invoice-drawer nội dung không vỡ/nén", async ({ page }) => {
+    await page.goto("/");
+    await openViaThem(page, /Xuất hóa đơn|Hóa đơn/);
+    await page.waitForTimeout(1500);
+    const card = page.locator(".invoice-row-card, [data-invoice-id]").first();
+    const hasCard = await card.isVisible({ timeout: 5000 }).catch(() => false);
+    test.skip(!hasCard, "no invoice data — seed sandbox");
+    await card.click();
+    await page.waitForTimeout(800);
+    const drawer = page.locator(".invoice-drawer.open, aside.invoice-drawer").first();
+    await assertDrawerHealthy(page, drawer);
+  });
+
+  // Task 3: Modal ghép tay CK ngoài (ReconciliationTab)
+  test("Modal ghép tay CK ngoài không vỡ", async ({ page }) => {
+    await page.goto("/");
+    await openChildViaThem(page, /Đối soát giao dịch/, /Chuyển khoản/);
+    await page.waitForTimeout(1500);
+    // Mở tab "CK ngoài chờ ghép" / mismatch
+    const mismatchTab = page.locator(".table-head .tab", { hasText: /Chờ|ngoài|mismatch/i }).first();
+    if (await mismatchTab.isVisible({ timeout: 3000 }).catch(() => false)) {
+      await mismatchTab.click();
+      await page.waitForTimeout(500);
+    }
+    const matchBtn = page.locator("button", { hasText: /[Gg]hép/ }).first();
+    const hasBtn = await matchBtn.isVisible({ timeout: 5000 }).catch(() => false);
+    test.skip(!hasBtn, "no mismatch CK to match — seed sandbox");
+    await matchBtn.click();
+    await page.waitForTimeout(800);
+    const modal = page.locator(".gmv-prototype-modal-scrim .modal, [role='dialog']").last();
+    if (await modal.isVisible({ timeout: 3000 }).catch(() => false)) {
+      await assertNoHorizontalOverflow(page);
+    }
+  });
+
+  // Task 4: Album bill 375px
+  test("Album bill không tràn ở 375px", async ({ page }) => {
+    await page.goto("/");
+    await openChildViaThem(page, /Đối soát giao dịch/, /Chuyển khoản/);
+    await page.waitForTimeout(1500);
+    const firstCard = page.locator(".recon-txn-card, [data-txn-id]").first();
+    const hasCard = await firstCard.isVisible({ timeout: 5000 }).catch(() => false);
+    test.skip(!hasCard, "no txn cards — seed sandbox");
+    await firstCard.click();
+    await page.waitForTimeout(800);
+    const albumBtn = page.locator("button", { hasText: /[Xx]em tất cả|[Aa]lbum|bill/i }).first();
+    if (!(await albumBtn.isVisible({ timeout: 3000 }).catch(() => false))) {
+      test.skip(true, "no bill album button");
+      return;
+    }
+    await albumBtn.click();
+    await page.waitForTimeout(500);
+    const album = page.locator(".bill-album-modal").first();
+    if (await album.isVisible({ timeout: 3000 }).catch(() => false)) {
+      await assertNoHorizontalOverflow(page);
+      const imgs = album.locator("img");
+      const count = await imgs.count();
+      if (count > 0) {
+        const first = await imgs.first().boundingBox();
+        if (first) expect(first.width).toBeLessThanOrEqual(page.viewportSize()!.width);
+      }
+    }
   });
 });

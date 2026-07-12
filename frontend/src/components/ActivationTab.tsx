@@ -1113,7 +1113,7 @@ function ActivationDetailDrawer({
                   </button>
                 )}
               </div>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14 }}>
+              <div className="act-course-grid" style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14 }}>
                 <div className="info-cell">
                   <div className="info-label">PR-ID</div>
                   <div className="info-value mono">

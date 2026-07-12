@@ -2286,3 +2286,9 @@
   .gmv-prototype .table-head .tab { padding: 10px 9px; font-size: 12.5px; gap: 5px; }
   .gmv-prototype .table-head .tab .tab-count { padding: 1px 6px; }
 }
+
+/* ── Task 3: B3 ActivationTab reflow ── */
+@media (max-width: 767px) {
+  /* Grid PR-info 4 cột → 1 cột (ô ~90px quá hẹp cho số tiền + label) */
+  .gmv-prototype .act-course-grid { grid-template-columns: 1fr !important; }
+}
