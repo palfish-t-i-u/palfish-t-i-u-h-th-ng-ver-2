@@ -2177,3 +2177,51 @@
     width: 100vw;
   }
 }
+
+/* ── Phase 3: ReconciliationTab recon-drawer (desktop: min(720px,92vw)) ── */
+.gmv-prototype .recon-drawer {
+  width: min(720px, 92vw);
+}
+@media (max-width: 767px) {
+  .gmv-prototype .recon-drawer {
+    width: 100vw;
+  }
+  .gmv-prototype .recon-drawer .drawer-body input,
+  .gmv-prototype .recon-drawer .drawer-body .btn:not(.btn-sm) {
+    min-height: 44px;
+  }
+  /* Bill album: images responsive */
+  .bill-album-modal .modal-body img {
+    max-width: 100%;
+    height: auto;
+  }
+}
+
+/* ── Phase 4: CardReconciliationTab drawer-center — desktop width + mobile full-screen ── */
+.gmv-prototype .drawer.drawer-center {
+  width: min(1040px, 95vw);
+}
+@media (max-width: 767px) {
+  .gmv-prototype .drawer.drawer-center {
+    position: fixed !important;
+    top: 0 !important; left: 0 !important; right: 0 !important; bottom: 0 !important;
+    width: 100vw !important;
+    height: 100dvh !important;
+    max-height: 100dvh !important;
+    border-radius: 0 !important;
+    transform: translateY(6px) !important;
+  }
+  .gmv-prototype .drawer.drawer-center.open {
+    transform: translateY(0) !important;
+    opacity: 1 !important;
+  }
+  .gmv-prototype .drawer.drawer-center .drawer-head { padding: 14px 16px; }
+  .gmv-prototype .drawer.drawer-center .drawer-body { padding: 14px 16px; }
+  .gmv-prototype .drawer.drawer-center .drawer-foot { padding: 12px 16px; }
+}
+
+/* ── Phase 4: GatewaySyncTab — desktop-only workflow hint ── */
+.gateway-sync-mobile-hint { display: none; }
+@media (max-width: 767px) {
+  .gateway-sync-mobile-hint { display: block; }
+}

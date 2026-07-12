@@ -241,6 +241,13 @@ export default function GatewaySyncTab() {
   return (
     <div className="gmv-prototype">
       <div className="page">
+        {/* Mobile hint: workflow cần Chrome extension trên máy tính */}
+        <div className="gateway-sync-mobile-hint">
+          <div style={{ background: "var(--warning-bg)", color: "var(--warning-text)", borderRadius: 8, padding: "10px 14px", fontSize: 13, marginBottom: 14, display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ fontSize: 16 }}>💻</span>
+            Đồng bộ giao dịch cần Chrome extension trên máy tính.
+          </div>
+        </div>
         {/* Page header: description + channel badges */}
         <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, marginBottom: 12 }}>
           <div style={{ fontSize: 12.5, color: "var(--text-3)", maxWidth: 720, lineHeight: 1.55 }}>

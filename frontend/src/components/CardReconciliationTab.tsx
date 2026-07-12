@@ -725,7 +725,7 @@ export default function CardReconciliationTab({
         onClick={() => setDrawerOpen(false)}
         style={{ pointerEvents: drawerOpen ? "auto" : "none" }}
       />
-      <aside className={`drawer drawer-center ${drawerOpen ? "open" : ""}`} style={{ width: "min(1040px, 95vw)" }}>
+      <aside className={`drawer drawer-center ${drawerOpen ? "open" : ""}`}>
         {drawerTxn && (
           <>
             <div className="drawer-head">

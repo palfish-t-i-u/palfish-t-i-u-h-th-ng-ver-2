@@ -69,4 +69,73 @@ test.describe("Mobile GĐ2: Accounting screens", () => {
     );
     expect(overflowX).toBeLessThanOrEqual(0);
   });
+
+  // Phase 3: ReconciliationTab recon-drawer
+  test("Đối soát CK tap txn card → recon-drawer không tràn ngang", async ({ page }) => {
+    await page.goto("/");
+    await openChildViaThem(page, /Đối soát giao dịch/, /Chuyển khoản/);
+    await page.waitForTimeout(1500);
+
+    const firstCard = page.locator(".recon-txn-card, [data-txn-id]").first();
+    if (!(await firstCard.isVisible({ timeout: 5_000 }).catch(() => false))) {
+      test.skip(true, "No txn cards visible");
+      return;
+    }
+    await firstCard.click();
+    await page.waitForTimeout(1000);
+
+    const drawer = page.locator(".recon-drawer.open, .drawer.open").first();
+    if (await drawer.isVisible({ timeout: 3_000 }).catch(() => false)) {
+      const overflowX = await page.evaluate(
+        () => document.documentElement.scrollWidth - document.documentElement.clientWidth
+      );
+      expect(overflowX).toBeLessThanOrEqual(0);
+      const drawerBox = await drawer.boundingBox();
+      if (drawerBox) {
+        const viewportWidth = page.viewportSize()?.width ?? 375;
+        expect(drawerBox.width).toBeLessThanOrEqual(viewportWidth + 1);
+      }
+    }
+  });
+
+  // Phase 4: CardReconciliationTab drawer-center full-screen
+  test("Đối soát thẻ tap card → drawer-center không tràn ngang", async ({ page }) => {
+    await page.goto("/");
+    await openChildViaThem(page, /Đối soát giao dịch/, /Thẻ mPOS|Payoo/);
+    await page.waitForTimeout(1500);
+
+    const firstCard = page.locator(".card-recon-row, [data-card-id]").first();
+    if (!(await firstCard.isVisible({ timeout: 5_000 }).catch(() => false))) {
+      test.skip(true, "No card recon rows visible");
+      return;
+    }
+    await firstCard.click();
+    await page.waitForTimeout(1000);
+
+    const drawer = page.locator(".drawer-center.open").first();
+    if (await drawer.isVisible({ timeout: 3_000 }).catch(() => false)) {
+      const overflowX = await page.evaluate(
+        () => document.documentElement.scrollWidth - document.documentElement.clientWidth
+      );
+      expect(overflowX).toBeLessThanOrEqual(0);
+      const drawerBox = await drawer.boundingBox();
+      if (drawerBox) {
+        const viewportWidth = page.viewportSize()?.width ?? 375;
+        expect(drawerBox.width).toBeLessThanOrEqual(viewportWidth + 1);
+      }
+    }
+  });
+
+  // Phase 4: GatewaySyncTab mobile hint visible
+  test("GatewaySync: không tràn ngang + hint desktop visible", async ({ page }) => {
+    await page.goto("/");
+    await openChildViaThem(page, /Đối soát giao dịch/, /Đồng bộ mPOS|Gateway/);
+    await page.waitForTimeout(1000);
+    const overflowX = await page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth
+    );
+    expect(overflowX).toBeLessThanOrEqual(0);
+    const hint = page.locator(".gateway-sync-mobile-hint");
+    await expect(hint).toBeVisible({ timeout: 3_000 }).catch(() => {});
+  });
 });

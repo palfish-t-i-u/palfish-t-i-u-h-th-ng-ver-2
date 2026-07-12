@@ -1190,7 +1190,7 @@ export default function ReconciliationTab() {
         onClick={() => setDrawerOpen(false)}
         style={{ pointerEvents: drawerOpen ? "auto" : "none" }}
       />
-      <aside className={`drawer ${drawerOpen ? "open" : ""}`} style={{ width: "min(720px, 92vw)" }}>
+      <aside className={`drawer recon-drawer ${drawerOpen ? "open" : ""}`}>
         {drawerTxn && (() => {
           const status = txnDisplayStatus(drawerTxn);
           const method = METHOD_META[drawerTxn.method || "qr"];
@@ -1889,7 +1889,7 @@ export default function ReconciliationTab() {
         return (
           <div className="gmv-prototype-modal-scrim" onClick={() => setAlbumOpen(false)}>
             <div
-              className="modal"
+              className="modal bill-album-modal"
               style={{ width: "min(880px, 94vw)", maxHeight: "88vh", display: "flex", flexDirection: "column" }}
               onClick={(e) => e.stopPropagation()}
             >
