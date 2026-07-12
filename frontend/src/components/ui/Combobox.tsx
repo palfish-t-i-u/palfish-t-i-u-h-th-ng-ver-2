@@ -208,7 +208,7 @@ export default function Combobox({
         onFocus={() => {
           if (disabled) return;
           setOpen(true);
-          setQuery(value ? selectedLabel : "");
+          setQuery(freeText ? "" : value ? selectedLabel : "");
         }}
         onChange={(e) => {
           if (disabled) return;
