@@ -23,11 +23,14 @@ import {
   activationSummary,
   activeRequestAllocation,
   displayReceived,
+  feeTotal,
   fmtPhone,
   formatCoursePhone,
   formatPaymentDateFull,
   getReferralStatus,
-  hasUnverifiedInstallment,
+  grossReceived,
+  hasUnverifiedFeeLine,
+  lineNet,
   nowStamp,
   parsePaymentDate,
   paymentAttemptLabel,
@@ -295,6 +298,25 @@ function QrRow({
             <>
               <span className="sep" />
               <span>{detail}</span>
+            </>
+          )}
+          {(qr.method === "card" || qr.method === "installment") && qr.status === "paid" && (
+            <>
+              <span className="sep" />
+              {qr.verifiedReceived != null ? (
+                <span style={{ color: "var(--success-text)" }}>
+                  {vnd(qr.amount)} − phí {vnd(Math.max(0, qr.amount - qr.verifiedReceived))} ={" "}
+                  <strong>{vnd(lineNet(qr))}</strong>
+                  <span className="badge is-done" style={{ marginLeft: 4 }}>
+                    <Icons.Check size={10} strokeWidth={2.5} /> Đã ghép
+                  </span>
+                </span>
+              ) : (
+                <span>
+                  {vnd(qr.amount)}
+                  <span className="badge is-over" style={{ marginLeft: 4 }}>Chờ kế toán</span>
+                </span>
+              )}
             </>
           )}
           <span className="sep" />
@@ -1769,7 +1791,7 @@ export default function PaymentRequestDetailDrawer({
             </div>
           </div>
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            <PaymentRequestStatusBadge state={request.state} totalCount={request.totalCount} />
+            <PaymentRequestStatusBadge state={request.state} totalCount={request.totalCount} provisional={hasUnverifiedFeeLine(request)} />
             <button className="drawer-close" onClick={onClose}>
               <Icons.Close size={16} />
             </button>
@@ -1784,8 +1806,15 @@ export default function PaymentRequestDetailDrawer({
               <div className="summary-value">{vnd(request.target)}</div>
             </div>
             <div className="summary is-received">
-              <div className="summary-label">Đã nhận{hasUnverifiedInstallment(request) ? " (chưa trừ phí)" : ""}</div>
+              <div className="summary-label">
+                Đã nhận (net){hasUnverifiedFeeLine(request) ? " · chưa trừ phí" : ""}
+              </div>
               <div className="summary-value">{vnd(displayReceived(request))}</div>
+              {feeTotal(request) > 0 && (
+                <div className="summary-sub">
+                  Khách chuyển {vnd(grossReceived(request))} · Phí −{vnd(feeTotal(request))}
+                </div>
+              )}
             </div>
             <div className={`summary is-delta-${request.state}`}>
               <div className="summary-label">

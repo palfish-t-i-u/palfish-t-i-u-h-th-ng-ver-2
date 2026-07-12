@@ -8,6 +8,7 @@ import {
   type RequestBucket,
   ddmmyyyy,
   fmtPhone,
+  hasUnverifiedFeeLine,
   vnd,
 } from "./paymentRequestUtils";
 
@@ -63,7 +64,7 @@ export default function PrRowCards({
               value={vnd(p.target)}
               badges={
                 <>
-                  <PaymentRequestStatusBadge state={p.state} totalCount={p.totalCount} />
+                  <PaymentRequestStatusBadge state={p.state} totalCount={p.totalCount} provisional={hasUnverifiedFeeLine(p)} />
                   {ar && (
                     <span
                       className={`badge ${ar.uids.some((u) => u.courses.some((c) => !!c.orderId)) ? "is-done" : "is-over"}`}

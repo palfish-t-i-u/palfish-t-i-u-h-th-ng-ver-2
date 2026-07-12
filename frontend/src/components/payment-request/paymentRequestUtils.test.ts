@@ -4,12 +4,18 @@ import {
   activationSummary,
   activeRequestAllocation,
   buildCreateActiveRequestPayload,
+  displayReceived,
+  feeTotal,
   formatCoursePhone,
   fromApiActiveRequest,
   fromApiAttempt,
   fromApiPaymentRequest,
   getArReferralStatus,
   getReferralStatus,
+  grossReceived,
+  hasUnverifiedFeeLine,
+  lineNet,
+  normalizeRequest,
   pageItems,
   paginate,
   toActiveRequestPatchUidsData,
@@ -864,5 +870,123 @@ describe("multi-con mappers (10/7)", () => {
     const patch = toActiveRequestPatchUidsData(arMapped);
     expect(patch[0].name).toBeUndefined();
     expect(patch[1].name).toBe("Bé Hai");
+  });
+});
+
+describe("lineNet — Thừa/Thiếu tính theo NET (12/7)", () => {
+  it("qr → luôn dùng amount (gross), verifiedReceived bị bỏ qua", () => {
+    const line = fromApiAttempt({ method: "qr", amount: 1000, verified_received: 900 });
+    expect(lineNet(line)).toBe(1000);
+  });
+
+  it("card đã kế toán xác nhận → dùng verifiedReceived (net)", () => {
+    const line = fromApiAttempt({ method: "card", amount: 20000000, verified_received: 19160000 });
+    expect(lineNet(line)).toBe(19160000);
+  });
+
+  it("installment chưa xác nhận (verifiedReceived null) → fallback amount (gross)", () => {
+    const line = fromApiAttempt({ method: "installment", amount: 5000, verified_received: null });
+    expect(lineNet(line)).toBe(5000);
+  });
+
+  it("card verifiedReceived = 0 → coi như chưa ghép, fallback gross (khớp BE _line_net)", () => {
+    const line = fromApiAttempt({ method: "card", amount: 2000, verified_received: 0 });
+    expect(lineNet(line)).toBe(2000);
+  });
+});
+
+describe("normalizeRequest — received tính theo NET", () => {
+  it("received = tổng lineNet của các lần đã trả (card verified trừ phí)", () => {
+    const raw = fromApiPaymentRequest({
+      id: "PR-1", name: "A", uid: "u1", phone: "09", target: 18544000,
+      payments: [
+        { id: "l1", method: "card", amount: 20000000, verified_received: 19160000, status: "paid" },
+      ],
+    });
+    const pr = normalizeRequest(raw);
+    expect(pr.received).toBe(19160000);
+    expect(pr.delta).toBe(19160000 - 18544000);
+    expect(pr.state).toBe("over");
+  });
+
+  it("gross qua target nhưng net dưới target → state lật sang short (đúng nghiệp vụ 'thừa tạm')", () => {
+    const raw = fromApiPaymentRequest({
+      id: "PR-2", name: "A", uid: "u1", phone: "09", target: 18544000,
+      payments: [
+        { id: "l1", method: "card", amount: 19600000, verified_received: 18160000, status: "paid" },
+      ],
+    });
+    const pr = normalizeRequest(raw);
+    expect(pr.received).toBe(18160000);
+    expect(pr.state).toBe("short");
+  });
+});
+
+describe("regression — PR thuần qr/cash không đổi hành vi (G7)", () => {
+  it("PR chỉ có lần qr đã trả → received/state y hệt logic cũ (dùng gross)", () => {
+    const raw = fromApiPaymentRequest({
+      id: "PR-QR", name: "A", uid: "u1", phone: "09", target: 10000,
+      payments: [{ id: "l1", method: "qr", amount: 10000, status: "paid" }],
+    });
+    const pr = normalizeRequest(raw);
+    expect(pr.received).toBe(10000);
+    expect(pr.state).toBe("done");
+  });
+});
+
+describe("displayReceived / grossReceived / feeTotal", () => {
+  it("displayReceived cộng net cho card + installment, gross cho qr", () => {
+    const raw = fromApiPaymentRequest({
+      id: "PR-3", name: "A", uid: "u1", phone: "09", target: 0,
+      payments: [
+        { id: "l1", method: "qr", amount: 1000, status: "paid" },
+        { id: "l2", method: "card", amount: 20000, verified_received: 19160, status: "paid" },
+        { id: "l3", method: "installment", amount: 5000, verified_received: null, status: "paid" },
+      ],
+    });
+    expect(displayReceived(raw)).toBe(1000 + 19160 + 5000);
+    expect(grossReceived(raw)).toBe(1000 + 20000 + 5000);
+  });
+
+  it("feeTotal clamp về 0 khi net > gross, không hiện số âm (G5)", () => {
+    const raw = fromApiPaymentRequest({
+      id: "PR-4", name: "A", uid: "u1", phone: "09", target: 0,
+      payments: [{ id: "l1", method: "card", amount: 1000, verified_received: 1200, status: "paid" }],
+    });
+    expect(feeTotal(raw)).toBe(0);
+  });
+
+  it("feeTotal = gross − net khi có phí thật", () => {
+    const raw = fromApiPaymentRequest({
+      id: "PR-5", name: "A", uid: "u1", phone: "09", target: 0,
+      payments: [{ id: "l1", method: "card", amount: 20000000, verified_received: 19160000, status: "paid" }],
+    });
+    expect(feeTotal(raw)).toBe(840000);
+  });
+});
+
+describe("hasUnverifiedFeeLine — bao gồm card (không chỉ installment)", () => {
+  it("card đã trả nhưng verifiedReceived null → true", () => {
+    const raw = fromApiPaymentRequest({
+      id: "PR-6", name: "A", uid: "u1", phone: "09", target: 0,
+      payments: [{ id: "l1", method: "card", amount: 1000, status: "paid" }],
+    });
+    expect(hasUnverifiedFeeLine(raw)).toBe(true);
+  });
+
+  it("card đã kế toán xác nhận → false", () => {
+    const raw = fromApiPaymentRequest({
+      id: "PR-7", name: "A", uid: "u1", phone: "09", target: 0,
+      payments: [{ id: "l1", method: "card", amount: 1000, verified_received: 950, status: "paid" }],
+    });
+    expect(hasUnverifiedFeeLine(raw)).toBe(false);
+  });
+
+  it("qr không bao giờ tính là unverified fee line", () => {
+    const raw = fromApiPaymentRequest({
+      id: "PR-8", name: "A", uid: "u1", phone: "09", target: 0,
+      payments: [{ id: "l1", method: "qr", amount: 1000, status: "paid" }],
+    });
+    expect(hasUnverifiedFeeLine(raw)).toBe(false);
   });
 });

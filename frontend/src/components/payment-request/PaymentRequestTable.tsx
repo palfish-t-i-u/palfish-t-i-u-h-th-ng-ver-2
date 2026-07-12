@@ -11,6 +11,7 @@ import {
   ddmmyyyy,
   fmtPhone,
   formatPaymentDateShort,
+  hasUnverifiedFeeLine,
   pageItems,
   relativeFrom,
   vnd,
@@ -269,7 +270,7 @@ export default function PaymentRequestTable({
                       )}
                     </td>
                     <td>
-                      <PaymentRequestStatusBadge state={p.state} totalCount={p.totalCount} />
+                      <PaymentRequestStatusBadge state={p.state} totalCount={p.totalCount} provisional={hasUnverifiedFeeLine(p)} />
                     </td>
                     <td>
                       <DeltaCell state={p.state} delta={p.delta} />
