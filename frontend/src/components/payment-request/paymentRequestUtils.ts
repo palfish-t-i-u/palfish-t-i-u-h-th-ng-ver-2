@@ -202,10 +202,24 @@ export function mergeAddPaymentLineResponse(
   return normalizeRequest({ ...current, ...prFromBe, payments });
 }
 
+/** Method có thể phát sinh phí xử lý (mPOS/Payoo) — phải khớp BE FEE_METHODS. */
+const FEE_METHODS = new Set<PaymentMethod>(["card", "installment"]);
+
+/** Số tiền THỰC NHẬN của 1 lần thanh toán (net-of-fee).
+ *  card/installment đã kế toán xác nhận (verifiedReceived truthy) → dùng verifiedReceived.
+ *  Còn lại (kể cả verifiedReceived = 0/"" — chưa ghép) → dùng amount (gross).
+ *  Phải khớp CHÍNH XÁC BE `_line_net` (payment_request_routes.py) — G2. */
+export function lineNet(p: PaymentAttempt): number {
+  if (FEE_METHODS.has(p.method) && p.verifiedReceived) {
+    return p.verifiedReceived;
+  }
+  return p.amount;
+}
+
 export function normalizeRequest(req: PaymentRequest): PaymentRequest {
   const payments = req.payments || [];
   const live = payments.filter((p) => !p.cancelled);
-  const received = live.filter((p) => p.status === "paid").reduce((sum, p) => sum + p.amount, 0);
+  const received = live.filter((p) => p.status === "paid").reduce((sum, p) => sum + lineNet(p), 0);
   const doneCount = live.filter((p) => p.status === "paid").length;
   const totalCount = live.length;
   const delta = received - req.target;
@@ -713,23 +727,33 @@ export interface PageSlice<T> {
   to: number;
 }
 
-/** Số tiền THỰC NHẬN để hiển thị trên card.
- *  Trả góp đã được kế toán xác nhận → dùng verifiedReceived (sau phí).
- *  Còn lại → dùng amount (gross).
- *  KHÔNG dùng cho tính state/remaining — chỉ để HIỂN THỊ. */
+/** Số tiền THỰC NHẬN để hiển thị trên card (net-of-fee, card + installment).
+ *  Cùng công thức với normalizeRequest.received — dùng chung lineNet (G2). */
 export function displayReceived(pr: PaymentRequest): number {
   return pr.payments.reduce((sum, p) => {
     if (p.status !== "paid") return sum;
-    if (p.method === "installment" && p.verifiedReceived != null) return sum + p.verifiedReceived;
-    return sum + p.amount;
+    return sum + lineNet(p);
   }, 0);
 }
 
-/** True khi có lần trả góp đã trả nhưng kế toán CHƯA xác nhận số sau phí. */
-export function hasUnverifiedInstallment(pr: PaymentRequest): boolean {
+/** True khi có lần card/installment đã trả nhưng kế toán CHƯA xác nhận số sau phí. */
+export function hasUnverifiedFeeLine(pr: PaymentRequest): boolean {
   return pr.payments.some(
-    (p) => p.status === "paid" && p.method === "installment" && p.verifiedReceived == null,
+    (p) => p.status === "paid" && FEE_METHODS.has(p.method) && p.verifiedReceived == null,
   );
+}
+export const hasUnverifiedInstallment = hasUnverifiedFeeLine;
+
+/** Tổng KHÁCH ĐÃ CHUYỂN (gross, trước phí) cho các lần đã trả. */
+export function grossReceived(pr: PaymentRequest): number {
+  return pr.payments
+    .filter((p) => p.status === "paid")
+    .reduce((sum, p) => sum + p.amount, 0);
+}
+
+/** Tổng phí xử lý (gross − net), clamp về 0 khi net > gross (không hiện phí âm). */
+export function feeTotal(pr: PaymentRequest): number {
+  return Math.max(0, grossReceived(pr) - displayReceived(pr));
 }
 
 export function paginate<T>(items: T[], rawPage: number, pageSize: number): PageSlice<T> {

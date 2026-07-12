@@ -597,6 +597,7 @@
 }
 .gmv-prototype .summary-label { font-size: 11px; color: var(--text-3); text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600; }
 .gmv-prototype .summary-value { font-size: 18px; font-weight: 700; margin-top: 4px; font-variant-numeric: tabular-nums; }
+.gmv-prototype .summary-sub { font-size: 0.8rem; color: var(--text-3); margin-top: 2px; }
 .gmv-prototype .summary.is-target .summary-value { color: var(--text); }
 .gmv-prototype .summary.is-received .summary-value { color: var(--primary-700); }
 .gmv-prototype .summary.is-delta-short .summary-value { color: var(--danger); }
