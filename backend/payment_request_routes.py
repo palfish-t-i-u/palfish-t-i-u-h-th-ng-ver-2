@@ -16,7 +16,7 @@ import zipfile
 from datetime import datetime, timezone
 from typing import Any, Callable
 
-import pandas as pd
+
 from fastapi import APIRouter, File, Header, HTTPException, Query, Request, UploadFile
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
@@ -255,17 +255,23 @@ def _compute_state(received: int, target: int) -> str:
     return "over"
 
 
+FEE_METHODS = {"card", "installment"}
+
+
+def _line_net(line: dict[str, Any]) -> int:
+    method = (line.get("method") or "").lower()
+    verified = line.get("verified_received")
+    if method in FEE_METHODS and verified not in (None, "", 0):
+        return int(verified)
+    return int(line.get("amount") or 0)
+
+
 def _sum_paid_amount(lines: list[dict[str, Any]]) -> int:
-    if not lines:
-        return 0
-    df = pd.DataFrame(lines)
-    if df.empty or "amount" not in df.columns:
-        return 0
-    if "status" not in df.columns:
-        df["status"] = ""
-    paid = df[df["status"].astype(str).str.lower() == "paid"].copy()
-    paid["amount"] = pd.to_numeric(paid["amount"], errors="coerce").fillna(0)
-    return int(paid["amount"].sum())
+    return sum(
+        _line_net(line)
+        for line in lines
+        if str(line.get("status", "")).lower() == "paid"
+    )
 
 
 def _iso_now() -> str:
@@ -1255,7 +1261,7 @@ def recompute_payment_request_totals(sb, payment_request_id: str) -> dict[str, A
 
     line_res = (
         sb.table("payment_lines")
-        .select("amount, status")
+        .select("amount, status, method, verified_received")
         .eq("payment_request_id", payment_request_id)
         .execute()
     )
