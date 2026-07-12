@@ -109,12 +109,13 @@ export default defineConfig({
       testIgnore: [/journeys/, /auth.*\.setup/, /rbac-/, /mobile-/],
     },
 
-    // ── Mobile viewport (Pixel 5 = chromium, không cần cài webkit) ──
+    // ── Mobile viewport (375×812 worst-case = iPhone SE/13 mini) ──
     {
       name: "mobile",
       testMatch: /mobile-.*\.spec\.ts/,
       use: {
         ...devices["Pixel 5"],
+        viewport: { width: 375, height: 812 },
         storageState: path.resolve(__dirname, "e2e/.auth/user.json"),
       },
       dependencies: ["auth-setup"],

@@ -14,6 +14,7 @@
     "test:ui": "vitest --ui",
     "lint": "eslint .",
     "e2e": "npx playwright test --project=e2e",
+    "e2e:mobile": "npx playwright test --project=mobile",
     "e2e:journeys": "npx playwright test --project=journeys",
     "e2e:rbac": "npx playwright test --project=rbac-sale --project=rbac-marketing --project=rbac-cs",
     "e2e:all": "npx playwright test",

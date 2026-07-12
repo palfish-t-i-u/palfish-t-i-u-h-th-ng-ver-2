@@ -960,7 +960,7 @@ function ActivationDetailDrawer({
   return (
     <>
       <div className={`scrim ${open ? "open" : ""}`} onClick={requestCloseDrawer} style={{ pointerEvents: open ? "auto" : "none" }} />
-      <aside className={`drawer ${open ? "open" : ""}`} style={{ width: "min(1020px, 96vw)" }}>
+      <aside className={`drawer ar-drawer ${open ? "open" : ""}`}>
         <div className="drawer-head">
           <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
             <span className="ar-id-pill">{ar.id}</span>

@@ -91,7 +91,7 @@ function InvoiceDetailDrawer({
   return (
     <>
       <div className={`scrim ${open ? "open" : ""}`} onClick={onClose} style={{ pointerEvents: open ? "auto" : "none" }} />
-      <aside className={`drawer ${open ? "open" : ""}`} style={{ width: "min(720px, 96vw)" }}>
+      <aside className={`drawer invoice-drawer ${open ? "open" : ""}`}>
         <div className="drawer-head">
           <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
             {isIssued ? (

@@ -205,7 +205,7 @@ export default function QrViewModal({
 
   return (
     <div className="gmv-prototype gmv-prototype-modal-scrim" onClick={onClose}>
-      <div className="modal" style={{ width: "min(720px, 100%)" }} onClick={(e) => e.stopPropagation()}>
+      <div className="modal qr-view-modal" style={{ width: "min(720px, 100%)" }} onClick={(e) => e.stopPropagation()}>
         <div className="modal-head">
           <div>
             <h3>QR thanh toán · Lần #{qr.idx}</h3>
@@ -227,6 +227,7 @@ export default function QrViewModal({
             <div className="qr-detail-card" style={{ alignItems: "flex-start", gap: 24 }}>
               {/* QR image */}
               <div
+                className="qr-img-wrap"
                 style={{
                   flexShrink: 0,
                   border: "1px solid #e5e7eb",
