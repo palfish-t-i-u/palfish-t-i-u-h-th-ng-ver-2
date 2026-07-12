@@ -1,6 +1,6 @@
 # PLAN — Định tuyến lại thông báo: AR-created sang DingTalk, tắt payment_paid trên DingTalk
 
-> Giao **Sonnet 4.6 medium**. Plan self-contained, code copy-paste được. Điều tra nền: `docs/plans/DIEU_TRA_AR_CREATED_DELIVERY_2026-07-12.md`.
+> ✅ **DONE** — merged main 12/7 (efc2da1, 2c00be7). Giao Sonnet 4.6 medium. Điều tra nền: `docs/plans/DIEU_TRA_AR_CREATED_DELIVERY_2026-07-12.md`.
 > Lập 2026-07-12 sau khi chốt yêu cầu với chủ dự án (anh Jacob).
 
 ## 0. Bối cảnh 1 dòng

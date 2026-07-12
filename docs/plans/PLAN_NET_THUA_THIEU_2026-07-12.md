@@ -1,6 +1,6 @@
 # PLAN — Thừa/thiếu tính theo NET (quẹt thẻ / trả góp)
 
-- **Ngày**: 2026-07-12 · **Branch gốc**: main · **Trạng thái**: chưa code (plan only)
+- **Ngày**: 2026-07-12 · **Branch gốc**: main · **Trạng thái**: ✅ DONE — merged main 12/7, deployed prod
 - **Chủ task**: anh Minh (dev) · **Nguồn spec**: anh Hiếu (TOP1), 4 ảnh workflow gửi 12/07
 - **Một câu**: Đổi mốc tính "thừa/thiếu" + trạng thái đơn từ **gross → net** (tiền thực nhận sau phí), sửa **cả BE + FE** cho hết bug "phí bị cộng nhầm thành thừa".
 

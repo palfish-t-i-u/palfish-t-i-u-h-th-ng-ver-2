@@ -1,6 +1,6 @@
 # PLAN — Bỏ multi-child ở PR + Thêm "Tên bé" ở kích hoạt + Smart-split tên con
 
-> **Người thực thi**: Sonnet 4.6 (medium). Làm **đúng theo thứ tự**, tôn trọng **GUARDRAILS** (mục 1).
+> ✅ **DONE** — merged main 12/7 (2917826, 5eabcda, 53ce343). Người thực thi: Sonnet 4.6 (medium).
 > **Scope: 100% FRONTEND.** KHÔNG sửa backend, KHÔNG migration, KHÔNG drop cột DB.
 > Ngày lập: 2026-07-12. Nền: điều tra 6 agent (create modal, edit drawer, types+BE, activation modal, activation BE, message builder).
 
