@@ -34,6 +34,7 @@ import {
   paymentConfirmationText,
   REFERRAL_STATUS_HEADER,
   REFERRAL_STATUS_PANEL_STYLE,
+  splitChildNames,
   validateReferralBonus,
   vnd,
 } from "./paymentRequestUtils";
@@ -395,16 +396,12 @@ function AddPaymentForm({
   const [cashier, setCashier] = useState(profile?.displayName || profile?.crmName || "");
   const [nameForTransfer, setNameForTransfer] = useState(pr.childName || pr.name);
   const [validationError, setValidationError] = useState("");
-  // Multi-con: PR có ≥2 bé → chọn lần TT của bé nào ("" = bé 1)
-  const children = pr.children ?? [];
-  const multiChild = children.length >= 2;
-  const [studentName, setStudentName] = useState("");
 
-  const childNameOptions = multiChild
-    ? children.filter((c) => c.name).map((c) => ({ value: c.name, label: `Con: ${c.name}` }))
-    : pr.childName
-    ? [{ value: pr.childName, label: `Con: ${pr.childName}` }]
-    : [];
+  const splitNames = splitChildNames(pr.childName);
+  const childNameOptions = splitNames.map((n) => ({ value: n, label: `Con: ${n}` }));
+  if (splitNames.length > 1 && pr.childName?.trim()) {
+    childNameOptions.push({ value: pr.childName.trim(), label: `Con: ${pr.childName.trim()}` });
+  }
   const nameOptions = [
     { value: pr.name, label: `KH: ${pr.name}` },
     ...childNameOptions,
@@ -446,7 +443,6 @@ function AddPaymentForm({
       installment_total: method === "installment" ? (parseInt(installmentTotal.replace(/\D/g, ""), 10) || undefined) : undefined,
       cashier: method === "cash" ? cashier : undefined,
       name_for_transfer: method === "qr" ? nameForTransfer : undefined,
-      student_name: studentName || undefined,
     });
   };
 
@@ -489,25 +485,6 @@ function AddPaymentForm({
       </div>
 
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-        {multiChild && (
-          <div className="field" style={{ flex: 1, minWidth: 160 }}>
-            <label>Của con nào?</label>
-            <select
-              value={studentName}
-              onChange={(e) => {
-                setStudentName(e.target.value);
-                // QR: nội dung CK mặc định theo bé được chọn
-                if (e.target.value) setNameForTransfer(e.target.value);
-              }}
-            >
-              {children.map((c, i) => (
-                <option key={i} value={i === 0 ? "" : c.name}>
-                  {c.name}{i === 0 ? " (mặc định)" : ""}
-                </option>
-              ))}
-            </select>
-          </div>
-        )}
         {method !== "installment" && (
           <div className="field" style={{ flex: 1, minWidth: 180 }}>
             <label>Số tiền lần này <span style={{ color: "var(--danger)" }}>*</span></label>
@@ -634,8 +611,6 @@ interface DraftPr {
   uid: string;
   name: string;
   childName: string;
-  /** Multi-con: bé thứ 2 trở đi (bé 1 = childName/uid của PR) */
-  extraChildren: { name: string; uid: string }[];
   country: string;
   phone: string;
   email: string;
@@ -1612,6 +1587,7 @@ export default function PaymentRequestDetailDrawer({
   // 10/7 — modal mở rộng: nhiều dòng {bé, gói, tiền} thay vì 1 ô gói đơn
   const [arPackageModalOpen, setArPackageModalOpen] = useState(false);
   const [arDraftRows, setArDraftRows] = useState<ArDraftRow[]>([]);
+  const [arChildName, setArChildName] = useState("");
   // bill guard — chặn tạo AR khi còn line paid thiếu ảnh bill
   const [missingBillsPopupOpen, setMissingBillsPopupOpen] = useState(false);
   const [missingBillLines, setMissingBillLines] = useState<{ line_id: string; idx: number; amount: number }[]>([]);
@@ -1626,6 +1602,7 @@ export default function PaymentRequestDetailDrawer({
     setHighlightTarget(false);
     setArPackageModalOpen(false);
     setArDraftRows([]);
+    setArChildName("");
     setMissingBillsPopupOpen(false);
     setMissingBillLines([]);
   }, [request?.id]);
@@ -1693,7 +1670,6 @@ export default function PaymentRequestDetailDrawer({
       uid: request.uid,
       name: request.name,
       childName: request.childName || "",
-      extraChildren: (request.children ?? []).slice(1).map((c) => ({ name: c.name, uid: c.uid ?? "" })),
       country: request.country || "VN",
       phone: request.phone,
       email: request.email || "",
@@ -1848,7 +1824,6 @@ export default function PaymentRequestDetailDrawer({
                       uid: request.uid,
                       name: request.name,
                       childName: request.childName || "",
-                      extraChildren: (request.children ?? []).slice(1).map((c) => ({ name: c.name, uid: c.uid ?? "" })),
                       country: request.country || "VN",
                       phone: request.phone,
                       email: request.email || "",
@@ -1898,28 +1873,11 @@ export default function PaymentRequestDetailDrawer({
                       const foreignCountryName = draft.isForeign
                         ? (COUNTRIES.find((c) => c.code === draft.foreignCountry)?.name ?? draft.foreignCountry)
                         : "";
-                      // Multi-con: gửi children khi PR đang/từng có bé phụ (mảng 1 phần tử = xoá hết bé phụ)
-                      const wasMulti = (request.children?.length ?? 0) > 1;
-                      const nextChildren = draft.extraChildren.length > 0 || wasMulti
-                        ? [
-                            { name: draft.childName.trim(), uid: draft.uid.trim() || null },
-                            ...draft.extraChildren.map((c) => ({ name: c.name.trim(), uid: c.uid.trim() || null })),
-                          ]
-                        : undefined;
-                      if (nextChildren) {
-                        const names = nextChildren.map((c) => c.name).filter(Boolean);
-                        if (names.length !== nextChildren.length || new Set(names).size !== names.length) {
-                          alert("Có bé phụ → phải điền tên bé 1 + tên từng bé, không trùng nhau.");
-                          setSavingEdit(false);
-                          return;
-                        }
-                      }
                       const ok = await onUpdatePr({
                         ...request,
                         uid: draft.uid,
                         name: draft.name,
                         childName: draft.childName || undefined,
-                        ...(nextChildren ? { children: nextChildren } : {}),
                         country: draft.country,
                         phone: draft.phone,
                         email: draft.email,
@@ -1977,16 +1935,10 @@ export default function PaymentRequestDetailDrawer({
                   <div className="info-label">Tên khách hàng</div>
                   <div className="info-value">{request.name}</div>
                 </div>
-                {(request.childName || (request.children?.length ?? 0) >= 2) && (
+                {request.childName && (
                   <div className="info-cell">
-                    <div className="info-label">
-                      {(request.children?.length ?? 0) >= 2 ? `Các con (${request.children!.length} bé)` : "Tên con (học viên)"}
-                    </div>
-                    <div className="info-value">
-                      {(request.children?.length ?? 0) >= 2
-                        ? request.children!.map((c) => c.name).filter(Boolean).join(", ")
-                        : request.childName}
-                    </div>
+                    <div className="info-label">Tên con (học viên)</div>
+                    <div className="info-value">{request.childName}</div>
                   </div>
                 )}
                 <div className="info-cell">
@@ -2111,7 +2063,7 @@ export default function PaymentRequestDetailDrawer({
                   />
                 </div>
                 <div className="info-cell">
-                  <div className="info-label">Tên con (học viên){draft.extraChildren.length > 0 ? " — bé 1" : ""}</div>
+                  <div className="info-label">Tên con (học viên)</div>
                   <input
                     value={draft.childName}
                     onChange={(e) => setDraft({ ...draft, childName: e.target.value })}
@@ -2124,52 +2076,6 @@ export default function PaymentRequestDetailDrawer({
                       fontSize: 13,
                     }}
                   />
-                  {draft.extraChildren.map((c, i) => {
-                    // Bé đã có lần thanh toán gắn tên → không cho xoá (đổi tên OK, tự lan sang line)
-                    const hasLines = (request.payments ?? []).some(
-                      (p) => !p.cancelled && (p.studentName || "") === c.name && c.name !== ""
-                    );
-                    return (
-                      <div key={i} style={{ display: "flex", gap: 6, marginTop: 6 }}>
-                        <input
-                          value={c.name}
-                          placeholder={`Tên bé ${i + 2} *`}
-                          onChange={(e) => setDraft({
-                            ...draft,
-                            extraChildren: draft.extraChildren.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)),
-                          })}
-                          style={{ flex: 1, border: "1px solid var(--border)", borderRadius: 8, padding: "8px 10px", font: "inherit", fontSize: 13 }}
-                        />
-                        <input
-                          value={c.uid}
-                          placeholder="UID bé (nếu có)"
-                          onChange={(e) => setDraft({
-                            ...draft,
-                            extraChildren: draft.extraChildren.map((x, j) => (j === i ? { ...x, uid: e.target.value } : x)),
-                          })}
-                          style={{ width: 110, border: "1px solid var(--border)", borderRadius: 8, padding: "8px 10px", font: "inherit", fontFamily: "JetBrains Mono, monospace", fontSize: 12.5 }}
-                        />
-                        <button
-                          type="button"
-                          className="btn btn-ghost btn-sm"
-                          disabled={hasLines}
-                          title={hasLines ? "Bé đã có lần thanh toán — không thể xoá" : "Xoá bé này"}
-                          style={hasLines ? { opacity: 0.4, cursor: "not-allowed" } : undefined}
-                          onClick={() => setDraft({ ...draft, extraChildren: draft.extraChildren.filter((_, j) => j !== i) })}
-                        >
-                          <Icons.Close size={13} />
-                        </button>
-                      </div>
-                    );
-                  })}
-                  <button
-                    type="button"
-                    className="btn btn-outline btn-sm"
-                    style={{ marginTop: 6 }}
-                    onClick={() => setDraft({ ...draft, extraChildren: [...draft.extraChildren, { name: "", uid: "" }] })}
-                  >
-                    <Icons.Plus size={12} /> Thêm con
-                  </button>
                 </div>
                 <div className="info-cell">
                   <div className="info-label">Số điện thoại</div>
@@ -2612,16 +2518,8 @@ export default function PaymentRequestDetailDrawer({
                   setMissingBillsPopupOpen(true);
                   return;
                 }
-                // Seed 1 dòng / bé: bé 1 tạm nhận toàn bộ tiền đã thu, bé 2+ = 0 — sale tự chia lại
-                const kids = request.children?.length
-                  ? request.children
-                  : [{ name: request.childName ?? "", uid: request.uid }];
-                setArDraftRows(kids.map((c, i) => ({
-                  childName: c.name ?? "",
-                  uid: c.uid ?? "",
-                  packageName: "",
-                  amount: i === 0 ? Math.max(0, request.received) : 0,
-                })));
+                setArChildName(splitChildNames(request.childName)[0] ?? "");
+                setArDraftRows([{ childName: "", uid: request.uid ?? "", packageName: "", amount: Math.max(0, request.received) }]);
                 setArPackageModalOpen(true);
               }}
             >
@@ -2631,15 +2529,20 @@ export default function PaymentRequestDetailDrawer({
         </div>
       </aside>
       {arPackageModalOpen && (() => {
-        const arChildren = request.children ?? [];
-        const arMultiChild = arChildren.length >= 2;
         const arTotal = arDraftRows.reduce((s, r) => s + (r.amount || 0), 0);
         const arReceived = Math.max(0, request.received);
         const arRemaining = arReceived - arTotal;
         const arRowsValid = arDraftRows.length > 0 && arDraftRows.every(
-          (r) => r.packageName.trim() && r.amount > 0 && (!arMultiChild || r.childName.trim())
+          (r) => r.packageName.trim() && r.amount > 0
         );
         const arValid = arRowsValid && arRemaining >= 0;
+        const arChildOptions = (() => {
+          const names = splitChildNames(request.childName);
+          for (const c of request.children ?? []) {
+            if (c.name && !names.some((n) => n.toLowerCase() === c.name.toLowerCase())) names.push(c.name);
+          }
+          return names;
+        })();
         const setArRow = (i: number, patch: Partial<ArDraftRow>) =>
           setArDraftRows((rows) => rows.map((r, j) => (j === i ? { ...r, ...patch } : r)));
         return (
@@ -2654,7 +2557,6 @@ export default function PaymentRequestDetailDrawer({
                 <h3>Chọn gói học để kích hoạt</h3>
                 <div style={{ fontSize: 12, color: "var(--text-3)", marginTop: 2 }}>
                   Tên gói sẽ gửi kèm thông báo cho Ops — bắt buộc điền trước khi tạo yêu cầu.
-                  {arMultiChild && " PR này có nhiều bé — mỗi dòng là 1 gói cho 1 bé."}
                 </div>
               </div>
               <button className="drawer-close" onClick={() => setArPackageModalOpen(false)}>
@@ -2662,24 +2564,20 @@ export default function PaymentRequestDetailDrawer({
               </button>
             </div>
             <div className="modal-body">
+              <div className="field" style={{ marginBottom: 12 }}>
+                <label>Tên bé <span style={{ color: "var(--text-3)", fontWeight: 400 }}>(hiển thị trong yêu cầu kích hoạt)</span></label>
+                <input
+                  list="ar-child-names"
+                  value={arChildName}
+                  onChange={(e) => setArChildName(e.target.value)}
+                  placeholder="Chọn hoặc gõ tên bé..."
+                />
+                <datalist id="ar-child-names">
+                  {arChildOptions.map((n) => (<option key={n} value={n} />))}
+                </datalist>
+              </div>
               {arDraftRows.map((row, i) => (
                 <div key={i} style={{ display: "flex", gap: 8, alignItems: "flex-end", marginBottom: 10 }}>
-                  {arMultiChild && (
-                    <div className="field" style={{ flex: "0 0 150px", marginBottom: 0 }}>
-                      <label>Bé</label>
-                      <select
-                        value={row.childName}
-                        onChange={(e) => {
-                          const kid = arChildren.find((c) => c.name === e.target.value);
-                          setArRow(i, { childName: e.target.value, uid: kid?.uid ?? "" });
-                        }}
-                      >
-                        {arChildren.map((c, j) => (
-                          <option key={j} value={c.name}>{c.name}</option>
-                        ))}
-                      </select>
-                    </div>
-                  )}
                   <div className="field" style={{ flex: 1, marginBottom: 0 }}>
                     <label>Gói học <span style={{ color: "var(--danger)" }}>*</span></label>
                     <Combobox
@@ -2714,13 +2612,13 @@ export default function PaymentRequestDetailDrawer({
                 type="button"
                 className="btn btn-outline btn-sm"
                 onClick={() => setArDraftRows((rows) => [...rows, {
-                  childName: arChildren[0]?.name ?? "",
-                  uid: arChildren[0]?.uid ?? "",
+                  childName: "",
+                  uid: request.uid ?? "",
                   packageName: "",
                   amount: 0,
                 }])}
               >
-                <Icons.Plus size={13} /> Thêm gói{arMultiChild ? " / bé" : ""}
+                <Icons.Plus size={13} /> Thêm gói
               </button>
               <div style={{ marginTop: 12, fontSize: 12.5 }}>
                 Đã phân bổ <strong>{arTotal.toLocaleString("vi-VN")} đ</strong> / thực nhận{" "}
@@ -2749,7 +2647,8 @@ export default function PaymentRequestDetailDrawer({
                 onClick={() => {
                   if (!arValid) return;
                   setArPackageModalOpen(false);
-                  onCreateActiveRequest(arDraftRows);
+                  const name = arChildName.trim();
+                  onCreateActiveRequest(arDraftRows.map((r) => ({ ...r, childName: name })));
                 }}
               >
                 <Icons.CheckSquare size={14} /> Tạo yêu cầu kích hoạt

@@ -231,8 +231,6 @@ export type CreatePaymentRequestPayload = {
   lead_source?: string;
   lead_channel?: string;
   wants_invoice?: boolean;
-  /** Multi-con: [{name, uid?}] bé 1 + bé 2+; BE tách bé 1 vào child_name/uid */
-  children?: { name: string; uid?: string | null }[];
 };
 
 export type PatchPaymentRequestPayload = Partial<CreatePaymentRequestPayload>;

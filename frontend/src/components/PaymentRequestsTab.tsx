@@ -267,11 +267,6 @@ export default function PaymentRequestsTab() {
       lead_source: next.leadSource || undefined,
       lead_channel: next.leadChannel || undefined,
       wants_invoice: next.wantsInvoice ?? undefined,
-      // Multi-con: gửi children khi PR có ≥2 bé HOẶC trước đó có ≥2 bé (mảng 1 phần tử = xoá bé phụ)
-      children:
-        next.children && (next.children.length > 1 || (previous?.children?.length ?? 0) > 1)
-          ? next.children.map((c) => ({ name: c.name.trim(), uid: (c.uid || "").trim() || null }))
-          : undefined,
     };
 
     try {

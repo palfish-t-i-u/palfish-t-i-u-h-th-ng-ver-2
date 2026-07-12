@@ -1,6 +1,33 @@
 import type { CSSProperties } from "react";
 import type { ActiveCourse, ActiveRequest, ActiveRequestApiRow, ActiveRequestPatchUidPayload, ArDraftRow, CreateActiveRequestPayload, CreateActiveRequestUidPayload, PaymentAttempt, PaymentMethod, PaymentRequest, PaymentRequestStatus } from "../../types/paymentRequest";
 
+/**
+ * Tách chuỗi tên con free-text thành danh sách tên riêng lẻ.
+ * CHỈ tách theo dấu phân cách tường minh — KHÔNG đoán ranh giới khi không có dấu.
+ *   "Lê Bảo Châu - Lê Bảo Khánh" | "A & B" | "A và B" | "A + B" | "A, B" | "A/B" | "A / B" → 2 tên
+ *   "Anne-Marie" (gạch nối dính) → giữ nguyên (dash phải có space 2 bên; KH nước ngoài)
+ *   "Kim Ji Yong" → ["Kim Ji Yong"] ;  "" / null / "   " → []
+ * DB prod 2026-07-12: 197 PR có child_name, 0 chứa "/", ~6 PR đa-tên (dùng " - ","&",","," và ");
+ * extra_children = 0 → split đủ phủ. Slash cắt cả khi dính (không có false-positive trong data).
+ * Fail-safe (G5): dùng ở dropdown/ô gợi ý; rỗng → caller fallback tên KH.
+ */
+export function splitChildNames(raw?: string | null): string[] {
+  if (!raw) return [];
+  // dash (- – —): PHẢI có space 2 bên (chống cắt "Anne-Marie") | slash,&,+,phẩy: cắt cả khi dính | và/and: có space
+  const SEP = /\s+[-–—]\s+|\s*[\/&+,]\s*|\s+và\s+|\s+and\s+/i;
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const part of raw.split(SEP)) {
+    const name = part.replace(/\s+/g, " ").trim();
+    if (!name) continue;
+    const key = name.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(name);
+  }
+  return out.slice(0, 6);
+}
+
 export type RequestBucket = "tracking" | "created" | "cancelled";
 export type StatusFilter = "all" | "pending" | "short" | "done" | "over";
 
