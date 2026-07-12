@@ -17,6 +17,8 @@ type Props = {
   disabled?: boolean;
   /** Viền đỏ báo lỗi (vd. trường bắt buộc bỏ trống). */
   invalid?: boolean;
+  /** Cho phép commit giá trị gõ tay không có trong danh sách (vd. ô Tên bé). */
+  freeText?: boolean;
 };
 
 function ordinalSuffix(n: number): string {
@@ -99,6 +101,7 @@ export default function Combobox({
   matchDigitsToOrdinal = false,
   disabled = false,
   invalid = false,
+  freeText = false,
 }: Props) {
   const listId = useId();
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -216,13 +219,15 @@ export default function Combobox({
           );
           if (exact) onChange(exact.value);
           else if (!e.target.value.trim()) onChange("");
+          else if (freeText) onChange(e.target.value.trim());
         }}
         onKeyDown={(e) => {
           if (disabled) return;
           if (e.key === "Escape") setOpen(false);
-          if (e.key === "Enter" && filtered[0]) {
+          if (e.key === "Enter") {
             e.preventDefault();
-            onChange(filtered[0].value);
+            if (filtered[0]) onChange(filtered[0].value);
+            else if (freeText && query.trim()) onChange(query.trim());
             setOpen(false);
           }
         }}

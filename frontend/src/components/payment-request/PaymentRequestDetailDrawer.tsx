@@ -2566,15 +2566,14 @@ export default function PaymentRequestDetailDrawer({
             <div className="modal-body">
               <div className="field" style={{ marginBottom: 12 }}>
                 <label>Tên bé <span style={{ color: "var(--text-3)", fontWeight: 400 }}>(hiển thị trong yêu cầu kích hoạt)</span></label>
-                <input
-                  list="ar-child-names"
+                <Combobox
+                  freeText
                   value={arChildName}
-                  onChange={(e) => setArChildName(e.target.value)}
+                  onChange={setArChildName}
+                  options={arChildOptions.map((n) => ({ value: n, label: n }))}
                   placeholder="Chọn hoặc gõ tên bé..."
+                  emptyLabel="— Bỏ chọn —"
                 />
-                <datalist id="ar-child-names">
-                  {arChildOptions.map((n) => (<option key={n} value={n} />))}
-                </datalist>
               </div>
               {arDraftRows.map((row, i) => (
                 <div key={i} style={{ display: "flex", gap: 8, alignItems: "flex-end", marginBottom: 10 }}>
