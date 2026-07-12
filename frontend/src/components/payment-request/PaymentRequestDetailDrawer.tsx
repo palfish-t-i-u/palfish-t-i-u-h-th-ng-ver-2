@@ -300,23 +300,13 @@ function QrRow({
               <span>{detail}</span>
             </>
           )}
-          {(qr.method === "card" || qr.method === "installment") && qr.status === "paid" && (
+          {(qr.method === "card" || qr.method === "installment") && qr.status === "paid" && qr.verifiedReceived != null && (
             <>
               <span className="sep" />
-              {qr.verifiedReceived != null ? (
-                <span style={{ color: "var(--success-text)" }}>
-                  {vnd(qr.amount)} − phí {vnd(Math.max(0, qr.amount - qr.verifiedReceived))} ={" "}
-                  <strong>{vnd(lineNet(qr))}</strong>
-                  <span className="badge is-done" style={{ marginLeft: 4 }}>
-                    <Icons.Check size={10} strokeWidth={2.5} /> Đã ghép
-                  </span>
-                </span>
-              ) : (
-                <span>
-                  {vnd(qr.amount)}
-                  <span className="badge is-over" style={{ marginLeft: 4 }}>Chờ kế toán</span>
-                </span>
-              )}
+              <span style={{ color: "var(--success-text)" }}>
+                {vnd(qr.amount)} − phí {vnd(Math.max(0, qr.amount - qr.verifiedReceived))} ={" "}
+                <strong>{vnd(lineNet(qr))}</strong>
+              </span>
             </>
           )}
           <span className="sep" />
