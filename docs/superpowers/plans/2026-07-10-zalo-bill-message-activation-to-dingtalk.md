@@ -6,7 +6,7 @@
 
 **Goal:** Trên nhóm Zalo sale chỉ còn 2 loại tin: (1) báo tiền về `payment_paid` (giữ nguyên), (2) tin MỚI bắn ảnh bill riêng sau khi sale up bill. Thông báo "kích hoạt thành công" (`course_activated`) tắt trên Zalo, giữ nguyên trên DingTalk + web GMV.
 
-**Architecture:** Tái dùng 100% hạ tầng outbox hiện có (bảng `zalo_outbox` + worker 30s + cột `image_urls`). Tin bill mới = 1 SQL function `enqueue_bill_uploaded_zalo(line_id)` duy nhất, được gọi từ 2 chỗ: (a) trigger `fn_payment_paid_zalo_notify` khi line chuyển paid mà đã có bill sẵn, (b) RPC từ endpoint upload bill khi line đã paid. Một implementation duy nhất trong SQL → không có rủi ro lệch format Python/SQL. Tắt `course_activated` Zalo = DROP trigger (migration riêng, deploy theo gate quyết định). Worker không cần sửa logic gửi — chỉ thêm sort phụ theo `id` để đảm bảo tin tiền luôn đi trước tin bill.
+**Architecture:** Tái dùng 100% hạ tầng outbox hiện có (bảng `zalo_outbox` + worker 30s + cột `image_urls`). Tin bill mới = 1 SQL function `enqueue_bill_uploaded_zalo(line_id)` duy nhất, được gọi từ 2 chỗ: (a) trigger `fn_payment_paid_zalo_notify` khi line chuyển paid mà đã có bill sẵn, (b) RPC từ endpoint upload bill khi line đã paid. Một implementation duy nhất trong SQL → không có rủi ro lệch format Python/SQL. Format gọn: TH thường chỉ `🧾 BILL - PR-xxxx` + ảnh; TH card/installment có net amount thì thêm mã lần TT (`transfer_code`) + dòng thực nhận. Tắt `course_activated` Zalo = DROP trigger (migration riêng, deploy theo gate quyết định). Worker không cần sửa logic gửi — chỉ thêm sort phụ theo `id` để đảm bảo tin tiền luôn đi trước tin bill.
 
 **Tech Stack:** Postgres (Supabase) trigger/function, FastAPI (supabase-py RPC), React (1 dòng label), pytest.
 
@@ -24,7 +24,7 @@
 | `payment_paid` | DB trigger `trg_payment_paid_zalo` trên `payment_lines` (status→'paid'), fn tại `backend/migrations/2026-06-23-zalo-oa-tables.sql:137` | GIỮ NGUYÊN format |
 | `course_activated` | DB trigger `trg_course_activated_zalo` trên `active_requests`, fn bản mới nhất ở `backend/migrations/2026-07-08-zalo-outbox-image-urls.sql` — **ảnh bill hiện đang đính vào tin này** | Tắt ở Phase 2 |
 | `activation_request_created`, `activation_urgent_reminder` | Python (`activation_routes.py`), đã chặn bằng `ZALO_ENABLED_EVENTS` (cắt 9/7) | Không đụng |
-| DingTalk `course_activated` | Trigger `trg_course_activated_dingtalk` đã tồn tại (`2026-06-26-dingtalk-tables.sql:141`) | Worker đang TẮT (`DINGTALK_WORKER_ENABLED` != true, chờ certification) |
+| DingTalk `course_activated` | Trigger `trg_course_activated_dingtalk` đã tồn tại (`2026-06-26-dingtalk-tables.sql:141`) | Worker ĐÃ BẬT 11/7 (`DINGTALK_WORKER_ENABLED=true`), robot đã join cả 2 nhóm, gửi tin OK |
 
 Facts đã verify:
 - `zalo_outbox.source_id` là UUID; `payment_lines.id` là UUID → dùng trực tiếp làm source_id, UNIQUE `(source_table, source_id, event_type)` tự chống trùng.
@@ -43,8 +43,8 @@ Facts đã verify:
 ## Phase 0 — Decision gates (KHÔNG code, chặn deploy prod)
 
 - [ ] **Gate A — anh Hiếu duyệt tắt `course_activated` trên Zalo.** Tin này là 1 trong 2 mẫu anh Hiếu yêu cầu GIỮ hôm 9/7. Chị Vân (sale) đã chốt bỏ, Minh đã hứa "bàn thêm với a Hiếu" (chat 9:36 10/7). Chưa có OK của anh Hiếu → chỉ deploy Phase 1, KHÔNG deploy Phase 2.
-- [ ] **Gate B — thời điểm tắt Zalo `course_activated`.** DingTalk hiện CHƯA live (robot bị chặn chờ certification, worker tắt bằng env flag). Nếu tắt Zalo trước khi DingTalk chạy → khoảng trống: sale chỉ còn xem trạng thái trên web. Chị Vân có vẻ nghĩ ding đã chạy ("đẩy về ding... rồi ạ") — nói rõ lại với chị. Khuyến nghị: **Phase 1 deploy ngay; Phase 2 chờ DingTalk live** (certification xong + `DINGTALK_WORKER_ENABLED=true` + `dingtalk_team_groups` đủ các team), trừ khi anh Hiếu chấp nhận interim web-only.
-- [ ] **Gate C — format tin bill.** Format đề xuất ở Task 1 (🧾 BILL + Sale/Team + số tiền lần TT). Gửi mẫu cho chị Hiền/Vân xem, chỉnh chữ được sau (chỉ sửa 1 SQL function, không ảnh hưởng kiến trúc).
+- [x] **Gate B — thời điểm tắt Zalo `course_activated`.** ~~DingTalk hiện CHƯA live~~ **UPDATE 11/7:** DingTalk worker ĐÃ LIVE cả sandbox + prod (`DINGTALK_WORKER_ENABLED=true`). Robot GMV-Notifier đã join cả 2 nhóm (VN - HN IH1 + VN - HN IH2 + Offline), test gửi tin thành công. **Gate B MỞ** — DingTalk sẵn sàng thay thế Zalo cho `course_activated`. Chỉ còn chờ Gate A (anh Hiếu duyệt).
+- [ ] **Gate C — format tin bill.** Format đã chốt với Minh 10/7: TH thường chỉ `🧾 BILL - PR-xxxx` + ảnh; TH card/installment có net thêm `- {transfer_code}` + dòng `🔸 Thực nhận: x VND`. Chỉnh chữ được sau (chỉ sửa 1 SQL function, không ảnh hưởng kiến trúc).
 
 ---
 
@@ -80,11 +80,9 @@ CREATE OR REPLACE FUNCTION public.enqueue_bill_uploaded_zalo(p_line_id uuid)
 AS $function$
 DECLARE
   v_line       public.payment_lines%ROWTYPE;
-  v_customer   TEXT;
-  v_child      TEXT;
+  v_pr_id      TEXT;
   v_sale_email TEXT;
   v_sale_team  TEXT;
-  v_sale_name  TEXT;
   v_group_id   TEXT;
   v_message    TEXT;
   v_image_urls JSONB;
@@ -112,9 +110,9 @@ BEGIN
     RETURN false;  -- chưa có bill nào → không có gì để bắn
   END IF;
 
-  SELECT pr.name, pr.child_name, pr.sale_email, ns.team,
-         COALESCE(ns.display_name, ns.crm_name)
-    INTO v_customer, v_child, v_sale_email, v_sale_team, v_sale_name
+  -- Lookup team để route tới đúng Zalo group
+  SELECT pr.id, pr.sale_email, ns.team
+    INTO v_pr_id, v_sale_email, v_sale_team
     FROM public.payment_requests pr
     LEFT JOIN public.nhan_su_sale ns ON ns.email ILIKE pr.sale_email
     WHERE pr.id = v_line.payment_request_id
@@ -130,28 +128,19 @@ BEGIN
     RETURN false;
   END IF;
 
-  -- Format: 🧾 BILL - KH {name}[ - Bé {child}] / 🔸 Sale · Team / 🔸 Lần TT: {amount} VND
-  v_message := format(E'\U0001F9FE BILL - KH %s',
-                      COALESCE(NULLIF(TRIM(v_customer), ''), '?'));
-  IF v_child IS NOT NULL AND TRIM(v_child) <> '' THEN
-    v_message := v_message || format(' - Bé %s', TRIM(v_child));
-  END IF;
-  v_message := v_message || E'\n' ||
-    format(E'\U0001F538 Sale %s · Team %s',
-           COALESCE(NULLIF(TRIM(v_sale_name), ''), NULLIF(TRIM(v_sale_email), ''), '?'),
-           COALESCE(NULLIF(TRIM(v_sale_team), ''), '?'));
+  -- Format gọn theo yêu cầu sale 10/7:
+  --   TH bình thường:              🧾 BILL - PR-2026-0226
+  --   TH card/installment có net:  🧾 BILL - PR-2026-0226 - FHR61
+  --                                🔸 Thực nhận: 4,559,000 VND
+  v_message := format(E'\U0001F9FE BILL - %s', COALESCE(v_pr_id, '?'));
 
-  -- Số tiền: ĐỒNG BỘ với tin báo tiền sau merge net-amount 10/7
-  -- (2026-07-10-zalo-payment-paid-net-amount.sql) — thẻ/trả góp ưu tiên thực nhận sau phí,
-  -- tránh 2 tin trong cùng nhóm hiển thị 2 số khác nhau cho cùng 1 lần TT.
   IF LOWER(COALESCE(v_line.method, '')) IN ('card', 'installment')
      AND v_line.verified_received IS NOT NULL THEN
+    v_message := v_message || format(' - %s',
+      COALESCE(NULLIF(TRIM(v_line.transfer_code), ''), '?'));
     v_message := v_message || E'\n' ||
-      format(E'\U0001F538 Lần TT (thực nhận): %s VND',
+      format(E'\U0001F538 Thực nhận: %s VND',
              to_char(v_line.verified_received, 'FM999,999,999,999'));
-  ELSE
-    v_message := v_message || E'\n' ||
-      format(E'\U0001F538 Lần TT: %s VND', to_char(v_line.amount, 'FM999,999,999,999'));
   END IF;
 
   -- Upsert: up thêm ảnh trong lúc CHƯA gửi → merge vào 1 tin. Đã gửi rồi → không gửi lại (chống spam).
@@ -349,11 +338,7 @@ git commit -m "feat(zalo): enqueue bill_uploaded on upload + deterministic outbo
     "E": {
         "label": "bill_uploaded → text 🧾 + ảnh bill (multi qua image_urls)",
         "event_type": "bill_uploaded",
-        "message": (
-            "🧾 BILL - KH Nguyễn Văn UAT E\n"
-            "🔸 Sale UAT · Team Inhouse 2\n"
-            "🔸 Lần TT: 4,999,000 VND"
-        ),
+        "message": "🧾 BILL - PR-2026-UAT5",
         "image_url": None,
         "image_urls": [VALID_BILL],
         "expect_image_sent": True,
@@ -534,7 +519,7 @@ SELECT id, status, bill_images, bill_image FROM payment_lines
 
 SELECT public.enqueue_bill_uploaded_zalo('<LINE_ID>');   -- expect: true
 SELECT event_type, source_id, group_id, LEFT(message, 100) AS msg, image_urls
-  FROM zalo_outbox WHERE event_type = 'bill_uploaded';   -- expect: 1 row, message bắt đầu "🧾 BILL - KH"
+  FROM zalo_outbox WHERE event_type = 'bill_uploaded';   -- expect: 1 row, message bắt đầu "🧾 BILL - PR-"
 
 SELECT public.enqueue_bill_uploaded_zalo('<LINE_ID>');   -- gọi lại: vẫn true (upsert)
 SELECT COUNT(*) FROM zalo_outbox

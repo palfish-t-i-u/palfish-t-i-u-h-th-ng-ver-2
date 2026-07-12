@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<title>HANDOFF — Thừa/Thiếu tính theo NET</title>
+<style>
+  :root { --bg: #f8fafc; --card: #fff; --border: #e2e8f0; --accent: #2563eb; --danger: #dc2626; --success: #16a34a; --warn: #d97706; --code-bg: #f1f5f9; --text: #1e293b; --muted: #64748b; }
+  * { box-sizing: border-box; margin: 0; }
+  body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg); color: var(--text); line-height: 1.6; padding: 2rem; max-width: 900px; margin: 0 auto; }
+  h1 { font-size: 1.5rem; border-bottom: 3px solid var(--accent); padding-bottom: .5rem; margin-bottom: 1.5rem; }
+  h2 { font-size: 1.2rem; margin-top: 2rem; margin-bottom: .75rem; color: var(--accent); }
+  h3 { font-size: 1rem; margin-top: 1.2rem; margin-bottom: .5rem; }
+  .meta { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 1rem 1.2rem; margin-bottom: 1.5rem; }
+  .meta p { margin: .25rem 0; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: .8rem; font-weight: 600; }
+  .badge-be { background: #dbeafe; color: #1d4ed8; }
+  .badge-fe { background: #dcfce7; color: #166534; }
+  .badge-warn { background: #fef3c7; color: #92400e; }
+  table { width: 100%; border-collapse: collapse; margin: .75rem 0; font-size: .9rem; }
+  th, td { border: 1px solid var(--border); padding: .5rem .75rem; text-align: left; }
+  th { background: var(--code-bg); font-weight: 600; }
+  pre, code { font-family: 'Cascadia Code', 'Fira Code', monospace; font-size: .85rem; }
+  pre { background: var(--code-bg); border-radius: 6px; padding: 1rem; overflow-x: auto; margin: .75rem 0; white-space: pre-wrap; }
+  .section { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 1.2rem 1.5rem; margin-bottom: 1.2rem; }
+  .warn-box { background: #fffbeb; border-left: 4px solid var(--warn); padding: .75rem 1rem; margin: .75rem 0; border-radius: 0 6px 6px 0; }
+  .danger-box { background: #fef2f2; border-left: 4px solid var(--danger); padding: .75rem 1rem; margin: .75rem 0; border-radius: 0 6px 6px 0; }
+  ul, ol { padding-left: 1.5rem; margin: .5rem 0; }
+  li { margin: .3rem 0; }
+  .divider { border: none; border-top: 2px dashed var(--border); margin: 2rem 0; }
+  .person-header { background: linear-gradient(135deg, #eff6ff, #f0fdf4); border: 2px solid var(--accent); border-radius: 10px; padding: 1rem 1.2rem; margin-bottom: 1rem; }
+  .person-header.duc { border-color: var(--success); background: linear-gradient(135deg, #f0fdf4, #ecfdf5); }
+</style>
+</head>
+<body>
+
+<h1>HANDOFF — Thừa/Thiếu tính theo NET (quẹt thẻ / trả góp)</h1>
+
+<div class="meta">
+  <p><strong>Ngày:</strong> 2026-07-12</p>
+  <p><strong>Nguồn:</strong> Anh Hiếu (TOP1) — 4 ảnh workflow 12/07. Plan: <code>docs/plans/PLAN_NET_THUA_THIEU_2026-07-12.md</code></p>
+  <p><strong>Phân công:</strong> <span class="badge badge-be">Đạt → BE</span> &nbsp; <span class="badge badge-fe">Đức → FE</span></p>
+  <p><strong>Branch:</strong> <code>feat/net-thua-thieu</code> (tách từ <code>main</code>)</p>
+  <p><strong>Ước lượng:</strong> Đạt ~3h · Đức ~4h · Không cần migration (cột đã có sẵn)</p>
+</div>
+
+<h2>Bối cảnh 1 câu</h2>
+<div class="section">
+  <p>Giao dịch quẹt thẻ/trả góp có phí → hệ thống cũ tính thừa/thiếu trên <strong>gross</strong> (số khách chuyển) → phí bị nhầm thành "khách trả dư". Sửa lại: <strong>thừa/thiếu = net − dự kiến</strong> (net = tiền thực nhận sau phí, kế toán điền khi ghép mPOS).</p>
+</div>
+
+<h2>Quy tắc LÕI (cả BE + FE phải KHỚP)</h2>
+<div class="section">
+<pre>
+netCủaLine(line):
+  NẾU method ∈ {"card", "installment"} VÀ verified_received != null
+    → return verified_received
+  NGƯỢC LẠI → return amount (gross)
+
+received = SUM(netCủaLine) cho các line status="paid", chưa hủy
+delta = received − target
+state: received≤0 → pending | &lt;target → short | =target → done | &gt;target → over
+phí (hiển thị) = gross − net (clamp ≥ 0)
+</pre>
+  <div class="warn-box">⚠️ Code FE hiện CHỈ check <code>installment</code> — thiếu <code>card</code>. Phải thêm.</div>
+</div>
+
+<hr class="divider">
+
+<!-- ĐẠT SECTION -->
+<div class="person-header">
+  <h2 style="margin:0; color:#1d4ed8;">🔧 ĐẠT — Backend (<code>payment_request_routes.py</code>)</h2>
+</div>
+
+<div class="section">
+<h3>Bối cảnh (ĐÃ verify 12/7)</h3>
+<table>
+  <tr><th>Vị trí</th><th>Hiện trạng</th></tr>
+  <tr><td><code>:258-268</code></td><td><code>_sum_paid_amount</code> — cộng <code>amount</code> (gross) của line paid. <strong>Đây là chỗ duy nhất cần đổi.</strong></td></tr>
+  <tr><td><code>:248-255</code></td><td><code>_compute_state(received, target)</code> — giữ nguyên (received giờ là net)</td></tr>
+  <tr><td><code>:1235</code></td><td><code>recompute_payment_request_totals</code> — gọi <code>_sum_paid_amount</code>; đã được gọi ở :1311, :1341, :1789, :1921, :2120, :2205, :2386</td></tr>
+  <tr><td><code>:2379-2386</code></td><td>Kế toán set <code>verified_received</code> → gọi recompute sẵn ✅</td></tr>
+  <tr><td><code>:697-698, :737-738</code></td><td>Response mapper trả <code>verified_received</code>, <code>verified_total</code> cho FE ✅</td></tr>
+</table>
+</div>
+
+<div class="section">
+<h3>Việc cần làm</h3>
+<ol>
+  <li><strong>Thêm helper <code>_line_net(line: dict) → int</code></strong>
+<pre>
+FEE_METHODS = {"card", "installment"}
+
+def _line_net(line: dict) -> int:
+    method = (line.get("method") or "").lower()
+    verified = line.get("verified_received")
+    if method in FEE_METHODS and verified not in (None, "", 0):
+        return int(verified)
+    return int(line.get("amount") or 0)
+</pre>
+  </li>
+  <li><strong>Sửa <code>_sum_paid_amount</code> (:258)</strong> — thay cộng <code>amount</code> bằng <code>_line_net</code>:
+<pre>
+def _sum_paid_amount(lines: list[dict[str, Any]]) -> int:
+    return sum(
+        _line_net(line)
+        for line in lines
+        if str(line.get("status", "")).lower() == "paid"
+    )
+</pre>
+    <span class="badge badge-warn">Bỏ pandas — list nhỏ (&lt;20 items), loop nhanh hơn + dễ đọc.</span>
+  </li>
+  <li><strong>Kiểm tra :1921</strong> — cũng gọi <code>_sum_paid_amount(lines)</code>, tự đúng theo.</li>
+  <li><strong>Không đổi</strong> <code>_compute_state</code>, <code>delta = received - target</code>, response mapper.</li>
+</ol>
+</div>
+
+<div class="section">
+<h3>Guardrails Đạt cần kiểm tra</h3>
+<ul>
+  <li><strong>G1 — Không khóa kích hoạt đã cấp:</strong> Khi net < target (state short) sau kế toán ghép, activation đã tạo KHÔNG bị revoke. Grep <code>activation_routes.py</code> xem có check <code>state</code>/<code>received</code> để chặn không → nếu có, tách điều kiện.</li>
+  <li><strong>G3 — verified_received=0 → coi như chưa ghép:</strong> <code>:2382</code> đã biến 0→None. Giữ đúng.</li>
+  <li><strong>G7 — CK thường (qr/cash) không đổi:</strong> method không thuộc FEE_METHODS → net=gross luôn → hành vi cũ giữ nguyên.</li>
+</ul>
+</div>
+
+<div class="section">
+<h3>Tests (BE)</h3>
+<p>File: <code>backend/tests/test_net_thua_thieu.py</code></p>
+<ol>
+  <li><code>test_line_net_qr</code> — method=qr → return amount</li>
+  <li><code>test_line_net_card_verified</code> — method=card, verified_received=19160000 → return 19160000</li>
+  <li><code>test_line_net_installment_not_verified</code> — method=installment, verified_received=None → return amount</li>
+  <li><code>test_sum_paid_amount_mixed</code> — hỗn hợp qr + card verified + installment unverified → tổng net đúng</li>
+  <li><code>test_state_flip_after_verify</code> — PR gross ≥ target (over tạm) → kế toán set net < target → state=short</li>
+  <li><code>test_qr_regression</code> — PR thuần CK → hành vi y hệt cũ</li>
+</ol>
+<pre>cd backend && python -m pytest tests/test_net_thua_thieu.py -v</pre>
+</div>
+
+<div class="section">
+<h3>Acceptance criteria (Đạt)</h3>
+<ol>
+  <li>Helper <code>_line_net</code> xử lý đúng 4 case: qr/cash (gross), card verified (net), installment verified (net), installment chưa verified (gross fallback).</li>
+  <li><code>recompute_payment_request_totals</code> tính received = tổng NET → state đúng theo ảnh 4 anh Hiếu.</li>
+  <li>Activation đã cấp KHÔNG bị khóa khi state tụt → G1.</li>
+  <li><code>python -m pytest</code> PASS.</li>
+</ol>
+</div>
+
+<hr class="divider">
+
+<!-- ĐỨC SECTION -->
+<div class="person-header duc">
+  <h2 style="margin:0; color:#166534;">🎨 ĐỨC — Frontend (<code>paymentRequestUtils.ts</code> + Drawer)</h2>
+</div>
+
+<div class="section">
+<h3>Bối cảnh (ĐÃ verify 12/7)</h3>
+<table>
+  <tr><th>File</th><th>Vị trí</th><th>Hiện trạng</th></tr>
+  <tr><td><code>paymentRequestUtils.ts</code></td><td><code>:205-218</code></td><td><code>normalizeRequest</code> — cộng <code>p.amount</code> (gross) cho received. <strong>Sửa thành lineNet.</strong></td></tr>
+  <tr><td><code>paymentRequestUtils.ts</code></td><td><code>:720-726</code></td><td><code>displayReceived</code> — chỉ check <code>installment</code>, thiếu <code>card</code>. Sửa dùng chung lineNet.</td></tr>
+  <tr><td><code>paymentRequestUtils.ts</code></td><td><code>:729-733</code></td><td><code>hasUnverifiedInstallment</code> — chỉ installment. Mở rộng gồm card.</td></tr>
+  <tr><td><code>PaymentRequestDetailDrawer.tsx</code></td><td><code>:1780-1799</code></td><td>3 ô summary (target, received, delta) — cần thêm dòng gross-phí.</td></tr>
+</table>
+</div>
+
+<div class="section">
+<h3>Việc cần làm</h3>
+
+<h3>A. <code>paymentRequestUtils.ts</code></h3>
+<ol>
+  <li><strong>Thêm helper <code>lineNet(p: PaymentAttempt): number</code></strong>
+<pre>
+const FEE_METHODS = new Set(["card", "installment"]);
+
+export function lineNet(p: PaymentAttempt): number {
+  if (FEE_METHODS.has(p.method ?? "") && p.verifiedReceived != null) {
+    return p.verifiedReceived;
+  }
+  return p.amount;
+}
+</pre>
+  </li>
+  <li><strong>Sửa <code>normalizeRequest</code> (:208)</strong>:
+<pre>
+// TRƯỚC: sum + p.amount
+// SAU:
+const received = live.filter((p) => p.status === "paid").reduce((sum, p) => sum + lineNet(p), 0);
+</pre>
+  </li>
+  <li><strong>Sửa <code>displayReceived</code> (:720)</strong> — viết lại dùng <code>lineNet</code>:
+<pre>
+export function displayReceived(pr: PaymentRequest): number {
+  return pr.payments.reduce((sum, p) => {
+    if (p.status !== "paid") return sum;
+    return sum + lineNet(p);
+  }, 0);
+}
+</pre>
+    Xoá comment cũ "KHÔNG dùng cho state" (giờ dùng chung).
+  </li>
+  <li><strong>Đổi <code>hasUnverifiedInstallment</code> → <code>hasUnverifiedFeeLine</code></strong>:
+<pre>
+export function hasUnverifiedFeeLine(pr: PaymentRequest): boolean {
+  return pr.payments.some(
+    (p) => p.status === "paid" && FEE_METHODS.has(p.method ?? "") && p.verifiedReceived == null,
+  );
+}
+export const hasUnverifiedInstallment = hasUnverifiedFeeLine; // alias giữ compat
+</pre>
+  </li>
+  <li><strong>Thêm helpers hiển thị</strong>:
+<pre>
+export function grossReceived(pr: PaymentRequest): number {
+  return pr.payments
+    .filter((p) => p.status === "paid")
+    .reduce((sum, p) => sum + p.amount, 0);
+}
+
+export function feeTotal(pr: PaymentRequest): number {
+  return Math.max(0, grossReceived(pr) - displayReceived(pr));
+}
+</pre>
+  </li>
+</ol>
+
+<h3>B. <code>PaymentRequestDetailDrawer.tsx</code> (:1780-1799)</h3>
+<p>Sửa block 3 ô summary — thêm dòng phụ gross−phí:</p>
+<pre>
+&lt;div className="summary is-received"&gt;
+  &lt;div className="summary-label"&gt;
+    Đã nhận (net){hasUnverifiedFeeLine(request) ? " · chưa trừ phí" : ""}
+  &lt;/div&gt;
+  &lt;div className="summary-value"&gt;{vnd(displayReceived(request))}&lt;/div&gt;
+  {feeTotal(request) > 0 && (
+    &lt;div className="summary-sub"&gt;
+      Khách chuyển {vnd(grossReceived(request))} · Phí −{vnd(feeTotal(request))}
+    &lt;/div&gt;
+  )}
+&lt;/div&gt;
+</pre>
+<p>CSS <code>.summary-sub</code>: font-size 0.8rem, color muted, margin-top 2px.</p>
+
+<h3>C. Badge "Đủ (tạm)" khi có unverified fee line</h3>
+<p>Ở label trạng thái (state badge): nếu state = "done"/"over" VÀ <code>hasUnverifiedFeeLine(request)</code> → hiện <span class="badge badge-warn">Đủ (tạm)</span> thay vì "Đủ".</p>
+
+<h3>D. Từng lần TT — card breakdown</h3>
+<p>Ở list payments trong drawer, với mỗi line có <code>FEE_METHODS</code>:</p>
+<ul>
+  <li>Đã ghép (verifiedReceived != null): hiện <code>{gross} − phí {gross-net} = <strong>{net}</strong></code> + badge "✓ Đã ghép"</li>
+  <li>Chưa ghép: hiện <code>{gross}</code> + badge "Chờ kế toán"</li>
+</ul>
+</div>
+
+<div class="section">
+<h3>Guardrails Đức cần kiểm tra</h3>
+<ul>
+  <li><strong>G2 — Khớp BE:</strong> FE <code>lineNet</code> logic = BE <code>_line_net</code>. Fee methods = {"card", "installment"}. Verified truthy check = <code>!= null</code>.</li>
+  <li><strong>G4 — Cả state LẪN display đổi sang net cùng lúc:</strong> normalizeRequest + displayReceived cùng dùng lineNet → không lệch.</li>
+  <li><strong>G5 — Phí âm:</strong> net > gross → feeTotal clamp 0. Không hiện số âm.</li>
+  <li><strong>G7 — Regression CK:</strong> method qr/cash → lineNet = amount → hành vi cũ y hệt.</li>
+</ul>
+</div>
+
+<div class="section">
+<h3>Tests (FE)</h3>
+<p>File: <code>frontend/src/components/payment-request/paymentRequestUtils.test.ts</code> (thêm describe block mới)</p>
+<ol>
+  <li><code>lineNet — qr returns amount</code></li>
+  <li><code>lineNet — card verified returns verifiedReceived</code></li>
+  <li><code>lineNet — installment no verified returns amount</code></li>
+  <li><code>normalizeRequest — net-based received and state</code></li>
+  <li><code>feeTotal — clamp negative to 0</code> (G5)</li>
+  <li><code>hasUnverifiedFeeLine — includes card</code></li>
+  <li><code>regression: qr-only PR unchanged</code> (G7)</li>
+</ol>
+<pre>cd frontend && npm run test -- paymentRequestUtils.test</pre>
+</div>
+
+<div class="section">
+<h3>Acceptance criteria (Đức)</h3>
+<ol>
+  <li><code>lineNet</code> xử lý đúng: qr(gross), card verified(net), installment unverified(gross fallback).</li>
+  <li><code>normalizeRequest</code> tính received = tổng NET → state/delta đúng.</li>
+  <li>Drawer 3 ô hiện: target, net (+ dòng gross−phí), thừa/thiếu = net−target.</li>
+  <li>Badge "Đủ (tạm)" hiện khi có fee line chưa ghép.</li>
+  <li><code>cd frontend && npx tsc -b</code> PASS.</li>
+  <li><code>npm run test</code> PASS.</li>
+</ol>
+</div>
+
+<hr class="divider">
+
+<h2>Thứ tự merge</h2>
+<div class="section">
+<ol>
+  <li><strong>Đạt push BE trước</strong> (sửa _sum_paid_amount → net). Deploy sandbox.</li>
+  <li><strong>Đức push FE sau</strong> (lineNet + drawer). Verify trên sandbox: tạo PR trả góp → kế toán ghép → số thừa/thiếu đúng.</li>
+  <li>Cả 2 gộp 1 PR merge main (squash).</li>
+</ol>
+</div>
+
+<h2>Anti-patterns (đừng làm)</h2>
+<div class="danger-box">
+<ol>
+  <li>❌ KHÔNG tạo bảng phí% hay config phí theo phương thức — anh Hiếu chốt không cần.</li>
+  <li>❌ KHÔNG thêm migration — cột <code>verified_received</code>, <code>verified_total</code> đã có sẵn.</li>
+  <li>❌ KHÔNG đổi luồng kế toán ghép mPOS — chỉ dùng lại output net.</li>
+  <li>❌ KHÔNG để 1 chỗ tính gross 1 chỗ tính net (nguồn lệch cũ).</li>
+  <li>❌ KHÔNG revoke/lock activation khi state tụt short sau ghép.</li>
+</ol>
+</div>
+
+</body>
+</html>
