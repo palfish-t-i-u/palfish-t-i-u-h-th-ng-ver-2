@@ -1088,6 +1088,97 @@ def _enqueue_activation_request_created_zalo(
         print(f"[zalo] activation_request_created enqueue failed (non-fatal): {exc}")
 
 
+def _enqueue_activation_request_created_dingtalk(
+    sb, saved_ar: dict[str, Any], pr: dict[str, Any] | None
+) -> None:
+    """Enqueue DingTalk 'activation_request_created' (best-effort, NEVER raises).
+
+    Routing = RAW sale team (khớp trigger + bảng dingtalk_team_groups), KHÔNG
+    canonical hoá, KHÔNG OPS fallback — chỉ 3 team HN có group mới nhận tin;
+    team khác thì skip. DingTalk outbox không có cột ảnh → text-only.
+    """
+    try:
+        if pr is None:
+            return
+        if pr.get("is_test") or saved_ar.get("is_test"):
+            return
+
+        sale_email = str(pr.get("sale_email") or "").strip().lower()
+        if not sale_email:
+            return
+
+        staff_res = (
+            sb.table("nhan_su_sale")
+            .select("email, display_name, crm_name, team")
+            .ilike("email", sale_email)
+            .limit(1)
+            .execute()
+        )
+        staff = staff_res.data[0] if staff_res.data else None
+        team = (staff or {}).get("team") or ""
+        if not team:
+            print(f"[dingtalk] activation_request_created skip: sale {sale_email} has no team")
+            return
+
+        # RAW team — KHÔNG get_canonical_team. Skip nếu team không có group (KHÔNG fallback).
+        g = (
+            sb.table("dingtalk_team_groups")
+            .select("team_code, is_active")
+            .eq("team_code", team)
+            .limit(1)
+            .execute()
+        )
+        if not g.data or not g.data[0].get("is_active"):
+            print(f"[dingtalk] activation_request_created skip: no active group for team {team!r}")
+            return
+        team_code = g.data[0]["team_code"]
+
+        pr_target, _ = _pr_amounts(pr)
+        result = build_activation_request_created_message(
+            {
+                "id": saved_ar.get("id"),
+                "customer_name": saved_ar.get("customer_name"),
+                "uids_data": saved_ar.get("uids_data"),
+            },
+            {
+                "id": pr.get("id"),
+                "name": pr.get("name"),
+                "child_name": pr.get("child_name"),
+                "phone": pr.get("phone"),
+                "country": pr.get("country") or "VN",
+                "lead_source": pr.get("lead_source"),
+                "lead_channel": pr.get("lead_channel"),
+                "target": pr_target,
+            },
+            {
+                "display_name": (staff or {}).get("display_name"),
+                "crm_name": (staff or {}).get("crm_name"),
+                "team": team,
+            },
+        )
+
+        ar_id = str(saved_ar.get("id") or "")
+        source_uuid = str(uuid.UUID(hashlib.md5(ar_id.encode()).hexdigest()))
+        try:
+            sb.table("dingtalk_outbox").insert(
+                {
+                    "event_type": "activation_request_created",
+                    "source_table": "active_requests",
+                    "source_id": source_uuid,
+                    "team_code": team_code,
+                    "message": result["message"],
+                }
+            ).execute()
+        except Exception as exc:
+            msg = str(exc).lower()
+            if "duplicate" in msg or "unique" in msg:
+                pass  # idempotent — UNIQUE(source_table, source_id, event_type)
+            else:
+                raise
+    except Exception as exc:
+        print(f"[dingtalk] activation_request_created enqueue failed (non-fatal): {exc}")
+
+
 def _assert_all_paid_lines_have_bill(sb, pr: dict) -> None:
     """Raise 422 if any confirmed payment line on this PR is missing a bill image."""
     pr_id = str(pr.get("id") or "")
@@ -1178,6 +1269,7 @@ def _save_active_request(
     if customer_name and not saved.get("customer_name"):
         saved["customer_name"] = customer_name
     _enqueue_activation_request_created_zalo(sb, saved, pr)
+    _enqueue_activation_request_created_dingtalk(sb, saved, pr)
     return saved, pr
 
 

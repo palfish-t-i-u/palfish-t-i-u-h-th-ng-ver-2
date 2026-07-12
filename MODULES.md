@@ -107,6 +107,8 @@
 - Cron: `backend/scripts/zalo_archive_cron.py` — dọn outbox > 30 ngày
 - E2E: `frontend/e2e/journeys/admin-smoke.spec.ts`, `frontend/e2e/mobile-admin.spec.ts`
 - Docs: `docs/UAT_ZALO_RUNBOOK.md`, `docs/HANDOFF_ZALO_OA_GMF_NOTIFICATION_2026-06-22.md`
+- Migration (2026-07-12): `backend/migrations/2026-07-12-dingtalk-ar-created-and-drop-payment-paid.sql` — mở CHECK dingtalk_outbox + DROP trg_payment_paid_dingtalk (⚠️ chưa apply — cần chạy thủ công sandbox→prod)
+- Tests DingTalk AR-created: `backend/tests/test_dingtalk_ar_created.py`
 
 ## 9. Phân quyền (RBAC) + Auth accounts
 
