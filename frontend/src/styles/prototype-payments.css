@@ -2210,10 +2210,13 @@
     max-height: 100dvh !important;
     border-radius: 0 !important;
     transform: translateY(6px) !important;
+    /* Đóng: full-screen + opacity:0 nhưng KHÔNG chặn tap (nếu không tab chết) */
+    pointer-events: none;
   }
   .gmv-prototype .drawer.drawer-center.open {
     transform: translateY(0) !important;
     opacity: 1 !important;
+    pointer-events: auto;
   }
   .gmv-prototype .drawer.drawer-center .drawer-head { padding: 14px 16px; }
   .gmv-prototype .drawer.drawer-center .drawer-body { padding: 14px 16px; }
