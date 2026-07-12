@@ -9,7 +9,7 @@ import datetime
 import traceback
 from typing import Any, Callable
 
-from dingtalk_notifier import DingTalkAPIError, send_group_message
+from dingtalk_notifier import DingTalkAPIError, send_group_image, send_group_message
 
 RETRY_DELAYS = [30, 120, 300, 900]  # seconds
 MAX_RETRIES = 4
@@ -82,6 +82,16 @@ async def poll_and_send(sb_factory: Callable[[], Any]) -> None:
                 message=message,
                 title=title,
             )
+            image_url = (row.get("image_url") or "").strip()
+            if image_url:
+                try:
+                    await asyncio.to_thread(
+                        send_group_image,
+                        open_conversation_id=open_conversation_id,
+                        photo_url=image_url,
+                    )
+                except Exception as img_exc:
+                    print(f"[dingtalk_worker] {row_id} image failed (non-fatal): {img_exc}")
             sb.table("dingtalk_outbox").update({
                 "sent_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
                 "dingtalk_message_id": msg_id,

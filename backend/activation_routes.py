@@ -1095,7 +1095,7 @@ def _enqueue_activation_request_created_dingtalk(
 
     Routing = RAW sale team (khớp trigger + bảng dingtalk_team_groups), KHÔNG
     canonical hoá, KHÔNG OPS fallback — chỉ 3 team HN có group mới nhận tin;
-    team khác thì skip. DingTalk outbox không có cột ảnh → text-only.
+    team khác thì skip. Kèm ảnh bill nếu có (worker gửi riêng qua sampleImageMsg).
     """
     try:
         if pr is None:
@@ -1133,6 +1133,26 @@ def _enqueue_activation_request_created_dingtalk(
             return
         team_code = g.data[0]["team_code"]
 
+        bill_url: str | None = None
+        pr_id_val = str(pr.get("id") or "")
+        if pr_id_val:
+            lines_res = (
+                sb.table("payment_lines")
+                .select("bill_image, bill_images")
+                .eq("payment_request_id", pr_id_val)
+                .eq("status", "paid")
+                .order("paid_at", desc=True)
+                .limit(1)
+                .execute()
+            )
+            if lines_res.data:
+                line = lines_res.data[0]
+                bill_url = (line.get("bill_image") or "").strip() or None
+                if not bill_url:
+                    bills = line.get("bill_images")
+                    if isinstance(bills, list) and bills:
+                        bill_url = str(bills[-1]).strip() or None
+
         pr_target, _ = _pr_amounts(pr)
         result = build_activation_request_created_message(
             {
@@ -1167,6 +1187,7 @@ def _enqueue_activation_request_created_dingtalk(
                     "source_id": source_uuid,
                     "team_code": team_code,
                     "message": result["message"],
+                    "image_url": bill_url,
                 }
             ).execute()
         except Exception as exc:

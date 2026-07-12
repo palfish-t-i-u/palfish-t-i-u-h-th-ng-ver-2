@@ -17,3 +17,6 @@ ALTER TABLE public.dingtalk_outbox ADD CONSTRAINT dingtalk_outbox_event_type_che
 -- (2) Tắt payment_paid trên DingTalk — chỉ DROP TRIGGER, GIỮ function (dễ bật lại).
 --     Trigger Zalo trg_payment_paid_zalo KHÔNG đụng.
 DROP TRIGGER IF EXISTS trg_payment_paid_dingtalk ON public.payment_lines;
+
+-- (3) Thêm cột ảnh bill cho AR-created (worker gửi riêng qua sampleImageMsg)
+ALTER TABLE public.dingtalk_outbox ADD COLUMN IF NOT EXISTS image_url text;

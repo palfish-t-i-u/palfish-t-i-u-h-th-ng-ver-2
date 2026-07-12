@@ -1,7 +1,7 @@
 """DingTalk activation_request_created producer — unit tests.
 
 Mirror TestEnqueueActivationRequestCreatedZalo nhưng cho DingTalk:
-RAW team routing (không canonical), KHÔNG OPS fallback, text-only, best-effort.
+RAW team routing (không canonical), KHÔNG OPS fallback, kèm ảnh bill, best-effort.
 """
 import hashlib
 import uuid
@@ -18,7 +18,7 @@ def _mock_chain_table(data):
     return t
 
 
-def _build_dt_sb(*, staff_rows=None, group_rows=None, insert_side_effect=None):
+def _build_dt_sb(*, staff_rows=None, group_rows=None, line_rows=None, insert_side_effect=None):
     outbox_calls = []
 
     def _outbox_insert(payload):
@@ -35,6 +35,7 @@ def _build_dt_sb(*, staff_rows=None, group_rows=None, insert_side_effect=None):
     tables = {
         "nhan_su_sale": _mock_chain_table(staff_rows or []),
         "dingtalk_team_groups": _mock_chain_table(group_rows or []),
+        "payment_lines": _mock_chain_table(line_rows or []),
         "dingtalk_outbox": outbox_table,
     }
     sb = MagicMock()
@@ -73,13 +74,12 @@ def _sample_pr(**overrides):
 
 
 class TestEnqueueActivationRequestCreatedDingtalk:
-    def test_happy_path_raw_team_text_only(self):
-        # Team "HN Offline Store": canonical là "Offline" (KHÔNG có group) →
-        # test này chứng minh producer dùng RAW team, không canonical.
+    def test_happy_path_raw_team_with_bill_image(self):
         sb, calls = _build_dt_sb(
             staff_rows=[{"email": "sale@test.com", "display_name": "Sale A",
                          "crm_name": "Sale A CRM", "team": "HN Offline Store"}],
             group_rows=[{"team_code": "HN Offline Store", "is_active": True}],
+            line_rows=[{"bill_image": "https://x/bill.jpg", "bill_images": None}],
         )
         activation_routes._enqueue_activation_request_created_dingtalk(
             sb, _sample_saved_ar(), _sample_pr())
@@ -88,15 +88,36 @@ class TestEnqueueActivationRequestCreatedDingtalk:
         assert p["event_type"] == "activation_request_created"
         assert p["source_table"] == "active_requests"
         assert p["team_code"] == "HN Offline Store"          # RAW, không phải "Offline"
-        assert "image_url" not in p                            # text-only
+        assert p["image_url"] == "https://x/bill.jpg"
         assert p["source_id"] == str(uuid.UUID(hashlib.md5(b"AR-2026-9001").hexdigest()))
         assert "🆕 YÊU CẦU KÍCH HOẠT KHOÁ HỌC — AR-2026-9001" in p["message"]
         assert "Bé An, Gói A" in p["message"]
 
+    def test_falls_back_to_bill_images_array(self):
+        sb, calls = _build_dt_sb(
+            staff_rows=[{"email": "sale@test.com", "team": "Inhouse 1"}],
+            group_rows=[{"team_code": "Inhouse 1", "is_active": True}],
+            line_rows=[{"bill_image": None, "bill_images": ["https://x/a.jpg", "https://x/b.jpg"]}],
+        )
+        activation_routes._enqueue_activation_request_created_dingtalk(
+            sb, _sample_saved_ar(), _sample_pr())
+        assert calls[0]["image_url"] == "https://x/b.jpg"
+
+    def test_no_bill_sends_null_image(self):
+        sb, calls = _build_dt_sb(
+            staff_rows=[{"email": "sale@test.com", "team": "Inhouse 1"}],
+            group_rows=[{"team_code": "Inhouse 1", "is_active": True}],
+            line_rows=[],
+        )
+        activation_routes._enqueue_activation_request_created_dingtalk(
+            sb, _sample_saved_ar(), _sample_pr())
+        assert len(calls) == 1
+        assert calls[0]["image_url"] is None
+
     def test_skip_when_team_has_no_group_no_ops_fallback(self):
         sb, calls = _build_dt_sb(
             staff_rows=[{"email": "sale@test.com", "team": "HCM (Online)"}],
-            group_rows=[],  # không group → skip (KHÔNG fallback về Inhouse 2)
+            group_rows=[],
         )
         activation_routes._enqueue_activation_request_created_dingtalk(
             sb, _sample_saved_ar(), _sample_pr())
@@ -148,5 +169,5 @@ class TestEnqueueActivationRequestCreatedDingtalk:
             insert_side_effect=Exception("boom"),
         )
         activation_routes._enqueue_activation_request_created_dingtalk(
-            sb, _sample_saved_ar(), _sample_pr())  # KHÔNG được raise
+            sb, _sample_saved_ar(), _sample_pr())
         assert calls == []

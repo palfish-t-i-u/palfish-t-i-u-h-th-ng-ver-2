@@ -176,3 +176,53 @@ def send_group_message(
 
     process_key = body.get("processQueryKey", "")
     return process_key or f"dt-{int(time.time() * 1000)}"
+
+
+def send_group_image(
+    *,
+    open_conversation_id: str,
+    photo_url: str,
+    robot_code: str | None = None,
+) -> str:
+    """Send an image to a DingTalk group via enterprise robot (sampleImageMsg)."""
+    open_conversation_id = _clean(open_conversation_id)
+    photo_url = _clean(photo_url)
+    if not open_conversation_id or not photo_url:
+        return ""
+
+    if not robot_code:
+        _, _, robot_code = _get_credentials()
+
+    token = get_access_token()
+
+    import json
+    payload = {
+        "msgKey": "sampleImageMsg",
+        "msgParam": json.dumps({"photoURL": photo_url}, ensure_ascii=False),
+        "robotCode": robot_code,
+        "openConversationId": open_conversation_id,
+    }
+
+    try:
+        with httpx.Client(timeout=HTTP_TIMEOUT) as client:
+            resp = client.post(
+                GROUP_SEND_URL,
+                json=payload,
+                headers={
+                    "x-acs-dingtalk-access-token": token,
+                    "Content-Type": "application/json",
+                },
+            )
+    except httpx.HTTPError as exc:
+        raise DingTalkAPIError(f"DingTalk image send error: {exc}") from exc
+
+    body = _json_or_text(resp)
+    if resp.status_code >= 400:
+        raise DingTalkAPIError(
+            f"DingTalk image HTTP {resp.status_code}",
+            status_code=resp.status_code,
+            response_body=body,
+        )
+
+    process_key = body.get("processQueryKey", "") if isinstance(body, dict) else ""
+    return process_key or f"dt-img-{int(time.time() * 1000)}"
