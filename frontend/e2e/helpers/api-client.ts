@@ -87,12 +87,13 @@ export class E2eApiClient {
 
   // ── Payment Requests ──
   async createPR(data: {
-    uid: string;
+    uid?: string;
     name: string;
     phone: string;
     country: string;
     address: string;
     target: number;
+    lead_source?: string;
     note?: string;
     email?: string;
   }): Promise<{ id: string }> {

@@ -214,7 +214,7 @@ export type AddPaymentAttemptPayload = {
 };
 
 export type CreatePaymentRequestPayload = {
-  uid: string;
+  uid?: string;
   name: string;
   child_name?: string;
   country: string;

@@ -2552,7 +2552,7 @@ export default function PaymentRequestDetailDrawer({
         const arReceived = Math.max(0, request.received);
         const arRemaining = arReceived - arTotal;
         const arRowsValid = arDraftRows.length > 0 && arDraftRows.every(
-          (r) => r.packageName.trim() && r.amount > 0
+          (r) => r.packageName.trim() && r.amount > 0 && r.uid.trim()
         );
         const arValid = arRowsValid && arRemaining >= 0;
         const arChildOptions = (() => {
@@ -2595,35 +2595,53 @@ export default function PaymentRequestDetailDrawer({
                 />
               </div>
               {arDraftRows.map((row, i) => (
-                <div key={i} style={{ display: "flex", gap: 8, alignItems: "flex-end", marginBottom: 10 }}>
-                  <div className="field" style={{ flex: 1, marginBottom: 0 }}>
-                    <label>Gói học <span style={{ color: "var(--danger)" }}>*</span></label>
-                    <Combobox
-                      value={row.packageName}
-                      onChange={(v) => setArRow(i, { packageName: v })}
-                      options={COURSE_PACKAGE_OPTIONS}
-                      placeholder="Chọn hoặc gõ tên gói học..."
-                      emptyLabel="Chưa chọn gói"
+                <div key={i} style={{ border: "1px solid var(--border)", borderRadius: 8, padding: "10px 12px", marginBottom: 10 }}>
+                  <div style={{ display: "flex", gap: 8, alignItems: "flex-end", marginBottom: 8 }}>
+                    <div className="field" style={{ flex: 1, marginBottom: 0 }}>
+                      <label>Gói học <span style={{ color: "var(--danger)" }}>*</span></label>
+                      <Combobox
+                        value={row.packageName}
+                        onChange={(v) => setArRow(i, { packageName: v })}
+                        options={COURSE_PACKAGE_OPTIONS}
+                        placeholder="Chọn hoặc gõ tên gói học..."
+                        emptyLabel="Chưa chọn gói"
+                      />
+                    </div>
+                    <div className="field" style={{ flex: "0 0 140px", marginBottom: 0 }}>
+                      <label>Số tiền (đ)</label>
+                      <MoneyInput
+                        value={row.amount ? String(row.amount) : ""}
+                        onValueChange={(digits) => setArRow(i, { amount: Number(digits || 0) })}
+                      />
+                    </div>
+                    {arDraftRows.length > 1 && (
+                      <button
+                        type="button"
+                        className="btn btn-ghost btn-sm"
+                        title="Xoá dòng này"
+                        style={{ marginBottom: 4 }}
+                        onClick={() => setArDraftRows((rows) => rows.filter((_, j) => j !== i))}
+                      >
+                        <Icons.Close size={14} />
+                      </button>
+                    )}
+                  </div>
+                  <div className="field" style={{ marginBottom: 0 }}>
+                    <label>
+                      UID CRM <span style={{ color: "var(--danger)" }}>*</span>
+                      {!row.uid.trim() && (
+                        <span style={{ marginLeft: 6, fontSize: 11, color: "var(--danger)", fontWeight: 400 }}>
+                          Bắt buộc trước khi kích hoạt
+                        </span>
+                      )}
+                    </label>
+                    <input
+                      placeholder="VD: 3213123123"
+                      value={row.uid}
+                      onChange={(e) => setArRow(i, { uid: e.target.value })}
+                      style={!row.uid.trim() ? { borderColor: "var(--danger)" } : undefined}
                     />
                   </div>
-                  <div className="field" style={{ flex: "0 0 140px", marginBottom: 0 }}>
-                    <label>Số tiền (đ)</label>
-                    <MoneyInput
-                      value={row.amount ? String(row.amount) : ""}
-                      onValueChange={(digits) => setArRow(i, { amount: Number(digits || 0) })}
-                    />
-                  </div>
-                  {arDraftRows.length > 1 && (
-                    <button
-                      type="button"
-                      className="btn btn-ghost btn-sm"
-                      title="Xoá dòng này"
-                      style={{ marginBottom: 4 }}
-                      onClick={() => setArDraftRows((rows) => rows.filter((_, j) => j !== i))}
-                    >
-                      <Icons.Close size={14} />
-                    </button>
-                  )}
                 </div>
               ))}
               <button

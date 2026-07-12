@@ -67,12 +67,15 @@ export default function CreatePaymentRequestModal({
 }: {
   open: boolean;
   onClose: () => void;
-  onSubmit: (payload: CreatePaymentRequestPayload) => void;
+  onSubmit: (payload: CreatePaymentRequestPayload) => Promise<void>;
 }) {
   const [form, setForm] = useState<FormState>(INITIAL);
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
   useEffect(() => {
     if (open) {
       setForm(INITIAL);
+      setSubmitError(null);
     }
   }, [open]);
 
@@ -93,40 +96,49 @@ export default function CreatePaymentRequestModal({
     : true;
 
   const canSubmit = !!(
-    form.uid && form.name && form.phone && targetNum > 0 &&
+    form.name && form.phone && targetNum > 0 &&
     form.leadSource && (!needsChannel || form.leadChannel) &&
     emailValid && addressOk
   );
 
-  const handleSubmit = () => {
-    if (!canSubmit) return;
+  const handleSubmit = async () => {
+    if (!canSubmit || submitting) return;
     const foreignCountryName = form.isForeign
       ? COUNTRIES.find((c) => c.code === form.foreignCountry)?.name ?? form.foreignCountry
       : "";
-    onSubmit({
-      uid: form.uid,
-      name: form.name,
-      child_name: form.childName.trim() || undefined,
-      country: form.country,
-      phone: form.phone,
-      address: form.isForeign ? "" : form.address,
-      ward: form.isForeign ? "" : form.ward,
-      province: form.isForeign ? foreignCountryName : form.province,
-      target: targetNum,
-      note: form.note,
-      email: form.email.trim() || undefined,
-      tax_id: form.taxId.trim() || undefined,
-      customer_type: form.customerType,
-      company_name: form.customerType === "business" ? form.companyName.trim() || undefined : undefined,
-      lead_source: form.leadSource || undefined,
-      lead_channel: form.leadChannel || undefined,
-      wants_invoice: form.wantsInvoice || undefined,
-    });
+    setSubmitting(true);
+    setSubmitError(null);
+    try {
+      await onSubmit({
+        uid: form.uid.trim() || undefined,
+        name: form.name,
+        child_name: form.childName.trim() || undefined,
+        country: form.country,
+        phone: form.phone,
+        address: form.isForeign ? "" : form.address,
+        ward: form.isForeign ? "" : form.ward,
+        province: form.isForeign ? foreignCountryName : form.province,
+        target: targetNum,
+        note: form.note,
+        email: form.email.trim() || undefined,
+        tax_id: form.taxId.trim() || undefined,
+        customer_type: form.customerType,
+        company_name: form.customerType === "business" ? form.companyName.trim() || undefined : undefined,
+        lead_source: form.leadSource || undefined,
+        lead_channel: form.leadChannel || undefined,
+        wants_invoice: form.wantsInvoice || undefined,
+      });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setSubmitError(msg || "Có lỗi khi tạo PR. Vui lòng thử lại.");
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
     <div className="gmv-prototype-modal-scrim" onClick={onClose}>
-      <div className="modal" style={{ width: "min(680px, 100%)" }} onClick={(e) => e.stopPropagation()}>
+      <div className="modal create-pr-modal" style={{ width: "min(680px, 100%)" }} onClick={(e) => e.stopPropagation()}>
         <div className="modal-head">
           <div>
             <h3>Tạo Payment Request mới</h3>
@@ -139,12 +151,28 @@ export default function CreatePaymentRequestModal({
           </button>
         </div>
         <div className="modal-body">
+          {/* Nhóm 1: Trường bắt buộc tạo nhanh */}
           <div className="field-row">
             <div className="field">
               <label>
-                UID CRM <span style={{ color: "var(--danger)" }}>*</span>
+                Số điện thoại <span style={{ color: "var(--danger)" }}>*</span>
               </label>
-              <input placeholder="VD: 3213123123" value={form.uid} onChange={(e) => set("uid", e.target.value)} />
+              <div className="phone-row">
+                <CountryCombo value={form.country} onChange={(v) => set("country", v)} />
+                <input
+                  className="phone-input"
+                  placeholder={findCountry(form.country).exampleLocal}
+                  value={form.phone}
+                  onChange={(e) => set("phone", e.target.value.replace(/[^\d]/g, ""))}
+                  type="tel"
+                  inputMode="tel"
+                  autoComplete="tel"
+                  autoFocus
+                />
+              </div>
+              <div style={{ fontSize: 11.5, color: "var(--text-2)", fontWeight: 600, marginTop: 3 }}>
+                Chỉ nhập phần số, không cần mã quốc gia
+              </div>
             </div>
             <div className="field">
               <label>
@@ -155,15 +183,19 @@ export default function CreatePaymentRequestModal({
           </div>
 
           <div className="field">
-            <label>Tên con (học viên)</label>
-            <input
-              placeholder="VD: Nguyễn Minh Anh"
-              value={form.childName}
-              onChange={(e) => set("childName", e.target.value)}
+            <label>
+              Tổng tiền dự kiến <span style={{ color: "var(--danger)" }}>*</span>
+            </label>
+            <MoneyInput
+              placeholder="VD: 12.000.000"
+              value={form.target}
+              onValueChange={(v) => set("target", v)}
             />
-            <div style={{ fontSize: 11.5, color: "var(--text-3)", lineHeight: 1.45, marginTop: 4 }}>
-              Nếu để trống, nội dung chuyển khoản sẽ dùng tên khách hàng.
-            </div>
+            {targetNum > 0 && (
+              <div style={{ fontSize: 11.5, color: "var(--text-2)", fontWeight: 600, fontStyle: "italic", marginTop: 3 }}>
+                {numberToVietnameseWords(targetNum)}
+              </div>
+            )}
           </div>
 
           <div className="field-row">
@@ -205,38 +237,15 @@ export default function CreatePaymentRequestModal({
             )}
           </div>
 
-          <div className="field-row">
-            <div className="field">
-              <label>
-                Số điện thoại <span style={{ color: "var(--danger)" }}>*</span>
-              </label>
-              <div className="phone-row">
-                <CountryCombo value={form.country} onChange={(v) => set("country", v)} />
-                <input
-                  className="phone-input"
-                  placeholder={findCountry(form.country).exampleLocal}
-                  value={form.phone}
-                  onChange={(e) => set("phone", e.target.value.replace(/[^\d]/g, ""))}
-                />
-              </div>
-              <div style={{ fontSize: 11.5, color: "var(--text-2)", fontWeight: 600, marginTop: 3 }}>
-                Chỉ nhập phần số, không cần mã quốc gia
-              </div>
-            </div>
-            <div className="field">
-              <label>
-                Tổng tiền dự kiến <span style={{ color: "var(--danger)" }}>*</span>
-              </label>
-              <MoneyInput
-                placeholder="VD: 12.000.000"
-                value={form.target}
-                onValueChange={(v) => set("target", v)}
-              />
-              {targetNum > 0 && (
-                <div style={{ fontSize: 11.5, color: "var(--text-2)", fontWeight: 600, fontStyle: "italic", marginTop: 3 }}>
-                  {numberToVietnameseWords(targetNum)}
-                </div>
-              )}
+          <div className="field">
+            <label>Tên con (học viên)</label>
+            <input
+              placeholder="VD: Nguyễn Minh Anh"
+              value={form.childName}
+              onChange={(e) => set("childName", e.target.value)}
+            />
+            <div style={{ fontSize: 11.5, color: "var(--text-3)", lineHeight: 1.45, marginTop: 4 }}>
+              Nếu để trống, nội dung chuyển khoản sẽ dùng tên khách hàng.
             </div>
           </div>
 
@@ -393,6 +402,19 @@ export default function CreatePaymentRequestModal({
             />
           </div>
 
+          {/* Nhóm bổ sung sau — UID CRM */}
+          <div className="field" style={{ borderTop: "1px dashed var(--border)", paddingTop: 12, marginTop: 4 }}>
+            <label>UID CRM</label>
+            <input
+              placeholder="UID CRM (bổ sung sau — cần trước khi kích hoạt)"
+              value={form.uid}
+              onChange={(e) => set("uid", e.target.value)}
+            />
+            <div style={{ fontSize: 11.5, color: "var(--text-3)", lineHeight: 1.45, marginTop: 4 }}>
+              Bổ sung sau — cần trước khi kích hoạt (bước B3).
+            </div>
+          </div>
+
           <div
             style={{
               background: "var(--primary-50)",
@@ -410,18 +432,25 @@ export default function CreatePaymentRequestModal({
             </div>
           </div>
         </div>
-        <div className="modal-foot">
-          <button className="btn btn-outline" onClick={onClose}>
-            Huỷ
-          </button>
-          <button
-            className="btn btn-primary"
-            disabled={!canSubmit}
-            style={!canSubmit ? { opacity: 0.4, cursor: "not-allowed" } : undefined}
-            onClick={handleSubmit}
-          >
-            <Icons.Plus size={14} /> Tạo PR-ID &amp; mở chi tiết
-          </button>
+        <div className="modal-foot" style={{ flexDirection: "column", alignItems: "stretch", gap: 8 }}>
+          {submitError && (
+            <div style={{ fontSize: 12, color: "var(--danger)", padding: "6px 0", textAlign: "center" }}>
+              {submitError}
+            </div>
+          )}
+          <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+            <button className="btn btn-outline" onClick={onClose} disabled={submitting}>
+              Huỷ
+            </button>
+            <button
+              className="btn btn-primary"
+              disabled={!canSubmit || submitting}
+              style={(!canSubmit || submitting) ? { opacity: 0.4, cursor: "not-allowed" } : undefined}
+              onClick={handleSubmit}
+            >
+              <Icons.Plus size={14} /> {submitting ? "Đang tạo..." : "Tạo PR-ID & mở chi tiết"}
+            </button>
+          </div>
         </div>
       </div>
     </div>

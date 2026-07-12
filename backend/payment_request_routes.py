@@ -892,21 +892,23 @@ def _payment_request_insert_row(body: PaymentRequestCreate) -> dict[str, Any]:
     target = _parse_amount(body.target or body.tong_tien_phai_thu)
     address = _clean_text(body.address or body.dia_chi)
 
+    lead_source = _clean_text(body.lead_source)
+
     missing: list[str] = []
-    if not uid:
-        missing.append("uid")
     if not name:
         missing.append("name")
     if not phone:
         missing.append("phone")
     if target <= 0:
         missing.append("target")
+    if not lead_source:
+        missing.append("lead_source")
     if missing:
         raise HTTPException(400, f"Thieu du lieu bat buoc: {', '.join(missing)}")
 
     row = {
         "name": name,
-        "uid": uid,
+        "uid": uid or "",  # sentinel: rỗng khi sale chưa nhập, bắt buộc lúc kích hoạt
         "phone": phone,
         "country": _clean_text(body.country) or "VN",
         "address": address,
@@ -938,8 +940,7 @@ def _payment_request_insert_row(body: PaymentRequestCreate) -> dict[str, Any]:
         if company:
             row["company_name"] = company
 
-    if body.lead_source:
-        row["lead_source"] = body.lead_source
+    row["lead_source"] = lead_source
     if body.lead_channel:
         row["lead_channel"] = body.lead_channel
     if body.wants_invoice is not None:
@@ -953,8 +954,9 @@ def _payment_request_patch_row(body: PaymentRequestPatch, current_row: dict[str,
     uid_val = body.uid if body.uid is not None else body.uid_khach_hang
     if uid_val is not None:
         uid = _clean_text(uid_val)
-        if not uid:
-            raise HTTPException(400, "uid khong duoc de trong")
+        current_uid = _clean_text(current_row.get("uid"))
+        if not uid and current_uid:
+            raise HTTPException(400, "Khong the xoa UID da co — hay nhap UID moi thay the")
         patch["uid"] = uid
 
     name_val = body.name if body.name is not None else body.ten_khach
@@ -1028,11 +1030,10 @@ def _payment_request_patch_row(body: PaymentRequestPatch, current_row: dict[str,
     if not patch:
         return {}
 
-    next_uid = patch.get("uid", _clean_text(current_row.get("uid")))
     next_name = patch.get("name", _clean_text(current_row.get("name")))
     next_phone = patch.get("phone", _clean_text(current_row.get("phone")))
-    if not next_uid or not next_name or not next_phone:
-        raise HTTPException(400, "uid, name, phone la bat buoc")
+    if not next_name or not next_phone:
+        raise HTTPException(400, "name, phone la bat buoc")
 
     patch["updated_at"] = _iso_now()
     return patch

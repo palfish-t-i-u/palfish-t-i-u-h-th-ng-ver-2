@@ -56,23 +56,35 @@ test.describe.serial("Payment Lifecycle: B1 → B2 → B3 → B4", () => {
     await page.click("button:has-text('Tạo')");
     await expect(page.locator("text=Tạo Payment Request mới")).toBeVisible({ timeout: 5_000 });
 
-    await page.fill('input[placeholder*="UID"]', TEST_CUSTOMER.uid);
+    // Phone (đầu tiên trong modal sau khi reorder B1)
+    const phoneInput = page.locator('.phone-input').or(page.locator('label:has-text("Số điện thoại") ~ div input'));
+    await phoneInput.first().fill(TEST_CUSTOMER.phone);
+
     await page.locator('label:has-text("Tên khách hàng") + input, label:has-text("Tên khách") ~ input').first().fill(TEST_CUSTOMER.name);
 
-    const phoneInput = page.locator('input[placeholder*="09"]').or(page.locator('label:has-text("Số điện thoại") ~ input'));
-    await phoneInput.first().fill(TEST_CUSTOMER.phone);
+    const targetInput = page.locator('label:has-text("Tổng tiền") ~ input').or(page.locator('input[placeholder*="VND"]'));
+    await targetInput.first().fill(String(TEST_CUSTOMER.target));
+
+    // Nguồn KH — bắt buộc (dùng gia_han = không cần kênh)
+    const sourceSelect = page.locator('label:has-text("Nguồn KH") ~ select, label:has-text("Nguồn") ~ select').first();
+    if (await sourceSelect.isVisible()) {
+      await sourceSelect.selectOption("gia_han");
+    }
 
     const emailInput = page.locator('label:has-text("Email") ~ input').or(page.locator('input[type="email"]'));
     if (await emailInput.first().isVisible()) {
       await emailInput.first().fill(TEST_CUSTOMER.email);
     }
 
-    const targetInput = page.locator('label:has-text("Tổng tiền") ~ input').or(page.locator('input[placeholder*="VND"]'));
-    await targetInput.first().fill(String(TEST_CUSTOMER.target));
-
     const noteInput = page.locator('label:has-text("Ghi chú") ~ input, label:has-text("Ghi chú") ~ textarea');
     if (await noteInput.first().isVisible()) {
       await noteInput.first().fill(TEST_CUSTOMER.note);
+    }
+
+    // UID CRM — tùy chọn, điền để test đủ journey cũ
+    const uidInput = page.locator('input[placeholder*="UID"]');
+    if (await uidInput.first().isVisible()) {
+      await uidInput.first().fill(TEST_CUSTOMER.uid);
     }
 
     const submitBtn = page.locator("button:has-text('Tạo')").last();

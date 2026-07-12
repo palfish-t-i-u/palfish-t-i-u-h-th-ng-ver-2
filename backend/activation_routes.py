@@ -1231,6 +1231,77 @@ def _assert_all_paid_lines_have_bill(sb, pr: dict) -> None:
         )
 
 
+def _assert_uids_have_uid(uids_data: list[Any]) -> None:
+    """Gate: bất kỳ block uid-rỗng → 422 MISSING_UID kèm tên bé thiếu.
+
+    Mirrors _assert_all_paid_lines_have_bill / MISSING_BILLS pattern.
+    Gate đặt sau _assign_course_codes để uids_data đã được normalize.
+    """
+    missing: list[str] = []
+    for block in uids_data or []:
+        if not isinstance(block, dict):
+            continue
+        if not str(block.get("uid") or "").strip():
+            name = str(block.get("name") or "").strip() or "học viên"
+            missing.append(name)
+    if missing:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "MISSING_UID",
+                "message": f"{len(missing)} học viên chưa có UID. Vui lòng bổ sung UID trước khi kích hoạt.",
+                "children": missing,
+            },
+        )
+
+
+def _writeback_pr_uid_from_ar(
+    sb, saved_ar: dict[str, Any], pr: dict[str, Any] | None, uids_data: list[Any]
+) -> None:
+    """Best-effort: điền PR.uid từ UID kích hoạt khi PR.uid đang rỗng.
+
+    Dùng uids_data tính toán trong _save_active_request (không đọc lại từ saved_ar
+    vì DB response có thể thiếu field sau insert).
+
+    Chỉ fill khi PR.uid rỗng VÀ tên bé khớp child_name (hoặc PR 1 bé không tên).
+    Không bao giờ ghi đè uid có sẵn.
+    """
+    if pr is None:
+        return
+    try:
+        current_uid = str(pr.get("uid") or "").strip()
+        if current_uid:
+            return  # PR đã có UID → không đụng
+
+        pr_id = str(pr.get("id") or "")
+        if not pr_id:
+            return
+
+        if len(uids_data) != 1:
+            # Nhiều bé → writeback vào extra_children (không fill PR.uid chung)
+            _writeback_child_uids_to_pr(sb, saved_ar)
+            return
+
+        block = uids_data[0]
+        if not isinstance(block, dict):
+            return
+
+        new_uid = str(block.get("uid") or "").strip()
+        if not new_uid:
+            return
+
+        block_name = str(block.get("name") or "").strip()
+        pr_child_name = str(pr.get("child_name") or "").strip()
+
+        # Điều kiện khớp: block không có name, hoặc tên bé trùng child_name PR
+        if block_name and pr_child_name and block_name != pr_child_name:
+            return  # tên bé khác → skip (chống điền nhầm uid bé 2 vào PR.uid)
+
+        sb.table("payment_requests").update({"uid": new_uid}).eq("id", pr_id).execute()
+    except Exception as exc:
+        print(f"[uid-writeback] _writeback_pr_uid_from_ar failed: {exc}")
+
+
 def _save_active_request(
     sb,
     *,
@@ -1249,6 +1320,9 @@ def _save_active_request(
     ar_id = _next_ar_id(sb)
     uids_data = _assign_course_codes(uids_in, pr_id or ar_id)
     _assert_course_names_present(uids_data)
+
+    # Gate: chặn kích hoạt khi bất kỳ block nào thiếu UID — mirror MISSING_BILLS
+    _assert_uids_have_uid(uids_data)
 
     # Validate: tổng tiền gói học không được vượt số tiền thực nhận
     if pr is not None:
@@ -1289,6 +1363,7 @@ def _save_active_request(
     saved = (res.data or [row])[0]
     if customer_name and not saved.get("customer_name"):
         saved["customer_name"] = customer_name
+    _writeback_pr_uid_from_ar(sb, saved, pr, uids_data)
     _enqueue_activation_request_created_zalo(sb, saved, pr)
     _enqueue_activation_request_created_dingtalk(sb, saved, pr)
     return saved, pr

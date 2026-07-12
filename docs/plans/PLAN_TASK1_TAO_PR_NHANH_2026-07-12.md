@@ -1,8 +1,17 @@
 # PLAN Task 1 — Tạo PR cực nhanh: UID optional lúc tạo, SĐT lên đầu, UID bắt buộc lúc kích hoạt
 
-> Ngày: 2026-07-12 · Trạng thái: **chờ duyệt** · Effort: ~395 phút (~6.5h làm thật)
+> Ngày: 2026-07-12 · Trạng thái: **ĐÃ DUYỆT — sẵn sàng code** · Effort: ~395 phút (~6.5h làm thật)
 > Nguồn: workflow 12 agents (6 khảo sát đọc code thật → 3 phương án → judge → adversarial critic).
 > Plan này ĐÃ tích hợp 12 gap critic tìm ra (1 blocker + 4 major + 7 minor).
+
+## Quyết định đã chốt (12/7) — OVERRIDE plan text bên dưới nếu mâu thuẫn
+
+| Q | Quyết định | Ghi chú |
+|---|---|---|
+| Q1: PATCH clear uid? | **CẤM** — nếu PR.uid có giá trị, gửi uid="" → 400 | +3 dòng `_payment_request_patch_row` |
+| Q2: AR uid-rỗng tồn đọng? | **0 row** sandbox + prod — không cần xử lý | Đã query 12/7 |
+| Q3: UID per bé | **Per-row** khi PR nhiều bé, 1 ô chung khi ≤1 bé | Đã chốt từ trước |
+| Q4: Badge "Thiếu UID"? | **Không làm** — gate B3 đã chặn + báo lỗi đủ rồi | |
 
 ## Yêu cầu (chốt cứng từ anh Hiếu 11/7)
 
@@ -135,9 +144,9 @@ GIỮ XANH nguyên trạng: 12 unit test payment-request, tvtsFilter, QrViewModa
 - KHÔNG sửa ActivationTab standalone form — đã tự bắt buộc UID (canSubmit:181).
 - **lead_channel conditional (nguồn cần kênh) cố tình chỉ enforce ở FE** — caller duy nhất là FE modal; API trực tiếp tạo PR nguồn-cần-kênh không kênh được chấp nhận (metadata, không chặn dòng tiền).
 
-## Open questions (chốt trước bước 4)
+## Open questions — ĐÃ CHỐT HẾT (12/7)
 
-1. **PATCH có cấm clear uid về rỗng khi PR đang có giá trị không?** Mặc định: cho phép (nhất quán uid-optional, gate B3 chặn hạ nguồn). Chặt hơn = +3 dòng BE.
-2. **Kết quả kiểm kê AR uid-rỗng tồn đọng**: nếu >0, fix tay SQL hay để nguyên (chúng đã kẹt PATCH từ trước)?
-3. ~~1 ô UID chung hay per-row?~~ **ĐÃ CHỐT theo critic: per-row khi PR nhiều bé** (ArDraftRow có sẵn field uid), 1 ô chung khi ≤1 bé.
-4. **Badge "Thiếu UID" ở bảng/card B1** (~15'): PR tạo không uid, tiền vào đủ ở B2, sale quên kích hoạt → hiện không có nhắc nhở nào. B2/B4 vẫn đúng (match theo transfer_code) — lỗ duy nhất là REMINDER. Sale trên mobile dễ quên hơn desktop → khuyến nghị LÀM ngay đợt này.
+1. ~~PATCH có cấm clear uid?~~ **CẤM** — nếu PR.uid có giá trị, uid="" → 400. Không có lý do nghiệp vụ để xóa UID đã nhập.
+2. ~~AR uid-rỗng tồn đọng?~~ **0 row** cả sandbox + prod. Không cần xử lý.
+3. ~~1 ô UID chung hay per-row?~~ **Per-row khi PR nhiều bé**, 1 ô chung khi ≤1 bé.
+4. ~~Badge "Thiếu UID"?~~ **Không làm** — gate B3 đã chặn + báo lỗi rõ khi tạo AR. Đủ nhắc nhở.

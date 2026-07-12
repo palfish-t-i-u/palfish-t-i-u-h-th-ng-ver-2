@@ -2084,3 +2084,38 @@
 @media (min-width: 768px) {
   .gmv-prototype .mobile-card-list { display: none; }
 }
+
+/* ── Tạo PR nhanh — mobile bottom-sheet (scoped to .create-pr-modal) ── */
+@media (max-width: 767px) {
+  .gmv-prototype-modal-scrim:has(.create-pr-modal) {
+    align-items: flex-end;
+    padding: 0;
+  }
+  .create-pr-modal {
+    border-radius: 16px 16px 0 0;
+    max-height: 92vh;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  .create-pr-modal .modal-body {
+    padding: 12px 14px;
+  }
+  .create-pr-modal .field-row {
+    grid-template-columns: 1fr;
+  }
+  .create-pr-modal .addr-row {
+    grid-template-columns: 1fr;
+  }
+  .create-pr-modal input,
+  .create-pr-modal select,
+  .create-pr-modal textarea {
+    min-height: 44px;
+    font-size: 16px; /* disable iOS auto-zoom */
+  }
+  .create-pr-modal .modal-foot .btn {
+    min-height: 44px;
+  }
+  .create-pr-modal .modal-foot {
+    padding-bottom: max(14px, env(safe-area-inset-bottom));
+  }
+}

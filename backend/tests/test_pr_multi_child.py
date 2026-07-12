@@ -25,7 +25,7 @@ from payment_request_routes import (  # noqa: E402
 
 def _body(**kw):
     base = dict(uid="uid1", name="Me Bé", phone="0912345678", target=1000000,
-                child_name="Bé Một")
+                child_name="Bé Một", lead_source="online")
     base.update(kw)
     return PaymentRequestCreate(**base)
 
