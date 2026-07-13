@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { ActiveRequest, ActiveRequestApiRow, PaymentRequest } from "../../types/paymentRequest";
+import type { ActiveRequest, ActiveRequestApiRow, PaymentAttempt, PaymentRequest } from "../../types/paymentRequest";
 import {
   activationSummary,
   activeRequestAllocation,
@@ -18,6 +18,7 @@ import {
   normalizeRequest,
   pageItems,
   paginate,
+  paymentConfirmationText,
   toActiveRequestPatchUidsData,
   updateActiveCoursePackage,
   validateReferralBonus,
@@ -988,5 +989,74 @@ describe("hasUnverifiedFeeLine — bao gồm card (không chỉ installment)", (
       payments: [{ id: "l1", method: "qr", amount: 1000, status: "paid" }],
     });
     expect(hasUnverifiedFeeLine(raw)).toBe(false);
+  });
+});
+
+describe("paymentConfirmationText — người ghép vs máy tự (fix nhãn gateway 13/7)", () => {
+  const mk = (o: Partial<PaymentAttempt>) =>
+    ({ status: "paid", paidAt: "2026-07-13T03:44:38Z", ...o } as PaymentAttempt);
+
+  it("gateway + người ghép (có confirmedByName) → 'bởi <người>', KHÔNG 'tự động'", () => {
+    const t = paymentConfirmationText(mk({
+      confirmedSource: "gateway", confirmedBy: "van.nh96@gmail.com", confirmedByName: "Vân NH",
+    }));
+    expect(t).toContain("bởi Vân NH");
+    expect(t).not.toContain("tự động");
+  });
+
+  it("gateway + người ghép (thiếu confirmedByName) → fallback tên, vẫn có 'bởi'", () => {
+    const t = paymentConfirmationText(mk({
+      confirmedSource: "gateway", confirmedBy: "van.nh96@gmail.com", confirmedByName: null,
+    }));
+    expect(t).toContain("bởi");
+    expect(t).not.toContain("tự động");
+  });
+
+  it("manual + người → 'bởi <người>' (không đổi)", () => {
+    const t = paymentConfirmationText(mk({
+      confirmedSource: "manual", confirmedBy: "anhminhcv0512@gmail.com", confirmedByName: "Anh Minh",
+    }));
+    expect(t).toContain("bởi Anh Minh");
+    expect(t).not.toContain("tự động");
+  });
+
+  it("sepay + system:sepay → 'tự động' (không đổi)", () => {
+    const t = paymentConfirmationText(mk({ confirmedSource: "sepay", confirmedBy: "system:sepay" }));
+    expect(t).toContain("tự động");
+    expect(t).not.toContain("bởi");
+  });
+
+  it("payos + system:payos → 'tự động' (không đổi)", () => {
+    const t = paymentConfirmationText(mk({ confirmedSource: "payos", confirmedBy: "system:payos" }));
+    expect(t).toContain("tự động");
+  });
+
+  it("G2: legacy null-source + null actor → 'Xác nhận lúc …', KHÔNG 'tự động', KHÔNG 'bởi'", () => {
+    const t = paymentConfirmationText(mk({ confirmedSource: null, confirmedBy: null }));
+    expect(t).toContain("Xác nhận lúc");
+    expect(t).not.toContain("tự động");
+    expect(t).not.toContain("bởi");
+  });
+
+  it("manual_repair + null actor → không 'tự động' (1 dòng prod)", () => {
+    const t = paymentConfirmationText(mk({ confirmedSource: "manual_repair", confirmedBy: null }));
+    expect(t).not.toContain("tự động");
+  });
+
+  it("người thật, không có paidAt → 'Xác nhận bởi <người>' (không có 'lúc')", () => {
+    const t = paymentConfirmationText(mk({
+      paidAt: null, confirmedSource: "gateway", confirmedBy: "van.nh96@gmail.com", confirmedByName: "Vân NH",
+    }));
+    expect(t).toBe("Xác nhận bởi Vân NH");
+  });
+
+  it("system actor, không có paidAt → 'Xác nhận tự động'", () => {
+    const t = paymentConfirmationText(mk({ paidAt: null, confirmedSource: "sepay", confirmedBy: "system:sepay" }));
+    expect(t).toBe("Xác nhận tự động");
+  });
+
+  it("phòng thủ: source sepay nhưng thiếu actor → vẫn 'tự động'", () => {
+    const t = paymentConfirmationText(mk({ confirmedSource: "sepay", confirmedBy: null }));
+    expect(t).toContain("tự động");
   });
 });

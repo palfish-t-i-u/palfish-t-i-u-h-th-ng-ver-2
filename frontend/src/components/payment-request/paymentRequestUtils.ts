@@ -248,19 +248,34 @@ function emailToName(email: string): string {
 /**
  * Render dòng "Xác nhận lúc ... bởi ..." / "Xác nhận tự động lúc ..." cho 1 lần thanh toán.
  * Ưu tiên confirmedByName (display_name từ nhan_su_sale); fallback capitalize email prefix.
+ * Phân loại người/máy dựa vào actor (confirmed_by), KHÔNG dựa vào confirmed_source
+ * (source list đã drift — gateway/manual_repair thiếu trong schema comment cũ).
  */
 export function paymentConfirmationText(payment: PaymentAttempt): string {
   const date = payment.paidAt ? formatPaymentDateFull(payment.paidAt) : "";
+  const actor = (payment.confirmedBy || "").trim();
   const source = (payment.confirmedSource || "").toLowerCase();
-  const isAuto =
-    (source && source !== "manual" && source !== "outside") ||
-    (payment.confirmedBy ? payment.confirmedBy.startsWith("system:") : false);
+
+  // (1) Actor người thật — email, không bắt đầu "system:".
+  // Bao gồm: ghép mPOS/Payoo (source=gateway) + xác nhận tay (source=manual).
+  const hasHumanActor = actor.length > 0 && !actor.startsWith("system:");
+  if (hasHumanActor) {
+    const name = payment.confirmedByName || emailToName(actor);
+    if (!date) return `Xác nhận bởi ${name}`;
+    return `Xác nhận lúc ${date} bởi ${name}`;
+  }
+
+  // (2) Máy tự xác nhận: actor "system:*" (SePay/PayOS webhook),
+  // hoặc phòng thủ: source auto đã biết mà thiếu actor.
+  const AUTO_SOURCES = new Set(["sepay", "payos"]);
+  const isSystemActor = actor.startsWith("system:");
+  const isAuto = isSystemActor || (actor.length === 0 && AUTO_SOURCES.has(source));
   if (isAuto) {
     return date ? `Xác nhận tự động lúc ${date}` : "Xác nhận tự động";
   }
-  const name = payment.confirmedByName || (payment.confirmedBy ? emailToName(payment.confirmedBy) : "");
-  if (!date) return name ? `Xác nhận bởi ${name}` : "Xác nhận";
-  return name ? `Xác nhận lúc ${date} bởi ${name}` : `Xác nhận lúc ${date}`;
+
+  // (3) Không rõ actor (legacy null-source qr T6, manual_repair thiếu actor).
+  return date ? `Xác nhận lúc ${date}` : "Xác nhận";
 }
 
 export function activationAuditText(course: ActiveCourse): string | null {
