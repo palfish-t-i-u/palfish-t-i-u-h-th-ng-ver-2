@@ -30,6 +30,7 @@ import {
   getReferralStatus,
   grossReceived,
   hasUnverifiedFeeLine,
+  isReferralPackage,
   lineNet,
   nowStamp,
   parsePaymentDate,
@@ -2606,6 +2607,11 @@ export default function PaymentRequestDetailDrawer({
                         placeholder="Chọn hoặc gõ tên gói học..."
                         emptyLabel="Chưa chọn gói"
                       />
+                      {isReferralPackage(row.packageName) && (
+                        <div style={{ marginTop: 4, fontSize: 12, color: "var(--warning-dark)", lineHeight: 1.3 }}>
+                          * Gói giới thiệu — sau khi tạo, bấm Sửa ở thẻ kích hoạt để điền UID người giới thiệu &amp; số buổi cộng.
+                        </div>
+                      )}
                     </div>
                     <div className="field" style={{ flex: "0 0 140px", marginBottom: 0 }}>
                       <label>Số tiền (đ)</label>

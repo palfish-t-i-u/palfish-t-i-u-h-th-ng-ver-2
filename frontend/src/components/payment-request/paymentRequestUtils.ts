@@ -1,5 +1,10 @@
 import type { CSSProperties } from "react";
-import type { ActiveCourse, ActiveRequest, ActiveRequestApiRow, ActiveRequestPatchUidPayload, ArDraftRow, CreateActiveRequestPayload, CreateActiveRequestUidPayload, PaymentAttempt, PaymentMethod, PaymentRequest, PaymentRequestStatus } from "../../types/paymentRequest";
+import type { ActiveCourse, ActiveRequest, ActiveRequestApiRow, ActiveRequestPatchUidPayload, ArDraftRow, CreateActiveRequestCoursePayload, CreateActiveRequestPayload, CreateActiveRequestUidPayload, PaymentAttempt, PaymentMethod, PaymentRequest, PaymentRequestStatus } from "../../types/paymentRequest";
+
+/** Gói giới thiệu (tên chứa "REFER") → cần điền thông tin người giới thiệu. */
+export function isReferralPackage(name?: string | null): boolean {
+  return !!name && /refer/i.test(name);
+}
 
 /**
  * Tách chuỗi tên con free-text thành danh sách tên riêng lẻ.
@@ -366,7 +371,12 @@ export function buildCreateActiveRequestPayload(pr: PaymentRequest, rows: ArDraf
       if (name) block.name = name;
       blocks.set(key, block);
     }
-    block.courses.push({ name: row.packageName.trim(), amount: Math.max(0, Math.round(row.amount)) });
+    const course: CreateActiveRequestCoursePayload = {
+      name: row.packageName.trim(),
+      amount: Math.max(0, Math.round(row.amount)),
+    };
+    if (isReferralPackage(row.packageName)) course.lead_source = "gioi_thieu";
+    block.courses.push(course);
   }
   return { uids: [...blocks.values()] };
 }

@@ -231,15 +231,20 @@ def _assign_course_codes(uids_in: list[Any], pr_id: str) -> list[dict[str, Any]]
             code = f"CC-{pr_part}-{seq:03d}"
             seq += 1
             order_raw = c.get("order_id") if c.get("order_id") is not None else c.get("orderId")
-            norm_courses.append(
-                {
-                    "code": code,
-                    "name": _course_name(c),
-                    "amount": _course_amount(c),
-                    "order_id": str(order_raw or "").strip(),
-                    "invoiced": False,
-                }
-            )
+            norm_course = {
+                "code": code,
+                "name": _course_name(c),
+                "amount": _course_amount(c),
+                "order_id": str(order_raw or "").strip(),
+                "invoiced": False,
+            }
+            ls = str(c.get("lead_source") or "").strip()
+            if ls:
+                norm_course["lead_source"] = ls
+            lc = str(c.get("lead_channel") or "").strip()
+            if lc:
+                norm_course["lead_channel"] = lc
+            norm_courses.append(norm_course)
         block["courses"] = norm_courses
         out.append(block)
 

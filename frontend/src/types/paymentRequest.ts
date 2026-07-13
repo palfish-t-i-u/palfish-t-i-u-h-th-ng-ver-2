@@ -239,6 +239,8 @@ export type CreateActiveRequestCoursePayload = {
   name?: string;
   package_name?: string;
   amount: number;
+  /** "gioi_thieu" khi gói là gói giới thiệu (REFER) — mở lại panel referral ở editor AR */
+  lead_source?: string;
 };
 
 export type CreateActiveRequestUidPayload = {
