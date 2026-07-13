@@ -138,21 +138,20 @@ def build_payment_paid_message(
     payment_data: dict[str, Any],
     sale_info: dict[str, Any],
 ) -> dict[str, str]:
-    """Build the PAID notification message.
+    """Build the PAID notification message ("tiền vào TK", 1 lần/lần TT).
 
-    Format::
+    Format (chốt spec anh Hiếu 13/7 — giữ bố cục cũ, đổi nội dung)::
 
-        💰 ĐÃ VÀO - KH {name}[ - Bé {child_name}] - ĐT: {phone|chưa cung cấp}
-        🔸 Sale {sale_name} · Team {team}
-        🔸 {Số tiền|Thực nhận|Số tiền (Gross)}: {amount} VND lúc {HH:MM DD/MM/YYYY}
+        💰 ĐÃ VÀO TK · {pr_code} · Lần #{k}
+        🔸 KH {customer}[ · Bé {child_name}] · Sale {sale_name} · Team {team}
+        🔸 Net vào TK: {net} VND · {method_label} · {HH:MM DD/MM/YYYY}
+        🔸 Lũy kế: {cumulative_net} / {target} VND ({percent}%)
 
     Live path = SQL function ``build_payment_paid_message`` (DB trigger).
-    Keep this mirror in sync with 2026-07-10-zalo-payment-paid-net-amount.sql.
+    Keep this mirror in sync with 2026-07-13-notification-rearchitecture.sql.
 
-    Số tiền hiển thị: card/installment ưu tiên ``verified_received`` (thực
-    nhận sau phí mPOS/Payoo) nếu có, label "Thực nhận"; không có thì fallback
-    "amount" (gộp), label "Số tiền (Gross)". Method khác (cash/qr) luôn dùng
-    "amount" với label "Số tiền" — không có khái niệm phí ở 2 method đó.
+    Net = card/installment dùng ``verified_received`` nếu đã kế toán xác nhận,
+    method khác (cash/qr) luôn dùng ``amount`` — khớp BE `_line_net` (G2).
 
     Returns ``{"message": ..., "canonical_team_code": ...}``.
     """
@@ -165,29 +164,18 @@ def build_payment_paid_message(
     customer = _first_nonempty(payment_data.get("customer_name"), default="?")
     # Multi-con: lần TT gắn bé nào (student_name) thì báo tên bé đó
     child_name = _first_nonempty(payment_data.get("student_name"), payment_data.get("child_name"))
-    phone_fmt = format_phone_intl(
-        payment_data.get("phone"), payment_data.get("country")
-    )
-    phone = phone_fmt if phone_fmt else "chưa cung cấp"
 
     method_raw = str(payment_data.get("method") or "").strip().lower()
     verified_received = payment_data.get("verified_received")
     is_fee_method = method_raw in ("card", "installment")
 
     if is_fee_method and verified_received not in (None, ""):
-        amount_label = "Thực nhận"
         amount_source = verified_received
     else:
-        amount_label = "Số tiền (Gross)" if is_fee_method else "Số tiền"
         amount_source = payment_data.get("amount")
         if amount_source is None:
             logger.warning("Missing amount in payment_data (%s)", ctx)
             amount_source = 0
-    try:
-        amount_int = int(amount_source)
-    except (TypeError, ValueError):
-        amount_int = 0
-    amount = f"{amount_int:,} VND"
 
     if method_raw == "qr":
         method_label = "Chuyển khoản QR"
@@ -221,17 +209,31 @@ def build_payment_paid_message(
     canonical_team = get_canonical_team(raw_team)
     team_display = str(raw_team).strip() if raw_team and str(raw_team).strip() else "?"
 
-    header = f"💰 ĐÃ VÀO - KH {customer}"
-    if child_name:
-        header += f" - Bé {child_name}"
-    # ZWSP (U+200B) after phone breaks Zalo Web phone-hyperlink auto-detection
-    # which otherwise swallows trailing newline (dính dòng bug 4/7)
-    header += f" - ĐT: {phone}​"
+    pr_code = _first_nonempty(payment_data.get("payment_request_id"), default="?")
+    k = payment_data.get("installment_index")
+    k_str = str(k) if k not in (None, "") else "?"
+
+    def _fmt(v: Any) -> str:
+        try:
+            return f"{int(v):,}"
+        except (TypeError, ValueError):
+            return "0"
+
+    net_str = _fmt(amount_source)
+    cum_str = _fmt(payment_data.get("cumulative_net"))
+    target_val = payment_data.get("target")
+    tgt_str = _fmt(target_val)
+    try:
+        pct = round(int(payment_data.get("cumulative_net") or 0) * 100 / int(target_val)) if target_val else 0
+    except (TypeError, ValueError, ZeroDivisionError):
+        pct = 0
+    child_seg = f" · Bé {child_name}" if child_name else ""
 
     message = (
-        f"{header}\n"
-        f"🔸 Sale {sale_name} · Team {team_display}\n"
-        f"🔸 {amount_label}: {amount} lúc {time_str} - {method_label}"
+        f"💰 ĐÃ VÀO TK · {pr_code} · Lần #{k_str}\n"
+        f"🔸 KH {customer}{child_seg} · Sale {sale_name} · Team {team_display}\n"
+        f"🔸 Net vào TK: {net_str} VND · {method_label} · {time_str}\n"
+        f"🔸 Lũy kế: {cum_str} / {tgt_str} VND ({pct}%)"
     )
 
     return {"message": message, "canonical_team_code": canonical_team}

@@ -16,7 +16,7 @@
 |---|---|---|---|
 | **T1** | Lần TT đã ghép vẫn hiện trong đề xuất | Bank match-candidates has **no anti-join** on `bank_transactions.payment_line_id`. The card/installment sibling (`gateway_match_candidates`) HAS this guard; the bank one is missing it. | `backend/sepay_routes.py:684` |
 | **T2** | PR đã huỷ vẫn hiện | Candidate query never filters PR state. `cancel_payment_request` only sets `payment_requests.state="cancelled"` — it leaves `payment_lines.status="pending"`, so the lines survive. | `backend/sepay_routes.py:684` + `payment_request_routes.py:1849` |
-| **T3** | QR sale đã xóa vẫn hiện | Query filters only `status in (pending,paid)` and ignores the `payment_lines.cancelled` flag; abandoned/cancelled-PR lines stay `pending` and flood the list. | `backend/sepay_routes.py:684` |
+| **T3** | QR sale đã xóa vẫn hiện | ⚠️ **CORRECTED 13/7** — there is **NO `payment_lines.cancelled` column** (verified sandbox+prod; `line.get("cancelled")` at `payment_request_routes.py:2187` is a dead check → always None). A properly-cancelled QR = `status="rejected"` (7 rows prod) → **already excluded** by the base `status in (pending,paid)` filter. The "QR đã xóa vẫn hiện" cases = **34 `pending` lines under cancelled PRs** (prod 13/7) → **fully absorbed by T2**. No separate fix. | = T2 (`sepay_routes.py:684`) |
 | **T7** | Form kích hoạt mất field gói Refer | Create-AR modal → `ArDraftRow` (`{childName,uid,packageName,amount}`) + `buildCreateActiveRequestPayload` send only `{name,amount}`; BE `_assign_course_codes` whitelists course to `code/name/amount/order_id/invoiced` (drops `lead_source`). Course ends with `leadSource=undefined` → the AR editor referral block (gated on `leadSource==="gioi_thieu"`) never appears. | `PaymentRequestDetailDrawer.tsx:2597`, `types/paymentRequest.ts:238`, `paymentRequestUtils.ts:337`, `activation_routes.py:234` |
 | **T6** | Thêm tên Sale vào "Chờ điền Order ID" | `ActiveRequest` type + `ActiveRequestApiRow` + `_serialize_ar` carry **no sale field** at all. | `types/paymentRequest.ts:186`, `activation_routes.py:324` |
 | **T5** | Tắt tạm tin AR vào DingTalk | DingTalk has **no per-event gate** (Zalo has `ZALO_ENABLED_EVENTS`). Two Python enqueue sites fire `activation_request_created` + `activation_urgent_reminder`. `course_activated` ("Kích hoạt thành công") is enqueued by a **DB trigger**, so a Python gate leaves it untouched. | `activation_routes.py:1183, 2485`, `env_utils.py` |
@@ -28,9 +28,9 @@
 
 ## GUARDRAILS — invariants, violating = broken
 
-- **G1 — Existing recon tests stay green.** `backend/tests/test_sepay_match_candidates.py` currently asserts `line-1` is a candidate then matches it. After T1–T3, PR-1/PR-2 have no `state`/`cancelled`/matched-bank → they must still pass unchanged. Do NOT edit existing assertions; only ADD rows + tests.
-- **G2 — Default candidate behavior for a normal pending line is unchanged.** A `pending` line, PR not cancelled, not matched elsewhere, `cancelled` falsy → still returned. The new filters are pure exclusions of dead rows.
-- **G3 — No DB migration, no schema change.** `payment_lines.cancelled` and `payment_requests.state` already exist. We only READ them. If a column turns out absent at runtime, fail-open (treat as not-cancelled) — never 500 the endpoint.
+- **G1 — Existing recon tests stay green.** `backend/tests/test_sepay_match_candidates.py` currently asserts `line-1` is a candidate then matches it. After T1–T3, PR-1/PR-2 have no cancelled `state` and no matched-bank → they must still pass unchanged. Do NOT edit existing assertions; only ADD rows + tests.
+- **G2 — Default candidate behavior for a normal pending line is unchanged.** A `pending` line whose PR is not cancelled and which is not matched elsewhere → still returned. The new filters are pure exclusions of dead rows.
+- **G3 — No DB migration, no schema change.** Only `payment_requests.state` is read (it exists). **There is NO `payment_lines.cancelled` column** — do NOT select or reference it. Fail-open on the PR-state lookup (missing PR → treat as not-cancelled) — never 500 the endpoint.
 - **G4 — T5 must NOT silence `course_activated`.** Only gate the two Python enqueues (`activation_request_created`, `activation_urgent_reminder`). `course_activated` is trigger-based — do not touch triggers, do not disable `dingtalk_team_groups.is_active` (that would also kill the success message + urgent reminders wholesale).
 - **G5 — T5 default = everything ON.** Empty/unset env ⇒ current behavior (both events fire). The env only DISABLES named events. A temporary toggle must be reversible by editing one env var, no redeploy of logic.
 - **G6 — T7 reuses the existing referral editor.** Do NOT duplicate the referral-bonus form into the create modal. Auto-derive `lead_source="gioi_thieu"` for REFER packages so the tested `ActiveRequestMiniCardV2` referral block (`leadSource==="gioi_thieu"`) reappears. Sale fills referrer UID + bonus sessions there (the PATCH path already persists them).
@@ -91,11 +91,11 @@ In `backend/tests/test_sepay_match_candidates.py`, extend `FakeSB.__init__`:
                     "transfer_code": "TT200", "created_at": "2026-06-18T08:00:00+00:00",
                 },
                 {
-                    # T3: line có cancelled=True → phải loại
-                    "id": "line-cancelled", "payment_request_id": "PR-2",
-                    "amount": 5000000, "method": "transfer", "status": "pending",
+                    # T3: QR huỷ đúng cách = status "rejected" → base filter status in(pending,paid) loại sẵn.
+                    # (KHÔNG có cột `cancelled`. "QR đã xóa còn hiện" thực chất = line pending thuộc PR huỷ = T2.)
+                    "id": "line-rejected", "payment_request_id": "PR-2",
+                    "amount": 5000000, "method": "transfer", "status": "rejected",
                     "transfer_code": "TT300", "created_at": "2026-06-18T07:00:00+00:00",
-                    "cancelled": True,
                 },
 ```
 - add to `payment_requests` list:
@@ -112,7 +112,7 @@ In `backend/tests/test_sepay_match_candidates.py`, extend `FakeSB.__init__`:
 Then append the test cases:
 ```python
 def test_candidates_exclude_dead_lines():
-    """T1 (đã ghép bank khác) + T2 (PR huỷ) + T3 (cancelled flag) đều bị loại."""
+    """T1 (đã ghép bank khác) + T2 (PR huỷ, gồm cả 'QR đã xóa') + T3 (rejected loại bởi base filter) đều bị loại."""
     sb = FakeSB()
     client = build_client(sb)
     with patch("sepay_routes.resolve_actor", return_value=ACTOR):
@@ -124,8 +124,8 @@ def test_candidates_exclude_dead_lines():
     ids = {r["payment_line_id"] for r in resp.json()}
     assert "line-1" in ids               # G2: line lành vẫn còn
     assert "line-used" not in ids        # T1
-    assert "line-cancel-pr" not in ids   # T2
-    assert "line-cancelled" not in ids   # T3
+    assert "line-cancel-pr" not in ids   # T2 (= nguồn thật của "QR đã xóa")
+    assert "line-rejected" not in ids     # T3: rejected loại bởi base filter status in(pending,paid)
 ```
 
 - [ ] **Step 2: Run test — verify it FAILS**
@@ -135,12 +135,8 @@ Expected: `test_candidates_exclude_dead_lines` FAILS (dead lines currently retur
 
 - [ ] **Step 3: Implement the exclusions**
 
-In `bank_txn_match_candidates`, (a) add `cancelled` to the line select, (b) add `state` to the PR select, (c) add the anti-join fetch + a single filter pass before building `candidates`.
+In `bank_txn_match_candidates`, (a) add `state` to the PR select, (b) add the anti-join fetch + a single filter pass before building `candidates`. **Line select is left unchanged** — there is no `cancelled` column, and `status="rejected"` is already excluded by the existing `.in_("status", ["pending","paid"])`.
 
-Change the line query select (line ~709) to include `cancelled`:
-```python
-            .select("id, payment_request_id, amount, method, status, transfer_code, created_at, student_name, cancelled")
-```
 Change the PR lookup select (line ~728) to include `state`:
 ```python
                     .select("id, name, uid, phone, child_name, sale_email, state")
@@ -168,11 +164,11 @@ Immediately AFTER `pr_info = {...}` is built (after line ~732), insert:
         def _line_is_dead(line: dict) -> bool:
             if str(line.get("id")) in used_line_ids:
                 return True                                   # T1
-            if line.get("cancelled"):
-                return True                                   # T3
+            # T3: KHÔNG check cột cancelled (không tồn tại). QR huỷ = status "rejected"
+            # đã bị base filter status in(pending,paid) loại; "QR đã xóa còn hiện" = PR huỷ (T2).
             pr_row = pr_info.get(line.get("payment_request_id", ""), {})
             if _clean_text(pr_row.get("state")).lower() == "cancelled":
-                return True                                   # T2
+                return True                                   # T2 (gồm cả case T3)
             return False
 
         lines = [l for l in lines if not _line_is_dead(l)]
@@ -196,9 +192,9 @@ git add backend/sepay_routes.py backend/tests/test_sepay_match_candidates.py
 git commit -m "fix(recon): loại lần TT chết khỏi đề xuất ghép CK ngoài (T1/T2/T3)
 
 - T1: anti-join bank_transactions.payment_line_id đã matched (mirror gateway)
-- T2: loại line thuộc PR state=cancelled (cancel_payment_request để status pending)
-- T3: loại line có cancelled=true
-Fail-open nếu thiếu cột. 0 migration."
+- T2: loại line thuộc PR state=cancelled (cancel_payment_request để status pending) — gồm cả 34 line 'QR đã xóa' (T3)
+- T3: KHÔNG có cột cancelled; QR huỷ=rejected đã loại sẵn → gộp vào T2
+Fail-open nếu thiếu PR. 0 migration."
 ```
 
 ---

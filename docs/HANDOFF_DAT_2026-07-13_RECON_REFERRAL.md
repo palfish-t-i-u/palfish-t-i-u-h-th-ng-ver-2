@@ -17,7 +17,7 @@
 - PR lookup dòng **722–732** — select `id,name,uid,phone,child_name,sale_email` (thiếu `state`).
 - Đối chiếu: `gateway_match_candidates` (`backend/gateway_routes.py:388–400`) ĐÃ có anti-join `used_line_ids` — bản bank thiếu.
 - `cancel_payment_request` (`backend/payment_request_routes.py:1849`) chỉ set `payment_requests.state="cancelled"`, **KHÔNG** đụng `payment_lines.status` → line PR huỷ vẫn `pending`.
-- Cột `payment_lines.cancelled` có thật (`payment_request_routes.py:2187` đọc `line.get("cancelled")`).
+- ⚠️ **ĐÍNH CHÍNH 13/7 (Đạt phát hiện, đã verify DB sandbox+prod):** **KHÔNG có cột `payment_lines.cancelled`**. `line.get("cancelled")` ở `payment_request_routes.py:2187` là dead check (luôn None). Vòng đời line chỉ qua `status` (prod: paid 185 / pending 65 / rejected 7). Huỷ QR = `status="rejected"` → base filter `status in(pending,paid)` **đã loại sẵn**. "QR đã xóa còn hiện" thực chất = **34 line `pending` thuộc PR đã huỷ** (verify prod) → **T3 gộp hẳn vào T2**.
 
 ### T7 — modal kích hoạt + referral
 - Modal "Chọn gói học để kích hoạt": `frontend/src/components/payment-request/PaymentRequestDetailDrawer.tsx:2597–2645` — mỗi dòng chỉ có Gói/Số tiền/UID.
@@ -32,8 +32,8 @@
 
 ### IN scope
 1. **T1** — bank candidate loại lần TT đã ghép `bank_transaction` khác (anti-join, mirror gateway `used_line_ids`).
-2. **T2** — loại lần TT thuộc PR `state="cancelled"`.
-3. **T3** — loại lần TT có cột `cancelled=true`.
+2. **T2** — loại lần TT thuộc PR `state="cancelled"` (bắt luôn 34 line "QR đã xóa" của T3).
+3. **T3** — KHÔNG cần code riêng: QR huỷ = `status="rejected"` đã bị base filter loại; các case còn lại = PR huỷ (T2). Chỉ cần **verify** sau khi T2 xong.
 4. **T7-BE** — `_assign_course_codes` passthrough `lead_source`/`lead_channel` khi có.
 5. **T7-FE** — modal auto-set `lead_source="gioi_thieu"` cho gói tên chứa "REFER" (helper `isReferralPackage`) + hint nhắc điền referral sau khi tạo.
 
@@ -50,8 +50,8 @@
 
 | File | Việc |
 |------|------|
-| `backend/sepay_routes.py` | T1/T2/T3: +`cancelled`/`state` vào select, +anti-join `used_line_ids`, +filter `_line_is_dead` (fail-open) |
-| `backend/tests/test_sepay_match_candidates.py` | +rows (line-used/cancel-pr/cancelled) + `test_candidates_exclude_dead_lines` |
+| `backend/sepay_routes.py` | T1/T2: +`state` vào PR select, +anti-join `used_line_ids`, +filter `_line_is_dead` (PR state=cancelled + used-line; fail-open). **KHÔNG select `cancelled`** (không tồn tại) |
+| `backend/tests/test_sepay_match_candidates.py` | +rows (line-used/cancel-pr/rejected) + `test_candidates_exclude_dead_lines` |
 | `backend/activation_routes.py` | T7-BE: `_assign_course_codes` +passthrough `lead_source`/`lead_channel` |
 | `backend/tests/test_ar_lead_source_passthrough.py` | MỚI — assert lead_source giữ, gói thường không gắn |
 | `frontend/src/types/paymentRequest.ts` | +`lead_source?` vào `CreateActiveRequestCoursePayload` |
@@ -79,7 +79,7 @@ Manual sandbox: (2) mở drawer "Ghép CK ngoài" trên CK khớp PR huỷ → x
 
 ## Anti-patterns (đừng làm)
 1. **Đừng** dùng `.or_(...)` cho anti-join — làm bằng Python filter sau khi fetch (FakeSB mock hỗ trợ; plan G12 giải thích rủi ro `.or_`).
-2. **Đừng** để query 500 khi thiếu cột — filter phải **fail-open** (thiếu `cancelled`/`state` → coi như không chết).
+2. **Đừng** select cột `cancelled` — KHÔNG tồn tại (query sẽ lỗi). Chỉ thêm `state` vào PR select. Filter fail-open khi thiếu PR (coi như không chết).
 3. **Đừng** sửa `_mark_line_paid` hay logic cancel PR — T1/T2/T3 chỉ là loại-trừ ở *đọc* candidate.
 4. **Đừng** nhân đôi form referral vào modal — chỉ set `lead_source` để editor `ActiveRequestMiniCardV2` (đã test) hiện panel.
 5. **Đừng** gửi `lead_source` cho gói thường — payload gói không-REFER phải y hệt cũ (plan G7).

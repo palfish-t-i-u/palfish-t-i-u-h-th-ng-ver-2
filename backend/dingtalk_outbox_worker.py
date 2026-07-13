@@ -20,6 +20,7 @@ EVENT_TITLES = {
     "activation_request_created": "Yêu cầu kích hoạt khoá học",
     "course_activated": "Kích hoạt thành công",
     "activation_urgent_reminder": "Nhắc kích hoạt gấp",
+    "pr_fully_paid": "Đơn đã đủ tiền",
 }
 
 
