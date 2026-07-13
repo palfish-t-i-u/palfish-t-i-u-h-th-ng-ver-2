@@ -27,6 +27,7 @@ from invoice_routes import (
     _build_excel_products,
 )
 from revenue_routes import sync_ledger_from_ar_course
+from env_utils import dingtalk_event_enabled
 from rbac import resolve_actor
 from utils.team_mapper import get_canonical_team
 from utils.zalo_message_builder import (
@@ -1098,6 +1099,9 @@ def _enqueue_activation_request_created_dingtalk(
     team khác thì skip. Kèm ảnh bill nếu có (worker gửi riêng qua sampleImageMsg).
     """
     try:
+        if not dingtalk_event_enabled("activation_request_created"):
+            print("[dingtalk] activation_request_created skipped (DINGTALK_DISABLED_EVENTS)")
+            return
         if pr is None:
             return
         if pr.get("is_test") or saved_ar.get("is_test"):
@@ -2464,16 +2468,10 @@ def register_activation_routes(app, supabase_factory):
 
         # DingTalk parallel notification — best-effort, independent of Zalo
         try:
-            dt_team_code = sale_canonical_team
-            dt_group = (
-                sb.table("dingtalk_team_groups")
-                .select("team_code, is_active")
-                .eq("team_code", dt_team_code)
-                .limit(1)
-                .execute()
-            )
-            if not dt_group.data or not dt_group.data[0].get("is_active"):
-                dt_team_code = OPS_GROUP_TEAM_CODE
+            if not dingtalk_event_enabled("activation_urgent_reminder"):
+                print("[dingtalk] activation_urgent_reminder skipped (DINGTALK_DISABLED_EVENTS)")
+            else:
+                dt_team_code = sale_canonical_team
                 dt_group = (
                     sb.table("dingtalk_team_groups")
                     .select("team_code, is_active")
@@ -2481,14 +2479,23 @@ def register_activation_routes(app, supabase_factory):
                     .limit(1)
                     .execute()
                 )
-            if dt_group.data and dt_group.data[0].get("is_active"):
-                sb.table("dingtalk_outbox").insert({
-                    "event_type": "activation_urgent_reminder",
-                    "source_table": "activation_reminders",
-                    "source_id": str(reminder.data[0]["id"]) if reminder.data else "00000000-0000-0000-0000-000000000000",
-                    "team_code": dt_team_code,
-                    "message": result["message"],
-                }).execute()
+                if not dt_group.data or not dt_group.data[0].get("is_active"):
+                    dt_team_code = OPS_GROUP_TEAM_CODE
+                    dt_group = (
+                        sb.table("dingtalk_team_groups")
+                        .select("team_code, is_active")
+                        .eq("team_code", dt_team_code)
+                        .limit(1)
+                        .execute()
+                    )
+                if dt_group.data and dt_group.data[0].get("is_active"):
+                    sb.table("dingtalk_outbox").insert({
+                        "event_type": "activation_urgent_reminder",
+                        "source_table": "activation_reminders",
+                        "source_id": str(reminder.data[0]["id"]) if reminder.data else "00000000-0000-0000-0000-000000000000",
+                        "team_code": dt_team_code,
+                        "message": result["message"],
+                    }).execute()
         except Exception as dt_exc:
             print(f"[dingtalk] urgent reminder enqueue failed (non-fatal): {dt_exc}")
 

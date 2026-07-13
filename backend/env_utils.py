@@ -33,3 +33,16 @@ def zalo_oa_configured() -> bool:
         and (os.getenv("ZALO_OA_APP_SECRET") or "").strip()
         and (os.getenv("ZALO_OA_REFRESH_TOKEN") or "").strip()
     )
+
+
+def dingtalk_event_enabled(event_type: str) -> bool:
+    """False when event_type is listed in DINGTALK_DISABLED_EVENTS (comma-sep).
+
+    Denylist so default (unset/empty) = every event enabled (current behavior).
+    Temporary kill-switch: set the env, no code redeploy needed to revert.
+    """
+    raw = (os.getenv("DINGTALK_DISABLED_EVENTS") or "").strip()
+    if not raw:
+        return True
+    disabled = {e.strip() for e in raw.split(",") if e.strip()}
+    return event_type not in disabled
