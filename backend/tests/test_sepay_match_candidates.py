@@ -63,7 +63,13 @@ class FakeSB:
                     "txn_id": "txn-bank-1",
                     "amount": 5000500,
                     "match_status": "needs_review",
-                }
+                },
+                {
+                    "txn_id": "txn-bank-2",
+                    "amount": 5000000,
+                    "match_status": "manual_matched",
+                    "payment_line_id": "line-used",
+                },
             ],
             "payment_lines": [
                 {
@@ -95,6 +101,37 @@ class FakeSB:
                     "created_at": "2026-06-18T10:10:00+00:00",
                     "student_name": "Be Bo",
                 },
+                {
+                    # T1: line đã ghép với bank_transaction khác → phải loại
+                    "id": "line-used",
+                    "payment_request_id": "PR-1",
+                    "amount": 5000000,
+                    "method": "transfer",
+                    "status": "paid",
+                    "transfer_code": "TT100",
+                    "created_at": "2026-06-18T09:00:00+00:00",
+                },
+                {
+                    # T2: line thuộc PR đã huỷ → phải loại
+                    "id": "line-cancel-pr",
+                    "payment_request_id": "PR-CANCEL",
+                    "amount": 5000000,
+                    "method": "transfer",
+                    "status": "pending",
+                    "transfer_code": "TT200",
+                    "created_at": "2026-06-18T08:00:00+00:00",
+                },
+                {
+                    # T3: line có cancelled=True → phải loại
+                    "id": "line-cancelled",
+                    "payment_request_id": "PR-2",
+                    "amount": 5000000,
+                    "method": "transfer",
+                    "status": "pending",
+                    "transfer_code": "TT300",
+                    "created_at": "2026-06-18T07:00:00+00:00",
+                    "cancelled": True,
+                },
             ],
             "payment_requests": [
                 {
@@ -112,6 +149,15 @@ class FakeSB:
                     "phone": "0901000002",
                     "child_name": "",
                     "sale_email": "other@test.com",
+                },
+                {
+                    "id": "PR-CANCEL",
+                    "name": "Cancelled Parent",
+                    "uid": "uid-c",
+                    "phone": "0901000009",
+                    "child_name": "",
+                    "sale_email": "sale@test.com",
+                    "state": "cancelled",
                 },
             ],
             "nhan_su_sale": [
@@ -191,3 +237,22 @@ def test_candidate_child_name_prefers_line_student_name():
     assert len(rows) == 1
     assert rows[0]["payment_line_id"] == "line-be-bo"
     assert rows[0]["child_name"] == "Be Bo"
+
+
+def test_candidates_exclude_dead_lines():
+    """T1 (đã ghép bank khác) + T2 (PR huỷ) + T3 (cancelled flag) đều bị loại."""
+    sb = FakeSB()
+    client = build_client(sb)
+
+    with patch("sepay_routes.resolve_actor", return_value=ACTOR):
+        with patch("sepay_routes.require_module_write"):
+            resp = client.get(
+                "/api/v1/bank-transactions/txn-bank-1/match-candidates?amount_exact=5000000"
+            )
+
+    assert resp.status_code == 200
+    ids = {r["payment_line_id"] for r in resp.json()}
+    assert "line-1" in ids               # G2: line lành vẫn còn
+    assert "line-used" not in ids        # T1
+    assert "line-cancel-pr" not in ids   # T2
+    assert "line-cancelled" not in ids   # T3

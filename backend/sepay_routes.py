@@ -706,7 +706,7 @@ def register_sepay_routes(app, get_supabase: Callable) -> None:
 
         lines_query = (
             sb.table("payment_lines")
-            .select("id, payment_request_id, amount, method, status, transfer_code, created_at, student_name")
+            .select("id, payment_request_id, amount, method, status, transfer_code, created_at, student_name, cancelled")
             .in_("status", ["pending", "paid"])
             .order("created_at", desc=True)
             .limit(500)
@@ -725,13 +725,43 @@ def register_sepay_routes(app, get_supabase: Callable) -> None:
             try:
                 pr_res = (
                     sb.table("payment_requests")
-                    .select("id, name, uid, phone, child_name, sale_email")
+                    .select("id, name, uid, phone, child_name, sale_email, state")
                     .in_("id", pr_ids)
                     .execute()
                 )
                 pr_info = {p["id"]: p for p in (pr_res.data or [])}
             except Exception as exc:
                 print(f"[sepay] pr lookup failed: {exc}")
+
+        # T1 — lần TT đã ghép với bank_transaction KHÁC (đã "tiêu thụ") → loại.
+        # Mirror gateway_match_candidates used_line_ids (gateway_routes.py ~388).
+        used_line_ids: set[str] = set()
+        try:
+            used_res = (
+                sb.table("bank_transactions")
+                .select("payment_line_id, txn_id, match_status")
+                .in_("match_status", ["manual_matched", "auto_matched"])
+                .execute()
+            )
+            used_line_ids = {
+                str(r.get("payment_line_id"))
+                for r in (used_res.data or [])
+                if r.get("payment_line_id") and str(r.get("txn_id")) != str(txn_id)
+            }
+        except Exception as exc:
+            print(f"[sepay] used-line anti-join failed (fail-open): {exc}")
+
+        def _line_is_dead(line: dict) -> bool:
+            if str(line.get("id")) in used_line_ids:
+                return True                                   # T1
+            if line.get("cancelled"):
+                return True                                   # T3
+            pr_row = pr_info.get(line.get("payment_request_id", ""), {})
+            if _clean_text(pr_row.get("state")).lower() == "cancelled":
+                return True                                   # T2
+            return False
+
+        lines = [l for l in lines if not _line_is_dead(l)]
 
         sale_name_map: dict[str, str] = {}
         try:
