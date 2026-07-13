@@ -274,6 +274,54 @@ def _sum_paid_amount(lines: list[dict[str, Any]]) -> int:
     )
 
 
+def _enqueue_pr_fully_paid_dingtalk(sb, pr_row: dict[str, Any], received: int) -> None:
+    """DingTalk Tin #1 'đơn đủ tiền' — 1 lần/PR khi state->done. Best-effort, NEVER raises."""
+    try:
+        from env_utils import dingtalk_event_enabled
+
+        if not dingtalk_event_enabled("pr_fully_paid"):
+            return
+        if pr_row.get("is_test"):
+            return
+        sale_email = _clean_text(pr_row.get("sale_email")).lower()
+        if not sale_email:
+            return
+        staff_res = (
+            sb.table("nhan_su_sale").select("email, team")
+            .ilike("email", sale_email).limit(1).execute()
+        )
+        team = _clean_text((staff_res.data or [{}])[0].get("team"))
+        if not team:
+            return
+        g = (
+            sb.table("dingtalk_team_groups").select("team_code, is_active")
+            .eq("team_code", team).limit(1).execute()
+        )
+        if not g.data or not g.data[0].get("is_active"):
+            return
+        pr_id = str(pr_row.get("id") or "")
+        student = _clean_text(pr_row.get("child_name")) or _clean_text(pr_row.get("name")) or "?"
+        recv_fmt = f"{int(received):,}".replace(",", ".")
+        tgt_fmt = f"{_parse_amount(pr_row.get('target')):,}".replace(",", ".")
+        msg = (
+            f"✅ ĐƠN ĐÃ ĐỦ TIỀN — {pr_id}\n"
+            f"Học viên: {student}\n"
+            f"Tổng net đã thu: {recv_fmt} / {tgt_fmt} VND"
+        )
+        try:
+            sb.table("dingtalk_outbox").insert({
+                "event_type": "pr_fully_paid",
+                "source_table": "payment_requests",
+                "source_id": pr_id,
+                "team_code": team,
+                "message": msg,
+            }).execute()
+        except Exception:
+            pass  # idempotent -- UNIQUE(source_table, source_id, event_type)
+    except Exception as exc:
+        print(f"[dingtalk] pr_fully_paid enqueue failed (non-fatal): {exc}")
+
+
 def _iso_now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
@@ -1269,6 +1317,7 @@ def recompute_payment_request_totals(sb, payment_request_id: str) -> dict[str, A
     target = _parse_amount(pr_row.get("target"))
     received = _sum_paid_amount(line_res.data or [])
     state = _compute_state(received, target)
+    old_state = _clean_text(pr_row.get("state")).lower()
 
     update_res = (
         sb.table("payment_requests")
@@ -1277,6 +1326,8 @@ def recompute_payment_request_totals(sb, payment_request_id: str) -> dict[str, A
         .execute()
     )
     updated = update_res.data[0] if update_res.data else {**pr_row, "received": received, "state": state}
+    if state == "done" and old_state != "done":
+        _enqueue_pr_fully_paid_dingtalk(sb, updated, received)
     if state in ("done", "over"):
         try:
             from revenue_routes import sync_ledger_for_pr

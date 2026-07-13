@@ -8,6 +8,23 @@ import uuid
 from unittest.mock import MagicMock
 
 import activation_routes
+from env_utils import dingtalk_event_enabled
+
+
+def test_dingtalk_event_enabled_default_all_on(monkeypatch):
+    monkeypatch.delenv("DINGTALK_DISABLED_EVENTS", raising=False)
+    assert dingtalk_event_enabled("activation_request_created") is True
+    assert dingtalk_event_enabled("course_activated") is True
+
+
+def test_dingtalk_event_enabled_denylist(monkeypatch):
+    monkeypatch.setenv(
+        "DINGTALK_DISABLED_EVENTS",
+        "activation_request_created, activation_urgent_reminder",
+    )
+    assert dingtalk_event_enabled("activation_request_created") is False
+    assert dingtalk_event_enabled("activation_urgent_reminder") is False
+    assert dingtalk_event_enabled("course_activated") is True   # G4
 
 
 def _mock_chain_table(data):
