@@ -122,15 +122,14 @@ class FakeSB:
                     "created_at": "2026-06-18T08:00:00+00:00",
                 },
                 {
-                    # T3: line có cancelled=True → phải loại
-                    "id": "line-cancelled",
+                    # T3: line có status="rejected" (huỷ QR) → bị base filter status loại
+                    "id": "line-rejected",
                     "payment_request_id": "PR-2",
                     "amount": 5000000,
                     "method": "transfer",
-                    "status": "pending",
+                    "status": "rejected",
                     "transfer_code": "TT300",
                     "created_at": "2026-06-18T07:00:00+00:00",
-                    "cancelled": True,
                 },
             ],
             "payment_requests": [
@@ -255,4 +254,5 @@ def test_candidates_exclude_dead_lines():
     assert "line-1" in ids               # G2: line lành vẫn còn
     assert "line-used" not in ids        # T1
     assert "line-cancel-pr" not in ids   # T2
-    assert "line-cancelled" not in ids   # T3
+    assert "line-rejected" not in ids    # T3 (bị loại vì status='rejected')
+

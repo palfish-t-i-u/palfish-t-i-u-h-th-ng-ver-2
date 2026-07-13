@@ -706,7 +706,7 @@ def register_sepay_routes(app, get_supabase: Callable) -> None:
 
         lines_query = (
             sb.table("payment_lines")
-            .select("id, payment_request_id, amount, method, status, transfer_code, created_at, student_name, cancelled")
+            .select("id, payment_request_id, amount, method, status, transfer_code, created_at, student_name")
             .in_("status", ["pending", "paid"])
             .order("created_at", desc=True)
             .limit(500)
@@ -731,7 +731,17 @@ def register_sepay_routes(app, get_supabase: Callable) -> None:
                 )
                 pr_info = {p["id"]: p for p in (pr_res.data or [])}
             except Exception as exc:
-                print(f"[sepay] pr lookup failed: {exc}")
+                print(f"[sepay] pr lookup with state failed, fallback: {exc}")
+                try:
+                    pr_res_fallback = (
+                        sb.table("payment_requests")
+                        .select("id, name, uid, phone, child_name, sale_email")
+                        .in_("id", pr_ids)
+                        .execute()
+                    )
+                    pr_info = {p["id"]: p for p in (pr_res_fallback.data or [])}
+                except Exception as exc_fallback:
+                    print(f"[sepay] pr fallback lookup failed: {exc_fallback}")
 
         # T1 — lần TT đã ghép với bank_transaction KHÁC (đã "tiêu thụ") → loại.
         # Mirror gateway_match_candidates used_line_ids (gateway_routes.py ~388).
@@ -754,8 +764,6 @@ def register_sepay_routes(app, get_supabase: Callable) -> None:
         def _line_is_dead(line: dict) -> bool:
             if str(line.get("id")) in used_line_ids:
                 return True                                   # T1
-            if line.get("cancelled"):
-                return True                                   # T3
             pr_row = pr_info.get(line.get("payment_request_id", ""), {})
             if _clean_text(pr_row.get("state")).lower() == "cancelled":
                 return True                                   # T2
