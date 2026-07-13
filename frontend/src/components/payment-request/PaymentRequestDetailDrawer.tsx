@@ -2608,7 +2608,7 @@ export default function PaymentRequestDetailDrawer({
                         emptyLabel="Chưa chọn gói"
                       />
                       {isReferralPackage(row.packageName) && (
-                        <div style={{ marginTop: 4, fontSize: 12, color: "var(--warning-dark)", lineHeight: 1.3 }}>
+                        <div style={{ marginTop: 4, fontSize: 12, color: "var(--warning-text, #92400e)", lineHeight: 1.3 }}>
                           * Gói giới thiệu — sau khi tạo, bấm Sửa ở thẻ kích hoạt để điền UID người giới thiệu &amp; số buổi cộng.
                         </div>
                       )}
