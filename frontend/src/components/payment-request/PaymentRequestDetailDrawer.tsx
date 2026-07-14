@@ -1772,22 +1772,22 @@ export default function PaymentRequestDetailDrawer({
       <div className={`scrim ${open ? "open" : ""}`} onClick={onClose} style={{ pointerEvents: open ? "auto" : "none" }} />
       <aside className={`drawer ${open ? "open" : ""}`}>
         <div className="drawer-head">
-          <button type="button" className="drawer-back-mobile" onClick={onClose}>
-            <Icons.ChevronLeft size={14} /> Quay lại
-          </button>
-          <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 14, minWidth: 0 }}>
             <span className="pr-id-pill">{request.id}</span>
-            <div>
+            <div style={{ minWidth: 0 }}>
               <div style={{ fontWeight: 700, fontSize: 16 }}>{request.name}</div>
               <div className="drawer-meta" style={{ fontSize: 12, color: "var(--text-3)", marginTop: 2 }}>
                 Tạo bởi <strong style={{ color: "var(--text-2)" }} title={request.saleEmail || undefined}>{request.saleName || (request.saleEmail ? request.saleEmail.split("@")[0] : "—")}</strong> · {request.createdAt}
               </div>
             </div>
           </div>
-          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexShrink: 0 }}>
             <PaymentRequestStatusBadge state={request.state} totalCount={request.totalCount} provisional={hasUnverifiedFeeLine(request)} />
             <button className="drawer-close" onClick={onClose}>
               <Icons.Close size={16} />
+            </button>
+            <button type="button" className="drawer-back-mobile" onClick={onClose}>
+              <Icons.ChevronLeft size={14} /> Quay lại
             </button>
           </div>
         </div>

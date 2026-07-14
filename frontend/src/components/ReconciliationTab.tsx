@@ -1203,27 +1203,27 @@ export default function ReconciliationTab() {
           return (
             <>
               <div className="drawer-head">
-                <button type="button" className="drawer-back-mobile" onClick={() => setDrawerOpen(false)}>
-                  <Icons.ChevronLeft size={14} /> Quay lại
-                </button>
-                <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 14, minWidth: 0 }}>
                   <span
                     className="pr-id-pill"
                     style={{ background: "var(--surface-3)", color: "var(--text-2)", fontFamily: "JetBrains Mono, monospace" }}
                   >
                     {drawerTxn.code}
                   </span>
-                  <div>
+                  <div style={{ minWidth: 0 }}>
                     <div style={{ fontWeight: 700, fontSize: 16 }}>{vnd(drawerTxn.amount)}</div>
                     <div className="drawer-meta" style={{ fontSize: 12, color: "var(--text-3)", marginTop: 2 }}>
                       Lần #{drawerTxn.idx} của <strong style={{ color: "var(--text-2)" }}>{pr.id}</strong> · {pr.name}
                     </div>
                   </div>
                 </div>
-                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <div style={{ display: "flex", gap: 8, alignItems: "center", flexShrink: 0 }}>
                   <TxnStatusBadge status={status} />
                   <button type="button" className="drawer-close" onClick={() => setDrawerOpen(false)}>
                     <Icons.Close size={16} />
+                  </button>
+                  <button type="button" className="drawer-back-mobile" onClick={() => setDrawerOpen(false)}>
+                    <Icons.ChevronLeft size={14} /> Quay lại
                   </button>
                 </div>
               </div>

@@ -962,12 +962,9 @@ function ActivationDetailDrawer({
       <div className={`scrim ${open ? "open" : ""}`} onClick={requestCloseDrawer} style={{ pointerEvents: open ? "auto" : "none" }} />
       <aside className={`drawer ar-drawer ${open ? "open" : ""}`}>
         <div className="drawer-head">
-          <button type="button" className="drawer-back-mobile" onClick={requestCloseDrawer}>
-            <Icons.ChevronLeft size={14} /> Quay lại
-          </button>
-          <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 14, minWidth: 0 }}>
             <span className="ar-id-pill">{ar.id}</span>
-            <div>
+            <div style={{ minWidth: 0 }}>
               <div style={{ fontWeight: 700, fontSize: 16 }}>{ar.customerName}</div>
               <div className="drawer-meta" style={{ fontSize: 12, color: "var(--text-3)", marginTop: 2 }}>
                 {pr ? (
@@ -981,10 +978,13 @@ function ActivationDetailDrawer({
               </div>
             </div>
           </div>
-          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexShrink: 0 }}>
             <ARStatusBadge status={enriched.status} />
             <button type="button" className="drawer-close" onClick={requestCloseDrawer}>
               <Icons.Close size={16} />
+            </button>
+            <button type="button" className="drawer-back-mobile" onClick={requestCloseDrawer}>
+              <Icons.ChevronLeft size={14} /> Quay lại
             </button>
           </div>
         </div>

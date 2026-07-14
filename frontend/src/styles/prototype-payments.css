@@ -2052,13 +2052,10 @@
   .gmv-prototype .drawer {
     width: 100vw;
   }
-  .gmv-prototype .drawer-head { flex-wrap: wrap; }
   .gmv-prototype .drawer-back-mobile {
     display: flex;
     align-items: center;
     gap: 4px;
-    width: 100%;
-    order: -1;
     background: none;
     border: none;
     color: var(--primary-600);
@@ -2066,6 +2063,8 @@
     font-weight: 600;
     padding: 0;
     cursor: pointer;
+    white-space: nowrap;
+    flex-shrink: 0;
   }
   .gmv-prototype .drawer-close { display: none; }
 }
@@ -2320,10 +2319,6 @@
     font-size: 11px;
     padding: 2px 7px;
     white-space: nowrap;
-  }
-  .gmv-prototype .drawer-head > div:first-of-type {
-    min-width: 0;
-    gap: 10px !important;
   }
   .gmv-prototype .drawer-meta {
     overflow: hidden;
