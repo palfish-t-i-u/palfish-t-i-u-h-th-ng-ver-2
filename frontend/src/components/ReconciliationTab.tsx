@@ -871,15 +871,10 @@ export default function ReconciliationTab() {
                   onClick={async () => {
                     setIsBulkConfirming(true);
                     try {
-                      const picked = [...selectedIds]
+                      const toConfirm = [...selectedIds]
                         .map((key) => transactions.find((x) => x.key === key))
-                        .filter((t): t is FlatTransaction => !!t);
-                      const blocked = picked.filter(billRequiredButMissing);
-                      const toConfirm = picked.filter((t) => !billRequiredButMissing(t));
+                        .filter((t): t is FlatTransaction => !!t && t.method === "cash");
                       await Promise.all(toConfirm.map((t) => handleConfirm(t)));
-                      if (blocked.length > 0) {
-                        alert(`${blocked.length} giao dịch quẹt thẻ/trả góp chưa có bill — đã bỏ qua, chưa xác nhận.`);
-                      }
                     } finally {
                       setSelectedIds(new Set());
                       setIsBulkConfirming(false);
@@ -1012,12 +1007,12 @@ export default function ReconciliationTab() {
                         checked={
                           filtered.length > 0 &&
                           filtered
-                            .filter((t) => txnDisplayStatus(t) === "awaiting")
+                            .filter((t) => txnDisplayStatus(t) === "awaiting" && t.method === "cash")
                             .every((t) => selectedIds.has(t.key))
                         }
                         onChange={() => {
                           const ids = filtered
-                            .filter((t) => txnDisplayStatus(t) === "awaiting")
+                            .filter((t) => txnDisplayStatus(t) === "awaiting" && t.method === "cash")
                             .map((t) => t.key);
                           const all = ids.length > 0 && ids.every((id) => selectedIds.has(id));
                           setSelectedIds(all ? new Set() : new Set(ids));
@@ -1066,7 +1061,7 @@ export default function ReconciliationTab() {
                       <td className="check-col" onClick={(e) => e.stopPropagation()}>
                         <input
                           type="checkbox"
-                          disabled={status !== "awaiting"}
+                          disabled={status !== "awaiting" || t.method !== "cash"}
                           checked={selectedIds.has(t.key)}
                           onChange={() => {
                             setSelectedIds((prev) => {
