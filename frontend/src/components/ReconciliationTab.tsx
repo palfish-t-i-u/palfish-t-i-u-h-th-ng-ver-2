@@ -1215,7 +1215,7 @@ export default function ReconciliationTab() {
                   </span>
                   <div>
                     <div style={{ fontWeight: 700, fontSize: 16 }}>{vnd(drawerTxn.amount)}</div>
-                    <div style={{ fontSize: 12, color: "var(--text-3)", marginTop: 2 }}>
+                    <div className="drawer-meta" style={{ fontSize: 12, color: "var(--text-3)", marginTop: 2 }}>
                       Lần #{drawerTxn.idx} của <strong style={{ color: "var(--text-2)" }}>{pr.id}</strong> · {pr.name}
                     </div>
                   </div>

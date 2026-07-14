@@ -969,7 +969,7 @@ function ActivationDetailDrawer({
             <span className="ar-id-pill">{ar.id}</span>
             <div>
               <div style={{ fontWeight: 700, fontSize: 16 }}>{ar.customerName}</div>
-              <div style={{ fontSize: 12, color: "var(--text-3)", marginTop: 2 }}>
+              <div className="drawer-meta" style={{ fontSize: 12, color: "var(--text-3)", marginTop: 2 }}>
                 {pr ? (
                   <>
                     Liên kết <strong style={{ color: "var(--primary-700)" }}>{pr.id}</strong> ·{" "}

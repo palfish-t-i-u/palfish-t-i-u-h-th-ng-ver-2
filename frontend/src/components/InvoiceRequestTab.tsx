@@ -108,7 +108,7 @@ function InvoiceDetailDrawer({
             )}
             <div>
               <div style={{ fontWeight: 700, fontSize: 16 }}>{d.name || row.ar.customerName}</div>
-              <div style={{ fontSize: 12, color: "var(--text-3)", marginTop: 2 }}>
+              <div className="drawer-meta" style={{ fontSize: 12, color: "var(--text-3)", marginTop: 2 }}>
                 Order ID <strong style={{ color: "var(--text-2)" }}>{row.course.orderId}</strong> · {row.ar.id}
               </div>
             </div>

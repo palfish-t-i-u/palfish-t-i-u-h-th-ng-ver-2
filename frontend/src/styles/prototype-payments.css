@@ -2064,7 +2064,7 @@
     color: var(--primary-600);
     font-size: 13px;
     font-weight: 600;
-    padding: 0 0 6px;
+    padding: 0;
     cursor: pointer;
   }
   .gmv-prototype .drawer-close { display: none; }
@@ -2308,4 +2308,55 @@
 @media (max-width: 767px) {
   /* Grid PR-info 4 cột → 1 cột (ô ~90px quá hẹp cho số tiền + label) */
   .gmv-prototype .act-course-grid { grid-template-columns: 1fr !important; }
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   MOBILE DRAWER LAYOUT — phân bố element hợp lý hơn
+   ════════════════════════════════════════════════════════════ */
+@media (max-width: 767px) {
+  /* ── Header: compact ── */
+  .gmv-prototype .drawer .pr-id-pill,
+  .gmv-prototype .drawer .ar-id-pill {
+    font-size: 11px;
+    padding: 2px 7px;
+    white-space: nowrap;
+  }
+  .gmv-prototype .drawer-head > div:first-of-type {
+    min-width: 0;
+    gap: 10px !important;
+  }
+  .gmv-prototype .drawer-meta {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* ── Body: tighter panel gaps ── */
+  .gmv-prototype .drawer-body { gap: 12px !important; }
+
+  /* ── Footer: primary actions first + full-width ── */
+  .gmv-prototype .drawer-foot {
+    flex-direction: column;
+    align-items: stretch !important;
+    gap: 8px;
+    row-gap: 8px;
+  }
+  .gmv-prototype .drawer-foot .quick-create {
+    order: -1;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    width: 100%;
+  }
+  .gmv-prototype .drawer-foot .quick-create .btn {
+    width: 100%;
+    justify-content: center;
+  }
+  .gmv-prototype .drawer-foot > div:not(.quick-create) {
+    gap: 6px !important;
+  }
+  .gmv-prototype .drawer-foot > div:not(.quick-create) .btn {
+    font-size: 12px;
+    min-height: 36px;
+  }
 }
