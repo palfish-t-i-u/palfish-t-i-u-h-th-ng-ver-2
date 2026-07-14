@@ -975,6 +975,9 @@ function ActivationDetailDrawer({
                   <>Standalone · </>
                 )}
                 Tạo bởi <strong style={{ color: "var(--text-2)" }}>{ar.createdBy || "—"}</strong> · {ar.createdAt}
+                {ar.saleName && (
+                  <> · Sale: <strong style={{ color: "var(--text-2)" }}>{ar.saleName}</strong></>
+                )}
               </div>
             </div>
           </div>
