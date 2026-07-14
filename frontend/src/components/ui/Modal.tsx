@@ -10,9 +10,10 @@ interface Props {
   className?: string;
   overlayClassName?: string;
   wide?: boolean;
+  extraWide?: boolean;
 }
 
-export default function Modal({ open, onClose, title, children, className, overlayClassName, wide }: Props) {
+export default function Modal({ open, onClose, title, children, className, overlayClassName, wide, extraWide }: Props) {
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
@@ -34,7 +35,7 @@ export default function Modal({ open, onClose, title, children, className, overl
         className={cn(
           "max-h-[90vh] w-full overflow-y-auto rounded-gmv-lg bg-gmv-canvas p-6 shadow-gmv-2",
           "max-md:max-h-[92vh] max-md:max-w-none max-md:rounded-b-none max-md:p-4",
-          wide ? "max-w-3xl" : "max-w-lg",
+          extraWide ? "max-w-5xl" : wide ? "max-w-3xl" : "max-w-lg",
           className
         )}
         onClick={(e) => e.stopPropagation()}
