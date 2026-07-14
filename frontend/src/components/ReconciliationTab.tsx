@@ -1204,12 +1204,17 @@ export default function ReconciliationTab() {
             <>
               <div className="drawer-head">
                 <div style={{ display: "flex", alignItems: "center", gap: 14, minWidth: 0 }}>
-                  <span
-                    className="pr-id-pill"
-                    style={{ background: "var(--surface-3)", color: "var(--text-2)", fontFamily: "JetBrains Mono, monospace" }}
-                  >
-                    {drawerTxn.code}
-                  </span>
+                  <div style={{ flexShrink: 0 }}>
+                    <span
+                      className="pr-id-pill"
+                      style={{ background: "var(--surface-3)", color: "var(--text-2)", fontFamily: "JetBrains Mono, monospace" }}
+                    >
+                      {drawerTxn.code}
+                    </span>
+                    <div className="drawer-status-mobile">
+                      <TxnStatusBadge status={status} />
+                    </div>
+                  </div>
                   <div style={{ minWidth: 0 }}>
                     <div style={{ fontWeight: 700, fontSize: 16 }}>{vnd(drawerTxn.amount)}</div>
                     <div className="drawer-meta" style={{ fontSize: 12, color: "var(--text-3)", marginTop: 2 }}>
