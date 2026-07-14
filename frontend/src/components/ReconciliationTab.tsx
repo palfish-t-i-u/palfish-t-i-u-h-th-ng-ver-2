@@ -1766,29 +1766,11 @@ export default function ReconciliationTab() {
                           );
                         return (
                           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                            <div style={{
-                              borderRadius: 10, padding: 12, border: "1px solid var(--border)",
-                              background: "var(--surface-2)",
-                            }}>
-                              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                                <span style={{ fontSize: 10.5, letterSpacing: "0.05em", color: "var(--text-3)", textTransform: "uppercase", fontWeight: 600 }}>
-                                  Biên lai · {pc.pr_id}
-                                </span>
-                                <Icons.Receipt size={15} />
-                              </div>
-                              <div style={{ fontSize: 12, color: "var(--text-2)", marginTop: 2 }}>
-                                {pc.pr_name} · {pc.method} · mã: {pc.transfer_code || "—"}
-                              </div>
-                              <div style={{ fontSize: 18, fontWeight: 800, color: "var(--money)", marginTop: 8 }}>{vnd(pc.amount)}</div>
-                              <div style={{ fontSize: 10.5, color: "var(--text-3)" }}>{pc.created_at ? formatPaymentDateFull(pc.created_at) : ""}</div>
-                            </div>
-                            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                              {pc.bill_images!.map((src, i) => (
-                                <img key={i} src={src} alt="bill"
-                                  onClick={() => window.open(src, "_blank")}
-                                  style={{ width: 80, height: 80, objectFit: "cover", borderRadius: 8, border: "1px solid var(--border)", cursor: "zoom-in" }} />
-                              ))}
-                            </div>
+                            {pc.bill_images!.map((src, i) => (
+                              <img key={i} src={src} alt="bill"
+                                onClick={() => window.open(src, "_blank")}
+                                style={{ width: "100%", maxHeight: 280, objectFit: "contain", borderRadius: 8, border: "1px solid var(--border)", cursor: "zoom-in", background: "var(--surface-2)" }} />
+                            ))}
                           </div>
                         );
                       })()}
