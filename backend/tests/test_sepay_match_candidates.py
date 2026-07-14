@@ -80,6 +80,7 @@ class FakeSB:
                     "status": "pending",
                     "transfer_code": "TT001",
                     "created_at": "2026-06-18T10:00:00+00:00",
+                    "bill_images": ["https://storage.test/bill-1.jpg"],
                 },
                 {
                     "id": "line-other",
@@ -214,6 +215,8 @@ def test_bank_candidates_enrichment_amount_exact_and_discrepancy():
     assert rows[0]["child_name"] == "Be Bin"
     assert rows[0]["sale_name"] == "Sale Test"
     assert rows[0]["team_name"] == "Team Hanoi"
+    assert rows[0]["has_bill"] is True                                          # T4
+    assert "https://storage.test/bill-1.jpg" in rows[0]["bill_images"]         # T4
 
     assert match.status_code == 200
     assert match.json()["discrepancy_amount"] == 500
