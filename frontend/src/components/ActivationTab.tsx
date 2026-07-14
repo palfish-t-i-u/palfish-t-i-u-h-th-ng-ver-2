@@ -966,6 +966,9 @@ function ActivationDetailDrawer({
             <span className="ar-id-pill">{ar.id}</span>
             <div style={{ minWidth: 0 }}>
               <div style={{ fontWeight: 700, fontSize: 16 }}>{ar.customerName}</div>
+              <div className="drawer-status-mobile">
+                <ARStatusBadge status={enriched.status} />
+              </div>
               <div className="drawer-meta" style={{ fontSize: 12, color: "var(--text-3)", marginTop: 2 }}>
                 {pr ? (
                   <>

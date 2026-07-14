@@ -739,6 +739,9 @@ export default function CardReconciliationTab({
                 </span>
                 <div style={{ minWidth: 0 }}>
                   <div style={{ fontWeight: 700, fontSize: 16 }}>{vnd(drawerTxn.amount)}</div>
+                  <div className="drawer-status-mobile">
+                    <StatusBadge s={drawerTxn.match_status} />
+                  </div>
                   <div className="drawer-meta" style={{ fontSize: 12, color: "var(--text-3)", marginTop: 2 }}>
                     {drawerTxn.cardholder_name} · {drawerTxn.card_masked}
                   </div>

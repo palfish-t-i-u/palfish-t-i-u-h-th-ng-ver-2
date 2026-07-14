@@ -527,6 +527,7 @@
 }
 .gmv-prototype .drawer-close:hover { color: var(--text); border-color: var(--border-strong); }
 .gmv-prototype .drawer-back-mobile { display: none; }
+.gmv-prototype .drawer-status-mobile { display: none; }
 .gmv-prototype .drawer-body {
   flex: 1; overflow-y: auto; overscroll-behavior: contain;
   padding: 22px 24px 80px;
@@ -2324,10 +2325,17 @@
   .gmv-prototype .drawer .drawer-head > div:last-child {
     order: -1;
     width: 100%;
-    justify-content: space-between;
+    justify-content: flex-end;
+  }
+  .gmv-prototype .drawer .drawer-head > div:last-child > *:not(.drawer-back-mobile) {
+    display: none !important;
   }
   .gmv-prototype .drawer .drawer-head > div:first-child {
     width: 100%;
+  }
+  .gmv-prototype .drawer-status-mobile {
+    display: block;
+    margin-top: 4px;
   }
   .gmv-prototype .drawer .pr-id-pill,
   .gmv-prototype .drawer .ar-id-pill {
