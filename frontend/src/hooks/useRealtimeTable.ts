@@ -3,7 +3,8 @@ import { supabase } from "../lib/supabase";
 
 type EventType = "INSERT" | "UPDATE" | "DELETE";
 
-const DEBOUNCE_MS = 2_000;
+const DEBOUNCE_MS = 5_000;
+const JITTER_MS = 3_000;
 
 /**
  * Subscribe to Supabase Realtime postgres_changes on one or more tables.
@@ -27,9 +28,10 @@ export function useRealtimeTable(
 
     function debouncedChange() {
       if (timer) clearTimeout(timer);
+      const delay = DEBOUNCE_MS + Math.floor(Math.random() * JITTER_MS);
       timer = setTimeout(() => {
         onChangeRef.current();
-      }, DEBOUNCE_MS);
+      }, delay);
     }
 
     const channelName = `realtime:${tablesKey}`;

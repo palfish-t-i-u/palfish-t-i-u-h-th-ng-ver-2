@@ -132,6 +132,8 @@ export function PaymentFlowProvider({
   const courseOrderPatchSeqRef = useRef<Record<string, number>>({});
   const loadDataSeqRef = useRef(0);
   const persistCooldownRef = useRef(0);
+  const inFlightRef = useRef(false);
+  const pendingRefetchRef = useRef(false);
   const editingArIdRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -139,63 +141,76 @@ export function PaymentFlowProvider({
   }, [onViewChange]);
 
   const loadData = useCallback(async (options?: LoadDataOptions) => {
+    if (options?.silent && inFlightRef.current) {
+      pendingRefetchRef.current = true;
+      return;
+    }
+    inFlightRef.current = true;
     const seq = ++loadDataSeqRef.current;
     if (!options?.silent) setLoading(true);
     const notes: string[] = [];
 
-    // Sprint 3 SePay-only: webhook tự flip status=paid, không cần poll.
-    // PayOS sync endpoint đã gate USE_PAYOS=false ở BE — bỏ call để tiết kiệm round-trip.
-
-    let nextRequests: PaymentRequest[] = [];
-    let prOk = false;
     try {
-      const all = await fetchAllPaymentRequests(async (limit, offset) => {
-        const response = await endpoints.paymentRequests.list({ limit, offset });
-        return { requests: (response.data.requests ?? []) as unknown as RawPrRow[], total: response.data.total };
-      });
-      nextRequests = all.requests.map((r) => normalizeRequest(fromApiPaymentRequest(r)));
-      prOk = true;
-      if (all.incomplete) {
-        notes.push("Danh sách PR tải chưa đủ — sẽ tự đồng bộ lại, hoặc bấm tải lại trang.");
-      }
-      if (all.total !== null && all.total > PR_TOTAL_WARN_THRESHOLD) {
-        console.warn(
-          `[pr-list] total=${all.total} vượt ${PR_TOTAL_WARN_THRESHOLD} — trigger GĐ2 (slim list), xem docs/superpowers/plans/2026-07-11-pr-list-slim-lazy-gd2.md`
-        );
-      }
-    } catch {
-      notes.push("GET /payment-requests chưa sẵn sàng.");
-    }
+      // Sprint 3 SePay-only: webhook tự flip status=paid, không cần poll.
+      // PayOS sync endpoint đã gate USE_PAYOS=false ở BE — bỏ call để tiết kiệm round-trip.
 
-    let nextArs: ActiveRequest[] = [];
-    let arOk = false;
-    try {
-      const arRes = await endpoints.activeRequests.list();
-      const rows = Array.isArray(arRes.data) ? arRes.data : [];
-      nextArs = rows.map(fromApiActiveRequest);
-      arOk = true;
-    } catch {
-      notes.push("GET /active-requests chưa sẵn sàng.");
-    }
-
-    // Drop stale poll: a newer loadData() has already started.
-    if (seq !== loadDataSeqRef.current) return;
-
-    if (prOk) setRequests(nextRequests);
-    if (arOk) {
-      const editId = editingArIdRef.current;
-      if (editId) {
-        setActiveRequests((prev) => {
-          const editing = prev.find((x) => x.id === editId);
-          if (!editing) return nextArs;
-          return nextArs.map((x) => (x.id === editId ? editing : x));
+      let nextRequests: PaymentRequest[] = [];
+      let prOk = false;
+      try {
+        const all = await fetchAllPaymentRequests(async (limit, offset) => {
+          const response = await endpoints.paymentRequests.list({ limit, offset });
+          return { requests: (response.data.requests ?? []) as unknown as RawPrRow[], total: response.data.total };
         });
-      } else {
-        setActiveRequests(nextArs);
+        nextRequests = all.requests.map((r) => normalizeRequest(fromApiPaymentRequest(r)));
+        prOk = true;
+        if (all.incomplete) {
+          notes.push("Danh sách PR tải chưa đủ — sẽ tự đồng bộ lại, hoặc bấm tải lại trang.");
+        }
+        if (all.total !== null && all.total > PR_TOTAL_WARN_THRESHOLD) {
+          console.warn(
+            `[pr-list] total=${all.total} vượt ${PR_TOTAL_WARN_THRESHOLD} — trigger GĐ2 (slim list), xem docs/superpowers/plans/2026-07-11-pr-list-slim-lazy-gd2.md`
+          );
+        }
+      } catch {
+        notes.push("GET /payment-requests chưa sẵn sàng.");
+      }
+
+      let nextArs: ActiveRequest[] = [];
+      let arOk = false;
+      try {
+        const arRes = await endpoints.activeRequests.list();
+        const rows = Array.isArray(arRes.data) ? arRes.data : [];
+        nextArs = rows.map(fromApiActiveRequest);
+        arOk = true;
+      } catch {
+        notes.push("GET /active-requests chưa sẵn sàng.");
+      }
+
+      // Drop stale poll: a newer loadData() has already started.
+      if (seq !== loadDataSeqRef.current) return;
+
+      if (prOk) setRequests(nextRequests);
+      if (arOk) {
+        const editId = editingArIdRef.current;
+        if (editId) {
+          setActiveRequests((prev) => {
+            const editing = prev.find((x) => x.id === editId);
+            if (!editing) return nextArs;
+            return nextArs.map((x) => (x.id === editId ? editing : x));
+          });
+        } else {
+          setActiveRequests(nextArs);
+        }
+      }
+      setApiNote(notes.join(" "));
+      if (!options?.silent) setLoading(false);
+    } finally {
+      inFlightRef.current = false;
+      if (pendingRefetchRef.current) {
+        pendingRefetchRef.current = false;
+        void loadData({ silent: true });
       }
     }
-    setApiNote(notes.join(" "));
-    if (!options?.silent) setLoading(false);
   }, []);
 
   // Initial data load on mount.
