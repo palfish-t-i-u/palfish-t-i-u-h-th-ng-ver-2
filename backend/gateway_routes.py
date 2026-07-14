@@ -383,7 +383,12 @@ def register_gateway_routes(app, get_supabase: Callable[[], Any]) -> None:
         else:
             # payment_lines.amount là bigint → cast int để tránh postgrest gửi "10080000.0" (22P02).
             amount_int = int(effective_amount) if effective_amount else 0
-            line_res = sb.table("payment_lines").select("*").eq("amount", amount_int).limit(100).execute()
+            # T9 — sale có thể nhập line theo NET (sau phí). Tìm khớp gross HOẶC net.
+            # Dùng .in_ (không .or_) — mock test chỉ hiểu .ilike. trong or_ (G12).
+            net_raw = _parse_amount(txn.get("net_amount"))
+            net_int = int(net_raw) if net_raw > 0 else 0
+            amounts = [amount_int] if net_int in (0, amount_int) else [amount_int, net_int]
+            line_res = sb.table("payment_lines").select("*").in_("amount", amounts).limit(100).execute()
             lines = line_res.data or []
         # Bỏ lần TT đã ghép với giao dịch gateway KHÁC (tránh ghép trùng).
         matched_res = (
@@ -478,24 +483,31 @@ def register_gateway_routes(app, get_supabase: Callable[[], Any]) -> None:
         already_paid = _clean_text(line_row.get("status")).lower() == "paid"
         can_auto_confirm = not already_paid and (method not in ("card", "installment") or has_bill)
 
+        # T8 — Ghi verified_total/received BẤT KỂ line đã paid hay chưa.
+        # Kế toán có thể xác nhận line TRƯỚC rồi mới ghép gateway (already_paid=True) →
+        # block cũ nằm trong can_auto_confirm nên net bị skip; _mark_line_paid cũng
+        # early-return khi paid (drop extra). Phải update TRỰC TIẾP. (G11)
+        txn_row = res.data[0]
+        gw_amount = _parse_amount(txn_row.get("amount"))
+        gw_net = _parse_amount(txn_row.get("net_amount"))
+        wrote_net = False
+        if gw_net > 0:
+            # bigint → ép int tránh PostgREST 22P02 với "9828000.0"
+            sb.table("payment_lines").update(
+                {"verified_total": int(gw_amount), "verified_received": int(gw_net)}
+            ).eq("id", line_id).execute()
+            wrote_net = True
+
         if can_auto_confirm:
             from payment_request_routes import _mark_line_paid
+            # net đã ghi trực tiếp ở trên → KHÔNG truyền extra (tránh trùng); hàm này tự recompute
+            _mark_line_paid(sb, line_id, actor_email=actor.email, source="gateway")
+        elif wrote_net and pr_id:
+            # line đã paid nhưng net vừa đổi → recompute để received/state theo _line_net
+            from payment_request_routes import recompute_payment_request_totals
+            recompute_payment_request_totals(sb, pr_id)
 
-            txn_row = res.data[0]
-            gw_amount = _parse_amount(txn_row.get("amount"))
-            gw_net = _parse_amount(txn_row.get("net_amount"))
-            net_extra = {}
-            if gw_net > 0:
-                # payment_lines.verified_total/verified_received la bigint —
-                # PostgREST tu choi float co dau thap phan (vd "9828000.0")
-                # voi loi 22P02. Ep int truoc khi gui.
-                net_extra = {"verified_total": int(gw_amount), "verified_received": int(gw_net)}
-
-            _mark_line_paid(
-                sb, line_id, actor_email=actor.email, source="gateway",
-                extra=net_extra or None
-            )
-            line_res = sb.table("payment_lines").select("*").eq("id", line_id).limit(1).execute()
+        line_res = sb.table("payment_lines").select("*").eq("id", line_id).limit(1).execute()
 
         pr = {}
         if pr_id:

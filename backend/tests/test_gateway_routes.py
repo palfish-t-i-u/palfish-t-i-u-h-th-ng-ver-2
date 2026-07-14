@@ -592,3 +592,47 @@ def test_gateway_match_verified_amounts_are_int_not_float():
     assert isinstance(line["verified_received"], int), f"verified_received phai la int, dang la {type(line['verified_received'])}"
     assert line["verified_total"] == 9_828_000
     assert line["verified_received"] == 9_582_785
+
+
+def test_match_writes_verified_received_on_already_paid_line():
+    """T8 — line xác nhận (paid) TRƯỚC rồi mới ghép gateway → net vẫn phải ghi."""
+    sb = FakeSB()
+    sb.tables["payment_lines"][0].update({
+        "id": "line-net", "amount": 25240000, "status": "paid", "method": "card",
+        "bill_images": ["https://bill.test/x.jpg"], "payment_request_id": "PR-1",
+    })
+    sb.tables["gateway_transactions"].append({
+        "id": "gw-net", "amount": 25240000, "net_amount": 24785680,
+        "match_status": "pending", "payment_line_id": None,
+    })
+    client = build_client(sb)
+    with patch("gateway_routes.resolve_actor", return_value=ACTOR):
+        with patch("gateway_routes.require_module_write"):
+            with patch("payment_request_routes.recompute_payment_request_totals",
+                       return_value={"payment_request": {}, "received": 0, "target": 0, "state": "done"}):
+                resp = client.patch("/api/v1/gateway-txns/gw-net/match",
+                                    json={"payment_line_id": "line-net"})
+    assert resp.status_code == 200
+    line = next(l for l in sb.tables["payment_lines"] if l["id"] == "line-net")
+    assert line["verified_received"] == 24785680   # net ghi dù đã paid
+    assert line["verified_total"] == 25240000
+
+
+def test_match_candidates_finds_line_entered_as_net():
+    """T9 — sale nhập line theo NET (sau phí) → tick Khớp tiền vẫn tìm ra."""
+    sb = FakeSB()
+    sb.tables["payment_lines"][0].update({
+        "id": "line-netamt", "amount": 8602425, "status": "pending", "method": "card",
+        "bill_images": ["https://bill.test/y.jpg"], "payment_request_id": "PR-1",
+    })
+    sb.tables["gateway_transactions"].append({
+        "id": "gw-2", "amount": 8823000, "net_amount": 8602425,
+        "match_status": "pending", "paid_at": "2026-07-12T10:00:00+00:00",
+    })
+    client = build_client(sb)
+    with patch("gateway_routes.resolve_actor", return_value=ACTOR):
+        with patch("gateway_routes.require_module_access"):
+            resp = client.get("/api/v1/gateway-txns/gw-2/match-candidates")
+    assert resp.status_code == 200
+    ids = {c["payment_line_id"] for c in resp.json()}
+    assert "line-netamt" in ids   # tìm theo net 8.602.425
