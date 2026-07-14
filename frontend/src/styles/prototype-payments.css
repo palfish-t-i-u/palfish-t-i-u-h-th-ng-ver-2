@@ -463,12 +463,11 @@
 .gmv-prototype .scrim {
   position: fixed; inset: 0;
   background: rgba(15, 17, 30, 0.32);
-  backdrop-filter: blur(2px);
   z-index: 50;
   opacity: 0;
   transition: opacity 220ms ease;
 }
-.gmv-prototype .scrim.open { opacity: 1; }
+.gmv-prototype .scrim.open { opacity: 1; backdrop-filter: blur(2px); }
 .gmv-prototype .drawer {
   position: fixed; right: 0; top: 0;
   width: min(880px, 92vw);
