@@ -1728,6 +1728,15 @@ export default function ReconciliationTab() {
                                 {c.method} · {c.status} · mã: {c.transfer_code || "—"}
                                 {c.created_at ? ` · ${formatPaymentDateFull(c.created_at)}` : ""}
                               </div>
+                              {Array.isArray(c.bill_images) && c.bill_images.length > 0 && (
+                                <div style={{ display: "flex", gap: 6, marginTop: 6, flexWrap: "wrap" }}>
+                                  {c.bill_images.slice(0, 4).map((src, i) => (
+                                    <img key={i} src={src} alt="bill"
+                                      onClick={(e) => { e.stopPropagation(); window.open(src, "_blank"); }}
+                                      style={{ width: 44, height: 44, objectFit: "cover", borderRadius: 6, border: "1px solid var(--border)", cursor: "zoom-in" }} />
+                                  ))}
+                                </div>
+                              )}
                             </div>
                           );
                         })}
