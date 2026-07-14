@@ -63,6 +63,7 @@ class FakeSB:
                     "txn_id": "txn-bank-1",
                     "amount": 5000500,
                     "match_status": "needs_review",
+                    "content": "TT002 chuyen tien hoc phi ban Nam",
                 },
                 {
                     "txn_id": "txn-bank-2",
@@ -258,4 +259,104 @@ def test_candidates_exclude_dead_lines():
     assert "line-used" not in ids        # T1
     assert "line-cancel-pr" not in ids   # T2 (= nguồn thật của "QR đã xóa")
     assert "line-rejected" not in ids     # T3: rejected loại bởi base filter status in(pending,paid)
+
+
+class TestScoreCandidate:
+    """Task 6 (14/7) — chấm điểm candidate ghép CK ngoài, parse NDCK."""
+
+    def test_code_match_scores_120(self):
+        from sepay_routes import _score_candidate
+
+        score, signals = _score_candidate(
+            "TT001 chuyen tien hoc phi", {"transfer_code": "TT001", "pr_phone": "", "pr_name": ""}, 0
+        )
+        assert score == 120
+        assert signals == ["code"]
+
+    def test_phone_match_scores_100(self):
+        from sepay_routes import _score_candidate
+
+        score, signals = _score_candidate(
+            "CT tu 0901000001 chuyen khoan", {"transfer_code": "", "pr_phone": "0901000001", "pr_name": ""}, 0
+        )
+        assert score == 100
+        assert signals == ["phone"]
+
+    def test_amount_match_scores_50(self):
+        from sepay_routes import _score_candidate
+
+        score, signals = _score_candidate(
+            "chuyen khoan hoc phi", {"transfer_code": "", "pr_phone": "", "pr_name": "", "amount": 5_000_000}, 5_000_000
+        )
+        assert score == 50
+        assert signals == ["amount"]
+
+    def test_name_match_scores_30_excludes_noise_words(self):
+        from sepay_routes import _score_candidate
+
+        # "NGUYEN" là họ phổ biến (noise) -> chỉ "VAN A" tính, đủ overlap để match
+        score, signals = _score_candidate(
+            "NGUYEN VAN A chuyen tien", {"transfer_code": "", "pr_phone": "", "pr_name": "Nguyen Van A"}, 0
+        )
+        assert score == 30
+        assert signals == ["name"]
+
+    def test_combined_signals_sum_scores(self):
+        from sepay_routes import _score_candidate
+
+        score, signals = _score_candidate(
+            "TT001 tu 0901000001 VAN A",
+            {"transfer_code": "TT001", "pr_phone": "0901000001", "pr_name": "Nguyen Van A", "amount": 5_000_000},
+            5_000_000,
+        )
+        assert score == 120 + 100 + 50 + 30
+        assert set(signals) == {"code", "phone", "amount", "name"}
+
+    def test_no_signals_scores_zero(self):
+        from sepay_routes import _score_candidate
+
+        score, signals = _score_candidate(
+            "noi dung khong lien quan gi ca",
+            {"transfer_code": "TT999", "pr_phone": "0909999999", "pr_name": "Someone Else", "amount": 1},
+            5_000_000,
+        )
+        assert score == 0
+        assert signals == []
+
+    def test_empty_content_falls_back_to_amount_only(self):
+        from sepay_routes import _score_candidate
+
+        score, signals = _score_candidate("", {"amount": 5_000_000}, 5_000_000)
+        assert score == 50
+        assert signals == ["amount"]
+
+    def test_empty_content_and_amount_mismatch_scores_zero(self):
+        from sepay_routes import _score_candidate
+
+        score, signals = _score_candidate("", {"amount": 1_000_000}, 5_000_000)
+        assert score == 0
+        assert signals == []
+
+
+def test_candidates_sorted_by_score_desc_with_signals():
+    """Task 6/7: candidate khớp NDCK nhiều signal (mã TT) phải lên đầu, dù xa
+    amount hơn candidate khác chỉ khớp amount — response có score + match_signals."""
+    sb = FakeSB()
+    client = build_client(sb)
+
+    with patch("sepay_routes.resolve_actor", return_value=ACTOR):
+        with patch("sepay_routes.require_module_write"):
+            resp = client.get("/api/v1/bank-transactions/txn-bank-1/match-candidates")
+
+    assert resp.status_code == 200
+    rows = resp.json()
+    by_id = {r["payment_line_id"]: r for r in rows}
+    # line-other có transfer_code "TT002" khớp NDCK -> score cao nhất (code +120)
+    assert by_id["line-other"]["score"] == 120
+    assert "code" in by_id["line-other"]["match_signals"]
+    # line-1 (transfer_code TT001, amount 5000000) không khớp gì trong content này -> score 0
+    assert by_id["line-1"]["score"] == 0
+    # Sort: score DESC -> line-other (120) phải đứng trước line-1 (0)
+    ids_in_order = [r["payment_line_id"] for r in rows]
+    assert ids_in_order.index("line-other") < ids_in_order.index("line-1")
 
