@@ -2313,7 +2313,22 @@
    MOBILE DRAWER LAYOUT — phân bố element hợp lý hơn
    ════════════════════════════════════════════════════════════ */
 @media (max-width: 767px) {
-  /* ── Header: compact ── */
+  /* ── Header: 2-row layout ──
+     Row 1 (top): badge + back button (right group, order -1)
+     Row 2: PR-ID + name + meta (left group, full width)        */
+  .gmv-prototype .drawer .drawer-head {
+    flex-wrap: wrap;
+    row-gap: 6px;
+    align-items: flex-start;
+  }
+  .gmv-prototype .drawer .drawer-head > div:last-child {
+    order: -1;
+    width: 100%;
+    justify-content: space-between;
+  }
+  .gmv-prototype .drawer .drawer-head > div:first-child {
+    width: 100%;
+  }
   .gmv-prototype .drawer .pr-id-pill,
   .gmv-prototype .drawer .ar-id-pill {
     font-size: 11px;
@@ -2321,9 +2336,7 @@
     white-space: nowrap;
   }
   .gmv-prototype .drawer-meta {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    white-space: normal;
   }
 
   /* ── Body: tighter panel gaps ── */
