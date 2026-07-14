@@ -1721,9 +1721,13 @@ export default function ReconciliationTab() {
                                       {c.team_name ? <>Team: <strong>{c.team_name}</strong></> : null}
                                     </div>
                                   )}
-                                  <div style={{ fontSize: 12, color: "var(--text-2)", marginTop: 3 }}>
-                                    {c.method} · {c.status} · mã: {c.transfer_code || "—"}
-                                    {c.created_at ? ` · ${formatPaymentDateFull(c.created_at)}` : ""}
+                                  <div style={{ fontSize: 12, color: "var(--text-2)", marginTop: 3, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                                    <span>{c.method} · {c.status} · mã: {c.transfer_code || "—"}{c.created_at ? ` · ${formatPaymentDateFull(c.created_at)}` : ""}</span>
+                                    {c.has_bill ? (
+                                      <span style={{ fontSize: 10.5, padding: "1px 6px", borderRadius: 4, background: "var(--success-bg, #dcfce7)", color: "var(--success-text, #166534)", fontWeight: 600 }}>Có bill</span>
+                                    ) : (
+                                      <span style={{ fontSize: 10.5, padding: "1px 6px", borderRadius: 4, background: "var(--warning-bg, #fef9c3)", color: "var(--warning-text, #92400e)", fontWeight: 600 }}>Chưa có bill</span>
+                                    )}
                                   </div>
                                 </div>
                               );
