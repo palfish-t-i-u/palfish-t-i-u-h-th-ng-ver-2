@@ -706,7 +706,7 @@ def register_sepay_routes(app, get_supabase: Callable) -> None:
 
         lines_query = (
             sb.table("payment_lines")
-            .select("id, payment_request_id, amount, method, status, transfer_code, created_at, student_name")
+            .select("id, payment_request_id, amount, method, status, transfer_code, created_at, student_name, bill_images, bill_image")
             .in_("status", ["pending", "paid"])
             .order("created_at", desc=True)
             .limit(500)
@@ -820,6 +820,10 @@ def register_sepay_routes(app, get_supabase: Callable) -> None:
                 "method": line.get("method", ""),
                 "status": line.get("status", ""),
                 "transfer_code": line.get("transfer_code", ""),
+                "bill_images": (
+                    line.get("bill_images") if isinstance(line.get("bill_images"), list) else []
+                ) + ([line["bill_image"]] if line.get("bill_image") and line["bill_image"] not in (line.get("bill_images") or []) else []),
+                "has_bill": bool(line.get("bill_images") or line.get("bill_image")),
             })
 
         if txn_amount > 0:

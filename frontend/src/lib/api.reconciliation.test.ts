@@ -108,6 +108,31 @@ describe("bankTxns endpoint contract — luồng kế toán xem SePay", () => {
     expect(res.data[0].child_name).toBe("Bé Bin");
   });
 
+  it("matchCandidates trả về bill_images + has_bill (T4)", async () => {
+    server.use(
+      http.get(`${BASE}/api/v1/bank-transactions/:id/match-candidates`, () =>
+        HttpResponse.json([
+          {
+            payment_line_id: "line-bill",
+            pr_id: "PR-2026-0100",
+            pr_name: "Phụ huynh B",
+            amount: 5_000_000,
+            created_at: "2026-06-20T08:00:00Z",
+            method: "qr",
+            status: "pending",
+            transfer_code: "TT001",
+            bill_images: ["https://storage.test/bill-1.jpg"],
+            has_bill: true,
+          },
+        ]),
+      ),
+    );
+
+    const res = await endpoints.bankTxns.matchCandidates("txn-1");
+    expect(res.data[0].has_bill).toBe(true);
+    expect(res.data[0].bill_images).toEqual(["https://storage.test/bill-1.jpg"]);
+  });
+
   it("match gửi PATCH với payment_line_id qua query param", async () => {
     let receivedTxnId = "";
     let receivedLineId = "";

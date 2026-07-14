@@ -93,7 +93,7 @@ function InvoiceDetailDrawer({
       <div className={`scrim ${open ? "open" : ""}`} onClick={onClose} style={{ pointerEvents: open ? "auto" : "none" }} />
       <aside className={`drawer invoice-drawer ${open ? "open" : ""}`}>
         <div className="drawer-head">
-          <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 14, minWidth: 0 }}>
             {isIssued ? (
               <span className="invoice-chip" style={{ fontSize: 13, padding: "5px 11px" }}>
                 <Icons.Doc size={13} /> {row.course.invoiceId}
@@ -103,16 +103,21 @@ function InvoiceDetailDrawer({
                 <Icons.Sparkle size={13} /> {row.course.courseCode}
               </span>
             )}
-            <div>
+            <div style={{ minWidth: 0 }}>
               <div style={{ fontWeight: 700, fontSize: 16 }}>{d.name || row.ar.customerName}</div>
-              <div style={{ fontSize: 12, color: "var(--text-3)", marginTop: 2 }}>
+              <div className="drawer-meta" style={{ fontSize: 12, color: "var(--text-3)", marginTop: 2 }}>
                 Order ID <strong style={{ color: "var(--text-2)" }}>{row.course.orderId}</strong> · {row.ar.id}
               </div>
             </div>
           </div>
-          <button type="button" className="drawer-close" onClick={onClose}>
-            <Icons.Close size={16} />
-          </button>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexShrink: 0 }}>
+            <button type="button" className="drawer-close" onClick={onClose}>
+              <Icons.Close size={16} />
+            </button>
+            <button type="button" className="drawer-back-mobile" onClick={onClose}>
+              <Icons.ChevronLeft size={14} /> Quay lại
+            </button>
+          </div>
         </div>
 
         <div className="drawer-body">

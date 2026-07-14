@@ -187,6 +187,8 @@ export interface ActiveRequest {
   id: string;
   prId: string | null;
   customerName: string;
+  /** Tên TVTS phụ trách PR — enriched từ nhan_su_sale ở list endpoint (T6) */
+  saleName?: string;
   createdAt: string;
   createdBy: string;
   uids: ActiveUidGroup[];
@@ -239,8 +241,8 @@ export type CreateActiveRequestCoursePayload = {
   name?: string;
   package_name?: string;
   amount: number;
-  /** "gioi_thieu" khi gói là gói giới thiệu (REFER) — mở lại panel referral ở editor AR */
   lead_source?: string;
+  lead_channel?: string;
 };
 
 export type CreateActiveRequestUidPayload = {
@@ -258,6 +260,8 @@ export type ArDraftRow = {
   uid: string;         // "" = bé chưa có UID CRM (Ops điền ở B3 → write-back)
   packageName: string;
   amount: number;      // VND
+  leadSource: string;
+  leadChannel: string;
 };
 
 export type CreateActiveRequestPayload = {
@@ -303,7 +307,7 @@ export type ActiveRequestApiRow = {
   }>;
   status?: string;
   created_at?: string;
-  payment_request?: { name?: string; email?: string };
+  payment_request?: { name?: string; email?: string; sale_name?: string; sale_email?: string };
 };
 
 export type ActiveRequestPatchUidPayload = {

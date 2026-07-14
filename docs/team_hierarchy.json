@@ -2,7 +2,7 @@
   "generated_at": "2026-07-03T12:10:51.166Z",
   "source_file": "E:/PalFish/DA/remaining_lesson__vn__2026-07-03T20_08_45.04516+08_00.xlsx",
   "logic": "team = depart7 || (depart6 ~ /online/i ? \"HCM (Online)\" : depart6); sub_team = depart8 (Inhouse 1)",
-  "total_sales": 153,
+  "total_sales": 154,
   "tree": {
     "Inhouse 1": {
       "Team 5": [
@@ -703,6 +703,21 @@
             "Team 1"
           ],
           "order_count_2y": 1
+        },
+        {
+          "sale": "Vu Thu Thuy",
+          "team": "Inhouse 1",
+          "sub_team": "Team 1",
+          "depart6": [
+            "HN Inhouse"
+          ],
+          "depart7": [
+            "Inhouse 1"
+          ],
+          "depart8": [
+            "Team 1"
+          ],
+          "order_count_2y": 0
         }
       ],
       "Sales": [

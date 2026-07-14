@@ -327,7 +327,7 @@ def _compute_referral_status(courses: list[dict[str, Any]]) -> str | None:
     return "partial"
 
 
-def _serialize_ar(row: dict[str, Any], pr: dict[str, Any] | None = None) -> dict[str, Any]:
+def _serialize_ar(row: dict[str, Any], pr: dict[str, Any] | None = None, sale_name_map: dict[str, str] | None = None) -> dict[str, Any]:
     raw_uids_data = row.get("uids_data") or []
     uids_data: list[dict[str, Any]] = []
     for uid_block in raw_uids_data:
@@ -365,6 +365,7 @@ def _serialize_ar(row: dict[str, Any], pr: dict[str, Any] | None = None) -> dict
     if pr is not None:
         target, received = _pr_amounts(pr)
         budget = max(target, received)
+        sale_email = _clean_text(pr.get("sale_email")).lower()
         out["payment_request"] = {
             "id": pr.get("id"),
             "name": pr.get("name") or pr.get("ten_khach") or "",
@@ -375,6 +376,8 @@ def _serialize_ar(row: dict[str, Any], pr: dict[str, Any] | None = None) -> dict
             "received": received,
             "budget": budget,  # max(target, received) — dùng cho progress bar FE
             "state": _pr_payment_state(pr),
+            "sale_email": sale_email,
+            "sale_name": (sale_name_map or {}).get(sale_email) or sale_email,
         }
     return out
 
@@ -1733,7 +1736,12 @@ def register_activation_routes(app, supabase_factory):
 
         rows = res.data or []
         pr_map = _fetch_prs_by_ids(sb, list({str(r.get("pr_id")) for r in rows if r.get("pr_id")}))
-        return [_serialize_ar(r, pr_map.get(str(r.get("pr_id") or ""))) for r in rows]
+        from payment_request_routes import _sale_name_map
+        try:
+            snm = _sale_name_map(sb)
+        except Exception:
+            snm = {}
+        return [_serialize_ar(r, pr_map.get(str(r.get("pr_id") or "")), snm) for r in rows]
 
     @app.get("/api/v1/active-requests/{ar_id}", tags=["Activation"])
     def get_active_request(ar_id: str, authorization: str | None = Header(None)):

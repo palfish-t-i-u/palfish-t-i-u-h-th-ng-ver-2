@@ -607,4 +607,6 @@ export interface BankMatchCandidate {
   method: string;
   status: string;
   transfer_code: string;
+  bill_images?: string[];
+  has_bill?: boolean;
 }

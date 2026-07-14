@@ -1203,24 +1203,27 @@ export default function ReconciliationTab() {
           return (
             <>
               <div className="drawer-head">
-                <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 14, minWidth: 0 }}>
                   <span
                     className="pr-id-pill"
                     style={{ background: "var(--surface-3)", color: "var(--text-2)", fontFamily: "JetBrains Mono, monospace" }}
                   >
                     {drawerTxn.code}
                   </span>
-                  <div>
+                  <div style={{ minWidth: 0 }}>
                     <div style={{ fontWeight: 700, fontSize: 16 }}>{vnd(drawerTxn.amount)}</div>
-                    <div style={{ fontSize: 12, color: "var(--text-3)", marginTop: 2 }}>
+                    <div className="drawer-meta" style={{ fontSize: 12, color: "var(--text-3)", marginTop: 2 }}>
                       Lần #{drawerTxn.idx} của <strong style={{ color: "var(--text-2)" }}>{pr.id}</strong> · {pr.name}
                     </div>
                   </div>
                 </div>
-                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <div style={{ display: "flex", gap: 8, alignItems: "center", flexShrink: 0 }}>
                   <TxnStatusBadge status={status} />
                   <button type="button" className="drawer-close" onClick={() => setDrawerOpen(false)}>
                     <Icons.Close size={16} />
+                  </button>
+                  <button type="button" className="drawer-back-mobile" onClick={() => setDrawerOpen(false)}>
+                    <Icons.ChevronLeft size={14} /> Quay lại
                   </button>
                 </div>
               </div>
@@ -1608,7 +1611,7 @@ export default function ReconciliationTab() {
             open={bankMatchOpen}
             onClose={() => { setBankMatchOpen(false); setBankMatchTxnId(null); }}
             title="Ghép CK ngoài → Lần thanh toán"
-            wide
+            extraWide
           >
             {drawerTxn && (
               <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
@@ -1629,7 +1632,7 @@ export default function ReconciliationTab() {
 
                 <div>
                   <div style={{ fontSize: 12, color: "var(--text-3)", marginBottom: 8 }}>
-                    Tìm lần TT để ghép (xếp theo số tiền gần nhất):
+                    Tìm lần TT để ghép (xếp theo số tiền gần nhất). Đối chiếu ảnh bill sales gửi trước khi ghép.
                   </div>
 
                   {/* Filter bar */}
@@ -1670,65 +1673,112 @@ export default function ReconciliationTab() {
                     <DateRangeFilter value={bankCandRange} onChange={setBankCandRange} />
                   </div>
 
-                  {bankCandLoading ? (
-                    <div style={{ padding: 20, textAlign: "center", color: "var(--text-3)" }}>Đang tải…</div>
-                  ) : filteredBankCandidates.length === 0 ? (
-                    <div style={{ padding: 20, textAlign: "center", color: "var(--text-3)" }}>
-                      {bankCandidates.length === 0 ? "Không có lần TT nào." : "Không có lần TT khớp bộ lọc."}
-                    </div>
-                  ) : (
-                    <>
-                      <div style={{ fontSize: 11, color: "var(--text-3)", marginBottom: 6 }}>
-                        Hiện {filteredBankCandidates.length} / {bankCandidates.length} lần TT
-                      </div>
-                      <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: "44vh", overflow: "auto", border: "1px solid var(--border)", borderRadius: 8, padding: 6 }}>
-                        {filteredBankCandidates.map((c) => {
-                          const exactAmount = Math.abs(c.amount - drawerTxn.amount) < 1;
-                          const selected = bankPickedLineId === c.payment_line_id;
-                          return (
-                            <div
-                              key={c.payment_line_id}
-                              onClick={() => setBankPickedLineId(c.payment_line_id)}
-                              style={{
-                                padding: "10px 12px", border: `2px solid ${selected ? "var(--primary)" : "var(--border)"}`,
-                                borderRadius: 8, cursor: "pointer", fontSize: 14,
-                                background: selected ? "var(--primary-bg, rgba(99,102,241,0.06))" : "var(--surface-1)",
-                                color: "var(--text)",
-                              }}
-                            >
-                              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                                <span style={{ fontWeight: 700, fontSize: 15, color: "var(--text)" }}>{c.pr_name || c.pr_id}</span>
-                                <span style={{ fontWeight: 700, fontSize: 15, color: exactAmount ? "var(--success-text)" : "var(--text)" }}>
-                                  {vnd(c.amount)}{exactAmount && " ✓"}
-                                </span>
-                              </div>
-                              <div style={{ fontSize: 13, color: "var(--text)", marginTop: 4 }}>
-                                <strong>{c.pr_id}</strong>
-                                {c.pr_uid ? <> · UID <strong>{c.pr_uid}</strong></> : null}
-                                {c.pr_phone ? <> · {c.pr_phone}</> : null}
-                              </div>
-                              {(c.child_name || c.sale_name || c.team_name) && (
-                                <div style={{ fontSize: 13, color: "var(--text)", marginTop: 3 }}>
-                                  {c.child_name ? <>Con: <strong>{c.child_name}</strong></> : null}
-                                  {c.child_name && (c.sale_name || c.team_name) ? " · " : ""}
-                                  {c.sale_name ? <>Sale: <strong>{c.sale_name}</strong></> : null}
-                                  {c.sale_name && c.team_name ? " · " : ""}
-                                  {c.team_name ? <>Team: <strong>{c.team_name}</strong></> : null}
+                  <div style={{ display: "grid", gridTemplateColumns: "1.6fr 1fr", gap: 16 }}>
+                    <div>
+                      {bankCandLoading ? (
+                        <div style={{ padding: 20, textAlign: "center", color: "var(--text-3)" }}>Đang tải…</div>
+                      ) : filteredBankCandidates.length === 0 ? (
+                        <div style={{ padding: 20, textAlign: "center", color: "var(--text-3)" }}>
+                          {bankCandidates.length === 0 ? "Không có lần TT nào." : "Không có lần TT khớp bộ lọc."}
+                        </div>
+                      ) : (
+                        <>
+                          <div style={{ fontSize: 11, color: "var(--text-3)", marginBottom: 6 }}>
+                            Hiện {filteredBankCandidates.length} / {bankCandidates.length} lần TT
+                          </div>
+                          <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: "44vh", overflow: "auto", border: "1px solid var(--border)", borderRadius: 8, padding: 6 }}>
+                            {filteredBankCandidates.map((c) => {
+                              const exactAmount = Math.abs(c.amount - drawerTxn.amount) < 1;
+                              const selected = bankPickedLineId === c.payment_line_id;
+                              return (
+                                <div
+                                  key={c.payment_line_id}
+                                  onClick={() => setBankPickedLineId(c.payment_line_id)}
+                                  style={{
+                                    padding: "10px 12px", border: `2px solid ${selected ? "var(--primary)" : "var(--border)"}`,
+                                    borderRadius: 8, cursor: "pointer", fontSize: 14,
+                                    background: selected ? "var(--primary-bg, rgba(99,102,241,0.06))" : "var(--surface-1)",
+                                    color: "var(--text)",
+                                  }}
+                                >
+                                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                                    <span style={{ fontWeight: 700, fontSize: 15, color: "var(--text)" }}>{c.pr_name || c.pr_id}</span>
+                                    <span style={{ fontWeight: 700, fontSize: 15, color: exactAmount ? "var(--success-text)" : "var(--text)" }}>
+                                      {vnd(c.amount)}{exactAmount && " ✓"}
+                                    </span>
+                                  </div>
+                                  <div style={{ fontSize: 13, color: "var(--text)", marginTop: 4 }}>
+                                    <strong>{c.pr_id}</strong>
+                                    {c.pr_uid ? <> · UID <strong>{c.pr_uid}</strong></> : null}
+                                    {c.pr_phone ? <> · {c.pr_phone}</> : null}
+                                  </div>
+                                  {(c.child_name || c.sale_name || c.team_name) && (
+                                    <div style={{ fontSize: 13, color: "var(--text)", marginTop: 3 }}>
+                                      {c.child_name ? <>Con: <strong>{c.child_name}</strong></> : null}
+                                      {c.child_name && (c.sale_name || c.team_name) ? " · " : ""}
+                                      {c.sale_name ? <>Sale: <strong>{c.sale_name}</strong></> : null}
+                                      {c.sale_name && c.team_name ? " · " : ""}
+                                      {c.team_name ? <>Team: <strong>{c.team_name}</strong></> : null}
+                                    </div>
+                                  )}
+                                  <div style={{ fontSize: 12, color: "var(--text-2)", marginTop: 3, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                                    <span>{c.method} · {c.status} · mã: {c.transfer_code || "—"}{c.created_at ? ` · ${formatPaymentDateFull(c.created_at)}` : ""}</span>
+                                    {c.has_bill ? (
+                                      <span style={{ fontSize: 10.5, padding: "1px 6px", borderRadius: 4, background: "var(--success-bg, #dcfce7)", color: "var(--success-text, #166534)", fontWeight: 600 }}>Có bill</span>
+                                    ) : (
+                                      <span style={{ fontSize: 10.5, padding: "1px 6px", borderRadius: 4, background: "var(--warning-bg, #fef9c3)", color: "var(--warning-text, #92400e)", fontWeight: 600 }}>Chưa có bill</span>
+                                    )}
+                                  </div>
                                 </div>
-                              )}
-                              <div style={{ fontSize: 12, color: "var(--text-2)", marginTop: 3 }}>
-                                {c.method} · {c.status} · mã: {c.transfer_code || "—"}
-                                {c.created_at ? ` · ${formatPaymentDateFull(c.created_at)}` : ""}
-                              </div>
+                              );
+                            })}
+                          </div>
+                        </>
+                      )}
+                    </div>
+
+                    <div>
+                      <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text-2)", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.03em" }}>Ảnh bill lần thanh toán</div>
+                      {(() => {
+                        const pc = filteredBankCandidates.find((c) => c.payment_line_id === bankPickedLineId);
+                        if (!pc)
+                          return (
+                            <div style={{
+                              borderRadius: 10, minHeight: 150, display: "flex", flexDirection: "column",
+                              gap: 6, fontSize: 12, padding: 12, border: "1.5px dashed var(--border)",
+                              color: "var(--text-3)", alignItems: "center", justifyContent: "center", textAlign: "center",
+                            }}>
+                              <Icons.Image size={22} />
+                              <span>Chọn 1 lần thanh toán bên trái để xem ảnh bill</span>
                             </div>
                           );
-                        })}
-                      </div>
-                    </>
-                  )}
+                        if (!pc.has_bill)
+                          return (
+                            <div style={{
+                              borderRadius: 10, minHeight: 150, display: "flex", flexDirection: "column",
+                              gap: 6, fontSize: 12, padding: 12, border: "1.5px dashed var(--warning-text)",
+                              background: "var(--warning-bg)", color: "var(--warning-text)",
+                              alignItems: "center", justifyContent: "center", textAlign: "center",
+                            }}>
+                              <Icons.AlertCircle size={20} />
+                              <span>{pc.pr_id} chưa có ảnh bill — nhắc sales upload trước khi ghép</span>
+                            </div>
+                          );
+                        return (
+                          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                            {pc.bill_images!.map((src, i) => (
+                              <img key={i} src={src} alt="bill"
+                                onClick={() => window.open(src, "_blank")}
+                                style={{ width: "100%", maxHeight: 280, objectFit: "contain", borderRadius: 8, border: "1px solid var(--border)", cursor: "zoom-in", background: "var(--surface-2)" }} />
+                            ))}
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  </div>
                 </div>
 
-                <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+                <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 12 }}>
                   <button className="btn btn-outline btn-sm" onClick={() => { setBankMatchOpen(false); setBankMatchTxnId(null); }}>Hủy</button>
                   <button className="btn btn-primary btn-sm" disabled={!bankPickedLineId || bankMatching} onClick={doBankMatch}>
                     {bankMatching ? "Đang ghép…" : "Xác nhận ghép"}

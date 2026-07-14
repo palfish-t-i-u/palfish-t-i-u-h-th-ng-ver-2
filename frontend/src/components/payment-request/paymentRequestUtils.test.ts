@@ -127,7 +127,7 @@ describe("active request course package updates", () => {
 
     // 10/7 — modal AR mở rộng: builder nhận danh sách dòng {bé, gói, tiền}
     const payload = buildCreateActiveRequestPayload(pr, [
-      { childName: "", uid: pr.uid, packageName: "2/W-NEW 24 PHI+2 HN", amount: pr.received },
+      { childName: "", uid: pr.uid, packageName: "2/W-NEW 24 PHI+2 HN", amount: pr.received, leadSource: "", leadChannel: "" },
     ]);
     expect(payload.uids).toHaveLength(1);
     expect(payload.uids[0].uid).toBe(pr.uid);
@@ -157,8 +157,8 @@ describe("active request course package updates", () => {
       payments: [],
     };
     const payload = buildCreateActiveRequestPayload(pr, [
-      { childName: "Bé Một", uid: "u1", packageName: "Gói A", amount: 1200 },
-      { childName: "Bé Hai", uid: "", packageName: "Gói B", amount: 800 },
+      { childName: "Bé Một", uid: "u1", packageName: "Gói A", amount: 1200, leadSource: "", leadChannel: "" },
+      { childName: "Bé Hai", uid: "", packageName: "Gói B", amount: 800, leadSource: "", leadChannel: "" },
     ]);
     expect(payload.uids).toHaveLength(2);
     expect(payload.uids[0]).toMatchObject({ uid: "u1", name: "Bé Một" });
@@ -186,8 +186,8 @@ describe("active request course package updates", () => {
       payments: [],
     };
     const payload = buildCreateActiveRequestPayload(pr, [
-      { childName: "Bé Một", uid: "u1", packageName: "Gói A", amount: 1500 },
-      { childName: "Bé Một", uid: "u1", packageName: "Gói phụ", amount: 500 },
+      { childName: "Bé Một", uid: "u1", packageName: "Gói A", amount: 1500, leadSource: "", leadChannel: "" },
+      { childName: "Bé Một", uid: "u1", packageName: "Gói phụ", amount: 500, leadSource: "", leadChannel: "" },
     ]);
     expect(payload.uids).toHaveLength(1);
     expect(payload.uids[0].courses).toEqual([
@@ -871,6 +871,15 @@ describe("multi-con mappers (10/7)", () => {
     const patch = toActiveRequestPatchUidsData(arMapped);
     expect(patch[0].name).toBeUndefined();
     expect(patch[1].name).toBe("Bé Hai");
+  });
+
+  it("AR mapper maps payment_request.sale_name → saleName (T6)", () => {
+    const ar = fromApiActiveRequest({
+      id: "AR-2", pr_id: "PR-2",
+      payment_request: { name: "Khach A", sale_name: "Nguyen Thi Hoa", sale_email: "hoa@palfish.com" },
+      uids_data: [],
+    });
+    expect(ar.saleName).toBe("Nguyen Thi Hoa");
   });
 });
 

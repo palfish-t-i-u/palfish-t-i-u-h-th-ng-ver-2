@@ -962,11 +962,11 @@ function ActivationDetailDrawer({
       <div className={`scrim ${open ? "open" : ""}`} onClick={requestCloseDrawer} style={{ pointerEvents: open ? "auto" : "none" }} />
       <aside className={`drawer ar-drawer ${open ? "open" : ""}`}>
         <div className="drawer-head">
-          <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 14, minWidth: 0 }}>
             <span className="ar-id-pill">{ar.id}</span>
-            <div>
+            <div style={{ minWidth: 0 }}>
               <div style={{ fontWeight: 700, fontSize: 16 }}>{ar.customerName}</div>
-              <div style={{ fontSize: 12, color: "var(--text-3)", marginTop: 2 }}>
+              <div className="drawer-meta" style={{ fontSize: 12, color: "var(--text-3)", marginTop: 2 }}>
                 {pr ? (
                   <>
                     Liên kết <strong style={{ color: "var(--primary-700)" }}>{pr.id}</strong> ·{" "}
@@ -974,14 +974,17 @@ function ActivationDetailDrawer({
                 ) : (
                   <>Standalone · </>
                 )}
-                Tạo bởi <strong style={{ color: "var(--text-2)" }}>{ar.createdBy || "—"}</strong> · {ar.createdAt}
+                Tạo bởi <strong style={{ color: "var(--text-2)" }}>{ar.createdBy || ar.saleName || "—"}</strong> · {ar.createdAt}
               </div>
             </div>
           </div>
-          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexShrink: 0 }}>
             <ARStatusBadge status={enriched.status} />
             <button type="button" className="drawer-close" onClick={requestCloseDrawer}>
               <Icons.Close size={16} />
+            </button>
+            <button type="button" className="drawer-back-mobile" onClick={requestCloseDrawer}>
+              <Icons.ChevronLeft size={14} /> Quay lại
             </button>
           </div>
         </div>
@@ -2143,7 +2146,12 @@ export default function ActivationTab() {
                         )}
                       </td>
                       <td>
-                        <div className="cell-name">{a.customerName}</div>
+                        <div className="cell-name">
+                          {a.customerName}
+                          {a.saleName && (
+                            <span style={{ fontSize: 12, color: "var(--text-3)" }}> · Sale: <strong>{a.saleName}</strong></span>
+                          )}
+                        </div>
                         <div className="cell-sub">UID: {a.uids[0]?.uid || "—"}</div>
                       </td>
                       <td style={{ textAlign: "center" }}>

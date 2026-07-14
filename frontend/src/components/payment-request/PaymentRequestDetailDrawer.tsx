@@ -1772,19 +1772,22 @@ export default function PaymentRequestDetailDrawer({
       <div className={`scrim ${open ? "open" : ""}`} onClick={onClose} style={{ pointerEvents: open ? "auto" : "none" }} />
       <aside className={`drawer ${open ? "open" : ""}`}>
         <div className="drawer-head">
-          <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 14, minWidth: 0 }}>
             <span className="pr-id-pill">{request.id}</span>
-            <div>
+            <div style={{ minWidth: 0 }}>
               <div style={{ fontWeight: 700, fontSize: 16 }}>{request.name}</div>
-              <div style={{ fontSize: 12, color: "var(--text-3)", marginTop: 2 }}>
+              <div className="drawer-meta" style={{ fontSize: 12, color: "var(--text-3)", marginTop: 2 }}>
                 Tạo bởi <strong style={{ color: "var(--text-2)" }} title={request.saleEmail || undefined}>{request.saleName || (request.saleEmail ? request.saleEmail.split("@")[0] : "—")}</strong> · {request.createdAt}
               </div>
             </div>
           </div>
-          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexShrink: 0 }}>
             <PaymentRequestStatusBadge state={request.state} totalCount={request.totalCount} provisional={hasUnverifiedFeeLine(request)} />
             <button className="drawer-close" onClick={onClose}>
               <Icons.Close size={16} />
+            </button>
+            <button type="button" className="drawer-back-mobile" onClick={onClose}>
+              <Icons.ChevronLeft size={14} /> Quay lại
             </button>
           </div>
         </div>
@@ -2539,7 +2542,7 @@ export default function PaymentRequestDetailDrawer({
                   return;
                 }
                 setArChildName(splitChildNames(request.childName)[0] ?? "");
-                setArDraftRows([{ childName: "", uid: request.uid ?? "", packageName: "", amount: Math.max(0, request.received) }]);
+                setArDraftRows([{ childName: "", uid: request.uid ?? "", packageName: "", amount: Math.max(0, request.received), leadSource: request.leadSource || "", leadChannel: request.leadChannel || "" }]);
                 setArPackageModalOpen(true);
               }}
             >
@@ -2648,6 +2651,39 @@ export default function PaymentRequestDetailDrawer({
                       style={!row.uid.trim() ? { borderColor: "var(--danger)" } : undefined}
                     />
                   </div>
+                  <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+                    <div className="field" style={{ flex: 1, marginBottom: 0 }}>
+                      <label>Nguồn KH</label>
+                      <select
+                        value={row.leadSource}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setArRow(i, { leadSource: val, leadChannel: defaultChannelForSource(val) ?? "" });
+                        }}
+                        style={{ font: "inherit", fontSize: 13, width: "100%", borderRadius: 8, border: "1px solid var(--border)", padding: "7px 8px" }}
+                      >
+                        <option value="">— Nguồn —</option>
+                        {LEAD_SOURCES.map((s) => (
+                          <option key={s.key} value={s.key}>{s.label}</option>
+                        ))}
+                      </select>
+                    </div>
+                    {sourceHasChannels(row.leadSource) && (
+                      <div className="field" style={{ flex: 1, marginBottom: 0 }}>
+                        <label>Kênh</label>
+                        <select
+                          value={row.leadChannel}
+                          onChange={(e) => setArRow(i, { leadChannel: e.target.value })}
+                          style={{ font: "inherit", fontSize: 13, width: "100%", borderRadius: 8, border: "1px solid var(--border)", padding: "7px 8px" }}
+                        >
+                          <option value="">— Kênh —</option>
+                          {findSourceByKey(row.leadSource)?.channels.map((ch) => (
+                            <option key={ch.code} value={ch.code}>{ch.code} - {ch.label}</option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+                  </div>
                 </div>
               ))}
               <button
@@ -2658,6 +2694,8 @@ export default function PaymentRequestDetailDrawer({
                   uid: request.uid ?? "",
                   packageName: "",
                   amount: 0,
+                  leadSource: request.leadSource || "",
+                  leadChannel: request.leadChannel || "",
                 }])}
               >
                 <Icons.Plus size={13} /> Thêm gói
