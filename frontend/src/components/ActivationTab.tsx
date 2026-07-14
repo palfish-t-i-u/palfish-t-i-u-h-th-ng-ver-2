@@ -962,6 +962,9 @@ function ActivationDetailDrawer({
       <div className={`scrim ${open ? "open" : ""}`} onClick={requestCloseDrawer} style={{ pointerEvents: open ? "auto" : "none" }} />
       <aside className={`drawer ar-drawer ${open ? "open" : ""}`}>
         <div className="drawer-head">
+          <button type="button" className="drawer-back-mobile" onClick={requestCloseDrawer}>
+            <Icons.ChevronLeft size={14} /> Quay lại
+          </button>
           <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
             <span className="ar-id-pill">{ar.id}</span>
             <div>

@@ -1772,6 +1772,9 @@ export default function PaymentRequestDetailDrawer({
       <div className={`scrim ${open ? "open" : ""}`} onClick={onClose} style={{ pointerEvents: open ? "auto" : "none" }} />
       <aside className={`drawer ${open ? "open" : ""}`}>
         <div className="drawer-head">
+          <button type="button" className="drawer-back-mobile" onClick={onClose}>
+            <Icons.ChevronLeft size={14} /> Quay lại
+          </button>
           <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
             <span className="pr-id-pill">{request.id}</span>
             <div>

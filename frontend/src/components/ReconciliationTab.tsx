@@ -1203,6 +1203,9 @@ export default function ReconciliationTab() {
           return (
             <>
               <div className="drawer-head">
+                <button type="button" className="drawer-back-mobile" onClick={() => setDrawerOpen(false)}>
+                  <Icons.ChevronLeft size={14} /> Quay lại
+                </button>
                 <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
                   <span
                     className="pr-id-pill"
