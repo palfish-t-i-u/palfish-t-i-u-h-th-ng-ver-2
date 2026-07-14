@@ -242,7 +242,7 @@ def test_candidate_child_name_prefers_line_student_name():
 
 
 def test_candidates_exclude_dead_lines():
-    """T1 (đã ghép bank khác) + T2 (PR huỷ) + T3 (status rejected) đều bị loại."""
+    """T1 (đã ghép bank khác) + T2 (PR huỷ, gồm cả 'QR đã xóa') + T3 (rejected loại bởi base filter) đều bị loại."""
     sb = FakeSB()
     client = build_client(sb)
 
@@ -256,6 +256,6 @@ def test_candidates_exclude_dead_lines():
     ids = {r["payment_line_id"] for r in resp.json()}
     assert "line-1" in ids               # G2: line lành vẫn còn
     assert "line-used" not in ids        # T1
-    assert "line-cancel-pr" not in ids   # T2
-    assert "line-rejected" not in ids    # T3 (bị loại vì status='rejected')
+    assert "line-cancel-pr" not in ids   # T2 (= nguồn thật của "QR đã xóa")
+    assert "line-rejected" not in ids     # T3: rejected loại bởi base filter status in(pending,paid)
 
