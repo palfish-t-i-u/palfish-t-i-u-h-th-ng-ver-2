@@ -993,6 +993,8 @@ export default function ReconciliationTab() {
                 onConfirm={(t) => { if (!billRequiredButMissing(t)) void handleConfirm(t); }}
                 onReject={(t) => handleReject(t)}
                 billRequiredButMissing={billRequiredButMissing}
+                onRedirectCard={() => navigate("reconCard")}
+                onSwitchToCkOutside={() => setTab("ckOutside")}
               />
             </div>
           ) : (
