@@ -2332,6 +2332,7 @@
   }
   .gmv-prototype .drawer .drawer-head > div:first-child {
     width: 100%;
+    align-items: flex-start !important;
   }
   .gmv-prototype .drawer-status-mobile {
     display: block;

@@ -1773,12 +1773,14 @@ export default function PaymentRequestDetailDrawer({
       <aside className={`drawer ${open ? "open" : ""}`}>
         <div className="drawer-head">
           <div style={{ display: "flex", alignItems: "center", gap: 14, minWidth: 0 }}>
-            <span className="pr-id-pill">{request.id}</span>
-            <div style={{ minWidth: 0 }}>
-              <div style={{ fontWeight: 700, fontSize: 16 }}>{request.name}</div>
+            <div style={{ flexShrink: 0 }}>
+              <span className="pr-id-pill">{request.id}</span>
               <div className="drawer-status-mobile">
                 <PaymentRequestStatusBadge state={request.state} totalCount={request.totalCount} provisional={hasUnverifiedFeeLine(request)} />
               </div>
+            </div>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontWeight: 700, fontSize: 16 }}>{request.name}</div>
               <div className="drawer-meta" style={{ fontSize: 12, color: "var(--text-3)", marginTop: 2 }}>
                 Tạo bởi <strong style={{ color: "var(--text-2)" }} title={request.saleEmail || undefined}>{request.saleName || (request.saleEmail ? request.saleEmail.split("@")[0] : "—")}</strong> · {request.createdAt}
               </div>
