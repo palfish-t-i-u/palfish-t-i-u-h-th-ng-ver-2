@@ -872,6 +872,15 @@ describe("multi-con mappers (10/7)", () => {
     expect(patch[0].name).toBeUndefined();
     expect(patch[1].name).toBe("Bé Hai");
   });
+
+  it("AR mapper maps payment_request.sale_name → saleName (T6)", () => {
+    const ar = fromApiActiveRequest({
+      id: "AR-2", pr_id: "PR-2",
+      payment_request: { name: "Khach A", sale_name: "Nguyen Thi Hoa", sale_email: "hoa@palfish.com" },
+      uids_data: [],
+    });
+    expect(ar.saleName).toBe("Nguyen Thi Hoa");
+  });
 });
 
 describe("lineNet — Thừa/Thiếu tính theo NET (12/7)", () => {

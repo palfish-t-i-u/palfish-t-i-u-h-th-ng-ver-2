@@ -2146,7 +2146,12 @@ export default function ActivationTab() {
                         )}
                       </td>
                       <td>
-                        <div className="cell-name">{a.customerName}</div>
+                        <div className="cell-name">
+                          {a.customerName}
+                          {a.saleName && (
+                            <span style={{ fontSize: 12, color: "var(--text-3)" }}> · Sale: <strong>{a.saleName}</strong></span>
+                          )}
+                        </div>
                         <div className="cell-sub">UID: {a.uids[0]?.uid || "—"}</div>
                       </td>
                       <td style={{ textAlign: "center" }}>

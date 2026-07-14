@@ -309,6 +309,7 @@ export function fromApiActiveRequest(raw: ActiveRequestApiRow): ActiveRequest {
     id: raw.id ?? "",
     prId: raw.pr_id ?? null,
     customerName: raw.customer_name || prSnippet?.name || "",
+    saleName: prSnippet?.sale_name || undefined,
     createdAt: raw.created_at ?? "",
     createdBy: "",
     uids: (raw.uids_data ?? []).map((u) => ({

@@ -187,6 +187,8 @@ export interface ActiveRequest {
   id: string;
   prId: string | null;
   customerName: string;
+  /** Tên TVTS phụ trách PR — enriched từ nhan_su_sale ở list endpoint (T6) */
+  saleName?: string;
   createdAt: string;
   createdBy: string;
   uids: ActiveUidGroup[];
@@ -305,7 +307,7 @@ export type ActiveRequestApiRow = {
   }>;
   status?: string;
   created_at?: string;
-  payment_request?: { name?: string; email?: string };
+  payment_request?: { name?: string; email?: string; sale_name?: string; sale_email?: string };
 };
 
 export type ActiveRequestPatchUidPayload = {
