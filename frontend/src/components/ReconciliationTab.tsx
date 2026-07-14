@@ -1149,25 +1149,42 @@ export default function ReconciliationTab() {
                       </td>
                       <td style={{ textAlign: "center" }} onClick={(e) => e.stopPropagation()}>
                         {status === "awaiting" && !readOnly ? (
-                          <div className="row-quick-actions">
+                          t.method === "cash" ? (
+                            <div className="row-quick-actions">
+                              <button
+                                type="button"
+                                className="btn-icon-success"
+                                title={billRequiredButMissing(t) ? "Cần ảnh bill quẹt thẻ/trả góp" : "Xác nhận tiền về"}
+                                disabled={billRequiredButMissing(t)}
+                                onClick={() => { if (!billRequiredButMissing(t)) void handleConfirm(t); }}
+                              >
+                                <Icons.Check size={14} strokeWidth={2.5} />
+                              </button>
+                              <button
+                                type="button"
+                                className="btn-icon-danger"
+                                title="Từ chối"
+                                onClick={() => handleReject(t)}
+                              >
+                                <Icons.Close size={14} strokeWidth={2.2} />
+                              </button>
+                            </div>
+                          ) : (
                             <button
                               type="button"
                               className="btn-icon-success"
-                              title={billRequiredButMissing(t) ? "Cần ảnh bill quẹt thẻ/trả góp" : "Xác nhận tiền về"}
-                              disabled={billRequiredButMissing(t)}
-                              onClick={() => { if (!billRequiredButMissing(t)) void handleConfirm(t); }}
+                              title={t.method === "card" || t.method === "installment" ? "Ghép ở mPOS/Payoo" : "Ghép ở CK ngoài chờ ghép"}
+                              onClick={() => {
+                                if (t.method === "card" || t.method === "installment") {
+                                  navigate("reconCard");
+                                } else {
+                                  setTab("ckOutside");
+                                }
+                              }}
                             >
                               <Icons.Check size={14} strokeWidth={2.5} />
                             </button>
-                            <button
-                              type="button"
-                              className="btn-icon-danger"
-                              title="Từ chối"
-                              onClick={() => handleReject(t)}
-                            >
-                              <Icons.Close size={14} strokeWidth={2.2} />
-                            </button>
-                          </div>
+                          )
                         ) : (
                           <button type="button" className="row-action" title="Xem chi tiết">
                             <Icons.ChevronRight size={15} />
