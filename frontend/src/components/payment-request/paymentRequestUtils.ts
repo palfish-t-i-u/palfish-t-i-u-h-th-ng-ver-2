@@ -375,7 +375,14 @@ export function buildCreateActiveRequestPayload(pr: PaymentRequest, rows: ArDraf
       name: row.packageName.trim(),
       amount: Math.max(0, Math.round(row.amount)),
     };
-    if (isReferralPackage(row.packageName)) course.lead_source = "gioi_thieu";
+    const src = (row.leadSource ?? "").trim();
+    if (src) {
+      course.lead_source = src;
+    } else if (isReferralPackage(row.packageName)) {
+      course.lead_source = "gioi_thieu";
+    }
+    const ch = (row.leadChannel ?? "").trim();
+    if (ch) course.lead_channel = ch;
     block.courses.push(course);
   }
   return { uids: [...blocks.values()] };
