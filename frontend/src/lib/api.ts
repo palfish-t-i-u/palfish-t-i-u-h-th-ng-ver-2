@@ -609,4 +609,6 @@ export interface BankMatchCandidate {
   transfer_code: string;
   bill_images?: string[];
   has_bill?: boolean;
+  score?: number;
+  match_signals?: string[];
 }

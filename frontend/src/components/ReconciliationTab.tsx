@@ -1740,8 +1740,23 @@ export default function ReconciliationTab() {
                                       {c.team_name ? <>Team: <strong>{c.team_name}</strong></> : null}
                                     </div>
                                   )}
-                                  <div style={{ fontSize: 12, color: "var(--text-2)", marginTop: 3, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-                                    <span>{c.method} · {c.status} · mã: {c.transfer_code || "—"}{c.created_at ? ` · ${formatPaymentDateFull(c.created_at)}` : ""}</span>
+                                  <div style={{ fontSize: 12, color: "var(--text-2)", marginTop: 3 }}>
+                                    {c.method} · {c.status} · mã: {c.transfer_code || "—"}{c.created_at ? ` · ${formatPaymentDateFull(c.created_at)}` : ""}
+                                  </div>
+                                  {/* Scoring badges (Task 6/7 — ghép CK ngoài) */}
+                                  <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginTop: 4 }}>
+                                    {c.match_signals?.includes("code") && (
+                                      <span style={{ fontSize: 10.5, padding: "1px 6px", borderRadius: 4, background: "var(--primary-bg, rgba(99,102,241,0.1))", color: "var(--primary)", fontWeight: 600 }}>Khớp mã TT</span>
+                                    )}
+                                    {c.match_signals?.includes("phone") && (
+                                      <span style={{ fontSize: 10.5, padding: "1px 6px", borderRadius: 4, background: "var(--primary-bg, rgba(99,102,241,0.1))", color: "var(--primary)", fontWeight: 600 }}>Khớp SĐT</span>
+                                    )}
+                                    {c.match_signals?.includes("name") && (
+                                      <span style={{ fontSize: 10.5, padding: "1px 6px", borderRadius: 4, background: "var(--primary-bg, rgba(99,102,241,0.1))", color: "var(--primary)", fontWeight: 600 }}>Khớp tên</span>
+                                    )}
+                                    {exactAmount && (
+                                      <span style={{ fontSize: 10.5, padding: "1px 6px", borderRadius: 4, background: "var(--success-bg, #dcfce7)", color: "var(--success-text, #166534)", fontWeight: 600 }}>Cùng số tiền</span>
+                                    )}
                                     {c.has_bill ? (
                                       <span style={{ fontSize: 10.5, padding: "1px 6px", borderRadius: 4, background: "var(--success-bg, #dcfce7)", color: "var(--success-text, #166534)", fontWeight: 600 }}>Có bill</span>
                                     ) : (
