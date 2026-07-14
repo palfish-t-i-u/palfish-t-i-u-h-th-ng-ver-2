@@ -367,25 +367,16 @@ def _process_sepay_transaction(sb, txn: dict[str, Any]) -> dict[str, Any]:
     # Step 3: CHỈ KHI bank_transactions INSERT thành công (is_new=True) MỚI mark
     # payment_line=paid + recompute PR. Tránh case INSERT fail nhưng line đã paid.
     if is_new and line_to_pay is not None:
+        line_paid_ok = False
         try:
-            from payment_request_routes import recompute_payment_request_totals
-            from audit import log_audit
-
             now_iso = _iso_now()
             sb.table("payment_lines").update(
                 {"status": "paid", "paid_at": now_iso, "reject_reason": None,
                  "confirmed_by": "system:sepay", "confirmed_at": now_iso, "confirmed_source": "sepay"}
             ).eq("id", payment_line_id).execute()
-
-            pr_id = str(line_to_pay.get("payment_request_id", ""))
-            if pr_id:
-                recompute_payment_request_totals(sb, pr_id)
-            log_audit(sb, "system:sepay", "recon.line_marked_paid", "payment_line", payment_line_id, {
-                "pr_id": pr_id, "source": "sepay", "sepay_id": sepay_id,
-            })
+            line_paid_ok = True
         except Exception as exc:
-            # Không rollback INSERT — log + chuyển bank_transactions sang needs_review
-            # để kế toán xử lý tay. State invariant: bank_transactions tồn tại.
+            # payment_line update fail → line CHƯA paid, an toàn revert match_status.
             print(f"[sepay] mark_line_paid failed sau khi INSERT: {exc}")
             try:
                 sb.table("bank_transactions").update(
@@ -394,6 +385,22 @@ def _process_sepay_transaction(sb, txn: dict[str, Any]) -> dict[str, Any]:
                 match_status = "needs_review"
             except Exception as exc2:
                 print(f"[sepay] revert match_status failed: {exc2}")
+
+        # Recompute + audit: best-effort, KHÔNG revert match_status nếu fail —
+        # line đã paid rồi, revert sẽ tạo orphan (line=paid, match_status=needs_review).
+        if line_paid_ok:
+            try:
+                from payment_request_routes import recompute_payment_request_totals
+                from audit import log_audit
+
+                pr_id = str(line_to_pay.get("payment_request_id", ""))
+                if pr_id:
+                    recompute_payment_request_totals(sb, pr_id)
+                log_audit(sb, "system:sepay", "recon.line_marked_paid", "payment_line", payment_line_id, {
+                    "pr_id": pr_id, "source": "sepay", "sepay_id": sepay_id,
+                })
+            except Exception as exc:
+                print(f"[sepay] recompute/audit failed (line already paid, match_status kept): {exc}")
 
     return {
         "sepay_id": sepay_id,

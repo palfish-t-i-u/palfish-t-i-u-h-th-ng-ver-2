@@ -240,5 +240,108 @@ class TestSepayMatchingLogic:
         assert result["status"] in ("pending", "needs_review")
 
 
+class TestSepayOrphanFix:
+    """Regression (14/7): recompute/audit fail sau khi payment_line đã paid
+    KHÔNG được revert match_status — bug cũ revert về needs_review nhưng
+    payment_line vẫn paid = orphan (CK tự khớp mà vẫn nằm ở tab CK ngoài)."""
+
+    def _build_sb(self, *, bank_txn_updates, line_updates):
+        matched_line = {
+            "id": "line-1", "transfer_code": "ABCDE", "amount": 5_000_000,
+            "payment_request_id": "PR-1",
+        }
+
+        def mock_table(name):
+            t = MagicMock()
+            if name == "payment_lines":
+                # _match_transfer_code_in_content: select().eq().eq().execute() -> candidates
+                t.select.return_value.eq.return_value.eq.return_value.execute.return_value = MagicMock(
+                    data=[matched_line]
+                )
+                # mark paid: update({...}).eq(id).execute()
+                t.update.side_effect = lambda payload: _RecordingChain(line_updates, payload)
+            elif name == "bank_transactions":
+                t.upsert.return_value.execute.return_value = MagicMock(data=[{"txn_id": "xxx"}])
+                t.update.side_effect = lambda payload: _RecordingChain(bank_txn_updates, payload)
+            return t
+
+        sb = MagicMock()
+        sb.table.side_effect = mock_table
+        return sb
+
+    def test_recompute_failure_does_not_revert_match_status(self):
+        """payment_line update thành công -> recompute throw -> match_status
+        PHẢI giữ nguyên 'auto_matched' (KHÔNG revert 'needs_review'), line vẫn paid."""
+        from sepay_routes import _process_sepay_transaction
+
+        bank_txn_updates: list[dict] = []
+        line_updates: list[dict] = []
+        sb = self._build_sb(bank_txn_updates=bank_txn_updates, line_updates=line_updates)
+
+        with patch(
+            "payment_request_routes.recompute_payment_request_totals",
+            side_effect=Exception("boom recompute"),
+        ):
+            result = _process_sepay_transaction(sb, {
+                "id": 555555,
+                "content": "ABCDE thanh toan hoc phi",
+                "transferAmount": 5_000_000,
+            })
+
+        # Line đã được mark paid (op1 thành công, không bị rollback)
+        assert len(line_updates) == 1
+        assert line_updates[0]["status"] == "paid"
+        # match_status KHÔNG bị revert — orphan fix: recompute/audit fail chỉ log warning
+        assert bank_txn_updates == []
+        assert result["status"] == "auto_matched"
+
+    def test_line_update_failure_still_reverts_match_status(self):
+        """payment_line update tự nó throw (op1 fail) -> match_status VẪN được
+        revert về needs_review như cũ (an toàn vì line CHƯA paid)."""
+        from sepay_routes import _process_sepay_transaction
+
+        bank_txn_updates: list[dict] = []
+
+        def mock_table(name):
+            t = MagicMock()
+            if name == "payment_lines":
+                t.select.return_value.eq.return_value.eq.return_value.execute.return_value = MagicMock(
+                    data=[{"id": "line-1", "transfer_code": "ABCDE", "amount": 5_000_000,
+                           "payment_request_id": "PR-1"}]
+                )
+                t.update.side_effect = Exception("update failed")
+            elif name == "bank_transactions":
+                t.upsert.return_value.execute.return_value = MagicMock(data=[{"txn_id": "xxx"}])
+                t.update.side_effect = lambda payload: _RecordingChain(bank_txn_updates, payload)
+            return t
+
+        sb = MagicMock()
+        sb.table.side_effect = mock_table
+
+        result = _process_sepay_transaction(sb, {
+            "id": 555556,
+            "content": "ABCDE thanh toan hoc phi",
+            "transferAmount": 5_000_000,
+        })
+
+        assert len(bank_txn_updates) == 1
+        assert bank_txn_updates[0]["match_status"] == "needs_review"
+        assert result["status"] == "needs_review"
+
+
+class _RecordingChain:
+    """Records payload; .eq(...).execute() chain returns benign data."""
+
+    def __init__(self, sink: list[dict], payload: dict):
+        sink.append(payload)
+        self._payload = payload
+
+    def eq(self, *a, **k):
+        return self
+
+    def execute(self):
+        return MagicMock(data=[self._payload])
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
