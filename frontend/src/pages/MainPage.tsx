@@ -85,6 +85,7 @@ const FLOW_VIEW_MAP: Record<PaymentFlowView, ViewId> = {
   reconciliation: "reconciliation",
   module3: "module3",
   module4: "module4",
+  reconCard: "reconCard",
 };
 
 function ViewFallback() {

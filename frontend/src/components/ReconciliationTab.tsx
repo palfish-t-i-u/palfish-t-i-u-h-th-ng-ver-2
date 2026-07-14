@@ -871,15 +871,10 @@ export default function ReconciliationTab() {
                   onClick={async () => {
                     setIsBulkConfirming(true);
                     try {
-                      const picked = [...selectedIds]
+                      const toConfirm = [...selectedIds]
                         .map((key) => transactions.find((x) => x.key === key))
-                        .filter((t): t is FlatTransaction => !!t);
-                      const blocked = picked.filter(billRequiredButMissing);
-                      const toConfirm = picked.filter((t) => !billRequiredButMissing(t));
+                        .filter((t): t is FlatTransaction => !!t && t.method === "cash");
                       await Promise.all(toConfirm.map((t) => handleConfirm(t)));
-                      if (blocked.length > 0) {
-                        alert(`${blocked.length} giao dịch quẹt thẻ/trả góp chưa có bill — đã bỏ qua, chưa xác nhận.`);
-                      }
                     } finally {
                       setSelectedIds(new Set());
                       setIsBulkConfirming(false);
@@ -998,6 +993,8 @@ export default function ReconciliationTab() {
                 onConfirm={(t) => { if (!billRequiredButMissing(t)) void handleConfirm(t); }}
                 onReject={(t) => handleReject(t)}
                 billRequiredButMissing={billRequiredButMissing}
+                onRedirectCard={() => navigate("reconCard")}
+                onSwitchToCkOutside={() => setTab("ckOutside")}
               />
             </div>
           ) : (
@@ -1012,12 +1009,12 @@ export default function ReconciliationTab() {
                         checked={
                           filtered.length > 0 &&
                           filtered
-                            .filter((t) => txnDisplayStatus(t) === "awaiting")
+                            .filter((t) => txnDisplayStatus(t) === "awaiting" && t.method === "cash")
                             .every((t) => selectedIds.has(t.key))
                         }
                         onChange={() => {
                           const ids = filtered
-                            .filter((t) => txnDisplayStatus(t) === "awaiting")
+                            .filter((t) => txnDisplayStatus(t) === "awaiting" && t.method === "cash")
                             .map((t) => t.key);
                           const all = ids.length > 0 && ids.every((id) => selectedIds.has(id));
                           setSelectedIds(all ? new Set() : new Set(ids));
@@ -1066,7 +1063,7 @@ export default function ReconciliationTab() {
                       <td className="check-col" onClick={(e) => e.stopPropagation()}>
                         <input
                           type="checkbox"
-                          disabled={status !== "awaiting"}
+                          disabled={status !== "awaiting" || t.method !== "cash"}
                           checked={selectedIds.has(t.key)}
                           onChange={() => {
                             setSelectedIds((prev) => {
@@ -1149,25 +1146,42 @@ export default function ReconciliationTab() {
                       </td>
                       <td style={{ textAlign: "center" }} onClick={(e) => e.stopPropagation()}>
                         {status === "awaiting" && !readOnly ? (
-                          <div className="row-quick-actions">
+                          t.method === "cash" ? (
+                            <div className="row-quick-actions">
+                              <button
+                                type="button"
+                                className="btn-icon-success"
+                                title={billRequiredButMissing(t) ? "Cần ảnh bill quẹt thẻ/trả góp" : "Xác nhận tiền về"}
+                                disabled={billRequiredButMissing(t)}
+                                onClick={() => { if (!billRequiredButMissing(t)) void handleConfirm(t); }}
+                              >
+                                <Icons.Check size={14} strokeWidth={2.5} />
+                              </button>
+                              <button
+                                type="button"
+                                className="btn-icon-danger"
+                                title="Từ chối"
+                                onClick={() => handleReject(t)}
+                              >
+                                <Icons.Close size={14} strokeWidth={2.2} />
+                              </button>
+                            </div>
+                          ) : (
                             <button
                               type="button"
                               className="btn-icon-success"
-                              title={billRequiredButMissing(t) ? "Cần ảnh bill quẹt thẻ/trả góp" : "Xác nhận tiền về"}
-                              disabled={billRequiredButMissing(t)}
-                              onClick={() => { if (!billRequiredButMissing(t)) void handleConfirm(t); }}
+                              title={t.method === "card" || t.method === "installment" ? "Ghép ở mPOS/Payoo" : "Ghép ở CK ngoài chờ ghép"}
+                              onClick={() => {
+                                if (t.method === "card" || t.method === "installment") {
+                                  navigate("reconCard");
+                                } else {
+                                  setTab("ckOutside");
+                                }
+                              }}
                             >
                               <Icons.Check size={14} strokeWidth={2.5} />
                             </button>
-                            <button
-                              type="button"
-                              className="btn-icon-danger"
-                              title="Từ chối"
-                              onClick={() => handleReject(t)}
-                            >
-                              <Icons.Close size={14} strokeWidth={2.2} />
-                            </button>
-                          </div>
+                          )
                         ) : (
                           <button type="button" className="row-action" title="Xem chi tiết">
                             <Icons.ChevronRight size={15} />
@@ -1726,8 +1740,23 @@ export default function ReconciliationTab() {
                                       {c.team_name ? <>Team: <strong>{c.team_name}</strong></> : null}
                                     </div>
                                   )}
-                                  <div style={{ fontSize: 12, color: "var(--text-2)", marginTop: 3, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-                                    <span>{c.method} · {c.status} · mã: {c.transfer_code || "—"}{c.created_at ? ` · ${formatPaymentDateFull(c.created_at)}` : ""}</span>
+                                  <div style={{ fontSize: 12, color: "var(--text-2)", marginTop: 3 }}>
+                                    {c.method} · {c.status} · mã: {c.transfer_code || "—"}{c.created_at ? ` · ${formatPaymentDateFull(c.created_at)}` : ""}
+                                  </div>
+                                  {/* Scoring badges (Task 6/7 — ghép CK ngoài) */}
+                                  <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginTop: 4 }}>
+                                    {c.match_signals?.includes("code") && (
+                                      <span style={{ fontSize: 10.5, padding: "1px 6px", borderRadius: 4, background: "var(--primary-bg, rgba(99,102,241,0.1))", color: "var(--primary)", fontWeight: 600 }}>Khớp mã TT</span>
+                                    )}
+                                    {c.match_signals?.includes("phone") && (
+                                      <span style={{ fontSize: 10.5, padding: "1px 6px", borderRadius: 4, background: "var(--primary-bg, rgba(99,102,241,0.1))", color: "var(--primary)", fontWeight: 600 }}>Khớp SĐT</span>
+                                    )}
+                                    {c.match_signals?.includes("name") && (
+                                      <span style={{ fontSize: 10.5, padding: "1px 6px", borderRadius: 4, background: "var(--primary-bg, rgba(99,102,241,0.1))", color: "var(--primary)", fontWeight: 600 }}>Khớp tên</span>
+                                    )}
+                                    {exactAmount && (
+                                      <span style={{ fontSize: 10.5, padding: "1px 6px", borderRadius: 4, background: "var(--success-bg, #dcfce7)", color: "var(--success-text, #166534)", fontWeight: 600 }}>Cùng số tiền</span>
+                                    )}
                                     {c.has_bill ? (
                                       <span style={{ fontSize: 10.5, padding: "1px 6px", borderRadius: 4, background: "var(--success-bg, #dcfce7)", color: "var(--success-text, #166534)", fontWeight: 600 }}>Có bill</span>
                                     ) : (

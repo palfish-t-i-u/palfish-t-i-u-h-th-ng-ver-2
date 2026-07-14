@@ -20,6 +20,8 @@ interface Props {
   onConfirm: (t: FlatTransaction) => void;
   onReject: (t: FlatTransaction) => void;
   billRequiredButMissing: (t: FlatTransaction) => boolean;
+  onRedirectCard: () => void;
+  onSwitchToCkOutside: () => void;
   emptyText?: string;
 }
 
@@ -43,6 +45,8 @@ export default function ReconTxnCards({
   onConfirm,
   onReject,
   billRequiredButMissing,
+  onRedirectCard,
+  onSwitchToCkOutside,
   emptyText = "Không có giao dịch nào.",
 }: Props) {
   return (
@@ -79,30 +83,41 @@ export default function ReconTxnCards({
             onClick={() => onSelect(t)}
             actions={
               status === "awaiting" && !readOnly ? (
-                <div className="flex w-full items-center justify-between">
-                  <label className="flex items-center gap-1.5 text-xs">
-                    <input
-                      type="checkbox"
-                      checked={selectedIds.has(t.key)}
-                      onChange={() => onToggleSelect(t.key)}
-                    />
-                    Chọn
-                  </label>
-                  <div className="flex gap-2">
-                    <Button type="button" size="sm" variant="danger" onClick={() => onReject(t)}>
-                      Từ chối
-                    </Button>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="primary"
-                      disabled={billRequiredButMissing(t)}
-                      onClick={() => onConfirm(t)}
-                    >
-                      Xác nhận
-                    </Button>
+                t.method === "cash" ? (
+                  <div className="flex w-full items-center justify-between">
+                    <label className="flex items-center gap-1.5 text-xs">
+                      <input
+                        type="checkbox"
+                        checked={selectedIds.has(t.key)}
+                        onChange={() => onToggleSelect(t.key)}
+                      />
+                      Chọn
+                    </label>
+                    <div className="flex gap-2">
+                      <Button type="button" size="sm" variant="danger" onClick={() => onReject(t)}>
+                        Từ chối
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="primary"
+                        disabled={billRequiredButMissing(t)}
+                        onClick={() => onConfirm(t)}
+                      >
+                        Xác nhận
+                      </Button>
+                    </div>
                   </div>
-                </div>
+                ) : (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="secondary"
+                    onClick={t.method === "card" || t.method === "installment" ? onRedirectCard : onSwitchToCkOutside}
+                  >
+                    {t.method === "card" || t.method === "installment" ? "→ mPOS/Payoo" : "→ CK ngoài"}
+                  </Button>
+                )
               ) : undefined
             }
           />
