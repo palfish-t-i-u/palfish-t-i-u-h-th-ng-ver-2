@@ -39,14 +39,38 @@ async def _process_row(row: dict, sb: Any) -> None:
         print(f"[zalo_worker] Message {row_id} sent successfully. Zalo Msg ID: {msg_id}")
 
         # --- Image handling (best-effort) ---
-        # Prefer image_urls (JSONB array) for multi-bill; fall back to legacy image_url
-        raw_image_urls = row.get("image_urls")
-        if isinstance(raw_image_urls, list) and raw_image_urls:
-            image_url_list = [u for u in raw_image_urls if u and str(u).strip()]
-        elif (row.get("image_url") or "").strip():
-            image_url_list = [(row.get("image_url") or "").strip()]
-        else:
-            image_url_list = []
+        image_url_list: list[str] = []
+
+        # For bill_uploaded events only, re-read the CURRENT bill_images from
+        # payment_lines: the outbox snapshot can be stale if the accountant deleted
+        # + re-uploaded the bill between enqueue and send (URL in snapshot then 404s).
+        # Other event types (e.g. payment_paid — must stay text-only) keep their own
+        # snapshot and are NOT given bill images here.
+        source_id = row.get("source_id")
+        fresh_read_ok = False
+        if row.get("event_type") == "bill_uploaded" and source_id and row.get("source_table") == "payment_lines":
+            try:
+                fresh = sb.table("payment_lines").select("bill_images, bill_image").eq("id", source_id).limit(1).execute()
+                fresh_read_ok = True
+                if fresh.data:
+                    fr = fresh.data[0]
+                    imgs = fr.get("bill_images") or []
+                    if isinstance(imgs, list):
+                        image_url_list = [u for u in imgs if u and str(u).strip()]
+                    if not image_url_list and (fr.get("bill_image") or "").strip():
+                        image_url_list = [fr["bill_image"].strip()]
+            except Exception as fresh_exc:
+                print(f"[zalo_worker] Failed to re-read bill_images for {source_id}: {fresh_exc}")
+
+        # Use the outbox snapshot for non-bill_uploaded events, or as a safety net when
+        # the fresh read threw — but NOT when the line genuinely has no bills anymore
+        # (fresh_read_ok=True + empty list → nothing to send, skip).
+        if not image_url_list and not fresh_read_ok:
+            raw_image_urls = row.get("image_urls")
+            if isinstance(raw_image_urls, list) and raw_image_urls:
+                image_url_list = [u for u in raw_image_urls if u and str(u).strip()]
+            elif (row.get("image_url") or "").strip():
+                image_url_list = [(row.get("image_url") or "").strip()]
 
         if image_url_list:
             img_update: dict = {}
@@ -55,14 +79,23 @@ async def _process_row(row: dict, sb: Any) -> None:
                 await asyncio.to_thread(send_images_to_group, group_id, image_url_list, sb=sb)
                 img_update["image_sent_at"] = datetime.datetime.now(datetime.timezone.utc).isoformat()
             except Exception as img_exc:
-                print(f"[zalo_worker] Image send failed for outbox {row_id}: {img_exc}")
-                img_update["image_error"] = str(img_exc)[:500]
-                # Fallback: send all bill links as one text message
-                links = "\n".join(f"📎 Bill #{i+1}: {u}" for i, u in enumerate(image_url_list))
+                # Retry once after 3s for transient storage errors (e.g. 400/5xx)
+                print(f"[zalo_worker] Image send attempt 1 failed for outbox {row_id}: {img_exc}")
+                await asyncio.sleep(3)
                 try:
-                    await asyncio.to_thread(send_text_to_group, group_id, links, sb=sb)
-                except Exception:
-                    pass
+                    from zalo_notifier import send_images_to_group
+                    await asyncio.to_thread(send_images_to_group, group_id, image_url_list, sb=sb)
+                    img_update["image_sent_at"] = datetime.datetime.now(datetime.timezone.utc).isoformat()
+                    print(f"[zalo_worker] Image send retry OK for outbox {row_id}")
+                except Exception as retry_exc:
+                    print(f"[zalo_worker] Image send retry failed for outbox {row_id}: {retry_exc}")
+                    img_update["image_error"] = str(retry_exc)[:500]
+                    # Fallback: send all bill links as one text message
+                    links = "\n".join(f"📎 Bill #{i+1}: {u}" for i, u in enumerate(image_url_list))
+                    try:
+                        await asyncio.to_thread(send_text_to_group, group_id, links, sb=sb)
+                    except Exception:
+                        pass
             if img_update:
                 sb.table("zalo_outbox").update(img_update).eq("id", row_id).execute()
 
