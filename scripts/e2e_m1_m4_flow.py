@@ -28,7 +28,7 @@ load_dotenv(ROOT / "backend" / ".env")
 load_dotenv(ROOT / "api_pipe" / ".env")
 
 DEFAULT_BASE = os.getenv("E2E_API_BASE_URL", "http://127.0.0.1:8000")
-OPS_EMAIL = os.getenv("E2E_OPS_EMAIL", "dinhgiang6492@gmail.com")
+OPS_EMAIL = os.getenv("E2E_OPS_EMAIL", "anhminhcv0512@gmail.com")
 SUPABASE_URL = os.getenv("SUPABASE_URL", "").rstrip("/")
 SERVICE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
 

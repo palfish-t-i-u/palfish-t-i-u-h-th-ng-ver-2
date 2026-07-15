@@ -727,7 +727,7 @@ def register_admin_routes(app, get_supabase):
         require_min_role(actor, "system")
 
         try:
-            users_res = sb.auth.admin.list_users()
+            users_res = sb.auth.admin.list_users(page=1, per_page=1000)
             users = users_res if isinstance(users_res, list) else getattr(users_res, "users", []) or []
         except Exception as exc:
             raise HTTPException(500, f"Không liệt kê được auth users: {exc}") from exc
