@@ -26,9 +26,14 @@ const normVi = (s: string) =>
 
 ## Rule
 
-### Chưa triệt để — cần extract utility + áp dụng toàn app
+### ✅ Đã extract + migrate tab thanh toán (2026-07-15)
 
-Fix hiện tại inline `norm` trong `PaymentRequestsTab.tsx` useMemo. Còn **10 chỗ search tên tiếng Việt** cùng pattern `toLowerCase().includes()` chưa được fix:
+`normVi()` giờ ở `frontend/src/lib/textUtils.ts` (null-safe, test `textUtils.test.ts`).
+Tab Quản lý thanh toán dùng qua `paymentRequestMatchesSearch()` (paymentRequestUtils.ts,
+test `paymentRequestUtils.search.test.ts`) — thêm cả **tên con** (childName + children[] bé phụ)
+vào search. Inline `norm` trong `PaymentRequestsTab.tsx` đã xoá.
+
+### ⏳ Chưa triệt để — còn 10 chỗ search tên tiếng Việt dùng `toLowerCase().includes()`:
 
 | File | Dòng | Search field chứa tên VN |
 |------|------|--------------------------|
@@ -52,7 +57,7 @@ Fix hiện tại inline `norm` trong `PaymentRequestsTab.tsx` useMemo. Còn **10
 
 ### Fix đúng
 
-1. Extract `normVi()` vào `frontend/src/lib/textUtils.ts`
-2. Viết test: "Như Ý"→"nhu y", "Đặng"→"dang", "Nguyễn"→"nguyen", empty/null safe
-3. Replace tất cả 10 chỗ trên: `v.toLowerCase().includes(q)` → `normVi(v).includes(normVi(q))` (hoặc pre-compute `normVi(q)` ngoài loop)
-4. Xoá inline `norm` trong `PaymentRequestsTab.tsx`
+1. ✅ Extract `normVi()` vào `frontend/src/lib/textUtils.ts` (2026-07-15)
+2. ✅ Viết test: "Như Ý"→"nhu y", "Đặng"→"dang", "Nguyễn"→"nguyen", empty/null safe (2026-07-15)
+3. ⏳ Replace 10 chỗ trên: `v.toLowerCase().includes(q)` → `normVi(v).includes(normVi(q))` (hoặc pre-compute `normVi(q)` ngoài loop) — CÒN LẠI
+4. ✅ Xoá inline `norm` trong `PaymentRequestsTab.tsx` (2026-07-15)

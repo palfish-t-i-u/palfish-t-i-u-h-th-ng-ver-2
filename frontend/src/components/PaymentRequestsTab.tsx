@@ -39,6 +39,7 @@ import {
   normalizeRequest,
   nowStamp,
   paginate,
+  paymentRequestMatchesSearch,
   visiblePaymentRequests,
 } from "./payment-request/paymentRequestUtils";
 
@@ -153,8 +154,6 @@ export default function PaymentRequestsTab() {
   );
 
   const filtered = useMemo(() => {
-    const norm = (s: string) => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/đ/g, "d");
-    const q = norm(search.trim());
     return tvtsFiltered.filter((r) => {
       if (tab === "cancelled") {
         if (r.state !== "cancelled") return false;
@@ -164,8 +163,8 @@ export default function PaymentRequestsTab() {
       }
       if (tab !== "cancelled" && status !== "all" && r.state !== status) return false;
       if (!inDateRange(r.createdAt, dateRange)) return false;
-      if (!q) return true;
-      return [r.id, r.name, r.uid, r.phone].some((v) => norm(v).includes(q));
+      // Search accent-insensitive: PR-ID, tên khách, UID, SĐT, tên con (bé 1 + bé phụ)
+      return paymentRequestMatchesSearch(r, search);
     });
   }, [tvtsFiltered, tab, status, dateRange, search, arByPrId]);
 
