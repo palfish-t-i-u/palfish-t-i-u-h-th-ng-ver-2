@@ -1,9 +1,32 @@
 import type { CSSProperties } from "react";
 import type { ActiveCourse, ActiveRequest, ActiveRequestApiRow, ActiveRequestPatchUidPayload, ArDraftRow, CreateActiveRequestCoursePayload, CreateActiveRequestPayload, CreateActiveRequestUidPayload, PaymentAttempt, PaymentMethod, PaymentRequest, PaymentRequestStatus } from "../../types/paymentRequest";
+import { normVi } from "../../lib/textUtils";
 
 /** Gói giới thiệu (tên chứa "REFER") → cần điền thông tin người giới thiệu. */
 export function isReferralPackage(name?: string | null): boolean {
   return !!name && /refer/i.test(name);
+}
+
+/**
+ * So khớp 1 PR với chuỗi search của user — accent- & case-insensitive (normVi).
+ * Fields tìm: PR-ID, tên khách, UID, SĐT, và tên con — cả bé 1 (childName) lẫn
+ * các bé phụ (children[].name; children = bé 1 + extra_children từ BE).
+ * Query rỗng/toàn khoảng trắng → true (không lọc).
+ *
+ * VD: PR có childName "Hà Bảo Ngân" khớp "ha bao ngan" / "Ha Bao Ngan" / "HÀ BẢO NGÂN".
+ */
+export function paymentRequestMatchesSearch(pr: PaymentRequest, rawQuery: string): boolean {
+  const q = normVi(rawQuery.trim());
+  if (!q) return true;
+  const haystack: (string | null | undefined)[] = [
+    pr.id,
+    pr.name,
+    pr.uid,
+    pr.phone,
+    pr.childName,
+    ...(pr.children?.map((c) => c.name) ?? []),
+  ];
+  return haystack.some((value) => normVi(value).includes(q));
 }
 
 /**

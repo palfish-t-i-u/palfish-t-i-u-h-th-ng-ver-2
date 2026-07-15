@@ -128,7 +128,7 @@
 - FE layout: `frontend/src/layouts/AppShell.tsx` (sidebar + dynamic permissions), `MobileNavSheet.tsx`; entry: `frontend/src/App.tsx`, `frontend/src/pages/MainPage.tsx` (mount toàn bộ tab, lazy load)
 - FE UI kit: `frontend/src/components/ui/` — Button, Card, Table, Modal, Badge, Combobox, Tooltip, Input, MoneyInput, RowCard, PageSection, DataBar, AuditTrail, ColumnVisibilityMenu
 - FE hooks chung: `useIsMobile`, `useColumnVisibility`, `useRefetchOnFocus`, `useRealtimeTable`, `useTeamScope`, `useCountryCodes`
-- FE lib chung: `frontend/src/lib/api.ts` (tất cả endpoint groups), `apiBaseUrl.ts`, `apiErrors.ts`, `supabase.ts`, `cn.ts`, `vndFormat.ts`, `vnPhone.ts`, `clipboard.ts`, `imageCompress.ts`, `numberToWords.ts`, `metrics.ts`, `subTeamLabels.ts`
+- FE lib chung: `frontend/src/lib/api.ts` (tất cả endpoint groups), `apiBaseUrl.ts`, `apiErrors.ts`, `supabase.ts`, `cn.ts`, `vndFormat.ts`, `vnPhone.ts`, `clipboard.ts`, `imageCompress.ts`, `numberToWords.ts`, `metrics.ts`, `subTeamLabels.ts`, `textUtils.ts` (`normVi` — chuẩn hoá tiếng Việt cho search accent-insensitive)
 - BE core: `backend/main.py` — FastAPI entry, CORS, webhook PayOS/bank-simulate, orders endpoints, register 12 routers (dòng ~1317–1328), startup tasks (Zalo refresh ~1335, PayOS webhook register ~1346)
 - BE shared: `backend/rpc_helpers.py` (RPC atomic, sequences), `backend/env_utils.py`, `backend/analytics_limits.py`
 - Design: `docs/DESIGN.md`, `frontend/src/gmv-theme.css`, `gmv-tokens.css`

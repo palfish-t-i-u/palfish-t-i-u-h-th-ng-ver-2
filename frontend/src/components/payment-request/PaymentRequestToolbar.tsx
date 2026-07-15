@@ -40,7 +40,7 @@ export default function PaymentRequestToolbar({
       <div className="search">
         <Icons.Search size={15} stroke="var(--text-3)" />
         <input
-          placeholder="Tìm theo PR-ID, tên khách, UID hoặc số điện thoại…"
+          placeholder="Tìm theo PR-ID, tên khách, tên con, UID hoặc số điện thoại…"
           value={search}
           onChange={(e) => onSearch(e.target.value)}
         />
