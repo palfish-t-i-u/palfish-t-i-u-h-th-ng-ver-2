@@ -1600,7 +1600,6 @@ export default function PaymentRequestDetailDrawer({
   // 10/7 — modal mở rộng: nhiều dòng {bé, gói, tiền} thay vì 1 ô gói đơn
   const [arPackageModalOpen, setArPackageModalOpen] = useState(false);
   const [arDraftRows, setArDraftRows] = useState<ArDraftRow[]>([]);
-  const [arChildName, setArChildName] = useState("");
   // bill guard — chặn tạo AR khi còn line paid thiếu ảnh bill
   const [missingBillsPopupOpen, setMissingBillsPopupOpen] = useState(false);
   const [missingBillLines, setMissingBillLines] = useState<{ line_id: string; idx: number; amount: number }[]>([]);
@@ -1615,7 +1614,6 @@ export default function PaymentRequestDetailDrawer({
     setHighlightTarget(false);
     setArPackageModalOpen(false);
     setArDraftRows([]);
-    setArChildName("");
     setMissingBillsPopupOpen(false);
     setMissingBillLines([]);
   }, [request?.id]);
@@ -2546,8 +2544,7 @@ export default function PaymentRequestDetailDrawer({
                   setMissingBillsPopupOpen(true);
                   return;
                 }
-                setArChildName(splitChildNames(request.childName)[0] ?? "");
-                setArDraftRows([{ childName: "", uid: request.uid ?? "", packageName: "", amount: Math.max(0, request.received), leadSource: request.leadSource || "", leadChannel: request.leadChannel || "" }]);
+                setArDraftRows([{ childName: splitChildNames(request.childName)[0] ?? "", uid: request.uid ?? "", packageName: "", amount: Math.max(0, request.received), leadSource: request.leadSource || "", leadChannel: request.leadChannel || "" }]);
                 setArPackageModalOpen(true);
               }}
             >
@@ -2592,19 +2589,19 @@ export default function PaymentRequestDetailDrawer({
               </button>
             </div>
             <div className="modal-body">
-              <div className="field" style={{ marginBottom: 12 }}>
-                <label>Tên bé <span style={{ color: "var(--text-3)", fontWeight: 400 }}>(hiển thị trong yêu cầu kích hoạt)</span></label>
-                <Combobox
-                  freeText
-                  value={arChildName}
-                  onChange={setArChildName}
-                  options={arChildOptions.map((n) => ({ value: n, label: n }))}
-                  placeholder="Chọn hoặc gõ tên bé..."
-                  emptyLabel="— Bỏ chọn —"
-                />
-              </div>
               {arDraftRows.map((row, i) => (
                 <div key={i} style={{ border: "1px solid var(--border)", borderRadius: 8, padding: "10px 12px", marginBottom: 10 }}>
+                  <div className="field" style={{ marginBottom: 8 }}>
+                    <label>Tên bé <span style={{ color: "var(--text-3)", fontWeight: 400 }}>(hiển thị trong yêu cầu kích hoạt)</span></label>
+                    <Combobox
+                      freeText
+                      value={row.childName}
+                      onChange={(v) => setArRow(i, { childName: v })}
+                      options={arChildOptions.map((n) => ({ value: n, label: n }))}
+                      placeholder="Chọn hoặc gõ tên bé..."
+                      emptyLabel="— Bỏ chọn —"
+                    />
+                  </div>
                   <div style={{ display: "flex", gap: 8, alignItems: "flex-end", marginBottom: 8 }}>
                     <div className="field" style={{ flex: 1, marginBottom: 0 }}>
                       <label>Gói học <span style={{ color: "var(--danger)" }}>*</span></label>
@@ -2732,8 +2729,7 @@ export default function PaymentRequestDetailDrawer({
                 onClick={() => {
                   if (!arValid) return;
                   setArPackageModalOpen(false);
-                  const name = arChildName.trim();
-                  onCreateActiveRequest(arDraftRows.map((r) => ({ ...r, childName: name })));
+                  onCreateActiveRequest(arDraftRows.map((r) => ({ ...r, childName: r.childName.trim() })));
                 }}
               >
                 <Icons.CheckSquare size={14} /> Tạo yêu cầu kích hoạt

@@ -26,7 +26,8 @@ def test_healthz_never_touches_db(monkeypatch):
         raise AssertionError("/healthz phải KHÔNG gọi _supabase()")
 
     monkeypatch.setattr(main, "_supabase", _boom)
-    res = main.health()
+    import asyncio
+    res = asyncio.run(main.health())
     assert res["status"] == "ok"
     assert called["n"] == 0
 
