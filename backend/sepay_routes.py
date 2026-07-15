@@ -12,6 +12,7 @@ import json
 import os
 import re
 import time
+import unicodedata
 from datetime import datetime, timedelta, timezone
 from typing import Any, Callable
 
@@ -85,6 +86,10 @@ def _first_text(data: dict[str, Any], *keys: str) -> str:
 # ---------------------------------------------------------------------------
 # Scoring: chấm điểm candidate khi ghép CK ngoài (parse NDCK)
 # ---------------------------------------------------------------------------
+def _strip_vn(s: str) -> str:
+    nfkd = unicodedata.normalize("NFKD", s)
+    return "".join(c for c in nfkd if not unicodedata.combining(c)).replace("đ", "d").replace("Đ", "D")
+
 _PHONE_RE = re.compile(r"(?:^|\D)(0\d{9})(?:\D|$)")
 _NOISE_WORDS = {"CK", "CHUYEN", "KHOAN", "THANH", "TOAN", "TIEN", "HOC", "PHI",
                 "GD", "IBFT", "VCB", "TCB", "MB", "ACB", "BIDV", "VIETINBANK",
@@ -101,7 +106,7 @@ def _score_candidate(content: str, cand: dict, txn_amount: float) -> tuple[int, 
     """
     score = 0
     signals: list[str] = []
-    desc = _clean_text(content).upper()
+    desc = _strip_vn(_clean_text(content)).upper()
     if not desc:
         if txn_amount > 0 and abs(txn_amount - cand.get("amount", 0)) < 1:
             return 50, ["amount"]
@@ -130,7 +135,7 @@ def _score_candidate(content: str, cand: dict, txn_amount: float) -> tuple[int, 
         signals.append("amount")
 
     # Tên (bỏ noise word: tên ngân hàng, họ phổ biến VN)
-    cand_name = _clean_text(cand.get("pr_name", "")).upper()
+    cand_name = _strip_vn(_clean_text(cand.get("pr_name", ""))).upper()
     if cand_name:
         name_words = [w for w in cand_name.split() if len(w) >= 2 and w not in _NOISE_WORDS]
         if name_words:

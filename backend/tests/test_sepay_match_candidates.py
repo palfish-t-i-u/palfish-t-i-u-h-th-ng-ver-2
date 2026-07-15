@@ -312,6 +312,17 @@ class TestScoreCandidate:
         assert score == 120 + 100 + 50 + 30
         assert set(signals) == {"code", "phone", "amount", "name"}
 
+    def test_name_match_diacritics_stripped(self):
+        from sepay_routes import _score_candidate
+
+        score, signals = _score_candidate(
+            "NGUYEN VAN A chuyen tien",
+            {"transfer_code": "", "pr_phone": "", "pr_name": "Nguyễn Văn A"},
+            0,
+        )
+        assert score == 30
+        assert signals == ["name"]
+
     def test_no_signals_scores_zero(self):
         from sepay_routes import _score_candidate
 
