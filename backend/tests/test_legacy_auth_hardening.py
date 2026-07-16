@@ -197,7 +197,7 @@ class TestEnvExampleSanitized:
         env_example = Path(__file__).resolve().parent.parent / ".env.example"
         if not env_example.exists():
             pytest.skip(".env.example not found")
-        content = env_example.read_text()
+        content = env_example.read_text(encoding="utf-8")
         assert "eyJ" not in content, (
             ".env.example contains a real JWT token (starts with eyJ). "
             "Replace with a placeholder like YOUR_SERVICE_ROLE_KEY."
@@ -210,7 +210,7 @@ class TestEnvExampleSanitized:
         env_example = Path(__file__).resolve().parent.parent / ".env.example"
         if not env_example.exists():
             pytest.skip(".env.example not found")
-        content = env_example.read_text()
+        content = env_example.read_text(encoding="utf-8")
         assert "palfish-toiuu" not in content, (
             ".env.example contains a real-looking SePay webhook secret. "
             "Replace with YOUR_SEPAY_WEBHOOK_SECRET."

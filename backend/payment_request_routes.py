@@ -274,59 +274,14 @@ def _sum_paid_amount(lines: list[dict[str, Any]]) -> int:
     )
 
 
-def _enqueue_pr_fully_paid_dingtalk(sb, pr_row: dict[str, Any], received: int) -> None:
-    """DingTalk Tin #1 'đơn đủ tiền' — 1 lần/PR khi state->done. Best-effort, NEVER raises."""
-    try:
-        from env_utils import dingtalk_event_enabled
-
-        if not dingtalk_event_enabled("pr_fully_paid"):
-            return
-        if pr_row.get("is_test"):
-            return
-        sale_email = _clean_text(pr_row.get("sale_email")).lower()
-        if not sale_email:
-            return
-        staff_res = (
-            sb.table("nhan_su_sale").select("email, team")
-            .ilike("email", sale_email).limit(1).execute()
-        )
-        team = _clean_text((staff_res.data or [{}])[0].get("team"))
-        if not team:
-            return
-        g = (
-            sb.table("dingtalk_team_groups").select("team_code, is_active")
-            .eq("team_code", team).limit(1).execute()
-        )
-        if not g.data or not g.data[0].get("is_active"):
-            return
-        pr_id = str(pr_row.get("id") or "")
-        student = _clean_text(pr_row.get("child_name")) or _clean_text(pr_row.get("name")) or "?"
-        recv_fmt = f"{int(received):,}".replace(",", ".")
-        tgt_fmt = f"{_parse_amount(pr_row.get('target')):,}".replace(",", ".")
-        msg = (
-            f"✅ ĐƠN ĐÃ ĐỦ TIỀN — {pr_id}\n"
-            f"Học viên: {student}\n"
-            f"Tổng net đã thu: {recv_fmt} / {tgt_fmt} VND"
-        )
-        try:
-            sb.table("dingtalk_outbox").insert({
-                "event_type": "pr_fully_paid",
-                "source_table": "payment_requests",
-                "source_id": pr_id,
-                "team_code": team,
-                "message": msg,
-            }).execute()
-        except Exception:
-            pass  # idempotent -- UNIQUE(source_table, source_id, event_type)
-    except Exception as exc:
-        print(f"[dingtalk] pr_fully_paid enqueue failed (non-fatal): {exc}")
+# _enqueue_pr_fully_paid_dingtalk was replaced by manual report-complete endpoint
 
 
 def _iso_now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def _serialize_payment_request(row: dict[str, Any]) -> dict[str, Any]:
+def _serialize_payment_request(row: dict[str, Any], completion_reports: list[dict[str, Any]] | None = None) -> dict[str, Any]:
     target = _parse_amount(row.get("target"))
     received = _parse_amount(row.get("received"))
     result = {
@@ -354,6 +309,7 @@ def _serialize_payment_request(row: dict[str, Any]) -> dict[str, Any]:
         "sale_email": row.get("sale_email") or "",
         "is_test": bool(row.get("is_test")),
         "wants_invoice": bool(row.get("wants_invoice")),
+        "completion_reports": completion_reports or [],
     }
     if row.get("child_name"):
         result["child_name"] = row["child_name"]
@@ -807,6 +763,7 @@ def _serialize_payment_request_list_item(
     bill_urls: dict[str, str] | None = None,
     bill_assets: dict[str, list[dict[str, str]]] | None = None,
     display_names: dict[str, str] | None = None,
+    completion_reports: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     sorted_lines = sorted(lines, key=lambda item: str(item.get("created_at") or ""))
     payments = [
@@ -814,7 +771,7 @@ def _serialize_payment_request_list_item(
         for idx, line in enumerate(sorted_lines, start=1)
     ]
     done_count = sum(1 for payment in payments if payment["status"] == "paid")
-    item = _serialize_payment_request(row)
+    item = _serialize_payment_request(row, completion_reports=completion_reports)
     item["cancelled_at"] = row.get("cancelled_at") or None
     item["cancelled_reason"] = row.get("cancelled_reason") or None
     item["done_count"] = done_count
@@ -1299,13 +1256,22 @@ def recompute_payment_request_totals(sb, payment_request_id: str) -> dict[str, A
         raise HTTPException(404, "Khong tim thay payment_request")
 
     pr_row = request_res.data[0]
+    
+    # Query completion reports to include in serialized payment request
+    reports = []
+    try:
+        rep_res = sb.table("pr_completion_reports").select("*").eq("pr_id", payment_request_id).order("seq", desc=False).execute()
+        reports = rep_res.data or []
+    except Exception as exc:
+        print(f"[payment_requests] completion reports lookup failed in recompute: {exc}")
+
     if _clean_text(pr_row.get("state")).lower() == "cancelled":
         return {
             "payment_request_id": payment_request_id,
             "received": _parse_amount(pr_row.get("received")),
             "target": _parse_amount(pr_row.get("target")),
             "state": "cancelled",
-            "payment_request": _serialize_payment_request(pr_row),
+            "payment_request": _serialize_payment_request(pr_row, completion_reports=reports),
         }
 
     line_res = (
@@ -1317,7 +1283,6 @@ def recompute_payment_request_totals(sb, payment_request_id: str) -> dict[str, A
     target = _parse_amount(pr_row.get("target"))
     received = _sum_paid_amount(line_res.data or [])
     state = _compute_state(received, target)
-    old_state = _clean_text(pr_row.get("state")).lower()
 
     update_res = (
         sb.table("payment_requests")
@@ -1326,8 +1291,6 @@ def recompute_payment_request_totals(sb, payment_request_id: str) -> dict[str, A
         .execute()
     )
     updated = update_res.data[0] if update_res.data else {**pr_row, "received": received, "state": state}
-    if state == "done" and old_state != "done":
-        _enqueue_pr_fully_paid_dingtalk(sb, updated, received)
     if state in ("done", "over"):
         try:
             from revenue_routes import sync_ledger_for_pr
@@ -1340,7 +1303,7 @@ def recompute_payment_request_totals(sb, payment_request_id: str) -> dict[str, A
         "received": received,
         "target": target,
         "state": state,
-        "payment_request": _serialize_payment_request(updated),
+        "payment_request": _serialize_payment_request(updated, completion_reports=reports),
     }
 
 
@@ -1684,12 +1647,12 @@ def _get_user_name_by_id(sb, user_id: str) -> str:
     return user_id
 
 
+class CompletionReportBody(BaseModel):
+    reason: str | None = None
+
+
 def register_payment_request_routes(app, _get_supabase) -> None:
-    # Expose the factory at module level so tests can patch it via
-    # patch.object(payment_request_routes, "get_supabase", ...).
-    import payment_request_routes as _self
-    _self.get_supabase = _get_supabase
-    # Use the local name throughout this closure for backward compatibility.
+    global get_supabase
     get_supabase = _get_supabase
 
     @router.get("/payment-requests")
@@ -1765,6 +1728,25 @@ def register_payment_request_routes(app, _get_supabase) -> None:
             except Exception as exc:
                 print(f"Khong doc duoc active_requests for PR referral_status: {exc}")
 
+        # Batch query completion reports
+        reports_by_pr: dict[str, list[dict[str, Any]]] = {pr_id: [] for pr_id in pr_ids}
+        if pr_ids:
+            try:
+                for chunk in _chunked(pr_ids, 100):
+                    rep_res = (
+                        sb.table("pr_completion_reports")
+                        .select("*")
+                        .in_("pr_id", chunk)
+                        .order("seq", desc=False)
+                        .execute()
+                    )
+                    for rep in (rep_res.data or []):
+                        pid = str(rep.get("pr_id") or "")
+                        if pid in reports_by_pr:
+                            reports_by_pr[pid].append(rep)
+            except Exception as exc:
+                print(f"[payment_requests] khong doc duoc pr_completion_reports list: {exc}")
+
         # Map ten TVTS dung cho ca sale_name (PR) lan confirmed_by_name (payment lines).
         name_map = _sale_name_map(sb)
 
@@ -1772,7 +1754,7 @@ def register_payment_request_routes(app, _get_supabase) -> None:
         for row in pr_rows:
             pr_id = str(row.get("id") or "")
             item = _serialize_payment_request_list_item(
-                row, lines_by_pr.get(pr_id, []), {}, {}, name_map
+                row, lines_by_pr.get(pr_id, []), {}, {}, name_map, completion_reports=reports_by_pr.get(pr_id, [])
             )
 
             ars = ars_by_pr.get(pr_id, [])
@@ -1855,11 +1837,19 @@ def register_payment_request_routes(app, _get_supabase) -> None:
             .eq("payment_request_id", payment_request_id)
             .execute()
         )
+        reports = []
+        try:
+            rep_res = sb.table("pr_completion_reports").select("*").eq("pr_id", payment_request_id).order("seq", desc=False).execute()
+            reports = rep_res.data or []
+        except Exception as exc:
+            print(f"[payment_requests] patch completion reports lookup failed: {exc}")
+
         return {
             "payment_request": _serialize_payment_request_list_item(
                 updated_row,
                 line_res.data or [],
                 display_names=_build_display_names_for_lines(sb, line_res.data or []),
+                completion_reports=reports,
             )
         }
 
@@ -1935,11 +1925,19 @@ def register_payment_request_routes(app, _get_supabase) -> None:
         log_audit(sb, actor.email, "pr.cancelled", "payment_request", payment_request_id, {
             "reason": reason,
         })
+        reports = []
+        try:
+            rep_res = sb.table("pr_completion_reports").select("*").eq("pr_id", payment_request_id).order("seq", desc=False).execute()
+            reports = rep_res.data or []
+        except Exception as exc:
+            print(f"[payment_requests] cancel completion reports lookup failed: {exc}")
+
         return {
             "payment_request": _serialize_payment_request_list_item(
                 updated,
                 line_res_full.data or [],
                 display_names=_build_display_names_for_lines(sb, line_res_full.data or []),
+                completion_reports=reports,
             )
         }
 
@@ -1996,10 +1994,192 @@ def register_payment_request_routes(app, _get_supabase) -> None:
             raise HTTPException(500, f"Khong restore duoc payment_request: {exc}") from exc
 
         updated = updated_res.data[0] if updated_res.data else {**pr_row, **patch}
+        reports = []
+        try:
+            rep_res = sb.table("pr_completion_reports").select("*").eq("pr_id", payment_request_id).order("seq", desc=False).execute()
+            reports = rep_res.data or []
+        except Exception as exc:
+            print(f"[payment_requests] restore completion reports lookup failed: {exc}")
+
         return {
             "payment_request": _serialize_payment_request_list_item(
-                updated, lines, display_names=_build_display_names_for_lines(sb, lines)
+                updated, lines, display_names=_build_display_names_for_lines(sb, lines), completion_reports=reports
             )
+        }
+
+    @router.post("/payment-requests/{payment_request_id}/report-complete")
+    def report_payment_request_complete(
+        payment_request_id: str,
+        body: CompletionReportBody | None = None,
+        authorization: str | None = Header(None),
+    ):
+        sb = _sb_or_503(get_supabase)
+        actor = resolve_actor(sb, authorization)
+        require_module_write(sb, actor, "paymentRequests")
+
+        # 1. Load PR, 404 if not found
+        request_res = (
+            sb.table("payment_requests")
+            .select("*")
+            .eq("id", payment_request_id)
+            .limit(1)
+            .execute()
+        )
+        if not request_res.data:
+            raise HTTPException(404, "Khong tim thay payment_request")
+        pr_row = request_res.data[0]
+
+        # 403 if not authorized
+        if not _can_access_request(sb, actor, pr_row):
+            raise HTTPException(403, "Khong co quyen thao tac phieu nay")
+
+        # 2. Assert PR paid and paid lines have bill
+        from pr_guards import assert_pr_paid, assert_all_paid_lines_have_bill
+        assert_pr_paid(pr_row)
+        assert_all_paid_lines_have_bill(sb, pr_row)
+
+        reason_val = _clean_text(body.reason if body else None) or None
+
+        # 3. seq = max(seq) + 1; if seq >= 2 and not reason -> 400
+        try:
+            seq_res = (
+                sb.table("pr_completion_reports")
+                .select("seq")
+                .eq("pr_id", payment_request_id)
+                .order("seq", desc=True)
+                .limit(1)
+                .execute()
+            )
+            last_seq = seq_res.data[0]["seq"] if seq_res.data else 0
+        except Exception as exc:
+            raise HTTPException(500, f"Khong doc duoc pr_completion_reports: {exc}") from exc
+
+        seq = last_seq + 1
+        if seq >= 2 and not reason_val:
+            raise HTTPException(400, "Lý do báo lại là bắt buộc từ lần thứ 2")
+
+        # 4. Insert pr_completion_reports (retry once if UNIQUE conflict)
+        reported_by = actor.email
+        target = _parse_amount(pr_row.get("target"))
+        received = _parse_amount(pr_row.get("received"))
+
+        report_row = {
+            "pr_id": payment_request_id,
+            "seq": seq,
+            "reason": reason_val,
+            "reported_by": reported_by,
+            "total_net": received,
+            "target": target,
+        }
+
+        try:
+            report_insert_res = sb.table("pr_completion_reports").insert(report_row).execute()
+        except Exception as exc:
+            print(f"[report-complete] unique constraint or insert failure: {exc}, retrying once...")
+            try:
+                seq_res = (
+                    sb.table("pr_completion_reports")
+                    .select("seq")
+                    .eq("pr_id", payment_request_id)
+                    .order("seq", desc=True)
+                    .limit(1)
+                    .execute()
+                )
+                last_seq = seq_res.data[0]["seq"] if seq_res.data else 0
+                seq = last_seq + 1
+                if seq >= 2 and not reason_val:
+                    raise HTTPException(400, "Lý do báo lại là bắt buộc từ lần thứ 2")
+                report_row["seq"] = seq
+                report_insert_res = sb.table("pr_completion_reports").insert(report_row).execute()
+            except HTTPException:
+                raise
+            except Exception as retry_exc:
+                raise HTTPException(500, f"Loi khi insert pr_completion_reports: {retry_exc}") from retry_exc
+
+        if not report_insert_res.data:
+            raise HTTPException(500, "Khong the tao Completion Report")
+
+        report_data = report_insert_res.data[0]
+        report_id = report_data["id"]
+
+        # Load all reports to return
+        try:
+            all_reports_res = (
+                sb.table("pr_completion_reports")
+                .select("*")
+                .eq("pr_id", payment_request_id)
+                .order("seq", desc=False)
+                .execute()
+            )
+            all_reports = all_reports_res.data or []
+        except Exception as exc:
+            all_reports = [report_data]
+            print(f"Could not load all reports: {exc}")
+
+        # 5. if is_test or pr_fully_paid event disabled -> skip outbox
+        from env_utils import dingtalk_event_enabled
+        if pr_row.get("is_test") or not dingtalk_event_enabled("pr_fully_paid"):
+            return {
+                "report": report_data,
+                "reports": all_reports,
+            }
+
+        # 6. Lookup team from nhan_su_sale + dingtalk_group_config
+        try:
+            sale_email = _clean_text(pr_row.get("sale_email")).lower()
+            if not sale_email:
+                return {
+                    "report": report_data,
+                    "reports": all_reports,
+                }
+            staff_res = (
+                sb.table("nhan_su_sale").select("email, team")
+                .ilike("email", sale_email).limit(1).execute()
+            )
+            team = _clean_text((staff_res.data or [{}])[0].get("team"))
+            if not team:
+                return {
+                    "report": report_data,
+                    "reports": all_reports,
+                }
+            g = (
+                sb.table("dingtalk_team_groups").select("team_code, is_active")
+                .eq("team_code", team).limit(1).execute()
+            )
+            if not g.data or not g.data[0].get("is_active"):
+                return {
+                    "report": report_data,
+                    "reports": all_reports,
+                }
+
+            # 7. Insert outbox
+            # Build message format:
+            student = _clean_text(pr_row.get("child_name")) or _clean_text(pr_row.get("name")) or "?"
+            recv_fmt = f"{int(received):,}".replace(",", ".")
+            tgt_fmt = f"{int(target):,}".replace(",", ".")
+            header = f"✅ ĐƠN ĐÃ ĐỦ TIỀN — {payment_request_id}"
+            if seq >= 2:
+                header += f" - Lần #{seq}"
+            msg = f"{header}\nHọc viên: {student}\nTổng net đã thu: {recv_fmt} / {tgt_fmt} VND"
+            if seq >= 2 and reason_val:
+                msg += f"\nLý do: {reason_val}"
+
+            try:
+                sb.table("dingtalk_outbox").insert({
+                    "event_type": "pr_fully_paid",
+                    "source_table": "pr_completion_reports",
+                    "source_id": str(report_id),
+                    "team_code": team,
+                    "message": msg,
+                }).execute()
+            except Exception as outbox_exc:
+                print(f"[dingtalk] pr_fully_paid duplicate insert skipped or failed: {outbox_exc}")
+        except Exception as exc:
+            print(f"[dingtalk] pr_fully_paid enqueue failed (non-fatal): {exc}")
+
+        return {
+            "report": report_data,
+            "reports": all_reports,
         }
 
     @router.post("/payment-requests/sync-pending-payos")

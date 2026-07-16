@@ -319,6 +319,7 @@ def _sample_pr(**overrides) -> dict:
     return base
 
 
+@patch("activation_routes.ZALO_ENABLED_EVENTS", frozenset({"activation_request_created"}))
 class TestEnqueueActivationRequestCreatedZalo:
     def test_happy_path_inserts_outbox_row_with_image_url(self):
         sb, outbox_calls = _build_enqueue_sb(
