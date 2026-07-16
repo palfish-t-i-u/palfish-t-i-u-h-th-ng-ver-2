@@ -53,12 +53,22 @@ Tổng net đã thu: {received} / {target} VND
 ```
 Lần ≥2 — thêm ` - Lần #{seq}` vào header + dòng cuối `Lý do: {reason}`. Số kiểu VN `31.400.000`.
 
-## API contract với FE (Đức)
+## API contract với FE (Đức) — ĐÓNG BĂNG
 
 - `POST .../report-complete` body `{reason?: string}` → 200 `{report, reports[]}`;
   400 khi (chưa done/over | thiếu bill | seq≥2 thiếu reason); 403 RBAC.
 - PR detail thêm `completion_reports: [{id, seq, reason, reported_by, total_net, target, created_at}]`.
-  Đổi gì ở contract → báo Đức ngay.
+- Contract này là nguồn sự thật để Đức mock — **không tự đổi tên field/route**. Bắt buộc phải
+  đổi → nhắn Đức + Minh TRƯỚC khi code tiếp, sửa cả 2 handoff.
+
+## Làm song song — không chặn nhau
+
+- Đạt và Đức **không chung file nào** (Đạt chỉ backend/, Đức chỉ frontend/) — không cần chờ nhau.
+- Làm trên nhánh riêng `feat/bdht-be` (tách từ `sandbox` mới nhất), xong tests thì merge vào
+  `sandbox` ngay — KHÔNG chờ Đức. Trước khi push: `git pull --rebase origin sandbox`.
+- Review chéo (Đức review BE) làm SAU khi đã merge sandbox — không phải điều kiện merge,
+  chỉ là điều kiện trước khi Minh đưa lên main.
+- Điểm nối duy nhất: smoke end-to-end trên sandbox = việc của Minh (Task 8), sau khi cả 2 merge.
 
 ## Definition of done
 

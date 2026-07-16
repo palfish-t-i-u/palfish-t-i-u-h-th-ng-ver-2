@@ -55,12 +55,24 @@ và AR mini-window (comment `{/* AR mini-window */}` :2413). Style theo class `p
   `B3 · Báo đơn hoàn thành (đã đủ tiền)` (trạng thái: "Chưa báo" / "Đã báo N lần · lần cuối
   HH:MM DD/MM"); đổi label `B3 · Active Request…` → `B4 · …`, `B4 · Yêu cầu xuất hoá đơn` → `B5 · …`.
 
-## API contract với BE (Đạt)
+## API contract với BE (Đạt) — ĐÓNG BĂNG, mock theo cái này, không chờ BE
 
 - `POST /api/v1/payment-requests/{pr_id}/report-complete` body `{reason?: string}`
   → 200 `{report, reports[]}`; 400 (chưa đủ tiền | thiếu bill | lần ≥2 thiếu lý do — show message
   BE trả về); 403 không có quyền.
 - PR detail có thêm `completion_reports: [{id, seq, reason, reported_by, total_net, target, created_at}]`.
+
+## Làm song song — không chặn nhau
+
+- Đức và Đạt **không chung file nào** — bắt đầu ngay, không chờ BE.
+- **Mock để dev + test**: unit test dùng MSW (pattern sẵn trong repo) — thêm handler
+  `POST .../report-complete` trả `{report, reports}` theo contract; thêm `completion_reports`
+  vào `mockPaymentRequests.ts` (3 biến thể: rỗng / 1 report / có backfill).
+- **Code phòng thủ**: đọc `pr.completion_reports ?? []` — BE merge trước hay sau đều không vỡ.
+- Làm trên nhánh riêng `feat/bdht-fe` (tách từ `sandbox` mới nhất), tests + `tsc -b` pass thì
+  merge vào `sandbox` ngay — KHÔNG chờ Đạt. Trước khi push: `git pull --rebase origin sandbox`.
+- Review chéo (Đạt review FE) làm SAU merge sandbox — không phải điều kiện merge.
+- Smoke UI cuối trên sandbox cần BE live — đó là việc Minh nối (Task 8), không phải việc Đức chờ.
 
 ## Definition of done
 

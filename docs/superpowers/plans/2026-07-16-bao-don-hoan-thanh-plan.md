@@ -19,6 +19,11 @@
 | 8 (migration + deploy + smoke sandbox) | Minh | |
 | Review chéo trước merge main | Đức review BE, Đạt review FE | + cavecrew-reviewer |
 
+**Chạy song song, không chặn nhau**: 2 stream không chung file. Mỗi người nhánh riêng
+(`feat/bdht-be`, `feat/bdht-fe`) tách từ sandbox, xong tests merge sandbox ngay không chờ nhau;
+FE mock MSW theo API contract đóng băng (ghi trong 2 handoff); review chéo sau merge sandbox,
+chỉ là gate trước main. Điểm nối duy nhất = smoke Task 8 (Minh).
+
 ---
 
 ### Task 1: Tách guards chung sang `pr_guards.py`
