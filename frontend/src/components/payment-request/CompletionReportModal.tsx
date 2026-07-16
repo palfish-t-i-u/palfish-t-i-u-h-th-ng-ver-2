@@ -1,12 +1,7 @@
 import { useState } from "react";
 import type { PaymentRequest } from "../../types/paymentRequest";
 import { Icons } from "./Icons";
-import { formatPaymentDateTime, vnd } from "./paymentRequestUtils";
-
-function extractErrorMessage(err: unknown, fallback: string): string {
-  const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-  return detail ? String(detail) : fallback;
-}
+import { extractErrorMessage, formatPaymentDateTime, vnd } from "./paymentRequestUtils";
 
 /** Số dạng chấm phân cách nghìn, KHÔNG kèm đơn vị — khớp format tin DingTalk BE (`{n:,}`.replace(",", ".")). */
 function fmtDot(n: number): string {
@@ -55,7 +50,7 @@ export default function CompletionReportModal({
     `✅ ĐƠN ĐÃ ĐỦ TIỀN — ${request.id} - Lần #${seq}`,
     `Học viên: ${student}`,
     `Tổng net đã thu: ${fmtDot(request.received)} / ${fmtDot(request.target)} VND`,
-    `Lý do: ${trimmedReason}`,
+    ...(trimmedReason ? [`Lý do: ${trimmedReason}`] : []),
   ];
 
   const bannerText = lastReport

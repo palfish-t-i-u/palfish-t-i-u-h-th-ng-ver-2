@@ -1735,6 +1735,7 @@ export default function PaymentRequestDetailDrawer({
   const hasActiveRequest = !!activeRequestId;
   const completionReports = request.completion_reports ?? [];
   const hasCompletionReport = completionReports.length > 0;
+  const readyToReport = ready && findPaidLinesWithoutBill(request.payments ?? []).length === 0;
   const activeSummary = activationSummary(activeRequest);
   const copyPrId = async () => {
     const id = request.id;
@@ -2459,7 +2460,7 @@ export default function PaymentRequestDetailDrawer({
                 </div>
               </div>
               <div className="tl-item">
-                <div className={`tl-dot ${hasCompletionReport ? "done" : ready ? "active" : "pending"}`} />
+                <div className={`tl-dot ${hasCompletionReport ? "done" : readyToReport ? "active" : "pending"}`} />
                 <div className="tl-content">
                   <div className="tl-title">B3 · Báo đơn hoàn thành (đã đủ tiền)</div>
                   <div className="tl-meta">

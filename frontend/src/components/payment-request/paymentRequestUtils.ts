@@ -908,3 +908,8 @@ export function applyTvtsFilter(
   if (selected.size === 0) return requests;
   return requests.filter((r) => selected.has(tvtsKeyOf(r)));
 }
+
+export function extractErrorMessage(err: unknown, fallback: string): string {
+  const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+  return detail ? String(detail) : fallback;
+}

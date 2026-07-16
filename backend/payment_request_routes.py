@@ -2088,7 +2088,7 @@ def register_payment_request_routes(app, _get_supabase) -> None:
                 last_seq = seq_res.data[0]["seq"] if seq_res.data else 0
                 seq = last_seq + 1
                 if seq >= 2 and not reason_val:
-                    raise HTTPException(400, "Lý do báo lại là bắt buộc từ lần thứ 2")
+                    raise HTTPException(409, "Đơn vừa được báo hoàn thành bởi người khác. Vui lòng tải lại trang.")
                 report_row["seq"] = seq
                 report_insert_res = sb.table("pr_completion_reports").insert(report_row).execute()
             except HTTPException:

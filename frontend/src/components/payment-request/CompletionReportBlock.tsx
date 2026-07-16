@@ -2,13 +2,8 @@ import { useState } from "react";
 import type { PaymentRequest } from "../../types/paymentRequest";
 import { Icons } from "./Icons";
 import { findPaidLinesWithoutBill } from "./billGuardUtils";
-import { formatPaymentDateTime, vnd } from "./paymentRequestUtils";
+import { extractErrorMessage, formatPaymentDateTime, vnd } from "./paymentRequestUtils";
 import CompletionReportModal from "./CompletionReportModal";
-
-function extractErrorMessage(err: unknown, fallback: string): string {
-  const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-  return detail ? String(detail) : fallback;
-}
 
 /**
  * B3 (16/7) — Báo đơn hoàn thành. Thay trigger DingTalk pr_fully_paid tự động
