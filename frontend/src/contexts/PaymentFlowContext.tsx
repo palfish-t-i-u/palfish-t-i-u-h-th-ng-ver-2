@@ -22,6 +22,7 @@ import type {
   ActiveRequest,
   AddPaymentAttemptPayload,
   ArDraftRow,
+  CompletionReport,
   CreatePaymentRequestPayload,
   CreateActiveRequestPayload,
   PatchPaymentRequestPayload,
@@ -84,6 +85,8 @@ type PaymentFlowContextValue = {
   ) => Promise<{ payment: PaymentAttempt; request: PaymentRequest } | null>;
   confirmTransaction: (prId: string, paymentId: string, extra?: { verified_total?: number; verified_received?: number }) => Promise<void>;
   rejectTransaction: (prId: string, paymentId: string, rejectReason?: string) => Promise<void>;
+  /** B3 (16/7) — Báo đơn hoàn thành. reason bắt buộc từ lần báo thứ 2 (BE validate). */
+  reportComplete: (prId: string, reason?: string) => Promise<CompletionReport>;
   handleCreateActiveRequest: (pr: PaymentRequest, rows: ArDraftRow[]) => Promise<ActiveRequest>;
   handleCreateActiveRequestFromForm: (data: {
     prId: string | null;
@@ -357,6 +360,24 @@ export function PaymentFlowProvider({
           p.id === paymentId ? { ...p, status: "paid", paidAt: flowNow() } : p
         ),
       }));
+    },
+    [updateRequest]
+  );
+
+  const reportComplete = useCallback(
+    async (prId: string, reason?: string) => {
+      try {
+        const res = (await endpoints.paymentRequests.reportComplete(prId, reason ? { reason } : undefined)).data;
+        updateRequest(prId, (r) => ({ ...r, completion_reports: res.reports }));
+        setApiNote("");
+        return res.report;
+      } catch (err) {
+        const msg =
+          (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ||
+          "Máy chủ từ chối báo đơn hoàn thành. Vui lòng thử lại.";
+        setApiNote(String(msg));
+        throw err;
+      }
     },
     [updateRequest]
   );
@@ -691,6 +712,7 @@ export function PaymentFlowProvider({
       handleAddPayment,
       confirmTransaction,
       rejectTransaction,
+      reportComplete,
       handleCreateActiveRequest,
       handleCreateActiveRequestFromForm,
       updateActiveRequestCoursePackage,
@@ -720,6 +742,7 @@ export function PaymentFlowProvider({
       handleAddPayment,
       confirmTransaction,
       rejectTransaction,
+      reportComplete,
       handleCreateActiveRequest,
       handleCreateActiveRequestFromForm,
       updateActiveRequestCoursePackage,

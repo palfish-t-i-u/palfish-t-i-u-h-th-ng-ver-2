@@ -126,6 +126,19 @@ export interface PaymentRequest {
   state: PaymentRequestStatus;
   payments: PaymentAttempt[];
   isTest?: boolean;
+  /** Lịch sử "Báo đơn hoàn thành" (B3, 16/7). BE có thể chưa merge — luôn đọc `?? []`. */
+  completion_reports?: CompletionReport[];
+}
+
+/** 1 lần bấm "Báo đơn hoàn thành" — nguồn sự thật thay trigger DingTalk pr_fully_paid tự động. */
+export interface CompletionReport {
+  id: string;
+  seq: number;
+  reason: string | null;
+  reported_by: string;
+  total_net: number;
+  target: number;
+  created_at: string;
 }
 
 export interface ActiveCourse {

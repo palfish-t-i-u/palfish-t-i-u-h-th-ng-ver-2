@@ -64,6 +64,7 @@ export default function PaymentRequestsTab() {
     handleCreateActiveRequest,
     saveActiveRequest,
     deleteActiveRequest,
+    reportComplete,
     nav,
     setNav,
   } = usePaymentFlow();
@@ -850,6 +851,7 @@ export default function PaymentRequestsTab() {
         onActiveRequestMutate={handleActiveRequestMiniMutate}
         onActiveRequestSave={saveActiveRequest}
         onActiveRequestDelete={deleteActiveRequest}
+        onReportComplete={async (reason) => { if (selected) await reportComplete(selected.id, reason); }}
         onEditingArIdChange={setEditingArId}
         onShowQr={(qr) => selected && setQrView({ qr, request: selected })}
         readOnly={readOnly}

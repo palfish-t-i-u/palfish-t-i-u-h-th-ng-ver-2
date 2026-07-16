@@ -201,6 +201,7 @@ export function fromApiPaymentRequest(raw: any): PaymentRequest {
     state: raw.state ?? "pending",
     payments: Array.isArray(raw.payments) ? raw.payments.map(fromApiAttempt) : [],
     isTest: Boolean(raw.is_test ?? raw.isTest),
+    completion_reports: Array.isArray(raw.completion_reports) ? raw.completion_reports : [],
   };
 }
 
