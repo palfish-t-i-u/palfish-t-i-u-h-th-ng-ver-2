@@ -250,6 +250,18 @@ export default function CreatePaymentRequestModal({
           </div>
 
           <div className="field">
+            <label>UID CRM</label>
+            <input
+              placeholder="UID CRM (bổ sung sau — cần trước khi kích hoạt)"
+              value={form.uid}
+              onChange={(e) => set("uid", e.target.value)}
+            />
+            <div style={{ fontSize: 11.5, color: "var(--text-3)", lineHeight: 1.45, marginTop: 4 }}>
+              Bổ sung sau — cần trước khi kích hoạt (bước B3).
+            </div>
+          </div>
+
+          <div className="field">
             <label>
               Địa chỉ khách hàng
             </label>
@@ -400,19 +412,6 @@ export default function CreatePaymentRequestModal({
               value={form.note}
               onChange={(e) => set("note", e.target.value)}
             />
-          </div>
-
-          {/* Nhóm bổ sung sau — UID CRM */}
-          <div className="field" style={{ borderTop: "1px dashed var(--border)", paddingTop: 12, marginTop: 4 }}>
-            <label>UID CRM</label>
-            <input
-              placeholder="UID CRM (bổ sung sau — cần trước khi kích hoạt)"
-              value={form.uid}
-              onChange={(e) => set("uid", e.target.value)}
-            />
-            <div style={{ fontSize: 11.5, color: "var(--text-3)", lineHeight: 1.45, marginTop: 4 }}>
-              Bổ sung sau — cần trước khi kích hoạt (bước B3).
-            </div>
           </div>
 
           <div
