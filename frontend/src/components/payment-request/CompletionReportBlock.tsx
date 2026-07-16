@@ -109,7 +109,9 @@ export default function CompletionReportBlock({
         <Icons.CheckSquare size={14} /> {submitting ? "Đang gửi…" : "Báo đơn hoàn thành"}
       </button>
       {!ready && hint && (
-        <div style={{ fontSize: 11.5, color: "var(--text-3)", marginTop: 6 }}>{hint}</div>
+        <div style={{ fontSize: 12.5, color: "var(--danger)", background: "var(--danger-bg, #fef2f2)", borderRadius: 6, padding: "6px 10px", marginTop: 8, lineHeight: 1.5, fontWeight: 500 }}>
+          ⚠ {hint}
+        </div>
       )}
 
       {modalOpen && (
