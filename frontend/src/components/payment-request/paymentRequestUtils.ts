@@ -201,6 +201,7 @@ export function fromApiPaymentRequest(raw: any): PaymentRequest {
     state: raw.state ?? "pending",
     payments: Array.isArray(raw.payments) ? raw.payments.map(fromApiAttempt) : [],
     isTest: Boolean(raw.is_test ?? raw.isTest),
+    completion_reports: Array.isArray(raw.completion_reports) ? raw.completion_reports : [],
   };
 }
 
@@ -906,4 +907,9 @@ export function applyTvtsFilter(
 ): PaymentRequest[] {
   if (selected.size === 0) return requests;
   return requests.filter((r) => selected.has(tvtsKeyOf(r)));
+}
+
+export function extractErrorMessage(err: unknown, fallback: string): string {
+  const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+  return detail ? String(detail) : fallback;
 }

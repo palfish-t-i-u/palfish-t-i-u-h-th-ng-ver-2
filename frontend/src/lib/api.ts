@@ -7,6 +7,7 @@ import type {
   ActiveRequestApiRow,
   AddPaymentAttemptPayload,
   AddPaymentLineResponse,
+  CompletionReport,
   CreateActiveRequestPayload,
   CreateStandaloneActiveRequestPayload,
   CreatePaymentRequestPayload,
@@ -181,6 +182,12 @@ export const endpoints = {
     // B3: create active request nested under PR
     createActiveRequest: (prId: string, body: CreateActiveRequestPayload) =>
       api.post<ActiveRequestApiRow>(`/api/v1/payment-requests/${prId}/active-requests`, body),
+    // B3 mới (16/7): Báo đơn hoàn thành — thay trigger DingTalk pr_fully_paid tự động
+    reportComplete: (prId: string, body?: { reason?: string }) =>
+      api.post<{ report: CompletionReport; reports: CompletionReport[] }>(
+        `/api/v1/payment-requests/${prId}/report-complete`,
+        body ?? {}
+      ),
   },
   activeRequests: {
     list: (params?: { status?: string }) =>

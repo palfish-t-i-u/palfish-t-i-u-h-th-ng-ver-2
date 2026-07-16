@@ -118,3 +118,30 @@ def test_ar_list_returns_sale_name_from_nhan_su_sale():
     pr_snippet = data[0].get("payment_request", {})
     assert pr_snippet.get("sale_email") == "hoa@palfish.com"
     assert pr_snippet.get("sale_name") == "Nguyen Thi Hoa"   # display_name wins over crm_name
+
+
+def test_ar_list_with_valid_status_filter():
+    sb = FakeSB()
+    client = build_client(sb)
+
+    with patch("activation_routes.resolve_actor", return_value=ACTOR):
+        resp = client.get("/api/v1/active-requests?status=pending_order")
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert len(data) == 1
+    assert data[0].get("status") == "pending_order"
+
+
+def test_ar_list_with_invalid_status_filter():
+    sb = FakeSB()
+    client = build_client(sb)
+
+    with patch("activation_routes.resolve_actor", return_value=ACTOR):
+        resp = client.get("/api/v1/active-requests?status=invalid_status")
+
+    assert resp.status_code == 400
+    detail = resp.json().get("detail", "")
+    assert "status không hợp lệ" in detail
+    assert "pending_order" in detail
+

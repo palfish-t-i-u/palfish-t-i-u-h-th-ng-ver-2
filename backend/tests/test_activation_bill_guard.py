@@ -15,7 +15,7 @@ def test_allowlist_skips_zalo_enqueue():
 
 def test_assert_all_paid_lines_have_bill_raises_when_missing():
     """Should raise 422 when a paid line has no bill."""
-    from activation_routes import _assert_all_paid_lines_have_bill
+    from pr_guards import assert_all_paid_lines_have_bill
     from fastapi import HTTPException
 
     sb = MagicMock()
@@ -24,7 +24,7 @@ def test_assert_all_paid_lines_have_bill_raises_when_missing():
         {"id": "line-2", "amount": 16320000, "bill_image": "https://example.com/bill.jpg", "bill_images": None},
     ]
     with pytest.raises(HTTPException) as exc_info:
-        _assert_all_paid_lines_have_bill(sb, {"id": "pr-1"})
+        assert_all_paid_lines_have_bill(sb, {"id": "pr-1"})
     assert exc_info.value.status_code == 422
     detail = exc_info.value.detail
     assert detail["code"] == "MISSING_BILLS"
@@ -34,7 +34,7 @@ def test_assert_all_paid_lines_have_bill_raises_when_missing():
 
 def test_assert_all_paid_lines_have_bill_passes_when_all_have_bill():
     """Should not raise when all paid lines have a bill."""
-    from activation_routes import _assert_all_paid_lines_have_bill
+    from pr_guards import assert_all_paid_lines_have_bill
 
     sb = MagicMock()
     sb.table.return_value.select.return_value.eq.return_value.eq.return_value.execute.return_value.data = [
@@ -42,12 +42,12 @@ def test_assert_all_paid_lines_have_bill_passes_when_all_have_bill():
         {"id": "line-2", "amount": 16320000, "bill_image": "", "bill_images": ["https://example.com/bill2.jpg"]},
     ]
     # Should not raise
-    _assert_all_paid_lines_have_bill(sb, {"id": "pr-1"})
+    assert_all_paid_lines_have_bill(sb, {"id": "pr-1"})
 
 
 def test_assert_all_paid_lines_have_bill_no_op_when_no_pr_id():
     """Should be a no-op when PR has no id."""
-    from activation_routes import _assert_all_paid_lines_have_bill
+    from pr_guards import assert_all_paid_lines_have_bill
     sb = MagicMock()
-    _assert_all_paid_lines_have_bill(sb, {})
+    assert_all_paid_lines_have_bill(sb, {})
     sb.table.assert_not_called()

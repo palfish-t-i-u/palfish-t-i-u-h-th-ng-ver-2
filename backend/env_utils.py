@@ -46,3 +46,11 @@ def dingtalk_event_enabled(event_type: str) -> bool:
         return True
     disabled = {e.strip() for e in raw.split(",") if e.strip()}
     return event_type not in disabled
+
+
+def require_completion_report_enabled() -> bool:
+    """True by default. Set REQUIRE_COMPLETION_REPORT_FOR_AR=0 to disable (kill-switch).
+
+    Spec: default bật, chỉ set ="0" mới tắt.
+    """
+    return os.getenv("REQUIRE_COMPLETION_REPORT_FOR_AR", "1") != "0"
