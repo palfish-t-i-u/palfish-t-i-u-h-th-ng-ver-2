@@ -48,6 +48,22 @@ MPOS_SETTLE_PATTERNS: list[re.Pattern] = [
     re.compile(r"THANH\s*TOAN\s*THE.*MPOS", re.IGNORECASE),
 ]
 
+# Nhận diện settlement thật từ sao kê MB (xác minh 16/7/2026 — khớp 100% tổng
+# net_amount gateway_transactions theo ngày, settle về T+1):
+#   mPOS qua Ngân Lượng: "VCBCSH.868638.<32hex>. 1112607... CDSNL18642239 TT PC
+#       79203950 CT tu 1064604204 CTCP CONG TG THANH TOAN NGAN [LUONG]"
+#   Payoo: "Payoo CT DS N10.7 12.7.2026 cho TKECOM. PY3 PALFISH EC- Ma GD ACSP/..."
+# Yêu cầu >=2 tín hiệu độc lập cùng họ — khách gõ tay không thể trùng cả 2.
+_MPOS_SETTLE_SIGNALS: list[re.Pattern] = [
+    re.compile(r"VCBCSH\.\d+\.[0-9a-f]{16,}", re.IGNORECASE),   # prefix VCB + mã lô hex
+    re.compile(r"CDSNL\d{4,}", re.IGNORECASE),                  # mã Chuyển Doanh Số Ngân Lượng
+    re.compile(r"CT\s*tu\s*1064604204|CONG\s*TG\s*THANH\s*TOAN\s*NGAN", re.IGNORECASE),  # TK/tên Ngân Lượng
+]
+_PAYOO_SETTLE_SIGNALS: list[re.Pattern] = [
+    re.compile(r"PAYOO\s*CT\s*DS", re.IGNORECASE),              # Payoo chuyển doanh số
+    re.compile(r"PALFISH\s*EC|TK\s*\.?\s*ECOM|TKECOM|PY3", re.IGNORECASE),  # TK ecom PalFish
+]
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -219,10 +235,15 @@ def _extract_sepay_transaction_fields(txn: dict[str, Any]) -> dict[str, Any]:
 
 
 def _is_mpos_settlement(content: str) -> bool:
-    """Nhận diện nội dung CK là khoản kết toán mPOS → ignore."""
+    """Nhận diện nội dung CK là khoản kết toán mPOS/Payoo settle → ignore."""
     for pattern in MPOS_SETTLE_PATTERNS:
         if pattern.search(content):
             return True
+    # Settlement mPOS (Ngân Lượng) / Payoo: cần >=2 tín hiệu cùng họ
+    if sum(1 for p in _MPOS_SETTLE_SIGNALS if p.search(content)) >= 2:
+        return True
+    if all(p.search(content) for p in _PAYOO_SETTLE_SIGNALS):
+        return True
     return False
 
 

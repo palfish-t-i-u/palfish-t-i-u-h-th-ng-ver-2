@@ -791,7 +791,7 @@ export default function ReconciliationTab() {
               onChange={(e) => setSearch(e.target.value)}
             />
           </div>
-          {methodChips.map((c) => (
+          {tab !== "ckOutside" && methodChips.map((c) => (
             <button
               key={c.id}
               type="button"
