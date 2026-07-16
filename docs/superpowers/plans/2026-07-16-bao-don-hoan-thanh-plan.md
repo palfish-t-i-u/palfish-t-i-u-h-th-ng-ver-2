@@ -10,14 +10,14 @@
 
 **Spec:** `docs/superpowers/specs/2026-07-16-bao-don-hoan-thanh-dingtalk-design.md`
 
-**Phân việc đề xuất:**
+**Phân việc (chốt Minh 16/7):**
 | Task | Ai | Ghi chú |
 |------|-----|--------|
-| 1-4 (BE: guards, migration, endpoint, AR gate) | Giang | Quen DingTalk BE (G1-G7) |
-| 5-6 (FE: block, modal, timeline, AR button) | AI session + Minh review | |
+| 1-4 (BE: guards, migration, endpoint, AR gate) | **Đạt** | Handoff: `docs/HANDOFF_DAT_BE_BAO_DON_HOAN_THANH.md` |
+| 5-6 (FE: block, modal, timeline, AR button) | **Đức** | Handoff: `docs/HANDOFF_DUC_FE_BAO_DON_HOAN_THANH.md` |
 | 7 (verify + merge) | Minh | |
 | 8 (migration + deploy + smoke sandbox) | Minh | |
-| Review chéo BE trước merge main | Đạt | |
+| Review chéo trước merge main | Đức review BE, Đạt review FE | + cavecrew-reviewer |
 
 ---
 
@@ -182,7 +182,7 @@ if require_completion_report_enabled():
 
 - [ ] **Step 3: Implement Block** — gate FE: `ready = (pr.state==='done'||pr.state==='over') && paidLinesWithoutBill.length===0` (tái dùng `findPaidLinesWithoutBill` :2541); hiển thị lịch sử reports từ PR detail; badge "Đã báo N lần"; disable in-flight. UI theo mockup đã duyệt 16/7 (block panel + badge + history rows). Style theo class `panel` hiện có của drawer.
 
-- [ ] **Step 4: Implement Modal** — pattern theo `CancelPrModal.tsx`: banner warning nhắc lần trước (`Lần #{n} · {date} · {total}`), textarea placeholder `"Vì sao đơn đủ tiền thêm lần nữa — VD: Khách mua thêm gói cho con / Khách đóng nốt phần bổ sung"`, preview live message, nút "Xác nhận và báo đơn hoàn thành" disabled khi trống.
+- [ ] **Step 4: Implement Modal** — pattern theo `CancelPrModal.tsx`: banner warning copy chính xác `"Đơn này đã báo hoàn thành ở lần #{n} ({DD/MM} · {tổng} đ). Nhập lý do báo lại để kế toán theo dõi."`, textarea placeholder `"Vì sao đơn đủ tiền thêm lần nữa — VD: Khách mua thêm gói cho con / Khách đóng nốt phần bổ sung"`, preview live message, nút "Xác nhận và báo đơn hoàn thành" disabled khi trống.
 
 - [ ] **Step 5: Run** — `cd frontend && npm run test` → PASS. **Step 6: Commit.**
 

@@ -60,6 +60,8 @@ CREATE INDEX ON public.pr_completion_reports (pr_id);
 - **Backfill** (trong cùng migration): PR nào đã có `active_requests` → insert report seq=1
   synthetic (`reported_by='system-backfill'`, reason ghi rõ backfill, KHÔNG enqueue outbox)
   → PR cũ không bị gate chặn khi tạo AR bổ sung, timeline B3 hiển thị đúng.
+- **KHÔNG gửi bù** (chốt Minh 16/7): 210 PR done trước fix không nhận tin retro nào. Tin
+  DingTalk chỉ bắt đầu từ các lần bấm nút sau khi tính năng live.
 
 ### 3.2 BE
 
@@ -92,8 +94,10 @@ CREATE INDEX ON public.pr_completion_reports (pr_id);
     ngược lại disabled + dòng giải thích thiếu gì.
   - Lịch sử các lần báo. Nút lần 1 gửi thẳng; lần ≥2 mở modal.
   - Disable khi in-flight (chống double-click).
-- **Modal** `CompletionReportModal` (pattern giống CancelPrModal): banner cảnh báo nhắc lần
-  trước, textarea lý do bắt buộc, placeholder:
+- **Modal** `CompletionReportModal` (pattern giống CancelPrModal): banner cảnh báo với copy
+  CHÍNH XÁC (chốt Minh 16/7):
+  `"Đơn này đã báo hoàn thành ở lần #{n} ({DD/MM} · {tổng} đ). Nhập lý do báo lại để kế toán theo dõi."`
+  — textarea lý do bắt buộc, placeholder:
   `"Vì sao đơn đủ tiền thêm lần nữa — VD: Khách mua thêm gói cho con / Khách đóng nốt phần bổ sung"`,
   preview tin DingTalk live, nút "Xác nhận và báo đơn hoàn thành".
 - **AR mini-window**: disable nút tạo AR khi chưa có report + hint "Cần báo đơn hoàn thành trước".
