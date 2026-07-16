@@ -74,8 +74,11 @@ export default function CompletionReportBlock({
           )}
         </h4>
       </div>
-      <div style={{ fontSize: 12, color: "var(--text-3)", marginBottom: 12 }}>
+      <div style={{ fontSize: 12.5, color: "var(--text)", marginBottom: 4, fontWeight: 500 }}>
         Nhắn DingTalk cho kế toán — bắt buộc trước khi tạo Active Request.
+      </div>
+      <div style={{ fontSize: 12, color: "var(--warning-text, #92400e)", background: "var(--warning-bg, #fef3c7)", borderRadius: 6, padding: "6px 10px", marginBottom: 12, lineHeight: 1.5 }}>
+        ⚠ Lưu ý: Sales hãy đảm bảo rằng PR đã gom đủ tiền dự kiến trước khi Báo đơn hoàn thành (DingTalk).
       </div>
 
       {reports.length > 0 && (
