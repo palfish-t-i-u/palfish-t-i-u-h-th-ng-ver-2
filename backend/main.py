@@ -219,6 +219,42 @@ _sb_instance = None
 _sb_lock = threading.Lock()
 
 
+def _force_http1_session(sb) -> bool:
+    """Thay session HTTP/2 của postgrest bằng httpx HTTP/1.1 pool.
+
+    postgrest (supabase-py) tạo httpx.Client(http2=True) → mọi query của
+    singleton multiplex qua 1 connection, trần ~100 streams → server GOAWAY
+    (ConnectionTerminated last_stream_id:99) giết hàng loạt query đang bay,
+    threads kẹt → /healthz trễ >5s → Render kill instance (storm 14-15/07).
+    HTTP/1.1 pool: vượt pool thì query xếp hàng, không bao giờ chết chùm.
+
+    Trả False (và giữ nguyên session cũ) nếu internals postgrest đổi —
+    app khi đó chạy tiếp như trước, chỉ mất tối ưu. requirements.txt pin
+    supabase<3 để internals không trôi bất ngờ.
+    """
+    try:
+        old = getattr(getattr(sb, "postgrest", None), "session", None)
+        if not isinstance(old, httpx.Client):
+            print("[supabase] _force_http1_session: postgrest.session không phải httpx.Client — giữ nguyên HTTP/2")
+            return False
+        new = httpx.Client(
+            base_url=old.base_url,
+            headers=dict(old.headers),
+            timeout=old.timeout,
+            follow_redirects=old.follow_redirects,
+            http2=False,
+            # 40 = trần threadpool sync endpoints (anyio default) → pool không bao giờ PoolTimeout
+            limits=httpx.Limits(max_connections=40, max_keepalive_connections=20),
+        )
+        sb.postgrest.session = new
+        old.close()
+        print("[supabase] postgrest qua HTTP/1.1 pool (max=40, keepalive=20) — chống GOAWAY storm")
+        return True
+    except Exception as exc:
+        print(f"[supabase] _force_http1_session failed, giữ HTTP/2: {exc}")
+        return False
+
+
 def _supabase():
     """Process-wide singleton Supabase client.
 
@@ -243,6 +279,7 @@ def _supabase():
             from supabase import create_client
 
             _sb_instance = create_client(url, key)
+            _force_http1_session(_sb_instance)
             return _sb_instance
         except Exception as exc:
             print(f"Supabase client init failed: {exc}")
@@ -601,11 +638,13 @@ def _record_bank_payment(sb, info_code: str, amount: int, bank_content: str, ban
 
 
 @app.get("/healthz")
-def health():
+async def health():
     """Liveness probe cho Render — PHẢI trả lời tức thì, KHÔNG chạm DB.
-    Render giết instance nếu health check không đáp trong 5s; việc ping Supabase
-    ở đây gây restart storm dưới tải cao (2026-07-10). Chẩn đoán sâu (ping DB,
-    format key, ...) chuyển sang /healthz/deep."""
+    Render giết instance nếu health check không đáp trong 5s; ping Supabase
+    ở đây gây restart storm dưới tải (2026-07-10). PHẢI là async def: sync def
+    xếp hàng threadpool (40 slot) — khi threads kẹt vì DB storm, health check
+    trễ >5s → Render kill instance dù app còn sống (2026-07-15). Chẩn đoán
+    sâu (ping DB, format key, ...) ở /healthz/deep."""
     return {"status": "ok", "app_env": app_env(), "sandbox": is_sandbox_env()}
 
 

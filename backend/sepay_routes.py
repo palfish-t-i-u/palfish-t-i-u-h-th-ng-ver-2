@@ -12,6 +12,7 @@ import json
 import os
 import re
 import time
+import unicodedata
 from datetime import datetime, timedelta, timezone
 from typing import Any, Callable
 
@@ -80,6 +81,71 @@ def _first_value(data: dict[str, Any], *keys: str) -> Any:
 
 def _first_text(data: dict[str, Any], *keys: str) -> str:
     return _clean_text(_first_value(data, *keys))
+
+
+# ---------------------------------------------------------------------------
+# Scoring: chấm điểm candidate khi ghép CK ngoài (parse NDCK)
+# ---------------------------------------------------------------------------
+def _strip_vn(s: str) -> str:
+    nfkd = unicodedata.normalize("NFKD", s)
+    return "".join(c for c in nfkd if not unicodedata.combining(c)).replace("đ", "d").replace("Đ", "D")
+
+_PHONE_RE = re.compile(r"(?:^|\D)(0\d{9})(?:\D|$)")
+_NOISE_WORDS = {"CK", "CHUYEN", "KHOAN", "THANH", "TOAN", "TIEN", "HOC", "PHI",
+                "GD", "IBFT", "VCB", "TCB", "MB", "ACB", "BIDV", "VIETINBANK",
+                "VIETCOMBANK", "SACOMBANK", "TECHCOMBANK", "MBBANK", "NGUYEN", "TRAN",
+                "LE", "PHAM", "HOANG", "DANG", "BUI", "DO", "HO", "NGO", "DUONG", "LY",
+                "VU", "VO", "TRUONG", "VND", "CT", "TU", "DEN", "CHO", "TAI"}
+
+
+def _score_candidate(content: str, cand: dict, txn_amount: float) -> tuple[int, list[str]]:
+    """Chấm điểm 1 candidate so với nội dung chuyển khoản (NDCK).
+
+    Trả (score, match_signals) — signals ⊆ {"code", "phone", "amount", "name"}.
+    Weights: mã TT +120, SĐT +100, cùng tiền +50, tên +30 (xem HANDOFF_RECON_ORPHAN_REDIRECT_SCORING.md).
+    """
+    score = 0
+    signals: list[str] = []
+    desc = _strip_vn(_clean_text(content)).upper()
+    if not desc:
+        if txn_amount > 0 and abs(txn_amount - cand.get("amount", 0)) < 1:
+            return 50, ["amount"]
+        return 0, []
+
+    # Mã TT (transfer_code)
+    tc = _clean_text(cand.get("transfer_code", "")).upper()
+    if tc and len(tc) >= 4 and tc in desc:
+        score += 120
+        signals.append("code")
+
+    # SĐT
+    phones_in_content = _PHONE_RE.findall(desc.replace(" ", ""))
+    cand_phone = _clean_text(cand.get("pr_phone", "")).replace(" ", "")
+    if cand_phone and len(cand_phone) >= 9:
+        cand_phone_norm = cand_phone[-9:]
+        for p in phones_in_content:
+            if p[-9:] == cand_phone_norm:
+                score += 100
+                signals.append("phone")
+                break
+
+    # Cùng số tiền
+    if txn_amount > 0 and abs(txn_amount - cand.get("amount", 0)) < 1:
+        score += 50
+        signals.append("amount")
+
+    # Tên (bỏ noise word: tên ngân hàng, họ phổ biến VN)
+    cand_name = _strip_vn(_clean_text(cand.get("pr_name", ""))).upper()
+    if cand_name:
+        name_words = [w for w in cand_name.split() if len(w) >= 2 and w not in _NOISE_WORDS]
+        if name_words:
+            desc_words = set(desc.split())
+            matched = sum(1 for w in name_words if w in desc_words)
+            if matched >= 1 and matched >= len(name_words) * 0.5:
+                score += 30
+                signals.append("name")
+
+    return score, signals
 
 
 def _extract_sepay_amount(txn: dict[str, Any]) -> float:
@@ -367,25 +433,16 @@ def _process_sepay_transaction(sb, txn: dict[str, Any]) -> dict[str, Any]:
     # Step 3: CHỈ KHI bank_transactions INSERT thành công (is_new=True) MỚI mark
     # payment_line=paid + recompute PR. Tránh case INSERT fail nhưng line đã paid.
     if is_new and line_to_pay is not None:
+        line_paid_ok = False
         try:
-            from payment_request_routes import recompute_payment_request_totals
-            from audit import log_audit
-
             now_iso = _iso_now()
             sb.table("payment_lines").update(
                 {"status": "paid", "paid_at": now_iso, "reject_reason": None,
                  "confirmed_by": "system:sepay", "confirmed_at": now_iso, "confirmed_source": "sepay"}
             ).eq("id", payment_line_id).execute()
-
-            pr_id = str(line_to_pay.get("payment_request_id", ""))
-            if pr_id:
-                recompute_payment_request_totals(sb, pr_id)
-            log_audit(sb, "system:sepay", "recon.line_marked_paid", "payment_line", payment_line_id, {
-                "pr_id": pr_id, "source": "sepay", "sepay_id": sepay_id,
-            })
+            line_paid_ok = True
         except Exception as exc:
-            # Không rollback INSERT — log + chuyển bank_transactions sang needs_review
-            # để kế toán xử lý tay. State invariant: bank_transactions tồn tại.
+            # payment_line update fail → line CHƯA paid, an toàn revert match_status.
             print(f"[sepay] mark_line_paid failed sau khi INSERT: {exc}")
             try:
                 sb.table("bank_transactions").update(
@@ -394,6 +451,22 @@ def _process_sepay_transaction(sb, txn: dict[str, Any]) -> dict[str, Any]:
                 match_status = "needs_review"
             except Exception as exc2:
                 print(f"[sepay] revert match_status failed: {exc2}")
+
+        # Recompute + audit: best-effort, KHÔNG revert match_status nếu fail —
+        # line đã paid rồi, revert sẽ tạo orphan (line=paid, match_status=needs_review).
+        if line_paid_ok:
+            try:
+                from payment_request_routes import recompute_payment_request_totals
+                from audit import log_audit
+
+                pr_id = str(line_to_pay.get("payment_request_id", ""))
+                if pr_id:
+                    recompute_payment_request_totals(sb, pr_id)
+                log_audit(sb, "system:sepay", "recon.line_marked_paid", "payment_line", payment_line_id, {
+                    "pr_id": pr_id, "source": "sepay", "sepay_id": sepay_id,
+                })
+            except Exception as exc:
+                print(f"[sepay] recompute/audit failed (line already paid, match_status kept): {exc}")
 
     return {
         "sepay_id": sepay_id,
@@ -826,8 +899,17 @@ def register_sepay_routes(app, get_supabase: Callable) -> None:
                 "has_bill": bool(line.get("bill_images") or line.get("bill_image")),
             })
 
-        if txn_amount > 0:
-            candidates.sort(key=lambda c: (abs(c["amount"] - txn_amount), c["created_at"] or ""))
+        # Scoring: parse NDCK (txn.content) → chấm điểm mỗi candidate
+        txn_content = txn.get("content", "") or txn.get("transfer_content", "") or ""
+        for c in candidates:
+            sc, sigs = _score_candidate(txn_content, c, txn_amount)
+            c["score"] = sc
+            c["match_signals"] = sigs
+
+        # Sort: score DESC trước (khớp NDCK nhiều nhất lên đầu), amount proximity ASC sau
+        candidates.sort(
+            key=lambda c: (-c["score"], abs(c["amount"] - txn_amount) if txn_amount > 0 else 0)
+        )
 
         return candidates
 

@@ -47,7 +47,7 @@ import {
   nowStamp as flowNow,
 } from "../components/payment-flow/paymentFlowUtils";
 
-export type PaymentFlowView = "paymentRequests" | "reconciliation" | "module3" | "module4";
+export type PaymentFlowView = "paymentRequests" | "reconciliation" | "module3" | "module4" | "reconCard";
 
 type NavState = {
   openArId?: string | null;
