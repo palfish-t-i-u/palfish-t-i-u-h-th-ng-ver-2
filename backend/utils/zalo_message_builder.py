@@ -29,7 +29,9 @@ VN_TZ = ZoneInfo("Asia/Ho_Chi_Minh")
 # Events currently active on Zalo — only these go to zalo_outbox (Python paths).
 # NOTE: DB triggers KHÔNG bị gate bởi set này. course_activated đã DROP trigger (10/7, sang DingTalk).
 # activation_request_created + activation_urgent_reminder are paused (9/7).
-ZALO_ENABLED_EVENTS: frozenset[str] = frozenset({"payment_paid", "bill_uploaded"})
+# bill_uploaded TẮT 17/7 (sale feedback: tin ảnh bill gây nhầm lẫn) — nguồn SQL đã no-op
+# (migration 2026-07-17-disable-zalo-bill-uploaded.sql). Zalo chỉ còn tin báo tiền.
+ZALO_ENABLED_EVENTS: frozenset[str] = frozenset({"payment_paid"})
 
 
 def _safe_get(data: dict[str, Any], key: str, default: str = "Unknown",
