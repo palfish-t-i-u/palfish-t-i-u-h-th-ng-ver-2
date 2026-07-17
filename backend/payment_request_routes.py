@@ -2569,8 +2569,6 @@ def register_payment_request_routes(app, _get_supabase) -> None:
     ):
         sb = _sb_or_503(get_supabase)
         actor = resolve_actor(sb, authorization)
-        if not can_confirm_payment(actor):
-            raise HTTPException(403, "Khong co quyen xac nhan thanh toan")
         status = _normalize_line_status(body.status)
 
         line_res = (
@@ -2584,6 +2582,30 @@ def register_payment_request_routes(app, _get_supabase) -> None:
             raise HTTPException(404, "Khong tim thay transaction")
 
         line = line_res.data[0]
+        payment_request_id = str(line.get("payment_request_id") or "")
+        if not payment_request_id:
+            raise HTTPException(400, "payment_line thieu payment_request_id")
+
+        pr_res = (
+            sb.table("payment_requests")
+            .select("*")
+            .eq("id", payment_request_id)
+            .limit(1)
+            .execute()
+        )
+        pr_row = pr_res.data[0] if pr_res.data else {}
+
+        line_status_cur = _clean_text(line.get("status")).lower()
+
+        # Sale được huỷ lần TT của chính mình khi line còn pending.
+        # Mọi thao tác khác (xác nhận paid, reject bởi kế toán) vẫn cần can_confirm_payment.
+        is_sale_cancel = (
+            status == "rejected"
+            and line_status_cur == "pending"
+            and _can_access_request(sb, actor, pr_row)
+        )
+        if not is_sale_cancel and not can_confirm_payment(actor):
+            raise HTTPException(403, "Khong co quyen xac nhan thanh toan")
 
         # TOP2.4 soft-lock: quẹt thẻ / trả góp PHẢI có ảnh bill mới được xác nhận tiền về.
         if status == "paid" and _clean_text(line.get("method")).lower() in ("card", "installment"):
@@ -2594,11 +2616,6 @@ def register_payment_request_routes(app, _get_supabase) -> None:
                     400,
                     "Lan thanh toan quet the/tra gop chua co anh bill — yeu cau sales upload bill truoc khi xac nhan.",
                 )
-
-        payment_request_id = str(line.get("payment_request_id") or "")
-        if not payment_request_id:
-            raise HTTPException(400, "payment_line thieu payment_request_id")
-
         from audit import log_audit
 
         old_status = _clean_text(line.get("status"))
@@ -2612,7 +2629,11 @@ def register_payment_request_routes(app, _get_supabase) -> None:
             patch["confirmed_source"] = "manual"
         elif status == "rejected":
             patch["paid_at"] = None
-            patch["reject_reason"] = _clean_text(body.reject_reason) or "Ke toan tu choi"
+            # Sale huỷ lần TT của mình → lý do cố định, không lấy từ body.
+            patch["reject_reason"] = (
+                "Sales huỷ lần thanh toán" if is_sale_cancel
+                else (_clean_text(body.reject_reason) or "Ke toan tu choi")
+            )
             patch["confirmed_by"] = actor.email
             patch["confirmed_at"] = now_iso
             patch["confirmed_source"] = "manual"
