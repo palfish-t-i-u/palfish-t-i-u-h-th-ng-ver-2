@@ -41,7 +41,7 @@ DETAIL_ALIASES = {
     "collector": ("TK thanh toán",),
     "settlement_code": ("Mã phiếu chi", "Mã chuẩn chi"),
     "installment_term": ("Kỳ hạn",),
-    "installment_fee": ("Phí trả góp",),
+    "installment_fee": ("Phí TG hiện tại", "Phí trả góp"),
     "bank": ("NH Hỗ trợ", "Ngân hàng"),
     "store_name": ("Tên cửa hàng", "Business name"),
 }
@@ -282,7 +282,8 @@ def _mpos_transaction_from_row(row: pd.Series, idx: int) -> dict[str, Any]:
     term = _parse_int(_first(row, DETAIL_ALIASES, "installment_term"))
     is_installment = bool(term or installment_fee > 0)
     category = "Trả góp" if is_installment else "Quẹt thẻ"
-    net_amount = explicit_net if explicit_net else amount - fee - installment_fee
+    computed_net = amount - fee - installment_fee
+    net_amount = computed_net if is_installment else (explicit_net if explicit_net else computed_net)
     return {
         "row_index": int(idx),
         "source": "mpos",
