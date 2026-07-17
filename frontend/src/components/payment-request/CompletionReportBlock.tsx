@@ -75,7 +75,7 @@ export default function CompletionReportBlock({
       <div className="panel-head">
         <h4>
           <Icons.Bell size={15} /> Báo đơn hoàn thành
-          {reports.length > 0 && (
+          {!FEATURE_LOCKED && reports.length > 0 && (
             <span className="badge is-done" style={{ marginLeft: 2 }}>
               Đã báo {reports.length} lần
             </span>
