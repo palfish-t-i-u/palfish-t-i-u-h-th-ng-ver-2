@@ -302,18 +302,17 @@ def build_course_activated_message(
     *,
     pr_data: dict[str, Any] | None = None,
 ) -> dict[str, str]:
-    """Build the COURSE ACTIVATED notification message.
+    """Build the COURSE ACTIVATED notification message (NGẮN GỌN — 17/7 a Hiếu chốt).
 
     **NOTE**: The SQL function ``build_course_activated_message`` in the DB
-    trigger is the *live path* — this Python mirror must produce the exact
-    same format.  Keep them in sync whenever either is changed.
+    trigger (trg_course_activated_dingtalk) is the *live path* — this Python
+    mirror must produce the exact same format.  Keep them in sync.
 
-    Format (enriched)::
+    Format::
 
-        ✅ ĐÃ KÍCH HOẠT THÀNH CÔNG GÓI HỌC
-        KH: {customer} · Sale {sale_name} · Team {team}
-        SĐT: {phone} · UID: {uid1, uid2…}
-        Gói: {danh sách tên gói}
+        ✅ ĐÃ KÍCH HOẠT THÀNH CÔNG
+        SĐT: {phones} · Sale {sale_name}
+        Order ID: {order_ids}
 
     Returns ``{"message": ..., "canonical_team_code": ...}``.
     """
@@ -325,30 +324,20 @@ def build_course_activated_message(
     if pr_data is None:
         pr_data = {}
 
-    customer = _first_nonempty(
-        req_data.get("customer_name"),
-        pr_data.get("name"),
-        default="?",
-    )
     sale_name = _first_nonempty(
         sale_info.get("display_name"),
         sale_info.get("crm_name"),
         default="?",
     )
-
-    raw_team = sale_info.get("team")
-    canonical_team = get_canonical_team(raw_team)
-    team_display = str(raw_team).strip() if raw_team and str(raw_team).strip() else "?"
-
+    canonical_team = get_canonical_team(sale_info.get("team"))
     pr_phone = _first_nonempty(pr_data.get("phone"))
 
-    # --- Extract phones, UIDs, course names from uids_data ---
+    # --- Extract phones + order_ids from uids_data ---
     uids_data = req_data.get("uids_data")
     uid_blocks = uids_data if isinstance(uids_data, list) else []
 
     phones: list[str] = []
-    uids: list[str] = []
-    courses_list: list[str] = []
+    order_ids: list[str] = []
 
     for uid_block in uid_blocks:
         if not isinstance(uid_block, dict):
@@ -357,30 +346,26 @@ def build_course_activated_message(
         phone_country = _first_nonempty(uid_block.get("country"), pr_data.get("country"))
         phone_fmt = format_phone_intl(raw_phone, phone_country or None)
         phones.append(phone_fmt if phone_fmt else raw_phone or "?")
-        uid = _first_nonempty(uid_block.get("uid"), default="?")
-        uids.append(uid)
 
         courses = uid_block.get("courses")
         if isinstance(courses, list):
             for course in courses:
                 if isinstance(course, dict):
-                    courses_list.append(
-                        _first_nonempty(course.get("name"), default="?")
-                    )
+                    oid = str(course.get("order_id") or "").strip()
+                    if oid:
+                        order_ids.append(oid)
 
     if not phones:
         fallback_fmt = format_phone_intl(pr_phone, pr_data.get("country"))
         phones_str = fallback_fmt if fallback_fmt else (pr_phone or "?")
     else:
         phones_str = ", ".join(phones)
-    uids_str = ", ".join(uids) if uids else "?"
-    courses_str = ", ".join(courses_list) if courses_list else "?"
+    order_ids_str = ", ".join(order_ids) if order_ids else "?"
 
     lines = [
-        "✅ ĐÃ KÍCH HOẠT THÀNH CÔNG GÓI HỌC",
-        f"KH: {customer} · Sale {sale_name} · Team {team_display}",
-        f"SĐT: {phones_str} · UID: {uids_str}",
-        f"Gói: {courses_str}",
+        "✅ ĐÃ KÍCH HOẠT THÀNH CÔNG",
+        f"SĐT: {phones_str} · Sale {sale_name}",
+        f"Order ID: {order_ids_str}",
     ]
 
     return {"message": "\n".join(lines), "canonical_team_code": canonical_team}
@@ -451,33 +436,21 @@ def build_activation_request_created_message(
         courses = courses if isinstance(courses, list) else []
 
         course_lines: list[str] = []
-        total = 0.0
-        has_amount = False
         for course in courses:
             if not isinstance(course, dict):
                 continue
             course_name = _first_nonempty(course.get("name"), default="(chưa có tên gói)")
             course_lines.append(f"{block_child}, {course_name}")
-            amount = course.get("amount")
-            if amount not in (None, ""):
-                try:
-                    total += float(amount)
-                    has_amount = True
-                except (TypeError, ValueError):
-                    logger.warning("Invalid course amount %r in %s", amount, ctx)
         if not course_lines:
             course_lines = [block_child]
-        if not has_amount:
-            total = float(pr_target) if pr_target not in (None, "") else 0.0
 
+        # 17/7 (a Hiếu chốt): block chỉ Phone/UID/<bé, gói>. Nguồn + Tổng(PR) ở footer chung.
         blocks.append(
             "\n".join(
                 [
-                    f"SĐT: {phone}​",
+                    f"Phone: {phone}​",
                     f"UID: {uid}",
                     *course_lines,
-                    f"Nguồn: {lead}",
-                    f"Tổng: {_format_vnd_dots(total)}",
                 ]
             )
         )
@@ -486,11 +459,9 @@ def build_activation_request_created_message(
         blocks.append(
             "\n".join(
                 [
-                    f"SĐT: {format_phone_intl(pr_phone, pr_data.get('country')) or '?'}​",
+                    f"Phone: {format_phone_intl(pr_phone, pr_data.get('country')) or '?'}​",
                     "UID: ?",
                     child_name,
-                    f"Nguồn: {lead}",
-                    f"Tổng: {_format_vnd_dots(pr_target or 0)}",
                 ]
             )
         )
@@ -500,8 +471,20 @@ def build_activation_request_created_message(
     canonical_team = get_canonical_team(raw_team)
     team_display = str(raw_team).strip() if raw_team and str(raw_team).strip() else "?"
 
-    header = f"🆕 YÊU CẦU KÍCH HOẠT KHOÁ HỌC — {ar_id}"
-    footer = f"Sale: {sale_name} · Team {team_display}"
-    message = header + "\n" + "\n\n".join(blocks) + "\n" + footer
+    # Tổng = tổng tiền ĐÃ THU trong PR (received), không phải tổng amount gói.
+    pr_received = pr_data.get("received")
+    total_val = (
+        float(pr_received) if pr_received not in (None, "")
+        else (float(pr_target) if pr_target not in (None, "") else 0.0)
+    )
+    total_str = f"{int(round(total_val)):,}".replace(",", ".")  # dấu chấm nghìn, đơn vị VND
+    footer = "\n".join(
+        [
+            f"Nguồn: {lead}",
+            f"Tổng: {total_str} VND",
+            f"Sale: {sale_name} · Team {team_display}",
+        ]
+    )
+    message = "\n\n".join(blocks) + "\n" + footer
 
     return {"message": message, "canonical_team_code": canonical_team}

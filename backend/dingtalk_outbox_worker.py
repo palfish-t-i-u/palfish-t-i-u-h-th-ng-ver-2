@@ -17,11 +17,20 @@ POLL_INTERVAL = 30
 BATCH_SIZE = 20
 
 EVENT_TITLES = {
-    "activation_request_created": "Yêu cầu kích hoạt khoá học",
+    "activation_request_created": "Báo đơn",
     "course_activated": "Kích hoạt thành công",
     "activation_urgent_reminder": "Nhắc kích hoạt gấp",
     "pr_fully_paid": "Đơn đã đủ tiền",
 }
+
+
+def _image_list_from_row(row: dict) -> list[str]:
+    """Danh sách ảnh bill cần gửi: ưu tiên image_urls (JSONB list), fallback image_url đơn."""
+    raw_urls = row.get("image_urls")
+    if isinstance(raw_urls, list) and raw_urls:
+        return [str(u).strip() for u in raw_urls if u and str(u).strip()]
+    single = (row.get("image_url") or "").strip()
+    return [single] if single else []
 
 
 def _load_team_group(sb, team_code: str) -> str:
@@ -83,13 +92,13 @@ async def poll_and_send(sb_factory: Callable[[], Any]) -> None:
                 message=message,
                 title=title,
             )
-            image_url = (row.get("image_url") or "").strip()
-            if image_url:
+            # Gửi TẤT CẢ ảnh bill (image_urls JSONB); fallback image_url đơn (row cũ).
+            for photo_url in _image_list_from_row(row):
                 try:
                     await asyncio.to_thread(
                         send_group_image,
                         open_conversation_id=open_conversation_id,
-                        photo_url=image_url,
+                        photo_url=photo_url,
                     )
                 except Exception as img_exc:
                     print(f"[dingtalk_worker] {row_id} image failed (non-fatal): {img_exc}")
