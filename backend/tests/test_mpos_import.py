@@ -159,5 +159,60 @@ class TestAmbiguousDetection:
         assert isinstance(result["warnings"], list)
 
 
+class TestInstallmentNet:
+    """Regression: net trả góp phải trừ CẢ 2 phí — MDR + phí trả góp (bug 2026-07-17)."""
+
+    def _row(self, **overrides):
+        import pandas as pd
+
+        base = {
+            "Ngày khởi tạo": "2026-07-16T10:51:43",
+            "Số giao dịch": "MPL_MP13691506",
+            "Chi tiết giao dịch": "MPL_MP13691506",
+            "Trạng thái giao dịch": "Đã thanh toán",
+            "TK thanh toán": "palfish35lvt",
+            "Số tiền": "10,028,000",
+            "Phí giao dịch": "250,700",
+            "Phí trả góp": None,
+            "Phí TG hiện tại": "250,700",
+            "Số tiền thực nhận": "9,777,300",
+            "Kỳ hạn": "3",
+        }
+        base.update(overrides)
+        return pd.Series(base)
+
+    def test_installment_net_subtracts_both_fees(self):
+        from mpos_import import _mpos_transaction_from_row
+
+        rec = _mpos_transaction_from_row(self._row(), 0)
+        assert rec["is_installment"] is True
+        assert rec["installment_fee"] == 250_700
+        assert rec["net_amount"] == 9_526_600
+
+    def test_installment_ignores_cumulative_dup_column(self):
+        """Cột trùng tên '.1' (tổng lũy kế phiếu chi) KHÔNG được dùng làm net."""
+        from mpos_import import _mpos_transaction_from_row
+
+        row = self._row(**{"Số tiền thực nhận.1": "59,302,950"})
+        rec = _mpos_transaction_from_row(row, 0)
+        assert rec["net_amount"] == 9_526_600
+
+    def test_normal_swipe_keeps_mpos_explicit_net(self):
+        """Quẹt thẻ thường (1 phí): giữ nguyên 'Số tiền thực nhận' của mPOS."""
+        from mpos_import import _mpos_transaction_from_row
+
+        row = self._row(**{
+            "Kỳ hạn": None,
+            "Phí TG hiện tại": "0",
+            "Phí trả góp": None,
+            "Số tiền": "10,000,000",
+            "Phí giao dịch": "250,000",
+            "Số tiền thực nhận": "9,750,000",
+        })
+        rec = _mpos_transaction_from_row(row, 0)
+        assert rec["is_installment"] is False
+        assert rec["net_amount"] == 9_750_000
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
