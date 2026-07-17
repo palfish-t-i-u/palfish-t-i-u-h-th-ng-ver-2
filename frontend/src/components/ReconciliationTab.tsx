@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { usePaymentFlow } from "../contexts/PaymentFlowContext";
 import { usePermission } from "../hooks/usePermission";
 import { endpoints, type BankTransaction, type BankMatchCandidate } from "../lib/api";
+import { fetchAllBankTxns } from "../lib/fetchAllBankTxns";
 import {
   type FlatTransaction,
   METHOD_META,
@@ -26,6 +27,11 @@ import useIsMobile from "../hooks/useIsMobile";
 import ReconTxnCards from "./reconciliation/ReconTxnCards";
 import ReconBankCards from "./reconciliation/ReconBankCards";
 import "../styles/prototype-payments.css";
+
+// Cutoff đợt fix 14/7: từ ngày này, tab "Chờ xác nhận" chỉ phục vụ tiền mặt.
+// Giao dịch non-cash (CK ngoài / quẹt thẻ / trả góp) tạo TỪ mốc này không lọt tab;
+// non-cash tạo TRƯỚC mốc vẫn giữ nguyên. So sánh chuỗi ISO (createdAt bắt đầu YYYY-MM-DD).
+const AWAITING_CASH_ONLY_SINCE = "2026-07-14";
 
 type TabId = "awaiting" | "confirmed" | "cancelled" | "ckOutside" | "all";
 type MethodFilter = "all" | "qr" | "cash" | "card" | "installment";
@@ -545,6 +551,8 @@ export default function ReconciliationTab() {
     for (const t of transactions) {
       const st = txnDisplayStatus(t);
       if (st === "awaiting") {
+        // Non-cash tạo từ 14/7 không thuộc tab Chờ xác nhận → không tính vào badge/KPI
+        if (t.method !== "cash" && t.createdAt >= AWAITING_CASH_ONLY_SINCE) continue;
         c.awaiting++;
         sums.awaiting += t.amount;
       } else if (st === "confirmed") {
@@ -565,6 +573,15 @@ export default function ReconciliationTab() {
     return transactions.filter((t) => {
       const st = txnDisplayStatus(t);
       if (tab === "awaiting" && st !== "awaiting") return false;
+      // Tab Chờ xác nhận chỉ phục vụ tiền mặt. Non-cash tạo TỪ ngày fix (14/7) không
+      // được lọt tab này — đi tab CK ngoài chờ ghép / mPOS/Payoo. Non-cash CŨ (trước
+      // cutoff) vẫn giữ nguyên để tự biến mất khi được ghép.
+      if (
+        tab === "awaiting" &&
+        t.method !== "cash" &&
+        t.createdAt >= AWAITING_CASH_ONLY_SINCE
+      )
+        return false;
       if (tab === "confirmed" && st !== "confirmed") return false;
       if (tab === "cancelled" && st !== "cancelled" && st !== "rejected") return false;
       if (methodFilter !== "all" && t.method !== methodFilter) return false;
