@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { PaymentAttempt, PaymentRequest } from "../../types/paymentRequest";
 import CompletionReportBlock from "./CompletionReportBlock";
@@ -41,72 +41,61 @@ function makePr(overrides: Partial<PaymentRequest> = {}): PaymentRequest {
 }
 
 describe("CompletionReportBlock", () => {
-  it("disabled + hint khi PR chưa đủ tiền (state=short)", () => {
-    const pr = makePr({ state: "short", payments: [makeLine({ status: "pending", bill: false, billImage: null })] });
-    render(<CompletionReportBlock request={pr} onReportComplete={vi.fn()} />);
-    const btn = screen.getByRole("button", { name: /Báo đơn hoàn thành/i });
-    expect(btn).toBeDisabled();
-    expect(screen.getByText(/Cần thu đủ 100% số tiền/i)).toBeInTheDocument();
-  });
+  // FEATURE_LOCKED = true → nút luôn disabled, banner "đang phát triển".
+  // Khi unlock (set FEATURE_LOCKED = false), bỏ group này và khôi phục tests cũ từ git.
 
-  it("disabled + hint khi đủ tiền nhưng còn lần TT thiếu bill", () => {
-    const pr = makePr({
-      payments: [makeLine(), makeLine({ id: "line-2", billImage: null, bill: false, billImages: [] })],
-    });
-    render(<CompletionReportBlock request={pr} onReportComplete={vi.fn()} />);
-    const btn = screen.getByRole("button", { name: /Báo đơn hoàn thành/i });
-    expect(btn).toBeDisabled();
-    expect(screen.getByText(/thiếu ảnh bill/i)).toBeInTheDocument();
-  });
-
-  it("enabled khi state=done và mọi lần đã trả đều có bill", () => {
+  it("renders locked banner with disabled button", () => {
     const pr = makePr();
     render(<CompletionReportBlock request={pr} onReportComplete={vi.fn()} />);
     const btn = screen.getByRole("button", { name: /Báo đơn hoàn thành/i });
-    expect(btn).not.toBeDisabled();
+    expect(btn).toBeDisabled();
+    expect(screen.getByText(/đang được phát triển/i)).toBeInTheDocument();
   });
 
-  it("enabled khi state=over (thừa tiền)", () => {
+  it("disabled regardless of state=short", () => {
+    const pr = makePr({ state: "short" });
+    render(<CompletionReportBlock request={pr} onReportComplete={vi.fn()} />);
+    expect(screen.getByRole("button", { name: /Báo đơn hoàn thành/i })).toBeDisabled();
+  });
+
+  it("disabled regardless of state=done with all bills", () => {
+    const pr = makePr({ state: "done" });
+    render(<CompletionReportBlock request={pr} onReportComplete={vi.fn()} />);
+    expect(screen.getByRole("button", { name: /Báo đơn hoàn thành/i })).toBeDisabled();
+  });
+
+  it("disabled regardless of state=over", () => {
     const pr = makePr({ state: "over" });
     render(<CompletionReportBlock request={pr} onReportComplete={vi.fn()} />);
-    expect(screen.getByRole("button", { name: /Báo đơn hoàn thành/i })).not.toBeDisabled();
+    expect(screen.getByRole("button", { name: /Báo đơn hoàn thành/i })).toBeDisabled();
   });
 
-  it("render lịch sử các lần đã báo, gồm nhãn backfill", () => {
-    const pr = makePr({
-      completion_reports: [
-        { id: "r1", seq: 1, reason: null, reported_by: "system-backfill", total_net: 1_000_000, target: 1_000_000, created_at: "2026-07-01T03:00:00+00:00" },
-        { id: "r2", seq: 2, reason: "Khách mua thêm gói", reported_by: "sale@pf.vn", total_net: 1_500_000, target: 1_000_000, created_at: "2026-07-16T03:00:00+00:00" },
-      ],
-    });
-    render(<CompletionReportBlock request={pr} onReportComplete={vi.fn()} />);
-    expect(screen.getByText(/Lần #1/)).toBeInTheDocument();
-    expect(screen.getByText(/hệ thống \(backfill\)/)).toBeInTheDocument();
-    expect(screen.getByText(/Lần #2/)).toBeInTheDocument();
-    expect(screen.getByText(/sale@pf\.vn/)).toBeInTheDocument();
-    expect(screen.getByText("Đã báo 2 lần")).toBeInTheDocument();
-  });
-
-  it("click lần 1 (chưa có report nào) gọi onReportComplete thẳng, KHÔNG mở modal", async () => {
-    const onReportComplete = vi.fn().mockResolvedValue(undefined);
-    const pr = makePr({ completion_reports: [] });
-    render(<CompletionReportBlock request={pr} onReportComplete={onReportComplete} />);
-    fireEvent.click(screen.getByRole("button", { name: /Báo đơn hoàn thành/i }));
-    expect(onReportComplete).toHaveBeenCalledWith();
-    // Modal chỉ xuất hiện khi đã có ≥1 report — không có textarea lý do ở đây
-    expect(screen.queryByPlaceholderText(/Vì sao đơn đủ tiền/i)).not.toBeInTheDocument();
-  });
-
-  it("click khi đã có ≥1 report mở modal soft-block, KHÔNG gọi onReportComplete ngay", () => {
+  it("click disabled button does NOT call onReportComplete", () => {
     const onReportComplete = vi.fn();
+    const pr = makePr();
+    render(<CompletionReportBlock request={pr} onReportComplete={onReportComplete} />);
+    screen.getByRole("button", { name: /Báo đơn hoàn thành/i }).click();
+    expect(onReportComplete).not.toHaveBeenCalled();
+  });
+
+  it("does NOT render report history when locked", () => {
     const pr = makePr({
       completion_reports: [
         { id: "r1", seq: 1, reason: null, reported_by: "sale@pf.vn", total_net: 1_000_000, target: 1_000_000, created_at: "2026-07-01T03:00:00+00:00" },
       ],
     });
-    render(<CompletionReportBlock request={pr} onReportComplete={onReportComplete} />);
-    fireEvent.click(screen.getByRole("button", { name: /Báo đơn hoàn thành/i }));
-    expect(onReportComplete).not.toHaveBeenCalled();
-    expect(screen.getByPlaceholderText(/Vì sao đơn đủ tiền/i)).toBeInTheDocument();
+    render(<CompletionReportBlock request={pr} onReportComplete={vi.fn()} />);
+    expect(screen.queryByText(/Lần #1/)).not.toBeInTheDocument();
+  });
+
+  it("does NOT render modal textarea when locked", () => {
+    const pr = makePr({
+      completion_reports: [
+        { id: "r1", seq: 1, reason: null, reported_by: "sale@pf.vn", total_net: 1_000_000, target: 1_000_000, created_at: "2026-07-01T03:00:00+00:00" },
+      ],
+    });
+    render(<CompletionReportBlock request={pr} onReportComplete={vi.fn()} />);
+    screen.getByRole("button", { name: /Báo đơn hoàn thành/i }).click();
+    expect(screen.queryByPlaceholderText(/Vì sao đơn đủ tiền/i)).not.toBeInTheDocument();
   });
 });
