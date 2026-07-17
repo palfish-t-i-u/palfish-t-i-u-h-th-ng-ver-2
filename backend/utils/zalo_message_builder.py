@@ -451,33 +451,21 @@ def build_activation_request_created_message(
         courses = courses if isinstance(courses, list) else []
 
         course_lines: list[str] = []
-        total = 0.0
-        has_amount = False
         for course in courses:
             if not isinstance(course, dict):
                 continue
             course_name = _first_nonempty(course.get("name"), default="(chưa có tên gói)")
             course_lines.append(f"{block_child}, {course_name}")
-            amount = course.get("amount")
-            if amount not in (None, ""):
-                try:
-                    total += float(amount)
-                    has_amount = True
-                except (TypeError, ValueError):
-                    logger.warning("Invalid course amount %r in %s", amount, ctx)
         if not course_lines:
             course_lines = [block_child]
-        if not has_amount:
-            total = float(pr_target) if pr_target not in (None, "") else 0.0
 
+        # 17/7 (a Hiếu chốt): block chỉ Phone/UID/<bé, gói>. Nguồn + Tổng(PR) ở footer chung.
         blocks.append(
             "\n".join(
                 [
-                    f"SĐT: {phone}​",
+                    f"Phone: {phone}​",
                     f"UID: {uid}",
                     *course_lines,
-                    f"Nguồn: {lead}",
-                    f"Tổng: {_format_vnd_dots(total)}",
                 ]
             )
         )
@@ -486,11 +474,9 @@ def build_activation_request_created_message(
         blocks.append(
             "\n".join(
                 [
-                    f"SĐT: {format_phone_intl(pr_phone, pr_data.get('country')) or '?'}​",
+                    f"Phone: {format_phone_intl(pr_phone, pr_data.get('country')) or '?'}​",
                     "UID: ?",
                     child_name,
-                    f"Nguồn: {lead}",
-                    f"Tổng: {_format_vnd_dots(pr_target or 0)}",
                 ]
             )
         )
@@ -500,8 +486,19 @@ def build_activation_request_created_message(
     canonical_team = get_canonical_team(raw_team)
     team_display = str(raw_team).strip() if raw_team and str(raw_team).strip() else "?"
 
-    header = f"🆕 YÊU CẦU KÍCH HOẠT KHOÁ HỌC — {ar_id}"
-    footer = f"Sale: {sale_name} · Team {team_display}"
-    message = header + "\n" + "\n\n".join(blocks) + "\n" + footer
+    # Tổng = tổng tiền ĐÃ THU trong PR (received), không phải tổng amount gói.
+    pr_received = pr_data.get("received")
+    total_val = (
+        float(pr_received) if pr_received not in (None, "")
+        else (float(pr_target) if pr_target not in (None, "") else 0.0)
+    )
+    footer = "\n".join(
+        [
+            f"Nguồn: {lead}",
+            f"Tổng: {_format_vnd_dots(total_val)}",
+            f"Sale: {sale_name} · Team {team_display}",
+        ]
+    )
+    message = "\n\n".join(blocks) + "\n" + footer
 
     return {"message": message, "canonical_team_code": canonical_team}

@@ -106,8 +106,10 @@ class TestEnqueueActivationRequestCreatedDingtalk:
         assert p["source_table"] == "active_requests"
         assert p["team_code"] == "HN Offline Store"          # RAW, không phải "Offline"
         assert p["image_url"] == "https://x/bill.jpg"
+        assert p["image_urls"] == ["https://x/bill.jpg"]     # 17/7: gom tất cả bill
         assert p["source_id"] == str(uuid.UUID(hashlib.md5(b"AR-2026-9001").hexdigest()))
-        assert "🆕 YÊU CẦU KÍCH HOẠT KHOÁ HỌC — AR-2026-9001" in p["message"]
+        # 17/7 (a Hiếu): bỏ header, format "Phone:/UID:/<bé>, gói/Nguồn/Tổng/Sale·Team"
+        assert "Phone: 84-900000000" in p["message"]
         assert "Bé An, Gói A" in p["message"]
 
     def test_falls_back_to_bill_images_array(self):
@@ -118,7 +120,9 @@ class TestEnqueueActivationRequestCreatedDingtalk:
         )
         activation_routes._enqueue_activation_request_created_dingtalk(
             sb, _sample_saved_ar(), _sample_pr())
-        assert calls[0]["image_url"] == "https://x/b.jpg"
+        # 17/7: gom TẤT CẢ bill (oldest-first); image_url = ảnh đầu, image_urls = full list
+        assert calls[0]["image_urls"] == ["https://x/a.jpg", "https://x/b.jpg"]
+        assert calls[0]["image_url"] == "https://x/a.jpg"
 
     def test_no_bill_sends_null_image(self):
         sb, calls = _build_dt_sb(

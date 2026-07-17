@@ -1069,7 +1069,8 @@ def _enqueue_activation_request_created_dingtalk(
             return
         team_code = g.data[0]["team_code"]
 
-        bill_url: str | None = None
+        # 17/7 (a Hiếu chốt): gom TẤT CẢ bill của mọi lần TT đã paid — worker gửi nhiều ảnh.
+        bill_urls: list[str] = []
         pr_id_val = str(pr.get("id") or "")
         if pr_id_val:
             lines_res = (
@@ -1077,19 +1078,22 @@ def _enqueue_activation_request_created_dingtalk(
                 .select("bill_image, bill_images")
                 .eq("payment_request_id", pr_id_val)
                 .eq("status", "paid")
-                .order("paid_at", desc=True)
-                .limit(1)
+                .order("paid_at", desc=False)
                 .execute()
             )
-            if lines_res.data:
-                line = lines_res.data[0]
-                bill_url = (line.get("bill_image") or "").strip() or None
-                if not bill_url:
-                    bills = line.get("bill_images")
-                    if isinstance(bills, list) and bills:
-                        bill_url = str(bills[-1]).strip() or None
+            for line in (lines_res.data or []):
+                bills = line.get("bill_images")
+                if isinstance(bills, list):
+                    for b in bills:
+                        u = str(b or "").strip()
+                        if u and u not in bill_urls:
+                            bill_urls.append(u)
+                legacy = (line.get("bill_image") or "").strip()
+                if legacy and legacy not in bill_urls:
+                    bill_urls.append(legacy)
+        bill_url = bill_urls[0] if bill_urls else None
 
-        pr_target, _ = _pr_amounts(pr)
+        pr_target, pr_received = _pr_amounts(pr)
         result = build_activation_request_created_message(
             {
                 "id": saved_ar.get("id"),
@@ -1105,6 +1109,7 @@ def _enqueue_activation_request_created_dingtalk(
                 "lead_source": pr.get("lead_source"),
                 "lead_channel": pr.get("lead_channel"),
                 "target": pr_target,
+                "received": pr_received,
             },
             {
                 "display_name": (staff or {}).get("display_name"),
@@ -1124,6 +1129,7 @@ def _enqueue_activation_request_created_dingtalk(
                     "team_code": team_code,
                     "message": result["message"],
                     "image_url": bill_url,
+                    "image_urls": bill_urls or None,
                 }
             ).execute()
         except Exception as exc:
@@ -1221,30 +1227,10 @@ def _save_active_request(
     pr: dict[str, Any] | None = None
     if pr_id:
         pr = _fetch_payment_request(sb, pr_id)
+        # 17/7 (a Hiếu chốt): bỏ bước "Báo đơn hoàn thành" riêng — tin báo đơn giờ bắn
+        # ngay khi tạo Active Request. Không còn gate completion-report trước AR.
         if require_paid_pr:
             assert_pr_paid(pr)
-            from env_utils import require_completion_report_enabled
-            if require_completion_report_enabled():
-                try:
-                    rep_res = (
-                        sb.table("pr_completion_reports")
-                        .select("id")
-                        .eq("pr_id", pr_id)
-                        .limit(1)
-                        .execute()
-                    )
-                    if not rep_res.data:
-                        raise HTTPException(
-                            400,
-                            "Chưa báo đơn hoàn thành. Bấm 'Báo đơn hoàn thành' trong phiếu trước khi tạo Active Request.",
-                        )
-                except HTTPException:
-                    raise
-                except Exception as exc:
-                    raise HTTPException(
-                        500,
-                        f"Loi khi kiem tra completion report: {exc}"
-                    ) from exc
         assert_all_paid_lines_have_bill(sb, pr)
 
     ar_id = _next_ar_id(sb)

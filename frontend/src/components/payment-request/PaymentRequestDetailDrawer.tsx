@@ -15,7 +15,6 @@ import { Icons, type IconKey } from "./Icons";
 import BillUploadZone from "./BillUploadZone";
 import VietnamAddressFields from "./VietnamAddressFields";
 import PaymentRequestStatusBadge from "./PaymentRequestStatusBadge";
-import CompletionReportBlock from "./CompletionReportBlock";
 import AuditTrail from "../ui/AuditTrail";
 import { getAvailableBanks } from "../../constants/bank";
 import { useMe } from "../../hooks/useMe";
@@ -28,7 +27,6 @@ import {
   fmtPhone,
   formatCoursePhone,
   formatPaymentDateFull,
-  formatPaymentDateTime,
   getReferralStatus,
   grossReceived,
   hasUnverifiedFeeLine,
@@ -1563,7 +1561,6 @@ export default function PaymentRequestDetailDrawer({
   deletingBillId,
   readOnly = false,
   onRefreshLineContent,
-  onReportComplete,
 }: {
   request: PaymentRequest | null;
   open: boolean;
@@ -1733,9 +1730,6 @@ export default function PaymentRequestDetailDrawer({
   const canCancel = request.state !== "cancelled" && request.doneCount === 0 && !activeRequestId;
   const ready = request.state === "done" || request.state === "over";
   const hasActiveRequest = !!activeRequestId;
-  const completionReports = request.completion_reports ?? [];
-  const hasCompletionReport = completionReports.length > 0;
-  const readyToReport = ready && findPaidLinesWithoutBill(request.payments ?? []).length === 0;
   const activeSummary = activationSummary(activeRequest);
   const copyPrId = async () => {
     const id = request.id;
@@ -2418,11 +2412,6 @@ export default function PaymentRequestDetailDrawer({
             )}
           </div>
 
-          {/* B3 (16/7) — Báo đơn hoàn thành, giữa panel lần TT và AR mini-window.
-              Luôn hiện (kể cả readOnly) để giữ lịch sử báo hiển thị cho mọi người xem;
-              nút hành động tự disable qua prop readOnly. */}
-          <CompletionReportBlock request={request} onReportComplete={onReportComplete} readOnly={readOnly} />
-
           {/* AR mini-window — chỉ Sales view, gọn nhẹ. Tab Kích hoạt khoá học (Thu Hiền) vẫn riêng */}
           {hasActiveRequest && activeRequest && (
             <ActiveRequestMiniCardV2
@@ -2460,29 +2449,14 @@ export default function PaymentRequestDetailDrawer({
                 </div>
               </div>
               <div className="tl-item">
-                <div className={`tl-dot ${hasCompletionReport ? "done" : readyToReport ? "active" : "pending"}`} />
-                <div className="tl-content">
-                  <div className="tl-title">B3 · Báo đơn hoàn thành (đã đủ tiền)</div>
-                  <div className="tl-meta">
-                    {hasCompletionReport
-                      ? (() => {
-                          const last = completionReports[completionReports.length - 1];
-                          const { date, time } = formatPaymentDateTime(last.created_at);
-                          return `Đã báo ${completionReports.length} lần · lần cuối ${time} ${date.slice(0, 5)}`;
-                        })()
-                      : "Chưa báo"}
-                  </div>
-                </div>
-              </div>
-              <div className="tl-item">
                 <div className={`tl-dot ${ready ? "active" : "pending"}`} />
                 <div className="tl-content">
-                  <div className="tl-title">B4 · Active Request (Tạo khoá học)</div>
+                  <div className="tl-title">B3 · Báo đơn Dingtalk (Tạo khoá học)</div>
                   <div className="tl-meta">
                     {hasActiveRequest
                       ? `Active Request ${activeRequestId} — ${activeSummary.buttonLabel}`
                       : ready
-                      ? 'Sẵn sàng kích hoạt — bấm "Kích hoạt khoá học" để mở gói'
+                      ? 'Sẵn sàng — bấm "Báo đơn Dingtalk" để báo kế toán & mở gói'
                       : "Sẽ mở khoá khi đủ 100% tiền"}
                   </div>
                 </div>
@@ -2490,7 +2464,7 @@ export default function PaymentRequestDetailDrawer({
               <div className="tl-item">
                 <div className={`tl-dot ${activeSummary.invoicedCount > 0 ? "done" : deliveryLog ? "done" : "pending"}`} />
                 <div className="tl-content">
-                  <div className="tl-title">B5 · Yêu cầu xuất hoá đơn</div>
+                  <div className="tl-title">B4 · Yêu cầu xuất hoá đơn</div>
                   <div className="tl-meta">
                     {activeSummary.invoicedCount > 0
                       ? `Đã xuất HĐ ${activeSummary.invoicedCount}/${activeSummary.courseCount} gói học`
@@ -2562,16 +2536,14 @@ export default function PaymentRequestDetailDrawer({
               </button>
             )}
             {!readOnly && <button
-              className={`btn ${ready && !hasActiveRequest && hasCompletionReport ? "btn-success" : "btn-outline"}`}
-              disabled={!ready || hasActiveRequest || !hasCompletionReport}
+              className={`btn ${ready && !hasActiveRequest ? "btn-success" : "btn-outline"}`}
+              disabled={!ready || hasActiveRequest}
               title={
                 !ready
-                  ? "Cần thu đủ 100% số tiền trước khi kích hoạt"
-                  : !hasCompletionReport
-                  ? "Cần báo đơn hoàn thành trước"
+                  ? "Cần thu đủ 100% số tiền trước khi báo đơn"
                   : hasActiveRequest
                   ? activeSummary.buttonLabel
-                  : "Tạo Active Request và chọn gói khoá học"
+                  : "Báo đơn lên DingTalk cho kế toán + chọn gói khoá học"
               }
               onClick={() => {
                 const missingLines = findPaidLinesWithoutBill(request.payments ?? []);
@@ -2584,7 +2556,7 @@ export default function PaymentRequestDetailDrawer({
                 setArPackageModalOpen(true);
               }}
             >
-              <Icons.CheckSquare size={14} /> {hasActiveRequest ? activeSummary.buttonLabel : "Kích hoạt khoá học"}
+              <Icons.CheckSquare size={14} /> {hasActiveRequest ? activeSummary.buttonLabel : "Báo đơn Dingtalk"}
             </button>}
           </div>
         </div>
