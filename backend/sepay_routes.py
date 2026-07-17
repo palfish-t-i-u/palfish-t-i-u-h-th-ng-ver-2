@@ -23,8 +23,6 @@ from pydantic import BaseModel
 from rbac import resolve_actor
 from admin_routes import require_module_write
 
-router = APIRouter(tags=["sepay"])
-
 # ---------------------------------------------------------------------------
 # Config
 # ---------------------------------------------------------------------------
@@ -497,6 +495,9 @@ def _process_sepay_transaction(sb, txn: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+router = APIRouter(tags=["sepay"])
+
+
 # ---------------------------------------------------------------------------
 # Webhook Endpoint: POST /webhook/sepay
 # ---------------------------------------------------------------------------
@@ -738,20 +739,30 @@ def register_sepay_routes(app, get_supabase: Callable) -> None:
         from_date: str | None = Query(None, alias="from"),
         to_date: str | None = Query(None, alias="to"),
         limit: int = Query(200, ge=1, le=1000),
+        offset: int = Query(0, ge=0),
         authorization: str | None = Header(None),
     ):
         sb = _sb_or_503(get_supabase)
         actor = resolve_actor(sb, authorization)
         require_module_write(sb, actor, "reconciliation")
 
+        # Alias status groups: "unmatched" / "matched" → in_ filter
+        STATUS_GROUPS: dict[str, list[str]] = {
+            "unmatched": ["pending", "needs_review"],
+            "matched": ["auto_matched", "manual_matched"],
+        }
+
         query = (
             sb.table("bank_transactions")
             .select("*")
             .order("created_at", desc=True)
-            .limit(limit)
+            .range(offset, offset + limit - 1)
         )
         if status and status != "all":
-            query = query.eq("match_status", status)
+            if status in STATUS_GROUPS:
+                query = query.in_("match_status", STATUS_GROUPS[status])
+            else:
+                query = query.eq("match_status", status)
         if from_date:
             query = query.gte("transaction_date", from_date)
         if to_date:

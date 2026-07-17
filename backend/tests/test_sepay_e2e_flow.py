@@ -58,6 +58,10 @@ class Query:
         self._limit = n
         return self
 
+    def range(self, start, end):
+        self._limit = end - start + 1
+        return self
+
     def eq(self, k, v):
         self.filters.append((k, v))
         return self
