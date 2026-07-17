@@ -585,7 +585,13 @@ def _maybe_enqueue_bill_uploaded_zalo(sb, line: dict) -> None:
 
     Logic thật nằm trong SQL fn enqueue_bill_uploaded_zalo (migration 2026-07-10):
     tự check status/bill/group và tự chống trùng — Python chỉ gọi RPC.
+
+    TẮT 17/7 (sale feedback): bill_uploaded bỏ khỏi ZALO_ENABLED_EVENTS + SQL fn đã no-op.
+    Guard này chặn luôn RPC round-trip vô ích. Reversible: thêm lại vào set + redeploy fn cũ.
     """
+    from utils.zalo_message_builder import ZALO_ENABLED_EVENTS
+    if "bill_uploaded" not in ZALO_ENABLED_EVENTS:
+        return
     try:
         if (str(line.get("status") or "").strip().lower()) == "paid":
             sb.rpc("enqueue_bill_uploaded_zalo", {"p_line_id": line.get("id")}).execute()

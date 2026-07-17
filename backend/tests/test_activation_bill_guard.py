@@ -4,13 +4,14 @@ from unittest.mock import MagicMock, patch
 
 
 def test_allowlist_skips_zalo_enqueue():
-    """Only payment_paid + bill_uploaded remain on Zalo; activation events moved off."""
+    """Chỉ payment_paid còn trên Zalo; activation events moved off (9-10/7),
+    bill_uploaded tắt 17/7 (sale feedback: gây nhầm lẫn)."""
     from utils.zalo_message_builder import ZALO_ENABLED_EVENTS
     assert "activation_request_created" not in ZALO_ENABLED_EVENTS
     assert "activation_urgent_reminder" not in ZALO_ENABLED_EVENTS
     assert "course_activated" not in ZALO_ENABLED_EVENTS
+    assert "bill_uploaded" not in ZALO_ENABLED_EVENTS
     assert "payment_paid" in ZALO_ENABLED_EVENTS
-    assert "bill_uploaded" in ZALO_ENABLED_EVENTS
 
 
 def test_assert_all_paid_lines_have_bill_raises_when_missing():
