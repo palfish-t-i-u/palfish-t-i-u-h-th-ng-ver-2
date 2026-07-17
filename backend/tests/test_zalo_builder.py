@@ -74,7 +74,7 @@ class TestBuildActivationRequestCreatedMessage:
             "UID: 3307542974\n"
             "Thành Nam 9T, Phil 48+5 fix 2b/tuần\n"
             "Nguồn: Kho chung - Imperia\n"
-            "Tổng: 8.500.000 VNĐ\n"
+            "Tổng: 8.500.000 VND\n"
             "Sale: Trần Thị B · Team Inhouse 2"
         )
         assert result["message"] == expected
@@ -149,7 +149,7 @@ class TestBuildActivationRequestCreatedMessage:
         assert "Bé Sóc, Gói A" in message
         assert "Bé Sóc, Gói B" in message
         # Tổng = tiền thu PR (received), không phải sum gói
-        assert "Tổng: 5.000.000 VNĐ" in message
+        assert "Tổng: 5.000.000 VND" in message
 
     def test_team_ih2_alias_resolves_to_canonical_inhouse_2(self):
         result = build_activation_request_created_message(
@@ -166,7 +166,7 @@ class TestBuildActivationRequestCreatedMessage:
         sale_info = {"team": "Inhouse 2"}
 
         result = build_activation_request_created_message(ar_data, pr_data, sale_info)
-        assert "Tổng: 4.200.000 VNĐ" in result["message"]
+        assert "Tổng: 4.200.000 VND" in result["message"]
 
     def test_never_raises_on_empty_or_malformed_input(self):
         # Empty dicts
@@ -232,9 +232,9 @@ class TestBuildActivationRequestCreatedMessage:
 
 
 class TestBuildCourseActivatedMessage:
-    """Workstream C2 (Giang) — unit tests for enriched build_course_activated_message."""
+    """17/7 (a Hiếu chốt): tin course_activated NGẮN GỌN — SĐT + Sale + Order ID."""
 
-    def test_full_data_produces_enriched_format(self):
+    def test_full_data_short_format(self):
         req_data = {
             "id": "AR-2026-0010",
             "customer_name": "Nguyễn Văn A",
@@ -242,76 +242,49 @@ class TestBuildCourseActivatedMessage:
                 {
                     "uid": "3307542974",
                     "phone": "84-772333555",
-                    "courses": [
-                        {"name": "Phil 48+5 fix 2b/tuần"},
-                        {"name": "Gói Toán 12T"},
-                    ],
+                    "courses": [{"name": "Phil 48+5", "order_id": "756503406889218"}],
                 }
             ],
         }
         sale_info = {"display_name": "Trần Thị B", "crm_name": "tran.b", "team": "Inhouse 2"}
 
         result = build_course_activated_message(req_data, sale_info)
-        msg = result["message"]
-
-        assert msg.startswith("✅ ĐÃ KÍCH HOẠT THÀNH CÔNG GÓI HỌC")
-        assert "KH: Nguyễn Văn A · Sale Trần Thị B · Team Inhouse 2" in msg
-        assert "SĐT: 84-772333555 · UID: 3307542974" in msg
-        assert "Gói: Phil 48+5 fix 2b/tuần, Gói Toán 12T" in msg
+        assert result["message"] == (
+            "✅ ĐÃ KÍCH HOẠT THÀNH CÔNG\n"
+            "SĐT: 84-772333555 · Sale Trần Thị B\n"
+            "Order ID: 756503406889218"
+        )
         assert result["canonical_team_code"] == "Inhouse 2"
 
-    def test_multi_uid_collects_all_phones_and_uids(self):
+    def test_multi_uid_collects_all_phones_and_order_ids(self):
         req_data = {
             "id": "AR-2026-0011",
-            "customer_name": "Bé Sóc",
             "uids_data": [
-                {"uid": "111", "phone": "84-900000001", "courses": [{"name": "Gói A"}]},
-                {"uid": "222", "phone": "84-900000002", "courses": [{"name": "Gói B"}]},
+                {"uid": "111", "phone": "84-900000001", "courses": [{"name": "Gói A", "order_id": "oid1"}]},
+                {"uid": "222", "phone": "84-900000002", "courses": [{"name": "Gói B", "order_id": "oid2"}]},
             ],
         }
         sale_info = {"display_name": "Sale X", "team": "Offline"}
 
-        result = build_course_activated_message(req_data, sale_info)
-        msg = result["message"]
-
+        msg = build_course_activated_message(req_data, sale_info)["message"]
         assert "SĐT: 84-900000001, 84-900000002" in msg
-        assert "UID: 111, 222" in msg
-        assert "Gói: Gói A, Gói B" in msg
-        assert result["canonical_team_code"] == "Offline"
+        assert "Order ID: oid1, oid2" in msg
 
     def test_missing_uids_data_falls_back_to_question_marks(self):
-        req_data = {"id": "AR-2026-0012", "customer_name": "Test KH"}
-        sale_info = {"team": "Inhouse 2"}
-
-        result = build_course_activated_message(req_data, sale_info)
-        msg = result["message"]
-
-        assert "SĐT: ? · UID: ?" in msg
-        assert "Gói: ?" in msg
+        msg = build_course_activated_message({"id": "AR-2026-0012"}, {"team": "Inhouse 2"})["message"]
+        assert "SĐT: ?" in msg
+        assert "Order ID: ?" in msg
 
     def test_phone_fallback_from_pr_data(self):
-        req_data = {
-            "id": "AR-2026-0013",
-            "customer_name": "KH Fallback",
-            "uids_data": [
-                {"uid": "999", "courses": [{"name": "Gói C"}]},  # no phone in uid_block
-            ],
-        }
-        sale_info = {"team": "Offline"}
-        pr_data = {"phone": "84-111222333"}
-
-        result = build_course_activated_message(req_data, sale_info, pr_data=pr_data)
-        msg = result["message"]
-
+        req_data = {"id": "AR-2026-0013", "uids_data": [{"uid": "999", "courses": [{"name": "Gói C", "order_id": "o9"}]}]}
+        msg = build_course_activated_message(req_data, {"team": "Offline"}, pr_data={"phone": "84-111222333"})["message"]
         assert "SĐT: 84-111222333" in msg
+        assert "Order ID: o9" in msg
 
-    def test_customer_fallback_from_pr_name(self):
-        req_data = {"id": "AR-2026-0014", "uids_data": [{"uid": "1", "courses": [{"name": "G"}]}]}
-        sale_info = {"team": "Offline"}
-        pr_data = {"name": "Khách từ PR"}
-
-        result = build_course_activated_message(req_data, sale_info, pr_data=pr_data)
-        assert "KH: Khách từ PR" in result["message"]
+    def test_order_id_missing_falls_back_to_question_mark(self):
+        req_data = {"id": "AR-2026-0014", "uids_data": [{"uid": "1", "phone": "84-1", "courses": [{"name": "G"}]}]}
+        msg = build_course_activated_message(req_data, {"team": "Offline"})["message"]
+        assert "Order ID: ?" in msg
 
     def test_never_raises_on_empty_input(self):
         result = build_course_activated_message({}, {})
@@ -323,7 +296,8 @@ class TestBuildCourseActivatedMessage:
             {"id": "X", "uids_data": "not-a-list"}, {"team": "IH2"}
         )
         assert isinstance(result["message"], str)
-        assert "SĐT: ? · UID: ?" in result["message"]
+        assert "SĐT: ?" in result["message"]
+        assert "Order ID: ?" in result["message"]
 
 
 class TestBuildPaymentPaidMessageNetAmount:
