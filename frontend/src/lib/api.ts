@@ -556,7 +556,7 @@ export const endpoints = {
       ),
   },
   bankTxns: {
-    list: (params?: { status?: string; q?: string; from?: string; to?: string }) =>
+    list: (params?: { status?: string; q?: string; from?: string; to?: string; limit?: number; offset?: number }) =>
       api.get<BankTransaction[]>("/api/v1/bank-transactions", { params }),
     matchCandidates: (txnId: string, params?: { amount_exact?: number }) =>
       api.get<BankMatchCandidate[]>(`/api/v1/bank-transactions/${txnId}/match-candidates`, { params }),

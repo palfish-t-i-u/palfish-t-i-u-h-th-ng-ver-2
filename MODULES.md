@@ -36,8 +36,11 @@
 
 ### B2 — Đối soát chuyển khoản
 - FE: `frontend/src/components/ReconciliationTab.tsx` + `frontend/src/components/reconciliation/` (ReconTxnCards, ReconBankCards — mobile)
-- BE: `backend/sepay_routes.py` — SePay webhook `/api/v1/sepay/*`, sync bank transactions
+- FE helper: `frontend/src/lib/fetchAllBankTxns.ts` — nạp toàn bộ bank txns chưa ghép (loop paging, 2026-07-17)
+- FE helper test: `frontend/src/lib/fetchAllBankTxns.test.ts`
+- BE: `backend/sepay_routes.py` — SePay webhook `/api/v1/sepay/*`, sync bank transactions; GET `/api/v1/bank-transactions` hỗ trợ `offset` paging + alias `unmatched`/`matched`
 - BE: `backend/payos_qr.py` — VietQR EMV parse, PayOS link (chung B1)
+- BE test: `backend/tests/test_bank_txns_list_paging.py` — test paging + status alias endpoint
 - Webhook cũ: `@app.post("/webhook/payos")` trong `backend/main.py`; gateway đứng riêng: `api_pipe/app_payment.py`, `api_pipe/payos_webhook.py`
 - E2E: `frontend/e2e/reconciliation-flow.spec.ts`, `frontend/e2e/mobile-accounting.spec.ts`
 

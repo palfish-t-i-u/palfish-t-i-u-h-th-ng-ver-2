@@ -414,10 +414,25 @@ export default function ReconciliationTab() {
   const transactions = useMemo(() => flattenTransactions(requests), [requests]);
 
   // Tải biến động số dư ngân hàng (SePay) — dùng cho badge nguồn + tab "CK ngoài chờ ghép"
+  // Load-all 2026-07-17: nạp TOÀN BỘ unmatched (bỏ trần 200 dòng) + 1000 matched mới nhất cho badge
   const loadBankTxns = useCallback(async () => {
     try {
-      const { data } = await endpoints.bankTxns.list();
-      setBankTxns(Array.isArray(data) ? data : []);
+      const [unmatched, matchedRes] = await Promise.all([
+        fetchAllBankTxns((limit, offset) =>
+          endpoints.bankTxns
+            .list({ status: "unmatched", limit, offset })
+            .then((r) => (Array.isArray(r.data) ? r.data : [])),
+        ),
+        endpoints.bankTxns.list({ status: "matched", limit: 1000 }),
+      ]);
+      const matched = Array.isArray(matchedRes.data) ? matchedRes.data : [];
+      let rows = [...unmatched, ...matched];
+      if (unmatched.length === 0 && matched.length === 0) {
+        // BE cũ chưa hiểu status=unmatched/matched (deploy lệch/rollback) → nạp kiểu cũ, tab không trống
+        const legacy = await endpoints.bankTxns.list();
+        if (Array.isArray(legacy.data) && legacy.data.length > 0) rows = legacy.data;
+      }
+      setBankTxns(rows);
     } catch {
       setBankTxns([]);
     }
