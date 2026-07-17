@@ -11,6 +11,13 @@ import CompletionReportModal from "./CompletionReportModal";
  * Gate mở nút: PR done/over VÀ mọi lần đã trả đều có bill (khớp guard AR).
  * Lần 1: bấm gửi thẳng. Lần ≥2: mở modal soft-block bắt nhập lý do.
  */
+/**
+ * 17/7 — TẠM KHOÁ tính năng. Chờ phương án thống nhất từ anh Hiếu + chị Hiền
+ * (gộp form chọn gói vào bước này). Trong lúc đó sale vẫn bàn giao đơn hoàn thành
+ * THỦ CÔNG trên nhóm DingTalk cũ. Đổi về false để mở lại khi có phương án.
+ */
+const FEATURE_LOCKED: boolean = true;
+
 export default function CompletionReportBlock({
   request,
   onReportComplete,
@@ -36,6 +43,7 @@ export default function CompletionReportBlock({
     : "";
 
   const handleClick = async () => {
+    if (FEATURE_LOCKED) return;
     if (!ready || submitting || readOnly) return;
     if (reports.length === 0) {
       setSubmitting(true);
@@ -74,52 +82,65 @@ export default function CompletionReportBlock({
           )}
         </h4>
       </div>
-      <div style={{ fontSize: 12.5, color: "var(--text)", marginBottom: 4, fontWeight: 500 }}>
-        Nhắn thông báo đơn hoàn thành lên DingTalk cho kế toán — bắt buộc phải làm trước khi tạo Active Request để kế toán ghi chép doanh thu.
-      </div>
-      <div style={{ fontSize: 12, color: "var(--warning-text, #92400e)", background: "var(--warning-bg, #fef3c7)", borderRadius: 6, padding: "6px 10px", marginBottom: 12, lineHeight: 1.5 }}>
-        ⚠ Lưu ý: Sales hãy đảm bảo rằng PR đã gom đủ tiền dự kiến trước khi Báo đơn hoàn thành (DingTalk).
-      </div>
+      {FEATURE_LOCKED ? (
+        <>
+          <div style={{ fontSize: 12.5, color: "var(--text)", background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 8, padding: "10px 12px", marginBottom: 12, lineHeight: 1.55 }}>
+            🚧 <b>Tính năng đang được phát triển.</b> Hiện tại vui lòng <b>bàn giao đơn hoàn thành thủ công trên nhóm DingTalk</b> như trước — nút bên dưới tạm khoá.
+          </div>
+          <button type="button" className="btn btn-outline" disabled title="Tính năng đang phát triển">
+            <Icons.CheckSquare size={14} /> Báo đơn hoàn thành
+          </button>
+        </>
+      ) : (
+        <>
+          <div style={{ fontSize: 12.5, color: "var(--text)", marginBottom: 4, fontWeight: 500 }}>
+            Nhắn thông báo đơn hoàn thành lên DingTalk cho kế toán — bắt buộc phải làm trước khi tạo Active Request để kế toán ghi chép doanh thu.
+          </div>
+          <div style={{ fontSize: 12, color: "var(--warning-text, #92400e)", background: "var(--warning-bg, #fef3c7)", borderRadius: 6, padding: "6px 10px", marginBottom: 12, lineHeight: 1.5 }}>
+            ⚠ Lưu ý: Sales hãy đảm bảo rằng PR đã gom đủ tiền dự kiến trước khi Báo đơn hoàn thành (DingTalk).
+          </div>
 
-      {reports.length > 0 && (
-        <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 12 }}>
-          {reports.map((r) => {
-            const { date, time } = formatPaymentDateTime(r.created_at);
-            return (
-              <div key={r.id} style={{ fontSize: 12.5, color: "var(--text-2)" }}>
-                Lần #{r.seq} · {time} {date} · {vnd(r.total_net)} ·{" "}
-                {r.reported_by === "system-backfill" ? "hệ thống (backfill)" : r.reported_by}
-              </div>
-            );
-          })}
-        </div>
-      )}
+          {reports.length > 0 && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 12 }}>
+              {reports.map((r) => {
+                const { date, time } = formatPaymentDateTime(r.created_at);
+                return (
+                  <div key={r.id} style={{ fontSize: 12.5, color: "var(--text-2)" }}>
+                    Lần #{r.seq} · {time} {date} · {vnd(r.total_net)} ·{" "}
+                    {r.reported_by === "system-backfill" ? "hệ thống (backfill)" : r.reported_by}
+                  </div>
+                );
+              })}
+            </div>
+          )}
 
-      {error && (
-        <div style={{ fontSize: 12, color: "var(--danger)", marginBottom: 8 }}>{error}</div>
-      )}
+          {error && (
+            <div style={{ fontSize: 12, color: "var(--danger)", marginBottom: 8 }}>{error}</div>
+          )}
 
-      <button
-        type="button"
-        className={`btn ${ready ? "btn-success" : "btn-outline"}`}
-        disabled={!ready || submitting || readOnly}
-        title={hint || undefined}
-        onClick={handleClick}
-      >
-        <Icons.CheckSquare size={14} /> {submitting ? "Đang gửi…" : "Báo đơn hoàn thành"}
-      </button>
-      {!ready && hint && (
-        <div style={{ fontSize: 12.5, color: "var(--danger)", background: "var(--danger-bg, #fef2f2)", borderRadius: 6, padding: "6px 10px", marginTop: 8, lineHeight: 1.5, fontWeight: 500 }}>
-          ⚠ {hint}
-        </div>
-      )}
+          <button
+            type="button"
+            className={`btn ${ready ? "btn-success" : "btn-outline"}`}
+            disabled={!ready || submitting || readOnly}
+            title={hint || undefined}
+            onClick={handleClick}
+          >
+            <Icons.CheckSquare size={14} /> {submitting ? "Đang gửi…" : "Báo đơn hoàn thành"}
+          </button>
+          {!ready && hint && (
+            <div style={{ fontSize: 12.5, color: "var(--danger)", background: "var(--danger-bg, #fef2f2)", borderRadius: 6, padding: "6px 10px", marginTop: 8, lineHeight: 1.5, fontWeight: 500 }}>
+              ⚠ {hint}
+            </div>
+          )}
 
-      {modalOpen && (
-        <CompletionReportModal
-          request={request}
-          onClose={() => !submitting && setModalOpen(false)}
-          onConfirm={handleModalConfirm}
-        />
+          {modalOpen && (
+            <CompletionReportModal
+              request={request}
+              onClose={() => !submitting && setModalOpen(false)}
+              onConfirm={handleModalConfirm}
+            />
+          )}
+        </>
       )}
     </div>
   );
