@@ -165,17 +165,27 @@ def send_group_message(
         raise DingTalkAPIError(f"DingTalk network error: {exc}") from exc
 
     body = _json_or_text(resp)
+
+    # DingTalk group send is ASYNC: a processQueryKey in the body means the
+    # message was accepted+enqueued for delivery. Return it as success even when
+    # the HTTP status is 5xx — an ambiguous 5xx that STILL carries the key was
+    # actually delivered, so retrying would post a DUPLICATE. (Guards the
+    # "delivered-but-503" case that double-sent a group message during testing.)
+    process_key = body.get("processQueryKey", "") if isinstance(body, dict) else ""
+    if process_key:
+        return process_key
+
     if resp.status_code >= 400:
+        # Include a body snippet so the next 5xx is diagnosable from last_error.
         raise DingTalkAPIError(
-            f"DingTalk HTTP {resp.status_code}",
+            f"DingTalk HTTP {resp.status_code}: {str(body)[:200]}",
             status_code=resp.status_code,
             response_body=body,
         )
     if not isinstance(body, dict):
         raise DingTalkAPIError("DingTalk response khong phai JSON object", response_body=body)
 
-    process_key = body.get("processQueryKey", "")
-    return process_key or f"dt-{int(time.time() * 1000)}"
+    return f"dt-{int(time.time() * 1000)}"
 
 
 def send_group_image(
@@ -217,12 +227,17 @@ def send_group_image(
         raise DingTalkAPIError(f"DingTalk image send error: {exc}") from exc
 
     body = _json_or_text(resp)
+
+    # Async send: key in body = delivered, treat as success even on 5xx (dedup).
+    process_key = body.get("processQueryKey", "") if isinstance(body, dict) else ""
+    if process_key:
+        return process_key
+
     if resp.status_code >= 400:
         raise DingTalkAPIError(
-            f"DingTalk image HTTP {resp.status_code}",
+            f"DingTalk image HTTP {resp.status_code}: {str(body)[:200]}",
             status_code=resp.status_code,
             response_body=body,
         )
 
-    process_key = body.get("processQueryKey", "") if isinstance(body, dict) else ""
-    return process_key or f"dt-img-{int(time.time() * 1000)}"
+    return f"dt-img-{int(time.time() * 1000)}"

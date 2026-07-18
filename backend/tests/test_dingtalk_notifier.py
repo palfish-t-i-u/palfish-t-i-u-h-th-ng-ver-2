@@ -117,6 +117,26 @@ def test_send_raises_on_http_error(monkeypatch):
     assert exc.value.status_code == 500
 
 
+def test_send_5xx_with_process_key_is_success(monkeypatch):
+    """Ambiguous 5xx that STILL carries processQueryKey = message was delivered.
+
+    Return the key as success instead of raising — else the worker retries and
+    posts a DUPLICATE (the delivered-but-503 bug). Async send: key = enqueued.
+    """
+    import dingtalk_notifier
+    _reset_token_cache()
+
+    fake = _FakeClient([TOKEN_RESP, _FakeResp(503, {"processQueryKey": "pqk-503"})])
+    monkeypatch.setattr(dingtalk_notifier.httpx, "Client", lambda **_: fake)
+
+    msg_id = dingtalk_notifier.send_group_message(
+        open_conversation_id="cid123",
+        message="hello",
+        robot_code="RC",
+    )
+    assert msg_id == "pqk-503"
+
+
 def test_send_raises_on_empty_fields():
     import dingtalk_notifier
 
