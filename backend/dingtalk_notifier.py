@@ -38,6 +38,20 @@ class DingTalkAPIError(RuntimeError):
         self.response_body = response_body
 
 
+class DingTalkAmbiguousDeliveryError(DingTalkAPIError):
+    """Send failed AFTER the request reached DingTalk's async gateway.
+
+    Two triggers: (1) an HTTP 5xx that carries a body but NO processQueryKey,
+    (2) a read/write timeout (request sent, response lost). Because the group
+    send API is ASYNC, in both cases the message may ALREADY be enqueued for
+    delivery — observed 18/7: a 503 ServiceUnavailable that still delivered.
+    Retrying such a send posts a DUPLICATE. Callers MUST treat this as terminal
+    (do not auto-retry) and flag for manual verification, rather than claim
+    success or reschedule. Distinct from the base error, which stays retryable
+    (connect errors = never delivered, 4xx = rejected before enqueue).
+    """
+
+
 def _clean(value: Any) -> str:
     return "" if value is None else str(value).strip()
 
@@ -161,8 +175,16 @@ def send_group_message(
                     "Content-Type": "application/json",
                 },
             )
+    except httpx.ConnectError as exc:
+        # Never established a connection → request definitely not delivered →
+        # safe to retry (won't duplicate).
+        raise DingTalkAPIError(f"DingTalk connect error: {exc}") from exc
     except httpx.HTTPError as exc:
-        raise DingTalkAPIError(f"DingTalk network error: {exc}") from exc
+        # Connected + request sent but no clean response (read/write timeout).
+        # Async enqueue MAY have happened → ambiguous → terminal, do not retry.
+        raise DingTalkAmbiguousDeliveryError(
+            f"DingTalk network ambiguous (sent, no response): {exc}"
+        ) from exc
 
     body = _json_or_text(resp)
 
@@ -175,8 +197,19 @@ def send_group_message(
     if process_key:
         return process_key
 
+    if resp.status_code >= 500:
+        # Got a status+body from DingTalk's gateway but NO processQueryKey. The
+        # async enqueue may already have happened (observed 18/7: 503
+        # ServiceUnavailable that still delivered) → retrying posts a DUPLICATE.
+        # Terminal + flag, NOT retryable. (learning: dingtalk-async-send-5xx-duplicate)
+        raise DingTalkAmbiguousDeliveryError(
+            f"DingTalk HTTP {resp.status_code} (no key, assumed enqueued): {str(body)[:200]}",
+            status_code=resp.status_code,
+            response_body=body,
+        )
     if resp.status_code >= 400:
-        # Include a body snippet so the next 5xx is diagnosable from last_error.
+        # 4xx = genuine rejection (bad token/param), not enqueued → retry is safe
+        # (usually permanent → dead-letters without duplicating).
         raise DingTalkAPIError(
             f"DingTalk HTTP {resp.status_code}: {str(body)[:200]}",
             status_code=resp.status_code,
@@ -223,8 +256,14 @@ def send_group_image(
                     "Content-Type": "application/json",
                 },
             )
+    except httpx.ConnectError as exc:
+        # Never connected → not delivered → safe to retry.
+        raise DingTalkAPIError(f"DingTalk image connect error: {exc}") from exc
     except httpx.HTTPError as exc:
-        raise DingTalkAPIError(f"DingTalk image send error: {exc}") from exc
+        # Sent but response lost → async enqueue may have happened → terminal.
+        raise DingTalkAmbiguousDeliveryError(
+            f"DingTalk image network ambiguous (sent, no response): {exc}"
+        ) from exc
 
     body = _json_or_text(resp)
 
@@ -233,7 +272,16 @@ def send_group_image(
     if process_key:
         return process_key
 
+    if resp.status_code >= 500:
+        # 5xx-no-key after reaching gateway → may already be enqueued → retrying
+        # duplicates → terminal, not retryable.
+        raise DingTalkAmbiguousDeliveryError(
+            f"DingTalk image HTTP {resp.status_code} (no key, assumed enqueued): {str(body)[:200]}",
+            status_code=resp.status_code,
+            response_body=body,
+        )
     if resp.status_code >= 400:
+        # 4xx = rejected before enqueue → retry safe.
         raise DingTalkAPIError(
             f"DingTalk image HTTP {resp.status_code}: {str(body)[:200]}",
             status_code=resp.status_code,

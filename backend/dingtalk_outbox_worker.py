@@ -12,7 +12,11 @@ from typing import Any, Callable
 
 import httpx
 
-from dingtalk_notifier import DingTalkAPIError, send_group_message
+from dingtalk_notifier import (
+    DingTalkAmbiguousDeliveryError,
+    DingTalkAPIError,
+    send_group_message,
+)
 
 RETRY_DELAYS = [30, 120, 300, 900]  # seconds
 MAX_RETRIES = 4
@@ -226,6 +230,23 @@ async def poll_and_send(sb_factory: Callable[[], Any]) -> None:
                 "last_error": None,
             }).eq("id", row_id).execute()
             print(f"[dingtalk_worker] sent {row_id} -> {msg_id}")
+        except DingTalkAmbiguousDeliveryError as exc:
+            # DingTalk's async gateway errored AFTER the request reached it
+            # (5xx-no-key / read-timeout). The message may already be enqueued,
+            # so retrying would post a DUPLICATE (observed 18/7). Mark terminal
+            # WITHOUT claiming success: retries=MAX stops auto-retry, sent_at
+            # stays null (never falsely "sent"), last_error flagged AMBIGUOUS so
+            # a human verifies delivery in the group. Query filterable:
+            #   where last_error like 'AMBIGUOUS%'
+            print(f"[dingtalk_worker] {row_id} ambiguous send (no retry, verify tay): {exc}")
+            try:
+                sb.table("dingtalk_outbox").update({
+                    "retries": MAX_RETRIES,
+                    "next_retry_at": None,
+                    "last_error": f"AMBIGUOUS (co the da gui, KHONG retry, verify tay): {exc}",
+                }).eq("id", row_id).execute()
+            except Exception as upd_exc:
+                print(f"[dingtalk_worker] update {row_id} failed: {upd_exc}")
         except Exception as exc:
             err_msg = str(exc)
             new_retries = retries + 1

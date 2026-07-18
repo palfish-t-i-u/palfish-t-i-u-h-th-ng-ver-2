@@ -1,5 +1,25 @@
 import json
+import httpx
 import pytest
+
+
+class _RaisingClient:
+    """Fake httpx.Client whose send POST raises a given exception (token POST OK)."""
+
+    def __init__(self, exc):
+        self._exc = exc
+        self._first = True
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_args):
+        return False
+
+    def post(self, url, *, json=None, headers=None, **_):
+        if "oauth2" in url:
+            return _FakeResp(200, {"accessToken": "TKN_123", "expireIn": 7200})
+        raise self._exc
 
 
 class _FakeResp:
@@ -168,3 +188,68 @@ def test_token_caching(monkeypatch):
 
     token_calls = [c for c in fake.calls if "oauth2" in c["url"]]
     assert len(token_calls) == 1
+
+
+def test_send_5xx_without_key_is_ambiguous_not_retryable(monkeypatch):
+    """5xx WITH a body but NO processQueryKey = request reached DingTalk's async
+    gateway; the message may already be enqueued. Must raise the AMBIGUOUS type so
+    the worker treats it as terminal (no retry → no duplicate)."""
+    import dingtalk_notifier
+    _reset_token_cache()
+
+    fake = _FakeClient([TOKEN_RESP, _FakeResp(503, {"code": "ServiceUnavailable"})])
+    monkeypatch.setattr(dingtalk_notifier.httpx, "Client", lambda **_: fake)
+
+    with pytest.raises(dingtalk_notifier.DingTalkAmbiguousDeliveryError) as exc:
+        dingtalk_notifier.send_group_message(
+            open_conversation_id="cid123", message="hello", robot_code="RC",
+        )
+    assert exc.value.status_code == 503
+
+
+def test_send_4xx_is_retryable_not_ambiguous(monkeypatch):
+    """4xx = genuine rejection (bad token/param), NOT enqueued → retry is safe.
+    Must NOT be the ambiguous type (else it'd never retry)."""
+    import dingtalk_notifier
+    _reset_token_cache()
+
+    fake = _FakeClient([TOKEN_RESP, _FakeResp(400, {"code": "InvalidParameter"})])
+    monkeypatch.setattr(dingtalk_notifier.httpx, "Client", lambda **_: fake)
+
+    with pytest.raises(dingtalk_notifier.DingTalkAPIError) as exc:
+        dingtalk_notifier.send_group_message(
+            open_conversation_id="cid123", message="hello", robot_code="RC",
+        )
+    assert not isinstance(exc.value, dingtalk_notifier.DingTalkAmbiguousDeliveryError)
+    assert exc.value.status_code == 400
+
+
+def test_send_read_timeout_is_ambiguous(monkeypatch):
+    """Read timeout = request sent, response lost → async enqueue may have happened
+    → ambiguous, terminal (no retry)."""
+    import dingtalk_notifier
+    _reset_token_cache()
+
+    fake = _RaisingClient(httpx.ReadTimeout("timed out"))
+    monkeypatch.setattr(dingtalk_notifier.httpx, "Client", lambda **_: fake)
+
+    with pytest.raises(dingtalk_notifier.DingTalkAmbiguousDeliveryError):
+        dingtalk_notifier.send_group_message(
+            open_conversation_id="cid123", message="hello", robot_code="RC",
+        )
+
+
+def test_send_connect_error_is_retryable(monkeypatch):
+    """Connect error = never reached DingTalk → definitely not delivered → retry safe.
+    Must NOT be ambiguous."""
+    import dingtalk_notifier
+    _reset_token_cache()
+
+    fake = _RaisingClient(httpx.ConnectError("refused"))
+    monkeypatch.setattr(dingtalk_notifier.httpx, "Client", lambda **_: fake)
+
+    with pytest.raises(dingtalk_notifier.DingTalkAPIError) as exc:
+        dingtalk_notifier.send_group_message(
+            open_conversation_id="cid123", message="hello", robot_code="RC",
+        )
+    assert not isinstance(exc.value, dingtalk_notifier.DingTalkAmbiguousDeliveryError)

@@ -133,6 +133,35 @@ async def test_poll_dead_letters_after_max_retries():
 
 
 @pytest.mark.asyncio
+async def test_poll_no_retry_on_ambiguous_delivery():
+    """DingTalk 5xx-after-reaching-gateway = message may already be enqueued.
+    Worker must NOT retry (retry = duplicate, bug 18/7): mark terminal
+    (retries=MAX, next_retry_at None) WITHOUT claiming sent, flag AMBIGUOUS."""
+    from dingtalk_outbox_worker import poll_and_send, MAX_RETRIES
+    from dingtalk_notifier import DingTalkAmbiguousDeliveryError
+
+    rows = [{
+        "id": 42,
+        "team_code": "TEAM_A",
+        "message": "hi",
+        "event_type": "activation_request_created",
+        "retries": 0,
+    }]
+    sb = _SB(rows)
+
+    with patch("dingtalk_outbox_worker._load_team_group", return_value="cid123"):
+        with patch("dingtalk_outbox_worker.send_group_message",
+                   side_effect=DingTalkAmbiguousDeliveryError("HTTP 503 no key")):
+            await poll_and_send(lambda: sb)
+
+    last = sb._table.updater.calls[-1]
+    assert last["payload"]["retries"] == MAX_RETRIES        # terminal → not re-polled
+    assert last["payload"]["next_retry_at"] is None          # no retry scheduled
+    assert "sent_at" not in last["payload"]                  # NOT claimed delivered
+    assert last["payload"]["last_error"].startswith("AMBIGUOUS")
+
+
+@pytest.mark.asyncio
 async def test_bill_images_embedded_via_self_thumbs():
     """Worker gọi _ensure_thumbs (to_thread) và nhúng thumb tự tạo vào 1 tin markdown."""
     from dingtalk_outbox_worker import poll_and_send
