@@ -62,6 +62,7 @@ export default function PaymentRequestsTab() {
     handleCreate: ctxCreate,
     handleAddPayment: ctxAddPayment,
     handleCreateActiveRequest,
+    handleAppendActiveRequest,
     saveActiveRequest,
     deleteActiveRequest,
     reportComplete,
@@ -739,6 +740,13 @@ export default function PaymentRequestsTab() {
     await handleCreateActiveRequest(selected, rows);
   };
 
+  const onAppendActiveRequest = async (rows: ArDraftRow[]) => {
+    if (!selected) return;
+    const existingAr = arByPrId[selected.id];
+    if (!existingAr) return;
+    await handleAppendActiveRequest(selected, existingAr.id, rows);
+  };
+
   // Local-only update — KHÔNG gọi server mỗi keystroke (race condition: response chậm
   // overwrite state mới hơn, làm mất ký tự user vừa gõ). Server save dùng Save button.
   const handleActiveRequestMiniMutate = (
@@ -845,6 +853,7 @@ export default function PaymentRequestsTab() {
         uploadingBillId={uploadingBillId}
         deletingBillId={deletingBillId}
         onCreateActiveRequest={onCreateActiveRequest}
+        onAppendActiveRequest={onAppendActiveRequest}
         onCancelRequest={() => selected && setCancelTarget(selected)}
         activeRequestId={selected ? arByPrId[selected.id]?.id ?? null : null}
         activeRequest={selected ? arByPrId[selected.id] ?? null : null}

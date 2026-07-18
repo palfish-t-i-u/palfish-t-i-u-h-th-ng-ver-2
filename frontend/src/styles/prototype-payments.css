@@ -1651,6 +1651,14 @@
   padding: 1px 5px;
   border-radius: 4px;
 }
+/* ── Phone input shake animation ── */
+@keyframes arPhoneShake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-3px); }
+  75% { transform: translateX(3px); }
+}
+.ar-phone-bad { animation: arPhoneShake 0.25s ease-in-out 2; }
+
 /* ── Onboarding visual cues ── */
 @keyframes ar-btn-pulse {
   0% { box-shadow: 0 0 0 0 rgba(108, 92, 231, 0.55); }

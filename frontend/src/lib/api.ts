@@ -217,6 +217,8 @@ export const endpoints = {
       body: { uid: string; course_code: string; side: "referee" | "referrer"; credited: boolean; reason?: string }
     ) =>
       api.patch<ActiveRequestApiRow>(`/api/v1/active-requests/${arId}/credit-referral`, body),
+    append: (arId: string, body: CreateActiveRequestPayload) =>
+      api.post<ActiveRequestApiRow>(`/api/v1/active-requests/${arId}/append`, body),
     bulkIssueInvoices: (items: { ar_id: string; course_code: string }[]) =>
       api.post<{
         issued: { ar_id: string; course_code: string; invoice_id: string; invoiced_at: string }[];

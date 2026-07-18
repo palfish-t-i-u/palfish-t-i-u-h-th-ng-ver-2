@@ -38,10 +38,12 @@ import {
   paymentConfirmationText,
   REFERRAL_STATUS_HEADER,
   REFERRAL_STATUS_PANEL_STYLE,
+  reportButtonState,
   splitChildNames,
   validateReferralBonus,
   vnd,
 } from "./paymentRequestUtils";
+import { smartParsePhonePaste, normalizeLocalPhone, crmPhoneFormat } from "./phoneUtils";
 import { nextCourseCode } from "../payment-flow/paymentFlowUtils";
 import { endpoints } from "../../lib/api";
 import PrStaleContentWarning from "./PrStaleContentWarning";
@@ -1427,6 +1429,15 @@ function ActiveRequestMiniCardV2({
           </div>
         ))}
       </div>
+      <div style={{
+        marginTop: 10, padding: "8px 12px", borderRadius: 8, fontSize: 12, lineHeight: 1.5,
+        border: "1.5px solid var(--warning, #f59e0b)", background: "var(--warning-bg, #fef3c7)",
+        color: "var(--warning-text, #92400e)",
+      }}>
+        ⚠️ Thêm bé/gói tại đây <strong>không gửi tin báo đơn</strong> cho kế toán — chỉ dùng để sửa
+        thông tin nhập sai. Muốn báo bé/gói mới (khách đóng thêm tiền): dùng nút{" "}
+        <strong>"Báo đơn bổ sung"</strong> ở cuối phiếu.
+      </div>
       <div style={{ display: "flex", justifyContent: "flex-end", paddingTop: 12, paddingBottom: 4 }}>
         <button type="button" className="btn btn-outline btn-sm" disabled={!canAddMore} onClick={addUidGroup}
           title={!canAddMore ? "Đã phân bổ hết tiền đã nhận — không thể thêm UID" : "Thêm UID mới"}>
@@ -1549,6 +1560,7 @@ export default function PaymentRequestDetailDrawer({
   onBillFile,
   onBillView,
   onCreateActiveRequest,
+  onAppendActiveRequest,
   onCancelRequest,
   activeRequestId,
   activeRequest,
@@ -1573,6 +1585,8 @@ export default function PaymentRequestDetailDrawer({
   onBillFile: (qr: PaymentAttempt, file: File) => void | Promise<void>;
   onBillView: (qr: PaymentAttempt) => void;
   onCreateActiveRequest: (rows: ArDraftRow[]) => void;
+  /** Báo đơn bổ sung (lần 2+): cộng bé/gói mới vào AR có sẵn + tin DingTalk lần 2 */
+  onAppendActiveRequest: (rows: ArDraftRow[]) => Promise<void>;
   onCancelRequest: () => void;
   activeRequestId?: string | null;
   activeRequest?: ActiveRequest | null;
@@ -1601,6 +1615,7 @@ export default function PaymentRequestDetailDrawer({
   // 7/7 — bắt buộc chọn tên gói TRƯỚC khi tạo AR (tin Zalo bắn ngay lúc tạo)
   // 10/7 — modal mở rộng: nhiều dòng {bé, gói, tiền} thay vì 1 ô gói đơn
   const [arPackageModalOpen, setArPackageModalOpen] = useState(false);
+  const [arSubmitting, setArSubmitting] = useState(false);
   const [arDraftRows, setArDraftRows] = useState<ArDraftRow[]>([]);
   // bill guard — chặn tạo AR khi còn line paid thiếu ảnh bill
   const [missingBillsPopupOpen, setMissingBillsPopupOpen] = useState(false);
@@ -1731,6 +1746,15 @@ export default function PaymentRequestDetailDrawer({
   const ready = request.state === "done" || request.state === "over";
   const hasActiveRequest = !!activeRequestId;
   const activeSummary = activationSummary(activeRequest);
+  const arUnallocated = hasActiveRequest && activeRequest
+    ? activeRequestAllocation(activeRequest, request).remaining
+    : 0;
+  const reportBtn = reportButtonState({
+    ready,
+    hasAr: hasActiveRequest,
+    unallocated: arUnallocated,
+    arLabel: activeSummary.buttonLabel,
+  });
   const copyPrId = async () => {
     const id = request.id;
     const fallbackCopy = () => {
@@ -2453,7 +2477,9 @@ export default function PaymentRequestDetailDrawer({
                 <div className="tl-content">
                   <div className="tl-title">B3 · Báo đơn & Kích hoạt</div>
                   <div className="tl-meta">
-                    {hasActiveRequest
+                    {reportBtn.isAppend
+                      ? `Còn ${arUnallocated.toLocaleString("vi-VN")} đ chưa phân bổ — bấm "Báo đơn bổ sung" cho bé/gói mới`
+                      : hasActiveRequest
                       ? `Active Request ${activeRequestId} — ${activeSummary.buttonLabel}`
                       : ready
                       ? 'Sẵn sàng — bấm "Báo đơn & Kích hoạt" để báo kế toán & mở gói'
@@ -2536,15 +2562,9 @@ export default function PaymentRequestDetailDrawer({
               </button>
             )}
             {!readOnly && <button
-              className={`btn ${ready && !hasActiveRequest ? "btn-success" : "btn-outline"}`}
-              disabled={!ready || hasActiveRequest}
-              title={
-                !ready
-                  ? "Cần thu đủ 100% số tiền trước khi báo đơn"
-                  : hasActiveRequest
-                  ? activeSummary.buttonLabel
-                  : "Báo đơn lên DingTalk + tạo yêu cầu kích hoạt khoá học"
-              }
+              className={`btn ${reportBtn.enabled ? "btn-success" : "btn-outline"}`}
+              disabled={!reportBtn.enabled}
+              title={reportBtn.title}
               onClick={() => {
                 const missingLines = findPaidLinesWithoutBill(request.payments ?? []);
                 if (missingLines.length > 0) {
@@ -2552,11 +2572,15 @@ export default function PaymentRequestDetailDrawer({
                   setMissingBillsPopupOpen(true);
                   return;
                 }
-                setArDraftRows([{ childName: splitChildNames(request.childName)[0] ?? "", uid: request.uid ?? "", packageName: "", amount: Math.max(0, request.received), leadSource: request.leadSource || "", leadChannel: request.leadChannel || "" }]);
+                setArDraftRows([
+                  reportBtn.isAppend
+                    ? { childName: "", uid: "", phone: "", phoneCountry: request.country || "VN", packageName: "", amount: arUnallocated, leadSource: request.leadSource || "", leadChannel: request.leadChannel || "" }
+                    : { childName: splitChildNames(request.childName)[0] ?? "", uid: request.uid ?? "", phone: (request.phone ?? "").replace(/\D/g, ""), phoneCountry: request.country || "VN", packageName: "", amount: Math.max(0, request.received), leadSource: request.leadSource || "", leadChannel: request.leadChannel || "" },
+                ]);
                 setArPackageModalOpen(true);
               }}
             >
-              <Icons.CheckSquare size={14} /> {hasActiveRequest ? activeSummary.buttonLabel : "Báo đơn & Kích hoạt"}
+              <Icons.CheckSquare size={14} /> {reportBtn.label}
             </button>}
           </div>
         </div>
@@ -2564,9 +2588,12 @@ export default function PaymentRequestDetailDrawer({
       {arPackageModalOpen && (() => {
         const arTotal = arDraftRows.reduce((s, r) => s + (r.amount || 0), 0);
         const arReceived = Math.max(0, request.received);
-        const arRemaining = arReceived - arTotal;
+        const arAlreadyAllocated = reportBtn.isAppend && activeRequest
+          ? activeRequestAllocation(activeRequest, request).total
+          : 0;
+        const arRemaining = arReceived - arAlreadyAllocated - arTotal;
         const arRowsValid = arDraftRows.length > 0 && arDraftRows.every(
-          (r) => r.packageName.trim() && r.amount > 0 && r.uid.trim()
+          (r) => r.packageName.trim() && r.amount > 0 && r.uid.trim() && r.phone.trim()
         );
         const arValid = arRowsValid && arRemaining >= 0;
         const arChildOptions = (() => {
@@ -2587,9 +2614,11 @@ export default function PaymentRequestDetailDrawer({
           <div className="modal" style={{ width: "min(600px, 100%)" }} onClick={(e) => e.stopPropagation()}>
             <div className="modal-head">
               <div>
-                <h3>Báo đơn & Kích hoạt khoá học</h3>
+                <h3>{reportBtn.isAppend ? "Báo đơn bổ sung" : "Báo đơn & Kích hoạt khoá học"}</h3>
                 <div style={{ fontSize: 12, color: "var(--text-3)", marginTop: 2 }}>
-                  Điền gói học → bấm xác nhận = báo đơn lên DingTalk (kèm bill) + tạo yêu cầu kích hoạt.
+                  {reportBtn.isAppend
+                    ? "Bé/gói mới sẽ cộng vào yêu cầu kích hoạt hiện có + gửi tin báo đơn bổ sung lên DingTalk (kèm bill)."
+                    : "Điền gói học → bấm xác nhận = báo đơn lên DingTalk (kèm bill) + tạo yêu cầu kích hoạt."}
                 </div>
               </div>
               <button className="drawer-close" onClick={() => setArPackageModalOpen(false)}>
@@ -2599,17 +2628,81 @@ export default function PaymentRequestDetailDrawer({
             <div className="modal-body">
               {arDraftRows.map((row, i) => (
                 <div key={i} style={{ border: "1px solid var(--border)", borderRadius: 8, padding: "10px 12px", marginBottom: 10 }}>
+                  {/* Row 1: Tên bé | SĐT của bé */}
+                  <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+                    <div className="field" style={{ flex: 1, marginBottom: 0 }}>
+                      <label>Tên bé <span style={{ color: "var(--text-3)", fontWeight: 400 }}>(hiển thị trong yêu cầu kích hoạt)</span></label>
+                      <Combobox
+                        freeText
+                        value={row.childName}
+                        onChange={(v) => setArRow(i, { childName: v })}
+                        options={arChildOptions.map((n) => ({ value: n, label: n }))}
+                        placeholder="Chọn hoặc gõ tên bé..."
+                        emptyLabel="— Bỏ chọn —"
+                      />
+                    </div>
+                    <div className="field" style={{ flex: 1, minWidth: 200, marginBottom: 0 }}>
+                      {(() => {
+                        const country = findCountry(row.phoneCountry);
+                        const norm = normalizeLocalPhone(row.phone, country);
+                        return (
+                          <>
+                            <label>SĐT của bé <span style={{ color: "var(--danger)" }}>*</span></label>
+                            <div style={{ display: "flex", gap: 6 }}>
+                              <CountryCombo
+                                value={row.phoneCountry}
+                                onChange={(code) => setArRow(i, { phoneCountry: code })}
+                              />
+                              <input
+                                className={norm.warn ? "ar-phone-bad" : undefined}
+                                placeholder={country.exampleLocal.replace(/\s/g, "")}
+                                value={row.phone}
+                                onChange={(e) => {
+                                  const parsed = smartParsePhonePaste(e.target.value);
+                                  if (parsed.dial) {
+                                    const c = COUNTRIES.find((x) => x.dial === `+${parsed.dial}`);
+                                    setArRow(i, { phone: parsed.local, ...(c ? { phoneCountry: c.code } : {}) });
+                                  } else {
+                                    setArRow(i, { phone: parsed.local });
+                                  }
+                                }}
+                                onBlur={() => {
+                                  const n = normalizeLocalPhone(row.phone, findCountry(row.phoneCountry));
+                                  if (n.value !== row.phone) setArRow(i, { phone: n.value });
+                                }}
+                                style={{ flex: 1, minWidth: 0, fontFamily: "JetBrains Mono, monospace", ...(norm.warn ? { borderColor: "var(--danger)" } : {}) }}
+                              />
+                            </div>
+                            <div style={{ marginTop: 3, fontSize: 11.5, color: norm.warn ? "var(--danger)" : "var(--text-3)" }}>
+                              {norm.warn
+                                ? "SĐT chưa đúng — vui lòng kiểm tra lại"
+                                : row.phone
+                                ? <>Gửi CRM: <span style={{ fontFamily: "JetBrains Mono, monospace" }}>{crmPhoneFormat(row.phone, country)}</span></>
+                                : "Dán cả cụm (VD 84-352334789) — hệ thống tự tách đầu số"}
+                            </div>
+                          </>
+                        );
+                      })()}
+                    </div>
+                  </div>
+                  {/* Row 2: UID CRM */}
                   <div className="field" style={{ marginBottom: 8 }}>
-                    <label>Tên bé <span style={{ color: "var(--text-3)", fontWeight: 400 }}>(hiển thị trong yêu cầu kích hoạt)</span></label>
-                    <Combobox
-                      freeText
-                      value={row.childName}
-                      onChange={(v) => setArRow(i, { childName: v })}
-                      options={arChildOptions.map((n) => ({ value: n, label: n }))}
-                      placeholder="Chọn hoặc gõ tên bé..."
-                      emptyLabel="— Bỏ chọn —"
+                    <label>
+                      UID CRM <span style={{ color: "var(--danger)" }}>*</span>
+                      {!row.uid.trim() && (
+                        <span style={{ marginLeft: 6, fontSize: 11, color: "var(--danger)", fontWeight: 400 }}>
+                          Bắt buộc trước khi kích hoạt
+                        </span>
+                      )}
+                    </label>
+                    <input
+                      placeholder="VD: 3213123123"
+                      value={row.uid}
+                      onChange={(e) => setArRow(i, { uid: e.target.value })}
+                      style={!row.uid.trim() ? { borderColor: "var(--danger)" } : undefined}
                     />
                   </div>
+                  {/* Row 3: Gói học + Số tiền + delete */}
                   <div style={{ display: "flex", gap: 8, alignItems: "flex-end", marginBottom: 8 }}>
                     <div className="field" style={{ flex: 1, marginBottom: 0 }}>
                       <label>Gói học <span style={{ color: "var(--danger)" }}>*</span></label>
@@ -2645,23 +2738,8 @@ export default function PaymentRequestDetailDrawer({
                       </button>
                     )}
                   </div>
-                  <div className="field" style={{ marginBottom: 0 }}>
-                    <label>
-                      UID CRM <span style={{ color: "var(--danger)" }}>*</span>
-                      {!row.uid.trim() && (
-                        <span style={{ marginLeft: 6, fontSize: 11, color: "var(--danger)", fontWeight: 400 }}>
-                          Bắt buộc trước khi kích hoạt
-                        </span>
-                      )}
-                    </label>
-                    <input
-                      placeholder="VD: 3213123123"
-                      value={row.uid}
-                      onChange={(e) => setArRow(i, { uid: e.target.value })}
-                      style={!row.uid.trim() ? { borderColor: "var(--danger)" } : undefined}
-                    />
-                  </div>
-                  <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+                  {/* Row 4: Nguồn + Kênh */}
+                  <div style={{ display: "flex", gap: 8 }}>
                     <div className="field" style={{ flex: 1, marginBottom: 0 }}>
                       <label>Nguồn KH</label>
                       <select
@@ -2702,6 +2780,8 @@ export default function PaymentRequestDetailDrawer({
                 onClick={() => setArDraftRows((rows) => [...rows, {
                   childName: "",
                   uid: request.uid ?? "",
+                  phone: "",
+                  phoneCountry: request.country || "VN",
                   packageName: "",
                   amount: 0,
                   leadSource: request.leadSource || "",
@@ -2711,7 +2791,10 @@ export default function PaymentRequestDetailDrawer({
                 <Icons.Plus size={13} /> Thêm gói
               </button>
               <div style={{ marginTop: 12, fontSize: 12.5 }}>
-                Đã phân bổ <strong>{arTotal.toLocaleString("vi-VN")} đ</strong> / thực nhận{" "}
+                {reportBtn.isAppend && (
+                  <>Gói đã báo trước <strong>{arAlreadyAllocated.toLocaleString("vi-VN")} đ</strong> + </>
+                )}
+                {reportBtn.isAppend ? "bổ sung" : "Đã phân bổ"} <strong>{arTotal.toLocaleString("vi-VN")} đ</strong> / thực nhận{" "}
                 <strong>{arReceived.toLocaleString("vi-VN")} đ</strong>
                 {arRemaining > 0 && (
                   <span style={{ color: "var(--text-3)" }}>
@@ -2732,15 +2815,28 @@ export default function PaymentRequestDetailDrawer({
               <button
                 type="button"
                 className="btn btn-success"
-                disabled={!arValid}
-                style={!arValid ? { opacity: 0.4, cursor: "not-allowed" } : undefined}
-                onClick={() => {
-                  if (!arValid) return;
-                  setArPackageModalOpen(false);
-                  onCreateActiveRequest(arDraftRows.map((r) => ({ ...r, childName: r.childName.trim() })));
+                disabled={!arValid || arSubmitting}
+                style={!arValid || arSubmitting ? { opacity: 0.4, cursor: "not-allowed" } : undefined}
+                onClick={async () => {
+                  if (!arValid || arSubmitting) return;
+                  setArSubmitting(true);
+                  const rows = arDraftRows.map((r) => ({ ...r, childName: r.childName.trim() }));
+                  try {
+                    if (reportBtn.isAppend) {
+                      await onAppendActiveRequest(rows);
+                    } else {
+                      await onCreateActiveRequest(rows);
+                    }
+                    setArPackageModalOpen(false);
+                  } catch {
+                    /* apiNote set in context handler; keep modal open */
+                  } finally {
+                    setArSubmitting(false);
+                  }
                 }}
               >
-                <Icons.CheckSquare size={14} /> Xác nhận báo đơn & kích hoạt
+                <Icons.CheckSquare size={14} />{" "}
+                {arSubmitting ? "Đang gửi…" : reportBtn.isAppend ? "Xác nhận báo đơn bổ sung" : "Xác nhận báo đơn & kích hoạt"}
               </button>
             </div>
           </div>
