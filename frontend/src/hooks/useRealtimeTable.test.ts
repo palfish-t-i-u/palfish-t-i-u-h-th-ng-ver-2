@@ -36,6 +36,7 @@ function fireOneEvent() {
 
 describe("useRealtimeTable visibility gate", () => {
   beforeEach(() => {
+    vi.clearAllMocks();
     handlers.length = 0;
     hidden = false;
     Object.defineProperty(document, "hidden", {
