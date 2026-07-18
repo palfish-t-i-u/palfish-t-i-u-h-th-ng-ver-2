@@ -11,6 +11,7 @@
   --surface-3: #f1f3f9;
   --border: #e6e8ef;
   --border-strong: #d6d9e3;
+  --field-border: #c2c8d6;
 
   --text: #1c1f2a;
   --text-2: #5a6075;
@@ -852,7 +853,7 @@
 .gmv-prototype .field input:not([type="checkbox"]),
 .gmv-prototype .field textarea,
 .gmv-prototype .field select {
-  border: 1px solid var(--border);
+  border: 1px solid var(--field-border);
   background: white;
   border-radius: 8px;
   padding: 9px 11px;
@@ -882,7 +883,7 @@
 .gmv-prototype .vn-address-fields input,
 .gmv-prototype-modal-scrim .vn-address-fields select,
 .gmv-prototype-modal-scrim .vn-address-fields input {
-  border: 1px solid var(--border);
+  border: 1px solid var(--field-border);
   background: white;
   border-radius: 8px;
   padding: 9px 11px;
@@ -938,7 +939,7 @@
 .gmv-prototype-modal-scrim, .gmv-prototype-modal-scrim * { box-sizing: border-box; }
 .gmv-prototype-modal-scrim {
   --bg: #f5f6fb; --surface: #ffffff; --surface-2: #fafbfd; --surface-3: #f1f3f9;
-  --border: #e6e8ef; --border-strong: #d6d9e3;
+  --border: #e6e8ef; --border-strong: #d6d9e3; --field-border: #c2c8d6;
   --text: #1c1f2a; --text-2: #5a6075; --text-3: #8b91a4; --text-muted: #b3b8c8;
   --primary: #6f5cf3; --primary-600: #5b48e0; --primary-700: #4a39c7;
   --primary-50: #efedfe; --primary-100: #e2dffe;
@@ -989,7 +990,7 @@
 .gmv-prototype-modal-scrim .field input:not([type="checkbox"]),
 .gmv-prototype-modal-scrim .field textarea,
 .gmv-prototype-modal-scrim .field select {
-  border: 1px solid var(--border);
+  border: 1px solid var(--field-border);
   background: white;
   border-radius: 8px;
   padding: 9px 11px;
