@@ -16,14 +16,25 @@ function keys(course: ActiveCourse, pr: Parameters<typeof getInvoiceBlockers>[1]
   return getInvoiceBlockers(course, pr).map((b) => b.key);
 }
 
+/** Chỉ các blocker CỨNG (chặn xuất HĐ). Nhắc mềm (soft) không tính. */
+function blocking(course: ActiveCourse, pr: Parameters<typeof getInvoiceBlockers>[1]) {
+  return getInvoiceBlockers(course, pr).filter((b) => !b.soft).map((b) => b.key);
+}
+
 describe("getInvoiceBlockers", () => {
   it("đủ điều kiện → không có blocker", () => {
     expect(getInvoiceBlockers(fullCourse, fullPr)).toEqual([]);
   });
 
-  it("thiếu Order ID → blocker 'order'", () => {
-    expect(keys({ ...fullCourse, orderId: "" }, fullPr)).toContain("order");
-    expect(keys({ ...fullCourse, orderId: "   " }, fullPr)).toContain("order");
+  it("thiếu Order ID → nhắc MỀM, KHÔNG chặn xuất HĐ (2 luồng tách biệt)", () => {
+    // Vẫn hiện nhắc 'order' để kế toán không quên kích hoạt CRM...
+    const b = getInvoiceBlockers({ ...fullCourse, orderId: "" }, fullPr);
+    expect(b.map((x) => x.key)).toContain("order");
+    expect(b.find((x) => x.key === "order")?.soft).toBe(true);
+    expect(b.find((x) => x.key === "order")?.text).toContain("vẫn xuất được hoá đơn");
+    // ...nhưng không phải blocker cứng → xuất được HĐ bình thường.
+    expect(blocking({ ...fullCourse, orderId: "" }, fullPr)).toEqual([]);
+    expect(blocking({ ...fullCourse, orderId: "   " }, fullPr)).toEqual([]);
   });
 
   it("thiếu tên gói / số tiền → blocker tương ứng", () => {
@@ -51,8 +62,8 @@ describe("getInvoiceBlockers", () => {
   it("khách OV (province = quốc gia nước ngoài) → chỉ cần quốc gia, không bắt phường/số nhà", () => {
     expect(keys(fullCourse, { province: "United States", ward: "", address: "" })).not.toContain("address");
     expect(keys(fullCourse, { province: "Japan", ward: "", address: "" })).not.toContain("address");
-    // OV nhưng thiếu Order ID thì vẫn chặn vì lý do khác
-    expect(keys({ ...fullCourse, orderId: "" }, { province: "Japan", ward: "", address: "" })).toEqual(["order"]);
+    // OV thiếu Order ID → chỉ nhắc mềm 'order', không có blocker cứng → vẫn xuất được.
+    expect(blocking({ ...fullCourse, orderId: "" }, { province: "Japan", ward: "", address: "" })).toEqual([]);
   });
 
   it("nội dung blocker địa chỉ liệt kê đúng phần còn thiếu", () => {

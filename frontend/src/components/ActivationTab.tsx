@@ -322,7 +322,8 @@ function ARStatusBadge({ status }: { status: ActiveRequestStatus }) {
   );
 }
 
-type InvoiceBlocker = { key: string; text: string };
+// soft = nhắc mềm, KHÔNG chặn xuất HĐ (chỉ hiển thị lưu ý). Mặc định (không soft) = chặn.
+type InvoiceBlocker = { key: string; text: string; soft?: boolean };
 
 // Tên các quốc gia nước ngoài (khách OV chọn lúc tạo PR → lưu vào `province`).
 // Tỉnh/TP Việt Nam không nằm trong danh sách này nên phân biệt được khách OV vs khách VN.
@@ -342,8 +343,16 @@ export function getInvoiceBlockers(
 ): InvoiceBlocker[] {
   const blockers: InvoiceBlocker[] = [];
 
+  // Xuất HĐ KHÔNG phụ thuộc Order ID — luồng kích hoạt CRM (order_id) và luồng
+  // xuất hoá đơn là 2 luồng tách biệt (khớp BE _derive_status, activation_routes.py).
+  // Feedback chị Thu Hiền 5/2026: chỉ cần "tiền về" là xuất được HĐ.
+  // Order ID chỉ là NHẮC MỀM (soft) — không chặn — để kế toán không quên kích hoạt CRM.
   if (!course.orderId?.trim()) {
-    blockers.push({ key: "order", text: "Còn thiếu Order ID — điền & lưu để kích hoạt và xuất được hoá đơn." });
+    blockers.push({
+      key: "order",
+      soft: true,
+      text: "Còn thiếu Order ID — vẫn xuất được hoá đơn nhưng cần bổ sung Order ID sau khi kích hoạt trên CRM.",
+    });
   }
   if (!course.packageName?.trim()) {
     blockers.push({ key: "package", text: "Còn thiếu tên gói học — điền & lưu để xuất được hoá đơn." });
@@ -1410,7 +1419,7 @@ function ActivationDetailDrawer({
                       </button>
                     ) : (() => {
                       const blockers = getInvoiceBlockers(course, pr);
-                      const blocked = blockers.length > 0;
+                      const blocked = blockers.some((b) => !b.soft);
                       return (
                         <button
                           type="button"
@@ -1449,25 +1458,29 @@ function ActivationDetailDrawer({
                   )}
                 </div>
                 {(() => {
-                  // Card cảnh báo thông minh: chỉ hiện khi gói chưa xuất/chưa yêu cầu HĐ và còn thiếu điều kiện.
+                  // Card cảnh báo thông minh: chỉ hiện khi gói chưa xuất/chưa yêu cầu HĐ và còn điều kiện thiếu.
                   if (course.invoiced || course.invoiceRequestedAt) return null;
                   const blockers = getInvoiceBlockers(course, pr);
                   if (!blockers.length) return null;
+                  // Có blocker cứng → tông cảnh báo "chưa xuất được". Chỉ còn nhắc mềm → tông lưu ý (xuất được).
+                  const hasHard = blockers.some((b) => !b.soft);
+                  const sorted = [...blockers].sort((a, b) => Number(a.soft ?? false) - Number(b.soft ?? false));
+                  const textColor = hasHard ? "var(--caution-text, #92400e)" : "var(--info-text, #1e40af)";
                   return (
                     <div
                       style={{
                         margin: "6px 12px 2px",
                         padding: "9px 12px",
                         borderRadius: 8,
-                        background: "var(--warning-bg, #fffbeb)",
-                        border: "1px solid var(--warning-border, #fde68a)",
+                        background: hasHard ? "var(--warning-bg, #fffbeb)" : "var(--info-bg, #eff6ff)",
+                        border: `1px solid ${hasHard ? "var(--warning-border, #fde68a)" : "var(--info-border, #bfdbfe)"}`,
                       }}
                     >
-                      <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, fontWeight: 700, color: "var(--caution-text, #92400e)", marginBottom: 4 }}>
-                        <Icons.AlertCircle size={13} /> Chưa xuất được hoá đơn — còn thiếu:
+                      <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, fontWeight: 700, color: textColor, marginBottom: 4 }}>
+                        <Icons.AlertCircle size={13} /> {hasHard ? "Chưa xuất được hoá đơn — còn thiếu:" : "Lưu ý:"}
                       </div>
-                      <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12, color: "var(--caution-text, #92400e)", lineHeight: 1.5 }}>
-                        {blockers.map((b) => (
+                      <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12, color: textColor, lineHeight: 1.5 }}>
+                        {sorted.map((b) => (
                           <li key={b.key}>{b.text}</li>
                         ))}
                       </ul>
@@ -1725,7 +1738,7 @@ function ActivationDetailDrawer({
             {enriched.status === "activated" && (() => {
               const anyBlocked = (ar?.uids ?? []).some((u) =>
                 u.courses.some(
-                  (c) => !c.invoiced && !c.invoiceRequestedAt && getInvoiceBlockers(c, pr).length > 0
+                  (c) => !c.invoiced && !c.invoiceRequestedAt && getInvoiceBlockers(c, pr).some((b) => !b.soft)
                 )
               );
               return (
