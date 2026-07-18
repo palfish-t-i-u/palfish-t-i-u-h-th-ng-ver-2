@@ -18,6 +18,7 @@ import {
 } from "../lib/fetchAllPaymentRequests";
 import { useRefetchOnFocus } from "../hooks/useRefetchOnFocus";
 import { useRealtimeTable } from "../hooks/useRealtimeTable";
+import { useVisiblePoll } from "../hooks/useVisiblePoll";
 import type {
   ActiveRequest,
   AddPaymentAttemptPayload,
@@ -225,13 +226,13 @@ export function PaymentFlowProvider({
 
   const pendingQr = useMemo(() => hasPendingQrPayments(requests), [requests]);
 
-  useEffect(() => {
-    if (!pendingQr) return;
-    const timer = window.setInterval(() => {
+  useVisiblePoll(
+    () => {
       void loadData({ silent: true });
-    }, POLL_MS);
-    return () => window.clearInterval(timer);
-  }, [pendingQr, loadData]);
+    },
+    POLL_MS,
+    pendingQr,
+  );
 
   const silentRefetch = useCallback(() => {
     if (Date.now() < persistCooldownRef.current) return;

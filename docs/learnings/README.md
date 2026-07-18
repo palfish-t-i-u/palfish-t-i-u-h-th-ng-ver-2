@@ -18,3 +18,5 @@ Written by the `extract-approach` skill. One insight per file.
 - [pillow-thumbnail-before-exif-transpose](pillow-thumbnail-before-exif-transpose.md) — thumbnail() TRƯỚC exif_transpose() để giữ JPEG draft-mode (~5MB thay 36MB); đảo thứ tự = OOM trên Render 512MB
 - [lazy-thumb-at-send-covers-backfill](lazy-thumb-at-send-covers-backfill.md) — tạo thumb lazy lúc gửi tin tự phủ bill cũ+mới, không cần backfill migration riêng
 - [dual-channel-race-match-only-pending](dual-channel-race-match-only-pending.md) — auto-match chỉ tìm status=pending → kẻ thua race PayOS↔SePay/confirm-tay tạo CK mồ côi lẫn tab CK ngoài; fix khớp muộn 3 chốt, link-only không notify
+- [outbox-unique-source-id-second-business-event](outbox-unique-source-id-second-business-event.md) — tin nghiệp vụ lần 2 cùng entity bị outbox UNIQUE nuốt; đổi source_id (suffix deterministic), KHÔNG đổi event_type
+- [button-gate-existence-vs-resource](button-gate-existence-vs-resource.md) — gate nút theo hasX = one-shot khoá oan việc resumable; gate theo tài-nguyên-còn-lại (remaining>0) cho việc làm nhiều đợt

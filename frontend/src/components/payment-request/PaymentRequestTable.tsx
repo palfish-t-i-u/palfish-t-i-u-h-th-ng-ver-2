@@ -186,6 +186,7 @@ export default function PaymentRequestTable({
                 return (
                   <tr
                     key={p.id}
+                    data-testid="pr-row"
                     className={`${selectedId === p.id ? "selected" : ""} ${p.state === "cancelled" ? "is-cancelled" : ""}`}
                     onClick={() => onSelect(p)}
                   >

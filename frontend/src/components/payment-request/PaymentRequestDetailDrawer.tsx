@@ -1574,6 +1574,7 @@ export default function PaymentRequestDetailDrawer({
   uploadingBillId,
   deletingBillId,
   readOnly = false,
+  detailLoading = false,
   onRefreshLineContent,
 }: {
   request: PaymentRequest | null;
@@ -1600,6 +1601,8 @@ export default function PaymentRequestDetailDrawer({
   uploadingBillId?: string | null;
   deletingBillId?: string | null;
   readOnly?: boolean;
+  /** GĐ2: set true khi slim row đang hydrate detail — hiện skeleton thay vì list rỗng giả */
+  detailLoading?: boolean;
   onRefreshLineContent?: (line: PaymentAttempt) => Promise<void>;
   /** B3 (16/7) — Báo đơn hoàn thành. reason bắt buộc từ lần báo thứ 2 (BE validate, modal soft-block). */
   onReportComplete: (reason?: string) => Promise<void>;
@@ -1959,7 +1962,7 @@ export default function PaymentRequestDetailDrawer({
               )}
             </div>
 
-            {!editing && request.wantsInvoice && (!request.ward || !request.address?.trim()) && (() => {
+            {!editing && !detailLoading && request.wantsInvoice && (!request.ward || !request.address?.trim()) && (() => {
               const firstPaid = request.payments
                 .filter((p) => p.status === "paid" && p.paidAt)
                 .map((p) => parsePaymentDate(p.paidAt!))
@@ -2371,9 +2374,11 @@ export default function PaymentRequestDetailDrawer({
             <div className="panel-head">
               <h4>
                 <Icons.Wallet size={15} /> Các lần thanh toán
-                <span className="num-pill">{request.payments.length}</span>
+                {!detailLoading && (
+                  <span className="num-pill">{request.payments.length}</span>
+                )}
               </h4>
-              {!showAdd && !readOnly && request.state !== "cancelled" && (
+              {!showAdd && !readOnly && !detailLoading && request.state !== "cancelled" && (
                 <button
                   className={`btn btn-sm ${isPrFull ? "btn-outline" : "btn-secondary"}`}
                   onClick={handleAddPaymentClick}
@@ -2384,45 +2389,51 @@ export default function PaymentRequestDetailDrawer({
               )}
             </div>
 
-            <div>
-              {request.payments.length === 0 && !showAdd && (
-                <div className="empty" style={{ padding: "28px 12px" }}>
-                  <Icons.Wallet size={22} />
-                  <div>Chưa có lần thanh toán nào.</div>
-                  {request.state !== "cancelled" && (
-                    <button
-                      className={`btn btn-sm ${isPrFull ? "btn-outline" : "btn-primary"}`}
-                      onClick={handleAddPaymentClick}
-                      title={isPrFull ? "PR đã nhận đủ tiền — cần tăng Tổng tiền dự kiến trước" : undefined}
-                    >
-                      <Icons.Plus size={13} /> Tạo lần thanh toán đầu tiên
-                    </button>
-                  )}
-                </div>
-              )}
-              {request.payments.map((qr) => (
-                <QrRow
-                  key={qr.id}
-                  qr={qr}
-                  onCancelQr={onCancelPayment}
-                  onBillFile={onBillFile}
-                  onBillView={onBillView}
-                  onMarkPaid={onMarkPaid}
-                  onEditAmount={readOnly ? undefined : onEditAmount}
-                  onShowQr={onShowQr}
-                  uploadingBillId={uploadingBillId}
-                  deletingBillId={deletingBillId}
-                  contentDismissed={dismissedStaleLineIds.has(qr.id)}
-                  onRefreshContent={readOnly ? undefined : onRefreshLineContent}
-                  onDismissStaleWarning={handleDismissStale}
-                  studentBadge={
-                    (request.children?.length ?? 0) >= 2
-                      ? qr.studentName || request.children![0]?.name || undefined
-                      : undefined
-                  }
-                />
-              ))}
-            </div>
+            {detailLoading ? (
+              <div data-testid="pr-drawer-detail-loading" className="empty" style={{ padding: "28px 12px", color: "var(--text-3)", fontSize: "0.875rem", textAlign: "center" }}>
+                Đang tải chi tiết lần thanh toán…
+              </div>
+            ) : (
+              <div data-testid="pr-drawer-payments">
+                {request.payments.length === 0 && !showAdd && (
+                  <div className="empty" style={{ padding: "28px 12px" }}>
+                    <Icons.Wallet size={22} />
+                    <div>Chưa có lần thanh toán nào.</div>
+                    {request.state !== "cancelled" && (
+                      <button
+                        className={`btn btn-sm ${isPrFull ? "btn-outline" : "btn-primary"}`}
+                        onClick={handleAddPaymentClick}
+                        title={isPrFull ? "PR đã nhận đủ tiền — cần tăng Tổng tiền dự kiến trước" : undefined}
+                      >
+                        <Icons.Plus size={13} /> Tạo lần thanh toán đầu tiên
+                      </button>
+                    )}
+                  </div>
+                )}
+                {request.payments.map((qr) => (
+                  <QrRow
+                    key={qr.id}
+                    qr={qr}
+                    onCancelQr={onCancelPayment}
+                    onBillFile={onBillFile}
+                    onBillView={onBillView}
+                    onMarkPaid={onMarkPaid}
+                    onEditAmount={readOnly ? undefined : onEditAmount}
+                    onShowQr={onShowQr}
+                    uploadingBillId={uploadingBillId}
+                    deletingBillId={deletingBillId}
+                    contentDismissed={dismissedStaleLineIds.has(qr.id)}
+                    onRefreshContent={readOnly ? undefined : onRefreshLineContent}
+                    onDismissStaleWarning={handleDismissStale}
+                    studentBadge={
+                      (request.children?.length ?? 0) >= 2
+                        ? qr.studentName || request.children![0]?.name || undefined
+                        : undefined
+                    }
+                  />
+                ))}
+              </div>
+            )}
 
             {showAdd && (
               <div style={{ marginTop: 12 }} ref={addFormRef}>
