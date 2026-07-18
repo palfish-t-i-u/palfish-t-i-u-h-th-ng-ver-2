@@ -2630,7 +2630,7 @@ export default function PaymentRequestDetailDrawer({
             <div className="modal-body">
               {arDraftRows.map((row, i) => (
                 <div key={i} style={{ border: "1px solid var(--border)", borderRadius: 8, padding: "10px 12px", marginBottom: 10 }}>
-                  {/* Row 1: Tên bé | SĐT của bé */}
+                  {/* Row 1: Tên bé | SĐT kích hoạt (số kích hoạt gói cho từng bé — khác SĐT lead/phụ huynh) */}
                   <div style={{ display: "flex", gap: 8, marginBottom: 8, alignItems: "flex-start" }}>
                     <div className="field" style={{ flex: 1, minWidth: 200, marginBottom: 0 }}>
                       <label>Tên bé</label>
@@ -2652,7 +2652,7 @@ export default function PaymentRequestDetailDrawer({
                         const norm = normalizeLocalPhone(row.phone, country);
                         return (
                           <>
-                            <label>SĐT của bé <span style={{ color: "var(--danger)" }}>*</span></label>
+                            <label>SĐT kích hoạt <span style={{ color: "var(--danger)" }}>*</span></label>
                             <div style={{ display: "flex", gap: 6 }}>
                               <CountryCombo
                                 value={row.phoneCountry}
