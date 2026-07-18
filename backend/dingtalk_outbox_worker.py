@@ -10,6 +10,8 @@ import io
 import traceback
 from typing import Any, Callable
 
+import httpx
+
 from dingtalk_notifier import DingTalkAPIError, send_group_message
 
 RETRY_DELAYS = [30, 120, 300, 900]  # seconds
@@ -82,6 +84,55 @@ def _make_thumb_bytes(data: bytes) -> bytes:
     out = io.BytesIO()
     img.save(out, "JPEG", quality=THUMB_JPEG_QUALITY)
     return out.getvalue()
+
+
+THUMB_BUCKET = "bill-thumbs"
+THUMB_MAX_ORIGIN_BYTES = 15 * 1024 * 1024  # G6: gốc >15MB → bỏ qua, dùng ảnh gốc
+THUMB_HTTP_TIMEOUT = 10.0
+
+
+def _thumb_public_url(original_url: str, thumb_path: str) -> str:
+    """URL public của thumb — cùng host với URL gốc, đổi bucket bills → bill-thumbs."""
+    base = original_url.split("?", 1)[0].split(_BILLS_MARKER, 1)[0]
+    return f"{base}/storage/v1/object/public/{THUMB_BUCKET}/{thumb_path}"
+
+
+def _ensure_thumbs(sb, bill_urls: list[str]) -> dict[str, str | None]:
+    """Map url gốc → url thumb (None = fallback nhúng gốc). KHÔNG BAO GIỜ raise (G4).
+
+    Lazy + idempotent: thumb có sẵn (HEAD 200) → tái dùng; chưa có → tải gốc,
+    Pillow resize, upsert (G5). Mọi lỗi per-ảnh nuốt tại chỗ → None.
+    Hàm BLOCKING — caller phải bọc asyncio.to_thread (G3).
+    """
+    out: dict[str, str | None] = {}
+    for url in bill_urls:
+        out[url] = None
+        try:
+            thumb_path = _thumb_object_path(url)
+            if not thumb_path:
+                continue  # pdf/external → fallback
+            thumb_url = _thumb_public_url(url, thumb_path)
+            head = httpx.head(thumb_url, timeout=THUMB_HTTP_TIMEOUT)
+            if head.status_code == 200:
+                out[url] = thumb_url  # đã có từ lần gửi trước
+                continue
+            resp = httpx.get(url, timeout=THUMB_HTTP_TIMEOUT)
+            if resp.status_code != 200:
+                continue
+            clen = int(resp.headers.get("content-length") or len(resp.content) or 0)
+            if clen > THUMB_MAX_ORIGIN_BYTES:
+                print(f"[dingtalk_worker] thumb skip oversize ({clen}b): {url}")
+                continue
+            thumb_bytes = _make_thumb_bytes(resp.content)
+            sb.storage.from_(THUMB_BUCKET).upload(
+                path=thumb_path,
+                file=thumb_bytes,
+                file_options={"content-type": "image/jpeg", "upsert": "true"},
+            )
+            out[url] = thumb_url
+        except Exception as exc:
+            print(f"[dingtalk_worker] thumb failed (fallback goc): {url}: {exc}")
+    return out
 
 
 def _to_thumbnail(url: str, width: int = 200) -> str:
