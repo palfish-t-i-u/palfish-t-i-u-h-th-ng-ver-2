@@ -2781,7 +2781,12 @@ export default function PaymentRequestDetailDrawer({
               ))}
               <button
                 type="button"
-                className="btn btn-outline btn-sm"
+                className="btn btn-sm"
+                style={{
+                  width: "100%", justifyContent: "center",
+                  border: "1.5px dashed var(--primary)", color: "var(--primary)",
+                  background: "var(--primary-50)", fontWeight: 600,
+                }}
                 onClick={() => setArDraftRows((rows) => [...rows, {
                   childName: "",
                   uid: request.uid ?? "",
