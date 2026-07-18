@@ -192,10 +192,25 @@ def _normalize_uid_block(raw: dict[str, Any]) -> dict[str, Any]:
     return block
 
 
-def _assign_course_codes(uids_in: list[Any], pr_id: str) -> list[dict[str, Any]]:
+def _max_course_seq(uids_data: list[Any]) -> int:
+    """Seq lớn nhất trong các course code CC-xxx-NNN của AR — 0 nếu không parse được.
+
+    Dùng để append tiếp seq (G2): code trùng là vỡ gắn Order ID / xuất HĐ.
+    """
+    max_seq = 0
+    for block in uids_data or []:
+        for c in (block or {}).get("courses") or []:
+            code = str((c or {}).get("code") or "")
+            tail = code.rsplit("-", 1)[-1]
+            if tail.isdigit():
+                max_seq = max(max_seq, int(tail))
+    return max_seq
+
+
+def _assign_course_codes(uids_in: list[Any], pr_id: str, start_seq: int = 1) -> list[dict[str, Any]]:
     """Inject sequential CC-[PR_DIGITS]-[SEQ] codes; output snake_case only."""
     pr_part = _pr_digits(pr_id)
-    seq = 1
+    seq = start_seq
     out: list[dict[str, Any]] = []
 
     for item in uids_in:
