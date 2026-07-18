@@ -2683,7 +2683,7 @@ export default function PaymentRequestDetailDrawer({
                                 ? "SĐT chưa đúng — vui lòng kiểm tra lại"
                                 : row.phone
                                 ? <>Gửi CRM: <span style={{ fontFamily: "JetBrains Mono, monospace" }}>{crmPhoneFormat(row.phone, country)}</span></>
-                                : "Dán cả cụm (VD 84-352334789) — hệ thống tự tách đầu số"}
+                                : "Dán cả cụm (VD: 84-352334789) hoặc chỉ đuôi số (VD: 352334789) — hệ thống tự tách đầu số"}
                             </div>
                           </>
                         );
