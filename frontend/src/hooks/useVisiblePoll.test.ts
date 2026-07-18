@@ -75,4 +75,41 @@ describe("useVisiblePoll", () => {
     });
     expect(cb).not.toHaveBeenCalled();
   });
+
+  it("N tick ẩn → chỉ catch-up đúng 1 lần khi quay lại", () => {
+    const cb = vi.fn();
+    renderHook(() => useVisiblePoll(cb, 30_000));
+    setHidden(true);
+    act(() => {
+      vi.advanceTimersByTime(90_000); // 3 ticks bị nuốt
+    });
+    expect(cb).not.toHaveBeenCalled();
+    setHidden(false);
+    expect(cb).toHaveBeenCalledTimes(1); // bù đúng 1 lần
+  });
+
+  it("enabled true→false→true: không leak missedWhileHidden giữa các enabled cycle", () => {
+    const cb = vi.fn();
+    const { rerender } = renderHook(
+      ({ enabled }: { enabled: boolean }) => useVisiblePoll(cb, 30_000, enabled),
+      { initialProps: { enabled: true } },
+    );
+    // ẩn tab, nuốt 1 tick
+    setHidden(true);
+    act(() => {
+      vi.advanceTimersByTime(30_000);
+    });
+    // disable hook
+    rerender({ enabled: false });
+    // quay lại tab — với enabled=false không nên fire
+    setHidden(false);
+    expect(cb).not.toHaveBeenCalled();
+    // re-enable
+    rerender({ enabled: true });
+    // tick mới phải fire bình thường (không bị ảnh hưởng nợ cũ)
+    act(() => {
+      vi.advanceTimersByTime(30_000);
+    });
+    expect(cb).toHaveBeenCalledTimes(1);
+  });
 });
