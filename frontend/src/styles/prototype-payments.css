@@ -1357,10 +1357,13 @@
   border: 1px solid var(--border); border-radius: 999px;
   color: var(--text-2); font-weight: 600;
 }
+/* Khi drawer bị bóp hẹp (VD chia đôi màn hình) → cho cuộn ngang thay vì bóp
+   cột "Gói học" về 0. pkg-name có sàn 140px nên tên gói không bao giờ mất. */
+.gmv-prototype .course-table { overflow-x: auto; }
 .gmv-prototype .course-row-head,
 .gmv-prototype .course-row {
   display: grid;
-  grid-template-columns: 36px minmax(0, 1.3fr) 110px 145px 130px 136px 135px 30px;
+  grid-template-columns: 36px minmax(140px, 1.3fr) 110px 145px 130px 136px 135px 30px;
   gap: 10px; align-items: center; padding: 12px 16px;
   border-bottom: 1px solid var(--border);
 }
@@ -1383,6 +1386,7 @@
   padding: 7px 10px; font: inherit; font-size: 13px;
   outline: none; background: white; width: 100%;
 }
+.gmv-prototype .course-row .amt-input { text-align: right; }
 .gmv-prototype .course-row .order-input.has {
   border-color: var(--success); background: var(--success-bg);
   color: var(--success-text); font-weight: 600;

@@ -21,6 +21,7 @@ import {
 import CountryCombo, { COUNTRIES, findCountry } from "./payment-request/CountryCombo";
 import DateRangeFilter, { EMPTY_RANGE, type DateRange, inDateRange } from "./payment-request/DateRangeFilter";
 import { Icons } from "./payment-request/Icons";
+import { useNoticeCardCollapse } from "../hooks/useNoticeCardCollapse";
 import { activationAuditText, formatPaymentDateFull, formatPaymentDateTime, fromApiActiveRequest, getArReferralStatus, getReferralStatus, REFERRAL_STATUS_HEADER, REFERRAL_STATUS_PANEL_STYLE, toActiveRequestPatchUidsData } from "./payment-request/paymentRequestUtils";
 import { downloadTaxInvoiceZip } from "../utils/taxInvoiceXlsxExport";
 import type { InvoiceRow } from "./payment-flow/paymentFlowUtils";
@@ -437,6 +438,7 @@ function ActivationDetailDrawer({
   const [canScrollUp, setCanScrollUp] = useState(false);
   const [canScrollDown, setCanScrollDown] = useState(false);
   const [copiedArId, setCopiedArId] = useState(false);
+  const notice = useNoticeCardCollapse();
   const copyResetTimer = useRef<number | null>(null);
   const uidTouchedRef = useRef<Record<number, { uid: boolean; phone: boolean; country: boolean }>>({});
 
@@ -1283,6 +1285,7 @@ function ActivationDetailDrawer({
                   </button>
                 )}
               </div>
+              <div className="course-table">
               <div className="course-row-head">
                 <span />
                 <span>Gói học</span>
@@ -1466,6 +1469,11 @@ function ActivationDetailDrawer({
                   const hasHard = blockers.some((b) => !b.soft);
                   const sorted = [...blockers].sort((a, b) => Number(a.soft ?? false) - Number(b.soft ?? false));
                   const textColor = hasHard ? "var(--caution-text, #92400e)" : "var(--info-text, #1e40af)";
+                  // G5: courseCode rỗng (gói mới chưa lưu) → dùng index để không trùng key.
+                  const cardKey = course.courseCode
+                    ? `${ar.id}::${course.courseCode}`
+                    : `${ar.id}::idx${courseIdx}`;
+                  const collapsed = notice.isCollapsed(cardKey);
                   return (
                     <div
                       style={{
@@ -1476,14 +1484,44 @@ function ActivationDetailDrawer({
                         border: `1px solid ${hasHard ? "var(--warning-border, #fde68a)" : "var(--info-border, #bfdbfe)"}`,
                       }}
                     >
-                      <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, fontWeight: 700, color: textColor, marginBottom: 4 }}>
-                        <Icons.AlertCircle size={13} /> {hasHard ? "Chưa xuất được hoá đơn — còn thiếu:" : "Lưu ý:"}
+                      <div
+                        role="button"
+                        tabIndex={0}
+                        aria-expanded={!collapsed}
+                        onClick={() => notice.toggle(cardKey)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            notice.toggle(cardKey);
+                          }
+                        }}
+                        title={collapsed ? "Bấm để xem chi tiết" : "Bấm để thu gọn"}
+                        style={{
+                          display: "flex", alignItems: "center", gap: 6,
+                          fontSize: 12.5, fontWeight: 700, color: textColor,
+                          marginBottom: collapsed ? 0 : 4,
+                          cursor: "pointer", userSelect: "none",
+                        }}
+                      >
+                        <Icons.AlertCircle size={13} />
+                        <span style={{ flex: 1 }}>{hasHard ? "Chưa xuất được hoá đơn — còn thiếu:" : "Lưu ý:"}</span>
+                        <span
+                          style={{
+                            display: "inline-flex",
+                            transition: "transform 0.15s",
+                            transform: collapsed ? "rotate(0deg)" : "rotate(180deg)",
+                          }}
+                        >
+                          <Icons.ChevronDown size={14} />
+                        </span>
                       </div>
-                      <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12, color: textColor, lineHeight: 1.5 }}>
-                        {sorted.map((b) => (
-                          <li key={b.key}>{b.text}</li>
-                        ))}
-                      </ul>
+                      {!collapsed && (
+                        <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12, color: textColor, lineHeight: 1.5 }}>
+                          {sorted.map((b) => (
+                            <li key={b.key}>{b.text}</li>
+                          ))}
+                        </ul>
+                      )}
                     </div>
                   );
                 })()}
@@ -1572,6 +1610,7 @@ function ActivationDetailDrawer({
                 }
                 </Fragment>
               ))}
+              </div>
               <datalist id={`packages-${ar.id}`}>
                 {COURSE_PACKAGES.map((p) => (
                   <option key={p} value={p} />
@@ -1730,6 +1769,32 @@ function ActivationDetailDrawer({
               {copiedArId ? <Icons.Check size={13} /> : <Icons.Copy size={13} />}
               {copiedArId ? " Đã copy" : " Copy AR-ID"}
             </button>
+            {(() => {
+              const hasAnyNotice = (ar?.uids ?? []).some((u) =>
+                u.courses.some(
+                  (c) => !c.invoiced && !c.invoiceRequestedAt && getInvoiceBlockers(c, pr).length > 0
+                )
+              );
+              if (!hasAnyNotice) return null;
+              return (
+                <button
+                  type="button"
+                  className="btn btn-outline btn-sm"
+                  onClick={() => (notice.allCollapsed ? notice.expandAll() : notice.collapseAll())}
+                  title="Thu gọn/mở tất cả cảnh báo trên mọi gói, mọi AR"
+                >
+                  <span
+                    style={{
+                      display: "inline-flex",
+                      transform: notice.allCollapsed ? "rotate(180deg)" : "rotate(0deg)",
+                    }}
+                  >
+                    <Icons.ChevronDown size={13} />
+                  </span>
+                  {notice.allCollapsed ? " Mở rộng tất cả" : " Thu gọn tất cả"}
+                </button>
+              );
+            })()}
           </div>
           <div style={{ display: "flex", gap: 8 }}>
             <button type="button" className="btn btn-outline" onClick={requestCloseDrawer}>
