@@ -65,5 +65,19 @@ def test_khach_ov_chi_can_quoc_gia():
 def test_invoice_address_complete_helper():
     assert ar._invoice_address_complete("Hà Nội", "P. Hoàng Mai", "119") is True
     assert ar._invoice_address_complete("Hà Nội", "", "119") is False
-    assert ar._invoice_address_complete("United States", "", "") is True  # OV
+    assert ar._invoice_address_complete("United States", "", "") is True  # OV province-name
     assert ar._invoice_address_complete("", "", "") is False
+
+
+def test_ov_country_code_bypass():
+    """Country code != VN → foreign, skip address check (fix Czechia bug 18/7)."""
+    assert ar._invoice_address_complete("Czechia", "", "", "CZ") is True
+    assert ar._invoice_address_complete("", "", "", "CZ") is True
+    assert ar._invoice_address_complete("", "", "", "US") is True
+    assert ar._invoice_address_complete("", "", "", "VN") is False
+
+
+def test_khach_ov_czechia():
+    assert not any("địa chỉ" in b for b in _keys(
+        _course(), {"province": "Czechia", "ward": "", "address": "", "country": "CZ"}
+    ))

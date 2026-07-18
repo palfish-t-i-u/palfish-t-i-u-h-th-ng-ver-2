@@ -717,19 +717,32 @@ FOREIGN_COUNTRY_NAMES: set[str] = {
     "South Africa", "Nigeria", "Brazil", "Argentina", "Mexico", "Chile", "Peru",
     "Colombia", "Hong Kong", "Taiwan", "Macao", "Cambodia", "Laos", "Myanmar",
     "Bangladesh", "Pakistan", "Iran",
+    "Czechia", "Czech Republic", "Portugal", "Belgium", "Austria", "Ireland",
+    "Greece", "Romania", "Hungary", "Croatia", "Slovakia", "Slovenia",
+    "Bulgaria", "Lithuania", "Latvia", "Estonia", "Luxembourg", "Serbia",
+    "Iceland", "Albania", "Montenegro", "North Macedonia", "Moldova",
+    "Bosnia and Herzegovina", "Kosovo", "Cuba", "Venezuela", "Ecuador",
+    "Bolivia", "Paraguay", "Uruguay", "Costa Rica", "Panama",
+    "Sri Lanka", "Nepal", "Mongolia", "Kazakhstan", "Uzbekistan",
+    "Qatar", "Bahrain", "Kuwait", "Oman", "Jordan", "Lebanon",
+    "Kenya", "Ghana", "Tanzania", "Ethiopia", "Morocco", "Tunisia",
 }
 
 
-def _invoice_addr_parts(course: dict[str, Any], pr: dict[str, Any] | None) -> tuple[str, str, str]:
+def _invoice_addr_parts(course: dict[str, Any], pr: dict[str, Any] | None) -> tuple[str, str, str, str]:
     """Địa chỉ hiệu lực cho hoá đơn: ưu tiên course, fallback PR (khớp paymentFlowUtils)."""
     province = _clean_text(course.get("province")) or (_clean_text(pr.get("province")) if pr else "")
     ward = _clean_text(course.get("ward")) or (_clean_text(pr.get("ward")) if pr else "")
     street = _clean_text(course.get("address")) or (_clean_text(pr.get("address")) if pr else "")
-    return province, ward, street
+    country = _clean_text(course.get("country")) or (_clean_text(pr.get("country")) if pr else "")
+    return province, ward, street, country
 
 
-def _invoice_address_complete(province: str, ward: str, street: str) -> bool:
-    """Đủ địa chỉ để xuất HĐ: Tỉnh + Phường + Số nhà. Khách OV (province=quốc gia) chỉ cần quốc gia."""
+def _invoice_address_complete(province: str, ward: str, street: str, country: str = "") -> bool:
+    """Đủ địa chỉ để xuất HĐ: Tỉnh + Phường + Số nhà. Khách OV chỉ cần quốc gia."""
+    country = (country or "").strip().upper()
+    if country and country != "VN":
+        return True
     province = (province or "").strip()
     if province in FOREIGN_COUNTRY_NAMES:
         return True
@@ -764,8 +777,8 @@ def _course_invoice_blockers(course: dict[str, Any], pr: dict[str, Any] | None) 
         amount = 0.0
     if amount <= 0:
         blockers.append("số tiền")
-    province, ward, street = _invoice_addr_parts(course, pr)
-    if not _invoice_address_complete(province, ward, street):
+    province, ward, street, country = _invoice_addr_parts(course, pr)
+    if not _invoice_address_complete(province, ward, street, country):
         blockers.append("địa chỉ (" + ", ".join(_missing_address_parts(province, ward, street)) + ")")
     return blockers
 
@@ -819,7 +832,8 @@ def _build_invoice_course_patch(
             400,
             "Thiếu thông tin xuất hoá đơn — cần tên và SĐT khách hàng",
         )
-    if not _invoice_address_complete(province, ward, address):
+    country = _clean_text(preview.get("country"))
+    if not _invoice_address_complete(province, ward, address, country):
         missing = _missing_address_parts(province, ward, address)
         raise HTTPException(
             400,
