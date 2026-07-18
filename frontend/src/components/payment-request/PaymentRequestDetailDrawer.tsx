@@ -1962,7 +1962,7 @@ export default function PaymentRequestDetailDrawer({
               )}
             </div>
 
-            {!editing && request.wantsInvoice && (!request.ward || !request.address?.trim()) && (() => {
+            {!editing && !detailLoading && request.wantsInvoice && (!request.ward || !request.address?.trim()) && (() => {
               const firstPaid = request.payments
                 .filter((p) => p.status === "paid" && p.paidAt)
                 .map((p) => parsePaymentDate(p.paidAt!))

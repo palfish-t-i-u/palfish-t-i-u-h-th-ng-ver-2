@@ -18,6 +18,9 @@ function PaymentsSection({
           <span data-testid="pr-drawer-payment-count">{paymentsCount}</span>
         )}
       </h4>
+      {!detailLoading && (
+        <button>Tạo lần thanh toán</button>
+      )}
       {detailLoading ? (
         <div data-testid="pr-drawer-detail-loading">
           Đang tải chi tiết lần thanh toán…
@@ -41,6 +44,7 @@ describe("drawer lazy-load — detailLoading conditional (GĐ2 amendment tiêu c
     expect(screen.getByTestId("pr-drawer-detail-loading")).toBeInTheDocument();
     expect(screen.queryByTestId("pr-drawer-payment-count")).not.toBeInTheDocument();
     expect(screen.queryByText(/Chưa có lần thanh toán nào/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Tạo lần thanh toán/ })).not.toBeInTheDocument();
   });
 
   it("detailLoading=true: KHÔNG hiện count=0 giả kể cả khi payments=[]", () => {
@@ -54,6 +58,7 @@ describe("drawer lazy-load — detailLoading conditional (GĐ2 amendment tiêu c
     expect(screen.queryByTestId("pr-drawer-detail-loading")).not.toBeInTheDocument();
     expect(screen.getByTestId("pr-drawer-payments")).toBeInTheDocument();
     expect(screen.getByTestId("pr-drawer-payment-count")).toHaveTextContent("2");
+    expect(screen.getByRole("button", { name: /Tạo lần thanh toán/ })).toBeInTheDocument();
   });
 
   it("detailLoading=false + 0 payments: empty state shown, NOT loading skeleton", () => {
