@@ -17,3 +17,4 @@ Written by the `extract-approach` skill. One insight per file.
 - [settlement-pattern-verify-by-cross-sum](settlement-pattern-verify-by-cross-sum.md) — pattern nhận diện settle mPOS/Payoo viết từ nội dung sao kê thật + verify đối chiếu tổng net gateway_transactions; đoán regex = 0 hit cả tháng
 - [pillow-thumbnail-before-exif-transpose](pillow-thumbnail-before-exif-transpose.md) — thumbnail() TRƯỚC exif_transpose() để giữ JPEG draft-mode (~5MB thay 36MB); đảo thứ tự = OOM trên Render 512MB
 - [lazy-thumb-at-send-covers-backfill](lazy-thumb-at-send-covers-backfill.md) — tạo thumb lazy lúc gửi tin tự phủ bill cũ+mới, không cần backfill migration riêng
+- [dual-channel-race-match-only-pending](dual-channel-race-match-only-pending.md) — auto-match chỉ tìm status=pending → kẻ thua race PayOS↔SePay/confirm-tay tạo CK mồ côi lẫn tab CK ngoài; fix khớp muộn 3 chốt, link-only không notify
