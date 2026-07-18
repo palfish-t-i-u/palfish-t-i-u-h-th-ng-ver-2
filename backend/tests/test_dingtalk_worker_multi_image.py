@@ -1,5 +1,5 @@
 """DingTalk worker — multi-bill image extraction + thumbnail transform."""
-from dingtalk_outbox_worker import _image_list_from_row, _to_thumbnail, _build_bill_markdown
+from dingtalk_outbox_worker import _image_list_from_row, _build_bill_markdown
 
 
 def test_image_urls_list_takes_priority():
@@ -22,35 +22,42 @@ def test_strips_and_drops_blank_entries():
     assert _image_list_from_row(row) == ["https://x/a.jpg", "https://x/b.jpg"]
 
 
-def test_to_thumbnail_supabase_url():
-    url = "https://abc.supabase.co/storage/v1/object/public/bills/test.jpg"
-    thumb = _to_thumbnail(url, width=200)
-    assert "/render/image/public/" in thumb
-    assert "?width=200&resize=contain" in thumb
-    assert "/object/public/" not in thumb
-
-
-def test_to_thumbnail_non_supabase_url():
-    url = "https://example.com/img.jpg"
-    assert _to_thumbnail(url) == url
-
-
-def test_build_bill_markdown_multiple():
-    urls = [
-        "https://abc.supabase.co/storage/v1/object/public/bills/a.jpg",
-        "https://abc.supabase.co/storage/v1/object/public/bills/b.jpg",
-    ]
-    md = _build_bill_markdown(urls)
-    assert "![bill1](" in md
-    assert "![bill2](" in md
-    assert "/render/image/public/" in md
-    assert "[Ảnh gốc 1](" in md
-    assert "[Ảnh gốc 2](" in md
-    assert "/object/public/" in md.split("Ảnh gốc")[1]
-
-
 def test_build_bill_markdown_empty():
-    assert _build_bill_markdown([]) == ""
+    assert _build_bill_markdown([], {}) == ""
+
+
+# ---- Task 4: _build_bill_markdown 2 tham số ----
+_ORIG_T4 = "https://abc.supabase.co/storage/v1/object/public/bills/payment-lines/L1/bill-123.jpg"
+_THUMB_T4 = "https://abc.supabase.co/storage/v1/object/public/bill-thumbs/payment-lines/L1/bill-123.jpg.thumb.jpg"
+
+
+def test_markdown_uses_thumb_when_available():
+    md = _build_bill_markdown([_ORIG_T4], {_ORIG_T4: _THUMB_T4})
+    assert f"![bill1]({_THUMB_T4})" in md
+    assert f"[Ảnh gốc 1]({_ORIG_T4})" in md
+    assert "/render/image/" not in md  # G7: không còn transform API
+
+
+def test_markdown_falls_back_to_original_inline():
+    """Thumb fail (None) → nhúng ảnh GỐC inline (không phải chỉ link) — ý user chốt."""
+    md = _build_bill_markdown([_ORIG_T4], {_ORIG_T4: None})
+    assert f"![bill1]({_ORIG_T4})" in md
+    assert f"[Ảnh gốc 1]({_ORIG_T4})" in md
+
+
+def test_markdown_pdf_link_only():
+    pdf = "https://abc.supabase.co/storage/v1/object/public/bills/payment-lines/L1/b.pdf"
+    md = _build_bill_markdown([pdf], {pdf: None})
+    assert "![" not in md  # không nhúng pdf làm ảnh (DingTalk render vỡ)
+    assert f"[Ảnh gốc 1]({pdf})" in md
+
+
+def test_markdown_mixed_thumb_and_fallback():
+    orig2 = "https://abc.supabase.co/storage/v1/object/public/bills/payment-lines/L2/bill-2.jpg"
+    md = _build_bill_markdown([_ORIG_T4, orig2], {_ORIG_T4: _THUMB_T4, orig2: None})
+    assert f"![bill1]({_THUMB_T4})" in md
+    assert f"![bill2]({orig2})" in md
+    assert "[Ảnh gốc 1](" in md and "[Ảnh gốc 2](" in md
 
 
 # ---- Task 1: URL parsing helpers ----

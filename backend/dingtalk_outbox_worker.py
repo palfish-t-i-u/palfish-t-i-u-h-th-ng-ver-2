@@ -135,24 +135,22 @@ def _ensure_thumbs(sb, bill_urls: list[str]) -> dict[str, str | None]:
     return out
 
 
-def _to_thumbnail(url: str, width: int = 200) -> str:
-    """Convert Supabase storage URL to image-transform thumbnail URL."""
-    marker = "/storage/v1/object/public/"
-    if marker in url:
-        return url.replace(marker, "/storage/v1/render/image/public/", 1) + f"?width={width}&resize=contain"
-    return url
+def _build_bill_markdown(bill_urls: list[str], thumb_map: dict[str, str | None]) -> str:
+    """Markdown block ảnh bill: thumbnail inline (hoặc gốc nếu thumb fail) + link gốc.
 
-
-def _build_bill_markdown(bill_urls: list[str]) -> str:
-    """Build compact markdown block: thumbnail previews + links to originals."""
+    - thumb có → nhúng thumb nhỏ
+    - thumb None + là ảnh → nhúng ẢNH GỐC full-size (fallback user chốt 18/7)
+    - không phải ảnh (pdf...) → chỉ link, không nhúng
+    """
     if not bill_urls:
         return ""
     parts: list[str] = []
     for i, url in enumerate(bill_urls, 1):
-        thumb = _to_thumbnail(url, width=200)
-        parts.append(f"![bill{i}]({thumb})")
+        inline = thumb_map.get(url) or (url if _is_image_url(url) else None)
+        if inline:
+            parts.append(f"![bill{i}]({inline})")
     links = " · ".join(f"[Ảnh gốc {i}]({u})" for i, u in enumerate(bill_urls, 1))
-    return "\n".join(parts) + "\n" + links
+    return "\n".join(parts) + ("\n" if parts else "") + links
 
 
 def _load_team_group(sb, team_code: str) -> str:
