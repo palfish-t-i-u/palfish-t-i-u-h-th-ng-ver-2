@@ -192,3 +192,42 @@ class TestEnqueueActivationRequestCreatedDingtalk:
         activation_routes._enqueue_activation_request_created_dingtalk(
             sb, _sample_saved_ar(), _sample_pr())
         assert calls == []
+
+    def test_source_suffix_changes_source_id(self):
+        """Append lần 2: suffix đổi source_id — outbox UNIQUE không nuốt tin bổ sung."""
+        import uuid as uuid_mod
+        sb, calls = _build_dt_sb(
+            staff_rows=[{"email": "sale@test.com", "display_name": "Sale A",
+                         "crm_name": "Sale A CRM", "team": "HN Offline Store"}],
+            group_rows=[{"team_code": "HN Offline Store", "is_active": True}],
+            line_rows=[],
+        )
+        ar = _sample_saved_ar()
+        pr = _sample_pr()
+
+        activation_routes._enqueue_activation_request_created_dingtalk(sb, ar, pr)
+        activation_routes._enqueue_activation_request_created_dingtalk(
+            sb, ar, pr, source_suffix=":append:CC-9508-002"
+        )
+
+        assert len(calls) == 2
+        assert calls[0]["source_id"] != calls[1]["source_id"]
+        ar_id = str(ar["id"])
+        expect_first = str(uuid_mod.UUID(hashlib.md5(ar_id.encode()).hexdigest()))
+        expect_second = str(uuid_mod.UUID(hashlib.md5(f"{ar_id}:append:CC-9508-002".encode()).hexdigest()))
+        assert calls[0]["source_id"] == expect_first
+        assert calls[1]["source_id"] == expect_second
+
+    def test_source_suffix_default_unchanged(self):
+        """Không truyền suffix → source_id giữ nguyên md5(ar_id) — tin create cũ idempotent như trước."""
+        import uuid as uuid_mod
+        sb, calls = _build_dt_sb(
+            staff_rows=[{"email": "sale@test.com", "display_name": "Sale A",
+                         "crm_name": "Sale A CRM", "team": "HN Offline Store"}],
+            group_rows=[{"team_code": "HN Offline Store", "is_active": True}],
+            line_rows=[],
+        )
+        ar = _sample_saved_ar()
+        activation_routes._enqueue_activation_request_created_dingtalk(sb, ar, _sample_pr())
+        ar_id = str(ar["id"])
+        assert calls[0]["source_id"] == str(uuid_mod.UUID(hashlib.md5(ar_id.encode()).hexdigest()))

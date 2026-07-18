@@ -1051,7 +1051,7 @@ def _enqueue_activation_request_created_zalo(
 
 
 def _enqueue_activation_request_created_dingtalk(
-    sb, saved_ar: dict[str, Any], pr: dict[str, Any] | None
+    sb, saved_ar: dict[str, Any], pr: dict[str, Any] | None, source_suffix: str = ""
 ) -> None:
     """Enqueue DingTalk 'activation_request_created' (best-effort, NEVER raises).
 
@@ -1148,7 +1148,9 @@ def _enqueue_activation_request_created_dingtalk(
         )
 
         ar_id = str(saved_ar.get("id") or "")
-        source_uuid = str(uuid.UUID(hashlib.md5(ar_id.encode()).hexdigest()))
+        # source_suffix (append lần 2): outbox UNIQUE(source_table, source_id, event_type)
+        # — giữ md5(ar_id) là tin bổ sung bị drop im lặng (G3).
+        source_uuid = str(uuid.UUID(hashlib.md5(f"{ar_id}{source_suffix}".encode()).hexdigest()))
         try:
             sb.table("dingtalk_outbox").insert(
                 {
