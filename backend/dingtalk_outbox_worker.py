@@ -6,6 +6,7 @@ then sends via enterprise robot API (OAuth token + OrgGroupSend).
 
 import asyncio
 import datetime
+import io
 import traceback
 from typing import Any, Callable
 
@@ -31,6 +32,32 @@ def _image_list_from_row(row: dict) -> list[str]:
         return [str(u).strip() for u in raw_urls if u and str(u).strip()]
     single = (row.get("image_url") or "").strip()
     return [single] if single else []
+
+
+_BILLS_MARKER = "/storage/v1/object/public/bills/"
+_IMAGE_EXTS = {"jpg", "jpeg", "png", "webp", "gif"}
+
+
+def _is_image_url(url: str) -> bool:
+    """True nếu URL có đuôi ảnh Pillow/DingTalk render được (pdf/khác → False)."""
+    path = url.split("?", 1)[0]
+    ext = path.rsplit(".", 1)[-1].lower() if "." in path else ""
+    return ext in _IMAGE_EXTS
+
+
+def _thumb_object_path(original_url: str) -> str | None:
+    """Path thumb trong bucket bill-thumbs (mirror path gốc + '.thumb.jpg').
+
+    None nếu không phải URL bucket bills hoặc không phải ảnh (pdf...) —
+    caller sẽ fallback nhúng/link ảnh gốc.
+    """
+    clean = original_url.split("?", 1)[0]
+    if _BILLS_MARKER not in clean or not _is_image_url(clean):
+        return None
+    rel = clean.split(_BILLS_MARKER, 1)[1]
+    if not rel:
+        return None
+    return f"{rel}.thumb.jpg"
 
 
 def _to_thumbnail(url: str, width: int = 200) -> str:

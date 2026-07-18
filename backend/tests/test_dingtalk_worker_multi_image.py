@@ -51,3 +51,33 @@ def test_build_bill_markdown_multiple():
 
 def test_build_bill_markdown_empty():
     assert _build_bill_markdown([]) == ""
+
+
+# ---- Task 1: URL parsing helpers ----
+from dingtalk_outbox_worker import _thumb_object_path, _is_image_url
+
+BILLS_URL = "https://abc.supabase.co/storage/v1/object/public/bills/payment-lines/L1/bill-123.jpg"
+
+
+def test_thumb_object_path_mirrors_bills_path():
+    assert _thumb_object_path(BILLS_URL) == "payment-lines/L1/bill-123.jpg.thumb.jpg"
+
+
+def test_thumb_object_path_strips_query():
+    assert _thumb_object_path(BILLS_URL + "?t=1") == "payment-lines/L1/bill-123.jpg.thumb.jpg"
+
+
+def test_thumb_object_path_none_for_external_url():
+    assert _thumb_object_path("https://example.com/x.jpg") is None
+
+
+def test_thumb_object_path_none_for_non_image():
+    pdf = "https://abc.supabase.co/storage/v1/object/public/bills/payment-lines/L1/bill-1.pdf"
+    assert _thumb_object_path(pdf) is None
+
+
+def test_is_image_url():
+    assert _is_image_url(BILLS_URL) is True
+    assert _is_image_url("https://x/y.PNG") is True
+    assert _is_image_url("https://x/y.pdf") is False
+    assert _is_image_url("https://x/y.jpg?download=1") is True
