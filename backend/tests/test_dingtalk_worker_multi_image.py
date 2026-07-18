@@ -81,3 +81,53 @@ def test_is_image_url():
     assert _is_image_url("https://x/y.PNG") is True
     assert _is_image_url("https://x/y.pdf") is False
     assert _is_image_url("https://x/y.jpg?download=1") is True
+
+
+# ---- Task 2: Pillow thumb pipeline ----
+import io
+from PIL import Image
+from dingtalk_outbox_worker import _make_thumb_bytes, THUMB_WIDTH
+
+
+def _png_bytes(w: int, h: int, mode: str = "RGB") -> bytes:
+    buf = io.BytesIO()
+    Image.new(mode, (w, h), (200, 30, 30) if mode == "RGB" else None).save(buf, "PNG")
+    return buf.getvalue()
+
+
+def test_make_thumb_resizes_to_width_cap():
+    out = _make_thumb_bytes(_png_bytes(1000, 2000))
+    img = Image.open(io.BytesIO(out))
+    assert img.format == "JPEG"
+    assert img.width <= THUMB_WIDTH
+    assert img.height <= THUMB_WIDTH * 10  # tỉ lệ giữ nguyên, không méo
+
+
+def test_make_thumb_converts_rgba_to_rgb():
+    out = _make_thumb_bytes(_png_bytes(400, 400, mode="RGBA"))
+    img = Image.open(io.BytesIO(out))
+    assert img.mode == "RGB"
+
+
+def test_make_thumb_small_image_not_upscaled():
+    out = _make_thumb_bytes(_png_bytes(100, 80))
+    img = Image.open(io.BytesIO(out))
+    assert img.width <= 100  # thumbnail() không phóng to
+
+
+def test_make_thumb_applies_exif_orientation():
+    # Ảnh 300x100 + EXIF Orientation=6 (xoay 90°) → sau transpose phải 100x_
+    src = Image.new("RGB", (300, 100), (10, 200, 10))
+    exif = Image.Exif()
+    exif[0x0112] = 6
+    buf = io.BytesIO()
+    src.save(buf, "JPEG", exif=exif)
+    out = _make_thumb_bytes(buf.getvalue())
+    img = Image.open(io.BytesIO(out))
+    assert img.height > img.width  # 300x100 xoay dọc thành ~100x300 (đã thumbnail)
+
+
+def test_make_thumb_garbage_raises():
+    import pytest
+    with pytest.raises(Exception):
+        _make_thumb_bytes(b"not an image at all")

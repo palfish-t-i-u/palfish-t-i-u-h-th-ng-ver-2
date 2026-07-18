@@ -60,6 +60,30 @@ def _thumb_object_path(original_url: str) -> str | None:
     return f"{rel}.thumb.jpg"
 
 
+THUMB_WIDTH = 200  # px — user duyệt look 200px (test #3, 18/7)
+THUMB_JPEG_QUALITY = 80
+
+
+def _make_thumb_bytes(data: bytes) -> bytes:
+    """Resize ảnh bill → thumbnail JPEG nhỏ (RAM-safe cho Render 512MB).
+
+    THỨ TỰ QUAN TRỌNG (G1): thumbnail() TRƯỚC exif_transpose() —
+    thumbnail() kích hoạt JPEG draft-mode, decode thẳng ở scale nhỏ (~vài MB);
+    transpose trước sẽ ép decode full ảnh 4000px (~36MB spike).
+    Raises nếu data không phải ảnh — caller fallback ảnh gốc.
+    """
+    from PIL import Image, ImageOps  # lazy import (G1)
+
+    img = Image.open(io.BytesIO(data))
+    img.thumbnail((THUMB_WIDTH, THUMB_WIDTH * 20))  # giữ tỉ lệ, không upscale
+    img = ImageOps.exif_transpose(img)  # G2 — sau thumbnail, exif còn trong metadata
+    if img.mode != "RGB":
+        img = img.convert("RGB")
+    out = io.BytesIO()
+    img.save(out, "JPEG", quality=THUMB_JPEG_QUALITY)
+    return out.getvalue()
+
+
 def _to_thumbnail(url: str, width: int = 200) -> str:
     """Convert Supabase storage URL to image-transform thumbnail URL."""
     marker = "/storage/v1/object/public/"
