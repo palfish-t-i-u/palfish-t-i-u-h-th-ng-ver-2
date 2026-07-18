@@ -130,3 +130,35 @@ async def test_poll_dead_letters_after_max_retries():
     last = sb._table.updater.calls[-1]
     assert last["payload"]["retries"] == MAX_RETRIES
     assert last["payload"]["next_retry_at"] is None
+
+
+@pytest.mark.asyncio
+async def test_bill_images_embedded_as_markdown():
+    """Bill URLs get appended as ![bill](url) in one markdown message, no separate image sends."""
+    from dingtalk_outbox_worker import poll_and_send
+
+    rows = [{
+        "id": 20,
+        "team_code": "TEAM_A",
+        "message": "Phone: 0977\nSale: Nga",
+        "event_type": "activation_request_created",
+        "retries": 0,
+        "image_urls": ["https://x/a.jpg", "https://x/b.jpg"],
+        "image_url": "https://x/legacy.jpg",
+    }]
+    sb = _SB(rows)
+    captured_messages = []
+
+    def fake_send(*, open_conversation_id, message, title=""):
+        captured_messages.append({"message": message, "title": title})
+        return "pqk-img"
+
+    with patch("dingtalk_outbox_worker._load_team_group", return_value="cid123"):
+        with patch("dingtalk_outbox_worker.send_group_message", side_effect=fake_send):
+            await poll_and_send(lambda: sb)
+
+    assert len(captured_messages) == 1
+    msg = captured_messages[0]["message"]
+    assert "![bill](https://x/a.jpg)" in msg
+    assert "![bill](https://x/b.jpg)" in msg
+    assert captured_messages[0]["title"] == "Báo đơn"

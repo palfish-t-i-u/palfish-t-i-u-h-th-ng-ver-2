@@ -2451,12 +2451,12 @@ export default function PaymentRequestDetailDrawer({
               <div className="tl-item">
                 <div className={`tl-dot ${ready ? "active" : "pending"}`} />
                 <div className="tl-content">
-                  <div className="tl-title">B3 · Báo đơn Dingtalk (Tạo khoá học)</div>
+                  <div className="tl-title">B3 · Báo đơn & Kích hoạt</div>
                   <div className="tl-meta">
                     {hasActiveRequest
                       ? `Active Request ${activeRequestId} — ${activeSummary.buttonLabel}`
                       : ready
-                      ? 'Sẵn sàng — bấm "Báo đơn Dingtalk" để báo kế toán & mở gói'
+                      ? 'Sẵn sàng — bấm "Báo đơn & Kích hoạt" để báo kế toán & mở gói'
                       : "Sẽ mở khoá khi đủ 100% tiền"}
                   </div>
                 </div>
@@ -2543,7 +2543,7 @@ export default function PaymentRequestDetailDrawer({
                   ? "Cần thu đủ 100% số tiền trước khi báo đơn"
                   : hasActiveRequest
                   ? activeSummary.buttonLabel
-                  : "Báo đơn lên DingTalk cho kế toán + chọn gói khoá học"
+                  : "Báo đơn lên DingTalk + tạo yêu cầu kích hoạt khoá học"
               }
               onClick={() => {
                 const missingLines = findPaidLinesWithoutBill(request.payments ?? []);
@@ -2556,7 +2556,7 @@ export default function PaymentRequestDetailDrawer({
                 setArPackageModalOpen(true);
               }}
             >
-              <Icons.CheckSquare size={14} /> {hasActiveRequest ? activeSummary.buttonLabel : "Báo đơn Dingtalk"}
+              <Icons.CheckSquare size={14} /> {hasActiveRequest ? activeSummary.buttonLabel : "Báo đơn & Kích hoạt"}
             </button>}
           </div>
         </div>
@@ -2587,9 +2587,9 @@ export default function PaymentRequestDetailDrawer({
           <div className="modal" style={{ width: "min(600px, 100%)" }} onClick={(e) => e.stopPropagation()}>
             <div className="modal-head">
               <div>
-                <h3>Chọn gói học để kích hoạt</h3>
+                <h3>Báo đơn & Kích hoạt khoá học</h3>
                 <div style={{ fontSize: 12, color: "var(--text-3)", marginTop: 2 }}>
-                  Tên gói sẽ gửi kèm thông báo cho Ops — bắt buộc điền trước khi tạo yêu cầu.
+                  Điền gói học → bấm xác nhận = báo đơn lên DingTalk (kèm bill) + tạo yêu cầu kích hoạt.
                 </div>
               </div>
               <button className="drawer-close" onClick={() => setArPackageModalOpen(false)}>
@@ -2740,7 +2740,7 @@ export default function PaymentRequestDetailDrawer({
                   onCreateActiveRequest(arDraftRows.map((r) => ({ ...r, childName: r.childName.trim() })));
                 }}
               >
-                <Icons.CheckSquare size={14} /> Tạo yêu cầu kích hoạt
+                <Icons.CheckSquare size={14} /> Xác nhận báo đơn & kích hoạt
               </button>
             </div>
           </div>

@@ -9,7 +9,7 @@ import datetime
 import traceback
 from typing import Any, Callable
 
-from dingtalk_notifier import DingTalkAPIError, send_group_image, send_group_message
+from dingtalk_notifier import DingTalkAPIError, send_group_message
 
 RETRY_DELAYS = [30, 120, 300, 900]  # seconds
 MAX_RETRIES = 4
@@ -86,22 +86,20 @@ async def poll_and_send(sb_factory: Callable[[], Any]) -> None:
         try:
             open_conversation_id = _load_team_group(sb, team_code)
             title = EVENT_TITLES.get(event_type, "")
+            # Gộp ảnh bill vào cuối message dạng markdown ![](url) → 1 tin duy nhất.
+            bill_urls = _image_list_from_row(row)
+            full_message = message
+            if bill_urls:
+                img_md = "\n".join(f"![bill]({u})" for u in bill_urls)
+                full_message = message + "\n\n" + img_md
+                if not title:
+                    title = "Thông báo"
             msg_id = await asyncio.to_thread(
                 send_group_message,
                 open_conversation_id=open_conversation_id,
-                message=message,
+                message=full_message,
                 title=title,
             )
-            # Gửi TẤT CẢ ảnh bill (image_urls JSONB); fallback image_url đơn (row cũ).
-            for photo_url in _image_list_from_row(row):
-                try:
-                    await asyncio.to_thread(
-                        send_group_image,
-                        open_conversation_id=open_conversation_id,
-                        photo_url=photo_url,
-                    )
-                except Exception as img_exc:
-                    print(f"[dingtalk_worker] {row_id} image failed (non-fatal): {img_exc}")
             sb.table("dingtalk_outbox").update({
                 "sent_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
                 "dingtalk_message_id": msg_id,
