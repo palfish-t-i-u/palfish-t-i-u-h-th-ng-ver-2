@@ -209,7 +209,9 @@ async def poll_and_send(sb_factory: Callable[[], Any]) -> None:
             bill_urls = _image_list_from_row(row)
             full_message = message
             if bill_urls:
-                full_message = message + "\n" + _build_bill_markdown(bill_urls)
+                # G3: tải/resize/upload blocking → to_thread, không block event loop chung API
+                thumb_map = await asyncio.to_thread(_ensure_thumbs, sb, bill_urls)
+                full_message = message + "\n" + _build_bill_markdown(bill_urls, thumb_map)
                 if not title:
                     title = "Thông báo"
             msg_id = await asyncio.to_thread(
