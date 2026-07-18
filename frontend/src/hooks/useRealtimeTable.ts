@@ -25,14 +25,29 @@ export function useRealtimeTable(
     if (!tablesKey) return;
 
     let timer: ReturnType<typeof setTimeout> | null = null;
+    let pendingWhileHidden = false;
+
+    function fire() {
+      if (document.hidden) {
+        pendingWhileHidden = true;
+        return;
+      }
+      onChangeRef.current();
+    }
 
     function debouncedChange() {
       if (timer) clearTimeout(timer);
       const delay = DEBOUNCE_MS + Math.floor(Math.random() * JITTER_MS);
-      timer = setTimeout(() => {
-        onChangeRef.current();
-      }, delay);
+      timer = setTimeout(fire, delay);
     }
+
+    function onVisibilityChange() {
+      if (document.hidden || !pendingWhileHidden) return;
+      pendingWhileHidden = false;
+      debouncedChange();
+    }
+
+    document.addEventListener("visibilitychange", onVisibilityChange);
 
     const channelName = `realtime:${tablesKey}`;
     let channel = supabase.channel(channelName);
@@ -51,6 +66,7 @@ export function useRealtimeTable(
 
     return () => {
       if (timer) clearTimeout(timer);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
       supabase.removeChannel(channel);
     };
   }, [tablesKey, eventsKey]);
