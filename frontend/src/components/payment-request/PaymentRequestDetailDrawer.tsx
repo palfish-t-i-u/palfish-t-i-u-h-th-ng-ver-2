@@ -1429,15 +1429,17 @@ function ActiveRequestMiniCardV2({
           </div>
         ))}
       </div>
-      <div style={{
-        marginTop: 10, padding: "8px 12px", borderRadius: 8, fontSize: 12, lineHeight: 1.5,
-        border: "1.5px solid var(--warning, #f59e0b)", background: "var(--warning-bg, #fef3c7)",
-        color: "var(--warning-text, #92400e)",
-      }}>
-        ⚠️ Thêm bé/gói tại đây <strong>không gửi tin báo đơn</strong> cho kế toán — chỉ dùng để sửa
-        thông tin nhập sai. Muốn báo bé/gói mới (khách đóng thêm tiền): dùng nút{" "}
-        <strong>"Báo đơn bổ sung"</strong> ở cuối phiếu.
-      </div>
+      {editing && (
+        <div style={{
+          marginTop: 10, padding: "8px 12px", borderRadius: 8, fontSize: 12, lineHeight: 1.5,
+          border: "1.5px solid var(--warning, #f59e0b)", background: "var(--warning-bg, #fef3c7)",
+          color: "var(--warning-text, #92400e)",
+        }}>
+          ⚠️ Thêm bé/gói tại đây <strong>không gửi tin báo đơn</strong> cho kế toán — chỉ dùng để sửa
+          thông tin nhập sai. Muốn báo bé/gói mới (khách đóng thêm tiền): dùng nút{" "}
+          <strong>"Báo đơn bổ sung"</strong> ở cuối phiếu.
+        </div>
+      )}
       <div style={{ display: "flex", justifyContent: "flex-end", paddingTop: 12, paddingBottom: 4 }}>
         <button type="button" className="btn btn-outline btn-sm" disabled={!canAddMore} onClick={addUidGroup}
           title={!canAddMore ? "Đã phân bổ hết tiền đã nhận — không thể thêm UID" : "Thêm UID mới"}>
@@ -2611,7 +2613,7 @@ export default function PaymentRequestDetailDrawer({
           onClick={() => setArPackageModalOpen(false)}
           style={{ zIndex: 140 }}
         >
-          <div className="modal" style={{ width: "min(600px, 100%)" }} onClick={(e) => e.stopPropagation()}>
+          <div className="modal" style={{ width: "min(720px, 100%)" }} onClick={(e) => e.stopPropagation()}>
             <div className="modal-head">
               <div>
                 <h3>{reportBtn.isAppend ? "Báo đơn bổ sung" : "Báo đơn & Kích hoạt khoá học"}</h3>
@@ -2629,9 +2631,9 @@ export default function PaymentRequestDetailDrawer({
               {arDraftRows.map((row, i) => (
                 <div key={i} style={{ border: "1px solid var(--border)", borderRadius: 8, padding: "10px 12px", marginBottom: 10 }}>
                   {/* Row 1: Tên bé | SĐT của bé */}
-                  <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
-                    <div className="field" style={{ flex: 1, marginBottom: 0 }}>
-                      <label>Tên bé <span style={{ color: "var(--text-3)", fontWeight: 400 }}>(hiển thị trong yêu cầu kích hoạt)</span></label>
+                  <div style={{ display: "flex", gap: 8, marginBottom: 8, alignItems: "flex-end" }}>
+                    <div className="field" style={{ flex: 1, minWidth: 200, marginBottom: 0 }}>
+                      <label>Tên bé <span style={{ color: "var(--text-3)", fontWeight: 400, fontSize: 11 }}>(hiển thị trong yêu cầu kích hoạt)</span></label>
                       <Combobox
                         freeText
                         value={row.childName}
@@ -2720,7 +2722,7 @@ export default function PaymentRequestDetailDrawer({
                       )}
                     </div>
                     <div className="field" style={{ flex: "0 0 140px", marginBottom: 0 }}>
-                      <label>Số tiền (đ)</label>
+                      <label>Số tiền (VND)</label>
                       <MoneyInput
                         value={row.amount ? String(row.amount) : ""}
                         onValueChange={(digits) => setArRow(i, { amount: Number(digits || 0) })}
