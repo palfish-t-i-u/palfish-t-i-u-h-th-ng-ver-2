@@ -133,18 +133,20 @@ async def test_poll_dead_letters_after_max_retries():
 
 
 @pytest.mark.asyncio
-async def test_bill_images_embedded_as_markdown():
-    """Bill URLs get appended as ![bill](url) in one markdown message, no separate image sends."""
+async def test_bill_images_embedded_as_thumbnail_markdown():
+    """Bill URLs rendered as thumbnails + original links in one markdown message."""
     from dingtalk_outbox_worker import poll_and_send
 
+    bill1 = "https://abc.supabase.co/storage/v1/object/public/bills/a.jpg"
+    bill2 = "https://abc.supabase.co/storage/v1/object/public/bills/b.jpg"
     rows = [{
         "id": 20,
         "team_code": "TEAM_A",
         "message": "Phone: 0977\nSale: Nga",
         "event_type": "activation_request_created",
         "retries": 0,
-        "image_urls": ["https://x/a.jpg", "https://x/b.jpg"],
-        "image_url": "https://x/legacy.jpg",
+        "image_urls": [bill1, bill2],
+        "image_url": bill1,
     }]
     sb = _SB(rows)
     captured_messages = []
@@ -159,6 +161,7 @@ async def test_bill_images_embedded_as_markdown():
 
     assert len(captured_messages) == 1
     msg = captured_messages[0]["message"]
-    assert "![bill](https://x/a.jpg)" in msg
-    assert "![bill](https://x/b.jpg)" in msg
+    assert "/render/image/public/" in msg
+    assert "[Ảnh gốc 1](" in msg
+    assert "[Ảnh gốc 2](" in msg
     assert captured_messages[0]["title"] == "Báo đơn"

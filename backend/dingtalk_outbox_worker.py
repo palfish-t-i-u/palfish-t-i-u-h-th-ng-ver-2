@@ -33,6 +33,26 @@ def _image_list_from_row(row: dict) -> list[str]:
     return [single] if single else []
 
 
+def _to_thumbnail(url: str, width: int = 200) -> str:
+    """Convert Supabase storage URL to image-transform thumbnail URL."""
+    marker = "/storage/v1/object/public/"
+    if marker in url:
+        return url.replace(marker, "/storage/v1/render/image/public/", 1) + f"?width={width}&resize=contain"
+    return url
+
+
+def _build_bill_markdown(bill_urls: list[str]) -> str:
+    """Build compact markdown block: thumbnail previews + links to originals."""
+    if not bill_urls:
+        return ""
+    parts: list[str] = []
+    for i, url in enumerate(bill_urls, 1):
+        thumb = _to_thumbnail(url, width=200)
+        parts.append(f"![bill{i}]({thumb})")
+    links = " · ".join(f"[Ảnh gốc {i}]({u})" for i, u in enumerate(bill_urls, 1))
+    return "\n".join(parts) + "\n" + links
+
+
 def _load_team_group(sb, team_code: str) -> str:
     """Return open_conversation_id for team_code, or raise."""
     res = (
@@ -86,12 +106,10 @@ async def poll_and_send(sb_factory: Callable[[], Any]) -> None:
         try:
             open_conversation_id = _load_team_group(sb, team_code)
             title = EVENT_TITLES.get(event_type, "")
-            # Gộp ảnh bill vào cuối message dạng markdown ![](url) → 1 tin duy nhất.
             bill_urls = _image_list_from_row(row)
             full_message = message
             if bill_urls:
-                img_md = "\n".join(f"![bill]({u})" for u in bill_urls)
-                full_message = message + "\n\n" + img_md
+                full_message = message + "\n" + _build_bill_markdown(bill_urls)
                 if not title:
                     title = "Thông báo"
             msg_id = await asyncio.to_thread(
