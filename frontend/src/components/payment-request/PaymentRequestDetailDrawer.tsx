@@ -2631,9 +2631,9 @@ export default function PaymentRequestDetailDrawer({
               {arDraftRows.map((row, i) => (
                 <div key={i} style={{ border: "1px solid var(--border)", borderRadius: 8, padding: "10px 12px", marginBottom: 10 }}>
                   {/* Row 1: Tên bé | SĐT của bé */}
-                  <div style={{ display: "flex", gap: 8, marginBottom: 8, alignItems: "flex-end" }}>
+                  <div style={{ display: "flex", gap: 8, marginBottom: 8, alignItems: "flex-start" }}>
                     <div className="field" style={{ flex: 1, minWidth: 200, marginBottom: 0 }}>
-                      <label>Tên bé <span style={{ color: "var(--text-3)", fontWeight: 400, fontSize: 11 }}>(hiển thị trong yêu cầu kích hoạt)</span></label>
+                      <label>Tên bé</label>
                       <Combobox
                         freeText
                         value={row.childName}
@@ -2642,6 +2642,9 @@ export default function PaymentRequestDetailDrawer({
                         placeholder="Chọn hoặc gõ tên bé..."
                         emptyLabel="— Bỏ chọn —"
                       />
+                      <div style={{ marginTop: 3, fontSize: 11.5, color: "var(--text-3)" }}>
+                        Hiển thị trong yêu cầu kích hoạt
+                      </div>
                     </div>
                     <div className="field" style={{ flex: 1, minWidth: 200, marginBottom: 0 }}>
                       {(() => {
