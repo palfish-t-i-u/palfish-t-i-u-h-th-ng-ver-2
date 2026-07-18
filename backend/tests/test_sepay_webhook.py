@@ -343,5 +343,212 @@ class _RecordingChain:
         return MagicMock(data=[self._payload])
 
 
+class _FakeSelect:
+    """Select chain lọc rows theo .eq(col, val) thật — phân biệt được query
+    pending (2 eq) vs paid (3 eq, có amount) trong _match_transfer_code_in_content."""
+
+    def __init__(self, rows: list[dict]):
+        self._rows = rows
+        self._filters: list[tuple] = []
+        self._limit: int | None = None
+
+    def eq(self, col, val):
+        self._filters.append((col, val))
+        return self
+
+    def limit(self, n):
+        self._limit = n
+        return self
+
+    def execute(self):
+        out = [r for r in self._rows if all(r.get(c) == v for c, v in self._filters)]
+        if self._limit is not None:
+            out = out[: self._limit]
+        return MagicMock(data=out)
+
+
+class TestSepayLateMatch:
+    """Race PayOS↔SePay (PR chị Hương 11/7): PayOS confirm line TRƯỚC, SePay về
+    SAU 2s → match cũ chỉ tìm status=pending → bank txn kẹt 'pending' lẫn vào
+    tab CK ngoài. Fix: khớp muộn với lines đã paid — chỉ link, không notify."""
+
+    _PAID_LINE = {
+        "id": "line-paid-1", "transfer_code": "FHBFF", "amount": 14_650_000,
+        "method": "qr", "status": "paid", "payment_request_id": "PR-22",
+    }
+
+    def _build_sb(self, *, paid_lines, linked_txns, upserts, line_updates):
+        def mock_table(name):
+            t = MagicMock()
+            if name == "payment_lines":
+                t.select.side_effect = lambda *a, **k: _FakeSelect(paid_lines)
+                t.update.side_effect = lambda payload: _RecordingChain(line_updates, payload)
+            elif name == "bank_transactions":
+                t.select.side_effect = lambda *a, **k: _FakeSelect(linked_txns)
+                def record_upsert(payload, **kw):
+                    upserts.append(payload)
+                    chain = MagicMock()
+                    chain.execute.return_value = MagicMock(data=[{"txn_id": "new-txn"}])
+                    return chain
+                t.upsert.side_effect = record_upsert
+            return t
+
+        sb = MagicMock()
+        sb.table.side_effect = mock_table
+        return sb
+
+    def test_paid_line_late_match_links_without_notify(self):
+        """Line đã paid (PayOS) + đúng mã + đúng tiền + chưa có txn link
+        → auto_matched + matched_by=system:sepay_late, KHÔNG update payment_lines
+        (không update → trigger Zalo/DingTalk không bắn lại)."""
+        from sepay_routes import _process_sepay_transaction
+
+        upserts: list[dict] = []
+        line_updates: list[dict] = []
+        sb = self._build_sb(
+            paid_lines=[self._PAID_LINE], linked_txns=[],
+            upserts=upserts, line_updates=line_updates,
+        )
+
+        result = _process_sepay_transaction(sb, {
+            "id": 67653641,
+            "content": "CSO9E63CVK7 84927509353 ANH FHBFF 110726",
+            "transferAmount": 14_650_000,
+        })
+
+        assert result["status"] == "auto_matched"
+        assert result["payment_line_id"] == "line-paid-1"
+        assert len(upserts) == 1
+        assert upserts[0]["match_status"] == "auto_matched"
+        assert upserts[0]["payment_line_id"] == "line-paid-1"
+        assert upserts[0]["matched_by"] == "system:sepay_late"
+        # KHÔNG mark paid lại — payment_lines không được update
+        assert line_updates == []
+
+    def test_paid_line_with_existing_txn_stays_pending(self):
+        """Line đã paid NHƯNG đã có bank txn link → CK lặp thật của khách
+        → giữ pending cho kế toán, không tự nuốt."""
+        from sepay_routes import _process_sepay_transaction
+
+        upserts: list[dict] = []
+        line_updates: list[dict] = []
+        sb = self._build_sb(
+            paid_lines=[self._PAID_LINE],
+            linked_txns=[{"txn_id": "old-txn", "payment_line_id": "line-paid-1"}],
+            upserts=upserts, line_updates=line_updates,
+        )
+
+        result = _process_sepay_transaction(sb, {
+            "id": 67653642,
+            "content": "khach chuyen lap FHBFF",
+            "transferAmount": 14_650_000,
+        })
+
+        assert result["status"] == "pending"
+        assert result["payment_line_id"] is None
+        assert upserts[0]["match_status"] == "pending"
+        assert "matched_by" not in upserts[0]
+        assert line_updates == []
+
+    def test_paid_line_amount_mismatch_stays_pending(self):
+        """Đúng mã nhưng SAI tiền so với line đã paid → query .eq(amount) không
+        trả line → pending (không gán needs_review hint sai lên line đã paid)."""
+        from sepay_routes import _process_sepay_transaction
+
+        upserts: list[dict] = []
+        line_updates: list[dict] = []
+        sb = self._build_sb(
+            paid_lines=[self._PAID_LINE], linked_txns=[],
+            upserts=upserts, line_updates=line_updates,
+        )
+
+        result = _process_sepay_transaction(sb, {
+            "id": 67653643,
+            "content": "chuyen them FHBFF",
+            "transferAmount": 5_000_000,  # khác 14.65M
+        })
+
+        assert result["status"] == "pending"
+        assert result["payment_line_id"] is None
+        assert line_updates == []
+
+    def test_linked_check_error_skips_candidate_not_whole_loop(self):
+        """Linked-check throw ở ứng viên 1 → continue dò ứng viên 2 (review 18/7:
+        return sớm làm lỗi thoáng qua chặn cả vòng dò, dòng CK kẹt pending)."""
+        from sepay_routes import _process_sepay_transaction
+
+        line_a = {"id": "line-a", "transfer_code": "AAAAA", "amount": 7_000_000,
+                  "method": "qr", "status": "paid", "payment_request_id": "PR-A"}
+        line_b = {"id": "line-b", "transfer_code": "BBBBB", "amount": 7_000_000,
+                  "method": "qr", "status": "paid", "payment_request_id": "PR-B"}
+
+        upserts: list[dict] = []
+        call_count = {"n": 0}
+
+        def bank_select(*a, **k):
+            call_count["n"] += 1
+            if call_count["n"] == 1:
+                raise Exception("transient DB error")
+            return _FakeSelect([])
+
+        def mock_table(name):
+            t = MagicMock()
+            if name == "payment_lines":
+                t.select.side_effect = lambda *a, **k: _FakeSelect([line_a, line_b])
+            elif name == "bank_transactions":
+                t.select.side_effect = bank_select
+                def record_upsert(payload, **kw):
+                    upserts.append(payload)
+                    chain = MagicMock()
+                    chain.execute.return_value = MagicMock(data=[{"txn_id": "new-txn"}])
+                    return chain
+                t.upsert.side_effect = record_upsert
+            return t
+
+        sb = MagicMock()
+        sb.table.side_effect = mock_table
+
+        result = _process_sepay_transaction(sb, {
+            "id": 67653645,
+            "content": "AAAAA BBBBB chuyen tien",
+            "transferAmount": 7_000_000,
+        })
+
+        # Ứng viên A lỗi → skip; ứng viên B vẫn được dò và match
+        assert result["status"] == "auto_matched"
+        assert result["payment_line_id"] == "line-b"
+        assert upserts[0]["matched_by"] == "system:sepay_late"
+
+    def test_pending_line_still_wins_over_paid(self):
+        """Có line pending khớp mã → flow cũ thắng (mark paid + notify),
+        KHÔNG rơi vào nhánh late match."""
+        from sepay_routes import _process_sepay_transaction
+
+        pending_line = {
+            "id": "line-pending-1", "transfer_code": "FHBFF", "amount": 14_650_000,
+            "method": "qr", "status": "pending", "payment_request_id": "PR-22",
+        }
+        upserts: list[dict] = []
+        line_updates: list[dict] = []
+        sb = self._build_sb(
+            paid_lines=[pending_line, self._PAID_LINE], linked_txns=[],
+            upserts=upserts, line_updates=line_updates,
+        )
+
+        with patch("payment_request_routes.recompute_payment_request_totals", return_value={}):
+            result = _process_sepay_transaction(sb, {
+                "id": 67653644,
+                "content": "CK moi FHBFF",
+                "transferAmount": 14_650_000,
+            })
+
+        assert result["status"] == "auto_matched"
+        assert result["payment_line_id"] == "line-pending-1"
+        # Flow cũ: line ĐƯỢC mark paid
+        assert len(line_updates) == 1
+        assert line_updates[0]["status"] == "paid"
+        assert "matched_by" not in upserts[0]
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

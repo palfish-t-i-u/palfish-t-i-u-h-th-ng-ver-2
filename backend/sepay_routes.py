@@ -346,7 +346,10 @@ def _match_transfer_code_in_content(sb, content: str, amount: float) -> dict[str
             break
 
     if not matched_line:
-        return {"matched": False}
+        # Race PayOS↔SePay (PR chị Hương 11/7): line có thể đã paid qua kênh khác
+        # (PayOS webhook / manual) TRƯỚC khi bank txn SePay về → thử khớp muộn
+        # với lines đã paid để dòng CK không mồ côi ở tab "CK ngoài chờ ghép".
+        return _match_paid_line_late(sb, desc, amount)
 
     # Kiểm tra số tiền khớp
     expected_amount = _parse_amount(matched_line.get("amount"))
@@ -364,6 +367,67 @@ def _match_transfer_code_in_content(sb, content: str, amount: float) -> dict[str
     }
 
 
+def _match_paid_line_late(sb, desc: str, amount: float) -> dict[str, Any]:
+    """Khớp muộn: bank txn SePay về SAU khi payment_line đã paid qua kênh khác.
+
+    Chỉ auto-clear khi ĐỦ 3 điều kiện (chống ghép nhầm kiểu Lan Anh 26/6):
+    1. transfer_code của line xuất hiện trong nội dung CK
+    2. số tiền khớp CHÍNH XÁC — filter ngay trong query (.eq amount, bigint
+       phải cast int) nên không kéo toàn bộ lịch sử lines đã paid
+    3. line CHƯA có bank_transaction nào link — nếu đã có thì đây là CK lặp
+       thật của khách → để pending cho kế toán xử lý, KHÔNG tự nuốt
+
+    Trả match_type="late_matched" — caller set match_status=auto_matched nhưng
+    KHÔNG mark paid lại, KHÔNG notify lại (line đã paid + đã báo tin rồi).
+    """
+    if amount <= 0:
+        return {"matched": False}
+
+    try:
+        paid_res = (
+            sb.table("payment_lines")
+            .select("*")
+            .eq("method", "qr")
+            .eq("status", "paid")
+            .eq("amount", int(amount))
+            .execute()
+        )
+    except Exception as exc:
+        print(f"[sepay] late-match lookup failed: {exc}")
+        return {"matched": False, "error": str(exc)}
+
+    for candidate in paid_res.data or []:
+        code = _clean_text(candidate.get("transfer_code")).upper()
+        if not code or code not in desc:
+            continue
+
+        line_id = str(candidate.get("id", ""))
+        # Điều kiện 3: line đã có bank txn link → CK hiện tại là khoản lặp
+        try:
+            linked = (
+                sb.table("bank_transactions")
+                .select("txn_id")
+                .eq("payment_line_id", line_id)
+                .limit(1)
+                .execute()
+            )
+        except Exception as exc:
+            # Lỗi thoáng qua ở 1 ứng viên KHÔNG được chặn cả vòng dò —
+            # bỏ qua ứng viên này, dò tiếp (review finding 18/7)
+            print(f"[sepay] late-match linked-check failed (skip candidate {line_id}): {exc}")
+            continue
+        if linked.data:
+            print(
+                f"[sepay] late-match skip: line {line_id} đã có bank txn link "
+                "(CK lặp cùng mã?) — giữ pending cho kế toán"
+            )
+            return {"matched": False}
+
+        return {"matched": True, "match_type": "late_matched", "line": candidate}
+
+    return {"matched": False}
+
+
 # ---------------------------------------------------------------------------
 # Core: Xử lý 1 giao dịch SePay
 # ---------------------------------------------------------------------------
@@ -373,8 +437,9 @@ def _process_sepay_transaction(sb, txn: dict[str, Any]) -> dict[str, Any]:
     Luồng:
     1. Check duplicate (sepay_id)
     2. Check mPOS settle → ignore
-    3. Khớp mã Base36 trong nội dung CK
+    3. Khớp mã Base36 trong nội dung CK (lines pending; miss → khớp muộn lines đã paid)
     4. INSERT với ON CONFLICT DO NOTHING
+    5. Nếu match pending: mark paid + recompute; nếu khớp muộn: chỉ link + audit
     """
     fields = _extract_sepay_transaction_fields(txn)
     sepay_id = fields["sepay_id"]
@@ -403,6 +468,7 @@ def _process_sepay_transaction(sb, txn: dict[str, Any]) -> dict[str, Any]:
     match_status = "pending"
     payment_line_id = None
     line_to_pay: dict[str, Any] | None = None  # set nếu cần mark paid sau INSERT
+    late_matched = False  # line đã paid qua kênh khác — chỉ link, không mark/notify
 
     if _is_mpos_settlement(content):
         match_status = "ignored"
@@ -414,6 +480,12 @@ def _process_sepay_transaction(sb, txn: dict[str, Any]) -> dict[str, Any]:
             if match_result["match_type"] == "auto_matched":
                 match_status = "auto_matched"
                 line_to_pay = line
+            elif match_result["match_type"] == "late_matched":
+                # Race PayOS↔SePay: line đã paid trước (PayOS/manual) → chỉ link
+                # để dòng CK biến khỏi tab "CK ngoài", KHÔNG mark paid lại
+                # (payment_lines không update → trigger Zalo/DingTalk không bắn).
+                match_status = "auto_matched"
+                late_matched = True
             else:
                 # Mã đúng, tiền sai → needs_review
                 match_status = "needs_review"
@@ -434,6 +506,9 @@ def _process_sepay_transaction(sb, txn: dict[str, Any]) -> dict[str, Any]:
         "created_at": _iso_now(),
         "updated_at": _iso_now(),
     }
+    if late_matched:
+        # Audit: phân biệt khớp muộn với auto_matched thường (matched_by mặc định null)
+        insert_row["matched_by"] = "system:sepay_late"
 
     try:
         res = (
@@ -486,6 +561,17 @@ def _process_sepay_transaction(sb, txn: dict[str, Any]) -> dict[str, Any]:
                 })
             except Exception as exc:
                 print(f"[sepay] recompute/audit failed (line already paid, match_status kept): {exc}")
+
+    # Late match: chỉ audit (best-effort) — line đã paid, KHÔNG recompute/notify
+    if is_new and late_matched:
+        try:
+            from audit import log_audit
+
+            log_audit(sb, "system:sepay", "recon.late_match_linked", "payment_line", payment_line_id, {
+                "sepay_id": sepay_id, "match_status": match_status,
+            })
+        except Exception as exc:
+            print(f"[sepay] late-match audit failed (match_status kept): {exc}")
 
     return {
         "sepay_id": sepay_id,
