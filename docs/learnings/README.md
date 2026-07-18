@@ -15,3 +15,5 @@ Written by the `extract-approach` skill. One insight per file.
 - [outbox-snapshot-stale-mutable-asset](outbox-snapshot-stale-mutable-asset.md) — bill Zalo ra link text vì URL snapshot trong outbox trỏ file đã xóa; worker phải đọc lại bill_images fresh từ DB, retry URL cũ là fix giả
 - [worker-gate-by-event-type-not-source-table](worker-gate-by-event-type-not-source-table.md) — nhiều event_type chung source_table='payment_lines'; gate logic per-event bằng event_type, không thì payment_paid bị dính ảnh bill
 - [settlement-pattern-verify-by-cross-sum](settlement-pattern-verify-by-cross-sum.md) — pattern nhận diện settle mPOS/Payoo viết từ nội dung sao kê thật + verify đối chiếu tổng net gateway_transactions; đoán regex = 0 hit cả tháng
+- [pillow-thumbnail-before-exif-transpose](pillow-thumbnail-before-exif-transpose.md) — thumbnail() TRƯỚC exif_transpose() để giữ JPEG draft-mode (~5MB thay 36MB); đảo thứ tự = OOM trên Render 512MB
+- [lazy-thumb-at-send-covers-backfill](lazy-thumb-at-send-covers-backfill.md) — tạo thumb lazy lúc gửi tin tự phủ bill cũ+mới, không cần backfill migration riêng
