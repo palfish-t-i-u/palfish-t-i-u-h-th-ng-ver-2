@@ -1435,8 +1435,8 @@ function ActiveRequestMiniCardV2({
           border: "1.5px solid var(--warning, #f59e0b)", background: "var(--warning-bg, #fef3c7)",
           color: "var(--warning-text, #92400e)",
         }}>
-          ⚠️ Thêm bé/gói tại đây <strong>không gửi tin báo đơn</strong> cho kế toán — chỉ dùng để sửa
-          thông tin nhập sai. Muốn báo bé/gói mới (khách đóng thêm tiền): dùng nút{" "}
+          ⚠️ Thêm bé/gói tại đây <strong>không gửi tin báo đơn hoàn thành</strong> cho kế toán — chỉ dùng để sửa
+          thông tin nhập sai. Muốn báo bé/gói mới đã đủ tiền (khách đóng thêm tiền): dùng nút{" "}
           <strong>"Báo đơn bổ sung"</strong> ở cuối phiếu.
         </div>
       )}
