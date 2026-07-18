@@ -207,6 +207,53 @@ def _max_course_seq(uids_data: list[Any]) -> int:
     return max_seq
 
 
+def _merge_uid_blocks(
+    existing: list[dict[str, Any]], new_blocks: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    """Merge bé/gói mới vào uids_data hiện có (append lần 2).
+
+    Cùng uid → nối courses vào block cũ (giữ nguyên flags invoiced/order_id gói cũ);
+    uid mới → thêm block. Deep-copy — không mutate input.
+    """
+    import copy
+
+    merged = copy.deepcopy(existing or [])
+    by_uid = {str(b.get("uid") or ""): b for b in merged if str(b.get("uid") or "")}
+    for nb in new_blocks:
+        uid = str(nb.get("uid") or "")
+        target = by_uid.get(uid)
+        if target is not None:
+            target.setdefault("courses", []).extend(nb.get("courses") or [])
+        else:
+            merged.append(nb)
+            if uid:
+                by_uid[uid] = nb
+    return merged
+
+
+def _append_children_core(
+    sb, ar_row: dict[str, Any], pr: dict[str, Any], uids_in: list[Any]
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], str]:
+    """Logic ruột báo đơn bổ sung — tách khỏi endpoint để test trực tiếp.
+
+    Trả (new_blocks, merged, status). Raises HTTPException khi input sai/vượt tiền.
+    KHÔNG side-effect ghi DB — endpoint lo phần update/enqueue/audit.
+    """
+    if not uids_in:
+        raise HTTPException(400, "Cần ít nhất 1 bé/gói để bổ sung")
+    ar_id = str(ar_row.get("id") or "")
+    pr_id = str(ar_row.get("pr_id") or "")
+    existing_uids = ar_row.get("uids_data") or []
+    start_seq = _max_course_seq(existing_uids) + 1  # G2
+    new_blocks = _assign_course_codes(uids_in, pr_id, start_seq=start_seq)
+    _assert_course_names_present(new_blocks)
+    _assert_uids_have_uid(new_blocks)
+    merged = _merge_uid_blocks(existing_uids, new_blocks)
+    _validate_course_amounts(sb, pr, merged, exclude_ar_id=ar_id)  # G4
+    _assert_uids_data_order_ids_unique(sb, ar_id, merged)
+    return new_blocks, merged, _derive_status(merged)
+
+
 def _assign_course_codes(uids_in: list[Any], pr_id: str, start_seq: int = 1) -> list[dict[str, Any]]:
     """Inject sequential CC-[PR_DIGITS]-[SEQ] codes; output snake_case only."""
     pr_part = _pr_digits(pr_id)
@@ -2073,6 +2120,78 @@ def register_activation_routes(app, supabase_factory):
             require_paid_pr=True,
         )
         return _serialize_ar(saved, pr)
+
+    @app.post("/api/v1/active-requests/{ar_id}/append", tags=["Activation"])
+    def append_active_request_children(
+        ar_id: str,
+        payload: Any = Body(...),
+        authorization: str | None = Header(None),
+    ):
+        """Báo đơn bổ sung (lần 2+): cộng bé/gói mới vào AR có sẵn + bắn tin DingTalk.
+
+        Body cùng shape create: {"uids": [{uid, name?, phone?, courses:[{name, amount,...}]}]}.
+        KHÔNG tạo AR thứ 2 (G1) — merge vào uids_data, course code tiếp seq (G2),
+        tin báo đơn source_id riêng + chỉ chứa bé mới (G3).
+        """
+        sb = supabase_factory()
+        if not sb:
+            raise HTTPException(503, "Supabase chưa cấu hình")
+
+        actor = resolve_actor(sb, authorization)
+
+        try:
+            res = sb.table("active_requests").select("*").eq("id", ar_id).limit(1).execute()
+        except Exception as exc:
+            raise HTTPException(500, f"Khong doc active_requests: {exc}") from exc
+        if not res.data:
+            raise HTTPException(404, f"Active Request {ar_id} khong ton tai")
+        ar_row = res.data[0]
+
+        pr_id = str(ar_row.get("pr_id") or "")
+        if not pr_id:
+            raise HTTPException(400, "AR không gắn PR — không hỗ trợ báo đơn bổ sung")
+        pr = _fetch_payment_request(sb, pr_id)
+
+        # G4 — server-side guards y hệt create
+        assert_pr_paid(pr)
+        assert_all_paid_lines_have_bill(sb, pr)
+
+        _, _, uids_in = _parse_create_ar_payload(payload)
+        new_blocks, merged, new_status = _append_children_core(sb, ar_row, pr, uids_in)
+
+        patch = {
+            "uids_data": merged,
+            "status": new_status,  # G5
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }
+        try:
+            upd = sb.table("active_requests").update(patch).eq("id", ar_id).execute()
+        except Exception as exc:
+            raise HTTPException(500, f"Khong cap nhat active_requests: {exc}") from exc
+        updated = (upd.data or [{**ar_row, **patch}])[0]
+
+        _writeback_pr_uid_from_ar(sb, updated, pr, merged)
+
+        # G3: tin bổ sung — CHỈ bé mới, source_id riêng theo code gói mới đầu tiên
+        first_new_code = new_blocks[0]["courses"][0]["code"]
+        _enqueue_activation_request_created_dingtalk(
+            sb,
+            {**updated, "uids_data": new_blocks},
+            pr,
+            source_suffix=f":append:{first_new_code}",
+        )
+        # G6: Zalo không gọi
+
+        try:
+            from audit import log_audit
+            log_audit(
+                sb, actor.email, "activation.append_children", "active_request", ar_id,
+                {"new_codes": [c["code"] for b in new_blocks for c in b["courses"]]},
+            )
+        except Exception as exc:
+            print(f"[activation] append audit failed (non-fatal): {exc}")
+
+        return _serialize_ar(updated, pr)
 
     @app.patch(
         "/api/v1/active-requests/{ar_id}/courses/{course_code}",
