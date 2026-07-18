@@ -271,6 +271,8 @@ export type CreateActiveRequestUidPayload = {
 export type ArDraftRow = {
   childName: string;   // "" khi PR không có tên con (fallback bé 1)
   uid: string;         // "" = bé chưa có UID CRM (Ops điền ở B3 → write-back)
+  phone: string;       // đuôi số local (digits) — CRM mỗi bé 1 SĐT riêng (18/7)
+  phoneCountry: string; // country code cho đầu số, VD "VN"
   packageName: string;
   amount: number;      // VND
   leadSource: string;

@@ -88,6 +88,7 @@ type PaymentFlowContextValue = {
   /** B3 (16/7) — Báo đơn hoàn thành. reason bắt buộc từ lần báo thứ 2 (BE validate). */
   reportComplete: (prId: string, reason?: string) => Promise<CompletionReport>;
   handleCreateActiveRequest: (pr: PaymentRequest, rows: ArDraftRow[]) => Promise<ActiveRequest>;
+  handleAppendActiveRequest: (pr: PaymentRequest, arId: string, rows: ArDraftRow[]) => Promise<ActiveRequest>;
   handleCreateActiveRequestFromForm: (data: {
     prId: string | null;
     customerName: string;
@@ -438,6 +439,30 @@ export function PaymentFlowProvider({
     []
   );
 
+  const handleAppendActiveRequest = useCallback(
+    async (pr: PaymentRequest, arId: string, rows: ArDraftRow[]) => {
+      try {
+        const res = await endpoints.activeRequests.append(
+          arId,
+          buildCreateActiveRequestPayload(pr, rows)
+        );
+        const ar = fromApiActiveRequest(res.data);
+        if (!ar.customerName) ar.customerName = pr.name;
+        // Replace-in-place: AR đã tồn tại trong state, không prepend bản sao
+        setActiveRequests((prev) => prev.map((x) => (x.id === ar.id ? ar : x)));
+        setApiNote("");
+        return ar;
+      } catch (err) {
+        const msg =
+          (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ||
+          "Không bổ sung được bé/gói trên máy chủ. Vui lòng thử lại.";
+        setApiNote(String(msg));
+        throw err;
+      }
+    },
+    []
+  );
+
   const handleCreateActiveRequestFromForm = useCallback(
     async (data: {
       prId: string | null;
@@ -714,6 +739,7 @@ export function PaymentFlowProvider({
       rejectTransaction,
       reportComplete,
       handleCreateActiveRequest,
+      handleAppendActiveRequest,
       handleCreateActiveRequestFromForm,
       updateActiveRequestCoursePackage,
       saveActiveRequest,
@@ -744,6 +770,7 @@ export function PaymentFlowProvider({
       rejectTransaction,
       reportComplete,
       handleCreateActiveRequest,
+      handleAppendActiveRequest,
       handleCreateActiveRequestFromForm,
       updateActiveRequestCoursePackage,
       saveActiveRequest,

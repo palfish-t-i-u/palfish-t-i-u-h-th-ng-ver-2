@@ -862,7 +862,7 @@ export default function ReconciliationTab() {
                 );
               })}
             </div>
-            <span className="right-meta">{filtered.length} kết quả</span>
+            <span className="right-meta">{tab === "ckOutside" ? bankPendingTxns.length : filtered.length} kết quả</span>
           </div>
 
           {selectedIds.size > 0 && !readOnly && (

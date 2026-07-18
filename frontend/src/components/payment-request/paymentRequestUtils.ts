@@ -387,8 +387,8 @@ export function buildCreateActiveRequestPayload(pr: PaymentRequest, rows: ArDraf
     if (!block) {
       block = {
         uid: row.uid.trim(),
-        phone: pr.phone,
-        country: pr.country,
+        phone: row.phone.trim() || pr.phone,        // SĐT riêng của bé; fallback số PR
+        country: row.phoneCountry || pr.country,
         courses: [],
       };
       const name = row.childName.trim();
@@ -428,6 +428,43 @@ export function activeRequestAllocation(ar: ActiveRequest, pr: PaymentRequest | 
     percent: received > 0 ? Math.min(100, Math.round((total / received) * 100)) : 0,
     isOver: !!pr && overAmount > 0,
   };
+}
+
+/** Trạng thái nút "Báo đơn & Kích hoạt" (18/7 — mở lại cho báo đơn bổ sung).
+ *  Điều kiện sáng đổi từ "chưa có AR" sang "còn tiền chưa phân bổ vào gói":
+ *  khách đóng thêm cho bé/gói mới → sale tự báo đơn lần 2, không cần Ops sửa tay. */
+export function reportButtonState(args: {
+  ready: boolean;        // PR đủ 100% tiền (state done/over)
+  hasAr: boolean;        // PR đã có Active Request
+  unallocated: number;   // received − tổng tiền các gói trong AR (activeRequestAllocation().remaining)
+  arLabel: string;       // activationSummary(ar).buttonLabel — hiện khi khoá
+}): { enabled: boolean; label: string; title: string; isAppend: boolean } {
+  const { ready, hasAr, unallocated, arLabel } = args;
+  if (!ready) {
+    return {
+      enabled: false,
+      label: "Báo đơn & Kích hoạt",
+      title: "Cần thu đủ 100% số tiền trước khi báo đơn",
+      isAppend: false,
+    };
+  }
+  if (!hasAr) {
+    return {
+      enabled: true,
+      label: "Báo đơn & Kích hoạt",
+      title: "Báo đơn lên DingTalk + tạo yêu cầu kích hoạt khoá học",
+      isAppend: false,
+    };
+  }
+  if (unallocated > 0) {
+    return {
+      enabled: true,
+      label: "Báo đơn bổ sung",
+      title: `Còn ${unallocated.toLocaleString("vi-VN")} đ chưa phân bổ — báo đơn cho bé/gói mới`,
+      isAppend: true,
+    };
+  }
+  return { enabled: false, label: arLabel, title: arLabel, isAppend: false };
 }
 
 export type ReferralStatus = "none" | "partial" | "full";
