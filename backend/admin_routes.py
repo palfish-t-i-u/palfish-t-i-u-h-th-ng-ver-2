@@ -136,6 +136,7 @@ class DingTalkGroupPatchPayload(BaseModel):
 class DingTalkTestPayload(BaseModel):
     team_code: str
     message: str
+    raw: bool = False
 
 
 MODULE_LIST = [
@@ -1674,11 +1675,31 @@ def register_admin_routes(app, get_supabase):
             return {"ok": False, "error": "Group đang disable"}
 
         try:
-            msg_id = send_group_message(
-                open_conversation_id=row["open_conversation_id"],
-                message=payload.message,
-                title="Test DingTalk",
-            )
+            if payload.raw:
+                from dingtalk_notifier import get_access_token, _get_credentials, _json_or_text, GROUP_SEND_URL, HTTP_TIMEOUT
+                import httpx as _httpx
+                import json as _json
+                _token = get_access_token()
+                _, _, _rc = _get_credentials()
+                _payload = {
+                    "msgKey": "sampleMarkdown",
+                    "msgParam": _json.dumps({"title": "Test DingTalk", "text": payload.message}, ensure_ascii=False),
+                    "robotCode": _rc,
+                    "openConversationId": row["open_conversation_id"],
+                }
+                with _httpx.Client(timeout=HTTP_TIMEOUT) as _c:
+                    _resp = _c.post(GROUP_SEND_URL, json=_payload, headers={
+                        "x-acs-dingtalk-access-token": _token,
+                        "Content-Type": "application/json",
+                    })
+                _body = _json_or_text(_resp)
+                msg_id = _body.get("processQueryKey", "") if isinstance(_body, dict) else ""
+            else:
+                msg_id = send_group_message(
+                    open_conversation_id=row["open_conversation_id"],
+                    message=payload.message,
+                    title="Test DingTalk",
+                )
             return {"ok": True, "message_id": msg_id}
         except Exception as e:
             return {"ok": False, "error": str(e)}
