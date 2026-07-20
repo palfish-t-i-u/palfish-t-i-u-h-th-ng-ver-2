@@ -66,12 +66,11 @@ def _json_or_text(resp: httpx.Response) -> Any:
 def _to_dingtalk_md(text: str) -> str:
     """Convert plain-text message to DingTalk markdown.
 
-    DingTalk markdown ignores single \\n (standard markdown behavior).
-    Use \\n\\n (paragraph break) for every line break — trailing-space
-    trick (``  \\n``) causes DingTalk to render leading spaces on the
-    next line.
+    DingTalk markdown ignores single \\n and trailing-space ``  \\n``
+    renders leading whitespace on the next line.  ``<br>`` is the only
+    line-break that renders cleanly (no extra spacing, no leading space).
     """
-    return text.replace("\n", "  \n")
+    return text.replace("\n", "<br>")
 
 
 def _get_credentials() -> tuple[str, str, str]:
