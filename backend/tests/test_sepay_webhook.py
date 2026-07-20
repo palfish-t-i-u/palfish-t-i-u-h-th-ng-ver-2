@@ -71,6 +71,10 @@ class TestSepayHelpers:
         assert _is_mpos_settlement("MPOS SETTLE LOT 20260613 - PAYOO") is True
         assert _is_mpos_settlement("KET TOAN MPOS ngay 13/06") is True
         assert _is_mpos_settlement("PAYOO SETTLE batch 001") is True
+        # Rút tiền TikTok Shop hàng tuần — nội dung CK đúng chuỗi
+        assert _is_mpos_settlement("TikTok Shop") is True
+        assert _is_mpos_settlement("Tiktok Shop") is True
+        assert _is_mpos_settlement("  TikTok Shop  ") is True
 
     def test_is_mpos_settlement_false(self):
         from sepay_routes import _is_mpos_settlement
@@ -78,6 +82,8 @@ class TestSepayHelpers:
         assert _is_mpos_settlement("84989778983 Minh FHB9T") is False
         assert _is_mpos_settlement("Chuyen tien thuong") is False
         assert _is_mpos_settlement("") is False
+        # Khách gõ tự do có chứa chữ TikTok → KHÔNG được nuốt (chỉ match exact)
+        assert _is_mpos_settlement("hoan tien don TikTok Shop cho khach") is False
 
     def test_clean_text(self):
         from sepay_routes import _clean_text

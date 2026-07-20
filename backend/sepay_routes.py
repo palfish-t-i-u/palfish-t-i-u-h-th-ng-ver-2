@@ -62,6 +62,13 @@ _PAYOO_SETTLE_SIGNALS: list[re.Pattern] = [
     re.compile(r"PALFISH\s*EC|TK\s*\.?\s*ECOM|TKECOM|PY3", re.IGNORECASE),  # TK ecom PalFish
 ]
 
+# Rút tiền định kỳ từ TikTok Shop về TK MB (hàng tuần, nội dung CK đúng chuỗi
+# "TikTok Shop") — không phải học phí → ignore. Match EXACT toàn chuỗi để khách
+# gõ nội dung tự do có chứa chữ TikTok không bị nuốt nhầm.
+_PLATFORM_WITHDRAWAL_PATTERNS: list[re.Pattern] = [
+    re.compile(r"^\s*tik\s*tok\s*shop\s*$", re.IGNORECASE),
+]
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -242,6 +249,10 @@ def _is_mpos_settlement(content: str) -> bool:
         return True
     if all(p.search(content) for p in _PAYOO_SETTLE_SIGNALS):
         return True
+    # Rút tiền TikTok Shop về TK công ty (không phải học phí)
+    for pattern in _PLATFORM_WITHDRAWAL_PATTERNS:
+        if pattern.search(content):
+            return True
     return False
 
 
