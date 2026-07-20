@@ -608,6 +608,8 @@ export interface BankMatchCandidate {
   pr_name: string;
   pr_uid?: string;
   pr_phone?: string;
+  /** Mã nước PR (vd "VN", "DE") — BE thêm 20/7; optional để FE cũ/BE cũ không vỡ. */
+  pr_country?: string;
   child_name?: string;
   sale_name?: string;
   team_name?: string;

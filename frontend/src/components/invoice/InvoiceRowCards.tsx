@@ -2,7 +2,8 @@ import Badge from "../ui/Badge";
 import Button from "../ui/Button";
 import { RowCard, RowCardList } from "../ui/RowCard";
 import { Icons } from "../payment-request/Icons";
-import { fmtPhone, formatPaymentDateTime } from "../payment-request/paymentRequestUtils";
+import { formatPaymentDateTime } from "../payment-request/paymentRequestUtils";
+import { formatPhoneIntl } from "../payment-request/phoneUtils";
 import { findCountry } from "../payment-request/CountryCombo";
 import { formatAddress, type InvoiceRow, vnd } from "../payment-flow/paymentFlowUtils";
 
@@ -92,7 +93,7 @@ export default function InvoiceRowCards({
               </>
             }
             meta={[
-              { label: "SĐT", value: `${country.flag} ${country.dial} ${fmtPhone(d.phone)}` },
+              { label: "SĐT", value: `${country.flag} ${formatPhoneIntl(d.country, d.phone)}` },
               { label: "UID", value: r.uidObj.uid || "—" },
               { label: "Địa chỉ", value: formatAddress(r.pr, r) || "—" },
               { label: "Thời gian", value: `${ts.date} ${ts.time || ""}`.trim() },

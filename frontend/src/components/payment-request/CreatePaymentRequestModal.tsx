@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import type { CreatePaymentRequestPayload, CustomerType } from "../../types/paymentRequest";
 import { LEAD_SOURCES, defaultChannelForSource, findSourceByKey, sourceHasChannels } from "../../constants/leadSource";
 import CountryCombo, { COUNTRIES, findCountry } from "./CountryCombo";
+import { applySmartPhoneInput, normalizeLocalPhone, crmPhoneFormat } from "./phoneUtils";
 import { Icons } from "./Icons";
 import VietnamAddressFields from "./VietnamAddressFields";
 import Combobox from "../ui/Combobox";
@@ -159,20 +160,44 @@ export default function CreatePaymentRequestModal({
               </label>
               <div className="phone-row">
                 <CountryCombo value={form.country} onChange={(v) => set("country", v)} />
-                <input
-                  className="phone-input"
-                  placeholder={findCountry(form.country).exampleLocal}
-                  value={form.phone}
-                  onChange={(e) => set("phone", e.target.value.replace(/[^\d]/g, ""))}
-                  type="tel"
-                  inputMode="tel"
-                  autoComplete="tel"
-                  autoFocus
-                />
+                {(() => {
+                  const country = findCountry(form.country);
+                  const norm = normalizeLocalPhone(form.phone, country);
+                  return (
+                    <input
+                      className="phone-input"
+                      placeholder={country.exampleLocal}
+                      value={form.phone}
+                      onChange={(e) => {
+                        const r = applySmartPhoneInput(e.target.value);
+                        setForm((f) => ({ ...f, phone: r.phone, ...(r.countryCode ? { country: r.countryCode } : {}) }));
+                      }}
+                      onBlur={() => {
+                        const n = normalizeLocalPhone(form.phone, findCountry(form.country));
+                        if (n.value !== form.phone) set("phone", n.value);
+                      }}
+                      type="tel"
+                      inputMode="tel"
+                      autoComplete="tel"
+                      autoFocus
+                      style={norm.warn ? { borderColor: "var(--danger)" } : undefined}
+                    />
+                  );
+                })()}
               </div>
-              <div style={{ fontSize: 11.5, color: "var(--text-2)", fontWeight: 600, marginTop: 3 }}>
-                Chỉ nhập phần số, không cần mã quốc gia
-              </div>
+              {(() => {
+                const country = findCountry(form.country);
+                const norm = normalizeLocalPhone(form.phone, country);
+                return (
+                  <div style={{ fontSize: 11.5, color: norm.warn ? "var(--danger)" : "var(--text-2)", fontWeight: 600, marginTop: 3 }}>
+                    {norm.warn
+                      ? "SĐT chưa đúng — vui lòng kiểm tra lại (độ dài lệch so với mẫu)"
+                      : form.phone
+                      ? <>Lưu dạng: <span style={{ fontFamily: "JetBrains Mono, monospace" }}>{crmPhoneFormat(form.phone, country)}</span></>
+                      : "Dán cả cụm (VD: 84-352334789) sẽ tự tách đầu số; hoặc chỉ nhập đuôi số"}
+                  </div>
+                );
+              })()}
             </div>
             <div className="field">
               <label>

@@ -11,10 +11,10 @@ import DateRangeFilter, { EMPTY_RANGE, type DateRange, inDateRange } from "./pay
 import { findCountry } from "./payment-request/CountryCombo";
 import { Icons } from "./payment-request/Icons";
 import {
-  fmtPhone,
   formatPaymentDateTime,
   fromApiActiveRequest,
 } from "./payment-request/paymentRequestUtils";
+import { formatPhoneIntl } from "./payment-request/phoneUtils";
 import { downloadApiTaxZip, downloadTaxInvoiceZip } from "../utils/taxInvoiceXlsxExport";
 import { endpoints } from "../lib/api";
 import "../styles/prototype-payments.css";
@@ -156,7 +156,7 @@ function InvoiceDetailDrawer({
               <div>
                 <div className="info-label">SĐT</div>
                 <div className="info-value">
-                  {country.flag} {country.dial} {fmtPhone(d.phone)}
+                  {country.flag} {formatPhoneIntl(d.country, d.phone)}
                 </div>
               </div>
               <div>
@@ -722,7 +722,7 @@ export default function InvoiceRequestTab() {
                         </td>
                         <td>
                           <span className="cell-phone">
-                            {country.flag} {country.dial} {fmtPhone(d.phone)}
+                            {country.flag} {formatPhoneIntl(d.country, d.phone)}
                           </span>
                         </td>
                         <td>

@@ -1,6 +1,7 @@
 import type { CSSProperties } from "react";
 import type { ActiveCourse, ActiveRequest, ActiveRequestApiRow, ActiveRequestPatchUidPayload, ArDraftRow, CreateActiveRequestCoursePayload, CreateActiveRequestPayload, CreateActiveRequestUidPayload, PaymentAttempt, PaymentMethod, PaymentRequest, PaymentRequestStatus } from "../../types/paymentRequest";
 import { normVi } from "../../lib/textUtils";
+import { phoneMatchesQuery } from "../../lib/phoneSearch";
 
 /** Gói giới thiệu (tên chứa "REFER") → cần điền thông tin người giới thiệu. */
 export function isReferralPackage(name?: string | null): boolean {
@@ -26,7 +27,9 @@ export function paymentRequestMatchesSearch(pr: PaymentRequest, rawQuery: string
     pr.childName,
     ...(pr.children?.map((c) => c.name) ?? []),
   ];
-  return haystack.some((value) => normVi(value).includes(q));
+  if (haystack.some((value) => normVi(value).includes(q))) return true;
+  // SĐT: chấp format công ty đầu số-đuôi số (84-x / 84x / 0x) — xem lib/phoneSearch.ts
+  return phoneMatchesQuery(pr.phone, rawQuery);
 }
 
 /**
@@ -83,20 +86,6 @@ export const STATUS_CLASS: Record<PaymentRequestStatus, string> = {
 };
 
 export const vnd = (value: number) => `${Math.round(value).toLocaleString("vi-VN")} đ`;
-
-const COUNTRY_DIALS: Record<string, string> = {
-  VN: "+84",
-  US: "+1",
-  GB: "+44",
-  CN: "+86",
-  JP: "+81",
-  KR: "+82",
-  TH: "+66",
-  SG: "+65",
-  MY: "+60",
-  ID: "+62",
-  PH: "+63",
-};
 
 /** PayOS returns EMV payload in qrCode — render via QR image API (same as Tab1Form). */
 export function payosQrImageUrl(qrCode: string | null | undefined, size = 240): string | null {
@@ -731,19 +720,6 @@ export function formatPaymentDateFull(dateStr: string): string {
 }
 
 
-export function fmtPhone(raw: string): string {
-  if (!raw) return "";
-  const digits = raw.replace(/[^\d]/g, "");
-  if (digits.length < 7) return raw;
-  return digits.replace(/(\d{4})(\d{3})(\d+)/, "$1 $2 $3");
-}
-
-export function formatCoursePhone(countryCode: string | undefined | null, raw: string | undefined | null): string {
-  const digits = (raw || "").replace(/[^\d]/g, "");
-  if (!digits) return "";
-  const dial = COUNTRY_DIALS[countryCode || "VN"] || COUNTRY_DIALS.VN;
-  return `${dial} ${fmtPhone(digits)}`.trim();
-}
 
 export function activationSummary(ar: ActiveRequest | null | undefined) {
   if (!ar) {

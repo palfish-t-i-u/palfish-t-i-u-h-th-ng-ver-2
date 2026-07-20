@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { smartParsePhonePaste, normalizeLocalPhone, crmPhoneFormat } from "./phoneUtils";
+import { smartParsePhonePaste, normalizeLocalPhone, crmPhoneFormat, formatPhoneIntl, applySmartPhoneInput } from "./phoneUtils";
 import { findCountry } from "./CountryCombo";
 
 describe("smartParsePhonePaste", () => {
@@ -58,5 +58,57 @@ describe("crmPhoneFormat", () => {
   });
   it("local rỗng → chuỗi rỗng", () => {
     expect(crmPhoneFormat("", findCountry("VN"))).toBe("");
+  });
+});
+
+describe("formatPhoneIntl — format công ty đầu số-đuôi số (20/7)", () => {
+  it("VN sạch", () => {
+    expect(formatPhoneIntl("VN", "396249966")).toBe("84-396249966");
+  });
+  it("data bẩn dính đầu số 84 → tự bỏ (fix double +84)", () => {
+    expect(formatPhoneIntl("VN", "84904769355")).toBe("84-904769355");
+  });
+  it("số 0 đầu → bỏ (mirror BE lstrip)", () => {
+    expect(formatPhoneIntl("VN", "0352334789")).toBe("84-352334789");
+  });
+  it("model FE có sẵn '+84 ... space'", () => {
+    expect(formatPhoneIntl("VN", "+84 9889 739 96")).toBe("84-988973996");
+  });
+  it("nước ngoài map đầy đủ (DE +49 — COUNTRY_DIALS cũ thiếu)", () => {
+    expect(formatPhoneIntl("DE", "1727552989")).toBe("49-1727552989");
+  });
+  it("US format ký tự rác", () => {
+    expect(formatPhoneIntl("US", "(415) 555-0131")).toBe("1-4155550131");
+  });
+  it("country thiếu → fallback VN; phone rỗng → rỗng", () => {
+    expect(formatPhoneIntl(undefined, "396249966")).toBe("84-396249966");
+    expect(formatPhoneIntl("VN", "")).toBe("");
+    expect(formatPhoneIntl("VN", null)).toBe("");
+  });
+  it("KHÔNG cắt dial khi phần còn lại quá ngắn (≤5)", () => {
+    expect(formatPhoneIntl("VN", "84846")).toBe("84-84846");
+  });
+});
+
+describe("applySmartPhoneInput", () => {
+  it("dán 84-352334789 → tách dial + set country VN", () => {
+    expect(applySmartPhoneInput("84-352334789")).toEqual({ phone: "352334789", countryCode: "VN" });
+  });
+  it("dán +420 777710688 → CZ", () => {
+    expect(applySmartPhoneInput("+420 777710688")).toEqual({ phone: "777710688", countryCode: "CZ" });
+  });
+  it("digits trần KHÔNG đoán (G11)", () => {
+    expect(applySmartPhoneInput("84987654321")).toEqual({ phone: "84987654321" });
+  });
+});
+
+describe("card candidate — fallback khi BE chưa trả pr_country (guardrail additive)", () => {
+  it("có pr_country → format 84-x; thiếu → giữ raw", () => {
+    const withCountry = { pr_phone: "396249966", pr_country: "VN" };
+    const without = { pr_phone: "396249966", pr_country: undefined as string | undefined };
+    const render = (c: { pr_phone: string; pr_country?: string }) =>
+      c.pr_country ? formatPhoneIntl(c.pr_country, c.pr_phone) : c.pr_phone;
+    expect(render(withCountry)).toBe("84-396249966");
+    expect(render(without)).toBe("396249966");
   });
 });

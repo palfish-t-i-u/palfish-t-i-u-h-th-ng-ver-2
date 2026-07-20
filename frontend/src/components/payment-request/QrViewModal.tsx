@@ -3,7 +3,8 @@ import { BANK_INFO } from "../../constants/bank";
 import type { PaymentAttempt, PaymentRequest } from "../../types/paymentRequest";
 import { findCountry } from "./CountryCombo";
 import { Icons } from "./Icons";
-import { fmtPhone, vnd } from "./paymentRequestUtils";
+import { vnd } from "./paymentRequestUtils";
+import { formatPhoneIntl } from "./phoneUtils";
 
 /** compact2 = QR + logo Napas + logo bank, không có whitespace thừa như print */
 function buildQrUrl(amount: number, content: string): string {
@@ -293,7 +294,7 @@ export default function QrViewModal({
               {/* Bank info panel */}
               <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 10 }}>
                 <div style={{ fontSize: 12, color: "var(--text-3)", marginBottom: 2 }}>
-                  {country.flag} {country.dial} {fmtPhone(request.phone)} · {request.name}
+                  {country.flag} {formatPhoneIntl(request.country, request.phone)} · {request.name}
                 </div>
 
                 <BankInfoRow label="Ngân hàng" value={BANK_INFO.displayName} />

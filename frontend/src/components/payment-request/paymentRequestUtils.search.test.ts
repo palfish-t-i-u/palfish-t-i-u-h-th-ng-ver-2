@@ -82,3 +82,23 @@ describe("paymentRequestMatchesSearch", () => {
     expect(paymentRequestMatchesSearch(pr, "   ")).toBe(true);
   });
 });
+
+describe("paymentRequestMatchesSearch — SĐT format đầu số-đuôi số (20/7)", () => {
+  // makePr default: phone "+84 9889 739 96", country "VN"
+  it("khớp 84-đuôi / 84 dính / 0 đầu / +84 space", () => {
+    const pr = makePr({ phone: "396249966" });
+    expect(paymentRequestMatchesSearch(pr, "84-396249966")).toBe(true);
+    expect(paymentRequestMatchesSearch(pr, "84396249966")).toBe(true);
+    expect(paymentRequestMatchesSearch(pr, "0396249966")).toBe(true);
+    expect(paymentRequestMatchesSearch(pr, "+84 396 249 966")).toBe(true);
+  });
+  it("phone model FE có sẵn '+84 ... space' vẫn khớp 84-x", () => {
+    const pr = makePr(); // "+84 9889 739 96"
+    expect(paymentRequestMatchesSearch(pr, "84-988973996")).toBe(true);
+  });
+  it("số khác → không khớp; query chữ không bị ảnh hưởng", () => {
+    const pr = makePr({ phone: "396249966" });
+    expect(paymentRequestMatchesSearch(pr, "84-999999999")).toBe(false);
+    expect(paymentRequestMatchesSearch(pr, "chị nhung")).toBe(true); // nhánh cũ vẫn chạy
+  });
+});

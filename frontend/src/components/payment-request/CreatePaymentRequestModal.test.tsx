@@ -123,3 +123,33 @@ describe("CreatePaymentRequestModal — UID optional", () => {
     resolveSubmit();
   });
 });
+
+describe("CreatePaymentRequestModal — smart SĐT (20/7)", () => {
+  it("dán '84-352334789' → tự cắt đầu số, ô còn đuôi số", async () => {
+    renderModal();
+    const phone = screen.getByPlaceholderText("987 654 321") as HTMLInputElement;
+    fireEvent.change(phone, { target: { value: "84-352334789" } });
+    expect(phone.value).toBe("352334789");
+  });
+  it("blur '0352334789' → tự bỏ số 0 đầu (khớp mẫu 9 số VN)", () => {
+    renderModal();
+    const phone = screen.getByPlaceholderText("987 654 321") as HTMLInputElement;
+    fireEvent.change(phone, { target: { value: "0352334789" } });
+    fireEvent.blur(phone);
+    expect(phone.value).toBe("352334789");
+  });
+  it("digits trần dính 84 → KHÔNG tự cắt (G11), hiện cảnh báo lệch độ dài", () => {
+    renderModal();
+    const phone = screen.getByPlaceholderText("987 654 321") as HTMLInputElement;
+    fireEvent.change(phone, { target: { value: "84987654321" } });
+    fireEvent.blur(phone);
+    expect(phone.value).toBe("84987654321"); // không đoán mò
+    expect(screen.getByText(/SĐT chưa đúng/i)).toBeInTheDocument();
+  });
+  it("nhập đuôi hợp lệ → hiện preview 'Lưu dạng: 84-352334789'", () => {
+    renderModal();
+    const phone = screen.getByPlaceholderText("987 654 321") as HTMLInputElement;
+    fireEvent.change(phone, { target: { value: "352334789" } });
+    expect(screen.getByText("84-352334789")).toBeInTheDocument();
+  });
+});

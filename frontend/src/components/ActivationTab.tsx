@@ -1289,7 +1289,7 @@ function ActivationDetailDrawer({
               <div className="course-row-head">
                 <span />
                 <span>Gói học</span>
-                <span style={{ textAlign: "right" }}>Số tiền</span>
+                <span>Số tiền</span>
                 <span>Course Code</span>
                 <span>Order ID</span>
                 <span>Lưu</span>
