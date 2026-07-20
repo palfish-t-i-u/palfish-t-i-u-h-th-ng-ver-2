@@ -5,7 +5,9 @@ import type {
   PaymentMethod,
   PaymentRequest,
 } from "../../types/paymentRequest";
-import { fmtPhone, nowStamp, vnd } from "../payment-request/paymentRequestUtils";
+import type { BankTransaction } from "../../lib/api";
+import { normVi } from "../../lib/textUtils";
+import { nowStamp, vnd } from "../payment-request/paymentRequestUtils";
 
 export type TxnDisplayStatus = "awaiting" | "confirmed" | "rejected" | "cancelled" | "unsent";
 
@@ -55,6 +57,24 @@ export const AR_STATUS_META: Record<
   activated: { cls: "is-ar-ready", text: "Đã kích hoạt" },
   invoiced: { cls: "is-ar-invoiced", text: "Đã xuất hoá đơn" },
 };
+
+/**
+ * Khớp 1 bank_transaction thô với ô tìm kiếm tab "CK ngoài chờ ghép".
+ * Bank row chưa gắn PR → chỉ có nội dung CK / số tiền / TK nhận (KHÔNG có tên khách/bé).
+ *  - Text: normVi (accent-insensitive, xem docs/learnings/2026-07-11-search-normalize-vi.md)
+ *    trên transfer_content + content + account_number. "gia han" khớp "...Han Gia Han...".
+ *  - Số tiền: so theo digits, bỏ dấu phẩy/chấm người dùng gõ ("4,290,000" → "4290000").
+ * Query rỗng → khớp tất cả. Text-hit HOẶC amount-hit đều tính.
+ */
+export function bankTxnMatchesSearch(b: BankTransaction, rawSearch: string): boolean {
+  const q = normVi(rawSearch.trim());
+  const qDigits = rawSearch.replace(/\D/g, "");
+  if (!q && !qDigits) return true;
+  const textHit =
+    !!q && [b.transfer_content, b.content, b.account_number].some((v) => normVi(v).includes(q));
+  const amountHit = qDigits.length > 0 && String(b.amount).includes(qDigits);
+  return textHit || amountHit;
+}
 
 export function txnDisplayStatus(qr: PaymentAttempt): TxnDisplayStatus {
   if (qr.cancelled) return "cancelled";
@@ -219,7 +239,7 @@ export function formatAddress(pr: PaymentRequest | null, row?: InvoiceRow) {
   return [address, ward, province].filter(Boolean).join(", ") || "—";
 }
 
-export { fmtPhone, nowStamp, vnd };
+export { nowStamp, vnd };
 
 function downloadBlob(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob);

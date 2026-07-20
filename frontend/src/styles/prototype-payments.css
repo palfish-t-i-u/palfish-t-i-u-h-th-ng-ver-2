@@ -1387,7 +1387,7 @@
   padding: 7px 10px; font: inherit; font-size: 13px;
   outline: none; background: white; width: 100%;
 }
-.gmv-prototype .course-row .amt-input { text-align: right; }
+.gmv-prototype .course-row .amt-input { text-align: left; }
 .gmv-prototype .course-row .order-input.has {
   border-color: var(--success); background: var(--success-bg);
   color: var(--success-text); font-weight: 600;
