@@ -1,10 +1,58 @@
 import { describe, expect, it } from "vitest";
 import type { ActiveRequest, PaymentRequest } from "../../types/paymentRequest";
+import type { BankTransaction } from "../../lib/api";
 import {
+  bankTxnMatchesSearch,
   canAllocateCourseAmount,
   deriveArStatus,
   remainingReceivedAmount,
 } from "./paymentFlowUtils";
+
+describe("bankTxnMatchesSearch — tab CK ngoài chờ ghép", () => {
+  const base: BankTransaction = {
+    txn_id: "t1",
+    date: null,
+    amount: 4_290_000,
+    content: null,
+    transfer_content: "84983436566 Han Gia Han FI4WH",
+    account_number: "1680011668899",
+    sub_account: null,
+    transaction_date: "2026-07-06T13:41:00+00:00",
+    match_status: "pending",
+    gateway: "manual",
+    payment_line_id: null,
+    matched_by: null,
+    created_at: "2026-07-06T13:41:00+00:00",
+    updated_at: "2026-07-06T13:41:00+00:00",
+  };
+
+  it("query rỗng / chỉ khoảng trắng → khớp tất cả", () => {
+    expect(bankTxnMatchesSearch(base, "")).toBe(true);
+    expect(bankTxnMatchesSearch(base, "   ")).toBe(true);
+  });
+
+  it("khớp tên trong nội dung CK, không phân biệt dấu (đúng case anh Long)", () => {
+    expect(bankTxnMatchesSearch(base, "gia han")).toBe(true);
+    expect(bankTxnMatchesSearch(base, "Gia Hân")).toBe(true);
+    expect(bankTxnMatchesSearch({ ...base, transfer_content: "Nguyễn Hoàng" }, "nguyen hoang")).toBe(true);
+  });
+
+  it("khớp số tiền theo digits, bỏ dấu phẩy/chấm người dùng gõ", () => {
+    expect(bankTxnMatchesSearch(base, "4290000")).toBe(true);
+    expect(bankTxnMatchesSearch(base, "4,290,000")).toBe(true);
+    expect(bankTxnMatchesSearch(base, "429")).toBe(true); // substring
+    expect(bankTxnMatchesSearch(base, "9999999")).toBe(false);
+  });
+
+  it("khớp số TK nhận + fallback field content khi transfer_content rỗng", () => {
+    expect(bankTxnMatchesSearch(base, "1680011668899")).toBe(true);
+    expect(bankTxnMatchesSearch({ ...base, transfer_content: null, content: "QR giahan26b" }, "giahan")).toBe(true);
+  });
+
+  it("không khớp → false", () => {
+    expect(bankTxnMatchesSearch(base, "khong ton tai")).toBe(false);
+  });
+});
 
 describe("active request status derivation", () => {
   const baseAr: ActiveRequest = {
