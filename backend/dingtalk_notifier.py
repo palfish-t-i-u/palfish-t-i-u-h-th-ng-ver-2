@@ -67,9 +67,11 @@ def _to_dingtalk_md(text: str) -> str:
     """Convert plain-text message to DingTalk markdown.
 
     DingTalk markdown ignores single \\n (standard markdown behavior).
-    Append two trailing spaces before each \\n to force <br>.
+    Use \\n\\n (paragraph break) for every line break — trailing-space
+    trick (``  \\n``) causes DingTalk to render leading spaces on the
+    next line.
     """
-    return text.replace("\n", "  \n")
+    return text.replace("\n", "\n\n")
 
 
 def _get_credentials() -> tuple[str, str, str]:
