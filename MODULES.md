@@ -46,6 +46,7 @@
 
 ### B3 — Kích hoạt khóa học (Active Request)
 - FE: `frontend/src/components/ActivationTab.tsx` + `frontend/src/components/activation/ActivationRowCards.tsx` (mobile)
+- Helper: `frontend/src/components/ActivationTab.uidSync.ts` — `getUidSyncState` (cảnh báo UID lệch B1↔B3)
 - Hook: `frontend/src/hooks/useNoticeCardCollapse.ts` — trạng thái thu gọn/mở card cảnh báo xuất HĐ (persist localStorage)
 - BE: `backend/activation_routes.py` — AR CRUD, allocation guard, match đơn CRM, enqueue Zalo
 - API groups: `endpoints.activeRequests`, `endpoints.activationUrgentRemind`

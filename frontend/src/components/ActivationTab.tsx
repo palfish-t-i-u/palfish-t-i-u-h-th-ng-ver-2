@@ -25,6 +25,7 @@ import { useNoticeCardCollapse } from "../hooks/useNoticeCardCollapse";
 import { activationAuditText, formatPaymentDateFull, formatPaymentDateTime, fromApiActiveRequest, getArReferralStatus, getReferralStatus, REFERRAL_STATUS_HEADER, REFERRAL_STATUS_PANEL_STYLE, toActiveRequestPatchUidsData } from "./payment-request/paymentRequestUtils";
 import { downloadTaxInvoiceZip } from "../utils/taxInvoiceXlsxExport";
 import type { InvoiceRow } from "./payment-flow/paymentFlowUtils";
+import { getUidSyncState } from "./ActivationTab.uidSync";
 import "../styles/prototype-payments.css";
 
 type ArTabId = "pending_order" | "activated" | "all";
@@ -725,6 +726,18 @@ function ActivationDetailDrawer({
     uidTouchedRef.current[uidIdx] = { uid: false, phone: false, country: false };
   };
 
+  const syncUidFromPr = async (uidIdx: number) => {
+    const base = ar.uids[uidIdx];
+    const target = String(pr?.uid || "").trim();
+    if (!base || !target || String(base.uid || "").trim() === target) return;
+    // G-UID3: chỉ đổi chuỗi uid, giữ nguyên phone/country/courses.
+    const result = await onPersist({
+      ...ar,
+      uids: ar.uids.map((u, i) => (i === uidIdx ? { ...u, uid: target } : u)),
+    });
+    if (!result.ok) return;
+  };
+
   const persistStructure = async (actionKey: string, next: ActiveRequest) => {
     setSavingStructureKey(actionKey);
     setStructureError("");
@@ -1187,6 +1200,10 @@ function ActivationDetailDrawer({
               const isUidFromPr = !!uidKey && (
                 (!!pr && uidKey === String(pr.uid || "").trim()) || !!prByUid.get(uidKey)
               );
+              const uidSync = getUidSyncState(uidKey, pr?.uid, {
+                matchedOtherPr: !!prByUid.get(uidKey),
+                singleUid: ar.uids.length === 1,
+              });
               const draftUid = uidDrafts[uidIdx] ?? {
                 uid: uidObj.uid ?? "",
                 phone: uidObj.phone ?? "",
@@ -1261,6 +1278,30 @@ function ActivationDetailDrawer({
                   <span className="badge is-soft-primary" style={{ fontSize: 10 }}>
                     <Icons.Check size={10} strokeWidth={2.5} /> UID từ PR
                   </span>
+                )}
+                {uidSync.kind === "diverged" && (
+                  <span
+                    className="badge"
+                    title={`UID thông tin khách (B1) hiện là ${uidSync.prUid} — khác UID đang lưu ở bản kích hoạt. Có thể sale đã sửa UID sau khi tạo bản kích hoạt.`}
+                    style={{
+                      background: "var(--danger-50, #fef2f2)",
+                      color: "var(--danger-700, #b91c1c)",
+                      fontWeight: 700,
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    <Icons.AlertCircle size={11} strokeWidth={2.5} /> UID lệch với TT khách: {uidSync.prUid}
+                  </span>
+                )}
+                {uidSync.kind === "diverged" && uidSync.canOneClick && !locked && (
+                  <button
+                    type="button"
+                    className="btn btn-outline btn-sm"
+                    onClick={() => void syncUidFromPr(uidIdx)}
+                    title={`Ghi ${uidSync.prUid} (UID thông tin khách) đè lên UID bản kích hoạt`}
+                  >
+                    <Icons.RefreshCw size={12} strokeWidth={2.5} /> Đồng bộ từ PR
+                  </button>
                 )}
                 <button
                   type="button"
