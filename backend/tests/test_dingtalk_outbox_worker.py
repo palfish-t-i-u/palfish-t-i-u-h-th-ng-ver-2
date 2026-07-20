@@ -162,13 +162,12 @@ async def test_poll_no_retry_on_ambiguous_delivery():
 
 
 @pytest.mark.asyncio
-async def test_bill_images_embedded_via_self_thumbs():
-    """Worker gọi _ensure_thumbs (to_thread) và nhúng thumb tự tạo vào 1 tin markdown."""
+async def test_bill_images_embedded_original_inline():
+    """Worker nhúng ảnh gốc vào markdown (không resize, DingTalk giãn vừa khung dù sao)."""
     from dingtalk_outbox_worker import poll_and_send
 
     bill1 = "https://abc.supabase.co/storage/v1/object/public/bills/payment-lines/L1/a.jpg"
     bill2 = "https://abc.supabase.co/storage/v1/object/public/bills/payment-lines/L1/b.jpg"
-    thumb1 = "https://abc.supabase.co/storage/v1/object/public/bill-thumbs/payment-lines/L1/a.jpg.thumb.jpg"
     rows = [{
         "id": 20,
         "team_code": "TEAM_A",
@@ -185,19 +184,13 @@ async def test_bill_images_embedded_via_self_thumbs():
         captured.append({"message": message, "title": title})
         return "pqk-img"
 
-    # thumb1 ok, bill2 fail → nhúng gốc bill2 (fallback trong 1 tin)
-    def fake_ensure(sb_arg, urls):
-        return {bill1: thumb1, bill2: None}
-
     with patch("dingtalk_outbox_worker._load_team_group", return_value="cid123"), \
-         patch("dingtalk_outbox_worker._ensure_thumbs", side_effect=fake_ensure), \
          patch("dingtalk_outbox_worker.send_group_message", side_effect=fake_send):
         await poll_and_send(lambda: sb)
 
     assert len(captured) == 1
     msg = captured[0]["message"]
-    assert f"![bill1]({thumb1})" in msg
-    assert f"![bill2]({bill2})" in msg          # fallback gốc inline
+    assert f"![bill1]({bill1})" in msg
+    assert f"![bill2]({bill2})" in msg
     assert "[Ảnh gốc 1](" in msg and "[Ảnh gốc 2](" in msg
-    assert "/render/image/" not in msg           # G7
     assert captured[0]["title"] == "Báo đơn"
