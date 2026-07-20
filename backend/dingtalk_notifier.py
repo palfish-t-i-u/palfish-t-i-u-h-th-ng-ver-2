@@ -71,7 +71,7 @@ def _to_dingtalk_md(text: str) -> str:
     trick (``  \\n``) causes DingTalk to render leading spaces on the
     next line.
     """
-    return text.replace("\n", "\n\n")
+    return text.replace("\n", "  \n")
 
 
 def _get_credentials() -> tuple[str, str, str]:
