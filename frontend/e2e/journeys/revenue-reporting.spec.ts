@@ -189,10 +189,10 @@ test.describe.serial("Revenue & Reporting: Sổ doanh thu → BC03", () => {
     await expectModuleLoaded(page, "BC03");
 
     await expect(
-      page.locator('input[type="month"]').or(page.locator('select').first())
+      page.locator('input[type="month"]').or(page.locator('select').first()).first()
     ).toBeVisible({ timeout: 10_000 });
 
-    await expect(page.locator("text=Revenue").or(page.locator("text=Doanh thu"))).toBeVisible({ timeout: 10_000 });
+    await expect(page.locator("text=Revenue").or(page.locator("text=Doanh thu")).first()).toBeVisible({ timeout: 10_000 });
 
     await page.screenshot({ path: "e2e-results/bc03-smoke.png" });
   });
@@ -207,16 +207,16 @@ test.describe.serial("Revenue & Reporting: Sổ doanh thu → BC03", () => {
     const emptyState = page.locator("text=Chưa có dữ liệu").or(page.locator("text=Không có"));
     await expect(dataTable.or(emptyState)).toBeVisible({ timeout: 15_000 });
 
-    const trialTab = page.locator("button:has-text('Trial')").or(page.locator("text=Trial"));
-    if (await trialTab.isVisible()) {
-      await trialTab.click();
+    const trialTab = page.locator("main").getByRole("button", { name: "Trial", exact: false });
+    if (await trialTab.first().isVisible().catch(() => false)) {
+      await trialTab.first().click();
       await page.waitForTimeout(2_000);
       await page.screenshot({ path: "e2e-results/bc03-trial.png" });
     }
 
-    const referralTab = page.locator("button:has-text('Referral')").or(page.locator("text=Referral"));
-    if (await referralTab.isVisible()) {
-      await referralTab.click();
+    const referralTab = page.locator("main").getByRole("button", { name: "Referral", exact: false });
+    if (await referralTab.first().isVisible().catch(() => false)) {
+      await referralTab.first().click();
       await page.waitForTimeout(2_000);
       await page.screenshot({ path: "e2e-results/bc03-referral.png" });
     }
@@ -246,7 +246,7 @@ test.describe("BC03 — Mobile 375px: no column crush", () => {
       await assertNoColumnCrush(revenueTable);
     }
 
-    const trialTab = page.locator("button:has-text('Trial')").or(page.locator("text=Trial"));
+    const trialTab = page.locator("main").getByRole("button", { name: "Trial", exact: false }).first();
     if (await trialTab.isVisible().catch(() => false)) {
       await trialTab.click();
       await page.waitForTimeout(1_500);
@@ -257,7 +257,7 @@ test.describe("BC03 — Mobile 375px: no column crush", () => {
       }
     }
 
-    const referralTab = page.locator("button:has-text('Referral')").or(page.locator("text=Referral"));
+    const referralTab = page.locator("main").getByRole("button", { name: "Referral", exact: false }).first();
     if (await referralTab.isVisible().catch(() => false)) {
       await referralTab.click();
       await page.waitForTimeout(1_500);
