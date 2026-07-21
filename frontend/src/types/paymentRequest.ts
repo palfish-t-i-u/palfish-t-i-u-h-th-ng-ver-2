@@ -205,6 +205,8 @@ export interface ActiveRequest {
   createdAt: string;
   createdBy: string;
   uids: ActiveUidGroup[];
+  holdActivation?: boolean;
+  holdNote?: string | null;
 }
 
 export interface PaymentRequestsListResponse {
@@ -281,6 +283,8 @@ export type ArDraftRow = {
 
 export type CreateActiveRequestPayload = {
   uids: CreateActiveRequestUidPayload[];
+  hold_activation?: boolean;
+  hold_note?: string | null;
 };
 
 /** Raw row from GET/POST /api/v1/active-requests (snake_case) */
@@ -322,6 +326,8 @@ export type ActiveRequestApiRow = {
   }>;
   status?: string;
   created_at?: string;
+  hold_activation?: boolean;
+  hold_note?: string | null;
   payment_request?: { name?: string; email?: string; sale_name?: string; sale_email?: string };
 };
 

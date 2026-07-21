@@ -566,12 +566,20 @@ export const endpoints = {
       api.patch<{ matched: boolean }>(`/api/v1/bank-transactions/${txnId}/match`, null, {
         params: { payment_line_id: paymentLineId },
       }),
+    setTeam: (txnId: string, team: BankTransactionTeam | null) =>
+      api.patch<{ txn_id: string; team: BankTransactionTeam | null }>(
+        `/api/v1/bank-transactions/${txnId}/team`,
+        null,
+        { params: { team: team ?? "" } },
+      ),
   },
   auditLogs: {
     list: (params: { target_type?: string; target_id?: string; action?: string; limit?: number }) =>
       api.get<{ data: AuditLogEntry[] }>("/audit-logs", { params }),
   },
 };
+
+export type BankTransactionTeam = "HCM" | "HN";
 
 export interface BankTransaction {
   txn_id: string;
@@ -586,6 +594,7 @@ export interface BankTransaction {
   gateway: string;
   payment_line_id: string | null;
   matched_by: string | null;
+  team: BankTransactionTeam | null;
   created_at: string;
   updated_at: string;
 }

@@ -410,6 +410,8 @@ def _serialize_ar(row: dict[str, Any], pr: dict[str, Any] | None = None, sale_na
         "course_count": len(courses),
         "ordered_count": ordered_count,
         "referral_status": _compute_referral_status(courses),
+        "hold_activation": bool(row.get("hold_activation")),
+        "hold_note": row.get("hold_note") or None,
     }
     if pr is not None:
         target, received = _pr_amounts(pr)
@@ -1098,7 +1100,8 @@ def _enqueue_activation_request_created_zalo(
 
 
 def _enqueue_activation_request_created_dingtalk(
-    sb, saved_ar: dict[str, Any], pr: dict[str, Any] | None, source_suffix: str = ""
+    sb, saved_ar: dict[str, Any], pr: dict[str, Any] | None, source_suffix: str = "",
+    hold_activation: bool = False, hold_note: str | None = None,
 ) -> None:
     """Enqueue DingTalk 'activation_request_created' (best-effort, NEVER raises).
 
@@ -1198,6 +1201,12 @@ def _enqueue_activation_request_created_dingtalk(
         # source_suffix (append lần 2): outbox UNIQUE(source_table, source_id, event_type)
         # — giữ md5(ar_id) là tin bổ sung bị drop im lặng (G3).
         source_uuid = str(uuid.UUID(hashlib.md5(f"{ar_id}{source_suffix}".encode()).hexdigest()))
+        outbox_message = result["message"]
+        if hold_activation:
+            hold_line = "\n⏸ PH CHƯA MUỐN KÍCH HOẠT"
+            if hold_note:
+                hold_line += f"\nGhi chú: {hold_note}"
+            outbox_message = outbox_message + hold_line
         try:
             sb.table("dingtalk_outbox").insert(
                 {
@@ -1205,7 +1214,7 @@ def _enqueue_activation_request_created_dingtalk(
                     "source_table": "active_requests",
                     "source_id": source_uuid,
                     "team_code": team_code,
-                    "message": result["message"],
+                    "message": outbox_message,
                     "image_url": bill_url,
                     "image_urls": bill_urls or None,
                 }
@@ -1301,6 +1310,8 @@ def _save_active_request(
     uids_in: list[Any],
     customer_name: str | None = None,
     require_paid_pr: bool = False,
+    hold_activation: bool = False,
+    hold_note: str | None = None,
 ) -> tuple[dict[str, Any], dict[str, Any] | None]:
     pr: dict[str, Any] | None = None
     if pr_id:
@@ -1326,13 +1337,17 @@ def _save_active_request(
     _assert_uids_data_order_ids_unique(sb, ar_id, uids_data)
 
     status = _derive_status(uids_data)
+    _hold_note = (hold_note or "").strip()[:500] if hold_activation and hold_note else None
     row: dict[str, Any] = {
         "id": ar_id,
         "pr_id": pr_id,
         "uids_data": uids_data,
         "status": status,
         "is_test": bool(pr.get("is_test")) if pr else False,
+        "hold_activation": hold_activation,
     }
+    if _hold_note:
+        row["hold_note"] = _hold_note
     if customer_name:
         row["customer_name"] = customer_name
 
@@ -1359,7 +1374,7 @@ def _save_active_request(
         saved["customer_name"] = customer_name
     _writeback_pr_uid_from_ar(sb, saved, pr, uids_data)
     _enqueue_activation_request_created_zalo(sb, saved, pr)
-    _enqueue_activation_request_created_dingtalk(sb, saved, pr)
+    _enqueue_activation_request_created_dingtalk(sb, saved, pr, hold_activation=hold_activation, hold_note=_hold_note)
     return saved, pr
 
 
@@ -2083,12 +2098,17 @@ def register_activation_routes(app, supabase_factory):
         actor = resolve_actor(sb, authorization)
 
         pr_id, customer_name, uids_in = _parse_create_ar_payload(payload)
+        hold_activation = bool(payload.get("hold_activation")) if isinstance(payload, dict) else False
+        hold_note_raw = str(payload.get("hold_note") or "").strip()[:500] if isinstance(payload, dict) else ""
+        hold_note = hold_note_raw if hold_activation and hold_note_raw else None
         saved, pr = _save_active_request(
             sb,
             pr_id=pr_id,
             uids_in=uids_in,
             customer_name=customer_name,
             require_paid_pr=bool(pr_id),
+            hold_activation=hold_activation,
+            hold_note=hold_note,
         )
         return _serialize_ar(saved, pr)
 
@@ -2112,12 +2132,17 @@ def register_activation_routes(app, supabase_factory):
         actor = resolve_actor(sb, authorization)
 
         _, customer_name, uids_in = _parse_create_ar_payload(payload)
+        hold_activation = bool(payload.get("hold_activation")) if isinstance(payload, dict) else False
+        hold_note_raw = str(payload.get("hold_note") or "").strip()[:500] if isinstance(payload, dict) else ""
+        hold_note = hold_note_raw if hold_activation and hold_note_raw else None
         saved, pr = _save_active_request(
             sb,
             pr_id=pr_id,
             uids_in=uids_in,
             customer_name=customer_name,
             require_paid_pr=True,
+            hold_activation=hold_activation,
+            hold_note=hold_note,
         )
         return _serialize_ar(saved, pr)
 
@@ -2164,6 +2189,15 @@ def register_activation_routes(app, supabase_factory):
             "status": new_status,  # G5
             "updated_at": datetime.now(timezone.utc).isoformat(),
         }
+        # Optional: update hold flag if caller provides it (không gửi → giữ nguyên)
+        if isinstance(payload, dict) and "hold_activation" in payload:
+            append_hold = bool(payload.get("hold_activation"))
+            patch["hold_activation"] = append_hold
+            if append_hold:
+                raw_note = str(payload.get("hold_note") or "").strip()[:500]
+                patch["hold_note"] = raw_note if raw_note else None
+            else:
+                patch["hold_note"] = None
         try:
             upd = sb.table("active_requests").update(patch).eq("id", ar_id).execute()
         except Exception as exc:
@@ -2432,7 +2466,7 @@ def register_activation_routes(app, supabase_factory):
 
         pr = _fetch_payment_request(sb, pr_id)
 
-        ar_res = sb.table("active_requests").select("id, status, pr_id, uids_data").eq("pr_id", pr_id).limit(1).execute()
+        ar_res = sb.table("active_requests").select("id, status, pr_id, uids_data, hold_activation").eq("pr_id", pr_id).limit(1).execute()
         ar = ar_res.data[0] if ar_res.data else None
         if not ar:
             raise HTTPException(400, "PR chưa có Active Request")
@@ -2492,6 +2526,15 @@ def register_activation_routes(app, supabase_factory):
             "note": note_text or None,
             "pending_courses_snapshot": pending_courses,
         }).execute()
+
+        # PH đã sẵn sàng → gỡ hold (tránh 2 tín hiệu mâu thuẫn: vàng + cam cùng lúc)
+        if ar.get("hold_activation"):
+            try:
+                sb.table("active_requests").update(
+                    {"hold_activation": False, "hold_note": None}
+                ).eq("id", ar["id"]).execute()
+            except Exception as hold_exc:
+                print(f"[activation] urgent remind: gỡ hold failed (non-fatal): {hold_exc}")
 
         # Route theo team của sale (giống tin AR-created) — feedback 7/7: sale IH1
         # nhắc GẤP nhưng tin bắn sang nhóm IH2 & OFF. Fallback nhóm Ops khi team

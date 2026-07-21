@@ -1,7 +1,7 @@
 # Plan: "Yêu cầu kích hoạt: Kích hoạt ngay / Chưa kích hoạt" trên modal Báo đơn
 
 **Ngày:** 21/07/2026
-**Trạng thái:** CHỜ DUYỆT
+**Trạng thái:** DONE (21/07/2026)
 **Nguồn yêu cầu:** Meeting notes 20/07 + chốt layout với Minh 21/07 (widget mockup)
 
 ---
@@ -22,8 +22,11 @@ Chốt qua widget mockup 21/07:
    - Không bắt buộc, sale để trống được. Nhãn ghi rõ "— không bắt buộc".
    - Placeholder gợi ý cách ghi: `VD: PH muốn kích hoạt sau Tết / chờ bé nghỉ hè xong`
    - Đổi lại "Kích hoạt ngay" → ẩn ô + xoá nội dung đã gõ.
-3. **Tab Chờ kích hoạt:** đơn "Chưa kích hoạt" hiện **băng/badge VÀNG** + hiển thị ghi chú → kế toán biết chưa duyệt.
-   - Màu vàng để **phân biệt với viền CAM** của "Nhắc kích hoạt gấp" (`activation_reminders`, đã có sẵn).
+3. **Tab Chờ kích hoạt:** đơn "Chưa kích hoạt" hiện ở 3 nơi (đều màu VÀNG, phân biệt viền CAM của "Nhắc kích hoạt gấp" đã có):
+   - **Băng vàng** đầu tab (mirror băng cam nhắc-gấp) + list ghi chú.
+   - **Badge vàng** per-row.
+   - **Filter chip "Kích hoạt"**: Tất cả / Kích hoạt ngay / Chưa muốn kích hoạt → kế toán lọc phát ra danh sách "đừng duyệt".
+   - ⚠ **KHÔNG thêm stat card thứ 5** (vỡ phép cộng 13+79+26=118); "Kích hoạt ngay" là mặc định → cũng không card.
 4. **Khi PH sẵn sàng:** sale bấm nút **"Nhắc kích hoạt gấp"** (đã có sẵn, LIVE) → tín hiệu cam → kế toán kích hoạt.
 
 > **Phát hiện khi điều tra (sửa giả định đề xuất gốc):** nút "Nhắc kích hoạt gấp" **KHÔNG hề bị tắt** — đang VISIBLE + LIVE trên DingTalk (`PaymentRequestDetailDrawer.tsx:2566`, BE `activation_routes.py:2559`). Nên **phần "bật lại nút nhắc gấp" = 0 việc.** Scope plan này chỉ còn: (A) 2 ô tick + ghi chú, (B) lưu cờ trên AR, (C) băng vàng ở tab.
@@ -87,11 +90,23 @@ NOTIFY pgrst, 'reload schema';
 - Handler `handleCreateActiveRequest` / `handleAppendActiveRequest` gửi kèm.
 
 ### 5.3 Tab Chờ kích hoạt — `ActivationTab.tsx` + `ActivationRowCards.tsx`
-- Đọc `hold_activation` / `hold_note` từ AR (đã serialize).
-- **Chỉ hiện khi** `hold_activation && status !== 'activated' && status !== 'invoiced'` (đơn đã kích hoạt/xuất HĐ thì cờ vô nghĩa → ẩn).
-- **Desktop:** badge vàng "⏸ Chưa kích hoạt" cạnh cột AR-ID (không đè viền cam nhắc-gấp `:2258` — 2 tín hiệu độc lập). Tooltip/hàng phụ show `hold_note`.
-- **Mobile:** thêm vào `badges` prop `ActivationRowCards.tsx:63-67`, style vàng (`amber`), khác `border-l-orange-600` của nhắc gấp.
-- Màu: dùng token vàng/amber sẵn có (không hardcode hex mới).
+
+Đọc `hold_activation` / `hold_note` từ AR (đã serialize). **Điều kiện hiển thị hold** ở mọi nơi: `hold_activation && status !== 'activated' && status !== 'invoiced'` (đơn đã kích hoạt/xuất HĐ thì cờ vô nghĩa → bỏ qua).
+
+**(a) Băng vàng đầu tab** — mirror băng cam "nhắc gấp" (`ActivationTab.tsx:2087-2113`):
+- Tiêu đề: `PH chưa muốn kích hoạt (n)` + list ngắn `<tên khách> — "<hold_note>"` (không note → "(không ghi chú)").
+- Màu vàng/amber, đặt ngay DƯỚI băng cam. 2 băng độc lập, có thể hiện cùng lúc.
+- ⚠ **KHÔNG thêm stat card thứ 5**: 4 card hiện có phân hoạch tổng (13+79+26=118); hold là cờ con trong nhóm "Chờ điền Order ID" → thêm card = đếm trùng, vỡ phép cộng. "Kích hoạt ngay" là mặc định → cũng không card.
+
+**(b) Badge vàng per-row:**
+- Desktop: badge "⏸ Chưa kích hoạt" cạnh cột AR-ID (KHÔNG đè viền cam nhắc-gấp `:2258` — 2 tín hiệu độc lập, có thể cùng xuất hiện). Tooltip/hàng phụ show `hold_note`.
+- Mobile: thêm vào `badges` prop `ActivationRowCards.tsx:63-67`, style amber, khác `border-l-orange-600` của nhắc gấp.
+- Dùng token vàng/amber sẵn có (không hardcode hex mới).
+
+**(c) Filter chip "Kích hoạt"** — nhóm chip song song "Thưởng giới thiệu" (client-side, KHÔNG gọi lại BE vì list load hết 1 lần — `PaymentFlowContext.tsx:186`):
+- 3 chip: `Tất cả` (mặc định) · `Kích hoạt ngay` (hold=false) · `Chưa muốn kích hoạt` (hold=true & chưa activated).
+- Trực giao, cộng dồn với tab trạng thái + filter thưởng hiện có (VD tab "Chờ điền Order ID" + chip "Chưa muốn kích hoạt" = đơn chờ mà đừng duyệt).
+- Nhãn khớp băng vàng để đồng nhất.
 
 ## 6. Guardrails (tiêu chí 2 — không lỗi con)
 
@@ -118,6 +133,8 @@ NOTIFY pgrst, 'reload schema';
 - Chữ nút submit đổi đúng theo radio (2 trường hợp) — kể cả chế độ báo đơn bổ sung.
 - Submit gửi đúng `{ hold_activation, hold_note }` trong payload.
 - Row tab có `hold_activation=true` + chưa activated → render badge vàng + note; `status=activated` → không render.
+- Băng vàng hiện đúng count + list note khi có ≥1 AR hold; 0 AR hold → ẩn băng.
+- Filter chip "Chưa muốn kích hoạt" → chỉ còn AR hold chưa activated; "Kích hoạt ngay" → loại AR hold; cộng dồn đúng với tab trạng thái + filter thưởng.
 
 ## 8. Đối chiếu 4 tiêu chí
 

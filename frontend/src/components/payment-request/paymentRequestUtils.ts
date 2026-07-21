@@ -325,6 +325,8 @@ export function fromApiActiveRequest(raw: ActiveRequestApiRow): ActiveRequest {
     saleName: prSnippet?.sale_name || undefined,
     createdAt: raw.created_at ?? "",
     createdBy: "",
+    holdActivation: raw.hold_activation ?? false,
+    holdNote: raw.hold_note ?? null,
     uids: (raw.uids_data ?? []).map((u) => ({
       uid: u.uid ?? "",
       ...(u.name ? { name: u.name } : {}),
@@ -368,7 +370,11 @@ export function buildArByPrId(ars: ActiveRequest[]): Record<string, ActiveReques
 /** Modal AR mở rộng (10/7): gom các dòng {bé, gói, tiền} thành uid-block.
  *  Cùng bé (childName+uid) → 1 block nhiều courses. Tên gói bắt buộc —
  *  BE chặn tạo AR khi name rỗng (tin Zalo bắn ngay lúc tạo). */
-export function buildCreateActiveRequestPayload(pr: PaymentRequest, rows: ArDraftRow[]): CreateActiveRequestPayload {
+export function buildCreateActiveRequestPayload(
+  pr: PaymentRequest,
+  rows: ArDraftRow[],
+  opts?: { holdActivation?: boolean; holdNote?: string }
+): CreateActiveRequestPayload {
   const blocks = new Map<string, CreateActiveRequestUidPayload>();
   for (const row of rows) {
     const key = `${row.childName.trim()}|${row.uid.trim()}`;
@@ -399,7 +405,12 @@ export function buildCreateActiveRequestPayload(pr: PaymentRequest, rows: ArDraf
     if (ch) course.lead_channel = ch;
     block.courses.push(course);
   }
-  return { uids: [...blocks.values()] };
+  const payload: CreateActiveRequestPayload = { uids: [...blocks.values()] };
+  if (opts?.holdActivation) {
+    payload.hold_activation = true;
+    if (opts.holdNote?.trim()) payload.hold_note = opts.holdNote.trim();
+  }
+  return payload;
 }
 
 export function activeRequestAllocation(ar: ActiveRequest, pr: PaymentRequest | null | undefined) {

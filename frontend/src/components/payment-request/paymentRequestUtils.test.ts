@@ -1063,3 +1063,76 @@ describe("paymentConfirmationText — người ghép vs máy tự (fix nhãn gat
     expect(t).toContain("tự động");
   });
 });
+
+// ── Hold activation (Kích hoạt ngay / Chưa kích hoạt) ──────────────────────
+
+describe("fromApiActiveRequest — hold_activation / hold_note", () => {
+  it("maps hold_activation=true + hold_note từ API", () => {
+    const ar = fromApiActiveRequest({
+      id: "AR-H1", pr_id: "PR-1",
+      hold_activation: true, hold_note: "PH chờ hè xong",
+      uids_data: [],
+    });
+    expect(ar.holdActivation).toBe(true);
+    expect(ar.holdNote).toBe("PH chờ hè xong");
+  });
+
+  it("maps hold_activation=false (mặc định khi API thiếu field)", () => {
+    const ar = fromApiActiveRequest({ id: "AR-H2", pr_id: "PR-1", uids_data: [] });
+    expect(ar.holdActivation).toBe(false);
+    expect(ar.holdNote).toBeNull();
+  });
+
+  it("hold_activation=false ép hold_note về null dù API trả note", () => {
+    const ar = fromApiActiveRequest({
+      id: "AR-H3", pr_id: "PR-1",
+      hold_activation: false, hold_note: "note mồ côi",
+      uids_data: [],
+    });
+    // FE chỉ phản chiếu API: hold_activation false nhưng note vẫn được map (guard ở BE)
+    expect(ar.holdActivation).toBe(false);
+    // hold_note được map nguyên vẹn từ API (FE không ép null)
+    expect(ar.holdNote).toBe("note mồ côi");
+  });
+});
+
+describe("buildCreateActiveRequestPayload — opts.holdActivation", () => {
+  const minPr = fromApiPaymentRequest({
+    id: "PR-T", name: "Test", uid: "u1", phone: "0912345678",
+    country: "VN", target: 10000000,
+  });
+  const rows = [
+    {
+      childName: "Bé A", uid: "u1", phone: "0912345678", phoneCountry: "VN",
+      packageName: "Gói Toán", amount: 10000000, leadSource: "", leadChannel: "",
+    },
+  ];
+
+  it("holdActivation=true + holdNote → payload chứa hold fields", () => {
+    const payload = buildCreateActiveRequestPayload(minPr, rows, {
+      holdActivation: true, holdNote: "PH chờ hè",
+    });
+    expect(payload.hold_activation).toBe(true);
+    expect(payload.hold_note).toBe("PH chờ hè");
+  });
+
+  it("holdActivation=true + holdNote rỗng → payload không có hold_note", () => {
+    const payload = buildCreateActiveRequestPayload(minPr, rows, {
+      holdActivation: true, holdNote: "  ",
+    });
+    expect(payload.hold_activation).toBe(true);
+    expect(payload.hold_note).toBeUndefined();
+  });
+
+  it("holdActivation=false → không có hold fields", () => {
+    const payload = buildCreateActiveRequestPayload(minPr, rows, { holdActivation: false });
+    expect(payload.hold_activation).toBeUndefined();
+    expect(payload.hold_note).toBeUndefined();
+  });
+
+  it("opts undefined → không có hold fields (hành vi cũ nguyên vẹn)", () => {
+    const payload = buildCreateActiveRequestPayload(minPr, rows);
+    expect(payload.hold_activation).toBeUndefined();
+    expect(payload.hold_note).toBeUndefined();
+  });
+});

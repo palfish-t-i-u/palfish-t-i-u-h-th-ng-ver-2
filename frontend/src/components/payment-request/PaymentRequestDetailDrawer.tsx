@@ -1585,9 +1585,9 @@ export default function PaymentRequestDetailDrawer({
   onEditAmount?: (qr: PaymentAttempt, newAmount: number) => Promise<void>;
   onBillFile: (qr: PaymentAttempt, file: File) => void | Promise<void>;
   onBillView: (qr: PaymentAttempt) => void;
-  onCreateActiveRequest: (rows: ArDraftRow[]) => void;
+  onCreateActiveRequest: (rows: ArDraftRow[], opts?: { holdActivation?: boolean; holdNote?: string }) => void;
   /** Báo đơn bổ sung (lần 2+): cộng bé/gói mới vào AR có sẵn + tin DingTalk lần 2 */
-  onAppendActiveRequest: (rows: ArDraftRow[]) => Promise<void>;
+  onAppendActiveRequest: (rows: ArDraftRow[], opts?: { holdActivation?: boolean; holdNote?: string }) => Promise<void>;
   onCancelRequest: () => void;
   activeRequestId?: string | null;
   activeRequest?: ActiveRequest | null;
@@ -1620,6 +1620,8 @@ export default function PaymentRequestDetailDrawer({
   const [arPackageModalOpen, setArPackageModalOpen] = useState(false);
   const [arSubmitting, setArSubmitting] = useState(false);
   const [arDraftRows, setArDraftRows] = useState<ArDraftRow[]>([]);
+  const [holdActivation, setHoldActivation] = useState(false);
+  const [holdNote, setHoldNote] = useState("");
   // bill guard — chặn tạo AR khi còn line paid thiếu ảnh bill
   const [missingBillsPopupOpen, setMissingBillsPopupOpen] = useState(false);
   const [missingBillLines, setMissingBillLines] = useState<{ line_id: string; idx: number; amount: number }[]>([]);
@@ -2611,6 +2613,8 @@ export default function PaymentRequestDetailDrawer({
                     ? { childName: "", uid: "", phone: "", phoneCountry: request.country || "VN", packageName: "", amount: arUnallocated, leadSource: request.leadSource || "", leadChannel: request.leadChannel || "" }
                     : { childName: splitChildNames(request.childName)[0] ?? "", uid: request.uid ?? "", phone: (request.phone ?? "").replace(/\D/g, ""), phoneCountry: request.country || "VN", packageName: "", amount: Math.max(0, request.received), leadSource: request.leadSource || "", leadChannel: request.leadChannel || "" },
                 ]);
+                setHoldActivation(false);
+                setHoldNote("");
                 setArPackageModalOpen(true);
               }}
             >
@@ -2660,6 +2664,32 @@ export default function PaymentRequestDetailDrawer({
               </button>
             </div>
             <div className="modal-body">
+              {/* Yêu cầu kích hoạt — 1 lần cho cả báo đơn (không per-gói) */}
+              <div style={{ marginBottom: 12, padding: "10px 12px", border: "1px solid var(--border)", borderRadius: 8, background: "var(--bg-2)" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
+                  <span style={{ fontSize: 13, fontWeight: 500, color: "var(--text-1)", whiteSpace: "nowrap" }}>Yêu cầu kích hoạt:</span>
+                  <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", fontSize: 13 }}>
+                    <input type="radio" name="arHoldActivation" checked={!holdActivation} onChange={() => { setHoldActivation(false); setHoldNote(""); }} />
+                    Kích hoạt ngay
+                  </label>
+                  <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", fontSize: 13 }}>
+                    <input type="radio" name="arHoldActivation" checked={holdActivation} onChange={() => setHoldActivation(true)} />
+                    Chưa kích hoạt
+                  </label>
+                </div>
+                {holdActivation && (
+                  <div style={{ marginTop: 8 }}>
+                    <label style={{ fontSize: 12, color: "var(--text-2)" }}>Ghi chú — không bắt buộc</label>
+                    <textarea
+                      placeholder="VD: PH muốn kích hoạt sau Tết / chờ bé nghỉ hè xong"
+                      value={holdNote}
+                      onChange={(e) => setHoldNote(e.target.value)}
+                      rows={2}
+                      style={{ width: "100%", marginTop: 4, resize: "vertical", fontSize: 13, boxSizing: "border-box" }}
+                    />
+                  </div>
+                )}
+              </div>
               {arDraftRows.map((row, i) => (
                 <div key={i} style={{ border: "1px solid var(--border)", borderRadius: 8, padding: "10px 12px", marginBottom: 10 }}>
                   {/* Row 1: Tên bé | SĐT kích hoạt (số kích hoạt gói cho từng bé — khác SĐT lead/phụ huynh) */}
@@ -2858,11 +2888,12 @@ export default function PaymentRequestDetailDrawer({
                   if (!arValid || arSubmitting) return;
                   setArSubmitting(true);
                   const rows = arDraftRows.map((r) => ({ ...r, childName: r.childName.trim() }));
+                  const holdOpts = { holdActivation, holdNote: holdNote.trim() || undefined };
                   try {
                     if (reportBtn.isAppend) {
-                      await onAppendActiveRequest(rows);
+                      await onAppendActiveRequest(rows, holdOpts);
                     } else {
-                      await onCreateActiveRequest(rows);
+                      await onCreateActiveRequest(rows, holdOpts);
                     }
                     setArPackageModalOpen(false);
                   } catch {
@@ -2873,7 +2904,9 @@ export default function PaymentRequestDetailDrawer({
                 }}
               >
                 <Icons.CheckSquare size={14} />{" "}
-                {arSubmitting ? "Đang gửi…" : reportBtn.isAppend ? "Xác nhận báo đơn bổ sung" : "Xác nhận báo đơn & kích hoạt"}
+                {arSubmitting ? "Đang gửi…" : reportBtn.isAppend
+                  ? (holdActivation ? "Xác nhận báo đơn bổ sung (chưa kích hoạt)" : "Xác nhận báo đơn bổ sung")
+                  : (holdActivation ? "Xác nhận báo đơn (chưa kích hoạt)" : "Xác nhận báo đơn & kích hoạt")}
               </button>
             </div>
           </div>
