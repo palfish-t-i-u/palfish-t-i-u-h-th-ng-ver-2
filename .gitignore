@@ -64,11 +64,13 @@ Thumbs.db
 
 # Local AI skills — chỉ chạy trên máy cá nhân (RTK, caveman, cavemem)
 .agents/
-.claude/
+.claude/*
 # Exception: project-specific agent definitions và skills (shared across team)
+# Dùng .claude/* (không phải .claude/) để git cho phép descend vào subdir được un-ignore
 !.claude/agents/
 !.claude/agents/*.md
 !.claude/skills/
+!.claude/skills/**
 skills-lock.json
 .cursor/rules/caveman.mdc
 .clinerules/

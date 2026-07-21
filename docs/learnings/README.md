@@ -21,3 +21,4 @@ Written by the `extract-approach` skill. One insight per file.
 - [outbox-unique-source-id-second-business-event](outbox-unique-source-id-second-business-event.md) — tin nghiệp vụ lần 2 cùng entity bị outbox UNIQUE nuốt; đổi source_id (suffix deterministic), KHÔNG đổi event_type
 - [button-gate-existence-vs-resource](button-gate-existence-vs-resource.md) — gate nút theo hasX = one-shot khoá oan việc resumable; gate theo tài-nguyên-còn-lại (remaining>0) cho việc làm nhiều đợt
 - [shared-toolbar-filter-dead-on-parallel-tab](2026-07-20-shared-toolbar-filter-dead-on-parallel-tab.md) — toolbar search/date dùng chung nhưng tab CK ngoài render list riêng (bankPendingTxns) không đọc filter state → control chết câm; mỗi memo list phải tiêu thụ đủ filter
+- [dingtalk-markdown-line-break-br-tag](dingtalk-markdown-line-break-br-tag.md) — DingTalk sampleMarkdown render trailing-space thành visible space; dùng `<br>` cho line break

@@ -97,6 +97,7 @@ Tóm tắt module (chi tiết trong `MODULES.md`):
 
 Module có business rules riêng — CLAUDE.md trong thư mục tự load khi đọc file:
 - `frontend/src/components/payment-request/CLAUDE.md` — PR lifecycle, allocation guard, stale content, bill soft-lock
+- `frontend/src/components/activation/CLAUDE.md` — UID sync B1↔B3, append flow báo đơn bổ sung
 - `frontend/src/components/admin/CLAUDE.md` — Zalo/DingTalk: token refresh, outbox retry, event routing
 
 ⚠️ Legacy không còn mount (xem cuối `MODULES.md`): Module3Tab, Module4Tab, PayosHistoryTab, DoanhThuSaleTab, StaffCRMTab.
