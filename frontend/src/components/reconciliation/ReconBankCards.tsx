@@ -1,9 +1,9 @@
-import type { BankTransaction, BankTransactionTeam } from "../../lib/api";
+import type { BankTransaction } from "../../lib/api";
 import Button from "../ui/Button";
 import { RowCard, RowCardList } from "../ui/RowCard";
 import { Icons } from "../payment-request/Icons";
 import { formatPaymentDateTime } from "../payment-request/paymentRequestUtils";
-import { nextTeam, vnd } from "../payment-flow/paymentFlowUtils";
+import { vnd } from "../payment-flow/paymentFlowUtils";
 
 const TEAM_META: Record<"HCM" | "HN", { bg: string; fg: string }> = {
   HCM: { bg: "#dcfce7", fg: "#15803d" },
@@ -14,10 +14,9 @@ interface Props {
   txns: BankTransaction[];
   readOnly: boolean;
   onMatch: (txnId: string) => void;
-  onSetTeam?: (txnId: string, team: BankTransactionTeam | null) => void;
 }
 
-export default function ReconBankCards({ txns, readOnly, onMatch, onSetTeam }: Props) {
+export default function ReconBankCards({ txns, readOnly, onMatch }: Props) {
   return (
     <RowCardList empty="Không có giao dịch CK ngoài chờ ghép.">
       {txns.map((b) => {
@@ -58,41 +57,11 @@ export default function ReconBankCards({ txns, readOnly, onMatch, onSetTeam }: P
             ]}
             onClick={readOnly ? undefined : () => onMatch(b.txn_id)}
             actions={
-              <div style={{ display: "flex", flexDirection: "column", gap: 8, width: "100%" }}>
-                {!readOnly && onSetTeam && (
-                  <div style={{ display: "flex", gap: 12, justifyContent: "flex-end" }}>
-                    {(["HCM", "HN"] as const).map((v) => (
-                      <label
-                        key={v}
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: 4,
-                          fontSize: 12,
-                          fontWeight: 600,
-                          color: "var(--text-2)",
-                          cursor: "pointer",
-                          userSelect: "none",
-                        }}
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={b.team === v}
-                          onChange={() => onSetTeam(b.txn_id, nextTeam(b.team, v))}
-                          style={{ cursor: "pointer", accentColor: TEAM_META[v].fg }}
-                        />
-                        {v}
-                      </label>
-                    ))}
-                  </div>
-                )}
-                {!readOnly && (
-                  <Button type="button" size="sm" variant="primary" onClick={() => onMatch(b.txn_id)}>
-                    <Icons.Bank size={12} /> Ghép
-                  </Button>
-                )}
-              </div>
+              !readOnly ? (
+                <Button type="button" size="sm" variant="primary" onClick={() => onMatch(b.txn_id)}>
+                  <Icons.Bank size={12} /> Ghép
+                </Button>
+              ) : undefined
             }
           />
         );
