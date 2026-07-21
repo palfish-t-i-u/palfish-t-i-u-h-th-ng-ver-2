@@ -1949,6 +1949,7 @@ export default function ActivationTab() {
   const [createOpen, setCreateOpen] = useState(false);
   // 1.5 — filter "Thưởng giới thiệu"
   const [referralFilter, setReferralFilter] = useState<"all" | "none" | "partial" | "full" | "any">("all");
+  const [holdFilter, setHoldFilter] = useState<"all" | "now" | "hold">("all");
 
   // TOP3: activation urgent reminders banner
   type ActivationReminder = { id: string; payment_request_id: string; pr_code: string; customer_name: string; requested_by_name: string; requested_at: string; note: string | null };
@@ -1974,6 +1975,11 @@ export default function ActivationTab() {
   }, [nav.openArId, setNav]);
 
   const rows = useMemo(() => activeRequests.map(enrichActiveRequest), [activeRequests]);
+
+  const holdArs = useMemo(
+    () => rows.filter((a) => a.holdActivation && a.status !== "activated" && a.status !== "invoiced"),
+    [rows]
+  );
 
   const counts = useMemo(
     () => ({
@@ -2003,12 +2009,17 @@ export default function ActivationTab() {
           if (rs !== referralFilter) return false;
         }
       }
+      if (holdFilter !== "all") {
+        const isHold = !!a.holdActivation && a.status !== "activated" && a.status !== "invoiced";
+        if (holdFilter === "hold" && !isHold) return false;
+        if (holdFilter === "now" && isHold) return false;
+      }
       if (!q) return true;
       return [a.id, a.prId || "", a.customerName, a.uids[0]?.uid || ""].some((v) =>
         v.toLowerCase().includes(q)
       );
     });
-  }, [rows, tab, search, dateRange, referralFilter]);
+  }, [rows, tab, search, dateRange, referralFilter, holdFilter]);
 
   const isMobile = useIsMobile();
 
@@ -2112,6 +2123,30 @@ export default function ActivationTab() {
           </div>
         )}
 
+        {holdArs.length > 0 && (
+          <div style={{
+            padding: "10px 14px", borderRadius: 10,
+            border: "1px solid #ffd54f", background: "#fffde7",
+            fontSize: 12.5, marginBottom: 8,
+            display: "flex", alignItems: "flex-start", gap: 8,
+          }}>
+            <span style={{ fontSize: 16, flexShrink: 0, marginTop: 1 }}>⏸</span>
+            <div>
+              <strong style={{ color: "#f57f17" }}>PH chưa muốn kích hoạt ({holdArs.length})</strong>
+              <div style={{ marginTop: 4, lineHeight: 1.6 }}>
+                {holdArs.map((a) => (
+                  <div key={a.id} style={{ color: "var(--text-2)" }}>
+                    <strong>{a.customerName || a.id}</strong>
+                    {a.holdNote
+                      ? <span style={{ color: "var(--text-3)" }}> — &ldquo;{a.holdNote}&rdquo;</span>
+                      : <span style={{ color: "var(--text-3)" }}> — (không ghi chú)</span>}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
         <div className="kpi-row">
           <div className="kpi">
             <div className="kpi-icon">
@@ -2170,6 +2205,23 @@ export default function ActivationTab() {
                 type="button"
                 className={`filter-chip ${referralFilter === f.id ? "active" : ""}`}
                 onClick={() => setReferralFilter(f.id)}
+              >
+                {f.label}
+              </button>
+            ))}
+          </div>
+          <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+            <span style={{ fontSize: 11.5, color: "var(--text-3)", marginRight: 4 }}>Kích hoạt:</span>
+            {([
+              { id: "all" as const, label: "Tất cả" },
+              { id: "now" as const, label: "Kích hoạt ngay" },
+              { id: "hold" as const, label: "Chưa muốn KH" },
+            ]).map((f) => (
+              <button
+                key={f.id}
+                type="button"
+                className={`filter-chip ${holdFilter === f.id ? "active" : ""}`}
+                onClick={() => setHoldFilter(f.id)}
               >
                 {f.label}
               </button>
@@ -2259,6 +2311,15 @@ export default function ActivationTab() {
                     >
                       <td>
                         <span className="ar-id-pill">{a.id}</span>
+                        {a.holdActivation && a.status !== "activated" && a.status !== "invoiced" && (
+                          <span
+                            className="badge badge-warning"
+                            style={{ marginLeft: 6, fontSize: 11 }}
+                            title={a.holdNote ? `Chưa kích hoạt — "${a.holdNote}"` : "Chưa kích hoạt"}
+                          >
+                            ⏸ Chưa KH
+                          </span>
+                        )}
                       </td>
                       <td>
                         {a.prId ? (

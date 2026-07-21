@@ -88,8 +88,8 @@ type PaymentFlowContextValue = {
   rejectTransaction: (prId: string, paymentId: string, rejectReason?: string) => Promise<void>;
   /** B3 (16/7) — Báo đơn hoàn thành. reason bắt buộc từ lần báo thứ 2 (BE validate). */
   reportComplete: (prId: string, reason?: string) => Promise<CompletionReport>;
-  handleCreateActiveRequest: (pr: PaymentRequest, rows: ArDraftRow[]) => Promise<ActiveRequest>;
-  handleAppendActiveRequest: (pr: PaymentRequest, arId: string, rows: ArDraftRow[]) => Promise<ActiveRequest>;
+  handleCreateActiveRequest: (pr: PaymentRequest, rows: ArDraftRow[], opts?: { holdActivation?: boolean; holdNote?: string }) => Promise<ActiveRequest>;
+  handleAppendActiveRequest: (pr: PaymentRequest, arId: string, rows: ArDraftRow[], opts?: { holdActivation?: boolean; holdNote?: string }) => Promise<ActiveRequest>;
   handleCreateActiveRequestFromForm: (data: {
     prId: string | null;
     customerName: string;
@@ -417,11 +417,11 @@ export function PaymentFlowProvider({
   );
 
   const handleCreateActiveRequest = useCallback(
-    async (pr: PaymentRequest, rows: ArDraftRow[]) => {
+    async (pr: PaymentRequest, rows: ArDraftRow[], opts?: { holdActivation?: boolean; holdNote?: string }) => {
       try {
         const res = await endpoints.paymentRequests.createActiveRequest(
           pr.id,
-          buildCreateActiveRequestPayload(pr, rows)
+          buildCreateActiveRequestPayload(pr, rows, opts)
         );
         const ar = fromApiActiveRequest(res.data);
         if (!ar.customerName) ar.customerName = pr.name;
@@ -441,11 +441,11 @@ export function PaymentFlowProvider({
   );
 
   const handleAppendActiveRequest = useCallback(
-    async (pr: PaymentRequest, arId: string, rows: ArDraftRow[]) => {
+    async (pr: PaymentRequest, arId: string, rows: ArDraftRow[], opts?: { holdActivation?: boolean; holdNote?: string }) => {
       try {
         const res = await endpoints.activeRequests.append(
           arId,
-          buildCreateActiveRequestPayload(pr, rows)
+          buildCreateActiveRequestPayload(pr, rows, opts)
         );
         const ar = fromApiActiveRequest(res.data);
         if (!ar.customerName) ar.customerName = pr.name;

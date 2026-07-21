@@ -733,18 +733,18 @@ export default function PaymentRequestsTab() {
     }
   };
 
-  const onCreateActiveRequest = async (rows: ArDraftRow[]) => {
+  const onCreateActiveRequest = async (rows: ArDraftRow[], opts?: { holdActivation?: boolean; holdNote?: string }) => {
     if (!selected || arByPrId[selected.id]) return;
     // Inline AR mini-window: tạo xong → giữ drawer mở, không navigate sang tab Kích hoạt khoá học
     // Context state cập nhật → drawer tự re-render với AR card mới
-    await handleCreateActiveRequest(selected, rows);
+    await handleCreateActiveRequest(selected, rows, opts);
   };
 
-  const onAppendActiveRequest = async (rows: ArDraftRow[]) => {
+  const onAppendActiveRequest = async (rows: ArDraftRow[], opts?: { holdActivation?: boolean; holdNote?: string }) => {
     if (!selected) return;
     const existingAr = arByPrId[selected.id];
     if (!existingAr) return;
-    await handleAppendActiveRequest(selected, existingAr.id, rows);
+    await handleAppendActiveRequest(selected, existingAr.id, rows, opts);
   };
 
   // Local-only update — KHÔNG gọi server mỗi keystroke (race condition: response chậm

@@ -64,6 +64,14 @@ export default function ActivationRowCards({
               <>
                 <StatusBadge status={a.status} />
                 <ReferralBadge ar={a} />
+                {a.holdActivation && a.status !== "activated" && a.status !== "invoiced" && (
+                  <span
+                    className="badge badge-warning"
+                    title={a.holdNote ? `Chưa kích hoạt — "${a.holdNote}"` : "Chưa kích hoạt"}
+                  >
+                    ⏸ Chưa KH
+                  </span>
+                )}
               </>
             }
             meta={[
