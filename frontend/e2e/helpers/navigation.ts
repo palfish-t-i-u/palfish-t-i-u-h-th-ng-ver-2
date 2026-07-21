@@ -8,10 +8,11 @@ export async function navigateTo(page: Page, sidebarLabel: string): Promise<void
     const child = page.locator("nav").getByText(sidebarLabel, { exact: false }).first();
     const childVisible = await child.isVisible().catch(() => false);
     if (!childVisible) {
-      // Nút thật có tên "Báo cáo ›" (kèm chevron trong cùng accessible name) —
-      // exact:true không khớp. Dùng exact:false; an toàn vì trước khi expand,
-      // không có phần tử nào khác trong <nav> chứa substring "Báo cáo".
-      const parent = page.locator("nav").getByText("Báo cáo", { exact: false }).first();
+      // Sidebar có 2 chỗ chứa "Báo cáo": tiêu đề section (text thường, không
+      // click được, đứng TRƯỚC trong DOM) và nút thật "Báo cáo ›" (chevron
+      // nằm trong cùng accessible name). getByText(...).first() từng chọn
+      // nhầm tiêu đề section — dùng getByRole("button", ...) để chỉ khớp nút.
+      const parent = page.locator("nav").getByRole("button", { name: "Báo cáo", exact: false }).first();
       if (await parent.isVisible().catch(() => false)) {
         await parent.click();
         await page.waitForTimeout(300);
