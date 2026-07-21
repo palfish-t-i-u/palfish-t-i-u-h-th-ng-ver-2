@@ -157,10 +157,10 @@ export class E2eApiClient {
     return res.requests.filter((r) => r.name.includes("[E2E-TEST]"));
   }
 
-  async findTestLedgerEntries(): Promise<{ id: string; ten_khach: string }[]> {
+  async findTestLedgerEntries(): Promise<{ id: string; tenKhach: string }[]> {
     const res = await this.request<{
-      rows: { id: string; ten_khach: string }[];
+      rows: { id: string; tenKhach: string }[];
     }>("GET", "/revenue/ledger?limit=200");
-    return res.rows.filter((r) => r.ten_khach?.includes("[E2E-TEST]"));
+    return res.rows.filter((r) => r.tenKhach?.includes("[E2E-TEST]"));
   }
 }

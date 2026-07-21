@@ -11,7 +11,11 @@ const TEST_ENTRY = {
   ngayTienVe: new Date().toISOString().slice(0, 10),
   tenKhach: `${TEST_PREFIX} Revenue Entry`,
   soTienVnd: 3_700_000,
-  team: "Inhouse 1",
+  // test.user@dev có role "sale", team cố định "Inhouse 2" (nhan_su_sale) —
+  // enforce_report_scope() ép mọi truy vấn Sổ doanh thu của role sale/leader
+  // về ĐÚNG team gắn với tài khoản, bất kể dropdown "Team" trên UI chọn gì.
+  // Dòng tạo test phải khớp team này thì mới thấy lại được sau khi tạo.
+  team: "Inhouse 2",
   loai: "B2",
   note: "[E2E-AUTO] Created by Playwright",
   paymentMethod: "cash",
@@ -40,7 +44,7 @@ test.describe.serial("Revenue & Reporting: Sổ doanh thu → BC03", () => {
     await waitForLoaded(page);
 
     await expect(
-      page.locator("text=Tất cả teams").or(page.locator("select").first())
+      page.locator("text=Tất cả teams").or(page.locator("select").first()).first()
     ).toBeVisible({ timeout: 10_000 });
 
     await expect(
@@ -48,7 +52,7 @@ test.describe.serial("Revenue & Reporting: Sổ doanh thu → BC03", () => {
     ).toBeVisible({ timeout: 5_000 });
 
     await expect(
-      page.locator("button:has-text('Thêm')").or(page.locator("button:has-text('Tạo')"))
+      page.locator("main").locator("button:has-text('Thêm')").or(page.locator("main").locator("button:has-text('Tạo')")).first()
     ).toBeVisible({ timeout: 5_000 });
 
     await page.screenshot({ path: "e2e-results/ledger-smoke.png" });
@@ -60,42 +64,34 @@ test.describe.serial("Revenue & Reporting: Sổ doanh thu → BC03", () => {
     await expectModuleLoaded(page, "Sổ doanh thu");
     await waitForLoaded(page);
 
-    const createBtn = page.locator("button:has-text('Thêm')").or(
-      page.locator("button:has-text('Tạo')")
+    const createBtn = page.locator("main").locator("button:has-text('Thêm')").or(
+      page.locator("main").locator("button:has-text('Tạo')")
     );
     await createBtn.first().click();
     await page.waitForTimeout(500);
 
-    const dateInput = page.locator('input[type="date"]').first();
+    const dialog = page.getByRole("dialog");
+
+    const dateInput = dialog.locator('input[type="date"]').first();
     if (await dateInput.isVisible()) {
       await dateInput.fill(TEST_ENTRY.ngayTienVe);
     }
 
-    const nameInput = page.locator('label:has-text("Tên khách") ~ input').or(
-      page.locator('input[placeholder*="Tên khách"]')
-    );
-    await nameInput.first().fill(TEST_ENTRY.tenKhach);
+    await dialog.getByLabel("User Name").fill(TEST_ENTRY.tenKhach);
 
-    const amountInput = page.locator('label:has-text("Số tiền") ~ input').or(
-      page.locator('input[placeholder*="VND"]')
-    );
-    await amountInput.first().fill(String(TEST_ENTRY.soTienVnd));
+    await dialog.getByLabel("Real Pay (VND)").fill(String(TEST_ENTRY.soTienVnd));
 
-    const teamSelect = page.locator('select').or(
-      page.locator('label:has-text("Team") ~ select')
-    );
-    if (await teamSelect.first().isVisible()) {
-      await teamSelect.first().selectOption({ label: TEST_ENTRY.team });
+    const teamSelect = dialog.getByLabel("Team");
+    if (await teamSelect.isVisible()) {
+      await teamSelect.selectOption({ label: TEST_ENTRY.team });
     }
 
-    const noteInput = page.locator('label:has-text("Ghi chú") ~ input, label:has-text("Ghi chú") ~ textarea');
-    if (await noteInput.first().isVisible()) {
-      await noteInput.first().fill(TEST_ENTRY.note);
+    const noteInput = dialog.getByLabel("Ghi chú");
+    if (await noteInput.isVisible()) {
+      await noteInput.fill(TEST_ENTRY.note);
     }
 
-    const submitBtn = page.locator("button:has-text('Lưu')").or(
-      page.locator("button:has-text('Tạo')").last()
-    );
+    const submitBtn = dialog.locator("button[type=submit]");
     await submitBtn.click();
     await page.waitForTimeout(2_000);
 
@@ -162,9 +158,9 @@ test.describe.serial("Revenue & Reporting: Sổ doanh thu → BC03", () => {
     await expectModuleLoaded(page, "Sổ doanh thu");
     await waitForLoaded(page);
 
-    const teamSelect = page.locator('select').first();
+    const teamSelect = page.getByLabel("Team");
     if (await teamSelect.isVisible()) {
-      await teamSelect.selectOption({ label: "Inhouse 1" });
+      await teamSelect.selectOption({ label: TEST_ENTRY.team });
       await page.waitForTimeout(1_500);
     }
 
