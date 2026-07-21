@@ -379,60 +379,21 @@ const TEAM_META: Record<"HCM" | "HN", { bg: string; fg: string }> = {
   HN:  { bg: "#dbeafe", fg: "#1d4ed8" },
 };
 
-function BankTxnTeamCell({
-  team,
-  readOnly,
-  onToggle,
-}: {
-  team: "HCM" | "HN" | null | undefined;
-  readOnly: boolean;
-  onToggle: (v: "HCM" | "HN") => void;
-}) {
+function TeamBadge({ team }: { team: "HCM" | "HN" | null | undefined }) {
+  if (!team) return <span style={{ fontSize: 10, color: "var(--text-3)" }}>—</span>;
   return (
-    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
-      <div style={{ display: "flex", gap: 10 }}>
-        {(["HCM", "HN"] as const).map((v) => (
-          <label
-            key={v}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 3,
-              fontSize: 11.5,
-              fontWeight: 600,
-              color: "var(--text-2)",
-              cursor: readOnly ? "default" : "pointer",
-              userSelect: "none",
-            }}
-          >
-            <input
-              type="checkbox"
-              checked={team === v}
-              disabled={readOnly}
-              onChange={() => onToggle(v)}
-              style={{ cursor: readOnly ? "default" : "pointer", accentColor: TEAM_META[v].fg }}
-            />
-            {v}
-          </label>
-        ))}
-      </div>
-      {team ? (
-        <span
-          style={{
-            fontSize: 10,
-            fontWeight: 700,
-            padding: "1px 6px",
-            borderRadius: 4,
-            background: TEAM_META[team].bg,
-            color: TEAM_META[team].fg,
-          }}
-        >
-          {team}
-        </span>
-      ) : (
-        <span style={{ fontSize: 10, color: "var(--text-3)" }}>—</span>
-      )}
-    </div>
+    <span
+      style={{
+        fontSize: 10,
+        fontWeight: 700,
+        padding: "1px 6px",
+        borderRadius: 4,
+        background: TEAM_META[team].bg,
+        color: TEAM_META[team].fg,
+      }}
+    >
+      {team}
+    </span>
   );
 }
 
@@ -1023,18 +984,7 @@ export default function ReconciliationTab() {
                 <div style={{ padding: "10px 14px 8px", fontSize: 12, color: "var(--text-2)" }}>
                   Tiền vào TK công ty không khớp lần TT nào. Bấm <strong>Ghép</strong> để gắn vào PR.
                 </div>
-                <ReconBankCards
-                  txns={filteredBankPending}
-                  readOnly={readOnly}
-                  onMatch={openBankMatch}
-                  onSetTeam={(txnId, team) => {
-                    setBankTxns((prev) => prev.map((b) => b.txn_id === txnId ? { ...b, team } : b));
-                    endpoints.bankTxns.setTeam(txnId, team).catch(() => {
-                      loadBankTxns();
-                      alert("Cập nhật team thất bại — thử lại.");
-                    });
-                  }}
-                />
+                <ReconBankCards txns={filteredBankPending} readOnly={readOnly} onMatch={openBankMatch} />
               </div>
             ) : (
             <div className="tbl-wrap">
@@ -1107,15 +1057,8 @@ export default function ReconciliationTab() {
                               {isReview ? "Cần kiểm tra" : "Chờ ghép"}
                             </span>
                           </td>
-                          <td
-                            style={{ textAlign: "center" }}
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            <BankTxnTeamCell
-                              team={b.team}
-                              readOnly={readOnly}
-                              onToggle={(v) => void setTeamForTxn(b.txn_id, v)}
-                            />
+                          <td style={{ textAlign: "center" }}>
+                            <TeamBadge team={b.team} />
                           </td>
                           <td style={{ textAlign: "center" }}>
                             {!readOnly && (
@@ -1810,6 +1753,35 @@ export default function ReconciliationTab() {
                     <div style={{ color: "var(--text-3)", marginBottom: 2, fontSize: 11 }}>Nội dung CK</div>
                     <div style={{ fontSize: 12, wordBreak: "break-word" }}>{drawerTxn.transfer_content || drawerTxn.content || "—"}</div>
                   </div>
+                  {!readOnly && (
+                    <div style={{ marginTop: 10, paddingTop: 8, borderTop: "1px dashed var(--border)", display: "flex", alignItems: "center", gap: 12 }}>
+                      <span style={{ fontSize: 11, color: "var(--text-3)", fontWeight: 600 }}>Team:</span>
+                      {(["HCM", "HN"] as const).map((v) => (
+                        <label
+                          key={v}
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 4,
+                            fontSize: 12,
+                            fontWeight: 600,
+                            color: "var(--text-2)",
+                            cursor: "pointer",
+                            userSelect: "none",
+                          }}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={drawerTxn.team === v}
+                            onChange={() => void setTeamForTxn(drawerTxn.txn_id, v)}
+                            style={{ cursor: "pointer", accentColor: TEAM_META[v].fg }}
+                          />
+                          {v}
+                        </label>
+                      ))}
+                      {drawerTxn.team && <TeamBadge team={drawerTxn.team} />}
+                    </div>
+                  )}
                 </div>
 
                 <div>
