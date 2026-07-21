@@ -227,11 +227,18 @@ test.describe.serial("Revenue & Reporting: Sổ doanh thu → BC03", () => {
 // 375px — bắt Team bleed vào cột Total/ngày khi cuộn, trên cả 3 tab.
 test.describe("BC03 — Mobile 375px: no column crush", () => {
   test("Doanh thu / Trial / Referral — không tràn ngang, không cột nén", async ({ page }) => {
-    await page.setViewportSize({ width: 375, height: 812 });
+    // Điều hướng ở viewport desktop mặc định trước — nav mobile (<768px) đổi
+    // hẳn cơ chế (bottom bar "compact": item có children tự nhảy child[0]
+    // thay vì mở submenu; nút "Thêm" chỉ xuất hiện khi > 5 mục top-level, tuỳ
+    // theo quyền từng account) nên không đáng tin cậy để điều hướng tới đúng
+    // BC03. Vào bằng nav desktop cho chắc, RỒI mới resize xuống 375px để đo.
     await page.goto("/");
     await navigateTo(page, "BC03 — Báo cáo tổng bộ");
     await expectModuleLoaded(page, "BC03");
     await waitForLoaded(page);
+
+    await page.setViewportSize({ width: 375, height: 812 });
+    await page.waitForTimeout(300);
 
     await assertNoHorizontalOverflow(page);
     const revenueTable = page.locator("table").first();
