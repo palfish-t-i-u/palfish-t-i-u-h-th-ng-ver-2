@@ -788,7 +788,6 @@
   transition: border-color 120ms, background 120ms, color 120ms;
 }
 .gmv-prototype .bill-dropzone:hover,
-.gmv-prototype .bill-dropzone.is-paste-ready,
 .gmv-prototype .bill-dropzone.is-drag-over {
   border-color: var(--primary);
   background: var(--primary-50);

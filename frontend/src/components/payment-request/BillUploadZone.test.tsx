@@ -18,65 +18,76 @@ function pasteEvent(items: Array<{ kind: string; type: string; file: File | null
   return ev;
 }
 
+function openModal() {
+  fireEvent.click(screen.getByRole("button", { name: /Up bill/i }));
+}
+
 afterEach(() => vi.restoreAllMocks());
 
-describe("BillUploadZone — paste ảnh (Ctrl+V)", () => {
-  it("dán ảnh khi đang trỏ vào ô (hover) → gọi onFile với đúng file", async () => {
+describe("BillUploadZone — modal up bill", () => {
+  it("bấm 'Up bill' → mở modal có hướng dẫn 3 cách", () => {
+    render(<BillUploadZone hasBill={false} onFile={vi.fn()} />);
+    expect(screen.queryByText("Dán ảnh (Ctrl+V)")).toBeNull(); // chưa mở
+    openModal();
+    expect(screen.getByText("Dán ảnh (Ctrl+V)")).toBeTruthy();
+    expect(screen.getByText(/kéo-thả ảnh vào đây/)).toBeTruthy();
+    expect(screen.getByText(/bấm để chọn file/)).toBeTruthy();
+  });
+
+  it("dán ảnh khi modal mở → up ngay (gọi onFile với đúng file)", async () => {
     const onFile = vi.fn();
     render(<BillUploadZone hasBill={false} onFile={onFile} />);
-    const zone = screen.getByRole("button", { name: /up bill/i });
-
-    fireEvent.mouseEnter(zone); // active = true
+    openModal();
     const file = imageFile();
     document.dispatchEvent(pasteEvent([{ kind: "file", type: "image/png", file }]));
-
     await waitFor(() => expect(onFile).toHaveBeenCalledTimes(1));
     expect(onFile).toHaveBeenCalledWith(file);
   });
 
-  it("dán ảnh khi KHÔNG trỏ vào ô → bỏ qua (không nhắm nhầm dòng)", async () => {
+  it("dán ảnh khi modal CHƯA mở → bỏ qua (không nghe paste toàn trang khi đóng)", async () => {
     const onFile = vi.fn();
     render(<BillUploadZone hasBill={false} onFile={onFile} />);
-    // không mouseEnter → active = false
     document.dispatchEvent(pasteEvent([{ kind: "file", type: "image/png", file: imageFile() }]));
-
     await new Promise((r) => setTimeout(r, 0));
     expect(onFile).not.toHaveBeenCalled();
   });
 
-  it("dán chữ (không có ảnh) khi hover → không gọi onFile, không chặn paste của input khác", async () => {
+  it("dán chữ (không ảnh) khi modal mở → không gọi onFile, không chặn paste", async () => {
     const onFile = vi.fn();
     render(<BillUploadZone hasBill={false} onFile={onFile} />);
-    const zone = screen.getByRole("button", { name: /up bill/i });
-
-    fireEvent.mouseEnter(zone);
+    openModal();
     const ev = pasteEvent([{ kind: "string", type: "text/plain", file: null }]);
     document.dispatchEvent(ev);
-
     await new Promise((r) => setTimeout(r, 0));
     expect(onFile).not.toHaveBeenCalled();
-    expect(ev.defaultPrevented).toBe(false); // không hijack text paste
+    expect(ev.defaultPrevented).toBe(false);
   });
 
-  it("không nhận paste khi đang tải (uploading)", async () => {
+  it("kéo-thả ảnh vào vùng thả → up ngay", async () => {
     const onFile = vi.fn();
-    render(<BillUploadZone hasBill={false} uploading onFile={onFile} />);
-    // uploading → tabIndex -1, nhưng vẫn test guard bằng cách hover element theo class
-    const zone = document.querySelector(".bill-dropzone") as HTMLElement;
-    fireEvent.mouseEnter(zone);
-    document.dispatchEvent(pasteEvent([{ kind: "file", type: "image/png", file: imageFile() }]));
-
-    await new Promise((r) => setTimeout(r, 0));
-    expect(onFile).not.toHaveBeenCalled();
+    render(<BillUploadZone hasBill={false} onFile={onFile} />);
+    openModal();
+    const zone = screen.getByRole("button", { name: /Vùng thả ảnh/i });
+    const file = imageFile("drop.png");
+    fireEvent.drop(zone, { dataTransfer: { files: [file], items: [] } });
+    await waitFor(() => expect(onFile).toHaveBeenCalledWith(file));
   });
 
-  it("hover đổi nhãn thành gợi ý 'Ctrl+V để dán'", () => {
+  it("Esc đóng modal", () => {
     render(<BillUploadZone hasBill={false} onFile={vi.fn()} />);
-    const zone = screen.getByRole("button", { name: /up bill/i });
-    expect(screen.getByText("Up bill")).toBeTruthy();
-    fireEvent.mouseEnter(zone);
-    expect(screen.getByText("Ctrl+V để dán")).toBeTruthy();
-    fireEvent.mouseLeave(zone);
-    expect(screen.getByText("Up bill")).toBeTruthy();
+    openModal();
+    expect(screen.getByText("Dán ảnh (Ctrl+V)")).toBeTruthy();
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(screen.queryByText("Dán ảnh (Ctrl+V)")).toBeNull();
+  });
+
+  it("sau khi up xong, nghe paste dừng lại khi đóng modal", async () => {
+    const onFile = vi.fn();
+    render(<BillUploadZone hasBill={false} onFile={onFile} />);
+    openModal();
+    fireEvent.keyDown(window, { key: "Escape" }); // đóng
+    document.dispatchEvent(pasteEvent([{ kind: "file", type: "image/png", file: imageFile() }]));
+    await new Promise((r) => setTimeout(r, 0));
+    expect(onFile).not.toHaveBeenCalled();
   });
 });
