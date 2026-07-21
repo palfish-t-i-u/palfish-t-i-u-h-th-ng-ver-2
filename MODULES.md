@@ -142,6 +142,7 @@
 - BE shared: `backend/rpc_helpers.py` (RPC atomic, sequences), `backend/env_utils.py`, `backend/analytics_limits.py`
 - Design: `docs/DESIGN.md`, `frontend/src/gmv-theme.css`, `gmv-tokens.css`
 - E2E helpers: `frontend/e2e/helpers/` (navigation, assertions, api-client, cleanup, env)
+- FE test util: `frontend/src/test/mobileMatchMedia.ts` — `stubMobile()`/`restoreMatchMedia()`, stub `window.matchMedia` cho jsdom (dùng khi test cần `useIsMobile()===true`; PHẢI restore trong `afterEach`)
 
 ## 11. Scripts vận hành
 
