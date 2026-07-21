@@ -8,8 +8,11 @@ export async function navigateTo(page: Page, sidebarLabel: string): Promise<void
     const child = page.locator("nav").getByText(sidebarLabel, { exact: false }).first();
     const childVisible = await child.isVisible().catch(() => false);
     if (!childVisible) {
-      const parent = page.locator("nav").getByText("Báo cáo", { exact: true }).first();
-      if (await parent.isVisible()) {
+      // Nút thật có tên "Báo cáo ›" (kèm chevron trong cùng accessible name) —
+      // exact:true không khớp. Dùng exact:false; an toàn vì trước khi expand,
+      // không có phần tử nào khác trong <nav> chứa substring "Báo cáo".
+      const parent = page.locator("nav").getByText("Báo cáo", { exact: false }).first();
+      if (await parent.isVisible().catch(() => false)) {
         await parent.click();
         await page.waitForTimeout(300);
       }
