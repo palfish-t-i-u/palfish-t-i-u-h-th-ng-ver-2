@@ -66,6 +66,17 @@ export const AR_STATUS_META: Record<
  *  - Số tiền: so theo digits, bỏ dấu phẩy/chấm người dùng gõ ("4,290,000" → "4290000").
  * Query rỗng → khớp tất cả. Text-hit HOẶC amount-hit đều tính.
  */
+/**
+ * nextTeam — radio-like toggle cho 2 checkbox HCM/HN loại trừ nhau.
+ * Click cùng giá trị đang chọn → bỏ chọn (null). Click khác → switch.
+ */
+export function nextTeam(
+  current: "HCM" | "HN" | null | undefined,
+  clicked: "HCM" | "HN",
+): "HCM" | "HN" | null {
+  return current === clicked ? null : clicked;
+}
+
 export function bankTxnMatchesSearch(b: BankTransaction, rawSearch: string): boolean {
   const q = normVi(rawSearch.trim());
   const qDigits = rawSearch.replace(/\D/g, "");

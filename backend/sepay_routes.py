@@ -1043,5 +1043,44 @@ def register_sepay_routes(app, get_supabase: Callable) -> None:
 
         return candidates
 
+    # -----------------------------------------------------------------------
+    # Set team tag on bank transaction: PATCH /api/v1/bank-transactions/{txn_id}/team
+    # -----------------------------------------------------------------------
+    @router.patch("/api/v1/bank-transactions/{txn_id}/team")
+    def set_bank_txn_team(
+        txn_id: str,
+        team: str | None = Query(None, description="'HCM', 'HN', or '' to clear"),
+        authorization: str | None = Header(None),
+    ):
+        """Kế toán gắn tag team HCM / HN cho giao dịch CK ngoài chưa ghép."""
+        sb = _sb_or_503(get_supabase)
+        actor = resolve_actor(sb, authorization)
+        require_module_write(sb, actor, "reconciliation")
+
+        ALLOWED = {"HCM", "HN"}
+        normalized = (team or "").strip().upper() or None
+        if normalized is not None and normalized not in ALLOWED:
+            raise HTTPException(400, f"team phải là HCM, HN hoặc rỗng (nhận được: '{team}')")
+
+        txn_res = (
+            sb.table("bank_transactions")
+            .select("txn_id")
+            .eq("txn_id", txn_id)
+            .limit(1)
+            .execute()
+        )
+        if not txn_res.data:
+            raise HTTPException(404, "Không tìm thấy bank_transaction")
+
+        sb.table("bank_transactions").update(
+            {"team": normalized, "updated_at": _iso_now()}
+        ).eq("txn_id", txn_id).execute()
+
+        from audit import log_audit
+        log_audit(sb, actor.email, "recon.bank_txn_team_set", "bank_transaction", txn_id,
+                  {"team": normalized})
+
+        return {"txn_id": txn_id, "team": normalized}
+
     # Register router
     app.include_router(router)

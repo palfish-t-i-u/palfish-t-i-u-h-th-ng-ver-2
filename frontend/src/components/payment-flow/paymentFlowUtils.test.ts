@@ -5,6 +5,7 @@ import {
   bankTxnMatchesSearch,
   canAllocateCourseAmount,
   deriveArStatus,
+  nextTeam,
   remainingReceivedAmount,
 } from "./paymentFlowUtils";
 
@@ -22,6 +23,7 @@ describe("bankTxnMatchesSearch — tab CK ngoài chờ ghép", () => {
     gateway: "manual",
     payment_line_id: null,
     matched_by: null,
+    team: null,
     created_at: "2026-07-06T13:41:00+00:00",
     updated_at: "2026-07-06T13:41:00+00:00",
   };
@@ -190,5 +192,23 @@ describe("active request received allocation", () => {
 
   it("does not cap standalone active requests without a linked PR", () => {
     expect(canAllocateCourseAmount(baseAr, null, "CC-0060-001", 5_000_000)).toBe(true);
+  });
+});
+
+describe("nextTeam — radio toggle HCM/HN", () => {
+  it("null + click HCM → HCM", () => {
+    expect(nextTeam(null, "HCM")).toBe("HCM");
+  });
+
+  it("HCM + click HCM → null (untick)", () => {
+    expect(nextTeam("HCM", "HCM")).toBeNull();
+  });
+
+  it("HCM + click HN → HN (switch, loại trừ nhau)", () => {
+    expect(nextTeam("HCM", "HN")).toBe("HN");
+  });
+
+  it("HN + click HCM → HCM", () => {
+    expect(nextTeam("HN", "HCM")).toBe("HCM");
   });
 });

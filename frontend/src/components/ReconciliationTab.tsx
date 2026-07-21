@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { usePaymentFlow } from "../contexts/PaymentFlowContext";
 import { usePermission } from "../hooks/usePermission";
-import { endpoints, type BankTransaction, type BankMatchCandidate } from "../lib/api";
+import { endpoints, type BankTransaction, type BankMatchCandidate, type BankTransactionTeam } from "../lib/api";
 import { fetchAllBankTxns } from "../lib/fetchAllBankTxns";
 import {
   type FlatTransaction,
@@ -10,6 +10,7 @@ import {
   type TxnDisplayStatus,
   bankTxnMatchesSearch,
   flattenTransactions,
+  nextTeam,
   txnDisplayStatus,
   vnd,
 } from "./payment-flow/paymentFlowUtils";
@@ -373,6 +374,68 @@ function ChannelBadges({ t, matchedTxn }: { t: FlatTransaction; matchedTxn?: Ban
   );
 }
 
+const TEAM_META: Record<"HCM" | "HN", { bg: string; fg: string }> = {
+  HCM: { bg: "#dcfce7", fg: "#15803d" },
+  HN:  { bg: "#dbeafe", fg: "#1d4ed8" },
+};
+
+function BankTxnTeamCell({
+  team,
+  readOnly,
+  onToggle,
+}: {
+  team: "HCM" | "HN" | null | undefined;
+  readOnly: boolean;
+  onToggle: (v: "HCM" | "HN") => void;
+}) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
+      <div style={{ display: "flex", gap: 10 }}>
+        {(["HCM", "HN"] as const).map((v) => (
+          <label
+            key={v}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 3,
+              fontSize: 11.5,
+              fontWeight: 600,
+              color: "var(--text-2)",
+              cursor: readOnly ? "default" : "pointer",
+              userSelect: "none",
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={team === v}
+              disabled={readOnly}
+              onChange={() => onToggle(v)}
+              style={{ cursor: readOnly ? "default" : "pointer", accentColor: TEAM_META[v].fg }}
+            />
+            {v}
+          </label>
+        ))}
+      </div>
+      {team ? (
+        <span
+          style={{
+            fontSize: 10,
+            fontWeight: 700,
+            padding: "1px 6px",
+            borderRadius: 4,
+            background: TEAM_META[team].bg,
+            color: TEAM_META[team].fg,
+          }}
+        >
+          {team}
+        </span>
+      ) : (
+        <span style={{ fontSize: 10, color: "var(--text-3)" }}>—</span>
+      )}
+    </div>
+  );
+}
+
 export default function ReconciliationTab() {
   const { readOnly } = usePermission("reconciliation");
   const { requests, confirmTransaction, rejectTransaction, navigate, apiNote } = usePaymentFlow();
@@ -440,6 +503,20 @@ export default function ReconciliationTab() {
     }
   }, []);
   useEffect(() => { loadBankTxns(); }, [loadBankTxns]);
+
+  // Optimistic update team tag cho bank_transaction.
+  // Click toggle (HCM↔HN↔null) → cập nhật local trước, gọi API, revert nếu lỗi.
+  const setTeamForTxn = useCallback(async (txnId: string, clicked: BankTransactionTeam) => {
+    const current = bankTxns.find((b) => b.txn_id === txnId)?.team ?? null;
+    const team = nextTeam(current, clicked);
+    setBankTxns((prev) => prev.map((b) => b.txn_id === txnId ? { ...b, team } : b));
+    try {
+      await endpoints.bankTxns.setTeam(txnId, team);
+    } catch {
+      setBankTxns((prev) => prev.map((b) => b.txn_id === txnId ? { ...b, team: current } : b));
+      alert("Cập nhật team thất bại — thử lại.");
+    }
+  }, [bankTxns]);
 
   // CK ngoài chờ ghép = bank_transactions chưa khớp lần TT nào
   const bankPendingTxns = useMemo(
@@ -946,7 +1023,18 @@ export default function ReconciliationTab() {
                 <div style={{ padding: "10px 14px 8px", fontSize: 12, color: "var(--text-2)" }}>
                   Tiền vào TK công ty không khớp lần TT nào. Bấm <strong>Ghép</strong> để gắn vào PR.
                 </div>
-                <ReconBankCards txns={filteredBankPending} readOnly={readOnly} onMatch={openBankMatch} />
+                <ReconBankCards
+                  txns={filteredBankPending}
+                  readOnly={readOnly}
+                  onMatch={openBankMatch}
+                  onSetTeam={(txnId, team) => {
+                    setBankTxns((prev) => prev.map((b) => b.txn_id === txnId ? { ...b, team } : b));
+                    endpoints.bankTxns.setTeam(txnId, team).catch(() => {
+                      loadBankTxns();
+                      alert("Cập nhật team thất bại — thử lại.");
+                    });
+                  }}
+                />
               </div>
             ) : (
             <div className="tbl-wrap">
@@ -961,13 +1049,14 @@ export default function ReconciliationTab() {
                     <th style={{ minWidth: 240 }}>Nội dung CK</th>
                     <th style={{ width: 140 }}>Tài khoản nhận</th>
                     <th style={{ width: 140 }}>Trạng thái</th>
+                    <th style={{ width: 130, textAlign: "center" }}>Team</th>
                     <th style={{ width: 100, textAlign: "center" }}>Hành động</th>
                   </tr>
                 </thead>
                 <tbody>
                   {filteredBankPending.length === 0 ? (
                     <tr>
-                      <td colSpan={6}>
+                      <td colSpan={7}>
                         <div className="empty">
                           <Icons.CheckCircle size={20} />
                           {bankPendingTxns.length === 0 ? (
@@ -1017,6 +1106,16 @@ export default function ReconciliationTab() {
                               <span className="dot" />
                               {isReview ? "Cần kiểm tra" : "Chờ ghép"}
                             </span>
+                          </td>
+                          <td
+                            style={{ textAlign: "center" }}
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <BankTxnTeamCell
+                              team={b.team}
+                              readOnly={readOnly}
+                              onToggle={(v) => void setTeamForTxn(b.txn_id, v)}
+                            />
                           </td>
                           <td style={{ textAlign: "center" }}>
                             {!readOnly && (
