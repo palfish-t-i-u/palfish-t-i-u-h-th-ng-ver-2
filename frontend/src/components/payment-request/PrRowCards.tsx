@@ -7,10 +7,10 @@ import PaymentRequestStatusBadge from "./PaymentRequestStatusBadge";
 import {
   type RequestBucket,
   ddmmyyyy,
-  fmtPhone,
   hasUnverifiedFeeLine,
   vnd,
 } from "./paymentRequestUtils";
+import { formatPhoneIntl } from "./phoneUtils";
 
 interface Props {
   requests: PaymentRequest[];
@@ -78,7 +78,7 @@ export default function PrRowCards({
               meta={[
                 { label: "PR-ID", value: p.id },
                 { label: "UID", value: p.uid },
-                { label: "SĐT", value: `${country.flag} ${country.dial} ${fmtPhone(p.phone)}` },
+                { label: "SĐT", value: `${country.flag} ${formatPhoneIntl(p.country, p.phone)}` },
                 ...(showTvts && p.saleName ? [{ label: "TVTS", value: p.saleName }] : []),
                 { label: "Thanh toán", value: `${p.doneCount}/${p.totalCount} lần · ${vnd(p.received)} (${pct}%)` },
                 { label: "Tạo lúc", value: ddmmyyyy(p.createdAt) },

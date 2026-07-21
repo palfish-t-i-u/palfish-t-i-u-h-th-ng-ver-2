@@ -8,6 +8,7 @@ import {
   METHOD_META,
   TXN_STATUS_META,
   type TxnDisplayStatus,
+  bankTxnMatchesSearch,
   flattenTransactions,
   txnDisplayStatus,
   vnd,
@@ -19,13 +20,14 @@ import Modal from "./ui/Modal";
 import {
   formatPaymentDateFull,
   formatPaymentDateTime,
-  fmtPhone,
   isBackendLineId,
 } from "./payment-request/paymentRequestUtils";
+import { formatPhoneIntl } from "./payment-request/phoneUtils";
 import AuditTrail from "./ui/AuditTrail";
 import useIsMobile from "../hooks/useIsMobile";
 import ReconTxnCards from "./reconciliation/ReconTxnCards";
 import ReconBankCards from "./reconciliation/ReconBankCards";
+import { phoneMatchesQuery } from "../lib/phoneSearch";
 import "../styles/prototype-payments.css";
 
 // Cutoff đợt fix 14/7: từ ngày này, tab "Chờ xác nhận" chỉ phục vụ tiền mặt.
@@ -172,7 +174,7 @@ function BillReceiptArt({ txn, pr }: { txn: FlatTransaction; pr: FlatTransaction
         <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
           <span style={{ color: "var(--text-3)" }}>SĐT</span>
           <span>
-            {country.flag} {country.dial} {fmtPhone(pr.phone)}
+            {country.flag} {formatPhoneIntl(pr.country, pr.phone)}
           </span>
         </div>
       </div>
@@ -445,6 +447,20 @@ export default function ReconciliationTab() {
     [bankTxns],
   );
 
+  // Áp ô tìm kiếm + lọc ngày cho danh sách CK ngoài (client-side, data đã nạp sẵn).
+  // Search: bankTxnMatchesSearch (nội dung CK / số tiền / TK nhận — bank row thô
+  // chưa gắn PR nên KHÔNG có tên khách/bé). Ngày: transaction_date (ngày tiền về),
+  // fallback created_at.
+  const filteredBankPending = useMemo(
+    () =>
+      bankPendingTxns.filter(
+        (b) =>
+          inDateRange(b.transaction_date || b.created_at || "", dateRange) &&
+          bankTxnMatchesSearch(b, search),
+      ),
+    [bankPendingTxns, search, dateRange],
+  );
+
   const loadBankCandidates = useCallback(async (txnId: string, exactAmount: boolean) => {
     setBankCandLoading(true);
     try {
@@ -485,6 +501,7 @@ export default function ReconciliationTab() {
       if (bankCandStatus !== "all" && c.status !== bankCandStatus) return false;
       if (!inDateRange(c.created_at || "", bankCandRange)) return false;
       if (!q) return true;
+      if (phoneMatchesQuery(c.pr_phone, bankCandSearch)) return true;
       return [
         c.pr_id, c.pr_name,
         c.pr_uid || "", c.pr_phone || "",
@@ -818,7 +835,11 @@ export default function ReconciliationTab() {
           <div className="search">
             <Icons.Search size={15} stroke="var(--text-3)" />
             <input
-              placeholder="Tìm theo mã GD, PR-ID, tên khách hoặc ngân hàng…"
+              placeholder={
+                tab === "ckOutside"
+                  ? "Tìm theo nội dung CK, số tiền, TK nhận…"
+                  : "Tìm theo mã GD, PR-ID, tên khách hoặc ngân hàng…"
+              }
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
@@ -862,7 +883,7 @@ export default function ReconciliationTab() {
                 );
               })}
             </div>
-            <span className="right-meta">{tab === "ckOutside" ? bankPendingTxns.length : filtered.length} kết quả</span>
+            <span className="right-meta">{tab === "ckOutside" ? filteredBankPending.length : filtered.length} kết quả</span>
           </div>
 
           {selectedIds.size > 0 && !readOnly && (
@@ -925,7 +946,7 @@ export default function ReconciliationTab() {
                 <div style={{ padding: "10px 14px 8px", fontSize: 12, color: "var(--text-2)" }}>
                   Tiền vào TK công ty không khớp lần TT nào. Bấm <strong>Ghép</strong> để gắn vào PR.
                 </div>
-                <ReconBankCards txns={bankPendingTxns} readOnly={readOnly} onMatch={openBankMatch} />
+                <ReconBankCards txns={filteredBankPending} readOnly={readOnly} onMatch={openBankMatch} />
               </div>
             ) : (
             <div className="tbl-wrap">
@@ -944,20 +965,31 @@ export default function ReconciliationTab() {
                   </tr>
                 </thead>
                 <tbody>
-                  {bankPendingTxns.length === 0 ? (
+                  {filteredBankPending.length === 0 ? (
                     <tr>
                       <td colSpan={6}>
                         <div className="empty">
                           <Icons.CheckCircle size={20} />
-                          <div>Không có giao dịch CK ngoài chờ ghép.</div>
-                          <div style={{ fontSize: 11, color: "var(--text-3)" }}>
-                            Mọi tiền vào đã được PayOS tự khớp hoặc kế toán đã ghép tay.
-                          </div>
+                          {bankPendingTxns.length === 0 ? (
+                            <>
+                              <div>Không có giao dịch CK ngoài chờ ghép.</div>
+                              <div style={{ fontSize: 11, color: "var(--text-3)" }}>
+                                Mọi tiền vào đã được PayOS tự khớp hoặc kế toán đã ghép tay.
+                              </div>
+                            </>
+                          ) : (
+                            <>
+                              <div>Không có giao dịch khớp bộ lọc.</div>
+                              <div style={{ fontSize: 11, color: "var(--text-3)" }}>
+                                Còn {bankPendingTxns.length} giao dịch chờ ghép — thử xoá tìm kiếm hoặc mở rộng khoảng ngày.
+                              </div>
+                            </>
+                          )}
                         </div>
                       </td>
                     </tr>
                   ) : (
-                    bankPendingTxns.map((b) => {
+                    filteredBankPending.map((b) => {
                       const when = b.transaction_date || b.created_at;
                       const whenFmt = when ? formatPaymentDateTime(when) : { date: "—", time: "" };
                       const isReview = b.match_status === "needs_review";
@@ -1502,7 +1534,7 @@ export default function ReconciliationTab() {
                           {pr.id} · {pr.name}
                         </div>
                         <div style={{ fontSize: 11, color: "var(--text-3)", marginTop: 1 }}>
-                          UID {pr.uid} · {country.flag} {country.dial} {fmtPhone(pr.phone)}
+                          UID {pr.uid} · {country.flag} {formatPhoneIntl(pr.country, pr.phone)}
                         </div>
                         <div className="mini-prog">
                           <div style={{ width: `${pct}%` }} />
@@ -1761,7 +1793,7 @@ export default function ReconciliationTab() {
                                   <div style={{ fontSize: 13, color: "var(--text)", marginTop: 4 }}>
                                     <strong>{c.pr_id}</strong>
                                     {c.pr_uid ? <> · UID <strong>{c.pr_uid}</strong></> : null}
-                                    {c.pr_phone ? <> · {c.pr_phone}</> : null}
+                                    {c.pr_phone ? <> · {c.pr_country ? formatPhoneIntl(c.pr_country, c.pr_phone) : c.pr_phone}</> : null}
                                   </div>
                                   {(c.child_name || c.sale_name || c.team_name) && (
                                     <div style={{ fontSize: 13, color: "var(--text)", marginTop: 3 }}>

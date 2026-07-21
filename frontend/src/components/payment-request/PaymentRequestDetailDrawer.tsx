@@ -24,8 +24,6 @@ import {
   activeRequestAllocation,
   displayReceived,
   feeTotal,
-  fmtPhone,
-  formatCoursePhone,
   formatPaymentDateFull,
   getReferralStatus,
   grossReceived,
@@ -43,7 +41,7 @@ import {
   validateReferralBonus,
   vnd,
 } from "./paymentRequestUtils";
-import { smartParsePhonePaste, normalizeLocalPhone, crmPhoneFormat } from "./phoneUtils";
+import { normalizeLocalPhone, crmPhoneFormat, formatPhoneIntl, applySmartPhoneInput } from "./phoneUtils";
 import { nextCourseCode } from "../payment-flow/paymentFlowUtils";
 import { endpoints } from "../../lib/api";
 import PrStaleContentWarning from "./PrStaleContentWarning";
@@ -1018,7 +1016,7 @@ function ActiveRequestMiniCardV2({
                 <span className="ar-avatar">{(u.uid || "?").slice(0, 2).toUpperCase()}</span>
                 <div className="ar-uid-info">
                   <span className="ar-uid-name">{u.uid || "—"}</span>
-                  <span className="ar-uid-phone">{formatCoursePhone(u.country, u.phone)}</span>
+                  <span className="ar-uid-phone">{formatPhoneIntl(u.country, u.phone)}</span>
                 </div>
               </div>
             )}
@@ -1574,6 +1572,7 @@ export default function PaymentRequestDetailDrawer({
   uploadingBillId,
   deletingBillId,
   readOnly = false,
+  detailLoading = false,
   onRefreshLineContent,
 }: {
   request: PaymentRequest | null;
@@ -1600,6 +1599,8 @@ export default function PaymentRequestDetailDrawer({
   uploadingBillId?: string | null;
   deletingBillId?: string | null;
   readOnly?: boolean;
+  /** GĐ2: set true khi slim row đang hydrate detail — hiện skeleton thay vì list rỗng giả */
+  detailLoading?: boolean;
   onRefreshLineContent?: (line: PaymentAttempt) => Promise<void>;
   /** B3 (16/7) — Báo đơn hoàn thành. reason bắt buộc từ lần báo thứ 2 (BE validate, modal soft-block). */
   onReportComplete: (reason?: string) => Promise<void>;
@@ -1959,7 +1960,7 @@ export default function PaymentRequestDetailDrawer({
               )}
             </div>
 
-            {!editing && request.wantsInvoice && (!request.ward || !request.address?.trim()) && (() => {
+            {!editing && !detailLoading && request.wantsInvoice && (!request.ward || !request.address?.trim()) && (() => {
               const firstPaid = request.payments
                 .filter((p) => p.status === "paid" && p.paidAt)
                 .map((p) => parsePaymentDate(p.paidAt!))
@@ -1999,7 +2000,7 @@ export default function PaymentRequestDetailDrawer({
                   <div className="info-label">Số điện thoại</div>
                   <div className="info-value mono">
                     <span style={{ marginRight: 4 }}>{country.flag}</span>
-                    {country.dial} {fmtPhone(request.phone)}
+                    {formatPhoneIntl(request.country, request.phone)}
                   </div>
                 </div>
                 <div className="info-cell">
@@ -2135,23 +2136,46 @@ export default function PaymentRequestDetailDrawer({
                   <div className="info-label">Số điện thoại</div>
                   <div style={{ display: "flex", gap: 8 }}>
                     <CountryCombo value={draft.country} onChange={(v) => setDraft({ ...draft, country: v })} />
-                    <input
-                      value={draft.phone}
-                      onChange={(e) => setDraft({ ...draft, phone: e.target.value.replace(/\D/g, "") })}
-                      placeholder={findCountry(draft.country).exampleLocal}
-                      style={{
-                        flex: 1,
-                        border: "1px solid var(--border)",
-                        borderRadius: 8,
-                        padding: "8px 10px",
-                        font: "inherit",
-                        fontSize: 13,
-                      }}
-                    />
+                    {(() => {
+                      const country = findCountry(draft.country);
+                      const norm = normalizeLocalPhone(draft.phone, country);
+                      return (
+                        <input
+                          value={draft.phone}
+                          onChange={(e) => {
+                            const r = applySmartPhoneInput(e.target.value);
+                            setDraft({ ...draft, phone: r.phone, ...(r.countryCode ? { country: r.countryCode } : {}) });
+                          }}
+                          onBlur={() => {
+                            const n = normalizeLocalPhone(draft.phone, findCountry(draft.country));
+                            if (n.value !== draft.phone) setDraft({ ...draft, phone: n.value });
+                          }}
+                          placeholder={country.exampleLocal}
+                          style={{
+                            flex: 1,
+                            border: `1px solid ${norm.warn ? "var(--danger)" : "var(--border)"}`,
+                            borderRadius: 8,
+                            padding: "8px 10px",
+                            font: "inherit",
+                            fontSize: 13,
+                          }}
+                        />
+                      );
+                    })()}
                   </div>
-                  <div style={{ fontSize: 11.5, color: "var(--text-2)", fontWeight: 600, marginTop: 3 }}>
-                    Chỉ nhập phần số, không cần mã quốc gia
-                  </div>
+                  {(() => {
+                    const country = findCountry(draft.country);
+                    const norm = normalizeLocalPhone(draft.phone, country);
+                    return (
+                      <div style={{ fontSize: 11.5, color: norm.warn ? "var(--danger)" : "var(--text-2)", fontWeight: 600, marginTop: 3 }}>
+                        {norm.warn
+                          ? "SĐT chưa đúng — vui lòng kiểm tra lại (độ dài lệch so với mẫu)"
+                          : draft.phone
+                          ? <>Lưu dạng: <span style={{ fontFamily: "JetBrains Mono, monospace" }}>{crmPhoneFormat(draft.phone, country)}</span></>
+                          : "Dán cả cụm (VD: 84-352334789) sẽ tự tách đầu số"}
+                      </div>
+                    );
+                  })()}
                 </div>
                 <div className="info-cell">
                   <div className="info-label">Email</div>
@@ -2371,9 +2395,11 @@ export default function PaymentRequestDetailDrawer({
             <div className="panel-head">
               <h4>
                 <Icons.Wallet size={15} /> Các lần thanh toán
-                <span className="num-pill">{request.payments.length}</span>
+                {!detailLoading && (
+                  <span className="num-pill">{request.payments.length}</span>
+                )}
               </h4>
-              {!showAdd && !readOnly && request.state !== "cancelled" && (
+              {!showAdd && !readOnly && !detailLoading && request.state !== "cancelled" && (
                 <button
                   className={`btn btn-sm ${isPrFull ? "btn-outline" : "btn-secondary"}`}
                   onClick={handleAddPaymentClick}
@@ -2384,45 +2410,51 @@ export default function PaymentRequestDetailDrawer({
               )}
             </div>
 
-            <div>
-              {request.payments.length === 0 && !showAdd && (
-                <div className="empty" style={{ padding: "28px 12px" }}>
-                  <Icons.Wallet size={22} />
-                  <div>Chưa có lần thanh toán nào.</div>
-                  {request.state !== "cancelled" && (
-                    <button
-                      className={`btn btn-sm ${isPrFull ? "btn-outline" : "btn-primary"}`}
-                      onClick={handleAddPaymentClick}
-                      title={isPrFull ? "PR đã nhận đủ tiền — cần tăng Tổng tiền dự kiến trước" : undefined}
-                    >
-                      <Icons.Plus size={13} /> Tạo lần thanh toán đầu tiên
-                    </button>
-                  )}
-                </div>
-              )}
-              {request.payments.map((qr) => (
-                <QrRow
-                  key={qr.id}
-                  qr={qr}
-                  onCancelQr={onCancelPayment}
-                  onBillFile={onBillFile}
-                  onBillView={onBillView}
-                  onMarkPaid={onMarkPaid}
-                  onEditAmount={readOnly ? undefined : onEditAmount}
-                  onShowQr={onShowQr}
-                  uploadingBillId={uploadingBillId}
-                  deletingBillId={deletingBillId}
-                  contentDismissed={dismissedStaleLineIds.has(qr.id)}
-                  onRefreshContent={readOnly ? undefined : onRefreshLineContent}
-                  onDismissStaleWarning={handleDismissStale}
-                  studentBadge={
-                    (request.children?.length ?? 0) >= 2
-                      ? qr.studentName || request.children![0]?.name || undefined
-                      : undefined
-                  }
-                />
-              ))}
-            </div>
+            {detailLoading ? (
+              <div data-testid="pr-drawer-detail-loading" className="empty" style={{ padding: "28px 12px", color: "var(--text-3)", fontSize: "0.875rem", textAlign: "center" }}>
+                Đang tải chi tiết lần thanh toán…
+              </div>
+            ) : (
+              <div data-testid="pr-drawer-payments">
+                {request.payments.length === 0 && !showAdd && (
+                  <div className="empty" style={{ padding: "28px 12px" }}>
+                    <Icons.Wallet size={22} />
+                    <div>Chưa có lần thanh toán nào.</div>
+                    {request.state !== "cancelled" && (
+                      <button
+                        className={`btn btn-sm ${isPrFull ? "btn-outline" : "btn-primary"}`}
+                        onClick={handleAddPaymentClick}
+                        title={isPrFull ? "PR đã nhận đủ tiền — cần tăng Tổng tiền dự kiến trước" : undefined}
+                      >
+                        <Icons.Plus size={13} /> Tạo lần thanh toán đầu tiên
+                      </button>
+                    )}
+                  </div>
+                )}
+                {request.payments.map((qr) => (
+                  <QrRow
+                    key={qr.id}
+                    qr={qr}
+                    onCancelQr={onCancelPayment}
+                    onBillFile={onBillFile}
+                    onBillView={onBillView}
+                    onMarkPaid={onMarkPaid}
+                    onEditAmount={readOnly ? undefined : onEditAmount}
+                    onShowQr={onShowQr}
+                    uploadingBillId={uploadingBillId}
+                    deletingBillId={deletingBillId}
+                    contentDismissed={dismissedStaleLineIds.has(qr.id)}
+                    onRefreshContent={readOnly ? undefined : onRefreshLineContent}
+                    onDismissStaleWarning={handleDismissStale}
+                    studentBadge={
+                      (request.children?.length ?? 0) >= 2
+                        ? qr.studentName || request.children![0]?.name || undefined
+                        : undefined
+                    }
+                  />
+                ))}
+              </div>
+            )}
 
             {showAdd && (
               <div style={{ marginTop: 12 }} ref={addFormRef}>
@@ -2663,13 +2695,8 @@ export default function PaymentRequestDetailDrawer({
                                 placeholder={country.exampleLocal.replace(/\s/g, "")}
                                 value={row.phone}
                                 onChange={(e) => {
-                                  const parsed = smartParsePhonePaste(e.target.value);
-                                  if (parsed.dial) {
-                                    const c = COUNTRIES.find((x) => x.dial === `+${parsed.dial}`);
-                                    setArRow(i, { phone: parsed.local, ...(c ? { phoneCountry: c.code } : {}) });
-                                  } else {
-                                    setArRow(i, { phone: parsed.local });
-                                  }
+                                  const r = applySmartPhoneInput(e.target.value);
+                                  setArRow(i, { phone: r.phone, ...(r.countryCode ? { phoneCountry: r.countryCode } : {}) });
                                 }}
                                 onBlur={() => {
                                   const n = normalizeLocalPhone(row.phone, findCountry(row.phoneCountry));

@@ -62,6 +62,13 @@ _PAYOO_SETTLE_SIGNALS: list[re.Pattern] = [
     re.compile(r"PALFISH\s*EC|TK\s*\.?\s*ECOM|TKECOM|PY3", re.IGNORECASE),  # TK ecom PalFish
 ]
 
+# Rút tiền định kỳ từ TikTok Shop về TK MB (hàng tuần, nội dung CK đúng chuỗi
+# "TikTok Shop") — không phải học phí → ignore. Match EXACT toàn chuỗi để khách
+# gõ nội dung tự do có chứa chữ TikTok không bị nuốt nhầm.
+_PLATFORM_WITHDRAWAL_PATTERNS: list[re.Pattern] = [
+    re.compile(r"^\s*tik\s*tok\s*shop\s*$", re.IGNORECASE),
+]
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -242,6 +249,10 @@ def _is_mpos_settlement(content: str) -> bool:
         return True
     if all(p.search(content) for p in _PAYOO_SETTLE_SIGNALS):
         return True
+    # Rút tiền TikTok Shop về TK công ty (không phải học phí)
+    for pattern in _PLATFORM_WITHDRAWAL_PATTERNS:
+        if pattern.search(content):
+            return True
     return False
 
 
@@ -916,7 +927,7 @@ def register_sepay_routes(app, get_supabase: Callable) -> None:
             try:
                 pr_res = (
                     sb.table("payment_requests")
-                    .select("id, name, uid, phone, child_name, sale_email, state")
+                    .select("id, name, uid, phone, country, child_name, sale_email, state")
                     .in_("id", pr_ids)
                     .execute()
                 )
@@ -926,7 +937,7 @@ def register_sepay_routes(app, get_supabase: Callable) -> None:
                 try:
                     pr_res_fallback = (
                         sb.table("payment_requests")
-                        .select("id, name, uid, phone, child_name, sale_email")
+                        .select("id, name, uid, phone, country, child_name, sale_email")
                         .in_("id", pr_ids)
                         .execute()
                     )
@@ -1003,6 +1014,7 @@ def register_sepay_routes(app, get_supabase: Callable) -> None:
                 "pr_name": pr.get("name", ""),
                 "pr_uid": pr.get("uid", ""),
                 "pr_phone": pr.get("phone", ""),
+                "pr_country": pr.get("country", "") or "",
                 "child_name": line.get("student_name") or pr.get("child_name") or "",
                 "sale_name": sale_name_map.get(sale_email, sale_email),
                 "team_name": team_by_email.get(sale_email, ""),

@@ -6,7 +6,6 @@ import {
   buildCreateActiveRequestPayload,
   displayReceived,
   feeTotal,
-  formatCoursePhone,
   fromApiActiveRequest,
   fromApiAttempt,
   fromApiPaymentRequest,
@@ -99,11 +98,6 @@ describe("active request course package updates", () => {
 
     expect(activationSummary(activated).buttonLabel).toBe("Đã kích hoạt khóa học");
     expect(activationSummary(activated).courseBadgeLabel).toBe("Đã kích hoạt");
-  });
-
-  it("formats active request phones with country dial prefix", () => {
-    expect(formatCoursePhone("VN", "9323232333")).toBe("+84 9323 232 333");
-    expect(formatCoursePhone("US", "(415) 555-0131")).toBe("+1 4155 550 131");
   });
 
   it("creates linked active request courses from received money, not target money", () => {

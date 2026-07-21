@@ -65,17 +65,20 @@ Endpoints admin đều nằm trong `backend/admin_routes.py` (Zalo từ ~dòng 1
 
 Chỉ dùng nhóm **internal** — nhóm external không hỗ trợ enterprise robot.
 
-### Việc còn lại để go-live
+### Trạng thái go-live (cập nhật 2026-07-20)
 
-1. [ ] Chạy migration `2026-07-11-dingtalk-enterprise-robot.sql` (sandbox → prod)
-2. [ ] Insert 2 records vào `dingtalk_team_groups` (team_code + open_conversation_id)
-3. [ ] Set env vars trên Render: `DINGTALK_CLIENT_ID`, `DINGTALK_CLIENT_SECRET`, `DINGTALK_ROBOT_CODE`
-4. [ ] User add sale members vào 2 nhóm DingTalk
-5. [ ] Feature @mention sale: cần mapping sale_email → DingTalk userId
+1. [x] Migration applied (sandbox + prod)
+2. [x] `dingtalk_team_groups` populated (2 nhóm: IH1, IH2+Offline)
+3. [x] Env vars set trên Render: `DINGTALK_CLIENT_ID`, `DINGTALK_CLIENT_SECRET`, `DINGTALK_ROBOT_CODE`
+4. [x] `DINGTALK_DISABLED_EVENTS` gỡ block — cả 3 event đều LIVE
+5. [ ] Feature @mention sale: cần mapping sale_email → DingTalk userId (chưa làm)
 
 ## Gotchas
 
 - DingTalk OAuth token sống ~7200s (2h), notifier cache và tự refresh — không cần refresh thủ công.
+- **DingTalk markdown line break**: dùng `<br>`, KHÔNG trailing-space convention (DingTalk render thừa space đầu dòng — fix `918e012`).
+- DingTalk tin bổ sung (append bé/gói): dùng `source_suffix` deterministic né outbox UNIQUE constraint.
+- Zalo `bill_uploaded` đã tắt 17/07 (sale feedback gây nhầm lẫn). Chỉ còn `payment_paid`.
 - Test send (`/admin/zalo/test-send`, `/admin/dingtalk/test-send`) yêu cầu `require_module_write(actor, "zalo"/"dingtalk")`.
 - FE tabs có cặp Table/Cards (desktop/mobile): `*Tab.tsx` + `*Cards.tsx` — sửa cột/field phải sửa cả hai.
 - HTTP timeout gọi API ngoài: 15s.

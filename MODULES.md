@@ -4,6 +4,7 @@
 >
 > Module có business rules phức tạp có thêm `CLAUDE.md` riêng trong thư mục (tự load khi Claude đọc file trong đó):
 > - `frontend/src/components/payment-request/CLAUDE.md` — rules thanh toán B1–B4
+> - `frontend/src/components/activation/CLAUDE.md` — UID sync B1↔B3, append flow báo đơn bổ sung
 > - `frontend/src/components/admin/CLAUDE.md` — rules Zalo/DingTalk notifications
 >
 > Unit tests nằm cạnh file nguồn (`*.test.tsx` / `*.test.ts`) — không liệt kê lại từng file test trừ khi nằm chỗ khác.
@@ -29,7 +30,7 @@
 
 ### B1 — Payment Requests (PR)
 - FE tab: `frontend/src/components/PaymentRequestsTab.tsx`
-- FE chi tiết: `frontend/src/components/payment-request/` — CreatePaymentRequestModal, PaymentRequestTable, PaymentRequestDetailDrawer, QrViewModal, Toolbar, KpiCards, StatusBadge, Progress, PrRowCards (mobile), PrStaleContentWarning, BillUploadZone, CountryCombo, VietnamAddressFields, DateRangeFilter, TvtsFilterDropdown, paymentRequestUtils.ts
+- FE chi tiết: `frontend/src/components/payment-request/` — CreatePaymentRequestModal, PaymentRequestTable, PaymentRequestDetailDrawer, QrViewModal, Toolbar, KpiCards, StatusBadge, Progress, PrRowCards (mobile), PrStaleContentWarning, BillUploadZone, CountryCombo, VietnamAddressFields, DateRangeFilter, TvtsFilterDropdown, paymentRequestUtils.ts, `phoneUtils.ts` (smart-paste, format, normalize SĐT)
 - BE: `backend/payment_request_routes.py` — PR CRUD, payment lines, stale content, confirm/reject, bill storage
 - Types: `frontend/src/types/paymentRequest.ts`; API groups: `endpoints.paymentRequests`, `endpoints.bankTxns`
 - Data phụ trợ: `frontend/src/data/vnProvinces.ts`, `frontend/src/constants/` (bank, coursePackages, leadSource)
@@ -38,16 +39,20 @@
 - FE: `frontend/src/components/ReconciliationTab.tsx` + `frontend/src/components/reconciliation/` (ReconTxnCards, ReconBankCards — mobile)
 - FE helper: `frontend/src/lib/fetchAllBankTxns.ts` — nạp toàn bộ bank txns chưa ghép (loop paging, 2026-07-17)
 - FE helper test: `frontend/src/lib/fetchAllBankTxns.test.ts`
-- BE: `backend/sepay_routes.py` — SePay webhook `/api/v1/sepay/*`, sync bank transactions; GET `/api/v1/bank-transactions` hỗ trợ `offset` paging + alias `unmatched`/`matched`
+- BE: `backend/sepay_routes.py` — SePay webhook `/api/v1/sepay/*`, sync bank transactions; GET `/api/v1/bank-transactions` hỗ trợ `offset` paging + alias `unmatched`/`matched`; candidates trả thêm `pr_country` (FE format SĐT quốc tế)
 - BE: `backend/payos_qr.py` — VietQR EMV parse, PayOS link (chung B1)
 - BE test: `backend/tests/test_bank_txns_list_paging.py` — test paging + status alias endpoint
 - Webhook cũ: `@app.post("/webhook/payos")` trong `backend/main.py`; gateway đứng riêng: `api_pipe/app_payment.py`, `api_pipe/payos_webhook.py`
 - E2E: `frontend/e2e/reconciliation-flow.spec.ts`, `frontend/e2e/mobile-accounting.spec.ts`
 
 ### B3 — Kích hoạt khóa học (Active Request)
+
+> Rules chi tiết: `frontend/src/components/activation/CLAUDE.md` (UID sync, append flow).
+
 - FE: `frontend/src/components/ActivationTab.tsx` + `frontend/src/components/activation/ActivationRowCards.tsx` (mobile)
+- Helper: `frontend/src/components/ActivationTab.uidSync.ts` — `getUidSyncState` (cảnh báo UID lệch B1↔B3)
 - Hook: `frontend/src/hooks/useNoticeCardCollapse.ts` — trạng thái thu gọn/mở card cảnh báo xuất HĐ (persist localStorage)
-- BE: `backend/activation_routes.py` — AR CRUD, allocation guard, match đơn CRM, enqueue Zalo
+- BE: `backend/activation_routes.py` — AR CRUD, allocation guard, match đơn CRM, enqueue Zalo, **append bé/gói** (`POST /active-requests/{ar_id}/append`, `_append_children_core`, `_max_course_seq`)
 - API groups: `endpoints.activeRequests`, `endpoints.activationUrgentRemind`
 
 ### B4 — Xuất hóa đơn
@@ -132,7 +137,7 @@
 - FE layout: `frontend/src/layouts/AppShell.tsx` (sidebar + dynamic permissions), `MobileNavSheet.tsx`; entry: `frontend/src/App.tsx`, `frontend/src/pages/MainPage.tsx` (mount toàn bộ tab, lazy load)
 - FE UI kit: `frontend/src/components/ui/` — Button, Card, Table, Modal, Badge, Combobox, Tooltip, Input, MoneyInput, RowCard, PageSection, DataBar, AuditTrail, ColumnVisibilityMenu
 - FE hooks chung: `useIsMobile`, `useColumnVisibility`, `useRefetchOnFocus`, `useRealtimeTable`, `useTeamScope`, `useCountryCodes`
-- FE lib chung: `frontend/src/lib/api.ts` (tất cả endpoint groups), `apiBaseUrl.ts`, `apiErrors.ts`, `supabase.ts`, `cn.ts`, `vndFormat.ts`, `vnPhone.ts`, `clipboard.ts`, `imageCompress.ts`, `numberToWords.ts`, `metrics.ts`, `subTeamLabels.ts`, `textUtils.ts` (`normVi` — chuẩn hoá tiếng Việt cho search accent-insensitive)
+- FE lib chung: `frontend/src/lib/api.ts` (tất cả endpoint groups), `apiBaseUrl.ts`, `apiErrors.ts`, `supabase.ts`, `cn.ts`, `vndFormat.ts`, `vnPhone.ts`, `clipboard.ts`, `imageCompress.ts`, `numberToWords.ts`, `metrics.ts`, `subTeamLabels.ts`, `textUtils.ts` (`normVi` — chuẩn hoá tiếng Việt cho search accent-insensitive), `phoneSearch.ts` (`phoneMatchesQuery` — search SĐT mọi biến thể đầu số-đuôi số)
 - BE core: `backend/main.py` — FastAPI entry, CORS, webhook PayOS/bank-simulate, orders endpoints, register 12 routers (dòng ~1317–1328), startup tasks (Zalo refresh ~1335, PayOS webhook register ~1346)
 - BE shared: `backend/rpc_helpers.py` (RPC atomic, sequences), `backend/env_utils.py`, `backend/analytics_limits.py`
 - Design: `docs/DESIGN.md`, `frontend/src/gmv-theme.css`, `gmv-tokens.css`

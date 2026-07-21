@@ -25,7 +25,7 @@ Sales (Tab 1) ──► Supabase (khach_hang, don_hang)
 | Backend API | FastAPI + Supabase client | Render (`palfish-gmv-api`) |
 | Database & Auth | Supabase PostgreSQL + Auth | Project `jozcvbbypwvzaefteoxn` |
 | QR thanh toán | VietQR self-gen (`img.vietqr.io`) | SePay match content (PayOS deprecated) |
-| Thông báo | Zalo OA API | Auto-refresh token, 3 event types |
+| Thông báo | Zalo OA API + DingTalk Enterprise Robot | Zalo: payment_paid; DingTalk: AR-created + urgent + course_activated |
 
 **Phân công:** Minh — Frontend, QA, Deploy, UI/UX. Giang — SePay, CRM sync, Zalo BE, webhook, encrypt. Đức — DB audit, RPC, dashboard gamification. Đạt — Auth/RBAC, permission endpoints.
 
@@ -166,7 +166,7 @@ Chi tiết: `docs/WIREFRAMES.md`.
 
 ---
 
-## Tiến độ (cập nhật 2026-06-25)
+## Tiến độ (cập nhật 2026-07-21)
 
 ### Hoàn thành
 
@@ -192,6 +192,13 @@ Chi tiết: `docs/WIREFRAMES.md`.
 | Trả góp | Form trả góp, kế toán xác nhận (verified_total/verified_received) |
 | Nguồn KH + loại KH | lead_source, lead_channel, customer_type, company_name, tax_id |
 | Nội dung CK | base36 code + tên con + họ tên selector trong `transfer_content` |
+| DingTalk integration | 3 event types (AR-created, urgent, course_activated); enterprise robot; markdown + ảnh bill inline; per-event denylist gate |
+| SĐT chuẩn hóa toàn app | Format 84-đuôi số, `formatPhoneIntl` (248 nước), `phoneMatchesQuery`, smart-paste |
+| UID mismatch B1↔B3 | Badge đỏ cảnh báo UID lệch + nút đồng bộ 1 chạm (FE-only) |
+| Báo đơn bổ sung | Append bé/gói vào AR, tin DingTalk bổ sung, modal SĐT per bé |
+| CK ngoài chờ ghép | Search nội dung CK + lọc ngày + ignore CK rút TikTok Shop |
+| Zalo tín dụng | Báo tiền về nhóm Zalo cho giao dịch tín dụng (payment_paid) |
+| Thu gọn/mở card cảnh báo xuất HĐ | Collapsible notice card + persist localStorage + fix căn lề Số tiền |
 
 ### Đang chờ
 

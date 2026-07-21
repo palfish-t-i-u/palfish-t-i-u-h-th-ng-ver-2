@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useVisiblePoll } from "./useVisiblePoll";
 import { endpoints } from "../lib/api";
 import {
   fromApiNotification,
@@ -94,11 +95,11 @@ export function useNotifications() {
 
   useEffect(() => {
     void refresh();
-    const id = window.setInterval(() => {
-      void refresh();
-    }, POLL_INTERVAL_MS);
-    return () => window.clearInterval(id);
   }, [refresh]);
+
+  useVisiblePoll(() => {
+    void refresh();
+  }, POLL_INTERVAL_MS);
 
   const markRead = useCallback(async (id: string) => {
     const prev = state;

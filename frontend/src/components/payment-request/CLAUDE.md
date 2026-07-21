@@ -7,6 +7,20 @@
 - `<img>` QR giữ `crossOrigin="anonymous"` + `key={url}` + `imgReady` guard (fix 26/6) — các lớp này bảo vệ DOM; qrVerify bảo vệ ảnh output; không thay thế nhau.
 - `verifyQrBlob` dùng `qr.code` (5 ký tự, stable) làm `transferCode`, KHÔNG dùng `transferContent` (full string có thể bị normalize).
 
+## UID mismatch warning (B1↔B3)
+
+PR và AR lưu UID độc lập. Sale sửa UID ở PR không tự cập nhật AR.
+- Logic: `ActivationTab.uidSync.ts` — nằm bên activation/, nhưng liên quan trực tiếp đến PR
+- Drawer kích hoạt hiện badge đỏ khi `uids_data.uid != payment_requests.uid`
+- KHÔNG bao giờ ghi đè âm thầm (G-UID1 — effect never-overwrite)
+
+## Báo đơn bổ sung
+
+Append bé/gói vào AR đã tạo (thay vì tạo AR mới). Modal báo đơn bổ sung có SĐT per bé.
+- Liên quan: `phoneUtils.ts` (smart-paste, format, normalize SĐT)
+- Course code tiếp seq: không trùng code cũ
+- Chi tiết flow: xem `activation/CLAUDE.md`
+
 ## Key files
 
 | File | Mục đích |
@@ -16,3 +30,5 @@
 | `QrViewModal.test.tsx` | Unit tests (GROUP 1-12); GROUP 11 = includeQueryParams regression; GROUP 12 = guard behavior |
 | `qrVerify.test.ts` | Unit tests cho EMV parser + verifyQrPayload (8 cases) |
 | `e2e/qr-capture.spec.ts` | E2E regression: incident tái hiện + guard fail-closed |
+| `phoneUtils.ts` | Smart-paste đầu số + normalize + format SĐT quốc tế |
+| `phoneUtils.test.ts` | Unit tests cho phone formatting + smart-paste |

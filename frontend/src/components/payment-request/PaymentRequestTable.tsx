@@ -9,13 +9,13 @@ import {
   type RequestBucket,
   createdAtDate,
   ddmmyyyy,
-  fmtPhone,
   formatPaymentDateShort,
   hasUnverifiedFeeLine,
   pageItems,
   relativeFrom,
   vnd,
 } from "./paymentRequestUtils";
+import { formatPhoneIntl } from "./phoneUtils";
 
 function DeltaCell({ state, delta }: { state: PaymentRequestStatus; delta: number }) {
   if (state === "done") return <span className="delta is-done">Đã đủ</span>;
@@ -186,6 +186,7 @@ export default function PaymentRequestTable({
                 return (
                   <tr
                     key={p.id}
+                    data-testid="pr-row"
                     className={`${selectedId === p.id ? "selected" : ""} ${p.state === "cancelled" ? "is-cancelled" : ""}`}
                     onClick={() => onSelect(p)}
                   >
@@ -242,7 +243,7 @@ export default function PaymentRequestTable({
                         <div className="uid-line">{p.uid}</div>
                         <div className="phone-line">
                           <span style={{ fontSize: 12 }}>{country.flag}</span>
-                          {country.dial} {fmtPhone(p.phone)}
+                          {formatPhoneIntl(p.country, p.phone)}
                         </div>
                       </div>
                     </td>
