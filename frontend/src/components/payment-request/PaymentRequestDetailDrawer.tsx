@@ -2685,7 +2685,7 @@ export default function PaymentRequestDetailDrawer({
                       value={holdNote}
                       onChange={(e) => setHoldNote(e.target.value)}
                       rows={2}
-                      style={{ width: "100%", marginTop: 4, resize: "vertical", fontSize: 13, boxSizing: "border-box" }}
+                      style={{ width: "100%", marginTop: 4, resize: "vertical", fontSize: 13, boxSizing: "border-box", border: "1px solid var(--border)", borderRadius: 8, padding: "8px 10px" }}
                     />
                   </div>
                 )}

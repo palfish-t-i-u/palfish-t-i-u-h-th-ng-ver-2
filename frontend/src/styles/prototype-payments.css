@@ -788,10 +788,16 @@
   transition: border-color 120ms, background 120ms, color 120ms;
 }
 .gmv-prototype .bill-dropzone:hover,
+.gmv-prototype .bill-dropzone.is-paste-ready,
 .gmv-prototype .bill-dropzone.is-drag-over {
   border-color: var(--primary);
   background: var(--primary-50);
   color: var(--primary-700);
+}
+.gmv-prototype .bill-dropzone:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+  border-style: solid;
 }
 .gmv-prototype .bill-dropzone.is-uploading {
   opacity: 0.7;

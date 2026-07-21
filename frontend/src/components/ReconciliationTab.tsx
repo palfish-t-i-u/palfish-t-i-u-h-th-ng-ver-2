@@ -415,6 +415,7 @@ export default function ReconciliationTab() {
   const [tab, setTab] = useState<TabId>("awaiting");
   const [search, setSearch] = useState("");
   const [methodFilter, setMethodFilter] = useState<MethodFilter>("all");
+  const [teamFilter, setTeamFilter] = useState<"all" | "HCM" | "HN">("all");
   const [dateRange, setDateRange] = useState<DateRange>(EMPTY_RANGE);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [drawerTxn, setDrawerTxn] = useState<FlatTransaction | null>(null);
@@ -494,9 +495,10 @@ export default function ReconciliationTab() {
       bankPendingTxns.filter(
         (b) =>
           inDateRange(b.transaction_date || b.created_at || "", dateRange) &&
-          bankTxnMatchesSearch(b, search),
+          bankTxnMatchesSearch(b, search) &&
+          (teamFilter === "all" || b.team === teamFilter),
       ),
-    [bankPendingTxns, search, dateRange],
+    [bankPendingTxns, search, dateRange, teamFilter],
   );
 
   const loadBankCandidates = useCallback(async (txnId: string, exactAmount: boolean) => {
@@ -882,16 +884,29 @@ export default function ReconciliationTab() {
               onChange={(e) => setSearch(e.target.value)}
             />
           </div>
-          {tab !== "ckOutside" && methodChips.map((c) => (
-            <button
-              key={c.id}
-              type="button"
-              className={`filter-chip ${methodFilter === c.id ? "active" : ""}`}
-              onClick={() => setMethodFilter(c.id)}
-            >
-              {c.label}
-            </button>
-          ))}
+          {tab === "ckOutside" ? (
+            [{ id: "all" as const, label: "Tất cả" }, { id: "HCM" as const, label: "HCM" }, { id: "HN" as const, label: "HN" }].map((c) => (
+              <button
+                key={c.id}
+                type="button"
+                className={`filter-chip ${teamFilter === c.id ? "active" : ""}`}
+                onClick={() => setTeamFilter(c.id)}
+              >
+                {c.label}
+              </button>
+            ))
+          ) : (
+            methodChips.map((c) => (
+              <button
+                key={c.id}
+                type="button"
+                className={`filter-chip ${methodFilter === c.id ? "active" : ""}`}
+                onClick={() => setMethodFilter(c.id)}
+              >
+                {c.label}
+              </button>
+            ))
+          )}
           <div style={{ marginLeft: "auto" }}>
             <DateRangeFilter value={dateRange} onChange={setDateRange} />
           </div>
@@ -1753,36 +1768,37 @@ export default function ReconciliationTab() {
                     <div style={{ color: "var(--text-3)", marginBottom: 2, fontSize: 11 }}>Nội dung CK</div>
                     <div style={{ fontSize: 12, wordBreak: "break-word" }}>{drawerTxn.transfer_content || drawerTxn.content || "—"}</div>
                   </div>
-                  {!readOnly && (
-                    <div style={{ marginTop: 10, paddingTop: 8, borderTop: "1px dashed var(--border)", display: "flex", alignItems: "center", gap: 12 }}>
-                      <span style={{ fontSize: 11, color: "var(--text-3)", fontWeight: 600 }}>Team:</span>
-                      {(["HCM", "HN"] as const).map((v) => (
-                        <label
-                          key={v}
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: 4,
-                            fontSize: 12,
-                            fontWeight: 600,
-                            color: "var(--text-2)",
-                            cursor: "pointer",
-                            userSelect: "none",
-                          }}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={drawerTxn.team === v}
-                            onChange={() => void setTeamForTxn(drawerTxn.txn_id, v)}
-                            style={{ cursor: "pointer", accentColor: TEAM_META[v].fg }}
-                          />
-                          {v}
-                        </label>
-                      ))}
-                      {drawerTxn.team && <TeamBadge team={drawerTxn.team} />}
-                    </div>
-                  )}
                 </div>
+
+                {!readOnly && (
+                  <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                    <span style={{ fontSize: 11, color: "var(--text-3)", fontWeight: 600 }}>Team:</span>
+                    {(["HCM", "HN"] as const).map((v) => (
+                      <label
+                        key={v}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 4,
+                          fontSize: 12,
+                          fontWeight: 600,
+                          color: "var(--text-2)",
+                          cursor: "pointer",
+                          userSelect: "none",
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={drawerTxn.team === v}
+                          onChange={() => void setTeamForTxn(drawerTxn.txn_id, v)}
+                          style={{ cursor: "pointer", accentColor: TEAM_META[v].fg }}
+                        />
+                        {v}
+                      </label>
+                    ))}
+                    {drawerTxn.team && <TeamBadge team={drawerTxn.team} />}
+                  </div>
+                )}
 
                 <div>
                   <div style={{ fontSize: 12, color: "var(--text-3)", marginBottom: 8 }}>
