@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { assertNoHorizontalOverflow } from "./helpers/mobile";
 
 test.describe("Bảng thông tin (Dashboard Gamification)", () => {
   test.beforeEach(async ({ page }) => {
@@ -58,6 +59,44 @@ test.describe("Bảng thông tin (Dashboard Gamification)", () => {
     const comingSoon = page.getByText("Đang phát triển");
     const amount = page.locator("text=/\\d+.*tr/");
     await expect(comingSoon.or(amount).first()).toBeVisible({ timeout: 10_000 });
+  });
+});
+
+// M1 (21/7): BXH tháng — reflow max-md không đủ, còn crush trong khung ở 375px
+// (doanh thu tràn cột đơn, header "Đơn b.động" wrap, WeeklyRewards bóp title).
+test.describe("Bảng thông tin — mobile 375px (BXH tháng)", () => {
+  test.beforeEach(async ({ page }) => {
+    await page.setViewportSize({ width: 375, height: 812 });
+    await page.goto("/");
+    await expect(page.getByRole("heading", { name: "Bảng thông tin" })).toBeVisible({
+      timeout: 20_000,
+    });
+  });
+
+  test("BXH tháng ở 375px: không tràn ngang, doanh thu compact, header 'Đơn'", async ({ page }) => {
+    const bxhSection = page.getByText("Bảng xếp hạng").first();
+    if (!(await bxhSection.isVisible({ timeout: 15_000 }).catch(() => false))) {
+      test.info().annotations.push({
+        type: "info",
+        description: "BXH section không hiển thị (dev mode không có data). Test pass.",
+      });
+      return;
+    }
+
+    await assertNoHorizontalOverflow(page);
+
+    // Header cột đơn rút gọn còn "Đơn" (không phải "Đơn b.động" wrap 60px cũ)
+    await expect(page.getByText("Đơn", { exact: true })).toBeVisible();
+    await expect(page.getByText("Đơn b.động")).toBeHidden();
+
+    // Doanh thu mobile dùng formatVndCompact ("500 tr" / "1,2 tỷ"), không phải
+    // "1.234,56 tr" (formatRevenueMillions, 2 số thập phân) — regex kết thúc bằng tr/tỷ, không dấu phẩy thập phân.
+    const revenueCell = page.locator("text=/^[\\d.,]+ (tr|tỷ)$/").first();
+    if (await revenueCell.isVisible({ timeout: 5_000 }).catch(() => false)) {
+      const text = (await revenueCell.textContent()) ?? "";
+      expect(text.trim()).toMatch(/(tr|tỷ)$/);
+      expect(text.trim()).not.toMatch(/,\d{2} (tr|tỷ)$/); // không phải format 2-decimal cũ
+    }
   });
 });
 

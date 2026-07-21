@@ -157,6 +157,9 @@ const NAV_KEYS = new Set(["ArrowLeft", "ArrowRight", "Home", "End"]);
 /** Pixel widths — chỉ freeze Team + Nhân sự; các cột KPI/ngày scroll ngang. */
 const REV_COL_W = [112, 144, 40, 104, 128, 104, 80];
 const TRI_COL_W = [112, 144, 80];
+/** Mobile 375px: Team 112→92, Nhân sự 144→128 — nhường chỗ cho cột ngày (GC5: đủ rộng cho nhãn dài nhất). */
+const REV_COL_W_MOBILE = [92, 128, 40, 104, 128, 104, 80];
+const TRI_COL_W_MOBILE = [92, 128, 80];
 const BC03_FREEZE_COLS = 2;
 
 function bc03StickyCol(
@@ -515,6 +518,11 @@ function InlineKpiInput({
 export default function ReportBC03Tab() {
   const { teamFilters, defaultTeam, isRestricted } = useTeamScope();
   const isMobile = useIsMobile();
+  const revColW = isMobile ? REV_COL_W_MOBILE : REV_COL_W;
+  const triColW = isMobile ? TRI_COL_W_MOBILE : TRI_COL_W;
+  // GC5: nhãn Team dài nhất ("Linh Dam (Store)", "An Binh (Store)") không vừa 92px 1 dòng
+  // dù giữ desktop 112px — cho phép wrap 2 dòng trên mobile thay vì ép nowrap→ellipsis.
+  const teamCellWhitespace = isMobile ? "whitespace-normal break-words" : "whitespace-nowrap";
   const [monthKey, setMonthKey] = useState(currentMonthKey);
   const [filterMode, setFilterMode] = useState<FilterMode>("month");
   const initialMonth = monthRange(currentMonthKey());
@@ -1191,28 +1199,28 @@ export default function ReportBC03Tab() {
             <table className="min-w-max w-full border-collapse text-xs">
               <thead>
                 <tr className="border-b border-gmv-border bg-gmv-table-head text-gmv-muted">
-                  <th {...bc03StickyHeadCell(0, REV_COL_W, "bg-gmv-table-head", "px-3 py-2.5 text-left font-medium")}>
+                  <th {...bc03StickyHeadCell(0, revColW, "bg-gmv-table-head", "px-3 py-2.5 text-left font-medium")}>
                     Team
                   </th>
-                  <th {...bc03StickyHeadCell(1, REV_COL_W, "bg-gmv-table-head", "px-3 py-2.5 text-left font-medium")}>
+                  <th {...bc03StickyHeadCell(1, revColW, "bg-gmv-table-head", "px-3 py-2.5 text-left font-medium")}>
                     Nhân sự
                   </th>
                   <th
-                    {...bc03StickyHeadCell(2, REV_COL_W, "bg-gmv-table-head", "px-2 py-2.5 text-center font-medium w-10")}
+                    {...bc03StickyHeadCell(2, revColW, "bg-gmv-table-head", "px-2 py-2.5 text-center font-medium w-10")}
                     title="Xóa dòng KPI"
                   >
                     ×
                   </th>
-                  <th {...bc03StickyHeadCell(3, REV_COL_W, "bg-gmv-table-head", "px-2 py-2.5 text-center font-medium whitespace-nowrap")}>
+                  <th {...bc03StickyHeadCell(3, revColW, "bg-gmv-table-head", "px-2 py-2.5 text-center font-medium whitespace-nowrap")}>
                     GMV PKI
                   </th>
-                  <th {...bc03StickyHeadCell(4, REV_COL_W, "bg-gmv-table-head", "px-2 py-2.5 text-left font-medium whitespace-nowrap")}>
+                  <th {...bc03StickyHeadCell(4, revColW, "bg-gmv-table-head", "px-2 py-2.5 text-left font-medium whitespace-nowrap")}>
                     % GMV
                   </th>
-                  <th {...bc03StickyHeadCell(5, REV_COL_W, "bg-gmv-table-head", "px-2 py-2.5 text-right font-medium whitespace-nowrap")}>
+                  <th {...bc03StickyHeadCell(5, revColW, "bg-gmv-table-head", "px-2 py-2.5 text-right font-medium whitespace-nowrap")}>
                     Tổng DT
                   </th>
-                  <th {...bc03StickyHeadCell(6, REV_COL_W, "bg-gmv-table-head", "px-2 py-2.5 text-right font-medium whitespace-nowrap")}>
+                  <th {...bc03StickyHeadCell(6, revColW, "bg-gmv-table-head", "px-2 py-2.5 text-right font-medium whitespace-nowrap")}>
                     Tổng đơn
                   </th>
                   {dates.map((d) => (
@@ -1262,9 +1270,9 @@ export default function ReportBC03Tab() {
                         <td
                           {...bc03StickyCell(
                             0,
-                            REV_COL_W,
+                            revColW,
                             stickyBg,
-                            cn("px-3 py-2 whitespace-nowrap", isTotal ? "text-amber-900" : "text-gmv-muted")
+                            cn("px-3 py-2", teamCellWhitespace, isTotal ? "text-amber-900" : "text-gmv-muted")
                           )}
                         >
                           {isTotal ? item.team : ""}
@@ -1272,7 +1280,7 @@ export default function ReportBC03Tab() {
                         <td
                           {...bc03StickyCell(
                             1,
-                            REV_COL_W,
+                            revColW,
                             stickyBg,
                             cn("px-3 py-2 font-medium", isTotal ? "text-amber-950" : "text-gmv-text-strong")
                           )}
@@ -1284,7 +1292,7 @@ export default function ReportBC03Tab() {
                             </span>
                           )}
                         </td>
-                        <td {...bc03StickyCell(2, REV_COL_W, stickyBg, "px-2 py-2 text-center")}>
+                        <td {...bc03StickyCell(2, revColW, stickyBg, "px-2 py-2 text-center")}>
                           {!isTotal && (
                             <button
                               type="button"
@@ -1296,7 +1304,7 @@ export default function ReportBC03Tab() {
                             </button>
                           )}
                         </td>
-                        <td {...bc03StickyCell(3, REV_COL_W, stickyBg, "px-2 py-2 text-center tabular-nums")}>
+                        <td {...bc03StickyCell(3, revColW, stickyBg, "px-2 py-2 text-center tabular-nums")}>
                           {isTotal ? (
                             <span className="text-amber-800">{fmtInt(kpi.b4Gmv)}</span>
                           ) : (
@@ -1307,11 +1315,11 @@ export default function ReportBC03Tab() {
                             />
                           )}
                         </td>
-                        <td {...bc03StickyCell(4, REV_COL_W, stickyBg, "px-2 py-2")}>
+                        <td {...bc03StickyCell(4, revColW, stickyBg, "px-2 py-2")}>
                           <KpiProgressBar actual={vndTotal} target={kpi.b4Gmv} label="Tiến độ GMV VND" />
                         </td>
                         <td
-                          {...bc03StickyCell(5, REV_COL_W, stickyBg, "px-2 py-2 text-right tabular-nums whitespace-nowrap")}
+                          {...bc03StickyCell(5, revColW, stickyBg, "px-2 py-2 text-right tabular-nums whitespace-nowrap")}
                         >
                           <span className={isTotal ? "text-amber-950" : "font-medium text-emerald-700"}>
                             {fmtMoney(primaryTotal, currency)}
@@ -1323,7 +1331,7 @@ export default function ReportBC03Tab() {
                         <td
                           {...bc03StickyCell(
                             6,
-                            REV_COL_W,
+                            revColW,
                             stickyBg,
                             cn("px-2 py-2 text-right tabular-nums", isTotal ? "text-amber-950" : "text-gmv-text-strong")
                           )}
@@ -1373,13 +1381,13 @@ export default function ReportBC03Tab() {
             <table className="min-w-max w-full border-collapse text-xs">
               <thead>
                 <tr className="border-b border-gmv-border bg-gmv-table-head text-gmv-muted">
-                  <th {...bc03StickyHeadCell(0, TRI_COL_W, "bg-gmv-table-head", "px-3 py-2.5 text-left font-medium")}>
+                  <th {...bc03StickyHeadCell(0, triColW, "bg-gmv-table-head", "px-3 py-2.5 text-left font-medium")}>
                     Team
                   </th>
-                  <th {...bc03StickyHeadCell(1, TRI_COL_W, "bg-gmv-table-head", "px-3 py-2.5 text-left font-medium")}>
+                  <th {...bc03StickyHeadCell(1, triColW, "bg-gmv-table-head", "px-3 py-2.5 text-left font-medium")}>
                     Tên Sale
                   </th>
-                  <th {...bc03StickyHeadCell(2, TRI_COL_W, "bg-gmv-table-head", "px-2 py-2.5 text-right font-medium whitespace-nowrap")}>
+                  <th {...bc03StickyHeadCell(2, triColW, "bg-gmv-table-head", "px-2 py-2.5 text-right font-medium whitespace-nowrap")}>
                     Tổng L4
                   </th>
                   {dates.map((d) => (
@@ -1419,9 +1427,9 @@ export default function ReportBC03Tab() {
                         <td
                           {...bc03StickyCell(
                             0,
-                            TRI_COL_W,
+                            triColW,
                             stickyBg,
-                            cn("px-3 py-2 whitespace-nowrap", isTotal ? "text-amber-900" : "text-gmv-muted")
+                            cn("px-3 py-2", teamCellWhitespace, isTotal ? "text-amber-900" : "text-gmv-muted")
                           )}
                         >
                           {isTotal ? item.team : ""}
@@ -1429,7 +1437,7 @@ export default function ReportBC03Tab() {
                         <td
                           {...bc03StickyCell(
                             1,
-                            TRI_COL_W,
+                            triColW,
                             stickyBg,
                             cn("px-3 py-2 font-medium", isTotal ? "text-amber-950" : "text-gmv-text-strong")
                           )}
@@ -1439,7 +1447,7 @@ export default function ReportBC03Tab() {
                         <td
                           {...bc03StickyCell(
                             2,
-                            TRI_COL_W,
+                            triColW,
                             stickyBg,
                             cn(
                               "px-2 py-2 text-right tabular-nums font-medium",
@@ -1474,13 +1482,13 @@ export default function ReportBC03Tab() {
             <table className="min-w-max w-full border-collapse text-xs">
               <thead>
                 <tr className="border-b border-gmv-border bg-gmv-table-head text-gmv-muted">
-                  <th {...bc03StickyHeadCell(0, TRI_COL_W, "bg-gmv-table-head", "px-3 py-2.5 text-left font-medium")}>
+                  <th {...bc03StickyHeadCell(0, triColW, "bg-gmv-table-head", "px-3 py-2.5 text-left font-medium")}>
                     Team
                   </th>
-                  <th {...bc03StickyHeadCell(1, TRI_COL_W, "bg-gmv-table-head", "px-3 py-2.5 text-left font-medium")}>
+                  <th {...bc03StickyHeadCell(1, triColW, "bg-gmv-table-head", "px-3 py-2.5 text-left font-medium")}>
                     Tên Sale
                   </th>
-                  <th {...bc03StickyHeadCell(2, TRI_COL_W, "bg-gmv-table-head", "px-2 py-2.5 text-right font-medium whitespace-nowrap")}>
+                  <th {...bc03StickyHeadCell(2, triColW, "bg-gmv-table-head", "px-2 py-2.5 text-right font-medium whitespace-nowrap")}>
                     Tổng L1.2
                   </th>
                   {dates.map((d) => (
@@ -1520,9 +1528,9 @@ export default function ReportBC03Tab() {
                         <td
                           {...bc03StickyCell(
                             0,
-                            TRI_COL_W,
+                            triColW,
                             stickyBg,
-                            cn("px-3 py-2 whitespace-nowrap", isTotal ? "text-amber-900" : "text-gmv-muted")
+                            cn("px-3 py-2", teamCellWhitespace, isTotal ? "text-amber-900" : "text-gmv-muted")
                           )}
                         >
                           {isTotal ? item.team : ""}
@@ -1530,7 +1538,7 @@ export default function ReportBC03Tab() {
                         <td
                           {...bc03StickyCell(
                             1,
-                            TRI_COL_W,
+                            triColW,
                             stickyBg,
                             cn("px-3 py-2 font-medium", isTotal ? "text-amber-950" : "text-gmv-text-strong")
                           )}
@@ -1540,7 +1548,7 @@ export default function ReportBC03Tab() {
                         <td
                           {...bc03StickyCell(
                             2,
-                            TRI_COL_W,
+                            triColW,
                             stickyBg,
                             cn(
                               "px-2 py-2 text-right tabular-nums font-medium",
@@ -1576,35 +1584,39 @@ export default function ReportBC03Tab() {
       </section>
 
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-[11px] text-gmv-muted">
-          {filterMode === "month"
-            ? "Đang xem cả tháng — chuyển sang Theo ngày để lọc khoảng ngày trong tháng."
-            : `Lọc theo ngày trong ${monthLabel} — KPI vẫn theo cả tháng.`}{" "}
-          Tab Doanh thu: thêm sale + × xóa dòng · Click bảng rồi dùng{" "}
-          <strong className="text-gmv-muted">← → Home End</strong> cuộn ngang · Bấm{" "}
-          <strong className="text-gmv-muted">Lưu tỷ giá &amp; KPI</strong> để ghi thay đổi.
-        </p>
+        {!isMobile && (
+          <p className="text-[11px] text-gmv-muted">
+            {filterMode === "month"
+              ? "Đang xem cả tháng — chuyển sang Theo ngày để lọc khoảng ngày trong tháng."
+              : `Lọc theo ngày trong ${monthLabel} — KPI vẫn theo cả tháng.`}{" "}
+            Tab Doanh thu: thêm sale + × xóa dòng · Click bảng rồi dùng{" "}
+            <strong className="text-gmv-muted">← → Home End</strong> cuộn ngang · Bấm{" "}
+            <strong className="text-gmv-muted">Lưu tỷ giá &amp; KPI</strong> để ghi thay đổi.
+          </p>
+        )}
         <div className="flex items-center gap-1">
           <button
             type="button"
             onClick={() => scrollTableHorizontal(-DAY_COL_SCROLL_PX * 3)}
-            className="rounded border border-gmv-border px-2 py-1 text-xs text-gmv-muted hover:bg-gmv-border hover:text-gmv-text-strong"
+            className="min-h-[44px] min-w-[44px] rounded border border-gmv-border px-2 py-1 text-xs text-gmv-muted hover:bg-gmv-border hover:text-gmv-text-strong md:min-h-0 md:min-w-0"
             title="Cuộn trái (←)"
           >
             ←
           </button>
-          <button
-            type="button"
-            onClick={focusTableScroll}
-            className="rounded border border-gmv-border px-2 py-1 text-[10px] text-gmv-muted hover:bg-gmv-border"
-            title="Focus bảng để dùng phím ← → Home End"
-          >
-            ⌨ ← →
-          </button>
+          {!isMobile && (
+            <button
+              type="button"
+              onClick={focusTableScroll}
+              className="rounded border border-gmv-border px-2 py-1 text-[10px] text-gmv-muted hover:bg-gmv-border"
+              title="Focus bảng để dùng phím ← → Home End"
+            >
+              ⌨ ← →
+            </button>
+          )}
           <button
             type="button"
             onClick={() => scrollTableHorizontal(DAY_COL_SCROLL_PX * 3)}
-            className="rounded border border-gmv-border px-2 py-1 text-xs text-gmv-muted hover:bg-gmv-border hover:text-gmv-text-strong"
+            className="min-h-[44px] min-w-[44px] rounded border border-gmv-border px-2 py-1 text-xs text-gmv-muted hover:bg-gmv-border hover:text-gmv-text-strong md:min-h-0 md:min-w-0"
             title="Cuộn phải (→)"
           >
             →

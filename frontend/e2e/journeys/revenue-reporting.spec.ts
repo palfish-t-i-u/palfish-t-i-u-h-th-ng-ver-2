@@ -4,6 +4,7 @@ import { navigateTo, expectModuleLoaded } from "../helpers/navigation";
 import { waitForLoaded } from "../helpers/assertions";
 import { E2eApiClient } from "../helpers/api-client";
 import { CleanupRegistry } from "../helpers/cleanup";
+import { assertNoColumnCrush, assertNoHorizontalOverflow } from "../helpers/mobile";
 
 const TEST_PREFIX = "[E2E-TEST]";
 const TEST_ENTRY = {
@@ -219,5 +220,47 @@ test.describe.serial("Revenue & Reporting: Sổ doanh thu → BC03", () => {
       await page.waitForTimeout(2_000);
       await page.screenshot({ path: "e2e-results/bc03-referral.png" });
     }
+  });
+});
+
+// BC03 mobile (Mobile Fix Pass 21/7, GC7): freeze-col Team/Nhân sự retuned cho
+// 375px — bắt Team bleed vào cột Total/ngày khi cuộn, trên cả 3 tab.
+test.describe("BC03 — Mobile 375px: no column crush", () => {
+  test("Doanh thu / Trial / Referral — không tràn ngang, không cột nén", async ({ page }) => {
+    await page.setViewportSize({ width: 375, height: 812 });
+    await page.goto("/");
+    await navigateTo(page, "BC03 — Báo cáo tổng bộ");
+    await expectModuleLoaded(page, "BC03");
+    await waitForLoaded(page);
+
+    await assertNoHorizontalOverflow(page);
+    const revenueTable = page.locator("table").first();
+    if (await revenueTable.isVisible({ timeout: 5_000 }).catch(() => false)) {
+      await assertNoColumnCrush(revenueTable);
+    }
+
+    const trialTab = page.locator("button:has-text('Trial')").or(page.locator("text=Trial"));
+    if (await trialTab.isVisible().catch(() => false)) {
+      await trialTab.click();
+      await page.waitForTimeout(1_500);
+      await assertNoHorizontalOverflow(page);
+      const trialTable = page.locator("table").first();
+      if (await trialTable.isVisible({ timeout: 5_000 }).catch(() => false)) {
+        await assertNoColumnCrush(trialTable);
+      }
+    }
+
+    const referralTab = page.locator("button:has-text('Referral')").or(page.locator("text=Referral"));
+    if (await referralTab.isVisible().catch(() => false)) {
+      await referralTab.click();
+      await page.waitForTimeout(1_500);
+      await assertNoHorizontalOverflow(page);
+      const referralTable = page.locator("table").first();
+      if (await referralTable.isVisible({ timeout: 5_000 }).catch(() => false)) {
+        await assertNoColumnCrush(referralTable);
+      }
+    }
+
+    await page.screenshot({ path: "e2e-results/bc03-mobile-crush-check.png" });
   });
 });

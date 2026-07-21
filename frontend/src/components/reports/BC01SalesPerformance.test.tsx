@@ -1,9 +1,10 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import BC01SalesPerformance from "./BC01SalesPerformance";
 import { server } from "../../test/msw/server";
+import { restoreMatchMedia, stubMobile } from "../../test/mobileMatchMedia";
 import type { RevenuePivotResponse } from "../../types/revenue";
 
 vi.mock("../../hooks/useTeamScope", async (importOriginal) => {
@@ -222,5 +223,67 @@ describe("BC01SalesPerformance", () => {
     await waitFor(() => {
       expect(screen.getByText("Tổng cộng")).toBeInTheDocument();
     });
+  });
+});
+
+describe("BC01SalesPerformance — mobile", () => {
+  afterEach(() => restoreMatchMedia());
+
+  it("renders cards (không table) với tên sale đầy đủ, không truncate", async () => {
+    stubMobile();
+    mockBC01();
+    render(<BC01SalesPerformance />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Nguyen Van A")).toBeInTheDocument();
+    });
+    expect(screen.getByText("Tran Thi B")).toBeInTheDocument();
+    expect(screen.getByText("Le Van C")).toBeInTheDocument();
+    expect(document.querySelector("table")).toBeNull();
+  });
+
+  it("hiện đủ giá trị từng tháng trong card", async () => {
+    stubMobile();
+    mockBC01();
+    render(<BC01SalesPerformance />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Nguyen Van A")).toBeInTheDocument();
+    });
+    // Sale "Nguyen Van A" có 2 tháng: 70.5 (05) và 50.3 (06)
+    expect(screen.getByText("70.5")).toBeInTheDocument();
+    expect(screen.getByText("50.3")).toBeInTheDocument();
+  });
+
+  it("hiện card Tổng cộng (grand total)", async () => {
+    stubMobile();
+    mockBC01();
+    render(<BC01SalesPerformance />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Tổng cộng")).toBeInTheDocument();
+    });
+    expect(screen.getByText("305.8")).toBeInTheDocument();
+  });
+
+  it("hiện Tổng của team khi có nhiều team", async () => {
+    stubMobile();
+    mockBC01();
+    render(<BC01SalesPerformance />);
+
+    await waitFor(() => {
+      expect(screen.getAllByText(/^Tổng:/).length).toBeGreaterThanOrEqual(2);
+    });
+  });
+
+  it("empty state dùng RowCardList (không table)", async () => {
+    stubMobile();
+    mockBC01(makeResponse({ teams: [], months: [] }));
+    render(<BC01SalesPerformance />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Chưa có dữ liệu trong khoảng ngày đã chọn.")).toBeInTheDocument();
+    });
+    expect(document.querySelector("table")).toBeNull();
   });
 });
