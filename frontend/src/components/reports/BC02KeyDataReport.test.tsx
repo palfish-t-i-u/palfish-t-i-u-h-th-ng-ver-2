@@ -256,4 +256,14 @@ describe("BC02KeyDataReport", () => {
     expect(screen.getByText("Tổng đơn")).toBeInTheDocument();
     expect(screen.getByText("Tổng GMV (¥)")).toBeInTheDocument();
   });
+
+  it("Team select has shrink-safe mobile classes w-full min-w-0 max-w-full", async () => {
+    mockBC02();
+    render(<BC02KeyDataReport />);
+
+    const select = screen.getByRole("combobox");
+    expect(select.className).toContain("w-full");
+    expect(select.className).toContain("min-w-0");
+    expect(select.className).toContain("max-w-full");
+  });
 });
