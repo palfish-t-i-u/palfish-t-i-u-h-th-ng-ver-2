@@ -129,7 +129,7 @@
 - BE: `backend/admin_routes.py` — /me (~511), sales mgmt (~566), auth-users (~725), permissions matrix + overrides (~1073), audit logs (~1217)
 - BE: `backend/vn_staff.py` — scope nhân sự VN; `backend/audit.py` — audit log
 - API groups: `endpoints.me`, `endpoints.admin`, `endpoints.auditLogs`
-- E2E: `frontend/e2e/rbac-visibility.spec.ts`, `frontend/e2e/auth.setup.ts`, `auth-role.setup.ts`
+- E2E: `frontend/e2e/rbac-visibility.spec.ts`, `frontend/e2e/auth.setup.ts`, `auth-role.setup.ts`, `frontend/e2e/mobile-auth.spec.ts`
 - Docs: `docs/AUTH_SETUP.md`
 
 ## 10. Shared / Core
@@ -142,6 +142,7 @@
 - BE shared: `backend/rpc_helpers.py` (RPC atomic, sequences), `backend/env_utils.py`, `backend/analytics_limits.py`
 - Design: `docs/DESIGN.md`, `frontend/src/gmv-theme.css`, `gmv-tokens.css`
 - E2E helpers: `frontend/e2e/helpers/` (navigation, assertions, api-client, cleanup, env)
+- FE test util: `frontend/src/test/mobileMatchMedia.ts` — `stubMobile()`/`restoreMatchMedia()`, stub `window.matchMedia` cho jsdom (dùng khi test cần `useIsMobile()===true`; PHẢI restore trong `afterEach`)
 
 ## 11. Scripts vận hành
 

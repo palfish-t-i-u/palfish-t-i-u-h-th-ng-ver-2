@@ -645,3 +645,64 @@
   .pm-tabs { overflow-x: auto; -webkit-overflow-scrolling: touch; }
   .pm-tab { padding: 8px 12px; font-size: 13px; white-space: nowrap; }
 }
+
+/* ── Mobile reflow: freeze-col + layout fixes (Task 3) ── */
+@media (max-width: 767px) {
+
+  /* 1. Freeze cột Module — header */
+  .pm-matrix thead th:first-child {
+    position: sticky;
+    left: 0;
+    z-index: 3;                            /* corner: z:3 > body z:2 > dept cell */
+    min-width: 150px;                      /* thu từ 240px desktop */
+    background: var(--gmv-table-head);     /* nền đục bắt buộc — GC7 */
+  }
+
+  /* 1b. Freeze cột Module — body rows */
+  .pm-matrix .pm-module-row td:first-child {
+    position: sticky;
+    left: 0;
+    z-index: 2;
+    background: var(--gmv-canvas);         /* nền đục — content cuộn không xuyên qua */
+    max-width: 150px;                      /* khớp min-width header */
+    overflow: hidden;
+  }
+
+  .pm-matrix .pm-module-row td:first-child .pm-module-name {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* 2. Section row freeze */
+  .pm-section-row td:first-child {
+    position: sticky;
+    left: 0;
+    z-index: 2;
+    background: var(--gmv-bg);
+  }
+
+  /* 3. Header dept + badge: không wrap */
+  .pm-matrix thead th { white-space: nowrap; padding: 10px 8px; }
+  .pm-access-badge { white-space: nowrap; padding: 4px 10px; }
+
+  /* 4. Legend: fix tràn trang (pageOverflow ≤ 0) */
+  .pm-legend { flex-wrap: wrap; gap: 8px 12px; }
+  .pm-legend-hint { margin-left: 0; flex-basis: 100%; }  /* reset margin-left:auto */
+
+  /* 5. Override drawer: module row wrap (GC3) */
+  .pm-drawer-module { flex-wrap: wrap; }
+  .pm-drawer-module-info { flex: 1 1 100%; }             /* GC3: flex-basis, KHÔNG width */
+  .pm-drawer-module-actions { flex-shrink: 1; margin-top: 6px; }
+
+  /* 6. Staff picker: row wrap (GC3) */
+  .pm-picker-row { flex-wrap: wrap; row-gap: 4px; }
+  .pm-picker-email { min-width: 0; flex: 1 1 100%; }     /* bỏ min-width:200px */
+  .pm-picker-name { flex: 1 1 100%; }
+
+  /* 7. Override header + drawer footer wrap */
+  .pm-override-header { flex-wrap: wrap; gap: 10px; }
+  .pm-drawer-foot { flex-wrap: wrap; }
+}
+

@@ -132,7 +132,7 @@ export default function CreateAccountModal({ open, onClose, onCreated }: Props) 
     <Modal open={open} onClose={onClose} title="Thêm tài khoản mới">
       <form onSubmit={handleSubmit} className="space-y-4">
         {/* Email + Password */}
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <div>
             <label className="mb-1 block text-xs font-semibold text-gmv-text-strong">
               Email <span className="text-gmv-danger">*</span>
@@ -161,7 +161,7 @@ export default function CreateAccountModal({ open, onClose, onCreated }: Props) 
         </div>
 
         {/* Name + Phone */}
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <div>
             <label className="mb-1 block text-xs font-semibold text-gmv-text-strong">
               Họ và tên
@@ -187,7 +187,7 @@ export default function CreateAccountModal({ open, onClose, onCreated }: Props) 
         </div>
 
         {/* Department + Team */}
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <div>
             <label className="mb-1 block text-xs font-semibold text-gmv-text-strong">
               Bộ phận
@@ -241,7 +241,7 @@ export default function CreateAccountModal({ open, onClose, onCreated }: Props) 
         )}
 
         {/* Role + Activate */}
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <div>
             <label className="mb-1 block text-xs font-semibold text-gmv-text-strong">
               Vai trò

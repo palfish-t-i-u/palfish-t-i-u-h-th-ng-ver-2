@@ -1,9 +1,10 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import ReportBC03Tab from "./ReportBC03Tab";
 import { server } from "../test/msw/server";
+import { restoreMatchMedia, stubMobile } from "../test/mobileMatchMedia";
 import type { Bc03Report, Bc03MonthlySettings, DashboardLiveSummary } from "../types/order";
 
 vi.mock("../lib/supabase", () => ({
@@ -444,5 +445,86 @@ describe("ReportBC03Tab", () => {
     await waitFor(() => {
       expect(screen.getByText("Inhouse 1")).toBeInTheDocument();
     });
+  });
+});
+
+describe("ReportBC03Tab — mobile", () => {
+  afterEach(() => restoreMatchMedia());
+
+  it("cột Nhân sự lock minWidth 128px trên mobile (desktop control = 144px)", async () => {
+    stubMobile();
+    mockAllBC03Endpoints();
+    render(<ReportBC03Tab />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Nhân sự")).toBeInTheDocument();
+    });
+    expect(screen.getByText("Nhân sự")).toHaveStyle({ minWidth: "128px" });
+  });
+
+  it("desktop control — cột Nhân sự vẫn 144px khi không stub mobile", async () => {
+    mockAllBC03Endpoints();
+    render(<ReportBC03Tab />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Nhân sự")).toBeInTheDocument();
+    });
+    expect(screen.getByText("Nhân sự")).toHaveStyle({ minWidth: "144px" });
+  });
+
+  it("ẩn nút focus bàn phím (⌨) khi mobile", async () => {
+    stubMobile();
+    mockAllBC03Endpoints();
+    render(<ReportBC03Tab />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Nhân sự")).toBeInTheDocument();
+    });
+    expect(screen.queryByTitle("Focus bảng để dùng phím ← → Home End")).not.toBeInTheDocument();
+    // Nút cuộn trái/phải vẫn còn — chỉ ẩn affordance bàn phím
+    expect(screen.getByTitle("Cuộn trái (←)")).toBeInTheDocument();
+  });
+
+  it("desktop control — nút ⌨ vẫn hiện khi không mobile", async () => {
+    mockAllBC03Endpoints();
+    render(<ReportBC03Tab />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Nhân sự")).toBeInTheDocument();
+    });
+    expect(screen.getByTitle("Focus bảng để dùng phím ← → Home End")).toBeInTheDocument();
+  });
+
+  it("Team dài (Linh Dam (Store)) không bị cắt/ellipsis trên mobile — wrap thay vì nowrap", async () => {
+    const withLongTeam = makeBc03Report({
+      revenue: [
+        {
+          sale_name: "Ta Thuy Van",
+          team: "Linh Dam (Store)",
+          gmv_rmb: 50,
+          gmv_rmb_crm: 50,
+          gmv_rmb_ledger: 0,
+          collected_vnd: 10_000_000,
+          collected_vnd_m2: 0,
+          orders: 1,
+          orders_crm: 1,
+          orders_ledger: 0,
+          orders_m2: 0,
+          daily: {},
+        },
+      ],
+    });
+    stubMobile();
+    mockAllBC03Endpoints({ report: withLongTeam });
+    render(<ReportBC03Tab />);
+
+    await waitFor(() => {
+      expect(screen.getAllByText("Linh Dam (Store)").length).toBeGreaterThan(0);
+    });
+    // "Linh Dam (Store)" cũng xuất hiện trong <option> filter Team — chỉ lấy <td> trong bảng.
+    const teamCell = screen.getAllByText("Linh Dam (Store)").find((el) => el.tagName === "TD");
+    expect(teamCell).toBeDefined();
+    expect(teamCell!.className).not.toMatch(/whitespace-nowrap/);
+    expect(teamCell!.className).toMatch(/whitespace-normal/);
   });
 });

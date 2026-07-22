@@ -4,13 +4,18 @@ import { navigateTo, expectModuleLoaded } from "../helpers/navigation";
 import { waitForLoaded } from "../helpers/assertions";
 import { E2eApiClient } from "../helpers/api-client";
 import { CleanupRegistry } from "../helpers/cleanup";
+import { assertNoColumnCrush, assertNoHorizontalOverflow } from "../helpers/mobile";
 
 const TEST_PREFIX = "[E2E-TEST]";
 const TEST_ENTRY = {
   ngayTienVe: new Date().toISOString().slice(0, 10),
   tenKhach: `${TEST_PREFIX} Revenue Entry`,
   soTienVnd: 3_700_000,
-  team: "Inhouse 1",
+  // test.user@dev có role "sale", team cố định "Inhouse 2" (nhan_su_sale) —
+  // enforce_report_scope() ép mọi truy vấn Sổ doanh thu của role sale/leader
+  // về ĐÚNG team gắn với tài khoản, bất kể dropdown "Team" trên UI chọn gì.
+  // Dòng tạo test phải khớp team này thì mới thấy lại được sau khi tạo.
+  team: "Inhouse 2",
   loai: "B2",
   note: "[E2E-AUTO] Created by Playwright",
   paymentMethod: "cash",
@@ -39,7 +44,7 @@ test.describe.serial("Revenue & Reporting: Sổ doanh thu → BC03", () => {
     await waitForLoaded(page);
 
     await expect(
-      page.locator("text=Tất cả teams").or(page.locator("select").first())
+      page.locator("text=Tất cả teams").or(page.locator("select").first()).first()
     ).toBeVisible({ timeout: 10_000 });
 
     await expect(
@@ -47,7 +52,7 @@ test.describe.serial("Revenue & Reporting: Sổ doanh thu → BC03", () => {
     ).toBeVisible({ timeout: 5_000 });
 
     await expect(
-      page.locator("button:has-text('Thêm')").or(page.locator("button:has-text('Tạo')"))
+      page.locator("main").locator("button:has-text('Thêm')").or(page.locator("main").locator("button:has-text('Tạo')")).first()
     ).toBeVisible({ timeout: 5_000 });
 
     await page.screenshot({ path: "e2e-results/ledger-smoke.png" });
@@ -59,42 +64,34 @@ test.describe.serial("Revenue & Reporting: Sổ doanh thu → BC03", () => {
     await expectModuleLoaded(page, "Sổ doanh thu");
     await waitForLoaded(page);
 
-    const createBtn = page.locator("button:has-text('Thêm')").or(
-      page.locator("button:has-text('Tạo')")
+    const createBtn = page.locator("main").locator("button:has-text('Thêm')").or(
+      page.locator("main").locator("button:has-text('Tạo')")
     );
     await createBtn.first().click();
     await page.waitForTimeout(500);
 
-    const dateInput = page.locator('input[type="date"]').first();
+    const dialog = page.getByRole("dialog");
+
+    const dateInput = dialog.locator('input[type="date"]').first();
     if (await dateInput.isVisible()) {
       await dateInput.fill(TEST_ENTRY.ngayTienVe);
     }
 
-    const nameInput = page.locator('label:has-text("Tên khách") ~ input').or(
-      page.locator('input[placeholder*="Tên khách"]')
-    );
-    await nameInput.first().fill(TEST_ENTRY.tenKhach);
+    await dialog.getByLabel("User Name").fill(TEST_ENTRY.tenKhach);
 
-    const amountInput = page.locator('label:has-text("Số tiền") ~ input').or(
-      page.locator('input[placeholder*="VND"]')
-    );
-    await amountInput.first().fill(String(TEST_ENTRY.soTienVnd));
+    await dialog.getByLabel("Real Pay (VND)").fill(String(TEST_ENTRY.soTienVnd));
 
-    const teamSelect = page.locator('select').or(
-      page.locator('label:has-text("Team") ~ select')
-    );
-    if (await teamSelect.first().isVisible()) {
-      await teamSelect.first().selectOption({ label: TEST_ENTRY.team });
+    const teamSelect = dialog.getByLabel("Team");
+    if (await teamSelect.isVisible()) {
+      await teamSelect.selectOption({ label: TEST_ENTRY.team });
     }
 
-    const noteInput = page.locator('label:has-text("Ghi chú") ~ input, label:has-text("Ghi chú") ~ textarea');
-    if (await noteInput.first().isVisible()) {
-      await noteInput.first().fill(TEST_ENTRY.note);
+    const noteInput = dialog.getByLabel("Ghi chú");
+    if (await noteInput.isVisible()) {
+      await noteInput.fill(TEST_ENTRY.note);
     }
 
-    const submitBtn = page.locator("button:has-text('Lưu')").or(
-      page.locator("button:has-text('Tạo')").last()
-    );
+    const submitBtn = dialog.locator("button[type=submit]");
     await submitBtn.click();
     await page.waitForTimeout(2_000);
 
@@ -161,9 +158,9 @@ test.describe.serial("Revenue & Reporting: Sổ doanh thu → BC03", () => {
     await expectModuleLoaded(page, "Sổ doanh thu");
     await waitForLoaded(page);
 
-    const teamSelect = page.locator('select').first();
+    const teamSelect = page.getByLabel("Team");
     if (await teamSelect.isVisible()) {
-      await teamSelect.selectOption({ label: "Inhouse 1" });
+      await teamSelect.selectOption({ label: TEST_ENTRY.team });
       await page.waitForTimeout(1_500);
     }
 
@@ -188,10 +185,10 @@ test.describe.serial("Revenue & Reporting: Sổ doanh thu → BC03", () => {
     await expectModuleLoaded(page, "BC03");
 
     await expect(
-      page.locator('input[type="month"]').or(page.locator('select').first())
+      page.locator('input[type="month"]').or(page.locator('select').first()).first()
     ).toBeVisible({ timeout: 10_000 });
 
-    await expect(page.locator("text=Revenue").or(page.locator("text=Doanh thu"))).toBeVisible({ timeout: 10_000 });
+    await expect(page.locator("text=Revenue").or(page.locator("text=Doanh thu")).first()).toBeVisible({ timeout: 10_000 });
 
     await page.screenshot({ path: "e2e-results/bc03-smoke.png" });
   });
@@ -206,18 +203,67 @@ test.describe.serial("Revenue & Reporting: Sổ doanh thu → BC03", () => {
     const emptyState = page.locator("text=Chưa có dữ liệu").or(page.locator("text=Không có"));
     await expect(dataTable.or(emptyState)).toBeVisible({ timeout: 15_000 });
 
-    const trialTab = page.locator("button:has-text('Trial')").or(page.locator("text=Trial"));
-    if (await trialTab.isVisible()) {
-      await trialTab.click();
+    const trialTab = page.locator("main").getByRole("button", { name: "Trial", exact: false });
+    if (await trialTab.first().isVisible().catch(() => false)) {
+      await trialTab.first().click();
       await page.waitForTimeout(2_000);
       await page.screenshot({ path: "e2e-results/bc03-trial.png" });
     }
 
-    const referralTab = page.locator("button:has-text('Referral')").or(page.locator("text=Referral"));
-    if (await referralTab.isVisible()) {
-      await referralTab.click();
+    const referralTab = page.locator("main").getByRole("button", { name: "Referral", exact: false });
+    if (await referralTab.first().isVisible().catch(() => false)) {
+      await referralTab.first().click();
       await page.waitForTimeout(2_000);
       await page.screenshot({ path: "e2e-results/bc03-referral.png" });
     }
+  });
+});
+
+// BC03 mobile (Mobile Fix Pass 21/7, GC7): freeze-col Team/Nhân sự retuned cho
+// 375px — bắt Team bleed vào cột Total/ngày khi cuộn, trên cả 3 tab.
+test.describe("BC03 — Mobile 375px: no column crush", () => {
+  test("Doanh thu / Trial / Referral — không tràn ngang, không cột nén", async ({ page }) => {
+    // Điều hướng ở viewport desktop mặc định trước — nav mobile (<768px) đổi
+    // hẳn cơ chế (bottom bar "compact": item có children tự nhảy child[0]
+    // thay vì mở submenu; nút "Thêm" chỉ xuất hiện khi > 5 mục top-level, tuỳ
+    // theo quyền từng account) nên không đáng tin cậy để điều hướng tới đúng
+    // BC03. Vào bằng nav desktop cho chắc, RỒI mới resize xuống 375px để đo.
+    await page.goto("/");
+    await navigateTo(page, "BC03 — Báo cáo tổng bộ");
+    await expectModuleLoaded(page, "BC03");
+    await waitForLoaded(page);
+
+    await page.setViewportSize({ width: 375, height: 812 });
+    await page.waitForTimeout(300);
+
+    await assertNoHorizontalOverflow(page);
+    const revenueTable = page.locator("table").first();
+    if (await revenueTable.isVisible({ timeout: 5_000 }).catch(() => false)) {
+      await assertNoColumnCrush(revenueTable);
+    }
+
+    const trialTab = page.locator("main").getByRole("button", { name: "Trial", exact: false }).first();
+    if (await trialTab.isVisible().catch(() => false)) {
+      await trialTab.click();
+      await page.waitForTimeout(1_500);
+      await assertNoHorizontalOverflow(page);
+      const trialTable = page.locator("table").first();
+      if (await trialTable.isVisible({ timeout: 5_000 }).catch(() => false)) {
+        await assertNoColumnCrush(trialTable);
+      }
+    }
+
+    const referralTab = page.locator("main").getByRole("button", { name: "Referral", exact: false }).first();
+    if (await referralTab.isVisible().catch(() => false)) {
+      await referralTab.click();
+      await page.waitForTimeout(1_500);
+      await assertNoHorizontalOverflow(page);
+      const referralTable = page.locator("table").first();
+      if (await referralTable.isVisible({ timeout: 5_000 }).catch(() => false)) {
+        await assertNoColumnCrush(referralTable);
+      }
+    }
+
+    await page.screenshot({ path: "e2e-results/bc03-mobile-crush-check.png" });
   });
 });

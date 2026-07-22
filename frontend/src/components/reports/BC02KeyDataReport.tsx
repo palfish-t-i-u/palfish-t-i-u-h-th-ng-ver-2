@@ -93,7 +93,7 @@ export default function BC02KeyDataReport() {
         <label className="text-sm text-gmv-muted">
           Team
           <select
-            className="mt-1 block min-h-10 rounded-gmv-md border border-gmv-border px-3 text-sm"
+            className="mt-1 block min-h-10 w-full min-w-0 max-w-full rounded-gmv-md border border-gmv-border px-3 text-sm"
             value={team}
             onChange={(e) => setTeam(e.target.value)}
           >

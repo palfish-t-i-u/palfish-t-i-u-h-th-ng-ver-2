@@ -412,13 +412,16 @@ function MonthRanking({ rows, loading }: { rows: DashboardSaleRow[]; loading: bo
         title={`Bảng xếp hạng tháng ${new Date().getMonth() + 1}`}
         action={<span className="rounded-full bg-[#F0EBFF] px-3 py-1 text-xs font-bold text-[#6C5CE7]">{rows.length} sales</span>}
       />
-      <div className="grid grid-cols-[44px_minmax(140px,1.4fr)_minmax(88px,0.8fr)_minmax(88px,0.8fr)_80px_64px] gap-2 border-b border-[#E8EAF2] px-4 py-1.5 text-[10px] font-extrabold uppercase tracking-wide text-[#9AA1B3] max-md:grid-cols-[36px_minmax(0,1fr)_78px_60px] max-md:px-3">
+      <div className="grid grid-cols-[44px_minmax(140px,1.4fr)_minmax(88px,0.8fr)_minmax(88px,0.8fr)_80px_64px] gap-2 border-b border-[#E8EAF2] px-4 py-1.5 text-[10px] font-extrabold uppercase tracking-wide text-[#9AA1B3] max-md:grid-cols-[32px_minmax(0,1fr)_70px_46px] max-md:px-3">
         <span>Hạng</span>
         <span>Nhân viên</span>
         <span className="max-md:hidden">Team</span>
         <span className="max-md:hidden">Subteam</span>
         <span className="text-right">Doanh thu</span>
-        <span className="text-right">Đơn b.động</span>
+        <span className="text-right">
+          <span className="md:hidden">Đơn</span>
+          <span className="hidden md:inline">Đơn b.động</span>
+        </span>
       </div>
       <div className="min-h-0 flex-1 divide-y divide-[#E8EAF2] overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-[#c4b5fd] max-md:overflow-visible">
         {loading && rows.length === 0 ? <div className="py-8 text-center text-sm text-gmv-muted">Đang tải bảng xếp hạng...</div> : null}
@@ -428,7 +431,7 @@ function MonthRanking({ rows, loading }: { rows: DashboardSaleRow[]; loading: bo
             key={`${row.sale_crm_name}-${row.rank}`}
             className={cn(
               "grid min-h-[38px] grid-cols-[44px_minmax(140px,1.4fr)_minmax(88px,0.8fr)_minmax(88px,0.8fr)_80px_64px] items-center gap-2 px-4 text-[13px]",
-              "max-md:grid-cols-[36px_minmax(0,1fr)_78px_60px] max-md:px-3",
+              "max-md:grid-cols-[32px_minmax(0,1fr)_70px_46px] max-md:px-3",
               index === 0 && "bg-[#FFF9EC]",
               index === 1 && "bg-[#F8FAFF]",
               index === 2 && "bg-[#FFF6F1]"
@@ -457,7 +460,10 @@ function MonthRanking({ rows, loading }: { rows: DashboardSaleRow[]; loading: bo
             </div>
             <div className="truncate text-[#4B5572] max-md:hidden">{row.team || "—"}</div>
             <div className="truncate text-[#4B5572] max-md:hidden">{subTeamLabel(row.sub_team) || "—"}</div>
-            <div className="text-right font-extrabold text-[#101426]">{formatRevenueMillions(row.gmv_vnd)}</div>
+            <div className="text-right font-extrabold text-[#101426]">
+              <span className="md:hidden">{formatVndCompact(row.gmv_vnd)}</span>
+              <span className="hidden md:inline">{formatRevenueMillions(row.gmv_vnd)}</span>
+            </div>
             <div className="text-right font-semibold text-[#4B5572]">{row.order_count > 0 ? row.order_count : "—"}</div>
           </div>
         ))}
@@ -487,7 +493,7 @@ function WeeklyRewards({ tasks }: { tasks: GamificationTaskItem[] }) {
       />
       <div className="min-h-0 flex-1 divide-y divide-[#E8EAF2] overflow-y-auto">
         {visibleTasks.map((item) => (
-          <div key={item.id} className="flex items-center gap-4 px-5 py-3">
+          <div key={item.id} className="flex items-center gap-4 max-md:gap-3 px-5 py-3">
             <span
               className={cn(
                 "flex h-8 w-8 shrink-0 items-center justify-center rounded-[8px]",
@@ -510,7 +516,7 @@ function WeeklyRewards({ tasks }: { tasks: GamificationTaskItem[] }) {
                 <span className="text-xs text-[#8A92A6]">{item.description}</span>
               </div>
             </div>
-            <div className="shrink-0 text-right text-lg font-extrabold text-[#E56B00]">{item.reward}</div>
+            <div className="shrink-0 text-right text-lg max-md:text-base font-extrabold text-[#E56B00]">{item.reward}</div>
           </div>
         ))}
       </div>

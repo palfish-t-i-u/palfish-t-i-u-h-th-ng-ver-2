@@ -1018,3 +1018,64 @@
   .aa-tabs { overflow-x: auto; -webkit-overflow-scrolling: touch; }
   .aa-tab { padding: 8px 12px; font-size: 13px; white-space: nowrap; }
 }
+
+/* ── Mobile reflow: drawer body + modals (Task 2) ── */
+@media (max-width: 767px) {
+
+  /* 1. Summary bar: 4 cols → 2×2 grid */
+  .aa-summary-bar { grid-template-columns: 1fr 1fr; }
+  .aa-summary-cell { border-bottom: 1px solid var(--gmv-border); }
+  .aa-summary-cell:nth-child(2n) { border-right: none; }
+  .aa-summary-cell:nth-child(n+3) { border-bottom: none; }
+
+  /* 2. Info grid: 2 cols → 1 col (email không tràn) */
+  .aa-info-grid { grid-template-columns: 1fr; }
+
+  /* 3. Role cards: 3 cols → 1 col */
+  .aa-role-cards { grid-template-columns: 1fr; }
+
+  /* 4. Drawer footer: wrap + last button full-width (GC3) */
+  .aa-drawer-footer { flex-wrap: wrap; gap: 8px; }
+  .aa-drawer-footer-spacer { display: none; }
+  .aa-drawer-footer > button { flex: 1 1 auto; }
+  .aa-drawer-footer > button:last-child { flex: 1 1 100%; }
+
+  /* 5. Section header: title + CRM buttons wrap */
+  .aa-section-header { flex-wrap: wrap; gap: 8px; }
+
+  /* 6. Drawer badges: ẩn status trùng (đã hiện ở summary bar) */
+  .aa-drawer-badges .aa-status { display: none; }
+
+  /* 7. CRM picker filter: search full-row (GC3) */
+  .aa-crm-modal-filters { flex-wrap: wrap; }
+  .aa-crm-modal-filters .aa-search { flex: 1 1 100%; }
+  .aa-crm-modal-footer { flex-wrap: wrap; gap: 10px; }
+
+  /* 8. CRM picker table: scroll ngang + ẩn 2 cột phụ */
+  .aa-crm-table-wrap { overflow-x: auto; }
+  /* col 4 = Sub-team, col 6 = Mã yêu cầu */
+  .aa-crm-table th:nth-child(4),
+  .aa-crm-table td:nth-child(4),
+  .aa-crm-table th:nth-child(6),
+  .aa-crm-table td:nth-child(6) { display: none; }
+
+  /* 9. Delete modal CRM col */
+  .aa-delete-col-crm { display: none; }
+
+  /* 10. Header mobile: stack — vai trò + nút đóng lên hàng trên (căn phải),
+     danh tính (pill + tên) full-width bên dưới. Tránh dồn pill + email dài +
+     badge + X vào 1 hàng space-between → tên wrap từng ký tự + đè lên nhau (GC5). */
+  .aa-drawer-header { flex-wrap: wrap; }
+  .aa-drawer-badges { order: -1; flex: 1 1 100%; justify-content: flex-end; margin-bottom: 6px; }
+  .aa-drawer-header-left { flex: 1 1 100%; min-width: 0; flex-direction: column; align-items: flex-start; gap: 6px; }
+  .aa-drawer-header-left > div { min-width: 0; width: 100%; }
+  .aa-drawer-name { overflow-wrap: anywhere; }
+
+  /* 11. iOS/WebKit: header là sticky nhưng scroll-container là sibling
+     (.aa-drawer-scroll) → WebKit chèn khoảng trống lớn phía trên header.
+     Header vốn là child đầu của flex-column, không cần sticky → tắt trên mobile.
+     min-height:0 cho scroll child (chuẩn flexbox overflow). */
+  .aa-drawer-header { position: static; }
+  .aa-drawer-scroll { min-height: 0; }
+}
+

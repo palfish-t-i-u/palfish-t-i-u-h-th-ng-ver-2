@@ -34,7 +34,7 @@ async function main() {
     for (const entry of entries) {
       try {
         await api.deleteLedgerEntry(entry.id);
-        console.log(`  Deleted ledger ${entry.id} (${entry.ten_khach})`);
+        console.log(`  Deleted ledger ${entry.id} (${entry.tenKhach})`);
       } catch (err) {
         console.warn(`  Failed to delete ledger ${entry.id}:`, err);
       }
