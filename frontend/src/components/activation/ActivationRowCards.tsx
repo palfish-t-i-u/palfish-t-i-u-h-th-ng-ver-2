@@ -67,9 +67,9 @@ export default function ActivationRowCards({
                 {a.holdActivation && a.status !== "activated" && a.status !== "invoiced" && (
                   <span
                     className="badge badge-warning"
-                    title={a.holdNote ? `Chưa kích hoạt — "${a.holdNote}"` : "Chưa kích hoạt"}
+                    title={a.holdNote ? `Chưa muốn kích hoạt — "${a.holdNote}"` : "Chưa muốn kích hoạt"}
                   >
-                    ⏸ Chưa KH
+                    ⏸ Chưa muốn KH
                   </span>
                 )}
               </>
