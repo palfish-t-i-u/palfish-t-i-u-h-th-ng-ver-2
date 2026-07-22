@@ -2226,25 +2226,28 @@ export default function ActivationTab() {
               </button>
             ))}
           </div>
-          <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
-            <span style={{ fontSize: 11.5, color: "var(--text-3)", marginRight: 4 }}>Kích hoạt:</span>
-            {([
-              { id: "all" as const, label: "Tất cả" },
-              { id: "now" as const, label: "Kích hoạt ngay" },
-              { id: "hold" as const, label: "Chưa muốn KH" },
-            ]).map((f) => (
-              <button
-                key={f.id}
-                type="button"
-                className={`filter-chip ${holdFilter === f.id ? "active" : ""}`}
-                onClick={() => setHoldFilter(f.id)}
-              >
-                {f.label}
-              </button>
-            ))}
-          </div>
-          <div style={{ marginLeft: "auto" }}>
-            <DateRangeFilter value={dateRange} onChange={setDateRange} />
+          {/* Hàng dưới (dưới "Thưởng giới thiệu"): nhóm "Kích hoạt" trái + "Khoảng thời gian" phải */}
+          <div style={{ flexBasis: "100%", display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center" }}>
+            <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+              <span style={{ fontSize: 11.5, color: "var(--text-3)", marginRight: 4 }}>Kích hoạt:</span>
+              {([
+                { id: "all" as const, label: "Tất cả" },
+                { id: "now" as const, label: "Kích hoạt ngay" },
+                { id: "hold" as const, label: "Chưa muốn KH" },
+              ]).map((f) => (
+                <button
+                  key={f.id}
+                  type="button"
+                  className={`filter-chip ${holdFilter === f.id ? "active" : ""}`}
+                  onClick={() => setHoldFilter(f.id)}
+                >
+                  {f.label}
+                </button>
+              ))}
+            </div>
+            <div style={{ marginLeft: "auto" }}>
+              <DateRangeFilter value={dateRange} onChange={setDateRange} />
+            </div>
           </div>
         </div>
 
