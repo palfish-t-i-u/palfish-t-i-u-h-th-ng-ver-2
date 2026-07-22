@@ -1019,6 +1019,22 @@ function ActivationDetailDrawer({
         </div>
 
         <div className="drawer-body ar-drawer-body" ref={arBodyScrollRef}>
+          {enriched.holdActivation && enriched.status !== "activated" && enriched.status !== "invoiced" && (
+            <div style={{
+              padding: "10px 14px", borderRadius: 10,
+              border: "1px solid #ffd54f", background: "#fffde7",
+              fontSize: 12.5, marginBottom: 12,
+              display: "flex", alignItems: "flex-start", gap: 8,
+            }}>
+              <span style={{ fontSize: 16, flexShrink: 0, marginTop: 1 }}>⏸</span>
+              <div>
+                <strong style={{ color: "#f57f17" }}>PH chưa muốn kích hoạt</strong>
+                <div style={{ marginTop: 2, color: "var(--text-2)" }}>
+                  {enriched.holdNote ? `“${enriched.holdNote}”` : "(sale không ghi lý do)"}
+                </div>
+              </div>
+            </div>
+          )}
           <div className="summary-row" style={{ gridTemplateColumns: pr ? "repeat(5, 1fr)" : "repeat(4, 1fr)" }}>
             <div className="summary">
               <div className="summary-label">Tổng giá trị courses</div>
@@ -2311,15 +2327,6 @@ export default function ActivationTab() {
                     >
                       <td>
                         <span className="ar-id-pill">{a.id}</span>
-                        {a.holdActivation && a.status !== "activated" && a.status !== "invoiced" && (
-                          <span
-                            className="badge badge-warning"
-                            style={{ marginLeft: 6, fontSize: 11 }}
-                            title={a.holdNote ? `Chưa kích hoạt — "${a.holdNote}"` : "Chưa kích hoạt"}
-                          >
-                            ⏸ Chưa KH
-                          </span>
-                        )}
                       </td>
                       <td>
                         {a.prId ? (
@@ -2362,7 +2369,18 @@ export default function ActivationTab() {
                         </span>
                       </td>
                       <td>
-                        <ARStatusBadge status={a.status} />
+                        <div style={{ display: "flex", flexDirection: "column", gap: 4, alignItems: "flex-start" }}>
+                          <ARStatusBadge status={a.status} />
+                          {a.holdActivation && a.status !== "activated" && a.status !== "invoiced" && (
+                            <span
+                              className="badge badge-warning"
+                              style={{ fontSize: 11 }}
+                              title={a.holdNote ? `Chưa muốn kích hoạt — "${a.holdNote}"` : "Chưa muốn kích hoạt"}
+                            >
+                              ⏸ Chưa muốn KH
+                            </span>
+                          )}
+                        </div>
                       </td>
                       <td>
                         {(() => {
