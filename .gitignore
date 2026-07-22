@@ -71,6 +71,8 @@ Thumbs.db
 !.claude/agents/*.md
 !.claude/skills/
 !.claude/skills/**
+# Exception-to-exception: skill offensive pentest CÁ NHÂN — không share, không push
+.claude/skills/security-self-audit/
 skills-lock.json
 .cursor/rules/caveman.mdc
 .clinerules/
