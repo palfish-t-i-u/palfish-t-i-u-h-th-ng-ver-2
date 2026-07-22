@@ -22,3 +22,4 @@ Written by the `extract-approach` skill. One insight per file.
 - [button-gate-existence-vs-resource](button-gate-existence-vs-resource.md) — gate nút theo hasX = one-shot khoá oan việc resumable; gate theo tài-nguyên-còn-lại (remaining>0) cho việc làm nhiều đợt
 - [shared-toolbar-filter-dead-on-parallel-tab](2026-07-20-shared-toolbar-filter-dead-on-parallel-tab.md) — toolbar search/date dùng chung nhưng tab CK ngoài render list riêng (bankPendingTxns) không đọc filter state → control chết câm; mỗi memo list phải tiêu thụ đủ filter
 - [dingtalk-markdown-line-break-br-tag](dingtalk-markdown-line-break-br-tag.md) — DingTalk sampleMarkdown render trailing-space thành visible space; dùng `<br>` cho line break
+- [egress-visibility-gate-before-slim-payload](egress-visibility-gate-before-slim-payload.md) — egress = size×frequency×tabs; gate visibility (FE-only, cắt tab ẩn refetch) TRƯỚC, slim payload SAU; gate FETCH không gate subscription
