@@ -1061,5 +1061,14 @@
 
   /* 9. Delete modal CRM col */
   .aa-delete-col-crm { display: none; }
+
+  /* 10. Header mobile: stack — vai trò + nút đóng lên hàng trên (căn phải),
+     danh tính (pill + tên) full-width bên dưới. Tránh dồn pill + email dài +
+     badge + X vào 1 hàng space-between → tên wrap từng ký tự + đè lên nhau (GC5). */
+  .aa-drawer-header { flex-wrap: wrap; }
+  .aa-drawer-badges { order: -1; flex: 1 1 100%; justify-content: flex-end; margin-bottom: 6px; }
+  .aa-drawer-header-left { flex: 1 1 100%; min-width: 0; flex-direction: column; align-items: flex-start; gap: 6px; }
+  .aa-drawer-header-left > div { min-width: 0; width: 100%; }
+  .aa-drawer-name { overflow-wrap: anywhere; }
 }
 
