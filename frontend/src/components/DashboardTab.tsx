@@ -418,7 +418,7 @@ function MonthRanking({ rows, loading }: { rows: DashboardSaleRow[]; loading: bo
         <span className="max-md:hidden">Team</span>
         <span className="max-md:hidden">Subteam</span>
         <span className="text-right">Doanh thu</span>
-        <span className="text-right whitespace-nowrap">
+        <span className="text-right">
           <span className="md:hidden">Đơn</span>
           <span className="hidden md:inline">Đơn b.động</span>
         </span>

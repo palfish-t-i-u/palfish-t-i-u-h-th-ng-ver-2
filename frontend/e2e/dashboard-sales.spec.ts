@@ -87,7 +87,7 @@ test.describe("Bảng thông tin — mobile 375px (BXH tháng)", () => {
 
     // Header cột đơn rút gọn còn "Đơn" (không phải "Đơn b.động" wrap 60px cũ)
     await expect(page.getByText("Đơn", { exact: true })).toBeVisible();
-    await expect(page.getByText("Đơn b.động")).toBeHidden();
+    await expect(page.getByText("Đơn b.động", { exact: true })).toBeHidden();
 
     // Doanh thu mobile dùng formatVndCompact ("500 tr" / "1,2 tỷ"), không phải
     // "1.234,56 tr" (formatRevenueMillions, 2 số thập phân) — regex kết thúc bằng tr/tỷ, không dấu phẩy thập phân.
