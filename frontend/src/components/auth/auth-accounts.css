@@ -1070,5 +1070,12 @@
   .aa-drawer-header-left { flex: 1 1 100%; min-width: 0; flex-direction: column; align-items: flex-start; gap: 6px; }
   .aa-drawer-header-left > div { min-width: 0; width: 100%; }
   .aa-drawer-name { overflow-wrap: anywhere; }
+
+  /* 11. iOS/WebKit: header là sticky nhưng scroll-container là sibling
+     (.aa-drawer-scroll) → WebKit chèn khoảng trống lớn phía trên header.
+     Header vốn là child đầu của flex-column, không cần sticky → tắt trên mobile.
+     min-height:0 cho scroll child (chuẩn flexbox overflow). */
+  .aa-drawer-header { position: static; }
+  .aa-drawer-scroll { min-height: 0; }
 }
 
