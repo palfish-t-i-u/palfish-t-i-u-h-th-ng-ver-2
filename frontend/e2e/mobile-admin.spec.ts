@@ -27,8 +27,10 @@ test.describe("Mobile GĐ3: Báo cáo + Admin", () => {
     // Check if user has admin view or is seeing warning box
     const warnBox = page.getByText(/Chỉ Admin \(System\) có quyền/i);
     if (await warnBox.isVisible({ timeout: 2_000 }).catch(() => false)) {
-      // Non-admin account in test env
-      return;
+      // Non-admin account: matrix không render → assertNoColumnCrush bên dưới
+      // vô nghĩa. Skip tường minh thay vì pass giả trên warn box
+      // (plan GC7 — "KHÔNG để pass giả"). Cấp storageState System-admin để bật lại.
+      test.skip(true, "Perms matrix cần session System-admin — provision storageState rồi re-enable");
     }
 
     const matrix = page.locator(".pm-matrix").first();

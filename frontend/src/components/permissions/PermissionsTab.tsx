@@ -296,7 +296,7 @@ export default function PermissionsTab() {
                   {modulesBySection[section].map((mod) => (
                     <tr key={mod.key} className="pm-module-row">
                       <td>
-                        <div className="pm-module-name">{mod.label}</div>
+                        <div className="pm-module-name" title={mod.label}>{mod.label}</div>
                         <div className="pm-module-desc">{mod.description}</div>
                       </td>
                       {DEPARTMENT_LIST.map((dept) => {
