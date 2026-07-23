@@ -11,6 +11,9 @@ class _FakeQuery:
     def select(self, *_args, **_kwargs):
         return self
 
+    def order(self, *_a, **_k):
+        return self
+
     def like(self, column: str, pattern: str):
         self._like_filters.append((column, pattern))
         return self
@@ -123,8 +126,8 @@ def test_pattern_x_renamed_customer_is_skipped(monkeypatch):
     result = _run_sync(monkeypatch, [old_row], [renamed])
 
     assert result["fetched"] == 1
-    assert result["skippedExisting"] == 0
-    assert result["skippedLoose"] == 1
+    assert result["skippedExisting"] == 1  # exact key = uid|ngày|tiền (không SĐT) → khớp exact
+    assert result["skippedLoose"] == 0
     assert result["plannedInsert"] == 0
 
 
@@ -147,7 +150,7 @@ def test_pattern_x_with_exact_match_payload_present(monkeypatch):
     result = _run_sync(monkeypatch, [old_row], [renamed, unchanged])
 
     assert result["skippedExisting"] == 1
-    assert result["skippedLoose"] == 1
+    assert result["dupSuspect"] == 1
     assert result["plannedInsert"] == 0
 
 
@@ -161,6 +164,7 @@ def test_blank_uid_early_row_absorbs_filled_version(monkeypatch):
         "so_tien_vnd": 9_010_000,
         "sale_crm_name": "Nguyen Thi Thao Ngoc",
         "sdt": None,
+        "ten_khach": "Minh",
         "created_by_email": "import:gsheet:SM Hanoi",
     }
     filled = _gsheet_payload(
