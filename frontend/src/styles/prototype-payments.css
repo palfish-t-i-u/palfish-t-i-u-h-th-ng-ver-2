@@ -2122,6 +2122,20 @@
   .gmv-prototype .pagi-btn { min-width: 32px; min-height: 32px; }
 }
 
+/* ── iOS auto-zoom fix: Safari/WebKit zoom vào khi focus input có font-size < 16px.
+   Ép ≥16px mọi input text/select/textarea trên mobile → hết auto-zoom. Nguồn cơn lỗi
+   TVTS filter: focus ô "Tìm TVTS…" (12.5px) → iOS zoom vào → user zoom-out tay → iOS
+   discard trang (máy nhiều tab, ít RAM) → reload về Bảng thông tin. Chặn zoom = chặn
+   cả chuỗi. Checkbox/radio loại trừ (không dính auto-zoom). Desktop (min-768) 0 delta.
+   !important vì rule component (vd .tvts-filter__head input) đặc hiệu hơn selector chung. ── */
+@media (max-width: 767px) {
+  .gmv-prototype input:not([type="checkbox"]):not([type="radio"]),
+  .gmv-prototype select,
+  .gmv-prototype textarea {
+    font-size: 16px !important;
+  }
+}
+
 @media (min-width: 768px) {
   .gmv-prototype .mobile-card-list { display: none; }
 }
