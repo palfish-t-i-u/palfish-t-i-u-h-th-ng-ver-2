@@ -67,6 +67,7 @@
 ### E2E toàn flow
 - `frontend/e2e/journeys/payment-lifecycle.spec.ts` — B1→B2→B3→B4
 - `frontend/e2e/payment-tvts-filter.spec.ts` — filter TVTS
+- `frontend/e2e/pr-transfer-smoke.spec.ts` — smoke tạo hộ + chuyển giao PR (chạy `--config playwright.sandbox.config.ts` → sandbox thật)
 
 ## 4. Đối soát thẻ (mPOS / Payoo)
 
