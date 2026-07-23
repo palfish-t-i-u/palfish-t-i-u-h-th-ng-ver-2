@@ -2069,6 +2069,13 @@
 @media (max-width: 767px) {
   .gmv-prototype .drawer {
     width: 100vw;
+    /* 100vh trên mobile = chiều cao KHI thanh địa chỉ ẩn (lớn nhất). Khi thanh địa
+       chỉ Chrome còn hiện, drawer position:fixed cao hơn vùng nhìn thực → .drawer-foot
+       (nút "Yêu cầu kích hoạt") rớt xuống dưới mép, body khóa cuộn nên không tới được.
+       100dvh = chiều cao vùng nhìn hiện tại → foot luôn trong tầm nhìn.
+       Cascade sang .ar-drawer/.invoice-drawer/.recon-drawer (đều là .drawer). */
+    height: 100dvh;
+    max-height: 100dvh;
   }
   .gmv-prototype .drawer-back-mobile {
     display: flex;
