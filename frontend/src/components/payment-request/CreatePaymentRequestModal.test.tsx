@@ -1,6 +1,31 @@
 import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import CreatePaymentRequestModal from "./CreatePaymentRequestModal";
+
+// Modal gọi useMe (ô "Sale sở hữu PR" cho leader+) — mock theo convention repo.
+let mockRole = "sale";
+vi.mock("../../hooks/useMe", () => ({
+  useMe: () => ({ profile: { role: mockRole, email: "test@pf.vn", displayName: "Tester", crmName: "Tester" } }),
+}));
+vi.mock("../../lib/api", () => ({
+  endpoints: {
+    paymentRequests: {
+      ownerOptions: vi.fn().mockResolvedValue({
+        data: {
+          role: "leader",
+          options: [
+            { email: "test@pf.vn", name: "Tester", role: "leader", sub_team: "Team Nina", is_self: true },
+            { email: "salea@pf.vn", name: "Sale A", role: "sale", sub_team: "Team Nina" },
+          ],
+        },
+      }),
+    },
+  },
+}));
+
+beforeEach(() => {
+  mockRole = "sale";
+});
 
 function renderModal(onSubmit = vi.fn().mockResolvedValue(undefined)) {
   const onClose = vi.fn();
@@ -121,6 +146,35 @@ describe("CreatePaymentRequestModal — UID optional", () => {
 
     await vi.waitFor(() => screen.getByText(/Đang tạo/i));
     resolveSubmit();
+  });
+});
+
+describe("CreatePaymentRequestModal — tạo hộ (22/7)", () => {
+  it("sale KHÔNG thấy ô 'Sale sở hữu PR'", () => {
+    mockRole = "sale";
+    renderModal();
+    expect(screen.queryByText("Sale sở hữu PR")).toBeNull();
+  });
+
+  it("leader thấy ô 'Sale sở hữu PR' sau khi options load", async () => {
+    mockRole = "leader";
+    renderModal();
+    await vi.waitFor(() => expect(screen.getByText("Sale sở hữu PR")).toBeInTheDocument());
+    expect(screen.getByText(/ghi nhật ký/i)).toBeInTheDocument();
+  });
+
+  it("leader không chọn ai → payload.owner_sale_email undefined (tạo thường)", async () => {
+    mockRole = "leader";
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    renderModal(onSubmit);
+    await vi.waitFor(() => expect(screen.getByText("Sale sở hữu PR")).toBeInTheDocument());
+    fillRequiredFields();
+
+    const submitBtn = screen.getByRole("button", { name: /Tạo PR-ID/i });
+    fireEvent.click(submitBtn);
+
+    await vi.waitFor(() => expect(onSubmit).toHaveBeenCalledOnce());
+    expect(onSubmit.mock.calls[0][0].owner_sale_email).toBeUndefined();
   });
 });
 

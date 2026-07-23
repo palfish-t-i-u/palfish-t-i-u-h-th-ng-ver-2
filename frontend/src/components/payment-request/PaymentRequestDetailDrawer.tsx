@@ -45,6 +45,8 @@ import { normalizeLocalPhone, crmPhoneFormat, formatPhoneIntl, applySmartPhoneIn
 import { nextCourseCode } from "../payment-flow/paymentFlowUtils";
 import { endpoints } from "../../lib/api";
 import PrStaleContentWarning from "./PrStaleContentWarning";
+import TransferSaleModal from "./TransferSaleModal";
+import OwnershipLogSection from "./OwnershipLogSection";
 import { MoneyInput } from "../ui/MoneyInput";
 import { findPaidLinesWithoutBill } from "./billGuardUtils";
 
@@ -1574,6 +1576,7 @@ export default function PaymentRequestDetailDrawer({
   readOnly = false,
   detailLoading = false,
   onRefreshLineContent,
+  onTransferred,
 }: {
   request: PaymentRequest | null;
   open: boolean;
@@ -1604,7 +1607,11 @@ export default function PaymentRequestDetailDrawer({
   onRefreshLineContent?: (line: PaymentAttempt) => Promise<void>;
   /** B3 (16/7) — Báo đơn hoàn thành. reason bắt buộc từ lần báo thứ 2 (BE validate, modal soft-block). */
   onReportComplete: (reason?: string) => Promise<void>;
+  /** Tạo hộ/chuyển giao (22/07): gọi sau khi chuyển sale thành công để parent reload list. */
+  onTransferred?: () => void | Promise<void>;
 }) {
+  const { profile: meProfile } = useMe();
+  const [transferOpen, setTransferOpen] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
   const [editing, setEditing] = useState(false);
   const [savingEdit, setSavingEdit] = useState(false);
@@ -2543,6 +2550,7 @@ export default function PaymentRequestDetailDrawer({
         </div>
 
         <div style={{ padding: "0 20px 12px" }}>
+          <OwnershipLogSection prId={request.id} />
           <AuditTrail targetType="payment_request" targetId={request.id} />
         </div>
 
@@ -2578,6 +2586,17 @@ export default function PaymentRequestDetailDrawer({
                 style={!canRemindActivation ? { opacity: 0.6 } : undefined}
               >
                 <Icons.Bell size={13} /> {activationRemindSending ? "Đang gửi…" : !canRemindActivation ? "Đã nhắc kích hoạt" : "Nhắc kích hoạt gấp"}
+              </button>
+            )}
+            {!readOnly && request.state !== "cancelled" &&
+              (meProfile?.role === "leader" || meProfile?.role === "manager" || meProfile?.role === "system" ||
+                (meProfile?.role === "sale" && (!request.saleEmail || request.saleEmail.toLowerCase() === meProfile.email.toLowerCase()))) && (
+              <button
+                className="btn btn-outline btn-sm"
+                title="Chuyển PR sang sale khác — doanh thu/KPI/thông báo từ giờ theo sale mới, có ghi nhật ký"
+                onClick={() => setTransferOpen(true)}
+              >
+                <Icons.User size={13} /> {meProfile?.role === "sale" ? "Bàn giao cho leader" : "Chuyển sale"}
               </button>
             )}
             {canCancel && !readOnly && (
@@ -2623,6 +2642,15 @@ export default function PaymentRequestDetailDrawer({
           </div>
         </div>
       </aside>
+      <TransferSaleModal
+        pr={transferOpen ? request : null}
+        onClose={() => setTransferOpen(false)}
+        onTransferred={async () => {
+          setTransferOpen(false);
+          onClose();
+          await onTransferred?.();
+        }}
+      />
       {arPackageModalOpen && (() => {
         const arTotal = arDraftRows.reduce((s, r) => s + (r.amount || 0), 0);
         const arReceived = Math.max(0, request.received);

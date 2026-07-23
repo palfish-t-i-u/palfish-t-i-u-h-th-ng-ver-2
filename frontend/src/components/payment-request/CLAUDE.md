@@ -14,6 +14,15 @@ PR và AR lưu UID độc lập. Sale sửa UID ở PR không tự cập nhật 
 - Drawer kích hoạt hiện badge đỏ khi `uids_data.uid != payment_requests.uid`
 - KHÔNG bao giờ ghi đè âm thầm (G-UID1 — effect never-overwrite)
 
+## Tạo hộ + chuyển giao PR (22/07)
+
+`payment_requests.sale_email` = cột sở hữu DUY NHẤT — list scope, Zalo/DingTalk, AR embed, sổ doanh thu đều resolve từ nó lúc runtime. Đổi chủ = đổi cột này (qua endpoint transfer, KHÔNG qua PATCH).
+
+- Trục chuyển: sale ↔ leader. Không sale ↔ sale 1 bước (kể cả leader thao tác) — đi 2 bước qua leader, mỗi bước 1 dòng `pr_ownership_log`.
+- `is_test` theo CHỦ SỞ HỮU, không theo người bấm; transfer đổi @dev ↔ thật phải sync `payment_lines.is_test` (BE làm sẵn).
+- Doanh thu đã chốt không đổi hồi tố: `sync_ledger_from_ar_course` là insert-once (check `crm_order_id` rồi return) — đừng "sửa" điều này khi refactor.
+- Nhật ký bắt buộc với transfer: ghi log fail → BE revert sale_email. FE: TransferSaleModal + OwnershipLogSection.
+
 ## Báo đơn bổ sung
 
 Append bé/gói vào AR đã tạo (thay vì tạo AR mới). Modal báo đơn bổ sung có SĐT per bé.

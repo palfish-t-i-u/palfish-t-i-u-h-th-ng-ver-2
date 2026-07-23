@@ -22,7 +22,7 @@ from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
 from rbac import resolve_actor, visible_creator_emails, can_confirm_payment
-from admin_routes import require_module_write
+from admin_routes import require_module_access, require_module_write
 from activation_routes import _compute_referral_status
 
 from payos_qr import create_payos_payment_link, fetch_payos_payment, payos_payment_is_paid
@@ -128,12 +128,19 @@ class PaymentRequestCreate(BaseModel):
     lead_channel: str | None = None
     wants_invoice: bool | None = None
     children: list[dict] | None = None  # [{name, uid?}] — bé 1 + bé 2+; BE tách bé 1 vào child_name/uid
+    # Tạo hộ: Leader/Manager chọn sale sở hữu PR (bỏ qua/bằng email mình = tạo thường)
+    owner_sale_email: str | None = None
 
     uid_khach_hang: str | None = None
     ten_khach: str | None = None
     sdt: str | None = None
     dia_chi: str | None = None
     tong_tien_phai_thu: int | str | None = None
+
+
+class PaymentRequestTransferBody(BaseModel):
+    to_sale_email: str
+    reason: str | None = None
 
 
 class PaymentRequestPatch(BaseModel):
@@ -855,6 +862,94 @@ def _can_access_request(sb, actor: Any, pr_row: dict[str, Any]) -> bool:
     row_email = _clean_text(pr_row.get("sale_email")).lower()
     allowed = {str(email).strip().lower() for email in allowed_emails if str(email).strip()}
     return bool(row_email) and row_email in allowed
+
+
+# ---------------------------------------------------------------------------
+# Tạo hộ + chuyển giao PR (đề xuất Sale Leader 22/07)
+# Trục chuyển: sale ↔ leader. Không sale ↔ sale trực tiếp (đi 2 bước qua leader).
+# ---------------------------------------------------------------------------
+
+_TRANSFER_ACTOR_ROLES = frozenset({"leader", "manager", "system"})
+_AXIS_ROLES = frozenset({"leader", "manager", "system"})
+
+
+def _staff_lookup(sb, email: str) -> dict[str, Any] | None:
+    """1 dòng nhan_su_sale theo email (case-insensitive). None nếu không có."""
+    e = str(email or "").strip().lower()
+    if not e:
+        return None
+    try:
+        res = (
+            sb.table("nhan_su_sale")
+            .select("email, role, team, sub_team, crm_name, display_name, is_active")
+            .ilike("email", e)
+            .limit(1)
+            .execute()
+        )
+    except Exception as exc:
+        print(f"[pr-ownership] staff lookup {e} failed: {exc}")
+        return None
+    return res.data[0] if res.data else None
+
+
+def _staff_display_name(staff: dict[str, Any] | None, fallback_email: str = "") -> str:
+    if not staff:
+        return fallback_email
+    return (
+        _clean_text(staff.get("display_name"))
+        or _clean_text(staff.get("crm_name"))
+        or _clean_text(staff.get("email"))
+        or fallback_email
+    )
+
+
+def _in_actor_scope(sb, actor: Any, email: str) -> bool:
+    allowed = visible_creator_emails(sb, actor)
+    if allowed is None:
+        return True
+    return email in {str(e).strip().lower() for e in allowed if str(e).strip()}
+
+
+def _resolve_owner_for_create(sb, actor: Any, owner_sale_email: str | None) -> str:
+    """Validate 'tạo hộ'. Trả email chủ sở hữu cuối cùng (lowercase)."""
+    owner = str(owner_sale_email or "").strip().lower()
+    if not owner or owner == actor.email.lower():
+        return actor.email.lower()
+    role = str(actor.role or "").strip().lower()
+    if role not in _TRANSFER_ACTOR_ROLES:
+        raise HTTPException(403, "Chỉ Leader/Manager được tạo PR hộ sale khác")
+    staff = _staff_lookup(sb, owner)
+    if not staff or staff.get("is_active") is False:
+        raise HTTPException(400, f"Sale {owner} không tồn tại hoặc đã nghỉ — không thể tạo hộ")
+    if not _in_actor_scope(sb, actor, owner):
+        raise HTTPException(403, "Sale này ngoài phạm vi team bạn quản lý")
+    return owner
+
+
+def _write_ownership_log(
+    sb,
+    *,
+    pr_id: str,
+    action: str,
+    from_email: str | None,
+    to_email: str,
+    actor_email: str,
+    reason: str | None = None,
+) -> bool:
+    row = {
+        "pr_id": pr_id,
+        "action": action,
+        "from_sale_email": (from_email or None),
+        "to_sale_email": to_email,
+        "actor_email": actor_email,
+        "reason": _clean_text(reason) or None,
+    }
+    try:
+        sb.table("pr_ownership_log").insert(row).execute()
+        return True
+    except Exception as exc:
+        print(f"[pr-ownership] log insert failed ({action} {pr_id}): {exc}")
+        return False
 
 
 def _parse_children(raw: list | None) -> tuple[str | None, list[dict] | None]:
@@ -2223,8 +2318,11 @@ def register_payment_request_routes(app, _get_supabase) -> None:
         actor = resolve_actor(sb, authorization)
         require_module_write(sb, actor, "paymentRequests")
         row = _payment_request_insert_row(body)
-        row["sale_email"] = actor.email.lower()
-        row["is_test"] = _is_test_email(actor.email)
+        owner_email = _resolve_owner_for_create(sb, actor, body.owner_sale_email)
+        on_behalf = owner_email != actor.email.lower()
+        row["sale_email"] = owner_email
+        # is_test theo CHỦ SỞ HỮU (không theo người bấm) — thông báo route theo owner
+        row["is_test"] = _is_test_email(owner_email)
         try:
             row["id"] = _allocate_pr_id(sb)
             res = sb.table("payment_requests").insert(row).execute()
@@ -2234,7 +2332,262 @@ def register_payment_request_routes(app, _get_supabase) -> None:
             raise HTTPException(500, f"Khong tao duoc payment_request: {exc}") from exc
 
         inserted = res.data[0] if res.data else row
+        _write_ownership_log(
+            sb,
+            pr_id=str(row["id"]),
+            action="create_on_behalf" if on_behalf else "create",
+            from_email=None,
+            to_email=owner_email,
+            actor_email=actor.email.lower(),
+        )
+        if on_behalf:
+            log_audit(
+                sb, actor.email, "pr.created_on_behalf", "payment_request",
+                str(row["id"]), {"owner_sale_email": owner_email},
+            )
         return {"payment_request": _serialize_payment_request(inserted)}
+
+    @router.get("/payment-requests/owner-options")
+    def list_owner_options(authorization: str | None = Header(None)):
+        """Danh sách nhân sự cho ô 'Sale sở hữu PR' (tạo hộ) + modal 'Chuyển sale'.
+
+        - sale: leader/manager trong team (target để bàn giao PR của mình)
+        - leader: mọi thành viên active team + sub_team mình
+        - manager: mọi thành viên active team mình
+        - system: toàn bộ active
+        - ops: rỗng (không tham gia tạo hộ/chuyển giao)
+        """
+        sb = _sb_or_503(get_supabase)
+        actor = resolve_actor(sb, authorization)
+        require_module_access(sb, actor, "paymentRequests")
+        role = str(actor.role or "").strip().lower()
+        staff = getattr(actor, "staff", None) or {}
+        team = _clean_text(staff.get("team"))
+        sub_team = _clean_text(staff.get("sub_team"))
+
+        def _rows_to_options(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+            opts = []
+            for r in rows or []:
+                email = _clean_text(r.get("email")).lower()
+                if not email:
+                    continue
+                opts.append({
+                    "email": email,
+                    "name": _staff_display_name(r, email),
+                    "role": _clean_text(r.get("role")).lower() or "sale",
+                    "team": _clean_text(r.get("team")),
+                    "sub_team": _clean_text(r.get("sub_team")),
+                    "is_self": email == actor.email.lower(),
+                })
+            opts.sort(key=lambda o: (0 if o["is_self"] else 1, o["name"].lower()))
+            return opts
+
+        select_cols = "email, role, team, sub_team, crm_name, display_name, is_active"
+        try:
+            if role == "sale":
+                if not team:
+                    return {"role": role, "options": []}
+                res = (
+                    sb.table("nhan_su_sale").select(select_cols)
+                    .eq("is_active", True).eq("team", team)
+                    .in_("role", ["leader", "manager"]).execute()
+                )
+                rows = [
+                    r for r in (res.data or [])
+                    # leader phải cùng sub_team (leader của mình); manager cả team
+                    if str(r.get("role") or "").lower() == "manager"
+                    or not sub_team
+                    or _clean_text(r.get("sub_team")) == sub_team
+                ]
+            elif role in ("leader", "manager"):
+                if not team:
+                    return {"role": role, "options": []}
+                q = sb.table("nhan_su_sale").select(select_cols).eq("is_active", True).eq("team", team)
+                if role == "leader" and sub_team:
+                    q = q.eq("sub_team", sub_team)
+                rows = (q.execute().data) or []
+            elif role == "system":
+                rows = (
+                    sb.table("nhan_su_sale").select(select_cols)
+                    .eq("is_active", True).execute().data
+                ) or []
+            else:  # ops và các role khác: không tham gia
+                rows = []
+        except Exception as exc:
+            raise HTTPException(500, f"Khong tai duoc danh sach nhan su: {exc}") from exc
+
+        return {"role": role, "options": _rows_to_options(rows)}
+
+    @router.post("/payment-requests/{payment_request_id}/transfer")
+    def transfer_payment_request(
+        payment_request_id: str,
+        body: PaymentRequestTransferBody,
+        authorization: str | None = Header(None),
+    ):
+        """Chuyển giao PR sang sale khác. Trục sale ↔ leader, mỗi lần ghi 1 dòng nhật ký.
+
+        Doanh thu đã chốt (so_doanh_thu) giữ nguyên sale cũ — sync là insert-once.
+        Tin Zalo/DingTalk đã gửi không thu hồi; tin sau thời điểm chuyển theo team mới.
+        """
+        sb = _sb_or_503(get_supabase)
+        actor = resolve_actor(sb, authorization)
+        require_module_write(sb, actor, "paymentRequests")
+
+        pr_res = (
+            sb.table("payment_requests").select("*")
+            .eq("id", payment_request_id).limit(1).execute()
+        )
+        if not pr_res.data:
+            raise HTTPException(404, "Khong tim thay payment_request")
+        pr_row = pr_res.data[0]
+        if _clean_text(pr_row.get("state")).lower() == "cancelled":
+            raise HTTPException(400, "PR đã hủy — không thể chuyển giao")
+
+        from_email = _clean_text(pr_row.get("sale_email")).lower()
+        to_email = str(body.to_sale_email or "").strip().lower()
+        if not to_email:
+            raise HTTPException(400, "Thiếu to_sale_email")
+        if to_email == from_email:
+            raise HTTPException(400, "PR đã thuộc sale này rồi")
+
+        role = str(actor.role or "").strip().lower()
+        if role == "sale":
+            if from_email != actor.email.lower():
+                raise HTTPException(403, "Sale chỉ được bàn giao PR của chính mình")
+        elif role in _TRANSFER_ACTOR_ROLES:
+            if not _can_access_request(sb, actor, pr_row):
+                raise HTTPException(403, "PR ngoài phạm vi team bạn quản lý")
+        else:  # ops...
+            raise HTTPException(403, "Chỉ Sale/Leader/Manager được chuyển giao PR")
+
+        to_staff = _staff_lookup(sb, to_email)
+        if not to_staff or to_staff.get("is_active") is False:
+            raise HTTPException(400, f"Người nhận {to_email} không tồn tại hoặc đã nghỉ")
+        if not _in_actor_scope(sb, actor, to_email):
+            raise HTTPException(403, "Người nhận ngoài phạm vi team bạn quản lý")
+
+        # Trục sale ↔ leader: ít nhất 1 đầu phải là leader/manager.
+        from_staff = _staff_lookup(sb, from_email)
+        from_role = str((from_staff or {}).get("role") or "sale").strip().lower()
+        to_role = str(to_staff.get("role") or "sale").strip().lower()
+        if from_role not in _AXIS_ROLES and to_role not in _AXIS_ROLES:
+            raise HTTPException(
+                400,
+                "Không chuyển trực tiếp giữa 2 sale — bàn giao cho leader trước, "
+                "leader chuyển tiếp cho sale mới (2 bước, mỗi bước có nhật ký)",
+            )
+
+        old_is_test = bool(pr_row.get("is_test"))
+        new_is_test = _is_test_email(to_email)
+        try:
+            upd = (
+                sb.table("payment_requests")
+                .update({"sale_email": to_email, "is_test": new_is_test})
+                .eq("id", payment_request_id).execute()
+            )
+        except Exception as exc:
+            raise HTTPException(500, f"Khong cap nhat duoc chu so huu PR: {exc}") from exc
+
+        logged = _write_ownership_log(
+            sb,
+            pr_id=payment_request_id,
+            action="transfer",
+            from_email=from_email or None,
+            to_email=to_email,
+            actor_email=actor.email.lower(),
+            reason=body.reason,
+        )
+        if not logged:
+            # Nhật ký là bắt buộc (đối soát) — hoàn tác nếu không ghi được.
+            try:
+                sb.table("payment_requests").update(
+                    {"sale_email": from_email, "is_test": old_is_test}
+                ).eq("id", payment_request_id).execute()
+            except Exception as revert_exc:
+                print(f"[pr-ownership] REVERT FAILED {payment_request_id}: {revert_exc}")
+            raise HTTPException(
+                500, "Không ghi được nhật ký lưu chuyển — đã hoàn tác, thử lại sau"
+            )
+
+        # is_test đổi (chuyển giữa account @dev ↔ thật) → đồng bộ payment_lines
+        if old_is_test != new_is_test:
+            try:
+                sb.table("payment_lines").update({"is_test": new_is_test}).eq(
+                    "payment_request_id", payment_request_id
+                ).execute()
+            except Exception as exc:
+                print(f"[pr-ownership] sync is_test payment_lines failed: {exc}")
+
+        log_audit(
+            sb, actor.email, "pr.owner_transferred", "payment_request",
+            payment_request_id,
+            {"from": from_email, "to": to_email, "reason": _clean_text(body.reason) or None},
+        )
+
+        updated = upd.data[0] if upd.data else {**pr_row, "sale_email": to_email, "is_test": new_is_test}
+        return {
+            "payment_request": _serialize_payment_request(updated),
+            "from_sale_email": from_email,
+            "to_sale_email": to_email,
+            "to_sale_name": _staff_display_name(to_staff, to_email),
+        }
+
+    @router.get("/payment-requests/{payment_request_id}/ownership-log")
+    def get_pr_ownership_log(
+        payment_request_id: str,
+        authorization: str | None = Header(None),
+    ):
+        """Nhật ký lưu chuyển của 1 PR (cũ → mới), enrich tên từ nhan_su_sale."""
+        sb = _sb_or_503(get_supabase)
+        actor = resolve_actor(sb, authorization)
+        require_module_access(sb, actor, "paymentRequests")
+
+        pr_res = (
+            sb.table("payment_requests").select("id, sale_email")
+            .eq("id", payment_request_id).limit(1).execute()
+        )
+        if not pr_res.data:
+            raise HTTPException(404, "Khong tim thay payment_request")
+        if not _can_access_request(sb, actor, pr_res.data[0]):
+            raise HTTPException(403, "Khong co quyen xem phieu nay")
+
+        try:
+            res = (
+                sb.table("pr_ownership_log").select("*")
+                .eq("pr_id", payment_request_id)
+                .order("created_at", desc=False).execute()
+            )
+            rows = res.data or []
+        except Exception as exc:
+            # Bảng chưa migrate → trả rỗng thay vì 500 (FE ẩn section)
+            print(f"[pr-ownership] log fetch failed: {exc}")
+            rows = []
+
+        name_cache: dict[str, str] = {}
+
+        def _name_of(email: str | None) -> str:
+            e = str(email or "").strip().lower()
+            if not e:
+                return ""
+            if e not in name_cache:
+                name_cache[e] = _staff_display_name(_staff_lookup(sb, e), e)
+            return name_cache[e]
+
+        out = []
+        for r in rows:
+            out.append({
+                "id": r.get("id"),
+                "action": r.get("action"),
+                "from_sale_email": r.get("from_sale_email"),
+                "from_sale_name": _name_of(r.get("from_sale_email")),
+                "to_sale_email": r.get("to_sale_email"),
+                "to_sale_name": _name_of(r.get("to_sale_email")),
+                "actor_email": r.get("actor_email"),
+                "actor_name": _name_of(r.get("actor_email")),
+                "reason": r.get("reason"),
+                "created_at": r.get("created_at"),
+            })
+        return {"log": out}
 
     @router.post("/payment-requests/{payment_request_id}/payment-lines")
     async def create_payment_line(

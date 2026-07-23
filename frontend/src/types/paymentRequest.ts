@@ -248,7 +248,45 @@ export type CreatePaymentRequestPayload = {
   lead_source?: string;
   lead_channel?: string;
   wants_invoice?: boolean;
+  /** Tạo hộ (Leader/Manager): email sale sở hữu PR. Bỏ qua = tự sở hữu. */
+  owner_sale_email?: string;
 };
+
+/** 1 nhân sự trong dropdown "Sale sở hữu PR" / modal "Chuyển sale" */
+export interface OwnerOption {
+  email: string;
+  name: string;
+  role: string;
+  team?: string;
+  sub_team?: string;
+  is_self?: boolean;
+}
+
+export interface OwnerOptionsResponse {
+  role: string;
+  options: OwnerOption[];
+}
+
+/** 1 dòng Nhật ký lưu chuyển PR (tạo / tạo hộ / chuyển giao) */
+export interface PrOwnershipLogEntry {
+  id: string;
+  action: "create" | "create_on_behalf" | "transfer";
+  from_sale_email?: string | null;
+  from_sale_name?: string;
+  to_sale_email: string;
+  to_sale_name?: string;
+  actor_email: string;
+  actor_name?: string;
+  reason?: string | null;
+  created_at: string;
+}
+
+export interface TransferPrResponse {
+  payment_request: Record<string, unknown>;
+  from_sale_email: string;
+  to_sale_email: string;
+  to_sale_name?: string;
+}
 
 export type PatchPaymentRequestPayload = Partial<CreatePaymentRequestPayload>;
 

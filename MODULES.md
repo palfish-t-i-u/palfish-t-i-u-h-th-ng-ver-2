@@ -30,8 +30,10 @@
 
 ### B1 — Payment Requests (PR)
 - FE tab: `frontend/src/components/PaymentRequestsTab.tsx`
-- FE chi tiết: `frontend/src/components/payment-request/` — CreatePaymentRequestModal, PaymentRequestTable, PaymentRequestDetailDrawer, QrViewModal, Toolbar, KpiCards, StatusBadge, Progress, PrRowCards (mobile), PrStaleContentWarning, BillUploadZone, CountryCombo, VietnamAddressFields, DateRangeFilter, TvtsFilterDropdown, paymentRequestUtils.ts, `phoneUtils.ts` (smart-paste, format, normalize SĐT)
-- BE: `backend/payment_request_routes.py` — PR CRUD, payment lines, stale content, confirm/reject, bill storage
+- FE chi tiết: `frontend/src/components/payment-request/` — CreatePaymentRequestModal, PaymentRequestTable, PaymentRequestDetailDrawer, QrViewModal, Toolbar, KpiCards, StatusBadge, Progress, PrRowCards (mobile), PrStaleContentWarning, BillUploadZone, CountryCombo, VietnamAddressFields, DateRangeFilter, TvtsFilterDropdown, **TransferSaleModal** (chuyển sale), **OwnershipLogSection** (nhật ký lưu chuyển), paymentRequestUtils.ts, `phoneUtils.ts` (smart-paste, format, normalize SĐT)
+- BE: `backend/payment_request_routes.py` — PR CRUD, payment lines, stale content, confirm/reject, bill storage; **tạo hộ + chuyển giao PR** (`owner_sale_email` trong create, `POST /{id}/transfer`, `GET /{id}/ownership-log`, `GET /payment-requests/owner-options`)
+- Migration: `backend/migrations/2026-07-23-pr-ownership-log.sql` — bảng `pr_ownership_log` + backfill
+- BE test: `backend/tests/test_pr_ownership_transfer.py` — ma trận quyền tạo hộ/chuyển giao (trục sale ↔ leader)
 - Types: `frontend/src/types/paymentRequest.ts`; API groups: `endpoints.paymentRequests`, `endpoints.bankTxns`
 - Data phụ trợ: `frontend/src/data/vnProvinces.ts`, `frontend/src/constants/` (bank, coursePackages, leadSource)
 
