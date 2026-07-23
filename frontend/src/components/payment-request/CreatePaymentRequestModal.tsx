@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
-import type { CreatePaymentRequestPayload, CustomerType } from "../../types/paymentRequest";
+import type { CreatePaymentRequestPayload, CustomerType, OwnerOption } from "../../types/paymentRequest";
+import { endpoints } from "../../lib/api";
+import { useMe } from "../../hooks/useMe";
 import { LEAD_SOURCES, defaultChannelForSource, findSourceByKey, sourceHasChannels } from "../../constants/leadSource";
 import CountryCombo, { COUNTRIES, findCountry } from "./CountryCombo";
 import { applySmartPhoneInput, normalizeLocalPhone, crmPhoneFormat } from "./phoneUtils";
@@ -73,12 +75,27 @@ export default function CreatePaymentRequestModal({
   const [form, setForm] = useState<FormState>(INITIAL);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  // Tạo hộ (Leader/Manager): chọn sale sở hữu PR. "" = tự sở hữu.
+  const { profile } = useMe();
+  const canPickOwner = profile?.role === "leader" || profile?.role === "manager" || profile?.role === "system";
+  const [ownerEmail, setOwnerEmail] = useState("");
+  const [ownerOptions, setOwnerOptions] = useState<OwnerOption[]>([]);
   useEffect(() => {
     if (open) {
       setForm(INITIAL);
       setSubmitError(null);
+      setOwnerEmail("");
     }
   }, [open]);
+  useEffect(() => {
+    if (!open || !canPickOwner) return;
+    let alive = true;
+    endpoints.paymentRequests
+      .ownerOptions()
+      .then((res) => { if (alive) setOwnerOptions(res.data?.options ?? []); })
+      .catch(() => { if (alive) setOwnerOptions([]); });
+    return () => { alive = false; };
+  }, [open, canPickOwner]);
 
   if (!open) return null;
 
@@ -121,6 +138,8 @@ export default function CreatePaymentRequestModal({
         province: form.isForeign ? foreignCountryName : form.province,
         target: targetNum,
         note: form.note,
+        owner_sale_email:
+          ownerEmail && ownerEmail !== (profile?.email ?? "") ? ownerEmail : undefined,
         email: form.email.trim() || undefined,
         tax_id: form.taxId.trim() || undefined,
         customer_type: form.customerType,
@@ -152,6 +171,27 @@ export default function CreatePaymentRequestModal({
           </button>
         </div>
         <div className="modal-body">
+          {/* Tạo hộ: chỉ Leader/Manager thấy — PR đứng tên sale được chọn */}
+          {canPickOwner && ownerOptions.length > 0 && (
+            <div className="field">
+              <label>Sale sở hữu PR</label>
+              <Combobox
+                value={ownerEmail}
+                onChange={(v) => setOwnerEmail(v)}
+                options={ownerOptions.map((o) => ({
+                  value: o.email,
+                  label: `${o.name}${o.is_self ? " (tôi)" : ""}${o.sub_team ? ` · ${o.sub_team}` : ""}`,
+                }))}
+                placeholder={`${profile?.displayName || profile?.crmName || "Tôi"} (tôi)`}
+                emptyLabel="— Tôi tự sở hữu —"
+              />
+              <div style={{ fontSize: 11.5, color: "var(--text-3)", lineHeight: 1.45, marginTop: 4 }}>
+                Tạo hộ: PR đứng tên sale được chọn — doanh thu, KPI, BXH và thông báo
+                Zalo/DingTalk sẽ theo sale đó. Hệ thống ghi nhật ký &quot;ai tạo hộ ai&quot;.
+              </div>
+            </div>
+          )}
+
           {/* Nhóm 1: Trường bắt buộc tạo nhanh */}
           <div className="field-row">
             <div className="field">

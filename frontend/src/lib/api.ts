@@ -14,8 +14,11 @@ import type {
   PatchPaymentRequestPayload,
   PatchActiveRequestPayload,
   CreatePrResponse,
+  OwnerOptionsResponse,
   PaymentLineApiRow,
   PaymentRequestsListResponse,
+  PrOwnershipLogEntry,
+  TransferPrResponse,
 } from "../types/paymentRequest";
 import type {
   LedgerCreatePayload,
@@ -130,6 +133,13 @@ export const endpoints = {
       api.post<CreatePrResponse>("/api/v1/payment-requests", body),
     update: (id: string, body: PatchPaymentRequestPayload) =>
       api.patch<CreatePrResponse>(`/api/v1/payment-requests/${id}`, body),
+    // Tạo hộ + chuyển giao PR (22/07): roster theo scope role
+    ownerOptions: () =>
+      api.get<OwnerOptionsResponse>("/api/v1/payment-requests/owner-options"),
+    transfer: (id: string, body: { to_sale_email: string; reason?: string }) =>
+      api.post<TransferPrResponse>(`/api/v1/payment-requests/${id}/transfer`, body),
+    ownershipLog: (id: string) =>
+      api.get<{ log: PrOwnershipLogEntry[] }>(`/api/v1/payment-requests/${id}/ownership-log`),
     // B2: add payment line (QR / cash / card / installment)
     addPayment: (id: string, body: AddPaymentAttemptPayload) =>
       api.post<AddPaymentLineResponse>(`/api/v1/payment-requests/${id}/payment-lines`, body),
