@@ -865,6 +865,7 @@ export default function PaymentRequestsTab() {
         onShowQr={(qr) => selected && setQrView({ qr, request: selected })}
         readOnly={readOnly}
         onRefreshLineContent={handleRefreshLineContent}
+        onTransferred={() => void loadData()}
       />
 
       <CreatePaymentRequestModal open={createOpen} onClose={() => setCreateOpen(false)} onSubmit={handleCreate} />

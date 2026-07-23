@@ -11,6 +11,8 @@ const ACTION_LABELS: Record<string, string> = {
   "payment_line.bill_uploaded": "Up ảnh bill",
   "payment_line.bill_deleted": "Xoá ảnh bill",
   "pr.cancelled": "Huỷ PR",
+  "pr.owner_transferred": "Chuyển giao PR",
+  "pr.created_on_behalf": "Tạo hộ PR",
   "activation.order_id_set": "Gắn Order ID",
   "activation.order_id_cleared": "Xoá Order ID",
   "referral.credit_confirmed": "Cộng buổi giới thiệu",
@@ -42,6 +44,8 @@ function detailText(entry: AuditLogEntry): string {
   const p = entry.payload || {};
   const parts: string[] = [];
   if (p.from_status || p.to_status) parts.push(`${p.from_status || "?"} → ${p.to_status}`);
+  if (p.from && p.to) parts.push(`${p.from} → ${p.to}`);
+  if (p.owner_sale_email) parts.push(`cho: ${p.owner_sale_email}`);
   if (p.source) parts.push(`nguồn: ${p.source}`);
   if (p.old_amount !== undefined && p.new_amount !== undefined)
     parts.push(`${Number(p.old_amount).toLocaleString("vi-VN")} → ${Number(p.new_amount).toLocaleString("vi-VN")}`);

@@ -15,7 +15,6 @@ import { Icons, type IconKey } from "./Icons";
 import BillUploadZone from "./BillUploadZone";
 import VietnamAddressFields from "./VietnamAddressFields";
 import PaymentRequestStatusBadge from "./PaymentRequestStatusBadge";
-import AuditTrail from "../ui/AuditTrail";
 import { getAvailableBanks } from "../../constants/bank";
 import { useMe } from "../../hooks/useMe";
 import Combobox from "../ui/Combobox";
@@ -45,6 +44,8 @@ import { normalizeLocalPhone, crmPhoneFormat, formatPhoneIntl, applySmartPhoneIn
 import { nextCourseCode } from "../payment-flow/paymentFlowUtils";
 import { endpoints } from "../../lib/api";
 import PrStaleContentWarning from "./PrStaleContentWarning";
+import TransferSaleModal from "./TransferSaleModal";
+import PrHistoryModal from "./PrHistoryModal";
 import { MoneyInput } from "../ui/MoneyInput";
 import { findPaidLinesWithoutBill } from "./billGuardUtils";
 
@@ -1574,6 +1575,7 @@ export default function PaymentRequestDetailDrawer({
   readOnly = false,
   detailLoading = false,
   onRefreshLineContent,
+  onTransferred,
 }: {
   request: PaymentRequest | null;
   open: boolean;
@@ -1604,7 +1606,12 @@ export default function PaymentRequestDetailDrawer({
   onRefreshLineContent?: (line: PaymentAttempt) => Promise<void>;
   /** B3 (16/7) — Báo đơn hoàn thành. reason bắt buộc từ lần báo thứ 2 (BE validate, modal soft-block). */
   onReportComplete: (reason?: string) => Promise<void>;
+  /** Tạo hộ/chuyển giao (22/07): gọi sau khi chuyển sale thành công để parent reload list. */
+  onTransferred?: () => void | Promise<void>;
 }) {
+  const { profile: meProfile } = useMe();
+  const [transferOpen, setTransferOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
   const [editing, setEditing] = useState(false);
   const [savingEdit, setSavingEdit] = useState(false);
@@ -1811,7 +1818,7 @@ export default function PaymentRequestDetailDrawer({
             <div style={{ minWidth: 0 }}>
               <div style={{ fontWeight: 700, fontSize: 16 }}>{request.name}</div>
               <div className="drawer-meta" style={{ fontSize: 12, color: "var(--text-3)", marginTop: 2 }}>
-                Tạo bởi <strong style={{ color: "var(--text-2)" }} title={request.saleEmail || undefined}>{request.saleName || (request.saleEmail ? request.saleEmail.split("@")[0] : "—")}</strong> · {request.createdAt}
+                Sở hữu <strong style={{ color: "var(--text-2)" }} title={request.saleEmail || undefined}>{request.saleName || (request.saleEmail ? request.saleEmail.split("@")[0] : "—")}</strong> · tạo {request.createdAt}
               </div>
             </div>
           </div>
@@ -2540,11 +2547,40 @@ export default function PaymentRequestDetailDrawer({
               </div>
             </div>
           </div>
+
+          {/* Quá trình theo dõi chuyển giao PR (23/7) — ai đang cầm PR + leader phụ trách */}
+          <div className="panel">
+            <div className="panel-head">
+              <h4>
+                <Icons.User size={15} /> Quá trình theo dõi chuyển giao PR
+              </h4>
+              <button
+                className="btn btn-outline btn-sm"
+                title="Nhật ký lưu chuyển (tạo hộ / chuyển giao) + lịch sử thao tác của PR"
+                onClick={() => setHistoryOpen(true)}
+              >
+                <Icons.Clock size={13} /> Xem lịch sử
+              </button>
+            </div>
+            <div style={{ fontSize: 11.5, color: "var(--text-3)", lineHeight: 1.5, marginBottom: 10 }}>
+              PR thuộc sale nào thì doanh thu, KPI, BXH và thông báo Zalo/DingTalk theo người đó.
+              Mọi lần tạo hộ / chuyển giao đều được ghi nhật ký để đối soát.
+            </div>
+            <div className="info-grid">
+              <div className="info-cell">
+                <div className="info-label">NV sở hữu PR</div>
+                <div className="info-value" title={request.saleEmail || undefined}>
+                  {request.saleName || (request.saleEmail ? request.saleEmail.split("@")[0] : "—")}
+                </div>
+              </div>
+              <div className="info-cell">
+                <div className="info-label">Leader phụ trách</div>
+                <div className="info-value">{request.saleLeaderName || "—"}</div>
+              </div>
+            </div>
+          </div>
         </div>
 
-        <div style={{ padding: "0 20px 12px" }}>
-          <AuditTrail targetType="payment_request" targetId={request.id} />
-        </div>
 
         <div className="drawer-foot">
           <div style={{ display: "flex", gap: 8 }}>
@@ -2578,6 +2614,22 @@ export default function PaymentRequestDetailDrawer({
                 style={!canRemindActivation ? { opacity: 0.6 } : undefined}
               >
                 <Icons.Bell size={13} /> {activationRemindSending ? "Đang gửi…" : !canRemindActivation ? "Đã nhắc kích hoạt" : "Nhắc kích hoạt gấp"}
+              </button>
+            )}
+            {!readOnly && request.state !== "cancelled" &&
+              (meProfile?.role === "leader" || meProfile?.role === "manager" || meProfile?.role === "system" ||
+                (meProfile?.role === "sale" && (!request.saleEmail || request.saleEmail.toLowerCase() === meProfile.email.toLowerCase()))) && (
+              <button
+                className="btn btn-outline btn-sm"
+                title="Chuyển PR sang sale khác — doanh thu/KPI/thông báo từ giờ theo sale mới, có ghi nhật ký"
+                style={{
+                  color: "var(--primary-700)",
+                  borderColor: "var(--primary-700)",
+                  fontWeight: 600,
+                }}
+                onClick={() => setTransferOpen(true)}
+              >
+                <Icons.User size={13} /> Chuyển giao PR
               </button>
             )}
             {canCancel && !readOnly && (
@@ -2623,6 +2675,16 @@ export default function PaymentRequestDetailDrawer({
           </div>
         </div>
       </aside>
+      <TransferSaleModal
+        pr={transferOpen ? request : null}
+        onClose={() => setTransferOpen(false)}
+        onTransferred={async () => {
+          setTransferOpen(false);
+          onClose();
+          await onTransferred?.();
+        }}
+      />
+      <PrHistoryModal pr={historyOpen ? request : null} onClose={() => setHistoryOpen(false)} />
       {arPackageModalOpen && (() => {
         const arTotal = arDraftRows.reduce((s, r) => s + (r.amount || 0), 0);
         const arReceived = Math.max(0, request.received);
