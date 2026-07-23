@@ -11,7 +11,7 @@ const ACTION_LABELS: Record<string, string> = {
   "payment_line.bill_uploaded": "Up ảnh bill",
   "payment_line.bill_deleted": "Xoá ảnh bill",
   "pr.cancelled": "Huỷ PR",
-  "pr.owner_transferred": "Chuyển sale",
+  "pr.owner_transferred": "Chuyển giao PR",
   "pr.created_on_behalf": "Tạo hộ PR",
   "activation.order_id_set": "Gắn Order ID",
   "activation.order_id_cleared": "Xoá Order ID",

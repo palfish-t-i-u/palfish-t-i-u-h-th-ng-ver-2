@@ -2629,7 +2629,7 @@ export default function PaymentRequestDetailDrawer({
                 }}
                 onClick={() => setTransferOpen(true)}
               >
-                <Icons.User size={13} /> {meProfile?.role === "sale" ? "Bàn giao cho leader" : "Chuyển sale"}
+                <Icons.User size={13} /> Chuyển giao PR
               </button>
             )}
             {canCancel && !readOnly && (

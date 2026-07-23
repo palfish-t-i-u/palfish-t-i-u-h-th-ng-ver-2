@@ -97,7 +97,7 @@ export default function TransferSaleModal({
       <div className="modal" style={{ width: "min(480px, 100%)" }} onClick={(e) => e.stopPropagation()}>
         <div className="modal-head">
           <div>
-            <h3>{isSale ? "Bàn giao PR cho leader" : "Chuyển sale"} — {pr.id}</h3>
+            <h3>Chuyển giao PR — {pr.id}</h3>
             <div style={{ fontSize: 12, color: "var(--text-3)", marginTop: 2 }}>
               Đang thuộc: <strong>{pr.saleName || pr.saleEmail || "tôi"}</strong>
               {" · "}KH: {pr.name}
@@ -130,6 +130,12 @@ export default function TransferSaleModal({
                 emptyLabel="— Bỏ chọn —"
                 invalid={!toEmail}
               />
+            )}
+            {isSale && (
+              <div style={{ fontSize: 11.5, color: "var(--text-3)", lineHeight: 1.45, marginTop: 4 }}>
+                Sale không chuyển PR thẳng cho nhau — bạn bàn giao cho leader/manager,
+                leader sẽ chuyển tiếp cho sale phù hợp.
+              </div>
             )}
             {!LEAD_ROLES.has(ownerRole) && !isSale && (
               <div style={{ fontSize: 11.5, color: "var(--text-3)", lineHeight: 1.45, marginTop: 4 }}>

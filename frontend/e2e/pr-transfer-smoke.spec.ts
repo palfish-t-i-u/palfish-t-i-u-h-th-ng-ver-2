@@ -37,7 +37,7 @@ test.describe("Tạo hộ + chuyển giao PR — smoke", () => {
     }
     await rows.first().click();
 
-    const transferBtn = page.getByRole("button", { name: /Chuyển sale|Bàn giao cho leader/ });
+    const transferBtn = page.getByRole("button", { name: "Chuyển giao PR", exact: true });
     await expect(transferBtn).toBeVisible({ timeout: 15_000 });
 
     // Block "Quá trình theo dõi chuyển giao PR" dưới cây tiến độ (23/7)
@@ -54,10 +54,10 @@ test.describe("Tạo hộ + chuyển giao PR — smoke", () => {
     await expect(page.getByText(/Lịch sử PR —/)).not.toBeVisible();
 
     await transferBtn.click();
-    await expect(page.getByText(/Chuyển sale —|Bàn giao PR cho leader —/)).toBeVisible();
+    await expect(page.getByText(/Chuyển giao PR —/)).toBeVisible();
     await expect(page.getByText("Chuyển cho").first()).toBeVisible();
     // Đóng — không chuyển thật trên sandbox
     await page.locator(".modal").getByRole("button", { name: "Huỷ", exact: true }).click();
-    await expect(page.getByText(/Chuyển sale —|Bàn giao PR cho leader —/)).not.toBeVisible();
+    await expect(page.getByText(/Chuyển giao PR —/)).not.toBeVisible();
   });
 });
