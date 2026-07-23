@@ -15,7 +15,6 @@ import { Icons, type IconKey } from "./Icons";
 import BillUploadZone from "./BillUploadZone";
 import VietnamAddressFields from "./VietnamAddressFields";
 import PaymentRequestStatusBadge from "./PaymentRequestStatusBadge";
-import AuditTrail from "../ui/AuditTrail";
 import { getAvailableBanks } from "../../constants/bank";
 import { useMe } from "../../hooks/useMe";
 import Combobox from "../ui/Combobox";
@@ -46,7 +45,7 @@ import { nextCourseCode } from "../payment-flow/paymentFlowUtils";
 import { endpoints } from "../../lib/api";
 import PrStaleContentWarning from "./PrStaleContentWarning";
 import TransferSaleModal from "./TransferSaleModal";
-import OwnershipLogSection from "./OwnershipLogSection";
+import PrHistoryModal from "./PrHistoryModal";
 import { MoneyInput } from "../ui/MoneyInput";
 import { findPaidLinesWithoutBill } from "./billGuardUtils";
 
@@ -1612,6 +1611,7 @@ export default function PaymentRequestDetailDrawer({
 }) {
   const { profile: meProfile } = useMe();
   const [transferOpen, setTransferOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
   const [editing, setEditing] = useState(false);
   const [savingEdit, setSavingEdit] = useState(false);
@@ -1818,7 +1818,7 @@ export default function PaymentRequestDetailDrawer({
             <div style={{ minWidth: 0 }}>
               <div style={{ fontWeight: 700, fontSize: 16 }}>{request.name}</div>
               <div className="drawer-meta" style={{ fontSize: 12, color: "var(--text-3)", marginTop: 2 }}>
-                Tạo bởi <strong style={{ color: "var(--text-2)" }} title={request.saleEmail || undefined}>{request.saleName || (request.saleEmail ? request.saleEmail.split("@")[0] : "—")}</strong> · {request.createdAt}
+                Sở hữu <strong style={{ color: "var(--text-2)" }} title={request.saleEmail || undefined}>{request.saleName || (request.saleEmail ? request.saleEmail.split("@")[0] : "—")}</strong> · tạo {request.createdAt}
               </div>
             </div>
           </div>
@@ -2549,10 +2549,6 @@ export default function PaymentRequestDetailDrawer({
           </div>
         </div>
 
-        <div style={{ padding: "0 20px 12px" }}>
-          <OwnershipLogSection prId={request.id} />
-          <AuditTrail targetType="payment_request" targetId={request.id} />
-        </div>
 
         <div className="drawer-foot">
           <div style={{ display: "flex", gap: 8 }}>
@@ -2561,6 +2557,13 @@ export default function PaymentRequestDetailDrawer({
               onClick={() => void copyPrId()}
             >
               <Icons.Copy size={13} /> Copy PR-ID
+            </button>
+            <button
+              className="btn btn-outline btn-sm"
+              title="Nhật ký lưu chuyển (sở hữu) + lịch sử thao tác của PR này"
+              onClick={() => setHistoryOpen(true)}
+            >
+              <Icons.Clock size={13} /> Xem lịch sử
             </button>
             {!readOnly && request.state !== "cancelled" && activeSummary.activatedCount > 0 && (
               <button
@@ -2594,6 +2597,11 @@ export default function PaymentRequestDetailDrawer({
               <button
                 className="btn btn-outline btn-sm"
                 title="Chuyển PR sang sale khác — doanh thu/KPI/thông báo từ giờ theo sale mới, có ghi nhật ký"
+                style={{
+                  color: "var(--primary-700)",
+                  borderColor: "var(--primary-700)",
+                  fontWeight: 600,
+                }}
                 onClick={() => setTransferOpen(true)}
               >
                 <Icons.User size={13} /> {meProfile?.role === "sale" ? "Bàn giao cho leader" : "Chuyển sale"}
@@ -2651,6 +2659,7 @@ export default function PaymentRequestDetailDrawer({
           await onTransferred?.();
         }}
       />
+      <PrHistoryModal pr={historyOpen ? request : null} onClose={() => setHistoryOpen(false)} />
       {arPackageModalOpen && (() => {
         const arTotal = arDraftRows.reduce((s, r) => s + (r.amount || 0), 0);
         const arReceived = Math.max(0, request.received);

@@ -40,8 +40,13 @@ test.describe("Tạo hộ + chuyển giao PR — smoke", () => {
     const transferBtn = page.getByRole("button", { name: /Chuyển sale|Bàn giao cho leader/ });
     await expect(transferBtn).toBeVisible({ timeout: 15_000 });
 
-    // Nhật ký lưu chuyển: PR thường → dòng "Sở hữu: ..."; PR đã tạo hộ/chuyển → panel đầy đủ
-    await expect(page.getByText(/Sở hữu:|Lịch sử lưu chuyển/).first()).toBeVisible({ timeout: 15_000 });
+    // Lịch sử giấu sau nút "Xem lịch sử" (kiểu CRM) → modal 2 nhật ký
+    await page.getByRole("button", { name: "Xem lịch sử", exact: true }).click();
+    await expect(page.getByText(/Lịch sử PR —/)).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText("Lịch sử lưu chuyển (sở hữu)")).toBeVisible();
+    await expect(page.getByText(/Tạo PR|Tạo hộ|Chuyển giao/).first()).toBeVisible({ timeout: 15_000 });
+    await page.locator(".modal").getByRole("button", { name: "Đóng", exact: true }).click();
+    await expect(page.getByText(/Lịch sử PR —/)).not.toBeVisible();
 
     await transferBtn.click();
     await expect(page.getByText(/Chuyển sale —|Bàn giao PR cho leader —/)).toBeVisible();
