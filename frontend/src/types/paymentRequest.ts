@@ -123,6 +123,8 @@ export interface PaymentRequest {
   saleEmail?: string;
   /** Tên TVTS phụ trách (map từ nhan_su_sale theo sale_email) — chỉ có ở response danh sách */
   saleName?: string;
+  /** Tên leader phụ trách sale sở hữu PR — chỉ có ở response danh sách (23/7) */
+  saleLeaderName?: string;
   state: PaymentRequestStatus;
   payments: PaymentAttempt[];
   isTest?: boolean;

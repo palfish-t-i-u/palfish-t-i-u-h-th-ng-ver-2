@@ -180,6 +180,9 @@ export function fromApiPaymentRequest(raw: any): PaymentRequest {
     saleEmail: raw.sale_email ?? raw.saleEmail ?? "",
     // Chỉ set khi BE trả về (endpoint danh sách) — tránh spread ghi đè mất tên ở các response khác
     ...((raw.sale_name ?? raw.saleName) ? { saleName: raw.sale_name ?? raw.saleName } : {}),
+    ...((raw.sale_leader_name ?? raw.saleLeaderName)
+      ? { saleLeaderName: raw.sale_leader_name ?? raw.saleLeaderName }
+      : {}),
     createdAt: raw.created_at ?? raw.createdAt ?? "",
     cancelledAt: raw.cancelled_at ?? raw.cancelledAt ?? null,
     cancelledReason: raw.cancelled_reason ?? raw.cancelledReason ?? null,

@@ -330,6 +330,53 @@ def test_create_on_behalf_for_dev_account_sets_is_test():
     assert created["is_test"] is True
 
 
+# ------------------------- Leader phụ trách (block theo dõi 23/7) -------------------------
+
+
+def _smap(rows):
+    return {
+        r["email"]: {
+            "name": r["name"], "role": r["role"], "team": r.get("team"),
+            "sub_team": r.get("sub_team"), "leader_email": r.get("leader_email", ""),
+            "is_active": r.get("is_active", True),
+        }
+        for r in rows
+    }
+
+
+def test_leader_name_resolves_via_leader_email():
+    import payment_request_routes as m
+
+    smap = _smap([
+        {"email": "salea@pf.vn", "name": "Sale A", "role": "sale", "team": "IH1",
+         "sub_team": "Team Nina", "leader_email": "leader@pf.vn"},
+        {"email": "leader@pf.vn", "name": "Đào Thị Trang", "role": "leader", "team": "IH1",
+         "sub_team": "Team Nina"},
+    ])
+    assert m._leader_name_for("salea@pf.vn", smap) == "Đào Thị Trang"
+
+
+def test_leader_name_fallback_same_team_subteam():
+    import payment_request_routes as m
+
+    smap = _smap([
+        {"email": "salea@pf.vn", "name": "Sale A", "role": "sale", "team": "IH1", "sub_team": "Team Nina"},
+        {"email": "leaderhn@pf.vn", "name": "Leader HN", "role": "leader", "team": "IH2", "sub_team": "HN 1"},
+        {"email": "leader@pf.vn", "name": "Trang", "role": "leader", "team": "IH1", "sub_team": "Team Nina"},
+    ])
+    assert m._leader_name_for("salea@pf.vn", smap) == "Trang"
+
+
+def test_leader_name_owner_is_leader_or_unknown():
+    import payment_request_routes as m
+
+    smap = _smap([
+        {"email": "leader@pf.vn", "name": "Trang", "role": "leader", "team": "IH1", "sub_team": "Team Nina"},
+    ])
+    assert m._leader_name_for("leader@pf.vn", smap) == "Trang"
+    assert m._leader_name_for("khongco@pf.vn", smap) == ""
+
+
 # ------------------------- Owner options -------------------------
 
 

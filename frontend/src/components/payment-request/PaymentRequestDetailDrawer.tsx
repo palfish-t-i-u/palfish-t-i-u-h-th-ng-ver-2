@@ -2547,6 +2547,38 @@ export default function PaymentRequestDetailDrawer({
               </div>
             </div>
           </div>
+
+          {/* Quá trình theo dõi chuyển giao PR (23/7) — ai đang cầm PR + leader phụ trách */}
+          <div className="panel">
+            <div className="panel-head">
+              <h4>
+                <Icons.User size={15} /> Quá trình theo dõi chuyển giao PR
+              </h4>
+              <button
+                className="btn btn-outline btn-sm"
+                title="Nhật ký lưu chuyển (tạo hộ / chuyển giao) + lịch sử thao tác của PR"
+                onClick={() => setHistoryOpen(true)}
+              >
+                <Icons.Clock size={13} /> Xem lịch sử
+              </button>
+            </div>
+            <div style={{ fontSize: 11.5, color: "var(--text-3)", lineHeight: 1.5, marginBottom: 10 }}>
+              PR thuộc sale nào thì doanh thu, KPI, BXH và thông báo Zalo/DingTalk theo người đó.
+              Mọi lần tạo hộ / chuyển giao đều được ghi nhật ký để đối soát.
+            </div>
+            <div className="info-grid">
+              <div className="info-cell">
+                <div className="info-label">NV sở hữu PR</div>
+                <div className="info-value" title={request.saleEmail || undefined}>
+                  {request.saleName || (request.saleEmail ? request.saleEmail.split("@")[0] : "—")}
+                </div>
+              </div>
+              <div className="info-cell">
+                <div className="info-label">Leader phụ trách</div>
+                <div className="info-value">{request.saleLeaderName || "—"}</div>
+              </div>
+            </div>
+          </div>
         </div>
 
 
@@ -2557,13 +2589,6 @@ export default function PaymentRequestDetailDrawer({
               onClick={() => void copyPrId()}
             >
               <Icons.Copy size={13} /> Copy PR-ID
-            </button>
-            <button
-              className="btn btn-outline btn-sm"
-              title="Nhật ký lưu chuyển (sở hữu) + lịch sử thao tác của PR này"
-              onClick={() => setHistoryOpen(true)}
-            >
-              <Icons.Clock size={13} /> Xem lịch sử
             </button>
             {!readOnly && request.state !== "cancelled" && activeSummary.activatedCount > 0 && (
               <button

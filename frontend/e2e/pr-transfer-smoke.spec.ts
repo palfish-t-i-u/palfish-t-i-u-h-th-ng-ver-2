@@ -40,7 +40,12 @@ test.describe("Tạo hộ + chuyển giao PR — smoke", () => {
     const transferBtn = page.getByRole("button", { name: /Chuyển sale|Bàn giao cho leader/ });
     await expect(transferBtn).toBeVisible({ timeout: 15_000 });
 
-    // Lịch sử giấu sau nút "Xem lịch sử" (kiểu CRM) → modal 2 nhật ký
+    // Block "Quá trình theo dõi chuyển giao PR" dưới cây tiến độ (23/7)
+    await expect(page.getByText("Quá trình theo dõi chuyển giao PR")).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText("NV sở hữu PR")).toBeVisible();
+    await expect(page.getByText("Leader phụ trách")).toBeVisible();
+
+    // Lịch sử giấu sau nút "Xem lịch sử" trong block (kiểu CRM) → modal 2 nhật ký
     await page.getByRole("button", { name: "Xem lịch sử", exact: true }).click();
     await expect(page.getByText(/Lịch sử PR —/)).toBeVisible({ timeout: 15_000 });
     await expect(page.getByText("Lịch sử lưu chuyển (sở hữu)")).toBeVisible();

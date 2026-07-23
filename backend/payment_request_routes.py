@@ -824,6 +824,61 @@ def _sale_name_map(sb) -> dict[str, str]:
     return mapping
 
 
+def _staff_map(sb) -> dict[str, dict[str, Any]]:
+    """Map email(lower) → {name, role, team, sub_team, leader_email, is_active}.
+
+    Query riêng khỏi _sale_name_map: nếu cột (vd leader_email) drift thì chỉ mất
+    leader enrich, không kéo sập tên TVTS ở bảng chính."""
+    try:
+        res = sb.table("nhan_su_sale").select(
+            "email, display_name, crm_name, role, team, sub_team, leader_email, is_active"
+        ).execute()
+    except Exception as exc:
+        print(f"[payment_requests] nhan_su_sale staff map failed: {exc}")
+        return {}
+    out: dict[str, dict[str, Any]] = {}
+    for row in res.data or []:
+        email = str(row.get("email") or "").strip().lower()
+        if not email:
+            continue
+        out[email] = {
+            "name": row.get("display_name") or row.get("crm_name") or email,
+            "role": str(row.get("role") or "sale").strip().lower(),
+            "team": row.get("team"),
+            "sub_team": row.get("sub_team"),
+            "leader_email": str(row.get("leader_email") or "").strip().lower(),
+            "is_active": row.get("is_active"),
+        }
+    return out
+
+
+def _leader_name_for(email: str, staff_map: dict[str, dict[str, Any]]) -> str:
+    """Tên leader phụ trách sale sở hữu PR (block 'Quá trình theo dõi chuyển giao').
+
+    Owner là leader/manager → chính họ. Sale → leader_email; thiếu thì fallback
+    leader active cùng team + sub_team."""
+    s = staff_map.get(str(email or "").strip().lower())
+    if not s:
+        return ""
+    if s["role"] in ("leader", "manager", "system"):
+        return s["name"]
+    le = s.get("leader_email") or ""
+    if le and le in staff_map:
+        return staff_map[le]["name"]
+    team, sub = s.get("team"), s.get("sub_team")
+    if not team:
+        return ""
+    for other in staff_map.values():
+        if (
+            other["role"] == "leader"
+            and other.get("team") == team
+            and (not sub or other.get("sub_team") == sub)
+            and other.get("is_active") is not False
+        ):
+            return other["name"]
+    return ""
+
+
 def _build_display_names_for_lines(sb, lines: list[dict[str, Any]]) -> dict[str, str]:
     """Batch lookup display_name cho danh sach payment_lines theo confirmed_by."""
     emails: set[str] = set()
@@ -1871,9 +1926,12 @@ def register_payment_request_routes(app, _get_supabase) -> None:
             requests.append(item)
 
         # Enrich ten TVTS de FE hien cot TVTS cho leader+ ngay tren bang chinh.
+        # + ten leader phu trach (block "Qua trinh theo doi chuyen giao PR", 23/7).
+        staff_map = _staff_map(sb)
         for item in requests:
             email = str(item.get("sale_email") or "").strip().lower()
             item["sale_name"] = name_map.get(email, "")
+            item["sale_leader_name"] = _leader_name_for(email, staff_map)
 
         return {"requests": requests, "total": total}
 
