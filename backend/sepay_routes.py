@@ -600,6 +600,8 @@ router = APIRouter(tags=["sepay"])
 # ---------------------------------------------------------------------------
 def register_sepay_routes(app, get_supabase: Callable) -> None:
     """Đăng ký SePay webhook + cron fallback routes."""
+    # Reset router mỗi lần gọi để tránh tích lũy route giữa các test
+    router.routes.clear()
 
     def _sb_or_503(get_sb):
         sb = get_sb()

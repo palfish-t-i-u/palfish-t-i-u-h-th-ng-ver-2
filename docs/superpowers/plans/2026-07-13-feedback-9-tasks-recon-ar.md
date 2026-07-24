@@ -33,8 +33,8 @@
 - **G3 — No DB migration, no schema change.** Only `payment_requests.state` is read (it exists). **There is NO `payment_lines.cancelled` column** — do NOT select or reference it. Fail-open on the PR-state lookup (missing PR → treat as not-cancelled) — never 500 the endpoint.
 - **G4 — T5 must NOT silence `course_activated`.** Only gate the two Python enqueues (`activation_request_created`, `activation_urgent_reminder`). `course_activated` is trigger-based — do not touch triggers, do not disable `dingtalk_team_groups.is_active` (that would also kill the success message + urgent reminders wholesale).
 - **G5 — T5 default = everything ON.** Empty/unset env ⇒ current behavior (both events fire). The env only DISABLES named events. A temporary toggle must be reversible by editing one env var, no redeploy of logic.
-- **G6 — T7 reuses the existing referral editor.** Do NOT duplicate the referral-bonus form into the create modal. Auto-derive `lead_source="gioi_thieu"` for REFER packages so the tested `ActiveRequestMiniCardV2` referral block (`leadSource==="gioi_thieu"`) reappears. Sale fills referrer UID + bonus sessions there (the PATCH path already persists them).
-- **G7 — T7 keeps `buildCreateActiveRequestPayload` semantics.** It still groups by `childName|uid`; we only ADD an optional `lead_source` onto the course object. Non-REFER packages send NO `lead_source` (unchanged payload byte-for-byte).
+- **G6 — ✅ T7 DONE + Nguồn/Kênh dropdown added.** Modal tạo AR đã có dropdown Nguồn + Kênh per-row (mirror AR editor). `ArDraftRow` thêm `leadSource`/`leadChannel`. `buildCreateActiveRequestPayload` ưu tiên explicit source > auto-detect REFER. BE `_assign_course_codes` passthrough cả `lead_source` + `lead_channel`.
+- **G7 — ✅ T7 DONE.** `buildCreateActiveRequestPayload` vẫn groups by `childName|uid`; thêm `lead_source` + `lead_channel` optional onto course. Non-REFER packages không có explicit source → không gửi `lead_source`.
 - **G8 — `tsc -b` must pass.** Every FE task ends with `cd frontend && npx tsc -b`. Never `--noEmit`.
 - **G9 — Enrichment queries stay O(1) in round-trips.** T6 sale-name + T1 anti-join must each be a SINGLE extra Supabase call per request (batch lookups; no per-row queries). Criterion 3 (no perf regression).
 - **G10 — Match/serialize field names are snake_case on the wire, camelCase in FE types.** Follow the existing `fromApi*` mappers; don't invent new casing.
@@ -59,13 +59,16 @@
 | T4 | `sepay_routes.py` (candidate bill fields) | `types` (BankMatchCandidate), `ReconciliationTab.tsx` | `api.reconciliation.test.ts` (ADD) |
 | T8+T9 | `gateway_routes.py` (`match_gateway_txn` net write + `gateway_match_candidates` amount filter) | — | `tests/test_gateway_routes.py` (ADD 2 cases) |
 
-**Commit order:** T1+T2+T3 → T5 → T8+T9 → T7 → T6 → T4. Each is an independent commit; T1–T3 ship first (chị Hiền is waiting), then the two quick BE fixes (T5 config gate, T8+T9 gateway), then the FE-heavier ones.
+**Commit order (updated 14/7):** ~~T1+T2+T3 → T5 → T8+T9 → T7 → T6 → T4~~ →
+✅ T1+T2+T3 (DONE e9239bf+398ff41) → ✅ T5 (DONE 57b9153+78f59e6) → ✅ T7 (DONE 13c74d7+9512bff + Nguồn/Kênh dropdown thêm riêng) → **T4 (bill images, ĐẨY LÊN TRƯỚC per chị Hiền)** → T6 (sale name) → T8+T9 (Đạt BE, handoff doc sẵn).
+
+**Pre-existing test note:** `paymentRequestUtils.test.ts` has 1 failing test (`paymentConfirmationText` gateway label block) — tests were added by handoff doc `HANDOFF_FIX_NHAN_XAC_NHAN_GATEWAY.md` but implementation not committed yet (untracked file). This is NOT caused by any task in this plan. Sonnet should ignore this failure.
 
 **4-criteria note (mọi task):** ① triệt để — fix the query/source, not the symptom (T5 changes the notification *triggers*, not just message text) ② không lỗi con — pure exclusions / additive fields, existing tests locked green, T5 producers best-effort + idempotent ③ không tăng gánh hạ tầng — 8/9 zero-migration; T5's single migration reuses the existing outbox/trigger infra (no new service), lookups single-round-trip ④ token/quota — no fan-out; each task is one file-cluster, TDD locally.
 
 ---
 
-## Task 1: T1+T2+T3 — Harden `bank_txn_match_candidates`
+## Task 1: T1+T2+T3 — Harden `bank_txn_match_candidates` ✅ DONE (e9239bf+398ff41+499ca3c)
 
 Single function, three exclusions. This is the highest-priority fix.
 
@@ -199,7 +202,7 @@ Fail-open nếu thiếu PR. 0 migration."
 
 ---
 
-## Task 2: T5 — Notification re-architecture (per anh Hiếu spec) ⚠️ HAS MIGRATION
+## Task 2: T5 — Notification re-architecture (per anh Hiếu spec) ✅ DONE (57b9153+78f59e6) ⚠️ HAS MIGRATION
 
 Redesign notification producers to match anh Hiếu's spec (decisions confirmed 13/7):
 - **Part A** — turn OFF the 2 old DingTalk tins (`activation_request_created` + `activation_urgent_reminder`) via env flag (keep code, reversible).
@@ -553,9 +556,9 @@ Migration: SQL trigger + dingtalk_outbox CHECK + dedup index."
 
 ---
 
-## Task 3: T7 — Restore referral capability for REFER packages (FE+BE)
+## Task 3: T7 — Restore referral capability for REFER packages (FE+BE) ✅ DONE (13c74d7+9512bff + Nguồn/Kênh dropdown)
 
-Auto-derive `lead_source="gioi_thieu"` at creation so the existing AR-editor referral block reappears (G6).
+Auto-derive `lead_source="gioi_thieu"` at creation so the existing AR-editor referral block reappears. **Update 14/7:** dropdown Nguồn/Kênh đã thêm vào modal tạo AR (per-row, mirror AR editor). Sale chọn nguồn tại lúc tạo, không cần vào Sửa nữa.
 
 **Files:**
 - Modify: `backend/activation_routes.py:234-242` (`_assign_course_codes` — passthrough `lead_source`/`lead_channel`)
@@ -725,41 +728,43 @@ editor AR hiện lại (regression từ modal 12/7). BE passthrough lead_source/
 
 ## Task 4: T6 — Sale name in "Chờ điền Order ID" queue (FE+BE)
 
-**Files:**
-- Modify: `backend/activation_routes.py` (`_serialize_ar` + the AR-list caller that already builds a sale map, or add one)
-- Modify: `frontend/src/types/paymentRequest.ts:186` (`ActiveRequest` + `ActiveRequestApiRow`)
-- Modify: `frontend/src/components/payment-request/paymentRequestUtils.ts` (`fromApiActiveRequest`)
-- Modify: `frontend/src/components/ActivationTab.tsx` (render in the pending_order row header)
-- Test: BE list test, FE mapper assertion
+**Files (line numbers verified 14/7):**
+- Modify: `backend/activation_routes.py:330` (`_serialize_ar` — add `sale_name_map` param + output field)
+- Modify: `backend/activation_routes.py:1736` (list endpoint caller — build map, pass to `_serialize_ar`)
+- Modify: `frontend/src/types/paymentRequest.ts:186` (`ActiveRequest` + line 308 `ActiveRequestApiRow`)
+- Modify: `frontend/src/components/payment-request/paymentRequestUtils.ts:306` (`fromApiActiveRequest`)
+- Modify: `frontend/src/components/ActivationTab.tsx:2149` (render sale name in AR row)
+- Test: BE list test, FE mapper test
+
+**⚠️ G16 — `_serialize_ar` has 13 call sites.** Only thread `sale_name_map` through the LIST endpoint (`list_active_requests` at line 1736). The other 12 callers (single-AR create/update/patch paths) pass `sale_name_map=None` → `sale_name` falls back to raw `sale_email`. Do NOT refactor the 12 other callers — unnecessary scope expansion, zero user value.
+
+**⚠️ G17 — ActivationTab has ONE unified table, NOT separate "pending_order" section.** All AR statuses render in the same `filtered.map((a) => ...)` loop starting ~line 2123. `ar.customerName` renders at line 2149 in a `cell-name` div. Add sale name inline there. Do NOT create a new column — append to existing cell.
 
 - [ ] **Step 1: BE — expose `sale_name` on the AR payload**
 
-In `_serialize_ar` (`activation_routes.py:324`), the `pr` block (~362) already carries PR fields. Add sale info there. Change the `payment_request` sub-object to include `sale_email` and accept an optional resolved name:
+In `_serialize_ar` (line 330), add `sale_name_map=None` param. In the `payment_request` sub-object assembly (line 368-378), add `sale_name`:
 ```python
-    def _serialize_ar(row, pr=None, sale_name_map=None):
-        ...
-        if pr is not None:
-            sale_email = _clean_text(pr.get("sale_email")).lower()
-            out["payment_request"] = {
-                ...,
-                "state": _pr_payment_state(pr),
-                "sale_email": sale_email,
-                # T6 — LUÔN ưu tiên tên sale, fallback email nếu không có tên.
-                # _sale_name_map đã trả display_name/crm_name (hoặc email nếu row có mà thiếu tên);
-                # `or sale_email` phủ nốt ca sale KHÔNG có trong nhan_su_sale (.get → None).
-                "sale_name": (sale_name_map or {}).get(sale_email) or sale_email,
-            }
+def _serialize_ar(row, pr=None, sale_name_map=None):
+    ...
+    if pr is not None:
+        sale_email = _clean_text(pr.get("sale_email")).lower()
+        out["payment_request"] = {
+            ...,   # keep existing fields id/name/uid/phone/email/target/received/budget/state
+            "sale_email": sale_email,
+            "sale_name": (sale_name_map or {}).get(sale_email) or sale_email,
+        }
 ```
-In the AR-list endpoint that calls `_serialize_ar` per row, build the map ONCE (G9) before the loop, reusing the shared helper:
+In `list_active_requests` (line 1702), before the return at line 1736, build the map ONCE:
 ```python
         from payment_request_routes import _sale_name_map
         try:
-            sale_name_map = _sale_name_map(sb)
+            snm = _sale_name_map(sb)
         except Exception:
-            sale_name_map = {}
-        # ... _serialize_ar(row, pr, sale_name_map) inside the loop
+            snm = {}
 ```
-> `_sale_name_map` (`payment_request_routes.py:793`) returns `{email → display_name | crm_name | email}`. Resolution priority for the queue: **sale name first (VD "Dang Kim Thuong"), email only as last-resort fallback.** Find the list handler by searching `_serialize_ar(` in `activation_routes.py`; thread `sale_name_map` through every call in the list path. Single-request path (AR detail) may pass `None` → `sale_name` falls back to the raw `sale_email` (still never blank when an email exists).
+Then change the return to: `return [_serialize_ar(r, pr_map.get(...), snm) for r in rows]`
+
+> `_sale_name_map` at `payment_request_routes.py:841` returns `{email.lower() → display_name | crm_name | email}`. Single Supabase call (G9).
 
 - [ ] **Step 2: BE test**
 
@@ -767,36 +772,23 @@ Add a test asserting the AR list payload includes `payment_request.sale_name` re
 
 - [ ] **Step 3: FE — carry saleName on the AR type**
 
-In `frontend/src/types/paymentRequest.ts`, extend both:
-```ts
-export interface ActiveRequest {
-  id: string;
-  prId: string | null;
-  customerName: string;
-  createdAt: string;
-  createdBy: string;
-  uids: ActiveUidGroup[];
-  saleName?: string;   // T6 — tên TVSS (map từ sale_email), chỉ ở response danh sách
-}
-```
-and in `ActiveRequestApiRow.payment_request` (line 304):
-```ts
-  payment_request?: { name?: string; email?: string; sale_name?: string; sale_email?: string };
-```
+In `frontend/src/types/paymentRequest.ts`:
+- Line 186 (`ActiveRequest`): add `saleName?: string;`
+- Line 308 (`ActiveRequestApiRow.payment_request`): change to `payment_request?: { name?: string; email?: string; sale_name?: string; sale_email?: string };`
 
 - [ ] **Step 4: FE — map it**
 
-In `fromApiActiveRequest` (`paymentRequestUtils.ts`), set `saleName` from `raw.payment_request?.sale_name`. Add a one-line assertion to the existing mapper test.
+In `fromApiActiveRequest` (`paymentRequestUtils.ts:306`), set `saleName` from `raw.payment_request?.sale_name`. Add a one-line assertion to the existing mapper test.
 
-- [ ] **Step 5: FE — render in the queue row**
+- [ ] **Step 5: FE — render in the AR row**
 
-In `ActivationTab.tsx`, in the `pending_order` row (desktop table + `ActivationRowCards` mobile), render the sale under the customer name, e.g. beside the existing PR-ID/UID line:
+In `ActivationTab.tsx` at line 2149 (inside `cell-name` div, after `{a.customerName}`), append:
 ```tsx
-{ar.saleName && (
-  <span style={{ fontSize: 12, color: "var(--text-3)" }}> · Sale: <strong>{ar.saleName}</strong></span>
+{a.saleName && (
+  <span style={{ fontSize: 12, color: "var(--text-3)" }}> · Sale: <strong>{a.saleName}</strong></span>
 )}
 ```
-> Anchor to the block that renders `ar.customerName` / PR id in the pending_order tab. Mirror the drawer candidate's `Sale: <strong>` style for consistency.
+> This renders in ALL AR statuses (one unified table). No separate "pending_order" section exists.
 
 - [ ] **Step 6: Type-check + commit**
 
@@ -808,34 +800,34 @@ git commit -m "feat(activation): hiện tên Sale ở hàng chờ điền Order 
 
 ---
 
-## Task 5: T4 — Bill images in the bank-match drawer (FE+BE)
+## Task 5: T4 — Bill images in the bank-match drawer (FE+BE) ⚠️ ĐẨY LÊN TRƯỚC (chị Hiền yêu cầu 14/7)
 
 Mirror what the gateway candidate already returns.
 
-**Files:**
-- Modify: `backend/sepay_routes.py:766-785` (candidate dict — add `has_bill`+`bill_images`)
-- Modify: `frontend/src/types` (BankMatchCandidate — add `bill_images?`, `has_bill?`)
+**Files (line numbers updated 14/7 after T1-3 shifted code):**
+- Modify: `backend/sepay_routes.py:809` (candidate dict — add `has_bill`+`bill_images`)
+- Modify: `frontend/src/lib/api.ts:596` (BankMatchCandidate interface — add `bill_images?`, `has_bill?`)
 - Modify: `frontend/src/components/ReconciliationTab.tsx:1710-1722` (render thumbnails)
-- Test: `frontend/src/lib/api.reconciliation.test.ts` (candidate shape)
+- Test: `frontend/src/lib/api.reconciliation.test.ts` (candidate shape), `backend/tests/test_sepay_match_candidates.py`
 
 - [ ] **Step 1: BE — select + return bill fields**
 
-Add `bill_images, bill_image` to the line select (~line 709, same edit spot as Task 1) and in the candidate dict (~771) append:
+Add `bill_images, bill_image` to the line select (~line 707) and in the candidate dict (~line 809) append:
 ```python
                 "bill_images": (
                     line.get("bill_images") if isinstance(line.get("bill_images"), list) else []
                 ) + ([line["bill_image"]] if line.get("bill_image") and line["bill_image"] not in (line.get("bill_images") or []) else []),
                 "has_bill": bool(line.get("bill_images") or line.get("bill_image")),
 ```
-> If Task 1 already extended the select string, just append `, bill_images, bill_image` to it (one select, G9).
+> T1-3 đã extended select string. Append `, bill_images, bill_image` vào select query tại line ~707.
 
 - [ ] **Step 2: BE test**
 
-Extend `backend/tests/test_sepay_match_candidates.py`: add `bill_images: ["https://x/b.jpg"]` to one line, assert candidate returns `has_bill=True` + that URL. Run pytest → PASS.
+Extend `backend/tests/test_sepay_match_candidates.py`: add `bill_images: ["https://x/b.jpg"]` to one existing line in FakeSB, assert candidate returns `has_bill=True` + that URL. Run `cd backend && python -m pytest tests/test_sepay_match_candidates.py -v` → PASS.
 
 - [ ] **Step 3: FE — type**
 
-Add to `BankMatchCandidate` (search its definition in `frontend/src/types/`): `bill_images?: string[]; has_bill?: boolean;`.
+In `frontend/src/lib/api.ts:596` (interface `BankMatchCandidate`), add fields: `bill_images?: string[]; has_bill?: boolean;`.
 
 - [ ] **Step 4: FE — render thumbnails**
 
@@ -863,9 +855,9 @@ git commit -m "feat(recon): hiện ảnh bill trong drawer ghép CK ngoài để
 
 ---
 
-## Task 6: T8+T9 — mPOS/Payoo NET fixes (`gateway_routes.py`)
+## Task 6: T8+T9 — mPOS/Payoo NET fixes (`gateway_routes.py`) — Đạt BE (handoff doc sẵn)
 
-Source: `docs/HANDOFF_GATEWAY_NET_BUGS.md`. Both verified against current code 13/7. Two independent edits in one file → one commit.
+Source: `docs/HANDOFF_GATEWAY_NET_BUGS.md`. Both verified against current code 13/7. Two independent edits in one file → one commit. **Assigned Đạt BE** — AI không sửa file này.
 
 **Files:**
 - Modify: `backend/gateway_routes.py:383-387` (T9 — candidate amount filter) and `:478-498` (T8 — net write in `match_gateway_txn`)
@@ -1033,10 +1025,13 @@ Manual verify (sandbox): open "Ghép CK ngoài" on a CK whose amount matches a c
 2. **Placeholder scan:** Every code step has concrete code; "anchor by search" spots (T6 list caller, T4/BankMatchCandidate type, gateway/`pr_fully_paid` FakeSB seed reuse) are existing symbols to locate. The one FakeSB in Step C2 is sketched (comment) not fully spelled — the executor mirrors `test_dingtalk_ar_created.py`'s FakeSB; flagged, not hidden.
 3. **Type consistency:** `lead_source`↔`leadSource`, `sale_name`↔`saleName` via existing `fromApi*`; `verified_received`/`net_amount` exact existing columns; `pr_fully_paid` event_type consistent across migration CHECK, producer insert, worker EVENT_TITLES, and test; Python `build_payment_paid_message` mirror kept format-identical to the SQL trigger (G14).
 
-## Execution Handoff
+## Execution Handoff (updated 14/7)
 
-Two options:
-1. **Subagent-Driven (recommended)** — fresh subagent per task (T1–T3 first), review between tasks.
-2. **Inline Execution** — batch with checkpoints.
+**DONE:** T1+T2+T3, T5 (Parts A+B+C), T7 (+ Nguồn/Kênh dropdown).
 
-Note: 7 commits across 6 task-groups (T5 = 2 commits: Part A flag, Parts B+C notify). Ship order T1+T2+T3 → T5 → T8+T9 → T7 → T6 → T4. T1–T3 first (chị Hiền waiting); T8+T9 are pure BE fixes from `HANDOFF_GATEWAY_NET_BUGS.md` (assigned Đạt — dedupe if he starts). **T5 is the only migration** (`2026-07-13-notification-rearchitecture.sql`, sandbox→smoke→prod) + needs `DINGTALK_DISABLED_EVENTS` Render env. The other 8 tasks are zero-migration.
+**CÒN LẠI (2 task AI + 1 task Đạt):**
+1. **T4 (bill images)** — ĐẨY LÊN TRƯỚC per chị Hiền. FE+BE, zero-migration. Plan steps 1-5 có code snippet đủ, line numbers đã sửa.
+2. **T6 (sale name)** — FE+BE, zero-migration. Plan steps 1-6 đã corrected (G16: chỉ sửa 1/13 callers; G17: 1 bảng chung không có pending_order riêng).
+3. **T8+T9 (gateway NET)** — Đạt BE, handoff doc `HANDOFF_GATEWAY_NET_BUGS.md` sẵn.
+
+**Executor:** Sonnet (switch từ Opus). Chạy Task 5 (T4 bill) trước → Task 4 (T6 sale) → done phần AI.
