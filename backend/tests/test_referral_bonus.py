@@ -73,3 +73,31 @@ class TestReferralBonusSerialize:
         assert course["referrer_uid"] == "REFERRER_A"
         assert course["bonus_sessions_referee"] == 2
         assert course["bonus_sessions_referrer"] == 3
+
+
+def test_assign_course_codes_keeps_referral():
+    from activation_routes import _assign_course_codes
+    uids_in = [{
+        "uid": "111",
+        "courses": [{
+            "name": "2/W- Both AB REFER 24 PHI+2 HN",
+            "amount": 1_000_000,
+            "lead_source": "gioi_thieu",
+            "referrer_uid": "999",
+            "bonus_sessions_referee": 2,
+            "bonus_sessions_referrer": 3,
+        }],
+    }]
+    out = _assign_course_codes(uids_in, pr_id="PR-2026-0001")
+    course = out[0]["courses"][0]
+    assert course["referrer_uid"] == "999"
+    assert course["bonus_sessions_referee"] == 2
+    assert course["bonus_sessions_referrer"] == 3
+
+
+def test_assign_course_codes_omits_empty_referral():
+    from activation_routes import _assign_course_codes
+    uids_in = [{"uid": "111", "courses": [{"name": "Phil 48+5", "amount": 1000}]}]
+    course = _assign_course_codes(uids_in, pr_id="PR-2026-0001")[0]["courses"][0]
+    assert "referrer_uid" not in course
+    assert "bonus_sessions_referee" not in course

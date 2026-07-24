@@ -294,6 +294,21 @@ def _assign_course_codes(uids_in: list[Any], pr_id: str, start_seq: int = 1) -> 
             lc = str(c.get("lead_channel") or "").strip()
             if lc:
                 norm_course["lead_channel"] = lc
+            ref_uid = str(c.get("referrer_uid") or c.get("referrerUid") or "").strip()
+            if ref_uid:
+                norm_course["referrer_uid"] = ref_uid
+            for snake, camel in (
+                ("bonus_sessions_referee", "bonusSessionsReferee"),
+                ("bonus_sessions_referrer", "bonusSessionsReferrer"),
+            ):
+                val = c.get(snake)
+                if val is None:
+                    val = c.get(camel)
+                if val not in (None, ""):
+                    try:
+                        norm_course[snake] = max(0, int(val))
+                    except (TypeError, ValueError):
+                        pass
             norm_courses.append(norm_course)
         block["courses"] = norm_courses
         out.append(block)
