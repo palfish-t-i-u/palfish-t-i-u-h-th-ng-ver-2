@@ -9,6 +9,31 @@ const row = (over: Partial<ArDraftRow>): ArDraftRow => ({
   packageName: "Gói X", amount: 100, leadSource: "", leadChannel: "", ...over,
 });
 
+describe("buildCreateActiveRequestPayload — referral", () => {
+  const pr = { id: "PR-1", phone: "0900", country: "VN", received: 1_000_000 } as unknown as PaymentRequest;
+  const baseRow: ArDraftRow = {
+    childName: "Bé B", uid: "111", phone: "", phoneCountry: "VN",
+    packageName: "2/W- Both AB REFER 24 PHI+2 HN", amount: 1_000_000,
+    leadSource: "gioi_thieu", leadChannel: "",
+  };
+
+  it("serialize referrer_uid + bonus khi có", () => {
+    const rows: ArDraftRow[] = [{ ...baseRow, referrerUid: "999", bonusSessionsReferee: 2, bonusSessionsReferrer: 3 }];
+    const course = buildCreateActiveRequestPayload(pr, rows).uids[0].courses[0];
+    expect(course.referrer_uid).toBe("999");
+    expect(course.bonus_sessions_referee).toBe(2);
+    expect(course.bonus_sessions_referrer).toBe(3);
+  });
+
+  it("bỏ qua field referral rỗng / 0", () => {
+    const rows: ArDraftRow[] = [{ ...baseRow, referrerUid: "  ", bonusSessionsReferee: 0 }];
+    const course = buildCreateActiveRequestPayload(pr, rows).uids[0].courses[0];
+    expect(course.referrer_uid).toBeUndefined();
+    expect(course.bonus_sessions_referee).toBeUndefined();
+    expect(course.bonus_sessions_referrer).toBeUndefined();
+  });
+});
+
 describe("buildCreateActiveRequestPayload — phone per bé (18/7)", () => {
   it("phone của row vào block (không dùng ngầm số PR)", () => {
     const p = buildCreateActiveRequestPayload(PR, [row({ phone: "352334789" })]);

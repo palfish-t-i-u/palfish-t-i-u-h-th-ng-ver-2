@@ -406,6 +406,10 @@ export function buildCreateActiveRequestPayload(
     }
     const ch = (row.leadChannel ?? "").trim();
     if (ch) course.lead_channel = ch;
+    const refUid = (row.referrerUid ?? "").trim();
+    if (refUid) course.referrer_uid = refUid;
+    if ((row.bonusSessionsReferee ?? 0) > 0) course.bonus_sessions_referee = row.bonusSessionsReferee;
+    if ((row.bonusSessionsReferrer ?? 0) > 0) course.bonus_sessions_referrer = row.bonusSessionsReferrer;
     block.courses.push(course);
   }
   const payload: CreateActiveRequestPayload = { uids: [...blocks.values()] };
