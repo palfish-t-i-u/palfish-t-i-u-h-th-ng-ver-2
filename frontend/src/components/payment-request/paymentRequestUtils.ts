@@ -553,6 +553,24 @@ export function validateReferralBonus(ar: ActiveRequest): string {
   return "";
 }
 
+export function validateReferralBonusDraft(rows: ArDraftRow[]): string {
+  for (const r of rows) {
+    const isReferral = r.leadSource === "gioi_thieu" || isReferralPackage(r.packageName);
+    if (!isReferral) continue;
+    if ((r.bonusSessionsReferrer ?? 0) > 0) {
+      const refUid = (r.referrerUid ?? "").trim();
+      const label = r.packageName?.trim() || "(chưa chọn gói)";
+      if (!refUid) {
+        return `Gói "${label}": đã cộng buổi cho người giới thiệu nhưng chưa nhập UID người giới thiệu.`;
+      }
+      if (refUid === (r.uid ?? "").trim()) {
+        return `Gói "${label}": UID người giới thiệu phải khác UID người được giới thiệu.`;
+      }
+    }
+  }
+  return "";
+}
+
 export function updateActiveCoursePackage(
   ar: ActiveRequest,
   courseCode: string,

@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { isReferralPackage, buildCreateActiveRequestPayload } from "./paymentRequestUtils";
-import type { PaymentRequest } from "../../types/paymentRequest";
+import { isReferralPackage, buildCreateActiveRequestPayload, validateReferralBonusDraft } from "./paymentRequestUtils";
+import type { PaymentRequest, ArDraftRow } from "../../types/paymentRequest";
 
 const PR = { id: "PR-1", uid: "u1", phone: "0900000000", country: "VN" } as unknown as PaymentRequest;
 
@@ -42,5 +42,29 @@ describe("buildCreateActiveRequestPayload referral", () => {
     const c = payload.uids[0].courses[0];
     expect(c.lead_source).toBe("offline");
     expect(c.lead_channel).toBe("300461");
+  });
+});
+
+const row = (over: Partial<ArDraftRow>): ArDraftRow => ({
+  childName: "B", uid: "111", phone: "", phoneCountry: "VN",
+  packageName: "2/W- Both AB REFER 24 PHI+2 HN", amount: 1000, leadSource: "gioi_thieu", leadChannel: "",
+  ...over,
+});
+
+describe("validateReferralBonusDraft", () => {
+  it("ok khi không cộng cho người GT", () => {
+    expect(validateReferralBonusDraft([row({ bonusSessionsReferee: 2 })])).toBe("");
+  });
+  it("chặn khi cộng cho người GT nhưng thiếu UID", () => {
+    expect(validateReferralBonusDraft([row({ bonusSessionsReferrer: 3 })])).toMatch(/UID người giới thiệu/);
+  });
+  it("chặn khi UID người GT trùng UID bé", () => {
+    expect(validateReferralBonusDraft([row({ bonusSessionsReferrer: 3, referrerUid: "111" })])).toMatch(/phải khác/);
+  });
+  it("ok khi đủ UID khác nhau", () => {
+    expect(validateReferralBonusDraft([row({ bonusSessionsReferrer: 3, referrerUid: "999" })])).toBe("");
+  });
+  it("bỏ qua dòng không phải referral", () => {
+    expect(validateReferralBonusDraft([row({ leadSource: "quang_cao", packageName: "Phil 48+5", bonusSessionsReferrer: 3 })])).toBe("");
   });
 });
