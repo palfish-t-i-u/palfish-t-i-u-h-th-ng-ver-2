@@ -101,3 +101,56 @@ def test_assign_course_codes_omits_empty_referral():
     course = _assign_course_codes(uids_in, pr_id="PR-2026-0001")[0]["courses"][0]
     assert "referrer_uid" not in course
     assert "bonus_sessions_referee" not in course
+
+
+# ---------------------------------------------------------------------------
+# Message builder: referral lines in báo đơn notification
+# ---------------------------------------------------------------------------
+
+def _ref_msg(course_over):
+    from utils.zalo_message_builder import build_activation_request_created_message
+    ar = {
+        "id": "AR-1", "customer_name": "Minh Phương",
+        "uids_data": [{
+            "uid": "3315152683", "name": "Minh Phương",
+            "courses": [{"name": "2/W- Both AB REFER 24 PHI+2 HN", **course_over}],
+        }],
+    }
+    pr = {"phone": "84-938572456", "country": "VN", "lead_source": "quang_cao",
+          "lead_channel": "fb", "received": 14_320_000}
+    return build_activation_request_created_message(
+        ar, pr, {"display_name": "Kieu Thi Thu Quynh", "team": "Inhouse 1"}
+    )["message"]
+
+
+def test_referral_line_full():
+    m = _ref_msg({"referrer_uid": "3312345678", "bonus_sessions_referee": 2, "bonus_sessions_referrer": 3})
+    assert "🎁 Thưởng giới thiệu:" in m
+    assert "Bé được giới thiệu (Minh Phương): +2 buổi" in m
+    assert "Người giới thiệu — UID 3312345678: +3 buổi" in m
+
+
+def test_referral_line_referee_only():
+    m = _ref_msg({"bonus_sessions_referee": 2})
+    assert "Bé được giới thiệu (Minh Phương): +2 buổi" in m
+    assert "Người giới thiệu" not in m
+
+
+def test_referral_line_uid_but_no_sessions():
+    m = _ref_msg({"referrer_uid": "3312345678"})
+    assert "Người giới thiệu — UID 3312345678: chưa ghi số buổi" in m
+
+
+def test_referral_line_empty_shows_warning():
+    m = _ref_msg({})
+    assert "⚠ Gói giới thiệu — chưa nhập UID & số buổi cộng" in m
+    assert "🎁" not in m
+
+
+def test_referral_line_absent_for_non_referral():
+    from utils.zalo_message_builder import build_activation_request_created_message
+    ar = {"id": "AR-1", "customer_name": "Bé C",
+          "uids_data": [{"uid": "111", "name": "Bé C", "courses": [{"name": "Phil 48+5"}]}]}
+    pr = {"phone": "0900", "country": "VN", "lead_source": "quang_cao", "received": 1000}
+    m = build_activation_request_created_message(ar, pr, {"display_name": "S", "team": "Inhouse 1"})["message"]
+    assert "🎁" not in m and "⚠ Gói giới thiệu" not in m
