@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import os
 import re
 import time
@@ -12,6 +11,19 @@ from decimal import Decimal, ROUND_HALF_UP
 from typing import Any, Callable, Iterator
 
 from revenue_routes import team_to_pivot_label, vnd_to_rmb
+
+# Fingerprint chuyển sang ledger_recon (module chung với audit A1).
+# Re-export giữ tương thích: dedup_gsheet_ledger.py, xlsx_ledger_import.py,
+# tests/ đang import từ đây.
+from ledger_recon import (  # noqa: F401
+    _fp_clean,
+    _loose_fp,
+    _loose_fp_blank,
+    _primary_day,
+    fetch_ledger_rows,
+    reconcile,
+    row_fingerprint,
+)
 
 DEFAULT_SPREADSHEET_ID = "1sEthbH-zcMavoQ1qi9J_CNnHAJoyt0gfsE-xsMW0LCc"
 DEFAULT_SHEET_TABS = ("SM Hanoi", "HCM REV")
@@ -41,6 +53,9 @@ MAP_PROGRESS_EVERY = 2000
 INSERT_BATCH = 50
 INSERT_PAUSE_SEC = 0.05
 SUPABASE_MAX_ATTEMPTS = 5
+DEFAULT_MIN_INSERT_DAY = "2026-01-01"
+# Floor: chỉ insert dòng có ngày >= mốc. Dòng cũ hơn (seed-era, sheet edit
+# drift) chỉ báo cáo, không tự nạp — tránh nút "Sync Data" nạp dup lịch sử.
 
 
 def _log(msg: str) -> None:
@@ -360,51 +375,6 @@ def _resolve_team_fields(
     return None, None
 
 
-def _fp_clean(val: Any) -> str:
-    if val is None or val == "":
-        return ""
-    s = str(val).strip()
-    return "" if s.lower() == "nan" else s
-
-
-def row_fingerprint(payload: dict[str, Any]) -> str:
-    parts = [
-        _fp_clean(payload.get("uid")),
-        str(payload.get("pay_time") or "")[:10],
-        str(payload.get("so_tien_vnd") or 0),
-        _fp_clean(payload.get("sale_crm_name")).lower(),
-        _fp_clean(payload.get("sdt")),
-    ]
-    return hashlib.sha256("|".join(parts).encode()).hexdigest()[:32]
-
-
-def _loose_fp(row: dict[str, Any]) -> str:
-    """Dedup key bền với sheet edit giữa các đợt sync.
-
-    Key = uid + sale + tháng-pay-time + số tiền VND. Cùng customer PalFish
-    (UID unique per customer) + cùng sale phụ trách + cùng tháng đóng tiền +
-    cùng số tiền = cùng giao dịch — bất kể tên khách/SĐT/ngày tiền về bị sửa
-    trên sheet giữa các đợt.
-
-    Tháng (YYYY-MM) thay vì ngày để hấp thụ ca Hiền sửa `ngày tiền về` đợt
-    sau. Bỏ SDT khỏi key (bản cũ gồm SDT — Hiền sửa SDT giữa các đợt thì
-    bypass dedup; xem 18 cặp X bị xóa 15/6/2026).
-    """
-    uid = _fp_clean(row.get("uid"))
-    pay = str(row.get("pay_time") or row.get("ngay_tien_ve") or "")[:7]
-    sale = _fp_clean(row.get("sale_crm_name")).lower()
-    vnd = str(row.get("so_tien_vnd") or 0)
-    return f"{uid}|{sale}|{pay}|{vnd}"
-
-
-def _loose_fp_blank(row: dict[str, Any]) -> str:
-    """Fallback key cho dòng đợt sớm chưa điền UID: sale + tháng + tiền."""
-    pay = str(row.get("pay_time") or row.get("ngay_tien_ve") or "")[:7]
-    sale = _fp_clean(row.get("sale_crm_name")).lower()
-    vnd = str(row.get("so_tien_vnd") or 0)
-    return f"|{sale}|{pay}|{vnd}"
-
-
 def map_hcm_rev_row(team_cache: TeamLookupCache, row: list[Any], *, tab: str = "HCM REV") -> dict[str, Any] | None:
     vnd = _to_int_vnd(_cell(row, 9))
     if vnd <= 0:
@@ -645,38 +615,6 @@ def _load_existing_import_fingerprints(sb, *, log: Callable[[str], None] = _log)
     return fps
 
 
-def _load_existing_loose_fps(sb, *, log: Callable[[str], None] = _log) -> dict[str, int]:
-    """Đếm số dòng theo loose key (uid+sale+tháng+tiền) — multiplicity.
-
-    Tính cả dòng UID trống (key `|sale|tháng|tiền`) để chặn được bản đã-điền-
-    thêm UID đợt sau ([[pattern B]]).
-    """
-    fps: dict[str, int] = {}
-    offset = 0
-    while True:
-        res = _execute_supabase(
-            lambda off=offset: (
-                sb.table("so_doanh_thu")
-                .select("uid, ngay_tien_ve, pay_time, so_tien_vnd, sale_crm_name")
-                .range(off, off + 999)
-                .execute()
-            ),
-            log=log,
-            label="Load ledger loose fp",
-        )
-        chunk = res.data or []
-        if not chunk:
-            break
-        for r in chunk:
-            key = _loose_fp(r)
-            fps[key] = fps.get(key, 0) + 1
-        if len(chunk) < 1000:
-            break
-        offset += 1000
-    log(f"  Đã có {len(fps)} loose fingerprint (uid+sale+tháng+tiền, gồm UID trống)")
-    return fps
-
-
 def sync_gsheet_to_ledger(
     sb,
     *,
@@ -688,29 +626,17 @@ def sync_gsheet_to_ledger(
     actor_email: str = "import:gsheet",
     log: Callable[[str], None] = _log,
     sb_factory: Callable[[], Any] | None = None,
+    min_insert_day: str | None = None,
 ) -> dict[str, Any]:
     sid = (spreadsheet_id or os.environ.get("GOOGLE_SHEETS_ID") or DEFAULT_SPREADSHEET_ID).strip()
     log("Load team cache (nhan_su_sale)…")
     team_cache = TeamLookupCache(sb)
     log(f"  {team_cache.size} sale → team")
 
-    log("Map dữ liệu từ Google Sheet…")
-    log("Kiểm tra dòng đã import…")
-    existing = _load_existing_import_fingerprints(sb, log=log)
-    log("Kiểm tra loose match (uid+ngày+tiền)…")
-    loose_existing = _load_existing_loose_fps(sb, log=log)
-
+    # 1) Gom payload mọi tab (stream fetch per-tab, dedup exact fingerprint cross-tab)
     seen_payloads: set[str] = set()
+    all_payloads: list[dict[str, Any]] = []
     samples: list[dict[str, Any]] = []
-    totals = {
-        "fetched": 0,
-        "skippedExisting": 0,
-        "skippedLoose": 0,
-        "plannedInsert": 0,
-        "inserted": 0,
-    }
-    client = sb
-
     for tab, payloads in iter_payloads_by_tab(
         team_cache,
         spreadsheet_id=sid,
@@ -719,45 +645,60 @@ def sync_gsheet_to_ledger(
         limit=limit,
         log=log,
     ):
-        to_insert: list[dict[str, Any]] = []
-        skipped_tab = 0
-        loose_skipped_tab = 0
-
         for p in payloads:
             fp = row_fingerprint(p)
             if fp in seen_payloads:
                 continue
             seen_payloads.add(fp)
-            totals["fetched"] += 1
             if len(samples) < 3:
                 samples.append(p)
+            all_payloads.append(p)
+        del payloads
 
-            if fp in existing:
-                skipped_tab += 1
-                continue
-            if _loose_fp(p) in loose_existing or _loose_fp_blank(p) in loose_existing:
-                loose_skipped_tab += 1
-                continue
+    # 2) Đọc Sổ + reconcile (consumption — xem ledger_recon docstring)
+    log("Đọc so_doanh_thu (phân trang)…")
+    db_rows = fetch_ledger_rows(sb)
+    log(f"  Sổ: {len(db_rows)} dòng")
+    log("Reconcile (consumption, 6 tầng)…")
+    result = reconcile(all_payloads, db_rows)
+    m = result["matches"]
 
-            p["updated_by_email"] = actor_email
-            if not p.get("created_by_email"):
-                p["created_by_email"] = actor_email
-            to_insert.append(p)
+    # 3) Floor + chuẩn bị insert
+    floor = min_insert_day or DEFAULT_MIN_INSERT_DAY
+    to_insert = [s for s in result["sheet_only"] if _primary_day(s) >= floor]
+    below_floor = len(result["sheet_only"]) - len(to_insert)
+    for p in to_insert:
+        p["updated_by_email"] = actor_email
+        if not p.get("created_by_email"):
+            p["created_by_email"] = actor_email
 
-        totals["skippedExisting"] += skipped_tab
-        totals["skippedLoose"] += loose_skipped_tab
-        totals["plannedInsert"] += len(to_insert)
+    totals = {
+        "fetched": len(all_payloads),
+        "skippedExisting": len(m["exact"]),
+        "skippedLoose": len(m["loose"]) + len(m["loose_blank"]),
+        "skippedWeak": len(m["day_vnd"]),
+        "amountMismatch": len(m["uid_day"]),
+        "dupSuspect": len(result["dup_suspect"]),
+        "belowFloor": below_floor,
+        "plannedInsert": len(to_insert),
+        "inserted": 0,
+    }
+    for s in result["dup_suspect"]:
+        log(f"  ⚠ dup_suspect (không insert): {_primary_day(s)} | "
+            f"uid={s.get('uid')} | {s.get('ten_khach')} | {s.get('so_tien_vnd')}")
+    for s, d in m["uid_day"]:
+        log(f"  ⚠ lệch tiền: uid={s.get('uid')} {_primary_day(s)} "
+            f"file={s.get('so_tien_vnd')} sổ={d.get('so_tien_vnd')}")
+    if below_floor:
+        log(f"  {below_floor} dòng < {floor} chỉ báo cáo, không insert")
 
-        if dry_run or not to_insert:
-            del payloads
-            del to_insert
-            continue
-
+    if not dry_run and to_insert:
+        client = sb
         base_ts = datetime.now(timezone.utc)
         for idx, p in enumerate(to_insert):
             p["created_at"] = (base_ts + timedelta(milliseconds=idx)).isoformat()
         log(f"Insert {len(to_insert)} dòng mới (batch {INSERT_BATCH})…")
-        inserted_tab = 0
+        inserted_count = 0
         for i in range(0, len(to_insert), INSERT_BATCH):
             chunk = to_insert[i : i + INSERT_BATCH]
             try:
@@ -777,24 +718,16 @@ def sync_gsheet_to_ledger(
                     )
                 else:
                     raise
-            for p in chunk:
-                existing.add(row_fingerprint(p))
-                key = _loose_fp(p)
-                loose_existing[key] = loose_existing.get(key, 0) + 1
-                blank_key = _loose_fp_blank(p)
-                if blank_key != key:
-                    loose_existing[blank_key] = loose_existing.get(blank_key, 0) + 1
-            inserted_tab += len(chunk)
-            log(f"  inserted {inserted_tab}/{len(to_insert)}")
+            inserted_count += len(chunk)
+            log(f"  inserted {inserted_count}/{len(to_insert)}")
             if INSERT_PAUSE_SEC and i + INSERT_BATCH < len(to_insert):
                 time.sleep(INSERT_PAUSE_SEC)
-        totals["inserted"] += inserted_tab
-        del payloads
-        del to_insert
+        totals["inserted"] = inserted_count
 
     if dry_run:
         log(f"Dry-run — sẽ insert {totals['plannedInsert']} dòng "
-            f"(skip {totals['skippedExisting']} exact + {totals['skippedLoose']} loose)")
+            f"(skip {totals['skippedExisting']} exact + {totals['skippedLoose']} loose + "
+            f"{totals['skippedWeak']} weak)")
     elif totals["inserted"] == 0:
         log(f"Không có dòng mới (skip {totals['skippedExisting']} exact + "
             f"{totals['skippedLoose']} loose)")
@@ -805,6 +738,10 @@ def sync_gsheet_to_ledger(
         "fetched": totals["fetched"],
         "skippedExisting": totals["skippedExisting"],
         "skippedLoose": totals["skippedLoose"],
+        "skippedWeak": totals["skippedWeak"],
+        "amountMismatch": totals["amountMismatch"],
+        "dupSuspect": totals["dupSuspect"],
+        "belowFloor": totals["belowFloor"],
         "plannedInsert": totals["plannedInsert"],
         "inserted": totals["inserted"] if not dry_run else 0,
         "dryRun": dry_run,

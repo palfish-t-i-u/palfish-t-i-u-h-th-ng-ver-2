@@ -406,6 +406,10 @@ export function buildCreateActiveRequestPayload(
     }
     const ch = (row.leadChannel ?? "").trim();
     if (ch) course.lead_channel = ch;
+    const refUid = (row.referrerUid ?? "").trim();
+    if (refUid) course.referrer_uid = refUid;
+    if ((row.bonusSessionsReferee ?? 0) > 0) course.bonus_sessions_referee = row.bonusSessionsReferee;
+    if ((row.bonusSessionsReferrer ?? 0) > 0) course.bonus_sessions_referrer = row.bonusSessionsReferrer;
     block.courses.push(course);
   }
   const payload: CreateActiveRequestPayload = { uids: [...blocks.values()] };
@@ -543,6 +547,24 @@ export function validateReferralBonus(ar: ActiveRequest): string {
         if (refUid === refereeUid) {
           return `Khoá ${c.courseCode}: UID người giới thiệu phải khác UID người được giới thiệu (${refereeUid}).`;
         }
+      }
+    }
+  }
+  return "";
+}
+
+export function validateReferralBonusDraft(rows: ArDraftRow[]): string {
+  for (const r of rows) {
+    const isReferral = r.leadSource === "gioi_thieu" || isReferralPackage(r.packageName);
+    if (!isReferral) continue;
+    if ((r.bonusSessionsReferrer ?? 0) > 0) {
+      const refUid = (r.referrerUid ?? "").trim();
+      const label = r.packageName?.trim() || "(chưa chọn gói)";
+      if (!refUid) {
+        return `Gói "${label}": đã cộng buổi cho người giới thiệu nhưng chưa nhập UID người giới thiệu.`;
+      }
+      if (refUid === (r.uid ?? "").trim()) {
+        return `Gói "${label}": UID người giới thiệu phải khác UID người được giới thiệu.`;
       }
     }
   }

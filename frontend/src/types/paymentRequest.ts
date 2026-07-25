@@ -298,6 +298,10 @@ export type CreateActiveRequestCoursePayload = {
   amount: number;
   lead_source?: string;
   lead_channel?: string;
+  /** Cộng buổi referral (nguồn = gioi_thieu) — nhập inline khi báo đơn */
+  referrer_uid?: string;
+  bonus_sessions_referee?: number;
+  bonus_sessions_referrer?: number;
 };
 
 export type CreateActiveRequestUidPayload = {
@@ -319,6 +323,10 @@ export type ArDraftRow = {
   amount: number;      // VND
   leadSource: string;
   leadChannel: string;
+  /** Referral (nguồn gioi_thieu) — nhập inline ngay trong form báo đơn */
+  referrerUid?: string;
+  bonusSessionsReferee?: number;
+  bonusSessionsReferrer?: number;
 };
 
 export type CreateActiveRequestPayload = {

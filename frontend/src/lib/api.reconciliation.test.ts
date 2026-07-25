@@ -66,6 +66,21 @@ describe("bankTxns endpoint contract — luồng kế toán xem SePay", () => {
     expect(receivedStatus).toBe("needs_review");
   });
 
+  it("list truyền status/limit/offset lên query đúng (load-all paging)", async () => {
+    let received: URLSearchParams | null = null;
+    server.use(
+      http.get(`${BASE}/api/v1/bank-transactions`, ({ request }) => {
+        received = new URL(request.url).searchParams;
+        return HttpResponse.json([]);
+      }),
+    );
+
+    await endpoints.bankTxns.list({ status: "unmatched", limit: 500, offset: 500 });
+    expect(received!.get("status")).toBe("unmatched");
+    expect(received!.get("limit")).toBe("500");
+    expect(received!.get("offset")).toBe("500");
+  });
+
   it("matchCandidates với amount_exact truyền query đúng", async () => {
     let receivedAmount = "";
     server.use(

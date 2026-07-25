@@ -87,6 +87,10 @@
 - Tỷ giá admin: `frontend/src/components/admin/ExchangeRatesPanel.tsx` + `endpoints.exchangeRates` + `frontend/src/types/exchangeRate.ts`
 - Types: `frontend/src/types/revenue.ts`; API group: `endpoints.revenue`
 - Script: `scripts/sync_so_doanh_thu_to_lark.py` — đẩy ledger sang Lark
+- Matching chung import↔audit: `backend/ledger_recon.py` (consumption Pool, 6 tầng, guard tên/SĐT)
+- CLI: `backend/scripts/run_import.py` (dry-run mặc định) · `backfill_blank_uid.py` (preview→duyệt→apply) · `sync_and_audit.py` (import+audit 1 báo cáo)
+- Audit A1: `backend/scripts/audit_so_vs_allfile.py` (read-only, đối chiếu Sổ ↔ All File Thu Hiền, `--selftest`) + runbook `backend/scripts/AUDIT_SO_VS_ALLFILE.md`
+- Danang REV: chi nhánh đóng, không import (quyết định 23/7/2026)
 - E2E: `frontend/e2e/journeys/revenue-reporting.spec.ts`
 - Docs: `docs/MODULE_SO_DOANH_THU.md`, `docs/SPEC_DOANH_THU.md`
 

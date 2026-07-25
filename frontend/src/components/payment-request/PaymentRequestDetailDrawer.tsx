@@ -38,6 +38,7 @@ import {
   reportButtonState,
   splitChildNames,
   validateReferralBonus,
+  validateReferralBonusDraft,
   vnd,
 } from "./paymentRequestUtils";
 import { normalizeLocalPhone, crmPhoneFormat, formatPhoneIntl, applySmartPhoneInput } from "./phoneUtils";
@@ -2700,7 +2701,8 @@ export default function PaymentRequestDetailDrawer({
         const arRowsValid = arDraftRows.length > 0 && arDraftRows.every(
           (r) => r.packageName.trim() && r.amount > 0 && r.uid.trim() && r.phone.trim()
         );
-        const arValid = arRowsValid && arRemaining >= 0;
+        const referralDraftError = validateReferralBonusDraft(arDraftRows);
+        const arValid = arRowsValid && arRemaining >= 0 && !referralDraftError;
         const arChildOptions = (() => {
           const names = splitChildNames(request.childName);
           for (const c of request.children ?? []) {
@@ -2844,7 +2846,7 @@ export default function PaymentRequestDetailDrawer({
                       />
                       {isReferralPackage(row.packageName) && (
                         <div style={{ marginTop: 4, fontSize: 12, color: "var(--warning-text, #92400e)", lineHeight: 1.3 }}>
-                          * Gói giới thiệu — sau khi tạo, bấm Sửa ở thẻ kích hoạt để điền UID người giới thiệu &amp; số buổi cộng.
+                          * Gói giới thiệu — điền UID người giới thiệu &amp; số buổi cộng ngay bên dưới.
                         </div>
                       )}
                     </div>
@@ -2901,6 +2903,50 @@ export default function PaymentRequestDetailDrawer({
                       </div>
                     )}
                   </div>
+                  {/* Row 5: Cộng buổi giới thiệu (inline) */}
+                  {(isReferralPackage(row.packageName) || row.leadSource === "gioi_thieu") && (
+                    <div style={{ marginTop: 10, padding: "10px 12px", borderRadius: 8, background: "var(--warning-50, #fffbeb)", border: "1px solid var(--warning-200, #fde68a)", display: "grid", gap: 8 }}>
+                      <div style={{ fontSize: 12.5, fontWeight: 700, color: "var(--warning-text, #92400e)" }}>Thưởng giới thiệu</div>
+                      <div className="field" style={{ marginBottom: 0 }}>
+                        <label>UID người giới thiệu</label>
+                        <input
+                          placeholder="UID khách đã giới thiệu khách này"
+                          value={row.referrerUid ?? ""}
+                          onChange={(e) => setArRow(i, { referrerUid: e.target.value })}
+                          style={{ fontFamily: "JetBrains Mono, monospace" }}
+                        />
+                        <div style={{ fontSize: 11, color: "var(--text-3)", marginTop: 3 }}>
+                          UID phải khác UID người được giới thiệu (bé đang báo: {row.uid || "—"}).
+                        </div>
+                      </div>
+                      <div style={{ display: "flex", gap: 8 }}>
+                        <div className="field" style={{ flex: 1, marginBottom: 0 }}>
+                          <label>Buổi cộng cho bé (người được GT)</label>
+                          <input
+                            inputMode="numeric"
+                            pattern="[0-9]*"
+                            value={row.bonusSessionsReferee ?? ""}
+                            onChange={(e) => {
+                              const raw = e.target.value.replace(/[^\d]/g, "");
+                              setArRow(i, { bonusSessionsReferee: raw === "" ? undefined : Math.max(0, parseInt(raw, 10) || 0) });
+                            }}
+                          />
+                        </div>
+                        <div className="field" style={{ flex: 1, marginBottom: 0 }}>
+                          <label>Buổi cộng cho người giới thiệu</label>
+                          <input
+                            inputMode="numeric"
+                            pattern="[0-9]*"
+                            value={row.bonusSessionsReferrer ?? ""}
+                            onChange={(e) => {
+                              const raw = e.target.value.replace(/[^\d]/g, "");
+                              setArRow(i, { bonusSessionsReferrer: raw === "" ? undefined : Math.max(0, parseInt(raw, 10) || 0) });
+                            }}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
               ))}
               <button
@@ -2943,6 +2989,11 @@ export default function PaymentRequestDetailDrawer({
               </div>
             </div>
             <div className="modal-foot">
+              {referralDraftError && (
+                <div style={{ flex: 1, color: "var(--danger)", fontSize: 12.5, alignSelf: "center" }}>
+                  {referralDraftError}
+                </div>
+              )}
               <button type="button" className="btn btn-outline" onClick={() => setArPackageModalOpen(false)}>
                 Huỷ
               </button>

@@ -14,6 +14,9 @@ class _FakeQuery:
     def select(self, *_args, **_kwargs):
         return self
 
+    def order(self, *_a, **_k):
+        return self
+
     def eq(self, *_args, **_kwargs):
         return self
 
@@ -92,17 +95,20 @@ def test_cross_tab_exact_duplicate_inserted_once(monkeypatch):
     assert len(sb.inserted) == 1
 
 
-def test_loose_dedup_against_just_inserted_row(monkeypatch):
-    """Tab 1 insert dòng A → Tab 2 có dòng A' loose-match (cùng uid+sale+
-    tháng+tiền, khác sdt) → tab 2 phải skip vì loose_existing đã được cập
-    nhật."""
+def test_loose_dedup_against_existing_db_row(monkeypatch):
+    """Dòng A đã có trong DB từ đợt sync trước → Dòng A' trong sheet đợt
+    này (cùng uid+sale+tháng+tiền, khác sdt) → loose-match với A trong DB
+    → skip. Cross-tab loose dedup nay so với DB, không so nội bộ run."""
     from gsheet_ledger_import import sync_gsheet_to_ledger
 
     p_a = _payload("SM Hanoi", sdt="81-1111111111")
+    # p_a đã import kỳ trước → nằm trong DB
+    db_row = {**p_a, "id": "fake-id", "ngay_tien_ve": "2026-05-29",
+              "ten_khach": "Hiro", "team": None, "loai_nhap": "import", "gmv_rmb": None}
+
     p_a_prime = _payload("HCM REV", sdt="81-2222222222", uid="3311069834")
 
     def fake_iter(*_args, **_kwargs):
-        yield ("SM Hanoi", [p_a])
         yield ("HCM REV", [p_a_prime])
 
     monkeypatch.setattr(
@@ -110,9 +116,10 @@ def test_loose_dedup_against_just_inserted_row(monkeypatch):
     )
     monkeypatch.setattr("gsheet_ledger_import.iter_payloads_by_tab", fake_iter)
 
-    sb = _FakeSupabase([])
+    sb = _FakeSupabase([db_row])
     result = sync_gsheet_to_ledger(sb, log=lambda *_a, **_k: None)
 
-    assert result["inserted"] == 1, "Chỉ p_a vào DB, p_a_prime loose-skip"
-    assert result["skippedLoose"] == 1
-    assert len(sb.inserted) == 1
+    assert result["inserted"] == 0, "p_a_prime match với p_a trong DB → skip"
+    assert result["skippedExisting"] + result["skippedLoose"] >= 1  # exact hoặc loose đều OK
+    assert result["plannedInsert"] == 0
+    assert len(sb.inserted) == 0

@@ -478,9 +478,16 @@ class TestSepayLateMatch:
         assert result["payment_line_id"] is None
         assert line_updates == []
 
-    def test_linked_check_error_skips_candidate_not_whole_loop(self):
-        """Linked-check throw ở ứng viên 1 → continue dò ứng viên 2 (review 18/7:
-        return sớm làm lỗi thoáng qua chặn cả vòng dò, dòng CK kẹt pending)."""
+    def test_two_codes_in_content_ambiguous_no_auto(self):
+        """UPDATE 24/7 (fold matching): content chứa 2 mã của 2 line paid khác
+        nhau → ambiguous guard chặn auto, chờ ghép tay.
+
+        Hành vi cũ (18/7): first-match-wins theo thứ tự DB, lỗi linked-check ở
+        A thì nhảy sang B — kết quả ghép phụ thuộc thứ tự + lỗi thoáng qua.
+        Semantics mới: ≥2 mã cùng khớp = không đoán được txn thuộc line nào
+        (amount khớp từng line không phân định được) → manual. Tinh thần review
+        18/7 (lỗi thoáng qua không chặn vòng dò) giữ ở test dưới — scan mã giờ
+        in-memory không chạm DB, linked-check chỉ chạy trên winner duy nhất."""
         from sepay_routes import _process_sepay_transaction
 
         line_a = {"id": "line-a", "transfer_code": "AAAAA", "amount": 7_000_000,
@@ -489,20 +496,13 @@ class TestSepayLateMatch:
                   "method": "qr", "status": "paid", "payment_request_id": "PR-B"}
 
         upserts: list[dict] = []
-        call_count = {"n": 0}
-
-        def bank_select(*a, **k):
-            call_count["n"] += 1
-            if call_count["n"] == 1:
-                raise Exception("transient DB error")
-            return _FakeSelect([])
 
         def mock_table(name):
             t = MagicMock()
             if name == "payment_lines":
                 t.select.side_effect = lambda *a, **k: _FakeSelect([line_a, line_b])
             elif name == "bank_transactions":
-                t.select.side_effect = bank_select
+                t.select.side_effect = lambda *a, **k: _FakeSelect([])
                 def record_upsert(payload, **kw):
                     upserts.append(payload)
                     chain = MagicMock()
@@ -520,10 +520,49 @@ class TestSepayLateMatch:
             "transferAmount": 7_000_000,
         })
 
-        # Ứng viên A lỗi → skip; ứng viên B vẫn được dò và match
-        assert result["status"] == "auto_matched"
-        assert result["payment_line_id"] == "line-b"
-        assert upserts[0]["matched_by"] == "system:sepay_late"
+        assert result["status"] == "pending"
+        assert result["payment_line_id"] is None
+
+    def test_linked_check_transient_error_graceful_pending(self):
+        """Tinh thần review 18/7 sau redesign 24/7: lỗi DB thoáng qua ở
+        linked-check của winner duy nhất → KHÔNG raise, txn về pending
+        (kế toán ghép tay được) thay vì crash cả flow webhook."""
+        from sepay_routes import _process_sepay_transaction
+
+        line_a = {"id": "line-a", "transfer_code": "AAAAA", "amount": 7_000_000,
+                  "method": "qr", "status": "paid", "payment_request_id": "PR-A"}
+
+        upserts: list[dict] = []
+
+        def bank_select(*a, **k):
+            raise Exception("transient DB error")
+
+        def mock_table(name):
+            t = MagicMock()
+            if name == "payment_lines":
+                t.select.side_effect = lambda *a, **k: _FakeSelect([line_a])
+            elif name == "bank_transactions":
+                t.select.side_effect = bank_select
+                def record_upsert(payload, **kw):
+                    upserts.append(payload)
+                    chain = MagicMock()
+                    chain.execute.return_value = MagicMock(data=[{"txn_id": "new-txn"}])
+                    return chain
+                t.upsert.side_effect = record_upsert
+            return t
+
+        sb = MagicMock()
+        sb.table.side_effect = mock_table
+
+        result = _process_sepay_transaction(sb, {
+            "id": 67653646,
+            "content": "AAAAA chuyen tien",
+            "transferAmount": 7_000_000,
+        })
+
+        # Không crash; txn pending, không link sai
+        assert result["status"] == "pending"
+        assert result["payment_line_id"] is None
 
     def test_pending_line_still_wins_over_paid(self):
         """Có line pending khớp mã → flow cũ thắng (mark paid + notify),
