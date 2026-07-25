@@ -112,6 +112,18 @@ def _strip_vn(s: str) -> str:
     return "".join(c for c in nfkd if not unicodedata.combining(c)).replace("đ", "d").replace("Đ", "D")
 
 _PHONE_RE = re.compile(r"(?:^|\D)(0\d{9})(?:\D|$)")
+
+# Fold ký tự dễ nhầm khi khách GÕ TAY nội dung CK (case PR-2026-0457, 24/7:
+# transfer_code "FI8ZP" — khách gõ "Fl8ZP" (l thường) → .upper() = "FL8ZP" ≠ "FI8ZP"
+# → miss auto-match, CK rơi tab "CK ngoài" dù mã/tiền đều đúng).
+# Lớp nhầm thị giác sau .upper(): {I, L, 1} → "1", {O, 0} → "0".
+# CHỈ fold 2 lớp này — mỗi lớp fold thêm là nới không gian va chạm mã (không S/5, Z/2, B/8).
+# Áp cho CẢ code lẫn content TẠI LÚC SO — tuyệt đối không đổi dữ liệu lưu.
+_AMBIGUOUS_TRANS = str.maketrans({"I": "1", "L": "1", "O": "0"})
+
+
+def _fold_ambiguous(text: str) -> str:
+    return text.translate(_AMBIGUOUS_TRANS)
 _NOISE_WORDS = {"CK", "CHUYEN", "KHOAN", "THANH", "TOAN", "TIEN", "HOC", "PHI",
                 "GD", "IBFT", "VCB", "TCB", "MB", "ACB", "BIDV", "VIETINBANK",
                 "VIETCOMBANK", "SACOMBANK", "TECHCOMBANK", "MBBANK", "NGUYEN", "TRAN",
@@ -133,9 +145,10 @@ def _score_candidate(content: str, cand: dict, txn_amount: float) -> tuple[int, 
             return 50, ["amount"]
         return 0, []
 
-    # Mã TT (transfer_code)
+    # Mã TT (transfer_code) — exact hoặc fold I/L/1·O/0 (khách gõ tay nhầm mã).
+    # Fold ở đây chỉ ảnh hưởng GỢI Ý ghép tay (kế toán vẫn là người xác nhận).
     tc = _clean_text(cand.get("transfer_code", "")).upper()
-    if tc and len(tc) >= 4 and tc in desc:
+    if tc and len(tc) >= 4 and (tc in desc or _fold_ambiguous(tc) in _fold_ambiguous(desc)):
         score += 120
         signals.append("code")
 
@@ -327,10 +340,17 @@ def _verify_hmac(raw_body: bytes, signature_header: str, timestamp_header: str) 
 def _match_transfer_code_in_content(sb, content: str, amount: float) -> dict[str, Any]:
     """Khớp mã Base36 (5 ký tự) trong nội dung CK với payment_lines pending.
 
-    Tái dụng logic đã có tại payment_request_routes.py:917
-    (reconcile_payment_line_webhook — fallback description matching).
+    2 pass — exact trước, fold sau (fold = bằng chứng yếu hơn → điều kiện CHẶT hơn):
 
-    Returns: {"matched": True/False, "line": ..., "match_type": ...}
+    - Pass exact (hành vi cũ): duy nhất 1 line khớp → auto (tiền lệch → needs_review).
+      ≥2 line cùng khớp → ambiguous, KHÔNG auto (trước đây first-match theo thứ tự
+      DB trả về — order-dependent; giờ nhường kế toán ghép tay).
+    - Pass fold (chỉ khi exact = 0): fold I/L/1→"1", O/0→"0" cả 2 vế
+      (case PR-2026-0457: khách gõ "Fl8ZP" thay vì "FI8ZP"). Auto CHỈ khi ĐỦ:
+      duy nhất 1 line + tiền khớp CHÍNH XÁC. Thiếu 1 trong 2 → bỏ, không link,
+      không needs_review (tiền sai + mã chỉ khớp mờ = khả năng cao không phải line này).
+
+    Returns: {"matched": ..., "line": ..., "match_type": ..., "folded": bool?}
     """
     if not content:
         return {"matched": False}
@@ -349,44 +369,79 @@ def _match_transfer_code_in_content(sb, content: str, amount: float) -> dict[str
         print(f"[sepay] transfer_code lookup failed: {exc}")
         return {"matched": False, "error": str(exc)}
 
-    matched_line = None
-    for candidate in candidates.data or []:
+    rows = candidates.data or []
+
+    # Pass 1 — exact (thu thập HẾT rồi mới quyết — không first-match-wins nữa)
+    exact_hits: list[dict[str, Any]] = []
+    for candidate in rows:
         code = _clean_text(candidate.get("transfer_code")).upper()
-        if code and code in desc:
-            matched_line = candidate
-            break
+        if len(code) >= 4 and code in desc:
+            exact_hits.append(candidate)
 
-    if not matched_line:
-        # Race PayOS↔SePay (PR chị Hương 11/7): line có thể đã paid qua kênh khác
-        # (PayOS webhook / manual) TRƯỚC khi bank txn SePay về → thử khớp muộn
-        # với lines đã paid để dòng CK không mồ côi ở tab "CK ngoài chờ ghép".
-        return _match_paid_line_late(sb, desc, amount)
+    if len(exact_hits) > 1:
+        print(f"[sepay] exact code ambiguous ({len(exact_hits)} lines pending) — bỏ auto, chờ ghép tay")
+        return {"matched": False, "reason": "ambiguous_exact"}
 
-    # Kiểm tra số tiền khớp
-    expected_amount = _parse_amount(matched_line.get("amount"))
-    if expected_amount > 0 and abs(amount - expected_amount) > 0.01:
+    if len(exact_hits) == 1:
+        matched_line = exact_hits[0]
+        expected_amount = _parse_amount(matched_line.get("amount"))
+        if expected_amount > 0 and abs(amount - expected_amount) > 0.01:
+            return {
+                "matched": True,
+                "match_type": "code_match_amount_mismatch",
+                "line": matched_line,
+            }
         return {
             "matched": True,
-            "match_type": "code_match_amount_mismatch",
+            "match_type": "auto_matched",
             "line": matched_line,
         }
 
-    return {
-        "matched": True,
-        "match_type": "auto_matched",
-        "line": matched_line,
-    }
+    # Pass 2 — fold (khách gõ tay nhầm I/l/1, O/0)
+    desc_folded = _fold_ambiguous(desc)
+    fold_hits: list[dict[str, Any]] = []
+    for candidate in rows:
+        code = _clean_text(candidate.get("transfer_code")).upper()
+        if len(code) >= 4 and _fold_ambiguous(code) in desc_folded:
+            fold_hits.append(candidate)
+
+    if len(fold_hits) == 1:
+        matched_line = fold_hits[0]
+        expected_amount = _parse_amount(matched_line.get("amount"))
+        # Fold CHỈ auto khi tiền khớp chính xác — invariant, đừng nới
+        if expected_amount > 0 and abs(amount - expected_amount) <= 0.01:
+            return {
+                "matched": True,
+                "match_type": "auto_matched",
+                "line": matched_line,
+                "folded": True,
+            }
+        print(f"[sepay] fold match nhưng tiền lệch (line {matched_line.get('id')}) — bỏ auto")
+    elif len(fold_hits) > 1:
+        print(f"[sepay] fold code ambiguous ({len(fold_hits)} lines pending) — bỏ auto, chờ ghép tay")
+
+    # Race PayOS↔SePay (PR chị Hương 11/7): line có thể đã paid qua kênh khác
+    # (PayOS webhook / manual) TRƯỚC khi bank txn SePay về → thử khớp muộn
+    # với lines đã paid để dòng CK không mồ côi ở tab "CK ngoài chờ ghép".
+    # allow_fold: nếu pass fold pending ĐÃ thấy ứng viên (dù bị guard chặn) thì
+    # tắt fold ở khớp muộn — txn nhiều khả năng thuộc pool pending, không cho
+    # nhánh muộn "giật" sang line đã paid bằng bằng chứng mờ.
+    return _match_paid_line_late(sb, desc, amount, allow_fold=len(fold_hits) == 0)
 
 
-def _match_paid_line_late(sb, desc: str, amount: float) -> dict[str, Any]:
+def _match_paid_line_late(sb, desc: str, amount: float, allow_fold: bool = True) -> dict[str, Any]:
     """Khớp muộn: bank txn SePay về SAU khi payment_line đã paid qua kênh khác.
 
     Chỉ auto-clear khi ĐỦ 3 điều kiện (chống ghép nhầm kiểu Lan Anh 26/6):
-    1. transfer_code của line xuất hiện trong nội dung CK
+    1. transfer_code của line xuất hiện trong nội dung CK (exact, hoặc fold
+       I/L/1·O/0 khi allow_fold — cùng lớp nhầm với match pending)
     2. số tiền khớp CHÍNH XÁC — filter ngay trong query (.eq amount, bigint
        phải cast int) nên không kéo toàn bộ lịch sử lines đã paid
     3. line CHƯA có bank_transaction nào link — nếu đã có thì đây là CK lặp
        thật của khách → để pending cho kế toán xử lý, KHÔNG tự nuốt
+
+    + Unique guard (24/7): ≥2 candidate cùng khớp mã → KHÔNG auto. Trước đây
+    first-match-wins theo thứ tự DB trả về — order-dependent trên đường tiền.
 
     Trả match_type="late_matched" — caller set match_status=auto_matched nhưng
     KHÔNG mark paid lại, KHÔNG notify lại (line đã paid + đã báo tin rồi).
@@ -407,13 +462,11 @@ def _match_paid_line_late(sb, desc: str, amount: float) -> dict[str, Any]:
         print(f"[sepay] late-match lookup failed: {exc}")
         return {"matched": False, "error": str(exc)}
 
-    for candidate in paid_res.data or []:
-        code = _clean_text(candidate.get("transfer_code")).upper()
-        if not code or code not in desc:
-            continue
+    rows = paid_res.data or []
 
+    def _passes_linked_check(candidate: dict[str, Any]) -> bool:
+        """Điều kiện 3. Lỗi thoáng qua → False (giữ pending cho kế toán, an toàn)."""
         line_id = str(candidate.get("id", ""))
-        # Điều kiện 3: line đã có bank txn link → CK hiện tại là khoản lặp
         try:
             linked = (
                 sb.table("bank_transactions")
@@ -423,18 +476,53 @@ def _match_paid_line_late(sb, desc: str, amount: float) -> dict[str, Any]:
                 .execute()
             )
         except Exception as exc:
-            # Lỗi thoáng qua ở 1 ứng viên KHÔNG được chặn cả vòng dò —
-            # bỏ qua ứng viên này, dò tiếp (review finding 18/7)
             print(f"[sepay] late-match linked-check failed (skip candidate {line_id}): {exc}")
-            continue
+            return False
         if linked.data:
             print(
                 f"[sepay] late-match skip: line {line_id} đã có bank txn link "
                 "(CK lặp cùng mã?) — giữ pending cho kế toán"
             )
-            return {"matched": False}
+            return False
+        return True
 
+    # Pass 1 — exact. Note: dò mã là so chuỗi in-memory (không chạm DB) nên lỗi DB
+    # 1 candidate không thể chặn vòng dò (rule học 18/7 giữ nguyên bản chất);
+    # linked-check chỉ chạy trên winner duy nhất sau unique guard.
+    exact_hits = []
+    for candidate in rows:
+        code = _clean_text(candidate.get("transfer_code")).upper()
+        if len(code) >= 4 and code in desc:
+            exact_hits.append(candidate)
+
+    if len(exact_hits) > 1:
+        print(f"[sepay] late-match exact ambiguous ({len(exact_hits)} lines paid) — giữ pending")
+        return {"matched": False, "reason": "ambiguous_late_exact"}
+    if len(exact_hits) == 1:
+        candidate = exact_hits[0]
+        if not _passes_linked_check(candidate):
+            return {"matched": False}
         return {"matched": True, "match_type": "late_matched", "line": candidate}
+
+    if not allow_fold:
+        return {"matched": False}
+
+    # Pass 2 — fold (tiền đã exact sẵn nhờ .eq(amount) trong query)
+    desc_folded = _fold_ambiguous(desc)
+    fold_hits = []
+    for candidate in rows:
+        code = _clean_text(candidate.get("transfer_code")).upper()
+        if len(code) >= 4 and _fold_ambiguous(code) in desc_folded:
+            fold_hits.append(candidate)
+
+    if len(fold_hits) > 1:
+        print(f"[sepay] late-match fold ambiguous ({len(fold_hits)} lines paid) — giữ pending")
+        return {"matched": False, "reason": "ambiguous_late_fold"}
+    if len(fold_hits) == 1:
+        candidate = fold_hits[0]
+        if not _passes_linked_check(candidate):
+            return {"matched": False}
+        return {"matched": True, "match_type": "late_matched", "line": candidate, "folded": True}
 
     return {"matched": False}
 
@@ -480,6 +568,7 @@ def _process_sepay_transaction(sb, txn: dict[str, Any]) -> dict[str, Any]:
     payment_line_id = None
     line_to_pay: dict[str, Any] | None = None  # set nếu cần mark paid sau INSERT
     late_matched = False  # line đã paid qua kênh khác — chỉ link, không mark/notify
+    folded_match = False  # khớp qua fold I/L/1·O/0 — ghi audit matched_by riêng
 
     if _is_mpos_settlement(content):
         match_status = "ignored"
@@ -488,6 +577,7 @@ def _process_sepay_transaction(sb, txn: dict[str, Any]) -> dict[str, Any]:
         if match_result.get("matched"):
             line = match_result.get("line", {})
             payment_line_id = str(line.get("id", "")) or None
+            folded_match = bool(match_result.get("folded"))
             if match_result["match_type"] == "auto_matched":
                 match_status = "auto_matched"
                 line_to_pay = line
@@ -519,7 +609,10 @@ def _process_sepay_transaction(sb, txn: dict[str, Any]) -> dict[str, Any]:
     }
     if late_matched:
         # Audit: phân biệt khớp muộn với auto_matched thường (matched_by mặc định null)
-        insert_row["matched_by"] = "system:sepay_late"
+        insert_row["matched_by"] = "system:sepay_late_folded" if folded_match else "system:sepay_late"
+    elif match_status == "auto_matched" and folded_match:
+        # Audit: khớp qua fold I/L/1·O/0 — soi lại được từng ca khách gõ nhầm mã
+        insert_row["matched_by"] = "system:sepay_folded"
 
     try:
         res = (
