@@ -164,6 +164,31 @@ class TestRefreshContentEndpoint:
         # Tên Trần Xuân (ascii: Tran Xuan) phải xuất hiện trong content mới
         assert "Tran Xuan" in body["new_content"]
 
+    def test_rebuilds_using_current_name_when_only_name_changed_and_no_body(self, client):
+        # REGRESSION (PR-2026-0558): KH đổi TÊN, phone giữ nguyên. name_for_transfer
+        # cũ trên line = tên CŨ. Rebuild PHẢI theo child_name HIỆN TẠI của PR — nếu
+        # rebuild theo line.name_for_transfer thì new==old → updated=False → cảnh báo
+        # "Khách đã đổi thông tin" không bao giờ tắt sau khi reload.
+        line = {
+            **LINE_ROW,
+            "transfer_content": "84985004656 Ten Cu FHETL",
+            "name_for_transfer": "Ten Cu",
+        }
+        pr_row = {**PR_ROW, "child_name": "Nguyễn Thị Phương Linh", "phone": "985004656"}
+        sb = _mock_sb_with(line, pr_row)
+        with patch.object(pr, "get_supabase", return_value=sb), \
+             patch.object(pr, "resolve_actor") as mock_actor, \
+             patch.object(pr, "require_module_write"), \
+             patch.object(pr, "_can_access_request", return_value=True), \
+             patch.object(pr, "log_audit"):
+            mock_actor.return_value = MagicMock(email="admin@test.com")
+            r = client.post(f"/api/v1/payment-lines/{line['id']}/refresh-content")
+        assert r.status_code == 200
+        body = r.json()
+        assert body["updated"] is True
+        assert "Nguyen Thi Phuong Linh" in body["new_content"]
+        assert "Ten Cu" not in body["new_content"]
+
     def test_preserves_transfer_code(self, client):
         sb = _mock_sb_with(LINE_ROW, {**PR_ROW, "phone": "999111222"})
         with patch.object(pr, "get_supabase", return_value=sb), \
@@ -192,3 +217,71 @@ class TestRefreshContentEndpoint:
         # log_audit(sb, actor.email, action, target_type, target_id, payload)
         action = call_args[0][2] if len(call_args[0]) >= 3 else ""
         assert "refresh" in action.lower() or "content" in action.lower()
+
+    def test_refresh_clears_dismiss_flag(self, client):
+        # Cập nhật QR → content mới → phải clear content_stale_dismissed_at (line hết stale).
+        sb = _mock_sb_with(LINE_ROW, {**PR_ROW, "phone": "999111222"})
+        with patch.object(pr, "get_supabase", return_value=sb), \
+             patch.object(pr, "resolve_actor") as mock_actor, \
+             patch.object(pr, "require_module_write"), \
+             patch.object(pr, "_can_access_request", return_value=True), \
+             patch.object(pr, "log_audit"):
+            mock_actor.return_value = MagicMock(email="admin@test.com")
+            client.post(f"/api/v1/payment-lines/{LINE_ROW['id']}/refresh-content")
+        payload = sb.table("payment_lines").update.call_args[0][0]
+        assert payload.get("content_stale_dismissed_at") is None
+
+
+class TestDismissStaleEndpoint:
+    def test_dismiss_sets_timestamp(self, client):
+        sb = _mock_sb_with(LINE_ROW, PR_ROW)
+        with patch.object(pr, "get_supabase", return_value=sb), \
+             patch.object(pr, "resolve_actor") as mock_actor, \
+             patch.object(pr, "require_module_write"), \
+             patch.object(pr, "_can_access_request", return_value=True), \
+             patch.object(pr, "log_audit"):
+            mock_actor.return_value = MagicMock(email="admin@test.com")
+            r = client.post(f"/api/v1/payment-lines/{LINE_ROW['id']}/dismiss-stale")
+        assert r.status_code == 200
+        body = r.json()
+        assert body["dismissed"] is True
+        assert body["content_stale_dismissed_at"]
+        # Update phải set timestamp (không phải None)
+        payload = sb.table("payment_lines").update.call_args[0][0]
+        assert payload.get("content_stale_dismissed_at")
+
+    def test_dismiss_400_when_not_pending(self, client):
+        sb = _mock_sb_with({**LINE_ROW, "status": "paid"}, PR_ROW)
+        with patch.object(pr, "get_supabase", return_value=sb), \
+             patch.object(pr, "resolve_actor") as mock_actor, \
+             patch.object(pr, "require_module_write"), \
+             patch.object(pr, "_can_access_request", return_value=True):
+            mock_actor.return_value = MagicMock(email="admin@test.com")
+            r = client.post(f"/api/v1/payment-lines/{LINE_ROW['id']}/dismiss-stale")
+        assert r.status_code == 400
+
+    def test_dismiss_403_when_no_access(self, client):
+        sb = _mock_sb_with(LINE_ROW, PR_ROW)
+        with patch.object(pr, "get_supabase", return_value=sb), \
+             patch.object(pr, "resolve_actor") as mock_actor, \
+             patch.object(pr, "require_module_write"), \
+             patch.object(pr, "_can_access_request", return_value=False), \
+             patch.object(pr, "log_audit"):
+            mock_actor.return_value = MagicMock(email="other@test.com")
+            r = client.post(f"/api/v1/payment-lines/{LINE_ROW['id']}/dismiss-stale")
+        assert r.status_code == 403
+
+    def test_dismiss_404_when_line_missing(self, client):
+        sb = MagicMock()
+        t = MagicMock()
+        t.select.return_value = t
+        t.eq.return_value = t
+        t.limit.return_value = t
+        t.execute.return_value = MagicMock(data=[])
+        sb.table.return_value = t
+        with patch.object(pr, "get_supabase", return_value=sb), \
+             patch.object(pr, "resolve_actor") as mock_actor, \
+             patch.object(pr, "require_module_write"):
+            mock_actor.return_value = MagicMock(email="admin@test.com")
+            r = client.post("/api/v1/payment-lines/missing/dismiss-stale")
+        assert r.status_code == 404

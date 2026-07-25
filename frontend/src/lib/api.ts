@@ -161,6 +161,11 @@ export const endpoints = {
         old_content: string;
         new_content: string;
       }>(`/api/v1/payment-lines/${lineId}/refresh-content`, body ?? {}),
+    dismissPaymentLineStale: (lineId: string) =>
+      api.post<{
+        dismissed: boolean;
+        content_stale_dismissed_at: string | null;
+      }>(`/api/v1/payment-lines/${lineId}/dismiss-stale`, {}),
     uploadPaymentLineBill: (lineId: string, file: Blob, filename: string) => {
       const fd = new FormData();
       fd.append("file", file, filename);
