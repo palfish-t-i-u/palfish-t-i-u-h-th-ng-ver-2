@@ -1361,6 +1361,12 @@ def _is_payment_line_content_stale(
     if reject_reason and "huy" in _ascii_transfer_name(reject_reason).lower():
         return False
 
+    # Sale đã bấm "Huỷ / giữ QR cũ" trên cảnh báo stale → tôn trọng lựa chọn, không
+    # cảnh báo lại. Cờ này được clear khi refresh-content (Cập nhật QR) hoặc khi PR đổi
+    # name/phone/child/country (re-arm ở patch_payment_request) → divergence MỚI vẫn cảnh báo.
+    if line.get("content_stale_dismissed_at"):
+        return False
+
     transfer_code = _clean_text(line.get("transfer_code"))
     if not transfer_code:
         return False
@@ -1982,6 +1988,16 @@ def register_payment_request_routes(app, _get_supabase) -> None:
                       .eq("payment_request_id", payment_request_id).eq("student_name", old_name).execute()
                 except Exception as exc:
                     print(f"[pr-multi-con] rename propagate failed: {exc}")
+
+        # Re-arm cảnh báo stale: đổi trường ảnh hưởng nội dung CK (name/phone/child/
+        # country/extra_children) → mọi dismiss "giữ QR cũ" trước đó hết hiệu lực để
+        # divergence MỚI vẫn cảnh báo (không giấu lệch mới). Không đụng line đã thanh toán.
+        if {"name", "phone", "child_name", "country", "extra_children"} & set(patch.keys()):
+            try:
+                sb.table("payment_lines").update({"content_stale_dismissed_at": None}) \
+                  .eq("payment_request_id", payment_request_id).eq("status", "pending").execute()
+            except Exception as exc:
+                print(f"[pr-stale] re-arm dismiss clear failed: {exc}")
 
         # target thay doi co the anh huong state => recompute theo payment_lines.
         if "target" in patch:
@@ -2919,7 +2935,17 @@ def register_payment_request_routes(app, _get_supabase) -> None:
             raise HTTPException(403, "Khong co quyen rebuild payment_line nay")
 
         explicit_name = body.name_for_transfer if body else None
-        name_for_transfer = explicit_name or line.get("name_for_transfer") or pr_row.get("child_name") or pr_row.get("name")
+        # Không có tên chỉ định → rebuild theo tên HIỆN TẠI của PR (child_name → name).
+        # KHÔNG ưu tiên line.name_for_transfer: đó chính là tên CŨ đã stale, rebuild theo
+        # nó sẽ ra đúng content cũ → no-op → cảnh báo "Khách đã đổi thông tin" không bao
+        # giờ tắt sau reload (bug PR-2026-0558). line/pr cuối chuỗi chỉ để phòng PR thiếu
+        # cả child_name lẫn name.
+        name_for_transfer = (
+            explicit_name
+            or pr_row.get("child_name")
+            or pr_row.get("name")
+            or line.get("name_for_transfer")
+        )
         transfer_code = _clean_text(line.get("transfer_code"))
         if not transfer_code:
             raise HTTPException(400, "payment_line thieu transfer_code")
@@ -2939,9 +2965,15 @@ def register_payment_request_routes(app, _get_supabase) -> None:
                 "new_content": new_content,
             }
 
-        update_payload: dict[str, Any] = {"transfer_content": new_content}
-        if explicit_name is not None:
-            update_payload["name_for_transfer"] = explicit_name
+        # content mới → clear cờ dismiss (nếu có): line không còn stale nữa.
+        update_payload: dict[str, Any] = {
+            "transfer_content": new_content,
+            "content_stale_dismissed_at": None,
+        }
+        # Lưu tên đã dùng để rebuild → name_for_transfer khớp với content mới (tránh
+        # lần refresh sau lại đọc tên cũ).
+        if name_for_transfer:
+            update_payload["name_for_transfer"] = name_for_transfer
         try:
             updated_res = (
                 sb.table("payment_lines")
@@ -2971,6 +3003,52 @@ def register_payment_request_routes(app, _get_supabase) -> None:
             "old_content": old_content,
             "new_content": new_content,
         }
+
+    @router.post("/payment-lines/{line_id}/dismiss-stale")
+    def dismiss_payment_line_stale(
+        line_id: str,
+        authorization: str | None = Header(None),
+    ):
+        """Sale bấm "Huỷ / giữ QR cũ" trên cảnh báo stale → lưu về server để reload/đổi
+        tab không hiện lại (bug PR-2026-0558). Cờ được clear khi refresh-content hoặc khi
+        PR đổi thông tin ảnh hưởng nội dung CK (re-arm ở patch_payment_request)."""
+        import payment_request_routes as _self_mod
+        sb = _sb_or_503(_self_mod.get_supabase)
+        actor = resolve_actor(sb, authorization)
+        require_module_write(sb, actor, "paymentRequests")
+
+        line_res = (
+            sb.table("payment_lines")
+            .select("*")
+            .eq("id", line_id)
+            .limit(1)
+            .execute()
+        )
+        if not line_res.data:
+            raise HTTPException(404, "Khong tim thay payment_line")
+        line = line_res.data[0]
+        if _clean_text(line.get("status")).lower() != "pending":
+            raise HTTPException(400, "Chi dismiss duoc khi lan thanh toan chua thanh toan")
+
+        pr_id = str(line.get("payment_request_id") or "")
+        if pr_id:
+            pr_res = sb.table("payment_requests").select("*").eq("id", pr_id).limit(1).execute()
+            pr_row = pr_res.data[0] if pr_res.data else None
+            if pr_row and not _can_access_request(sb, actor, pr_row):
+                raise HTTPException(403, "Khong co quyen thao tac payment_line nay")
+
+        dismissed_at = _iso_now()
+        try:
+            sb.table("payment_lines").update(
+                {"content_stale_dismissed_at": dismissed_at}
+            ).eq("id", line_id).execute()
+        except Exception as exc:
+            raise HTTPException(500, f"Khong luu duoc trang thai dismiss: {exc}") from exc
+
+        log_audit(sb, actor.email, "payment_line.dismiss_stale", "payment_line", line_id, {
+            "pr_id": pr_id,
+        })
+        return {"dismissed": True, "content_stale_dismissed_at": dismissed_at}
 
     @router.patch("/transactions/{transaction_id}/status")
     def patch_transaction_status(

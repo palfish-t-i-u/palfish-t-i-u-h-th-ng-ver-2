@@ -82,6 +82,24 @@ class TestStaleDetection:
             _line(status="rejected", reject_reason="Sales huỷ lần thanh toán"),
         ) is False
 
+    def test_not_stale_when_dismissed(self):
+        # Sale bấm "Huỷ/giữ QR cũ" → content_stale_dismissed_at set → không cảnh báo dù lệch.
+        line = _line(
+            name_for_transfer="Ten Cu",
+            transfer_content="84985004656 Ten Cu FHETL",
+            content_stale_dismissed_at="2026-07-25T10:00:00+00:00",
+        )
+        assert pr._is_payment_line_content_stale(_pr(), line) is False
+
+    def test_stale_again_when_dismiss_cleared(self):
+        # Cờ đã clear (re-arm khi PR đổi thông tin) → lệch thì cảnh báo lại.
+        line = _line(
+            name_for_transfer="Ten Cu",
+            transfer_content="84985004656 Ten Cu FHETL",
+            content_stale_dismissed_at=None,
+        )
+        assert pr._is_payment_line_content_stale(_pr(), line) is True
+
     def test_not_stale_when_line_is_not_qr_method(self):
         # cash/card/installment không có QR → không cần stale check
         assert pr._is_payment_line_content_stale(

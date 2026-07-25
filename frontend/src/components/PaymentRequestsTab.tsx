@@ -437,6 +437,24 @@ export default function PaymentRequestsTab() {
     }
   };
 
+  const handleDismissLineStale = async (lineId: string) => {
+    if (!selected) return;
+    const prId = selected.id;
+    // Optimistic: tắt cờ stale trong state đã nạp → mở lại drawer không hiện cảnh báo.
+    updateRequest(prId, (r) => ({
+      ...r,
+      payments: r.payments.map((p: PaymentAttempt) =>
+        p.id === lineId ? { ...p, isContentStale: false } : p
+      ),
+    }));
+    try {
+      await endpoints.paymentRequests.dismissPaymentLineStale(lineId);
+    } catch (err) {
+      // Dismiss là ý định rõ của sale; nếu server lỗi thì reload sẽ hiện lại — không nag.
+      console.error("dismiss-stale failed", err);
+    }
+  };
+
   const handleMarkPaid = async (qr: PaymentAttempt) => {
     if (!selected) return;
     const prId = selected.id;
@@ -865,6 +883,7 @@ export default function PaymentRequestsTab() {
         onShowQr={(qr) => selected && setQrView({ qr, request: selected })}
         readOnly={readOnly}
         onRefreshLineContent={handleRefreshLineContent}
+        onDismissLineStale={handleDismissLineStale}
         onTransferred={() => void loadData()}
       />
 

@@ -1575,6 +1575,7 @@ export default function PaymentRequestDetailDrawer({
   readOnly = false,
   detailLoading = false,
   onRefreshLineContent,
+  onDismissLineStale,
   onTransferred,
 }: {
   request: PaymentRequest | null;
@@ -1604,6 +1605,8 @@ export default function PaymentRequestDetailDrawer({
   /** GĐ2: set true khi slim row đang hydrate detail — hiện skeleton thay vì list rỗng giả */
   detailLoading?: boolean;
   onRefreshLineContent?: (line: PaymentAttempt) => Promise<void>;
+  /** Sale bấm "Huỷ/giữ QR cũ" trên cảnh báo stale → persist về server (khỏi hiện lại sau reload). */
+  onDismissLineStale?: (lineId: string) => Promise<void> | void;
   /** B3 (16/7) — Báo đơn hoàn thành. reason bắt buộc từ lần báo thứ 2 (BE validate, modal soft-block). */
   onReportComplete: (reason?: string) => Promise<void>;
   /** Tạo hộ/chuyển giao (22/07): gọi sau khi chuyển sale thành công để parent reload list. */
@@ -1654,12 +1657,14 @@ export default function PaymentRequestDetailDrawer({
   }, [request?.id]);
 
   const handleDismissStale = useCallback((lineId: string) => {
+    // Ẩn ngay trong phiên cho mượt, đồng thời persist về server để reload không hiện lại.
     setDismissedStaleLineIds(prev => {
       const next = new Set(prev);
       next.add(lineId);
       return next;
     });
-  }, []);
+    void onDismissLineStale?.(lineId);
+  }, [onDismissLineStale]);
 
   // Khoá scroll nền khi drawer mở — tránh 3 scrollbar (anh feedback 19/6).
   useEffect(() => {
