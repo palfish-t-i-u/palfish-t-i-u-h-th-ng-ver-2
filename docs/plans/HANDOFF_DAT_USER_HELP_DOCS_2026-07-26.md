@@ -139,7 +139,7 @@ Cài dependency (`react-markdown`, `remark-gfm` — KHÔNG `gray-matter`), viế
 
 ## Task 2 — Đạt: viết nội dung pilot (Ngày 1, song song Task 1)
 
-2-3 bài đầu của Payment Requests + Sổ doanh thu (đúng ví dụ Minh đưa ra: "Tạo lần TT chuẩn", "Ghép giao dịch"). Text thuần, theo template:
+2-3 bài đầu của Quản lý thanh toán (`paymentRequests`) + Đối soát giao dịch (`reconciliation`) — đúng ví dụ Minh đưa ra: "Tạo lần TT chuẩn" (sale), "Ghép giao dịch" (kế toán). Text thuần, theo template:
 ```md
 ---
 title: "Tạo lần thanh toán (TT) chuẩn"

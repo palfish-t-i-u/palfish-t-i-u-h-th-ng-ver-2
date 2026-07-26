@@ -151,6 +151,7 @@
 - Design: `docs/DESIGN.md`, `frontend/src/gmv-theme.css`, `gmv-tokens.css`
 - E2E helpers: `frontend/e2e/helpers/` (navigation, assertions, api-client, cleanup, env)
 - FE test util: `frontend/src/test/mobileMatchMedia.ts` — `stubMobile()`/`restoreMatchMedia()`, stub `window.matchMedia` cho jsdom (dùng khi test cần `useIsMobile()===true`; PHẢI restore trong `afterEach`)
+- FE Docs hướng dẫn người dùng (HDSD): `frontend/src/content/help/<module-slug>/<topic-slug>.md` (nội dung, frontmatter `title`/`order`/`audience`, `content/help/index.ts` load bằng `import.meta.glob` + `parseFrontmatter()` tự viết — KHÔNG dùng `gray-matter`, gọi `Buffer` không polyfill trên Vite/browser), `content/help/moduleLabels.ts` (nhãn hiển thị, tách riêng tránh circular import với `MainPage.tsx`); `contexts/HelpNavContext.tsx` (điều hướng app-wide, cùng mô hình `PaymentFlowContext`); `components/help/HdsdLink.tsx`/`HelpArticle.tsx`/`HelpModuleIndex.tsx`/`HelpLanding.tsx`; `layouts/HelpNavTree.tsx` (cây dropdown 2 cấp trong sidebar, nhánh render riêng trong `AppShell.tsx` — `NavItem`/`NavChildItem` chỉ hỗ trợ 2 cấp, không generalize). Docs KHÔNG gate theo quyền.
 
 ## 11. Scripts vận hành
 

@@ -5,6 +5,8 @@ import Module5Tab from "../components/Module5Tab";
 import Module6Tab from "../components/Module6Tab";
 import DashboardTab from "../components/DashboardTab";
 import { PaymentFlowProvider, usePaymentFlow, type PaymentFlowView } from "../contexts/PaymentFlowContext";
+import { HelpNavProvider, useHelpNav } from "../contexts/HelpNavContext";
+import { hasHelpModule } from "../content/help";
 import { useAuth } from "../hooks/useAuth";
 import { useMe } from "../hooks/useMe";
 import ProfilePage from "./ProfilePage";
@@ -42,6 +44,9 @@ const ZaloOutboxTab = lazyRetry(() => import("../components/admin/ZaloOutboxTab"
 const DingTalkConfigTab = lazyRetry(() => import("../components/admin/DingTalkConfigTab"));
 const DingTalkGroupsTab = lazyRetry(() => import("../components/admin/DingTalkGroupsTab"));
 const DingTalkOutboxTab = lazyRetry(() => import("../components/admin/DingTalkOutboxTab"));
+const HelpArticle = lazyRetry(() => import("../components/help/HelpArticle"));
+const HelpModuleIndex = lazyRetry(() => import("../components/help/HelpModuleIndex"));
+const HelpLanding = lazyRetry(() => import("../components/help/HelpLanding"));
 
 const PRELOAD_MAP: Record<string, () => Promise<unknown>> = {
   paymentRequests: () => import("../components/PaymentRequestsTab"),
@@ -78,7 +83,8 @@ type ViewId =
   | "zaloOutbox"
   | "dingtalkConfig"
   | "dingtalkGroups"
-  | "dingtalkOutbox";
+  | "dingtalkOutbox"
+  | "help";
 
 const FLOW_VIEW_MAP: Record<PaymentFlowView, ViewId> = {
   paymentRequests: "paymentRequests",
@@ -168,6 +174,13 @@ const I = {
       <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5" />
     </svg>
   ),
+  help: (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="10" />
+      <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
+      <line x1="12" y1="17" x2="12.01" y2="17" />
+    </svg>
+  ),
 };
 
 const TITLES: Record<ViewId, { title: string; subtitle?: string }> = {
@@ -235,35 +248,50 @@ const TITLES: Record<ViewId, { title: string; subtitle?: string }> = {
     title: "DingTalk — Outbox",
     subtitle: "50 tin nhắn gần nhất — theo dõi trạng thái gửi & retry",
   },
+  help: {
+    title: "Hướng dẫn sử dụng",
+    subtitle: "Tra cứu hướng dẫn từng thao tác theo module",
+  },
 };
 
 export default function MainPage() {
   const flowNavRef = useRef<(view: PaymentFlowView) => void>(() => {});
+  const helpNavRef = useRef<() => void>(() => {});
 
   return (
     <PaymentFlowProvider onViewChange={(view) => flowNavRef.current(view)}>
-      <MainPageInner flowNavRef={flowNavRef} />
+      <HelpNavProvider onNavigateToHelp={() => helpNavRef.current()}>
+        <MainPageInner flowNavRef={flowNavRef} helpNavRef={helpNavRef} />
+      </HelpNavProvider>
     </PaymentFlowProvider>
   );
 }
 
 function MainPageInner({
   flowNavRef,
+  helpNavRef,
 }: {
   flowNavRef: React.MutableRefObject<(view: PaymentFlowView) => void>;
+  helpNavRef: React.MutableRefObject<() => void>;
 }) {
   const { user, signOut, isDevMode } = useAuth();
   const { profile } = useMe();
   const [activeView, setActiveView] = useState<ViewId>("dashboard");
 
   const { badgeCounts } = usePaymentFlow();
+  const { helpModule, helpTopic } = useHelpNav();
 
   useEffect(() => {
     flowNavRef.current = (view) => setActiveView(FLOW_VIEW_MAP[view]);
   }, [flowNavRef]);
 
+  useEffect(() => {
+    helpNavRef.current = () => setActiveView("help");
+  }, [helpNavRef]);
+
   const perms = profile?.permissions ?? {};
   const can = (key: string) => {
+    if (key === "help") return true; // tài liệu tham khảo — không gate quyền
     const k = key === "zaloConfig" || key === "zaloGroups" || key === "zaloOutbox" ? "zalo"
       : key === "dingtalkConfig" || key === "dingtalkGroups" || key === "dingtalkOutbox" ? "dingtalk"
       : key;
@@ -368,10 +396,17 @@ function MainPageInner({
       list.push(...accountItems);
     }
 
+    // ── Hỗ trợ (HDSD) ── luôn hiện, không gate quyền — cây dropdown riêng do
+    // HelpNavTree render (AppShell.tsx đặc cách nhánh id==="help").
+    list.push({ id: "help", label: "Hướng dẫn sử dụng", icon: I.help, section: "Hỗ trợ" });
+
     return list;
   }, [badgeCounts, perms, isDevMode]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const head = TITLES[activeView as keyof typeof TITLES] ?? TITLES.paymentRequests;
+  // HDSD ở header — chỉ hiện khi module đang active thật sự có bài hướng dẫn.
+  const headerHelpModuleSlug =
+    activeView !== "help" && hasHelpModule(activeView) ? activeView : undefined;
   const wideContent =
     activeView === "dashboard" ||
     activeView === "paymentRequests" ||
@@ -415,6 +450,11 @@ function MainPageInner({
       case "dingtalkConfig": return <DingTalkConfigTab />;
       case "dingtalkGroups": return <DingTalkGroupsTab />;
       case "dingtalkOutbox": return <DingTalkOutboxTab />;
+      case "help": {
+        if (helpModule && helpTopic) return <HelpArticle moduleSlug={helpModule} topicSlug={helpTopic} />;
+        if (helpModule) return <HelpModuleIndex moduleSlug={helpModule} />;
+        return <HelpLanding />;
+      }
       default: return <PaymentRequestsTab />;
     }
   };
@@ -433,6 +473,7 @@ function MainPageInner({
       isDevMode={isDevMode}
       onSignOut={signOut}
       headerExtras={<NotificationBell onNavigate={(view) => setActiveView(view as ViewId)} />}
+      helpModuleSlug={headerHelpModuleSlug}
     >
       <Suspense fallback={<ViewFallback />}>{renderActiveView()}</Suspense>
     </AppShell>

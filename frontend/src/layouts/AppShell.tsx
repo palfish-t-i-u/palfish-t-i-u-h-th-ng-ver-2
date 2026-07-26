@@ -3,6 +3,8 @@ import { useCallback, useEffect, useState } from "react";
 import Badge from "../components/ui/Badge";
 import { cn } from "../lib/cn";
 import MobileNavSheet from "./MobileNavSheet";
+import { HelpNavTree } from "./HelpNavTree";
+import { HdsdLink } from "../components/help/HdsdLink";
 
 export interface NavChildItem {
   id: string;
@@ -32,6 +34,9 @@ interface Props {
   onSignOut?: () => void;
   wideContent?: boolean;
   headerExtras?: ReactNode;
+  /** HDSD ở header — module đang active (nếu có bài hướng dẫn) và submodule/topic mặc định của nó. */
+  helpModuleSlug?: string;
+  helpTopicSlug?: string;
   children: ReactNode;
 }
 
@@ -134,6 +139,8 @@ export default function AppShell({
   onSignOut,
   wideContent,
   headerExtras,
+  helpModuleSlug,
+  helpTopicSlug,
   children,
 }: Props) {
   const reportParentId = items.find((it) => it.children?.some((c) => c.id === activeId))?.id;
@@ -223,17 +230,21 @@ export default function AppShell({
                   {showSection && collapsed && (
                     <div className="mx-auto my-2 h-px w-6 bg-gmv-border" />
                   )}
-                  <NavButton
-                    it={it}
-                    active={active}
-                    onSelect={onSelect}
-                    onHover={onHover}
-                    collapsed={collapsed}
-                    expanded={expandedIds.has(it.id)}
-                    onToggleExpand={() => toggleExpand(it.id)}
-                    childActive={childActive}
-                  />
-                  {!collapsed && it.children && expandedIds.has(it.id) && (
+                  {it.id === "help" ? (
+                    <HelpNavTree it={it} activeId={activeId} collapsed={collapsed} />
+                  ) : (
+                    <NavButton
+                      it={it}
+                      active={active}
+                      onSelect={onSelect}
+                      onHover={onHover}
+                      collapsed={collapsed}
+                      expanded={expandedIds.has(it.id)}
+                      onToggleExpand={() => toggleExpand(it.id)}
+                      childActive={childActive}
+                    />
+                  )}
+                  {it.id !== "help" && !collapsed && it.children && expandedIds.has(it.id) && (
                     <ul className="mb-1 ml-3 mt-0.5 space-y-0.5 border-l border-gmv-border pl-2">
                       {it.children.map((child) => (
                         <li key={child.id}>
@@ -282,9 +293,17 @@ export default function AppShell({
 
       <div className="flex min-h-0 min-w-0 flex-1 flex-col pb-[72px] md:pb-0">
         <header className="z-20 flex h-16 shrink-0 items-center justify-between border-b border-gmv-border bg-gmv-canvas/95 px-4 shadow-gmv-1 backdrop-blur md:px-6">
-          <div className="min-w-0">
-            <h1 className="truncate text-base font-semibold text-gmv-text-strong">{title}</h1>
-            {subtitle && <p className="truncate text-xs text-gmv-muted">{subtitle}</p>}
+          <div className="flex min-w-0 items-center gap-2">
+            <div className="min-w-0">
+              <h1 className="truncate text-base font-semibold text-gmv-text-strong">{title}</h1>
+              {subtitle && <p className="truncate text-xs text-gmv-muted">{subtitle}</p>}
+            </div>
+            {helpModuleSlug &&
+              (helpTopicSlug ? (
+                <HdsdLink mode="topic" moduleSlug={helpModuleSlug} topicSlug={helpTopicSlug} className="shrink-0" />
+              ) : (
+                <HdsdLink mode="module" moduleSlug={helpModuleSlug} className="shrink-0" />
+              ))}
           </div>
           <div className="flex shrink-0 items-center gap-2 md:gap-3">
             {isDevMode && (
