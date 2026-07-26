@@ -9,6 +9,7 @@ import { listHelpModules } from "../content/help";
 import { getModuleLabel } from "../content/help/moduleLabels";
 import { useHelpNav } from "../contexts/HelpNavContext";
 import type { NavItem } from "./AppShell";
+import "../components/help/help.css";
 
 export function HelpNavTree({
   it,
@@ -47,7 +48,12 @@ export function HelpNavTree({
   const activeGroupRef = useRef<HTMLLIElement | null>(null);
   useEffect(() => {
     if (!helpExpandedModuleId) return;
-    activeGroupRef.current?.scrollIntoView({ block: "start", behavior: "smooth" });
+    // Guard typeof: jsdom không implement scrollIntoView → optional-chaining chỉ
+    // chặn null, không chặn method thiếu, nên test nào render sidebar sẽ ném
+    // TypeError (cùng lý do MainPage guard main.scrollTo) — phát hiện độc lập
+    // bởi Đạt, giữ lại guard này dù đổi target/block ở trên.
+    const el = activeGroupRef.current;
+    if (typeof el?.scrollIntoView === "function") el.scrollIntoView({ block: "start", behavior: "smooth" });
   }, [helpExpandedModuleId, helpModule, helpTopic]);
 
   if (collapsed) {
@@ -94,11 +100,21 @@ export function HelpNavTree({
             return (
               <li key={mod.slug} ref={modExpanded ? activeGroupRef : undefined}>
                 <button
+                  // key đổi theo module đang expand → remount → animation nháy
+                  // chạy lại mỗi lần bấm HDSD, không chỉ lần đầu (phát hiện +
+                  // fix bởi Đạt — cuộn vào khung nhìn thôi chưa đủ, mắt người
+                  // dùng vừa ở header/popup bên nội dung, không ở sidebar).
+                  key={modExpanded ? `exp-${helpExpandedModuleId}` : mod.slug}
                   type="button"
                   onClick={() => setHelpExpandedModuleId(modExpanded ? null : mod.slug)}
                   className={cn(
                     "flex w-full items-center justify-between rounded-gmv-md px-2.5 py-2 text-left text-xs font-medium transition",
-                    modExpanded ? "text-gmv-primary" : "text-gmv-text hover:bg-gmv-bg hover:text-gmv-text-strong"
+                    // Cuộn vào khung nhìn thôi chưa đủ: người dùng vừa bấm nút ở
+                    // header/popup bên vùng nội dung, mắt không ở sidebar. Nháy
+                    // nền 1 nhịp để bắt mắt.
+                    modExpanded
+                      ? "animate-help-flash text-gmv-primary"
+                      : "text-gmv-text hover:bg-gmv-bg hover:text-gmv-text-strong"
                   )}
                 >
                   <span>{getModuleLabel(mod.slug)}</span>
