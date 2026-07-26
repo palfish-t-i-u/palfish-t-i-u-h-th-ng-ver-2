@@ -1,13 +1,22 @@
 ---
-title: "Đối soát giao dịch quẹt thẻ (mPOS/Payoo)"
+title: "Đối soát quẹt thẻ mPOS / Payoo"
 order: 1
-audience: ["hr", "ops"]
+audience: ["ke-toan"]
 ---
-Áp dụng khi: khách thanh toán bằng quẹt thẻ (POS), cần ghép giao dịch từ mPOS/Payoo với đúng lần thanh toán của PR.
+
+Áp dụng khi: khách thanh toán bằng quẹt thẻ hoặc trả góp qua máy mPOS / Payoo, cần ghép giao dịch với lần thanh toán trên PR.
 
 ## Các bước
 
-1. Đồng bộ giao dịch mới nhất từ mPOS/Payoo (xem hướng dẫn ở module **Đồng bộ mPOS/Payoo**).
-2. Tìm giao dịch cần ghép trong danh sách chờ xử lý.
-3. Đối chiếu số tiền với lần thanh toán tương ứng của PR.
-4. Nếu số tiền không khớp, xử lý qua popup **Số tiền không khớp** thay vì xác nhận nhầm.
+1. Vào **Đối soát giao dịch · Quẹt thẻ** → chọn tab **mPOS** hoặc **Payoo**.
+2. Với mỗi giao dịch, hệ thống phân loại **Quẹt thẻ** hoặc **Trả góp** (kèm platform trả góp nếu có).
+3. Bật tick **Khớp tiền** (mặc định bật) để chỉ hiện các lần thanh toán trùng đúng số tiền giao dịch — giúp tìm nhanh hơn.
+4. Chọn đúng lần thanh toán cần ghép.
+5. Nếu số tiền lệch, popup **"Số tiền không khớp"** hiện ra — xem bài **Xử lý số tiền không khớp** để quyết định tiếp tục hay huỷ.
+6. Bấm **Ghép giao dịch này**.
+
+## Sau khi ghép
+
+- Lần thanh toán chuyển sang trạng thái đã xác nhận tiền về, với số tiền thực nhận đã trừ phí MDR/phí trả góp (nếu có).
+
+> ⚠️ Lưu ý: với giao dịch **trả góp**, số tiền thực nhận trên hệ thống đã trừ đủ phí MDR + phí trả góp — không dùng số tiền gộp trên sao kê gốc để đối chiếu "Cùng số tiền".

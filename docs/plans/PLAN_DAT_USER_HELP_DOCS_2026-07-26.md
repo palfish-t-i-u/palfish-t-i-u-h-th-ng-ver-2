@@ -308,8 +308,24 @@ git push origin feature-dat:sandbox
 ## Việc cần hỏi lại trước khi bắt đầu
 
 1. **Deadline chính xác là ngày nào?** Handoff viết "trước thứ 3 tuần sau", viết ngày Chủ nhật 26/07. Hiểu theo nghĩa hẹp là **thứ 3, 28/07** — nhưng kế hoạch lại chia 3 ngày làm việc (Ngày 1/2/3), không vừa. Cần anh Minh hoặc Đức xác nhận là 28/07 hay 04/08. Chênh lệch này quyết định có cần cắt phạm vi hay không.
-2. **Đức đã bắt đầu Task 1 chưa?** Trên `sandbox` hiện chưa có commit code nào cho HDSD. Nếu Đức chưa khởi động mà deadline là 28/07 thì phải báo anh Minh sớm.
-3. **Bài viết có cần ảnh chụp màn hình không?** V1 đang giả định không. Nếu anh Minh muốn có, phải chốt chỗ chứa ảnh và cách import — ảnh hưởng kiến trúc của Đức.
+2. **Đức đã bắt đầu Task 1 chưa?** Trên `sandbox` hiện chưa có commit code nào cho HDSD (kể cả sau khi 26 bài nội dung đã push — kiểm tra lại lúc 26/07 vẫn chưa thấy `components/help/`, `HelpNavContext.tsx`, `react-markdown`). Nếu deadline là 28/07 thì phải báo anh Minh sớm.
+
+### ✅ Đã chốt: bài viết CẦN screenshot (cập nhật từ Đức, 26/07)
+
+Đảo ngược giả định V1 ("không cần ảnh"). Quy ước ảnh — Đức áp dụng khi dựng loader, Đạt áp dụng khi chèn ảnh vào bài:
+
+- **Vị trí file**: `frontend/public/help/<module-slug>/<topic-slug>/01.png`, `02.png`, … (dùng `public/` có sẵn của Vite — không qua `import.meta.glob`, không cần build step riêng, serve thẳng ở root).
+- **Cách nhúng trong markdown**: cú pháp ảnh chuẩn, path tuyệt đối từ root:
+  ```md
+  ![Bấm + Tạo Payment Request](/help/quan-ly-thanh-toan/tao-lan-thanh-toan/01.png)
+  ```
+  `react-markdown` render `<img>` mặc định, không cần plugin thêm — chỉ cần đảm bảo component `HelpArticle` không tắt phần tử `img` nếu Đức có cấu hình `allowedElements`/`disallowedElements`.
+- **Đặt tên file**: đánh số theo đúng thứ tự bước trong bài (`01.png` = bước 1, `02.png` = bước 2…), không đặt tên theo nội dung (dễ trùng, khó rename khi chèn thêm bước).
+- **Không đụng frontmatter/parser**: ảnh không phải field frontmatter, `parseFrontmatter()` của Đức giữ nguyên như bản duyệt, không cần sửa.
+- **Việc còn thiếu để chụp ảnh thật**: repo hiện **chưa có `frontend/.env.local`** (biến `VITE_API_BASE_URL`) — không dựng được dev server để đăng nhập và chụp màn hình thật. Cần Đức/anh Minh cung cấp 1 trong 2:
+  - Tài khoản test (`E2E_EMAIL`/`E2E_PASSWORD` kiểu file `.env.e2e.example`) + xác nhận trỏ vào backend nào (localhost hay Render sandbox), hoặc
+  - Bộ ảnh chụp sẵn để Đạt chèn vào đúng vị trí trong 26 bài.
+- Vì ảnh phụ thuộc `HelpArticle` (Task 1 của Đức) để nhìn thấy render đúng, **việc chèn ảnh dời sang sau khi Đức xong khung** — không chặn tiến độ viết chữ hiện tại.
 
 ---
 
@@ -320,6 +336,7 @@ git push origin feature-dat:sandbox
 | 1 | Chốt contract slug + gửi bảng ánh xạ cho Đức | **Chặn Task 3 của Đức** — làm ngay |
 | 2 | Tạo 26 file placeholder, push sandbox | Chặn Đức test loader |
 | 3 | Viết 3 bài pilot → anh Minh duyệt định dạng | Chặn 23 bài còn lại |
-| 4 | Viết nốt nội dung theo thứ tự ưu tiên | — |
-| 5 | Nghiệm thu 23/23 + screenshot | Chặn merge |
-| 6 | `tsc -b` + `npm run test` + cập nhật `MODULES.md` | Chặn merge |
+| 4 | Viết nốt nội dung theo thứ tự ưu tiên | — ✅ Xong 26/26 (26/07) |
+| 5 | Chụp/nhận ảnh minh hoạ theo quy ước `public/help/<module>/<topic>/NN.png`, chèn vào từng bài | Cần dev env hoặc bộ ảnh có sẵn — xem mục "Đã chốt: bài viết CẦN screenshot" |
+| 6 | Nghiệm thu 23/23 + screenshot | Chặn merge |
+| 7 | `tsc -b` + `npm run test` + cập nhật `MODULES.md` | Chặn merge |

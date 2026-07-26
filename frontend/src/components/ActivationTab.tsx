@@ -1717,7 +1717,7 @@ function ActivationDetailDrawer({
                 <div className="modal-head">
                   <h3>Thêm UID mới</h3>
                   <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                    <HdsdLink mode="module" moduleSlug="module3" />
+                    <HdsdLink mode="topic" moduleSlug="module3" topicSlug="them-uid-them-goi" />
                     <button
                       type="button"
                       className="drawer-close"
@@ -2510,7 +2510,7 @@ export default function ActivationTab() {
                   )}
                 </div>
                 <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                  <HdsdLink mode="module" moduleSlug="module3" />
+                  <HdsdLink mode="topic" moduleSlug="module3" topicSlug="order-id-va-hold" />
                   <button className="drawer-close" onClick={dismissOrderIdConflict}>✕</button>
                 </div>
               </div>
