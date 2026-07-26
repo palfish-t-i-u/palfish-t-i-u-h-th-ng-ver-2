@@ -3,6 +3,7 @@
 // (mục HDSD → module → submodule/topic). NavItem/NavChildItem trong AppShell.tsx
 // chỉ hỗ trợ đúng 2 cấp (NavChildItem không có field children) nên KHÔNG tái
 // dùng cơ chế expandedIds/NavButton chung — bọc riêng độc lập ở đây.
+import { useEffect, useRef } from "react";
 import { cn } from "../lib/cn";
 import { listHelpModules } from "../content/help";
 import { getModuleLabel } from "../content/help/moduleLabels";
@@ -30,6 +31,19 @@ export function HelpNavTree({
     setHelpExpandedModuleId,
   } = useHelpNav();
   const isActive = activeId === "help";
+
+  // <nav> sidebar tự cuộn riêng (AppShell.tsx overflow-y-auto), mục "Hướng dẫn
+  // sử dụng" luôn nằm CUỐI danh sách — bấm HdsdLink từ 1 module ở trên thì cây
+  // vẫn expand đúng state, nhưng nếu sidebar đang cuộn ở chỗ khác, module/topic
+  // vừa mở render ngoài khung nhìn, trông như "bấm không có gì xảy ra" (y hệt
+  // vấn đề Đạt vừa fix cho <main>, nhưng ở sidebar — khác chỗ, chưa ai xử lý).
+  // Gắn ref vào đúng 1 phần tử đang active (topic nếu có, không thì module đang
+  // expand) rồi scrollIntoView mỗi khi state đổi.
+  const activeItemRef = useRef<HTMLButtonElement | null>(null);
+  useEffect(() => {
+    if (!helpExpandedModuleId) return;
+    activeItemRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }, [helpExpandedModuleId, helpModule, helpTopic]);
 
   if (collapsed) {
     // Sidebar thu gọn không có chỗ hiện cây lồng — điều hướng thẳng tới
@@ -72,9 +86,12 @@ export function HelpNavTree({
           )}
           {modules.map((mod) => {
             const modExpanded = helpExpandedModuleId === mod.slug;
+            const hasActiveTopicInModule =
+              modExpanded && mod.topics.some((t) => helpModule === mod.slug && helpTopic === t.topicSlug);
             return (
               <li key={mod.slug}>
                 <button
+                  ref={modExpanded && !hasActiveTopicInModule ? activeItemRef : undefined}
                   type="button"
                   onClick={() => setHelpExpandedModuleId(modExpanded ? null : mod.slug)}
                   className={cn(
@@ -93,6 +110,7 @@ export function HelpNavTree({
                       return (
                         <li key={topic.topicSlug}>
                           <button
+                            ref={topicActive ? activeItemRef : undefined}
                             type="button"
                             onClick={() => goToTopic(mod.slug, topic.topicSlug)}
                             className={cn(
