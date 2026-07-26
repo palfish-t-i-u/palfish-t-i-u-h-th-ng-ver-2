@@ -151,7 +151,6 @@
 - Design: `docs/DESIGN.md`, `frontend/src/gmv-theme.css`, `gmv-tokens.css`
 - E2E helpers: `frontend/e2e/helpers/` (navigation, assertions, api-client, cleanup, env)
 - FE test util: `frontend/src/test/mobileMatchMedia.ts` — `stubMobile()`/`restoreMatchMedia()`, stub `window.matchMedia` cho jsdom (dùng khi test cần `useIsMobile()===true`; PHẢI restore trong `afterEach`)
-- FE Docs hướng dẫn người dùng (HDSD): `frontend/src/content/help/<module-slug>/<topic-slug>.md` (nội dung, frontmatter `title`/`order`/`audience`, `content/help/index.ts` load bằng `import.meta.glob` + `parseFrontmatter()` tự viết — KHÔNG dùng `gray-matter`, gọi `Buffer` không polyfill trên Vite/browser), `content/help/moduleLabels.ts` (nhãn hiển thị, tách riêng tránh circular import với `MainPage.tsx`); `contexts/HelpNavContext.tsx` (điều hướng app-wide, cùng mô hình `PaymentFlowContext`); `components/help/HdsdLink.tsx`/`HelpArticle.tsx`/`HelpModuleIndex.tsx`/`HelpLanding.tsx`; `layouts/HelpNavTree.tsx` (cây dropdown 2 cấp trong sidebar, nhánh render riêng trong `AppShell.tsx` — `NavItem`/`NavChildItem` chỉ hỗ trợ 2 cấp, không generalize). Docs KHÔNG gate theo quyền.
 
 ## 11. Scripts vận hành
 
@@ -161,6 +160,18 @@
 - `backend/scripts/clean_test_data.py`, `create_test_accounts.py`, `check_auth_activation.py`, `list_unlinked_crm.py` — tiện ích test/debug
 - `backend/scripts/check_gsheet_dup.py`, `dedup_gsheet_ledger.py` — audit dedup ledger
 - `scripts/sync_so_doanh_thu_to_lark.py` — sync ledger → Lark
+
+## 12. Docs hướng dẫn người dùng (HDSD)
+
+Kế hoạch đầy đủ: `docs/plans/HANDOFF_DAT_USER_HELP_DOCS_2026-07-26.md`. Không gate theo quyền — ai đăng nhập cũng đọc được.
+
+- Nội dung: `frontend/src/content/help/<module-slug>/<topic-slug>.md` — 9 module (`paymentRequests`, `reconciliation`, `reconCard`, `module3`, `module4`, `revenueLedger`, `bc01`, `bc02`, `bc03`), 21 bài. `moduleSlug` = đúng `ViewId` trong `MainPage.tsx`. Frontmatter chỉ 3 field: `title`/`order`/`audience`.
+- Loader: `content/help/index.ts` — `import.meta.glob("./**/*.md", {query:"?raw",import:"default",eager:true})` (Vite 8 — KHÔNG dùng `{as:"raw"}`, bị xóa từ Vite 6) + `parseFrontmatter()` tự viết ~20 dòng regex (KHÔNG dùng `gray-matter` — gọi `Buffer`, không polyfill trên Vite/browser, crash runtime). `content/help/moduleLabels.ts` — nhãn hiển thị, tách riêng tránh circular import với `MainPage.tsx`.
+- Điều hướng: `contexts/HelpNavContext.tsx` (app-wide, cùng mô hình `PaymentFlowContext`; `useHelpNavOptional()` — biến thể không throw, để `HdsdLink` không crash cây render khi 1 unit test dựng lại component chứa nó mà không bọc Provider).
+- UI: `components/help/HdsdLink.tsx` (link "HDSD", mode `"module"` chỉ mở sidebar / mode `"topic"` nhảy thẳng bài viết), `HelpArticle.tsx`/`HelpModuleIndex.tsx`/`HelpLanding.tsx` (lazy-load qua `MainPage.tsx`'s `lazyRetry`), `layouts/HelpNavTree.tsx` (cây dropdown 2 cấp trong sidebar — `AppShell.tsx`'s `NavItem`/`NavChildItem` chỉ hỗ trợ đúng 2 cấp nên bọc riêng, không generalize type dùng chung).
+- Sửa file chung: `AppShell.tsx` (nhánh `it.id==="help"` trong items-map + `HdsdLink` trong header), `MainPage.tsx` (`"help"` trong `ViewId`, state `helpModule`/`helpTopic`/`helpExpandedModuleId`, `HelpNavProvider`, case `renderActiveView()`), `components/ui/Modal.tsx` (+ prop `headerExtra?: ReactNode`, optional/không đổi behavior khi bỏ trống — dùng cho modal chèn HDSD mà không có chỗ cạnh `title`).
+- HDSD gắn vào 22 điểm popup/modal/drawer của 6 module ưu tiên (Payment Requests, Đối soát, Kích hoạt, Xuất hóa đơn, Sổ doanh thu — Báo cáo không có popup): `payment-request/CancelPrModal.tsx`, `TransferSaleModal.tsx`, `CreatePaymentRequestModal.tsx`, `PrHistoryModal.tsx`, `QrViewModal.tsx`, `PaymentRequestDetailDrawer.tsx` (6 điểm), `ReconciliationTab.tsx`, `CardReconciliationTab.tsx`, `ActivationTab.tsx`, `InvoiceRequestTab.tsx`, `LedgerFormModal.tsx`, `SoDoanhThuTab.tsx`. Module khác (CRM sync, Dashboard Sale, Zalo, DingTalk, Auth, Permissions) chỉ có HDSD ở header module lớn (miễn phí qua `AppShell.tsx`), popup của chúng chưa gắn — fast-follow.
+- Còn treo: checklist nghiệm thu đủ 22/22 điểm chèn cần data nghiệp vụ thật (PR đủ tiền, thiếu ảnh bill, Order ID trùng...) — mới live-verify 2/22 qua Playwright.
 
 ## ⚠️ Legacy — KHÔNG còn mount trong MainPage (chỉ test file tham chiếu)
 
