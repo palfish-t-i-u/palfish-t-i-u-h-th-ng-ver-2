@@ -165,7 +165,11 @@ Theo đúng bảng "Popup/modal/drawer của 6 module ưu tiên" ở trên — 1
 
 ## Task 4 — Cả hai: hoàn thiện nội dung + kiểm thử (Ngày 3 → deadline)
 
-Hoàn thiện nội dung còn thiếu (placeholder → thật), viết thêm bài cho Báo cáo, chạy checklist nghiệm thu đủ 23/23 điểm chèn (xem mục Kiểm thử).
+**Cập nhật:** Task 1-3 đã xong (nhánh `hdsd-help-docs-duc`, commit `b07c1256`/`112f304d`). Phần Task 4 KHÔNG cần Đạt đã làm xong:
+- ✅ Viết luôn nội dung thật (không phải placeholder) cho toàn bộ 16 topic đã gắn HDSD ở Task 3 + 2 pilot ở Task 2 — không còn khoảng trống "Nội dung đang cập nhật" nào trong 6 module ưu tiên.
+- ✅ Viết thêm 3 bài Báo cáo (`bc01/bc02/bc03/tong-quan.md`) — cách đọc từng báo cáo, lọc, các bẫy hay gặp (vd. BC01 lọc theo Pay Time chứ không phải ngày chốt đơn; BC02 team-mapping cũ có thể lệch nếu nhân sự đổi team; BC03 KPI luôn tính theo tháng dù đang xem theo ngày).
+- ✅ `npx tsc -b` + `npm run test` — 610/610 pass.
+- ⚠️ **Checklist nghiệm thu 22/22 điểm chèn — CHƯA xong đủ**, cần Đạt/Đức tiếp tục: đã live-verify được 2/22 qua Playwright + dev server thật (`CreatePaymentRequestModal`, `LedgerFormModal` — cả 2 pattern kỹ thuật khác nhau đều render đúng, không vỡ layout). 20 điểm còn lại cần trigger đúng STATE nghiệp vụ cụ thể (PR đã đủ tiền, PR đang thiếu ảnh bill, Order ID trùng, chưa gửi được nhắc kích hoạt...) — thử tìm data thật trong sandbox nhưng chưa trigger ổn định qua UI trong thời gian hợp lý. **Việc còn lại: mở từng popup bằng tay với dữ liệu/thao tác thật, tick checklist + chụp màn hình theo đúng bảng ở Task 3.**
 
 ---
 
