@@ -97,3 +97,12 @@ export function useHelpNav(): HelpNavContextValue {
   if (!ctx) throw new Error("useHelpNav must be used within HelpNavProvider");
   return ctx;
 }
+
+/**
+ * Biến thể không throw — dùng cho component (vd. HdsdLink) gắn rải rác vào rất
+ * nhiều modal/drawer nghiệp vụ, để không bắt buộc MỌI unit test dựng lại cây
+ * component đó phải bọc thêm HelpNavProvider (cùng mô hình usePaymentFlowOptional).
+ */
+export function useHelpNavOptional(): HelpNavContextValue | null {
+  return useContext(HelpNavContext);
+}

@@ -26,6 +26,7 @@ import { activationAuditText, formatPaymentDateFull, formatPaymentDateTime, from
 import { downloadTaxInvoiceZip } from "../utils/taxInvoiceXlsxExport";
 import type { InvoiceRow } from "./payment-flow/paymentFlowUtils";
 import { getUidSyncState } from "./ActivationTab.uidSync";
+import { HdsdLink } from "./help/HdsdLink";
 import "../styles/prototype-payments.css";
 
 type ArTabId = "pending_order" | "activated" | "all";
@@ -196,9 +197,12 @@ function ARCreateModal({
               Bước 3 · Đăng ký khoá học cho UID khách hàng, hệ thống xuất ra Course Code dùng để đối chiếu hoá đơn.
             </div>
           </div>
-          <button type="button" className="drawer-close" onClick={onClose}>
-            <Icons.Close size={16} />
-          </button>
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <HdsdLink mode="topic" moduleSlug="module3" topicSlug="tao-active-request" />
+            <button type="button" className="drawer-close" onClick={onClose}>
+              <Icons.Close size={16} />
+            </button>
+          </div>
         </div>
         <div className="modal-body">
           <div className="field">
@@ -1712,14 +1716,17 @@ function ActivationDetailDrawer({
               >
                 <div className="modal-head">
                   <h3>Thêm UID mới</h3>
-                  <button
-                    type="button"
-                    className="drawer-close"
-                    onClick={() => !locked && setAddUidDialogOpen(false)}
-                    disabled={locked}
-                  >
-                    <Icons.Close size={16} />
-                  </button>
+                  <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                    <HdsdLink mode="module" moduleSlug="module3" />
+                    <button
+                      type="button"
+                      className="drawer-close"
+                      onClick={() => !locked && setAddUidDialogOpen(false)}
+                      disabled={locked}
+                    >
+                      <Icons.Close size={16} />
+                    </button>
+                  </div>
                 </div>
                 <div className="modal-body">
                   <div className="field">
@@ -1899,6 +1906,7 @@ function ActivationDetailDrawer({
           >
             <div className="modal-head">
               <h3>Bỏ xác nhận cộng buổi</h3>
+              <HdsdLink mode="module" moduleSlug="module3" />
             </div>
             <div style={{ padding: "12px 16px", display: "flex", flexDirection: "column", gap: 10 }}>
               <div style={{ fontSize: 13, color: "var(--text-2)" }}>
@@ -2501,7 +2509,10 @@ export default function ActivationTab() {
                     </div>
                   )}
                 </div>
-                <button className="drawer-close" onClick={dismissOrderIdConflict}>✕</button>
+                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                  <HdsdLink mode="module" moduleSlug="module3" />
+                  <button className="drawer-close" onClick={dismissOrderIdConflict}>✕</button>
+                </div>
               </div>
               <div className="modal-body">
                 <div style={{ display: "flex", gap: 10, alignItems: "flex-start", padding: "4px 0" }}>

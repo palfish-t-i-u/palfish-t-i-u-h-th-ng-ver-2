@@ -5,6 +5,7 @@ import { findCountry } from "./CountryCombo";
 import { Icons } from "./Icons";
 import { vnd } from "./paymentRequestUtils";
 import { formatPhoneIntl } from "./phoneUtils";
+import { HdsdLink } from "../help/HdsdLink";
 
 /** compact2 = QR + logo Napas + logo bank, không có whitespace thừa như print */
 function buildQrUrl(amount: number, content: string): string {
@@ -214,9 +215,12 @@ export default function QrViewModal({
               Mở app ngân hàng bất kỳ để quét mã hoặc chuyển khoản thủ công
             </div>
           </div>
-          <button className="drawer-close" onClick={onClose}>
-            <Icons.Close size={16} />
-          </button>
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <HdsdLink mode="topic" moduleSlug="paymentRequests" topicSlug="xem-qr-thanh-toan" />
+            <button className="drawer-close" onClick={onClose}>
+              <Icons.Close size={16} />
+            </button>
+          </div>
         </div>
 
         <div className="modal-body" style={{ gap: 18 }}>

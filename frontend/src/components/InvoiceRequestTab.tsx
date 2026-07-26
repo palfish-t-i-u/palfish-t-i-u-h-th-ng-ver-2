@@ -20,6 +20,7 @@ import { endpoints } from "../lib/api";
 import "../styles/prototype-payments.css";
 import useIsMobile from "../hooks/useIsMobile";
 import InvoiceRowCards from "./invoice/InvoiceRowCards";
+import { HdsdLink } from "./help/HdsdLink";
 
 const CUSTOMER_TYPE_META = {
   individual: { label: "Cá nhân", cls: "is-active" },
@@ -111,6 +112,7 @@ function InvoiceDetailDrawer({
             </div>
           </div>
           <div style={{ display: "flex", gap: 8, alignItems: "center", flexShrink: 0 }}>
+            <HdsdLink mode="module" moduleSlug="module4" />
             <button type="button" className="drawer-close" onClick={onClose}>
               <Icons.Close size={16} />
             </button>

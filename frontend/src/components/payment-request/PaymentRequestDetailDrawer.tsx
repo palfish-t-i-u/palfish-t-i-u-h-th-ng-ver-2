@@ -49,6 +49,7 @@ import TransferSaleModal from "./TransferSaleModal";
 import PrHistoryModal from "./PrHistoryModal";
 import { MoneyInput } from "../ui/MoneyInput";
 import { findPaidLinesWithoutBill } from "./billGuardUtils";
+import { HdsdLink } from "../help/HdsdLink";
 
 const METHOD_META: Record<PaymentMethod, { cls: string; label: string; icon: IconKey; sub: string }> = {
   qr: { cls: "method-qr", label: "Chuyển khoản", icon: "QrCode", sub: "QR / chuyển khoản" },
@@ -1830,6 +1831,7 @@ export default function PaymentRequestDetailDrawer({
           </div>
           <div style={{ display: "flex", gap: 8, alignItems: "center", flexShrink: 0 }}>
             <PaymentRequestStatusBadge state={request.state} totalCount={request.totalCount} provisional={hasUnverifiedFeeLine(request)} />
+            <HdsdLink mode="module" moduleSlug="paymentRequests" />
             <button className="drawer-close" onClick={onClose}>
               <Icons.Close size={16} />
             </button>
@@ -2728,9 +2730,16 @@ export default function PaymentRequestDetailDrawer({
                     : "Điền gói học → bấm xác nhận = báo đơn lên DingTalk (kèm bill) + tạo yêu cầu kích hoạt."}
                 </div>
               </div>
-              <button className="drawer-close" onClick={() => setArPackageModalOpen(false)}>
-                <Icons.Close size={16} />
-              </button>
+              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <HdsdLink
+                  mode="topic"
+                  moduleSlug="module3"
+                  topicSlug={reportBtn.isAppend ? "bao-don-bo-sung" : "bao-don-kich-hoat"}
+                />
+                <button className="drawer-close" onClick={() => setArPackageModalOpen(false)}>
+                  <Icons.Close size={16} />
+                </button>
+              </div>
             </div>
             <div className="modal-body">
               {/* Yêu cầu kích hoạt — 1 lần cho cả báo đơn (không per-gói) */}
@@ -3046,9 +3055,12 @@ export default function PaymentRequestDetailDrawer({
                   Vui lòng up bill cho các lần thanh toán dưới đây trước khi tạo yêu cầu kích hoạt.
                 </div>
               </div>
-              <button className="drawer-close" onClick={() => setMissingBillsPopupOpen(false)}>
-                <Icons.Close size={16} />
-              </button>
+              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <HdsdLink mode="topic" moduleSlug="paymentRequests" topicSlug="thieu-anh-bill" />
+                <button className="drawer-close" onClick={() => setMissingBillsPopupOpen(false)}>
+                  <Icons.Close size={16} />
+                </button>
+              </div>
             </div>
             <div className="modal-body">
               <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: 8 }}>
@@ -3091,9 +3103,12 @@ export default function PaymentRequestDetailDrawer({
                     </div>
                   )}
                 </div>
-                <button className="drawer-close" onClick={dismissRemindError}>
-                  <Icons.Close size={16} />
-                </button>
+                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                  <HdsdLink mode="topic" moduleSlug="module4" topicSlug="nhac-xuat-hoa-don" />
+                  <button className="drawer-close" onClick={dismissRemindError}>
+                    <Icons.Close size={16} />
+                  </button>
+                </div>
               </div>
               <div className="modal-body">
                 <div style={{ display: "flex", gap: 10, alignItems: "flex-start", padding: "4px 0" }}>
@@ -3128,9 +3143,12 @@ export default function PaymentRequestDetailDrawer({
           <div className="modal" style={{ width: "min(420px, 100%)" }} onClick={(e) => e.stopPropagation()}>
             <div className="modal-head">
               <div><h3>Nhắc kích hoạt khóa học gấp</h3></div>
-              <button className="drawer-close" onClick={() => setActivationNoteModalOpen(false)}>
-                <Icons.Close size={16} />
-              </button>
+              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <HdsdLink mode="topic" moduleSlug="module3" topicSlug="nhac-kich-hoat-gap" />
+                <button className="drawer-close" onClick={() => setActivationNoteModalOpen(false)}>
+                  <Icons.Close size={16} />
+                </button>
+              </div>
             </div>
             <div className="modal-body">
               <div style={{ fontSize: 13, color: "var(--text-2)", marginBottom: 8, lineHeight: 1.5 }}>
@@ -3171,9 +3189,12 @@ export default function PaymentRequestDetailDrawer({
           <div className="modal" style={{ width: "min(420px, 100%)" }} onClick={(e) => e.stopPropagation()}>
             <div className="modal-head">
               <div><h3>Không gửi được nhắc kích hoạt</h3></div>
-              <button className="drawer-close" onClick={dismissActivationRemindError}>
-                <Icons.Close size={16} />
-              </button>
+              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <HdsdLink mode="topic" moduleSlug="module3" topicSlug="nhac-kich-hoat-gap" />
+                <button className="drawer-close" onClick={dismissActivationRemindError}>
+                  <Icons.Close size={16} />
+                </button>
+              </div>
             </div>
             <div className="modal-body">
               <div style={{ display: "flex", gap: 10, alignItems: "flex-start", padding: "4px 0" }}>
@@ -3202,9 +3223,12 @@ export default function PaymentRequestDetailDrawer({
                   Đã thu {vnd(request.received)} / {vnd(request.target)}
                 </div>
               </div>
-              <button className="drawer-close" onClick={() => setPrFullModalOpen(false)}>
-                <Icons.Close size={16} />
-              </button>
+              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <HdsdLink mode="topic" moduleSlug="paymentRequests" topicSlug="pr-du-tien" />
+                <button className="drawer-close" onClick={() => setPrFullModalOpen(false)}>
+                  <Icons.Close size={16} />
+                </button>
+              </div>
             </div>
             <div className="modal-body">
               <div style={{ display: "flex", gap: 10, alignItems: "flex-start", padding: "4px 0" }}>

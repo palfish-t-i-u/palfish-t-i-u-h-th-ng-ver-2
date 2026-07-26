@@ -32,6 +32,7 @@ import { Input } from "./ui/Input";
 import Modal from "./ui/Modal";
 import ColumnVisibilityMenu from "./ui/ColumnVisibilityMenu";
 import ExchangeRatesPanel from "./admin/ExchangeRatesPanel";
+import { HdsdLink } from "./help/HdsdLink";
 import {
   Table,
   TableScrollWrap,
@@ -635,6 +636,7 @@ export default function SoDoanhThuTab() {
         onClose={() => setRateModalOpen(false)}
         wide
         className="max-w-4xl"
+        headerExtra={<HdsdLink mode="topic" moduleSlug="revenueLedger" topicSlug="quy-doi-ty-gia" />}
       >
         <ExchangeRatesPanel />
       </Modal>

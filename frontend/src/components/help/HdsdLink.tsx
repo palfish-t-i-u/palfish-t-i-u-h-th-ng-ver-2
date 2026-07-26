@@ -1,5 +1,5 @@
 // frontend/src/components/help/HdsdLink.tsx
-import { useHelpNav } from "../../contexts/HelpNavContext";
+import { useHelpNavOptional } from "../../contexts/HelpNavContext";
 import { cn } from "../../lib/cn";
 
 type Props =
@@ -10,9 +10,15 @@ type Props =
  * Link "HDSD" đặt cạnh header module/submodule. mode="module" chỉ mở cây
  * trong sidebar (không đổi màn hình chính — an toàn, không mất state đang
  * thao tác dở). mode="topic" nhảy thẳng tới bài viết (đổi activeView).
+ *
+ * Dùng useHelpNavOptional (không throw) — HdsdLink gắn rải rác vào rất nhiều
+ * modal/drawer nghiệp vụ, nhiều unit test dựng lại các component đó riêng lẻ
+ * không có HelpNavProvider bọc ngoài. Ẩn hẳn nút thay vì crash cả cây render.
  */
 export function HdsdLink(props: Props) {
-  const { goToModule, goToTopic } = useHelpNav();
+  const ctx = useHelpNavOptional();
+  if (!ctx) return null;
+  const { goToModule, goToTopic } = ctx;
 
   return (
     <button
