@@ -2,6 +2,8 @@
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { getHelpTopic } from "../../content/help";
+import HelpBreadcrumb from "./HelpBreadcrumb";
+import "./help.css";
 
 export default function HelpArticle({ moduleSlug, topicSlug }: { moduleSlug: string; topicSlug: string }) {
   const topic = getHelpTopic(moduleSlug, topicSlug);
@@ -9,6 +11,7 @@ export default function HelpArticle({ moduleSlug, topicSlug }: { moduleSlug: str
   if (!topic) {
     return (
       <div className="min-w-0 space-y-2">
+        <HelpBreadcrumb moduleSlug={moduleSlug} />
         <h2 className="text-lg font-semibold text-gmv-text-strong">Chưa có bài viết</h2>
         <p className="text-sm text-gmv-muted">
           Nội dung hướng dẫn cho mục này đang được cập nhật. Quay lại sau nhé.
@@ -18,8 +21,14 @@ export default function HelpArticle({ moduleSlug, topicSlug }: { moduleSlug: str
   }
 
   return (
-    <article className="min-w-0 max-w-3xl space-y-4">
-      <h2 className="text-lg font-semibold text-gmv-text-strong">{topic.title}</h2>
+    // key gồm CẢ moduleSlug: ép remount khi đổi bài để animate-fade-in-once
+    // chạy lại — không thì React chỉ update text trong node cũ, animation không
+    // tự replay. Phải kèm moduleSlug vì `tong-quan` trùng ở 8 module: chỉ dùng
+    // topicSlug thì nhảy paymentRequests/tong-quan → module3/tong-quan giữ
+    // nguyên key, mất hiệu ứng đúng ở luồng browse hay dùng nhất.
+    <article key={`${moduleSlug}/${topicSlug}`} className="min-w-0 max-w-3xl space-y-4">
+      <HelpBreadcrumb moduleSlug={moduleSlug} topicTitle={topic.title} />
+      <h2 className="animate-fade-in-once text-lg font-semibold text-gmv-text-strong">{topic.title}</h2>
       <div
         className={[
           "space-y-3 text-sm text-gmv-text",

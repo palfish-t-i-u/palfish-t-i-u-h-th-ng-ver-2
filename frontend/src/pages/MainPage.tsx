@@ -285,6 +285,20 @@ function MainPageInner({
     flowNavRef.current = (view) => setActiveView(FLOW_VIEW_MAP[view]);
   }, [flowNavRef]);
 
+  // Bấm HdsdLink (mode="topic") có thể xảy ra khi trang đang cuộn sâu (popup mở
+  // giữa 1 danh sách dài) — không reset scroll thì bài viết mới render ở ngoài
+  // khung nhìn, trông như "bấm không có gì xảy ra". Chỉ áp dụng khi vào/đổi bài
+  // trong "help", không đụng scroll của các tab khác.
+  useEffect(() => {
+    if (activeView !== "help") return;
+    // Defensive: jsdom không implement Element.scrollTo → test nào render
+    // MainPage sẽ ném TypeError nếu gọi thẳng (cùng lý do useIsMobile guard
+    // matchMedia). Không dùng optional-chaining vì nó chỉ chặn null, không
+    // chặn method thiếu.
+    const main = document.querySelector("main");
+    if (typeof main?.scrollTo === "function") main.scrollTo({ top: 0 });
+  }, [activeView, helpModule, helpTopic]);
+
   useEffect(() => {
     helpNavRef.current = () => setActiveView("help");
   }, [helpNavRef]);

@@ -23,4 +23,4 @@ audience: ["sale"]
 - Gửi mã QR cho khách để khách chuyển tiền.
 - Sau khi khách chuyển xong, tải ảnh bill lên PR để kế toán đối soát.
 
-> ⚠️ Lưu ý: nếu PR phục vụ nhiều con, gõ nhiều tên vào ô **Tên con**, phân cách bằng `-`, `&`, `,`, `/`, "và" — VD: `Bảo Châu - Bảo Khánh`. Hệ thống tự tách thành từng bé riêng khi kích hoạt (xem bài "Thêm UID / thêm gói cho bé khác" ở bước Kích hoạt khóa học).
+> ⚠️ Lưu ý: nếu PR phục vụ nhiều con, gõ nhiều tên vào ô **Tên con**, phân cách bằng `-`, `&`, `,`, `/`, "và" — VD: `Bảo Châu - Bảo Khánh`. Hệ thống tự tách thành từng bé riêng khi kích hoạt (xem bài "Thêm UID / thêm gói cho bé khác" ở bước Kích hoạt khóa học). Khi tạo lần thanh toán, ô **Tên trên nội dung CK** cho chọn đúng 1 bé cụ thể (hoặc cả PH, hoặc cả các bé) — không phải lúc nào cũng ghi chung 1 tên.

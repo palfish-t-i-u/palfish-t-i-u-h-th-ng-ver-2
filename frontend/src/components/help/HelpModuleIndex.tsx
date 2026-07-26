@@ -2,6 +2,7 @@
 import { getHelpModule } from "../../content/help";
 import { getModuleLabel } from "../../content/help/moduleLabels";
 import { useHelpNav } from "../../contexts/HelpNavContext";
+import HelpBreadcrumb from "./HelpBreadcrumb";
 
 export default function HelpModuleIndex({ moduleSlug }: { moduleSlug: string }) {
   const mod = getHelpModule(moduleSlug);
@@ -10,6 +11,7 @@ export default function HelpModuleIndex({ moduleSlug }: { moduleSlug: string }) 
   if (!mod || mod.topics.length === 0) {
     return (
       <div className="min-w-0 space-y-2">
+        <HelpBreadcrumb moduleSlug={moduleSlug} />
         <h2 className="text-lg font-semibold text-gmv-text-strong">Chưa có hướng dẫn</h2>
         <p className="text-sm text-gmv-muted">Module này chưa có bài hướng dẫn nào. Quay lại sau nhé.</p>
       </div>
@@ -18,6 +20,7 @@ export default function HelpModuleIndex({ moduleSlug }: { moduleSlug: string }) 
 
   return (
     <div className="min-w-0 max-w-2xl space-y-3">
+      <HelpBreadcrumb moduleSlug={moduleSlug} />
       <h2 className="text-lg font-semibold text-gmv-text-strong">Hướng dẫn — {getModuleLabel(moduleSlug)}</h2>
       <ul className="space-y-2">
         {mod.topics.map((topic) => (
