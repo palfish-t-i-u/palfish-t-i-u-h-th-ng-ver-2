@@ -1,82 +1,112 @@
-# HANDOFF — Đạt · Hệ thống Docs hướng dẫn người dùng (Sale/Kế toán/...)
+# HANDOFF — Đạt · Hệ thống Docs hướng dẫn người dùng (HDSD)
 
 > Task anh Minh giao trực tiếp, Đức + Đạt tự chủ trương lên kế hoạch và triển khai — không có ai khác tham gia. Deadline: **trước thứ 3 tuần sau**.
+> **Bản này đã được anh Minh điều chỉnh lại 1 lần** (bản đầu dùng route `/help/:slug` riêng trong app — anh Minh không duyệt, yêu cầu đổi sang cơ chế dropdown ngay trong sidebar). Đọc kỹ phần Kiến trúc bên dưới trước khi code, khác khá nhiều so với hình dung ban đầu.
 > Đây KHÔNG phải mobile fix pass — task hoàn toàn mới, không đụng gì tới nhánh mobile trước đó.
 
 ## Bối cảnh
 
-Anh Minh cần 1 hệ thống tài liệu hướng dẫn NGƯỜI DÙNG CUỐI (khác với `docs/` hiện tại — vốn là tài liệu dev/handoff nội bộ, không dành cho sale/kế toán đọc). Yêu cầu gốc của Minh:
+Anh Minh cần 1 hệ thống tài liệu hướng dẫn NGƯỜI DÙNG CUỐI (khác `docs/` hiện tại — tài liệu dev/handoff nội bộ, không dành cho sale/kế toán đọc). Yêu cầu cuối cùng (đã chốt qua 2 vòng trao đổi với anh Minh):
 
-> "Mình cần làm 1 hệ thống docs để hướng dẫn người dùng cách sử dụng các tính năng, ví dụ như sale thì cần biết cách tạo lần TT như thế nào cho chuẩn, kế toán thao tác ghép giao dịch ra sao. Về căn bản là cần 1 trang docs, phân tách nhỏ lẻ ra thành các trang nhỏ, mỗi trang hướng dẫn về 1 thao tác/bước. Sau đó là dẫn vào app thông qua hyperlink hoặc 1 nút nào đó trên từng module/submodule để người dùng có thể xem hướng dẫn của từng tính năng."
+1. Thêm 1 mục **"Hướng dẫn sử dụng" (HDSD)** ở sidebar — bấm vào **dropdown ngay trong sidebar** hiện tất cả module lớn.
+2. Bấm 1 module lớn → dropdown mở rộng hiện tất cả submodule của module đó (**vẫn trong sidebar**).
+3. Bấm 1 submodule cụ thể → **màn hình chính** (chỗ vẫn hiện nội dung các module lớn) đổi sang trang docs chứa flow của submodule đó.
+4. Nút **"HDSD"** (chữ, không phải icon) đặt cạnh header của **MỌI module lớn** VÀ **MỌI submodule** — kể cả submodule chỉ xuất hiện dạng popup/modal/drawer khi bấm 1 nút nào đó.
+5. Hành vi nút HDSD: ở header module lớn → mở dropdown sidebar tới đúng module đó. Ở header submodule (kể cả popup) → nhảy thẳng tới đúng trang docs của submodule đó.
 
-Hai yêu cầu cứng: (1) chia nhỏ theo từng thao tác/bước, không phải 1 trang dài, (2) phải dẫn được vào từ TRONG APP qua hyperlink/nút theo từng module.
+**Ưu tiên phạm vi (đã chốt với anh Minh):** gắn HDSD đầy đủ — kể cả mọi popup/modal/drawer — cho 6 module nghiệp vụ cốt lõi: **Quản lý thanh toán, Đối soát giao dịch, Kích hoạt khóa học, Xuất hóa đơn, Sổ doanh thu, Báo cáo (BC01-03)** — vì đây là mục đích tối thượng của app (hỗ trợ vận hành nghiệp vụ chính). Các module khác (Dashboard, CRM sync, Dashboard Sale, Đồng bộ mPOS/Payoo, Zalo, DingTalk, Auth Accounts, Phân quyền) chỉ cần HDSD ở header module lớn — rẻ, đi chung cơ chế trung tâm — popup của chúng làm sau (fast-follow).
 
-## Khảo sát nền tảng hiện có (đọc trước khi code — quyết định kiến trúc dựa trên đây)
+## Khảo sát nền tảng (đọc trước khi code)
 
-- App **không có URL riêng cho từng module** — điều hướng hiện tại 100% là `activeView` state trong `frontend/src/pages/MainPage.tsx:257`. react-router-dom chỉ phục vụ `/login`, `/signup`, `/forgot-password`, `/reset-password`, `/` (`frontend/src/App.tsx:72-113`). Muốn "hyperlink" share/bookmark được → **bắt buộc thêm route mới**, không thể chỉ dùng modal/state như `GatewaySyncTab`'s onboarding hiện tại.
-- Chưa có markdown renderer nào trong frontend (0 kết quả `react-markdown`/`remark`/`marked`). Phải thêm mới.
-- Chưa có icon library — icon toàn bộ SVG viết tay (`viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"`), có factory sẵn `frontend/src/components/payment-request/Icons.tsx` (`makeIcon(paths)`).
-- `AppShell.tsx` header (`frontend/src/layouts/AppShell.tsx:284-328`) có sẵn slot `headerExtras` (đang dùng cho `NotificationBell`) — điểm chèn nút help rẻ nhất, chỉ cần sửa 2 file thay vì chọc vào 10+ file tab module.
-- `MainPage.tsx` có map `TITLES: Record<ViewId, {title, subtitle}>` (dòng 173-238) — danh sách đầy đủ mọi module/submodule ID thật: `paymentRequests`, `reconciliation`, `reconCard`, `module3`, `module4`, `revenueLedger`, `bc01`, `bc02`, `bc03`, `module5`, `module6`, `gatewaySync`, `zaloConfig/Groups/Outbox`, `dingtalkConfig/Groups/Outbox`, `authAccounts`, `permissions`, `profile`. Đây chính là slug list cho docs — khỏi map lại lần 2.
-- **Không có department "kế toán" riêng.** Hệ thống phân 2 trục: **role** (`sale/leader/manager/system`, xếp hạng theo `backend/rbac.py:14`) và **department** (`sale/hr/marketing/cs`, gán quyền module theo `backend/admin_routes.py:162-220`). "Kế toán ghép giao dịch" thực chất map vào role `system`/`ops` (người xác nhận thanh toán) + department `hr` (đang có full quyền `reconciliation`). → **Docs KHÔNG gate theo quyền** (ai đăng nhập cũng đọc được — tài liệu tham khảo, nhân viên mới nên đọc được trước khi được cấp quyền), chỉ dùng nhãn phòng ban có sẵn (`frontend/src/types/permissions.ts:73-78`: Bán hàng/Nhân sự & Quản trị/Marketing/CS) để GOM NHÓM mục lục cho dễ tìm, không phải để chặn.
-- Có sẵn 1 pattern onboarding tốt để tham khảo (không đụng, không thay): `GatewaySyncTab.tsx` — modal `ONBOARDING_STEPS` + cờ `localStorage` "đã xem lần đầu" + nút "Xem lại hướng dẫn". Hệ thống mới là 1 lớp bổ sung, tổng quát hơn, share-link được — độc lập với pattern này.
-- **Ảnh trong nội dung:** engineering để hỗ trợ ảnh gần như miễn phí (`react-markdown` tự render `![alt](src)`, ảnh để trong `public/help-images/`, không cần Vite config thêm). Cái tốn thời gian thật là CHỤP + CHÚ THÍCH ảnh — chi phí nội dung, nhân theo số trang. Quyết định: **build hỗ trợ ảnh ngay từ đầu (rẻ), nhưng ưu tiên viết nội dung TEXT THUẦN phủ rộng trước** để kịp deadline, chèn ảnh dần cho trang quan trọng nếu còn thời gian.
+- **Sidebar hiện chỉ hỗ trợ đúng 2 cấp**, hard-cap ở kiểu dữ liệu: `NavChildItem` (`frontend/src/layouts/AppShell.tsx:7-12`) **không có field `children`** — không tự đệ quy. Muốn "Hướng dẫn sử dụng" có 3 cấp (mục top-level → module → submodule) thì **không generalize `NavItem`/`NavChildItem`** (đụng logic dùng chung cho mọi mục khác, rủi ro) — mà bọc riêng: trong vòng lặp render items (`AppShell.tsx:211-264`), thêm nhánh đặc biệt `if (it.id === "help") return <HelpNavTree .../>`, độc lập hoàn toàn với `expandedIds`/`toggleExpand`/`NavButton` đang dùng chung. Áp dụng y hệt cho `frontend/src/layouts/MobileNavSheet.tsx`.
+- **Không có route/URL riêng theo module** — mọi điều hướng là `activeView` state (`frontend/src/pages/MainPage.tsx:257`). Docs đi theo cơ chế này: `ViewId` thêm `"help"`, `renderActiveView()` thêm case render docs. **Hệ quả: không có URL share/bookmark được cho từng bài** — chấp nhận đánh đổi, đúng mô tả UX mới của anh Minh (hiện ngay màn hình chính, không phải tab/trang riêng).
+- **Cơ chế điều hướng xuyên-component có sẵn để tham khảo (không dùng lại được trực tiếp):** `frontend/src/contexts/PaymentFlowContext.tsx` (`navigate(view, extra)`, dùng bởi `PaymentRequestsTab`/`ReconciliationTab`/`ActivationTab`/`InvoiceRequestTab`) — nhưng scope riêng cho payment-flow (`PaymentFlowView` chỉ 5 giá trị cố định), không cover `SoDoanhThuTab`/`ReportBC03Tab` nằm ngoài `PaymentFlowProvider`. → Cần 1 context MỚI, app-wide, cùng mô hình nhưng độc lập: `HelpNavContext`.
+- 2 kiểu markup header khác nhau tồn tại song song trong app: `frontend/src/components/ui/Modal.tsx`'s `<h2 id="gmv-modal-title">` (có prop `title`) vs. pattern tự viết tay `<h3>` trong class `modal-head`/`drawer-head` (phổ biến hơn ở nhóm payment-request/activation). `HdsdLink` không quan tâm cái này — chỉ là 1 component nhỏ nhét cạnh bất kỳ header nào — nhưng phải tự tìm đúng vị trí ở mỗi file.
+- ⚠️ `module4` — component thật đang mount là **`InvoiceRequestTab.tsx`** (`MainPage.tsx:37,51`), KHÔNG PHẢI `Module4Tab.tsx` (file legacy, đã orphan). Gắn nhầm sẽ vô nghĩa.
 
 ## Kiến trúc
 
-**1. Nội dung — markdown file trong repo, bundle lúc build (không CMS/DB):**
-- `frontend/src/content/help/<module-slug>/<topic-slug>.md`, `module-slug` = đúng `ViewId` trong `MainPage.tsx`. Mỗi file = 1 trang = 1 thao tác/bước.
-- Frontmatter (`gray-matter` parse): `title`, `order`, `audience` (mảng department: `["sale"]`, `["hr"]`...).
-- Ảnh: `public/help-images/<module-slug>/...`, reference bằng path tuyệt đối `/help-images/...`.
-- Lý do không CMS: 2 người, review qua PR như mọi thứ khác trong repo, không cần xây UI editor riêng, không tốn bảng DB/route backend mới.
+**1. Nội dung** — `frontend/src/content/help/<module-slug>/<topic-slug>.md`, frontmatter (`title`, `order`, `audience`) parse bằng `gray-matter`, loader `frontend/src/content/help/index.ts` dùng `import.meta.glob`. Cấu trúc thư mục này tự nhiên đúng cây 2 cấp cần cho sidebar (module = tên thư mục, submodule/topic = từng file `.md`). Lưu ý "submodule" trong cây docs là khái niệm NỘI DUNG, không nhất thiết khớp 1-1 UI thật — vd. B1→B4 của Payment Requests không phải 4 tab UI riêng biệt (đã xác nhận `PaymentRequestsTab.tsx` không có step-switcher), vẫn viết 4 file `.md` riêng, chỉ là HDSD ở UI thật của `PaymentRequestsTab` là 1 nút duy nhất.
 
-**2. Rendering:** thêm dependency `react-markdown` + `remark-gfm` + `gray-matter`. 1 loader `frontend/src/content/help/index.ts` dùng `import.meta.glob("./**/*.md", { as: "raw", eager: true })` — thả file `.md` mới vào đúng thư mục là tự nhận, không cần sửa code.
+**2. `HelpNavContext`** (`frontend/src/contexts/HelpNavContext.tsx`, mô hình giống `PaymentFlowContext` nhưng app-wide):
+```ts
+type HelpNavContextValue = {
+  goToModule: (moduleSlug: string) => void;
+  goToTopic: (moduleSlug: string, topicSlug: string) => void;
+};
+```
+State thật (`activeView`, `helpModule`, `helpTopic`, `helpExpandedModuleId`) sống trong `MainPage.tsx`. Nhờ Context, `HdsdLink` đặt ở bất kỳ file nào (kể cả sâu trong `LedgerFormModal.tsx`, `PaymentRequestDetailDrawer.tsx`) gọi được mà không cần prop-drilling.
 
-**3. Route mới:** `/help` và `/help/:moduleSlug/:topicSlug?` trong `App.tsx`, bọc trong `ProtectedRoute` đã có sẵn (dòng 11-40, không cần viết guard mới). Layout riêng (`HelpPage.tsx`), KHÔNG lồng vào `AppShell`/`MainPage`'s `activeView` switch (AppShell gắn chặt permission-gated nav-item logic, nhồi vào sẽ rối). Component mới: `HelpPage.tsx` (layout sidebar+content), `HelpArticle.tsx` (render 1 bài qua react-markdown), `HelpIndex.tsx` (mục lục `/help`, group theo audience).
+**Tách rõ 2 hành vi để giảm mất state:**
+- `goToModule(slug)` — **CHỈ expand cây trong sidebar** tới module đó, **KHÔNG đổi `activeView`**. Người dùng đang thao tác gì ở module hiện tại vẫn giữ nguyên.
+- `goToTopic(module, topic)` — mới thật sự đổi `activeView="help"` + hiện bài viết ở màn hình chính. Chỉ xảy ra khi bấm thẳng 1 submodule cụ thể.
 
-**4. Điểm vào từ app — 1 chỗ, không phải 10+ chỗ:** map `MODULE_HELP_SLUGS: Partial<Record<ViewId, string>>` cạnh `TITLES` trong `MainPage.tsx` (module chưa có bài thì không hiện nút — tự nhiên hỗ trợ rollout dần). `AppShell` nhận thêm prop `helpHref?: string`, render nút "?" trong header (theo convention icon-button của `NotificationBell.tsx`), là `<a href={helpHref} target="_blank" rel="noopener">` — vừa là nút vừa là hyperlink, mở TAB MỚI để không mất state đang thao tác dở trong app.
+**3. `HelpNavTree`** (`frontend/src/layouts/HelpNavTree.tsx`) — cây dropdown 2 cấp, nhánh render riêng chèn vào `AppShell.tsx` items-map (`:211`), bản tương tự cho `MobileNavSheet.tsx`. Cấp 1 = module có docs (từ `content/help/index.ts`), bấm chỉ toggle expand. Cấp 2 = topic của module đang expand, bấm mới đổi `activeView` + hiện bài viết.
 
-**5. Không gate theo quyền** — chỉ cần đăng nhập, mục lục gom nhóm theo nhãn phòng ban chỉ để dễ tìm.
+**4. `ViewId` thêm `"help"`** — `MainPage.tsx`: `can("help")` luôn `true` (không gate quyền, tài liệu tham khảo). `renderActiveView()` case `"help"`: có `helpTopic` → `<HelpArticle/>`, có `helpModule` chưa chọn topic → `<HelpModuleIndex/>`, không có gì → `<HelpLanding/>`.
+
+**5. `HdsdLink`** (`frontend/src/components/help/HdsdLink.tsx`):
+```tsx
+type Props =
+  | { mode: "module"; moduleSlug: string }
+  | { mode: "topic"; moduleSlug: string; topicSlug: string };
+```
+Link chữ "HDSD", gọi `useHelpNav().goToModule(...)` hoặc `.goToTopic(...)`. Gắn vào:
+- **Header mọi module lớn + mọi submodule nav-reachable** (reconciliation/reconCard, bc01/02/03, zaloConfig/Groups/Outbox, dingtalkConfig/Groups/Outbox) — **1 chỗ duy nhất**: `AppShell.tsx` header (`:284-328`), cạnh `<h1>{title}</h1>`. `MainPage.tsx` truyền `helpModuleSlug`/`helpTopicSlug` theo `MODULE_HELP_SLUGS[activeView]` xuống `AppShell`. Rẻ — không đụng file tab nào vì mọi ViewId đều render qua CÙNG header này.
+- **Header popup/modal/drawer của 6 module ưu tiên** — phải chèn tay từng file (không có điểm chèn trung tâm).
 
 ## File thay đổi cụ thể
 
 | File | Thay đổi |
 |---|---|
 | `frontend/package.json` | + `react-markdown`, `remark-gfm`, `gray-matter` |
-| `frontend/src/content/help/index.ts` | MỚI — loader glob + parse frontmatter |
-| `frontend/src/content/help/paymentRequests/tao-lan-tt-chuan.md` | MỚI — bài pilot 1 |
-| `frontend/src/content/help/reconciliation/ghep-giao-dich.md` | MỚI — bài pilot 2 |
-| `frontend/src/pages/HelpPage.tsx` | MỚI — layout sidebar + content pane |
-| `frontend/src/components/help/HelpArticle.tsx` | MỚI — render markdown |
-| `frontend/src/components/help/HelpIndex.tsx` | MỚI — trang mục lục `/help` |
-| `frontend/src/App.tsx` | + route `/help/*` bọc `ProtectedRoute` (cạnh route `/`) |
-| `frontend/src/layouts/AppShell.tsx` | + prop `helpHref`, nút "?" trong header |
-| `frontend/src/pages/MainPage.tsx` | + map `MODULE_HELP_SLUGS`, tính `helpHref`, truyền xuống `AppShell` |
+| `frontend/src/content/help/index.ts` | MỚI — loader glob + parse frontmatter, export cây module→topic |
+| `frontend/src/content/help/<module>/<topic>.md` | MỚI — nội dung (danh sách bài ở mục dưới) |
+| `frontend/src/contexts/HelpNavContext.tsx` | MỚI — `goToModule`/`goToTopic` |
+| `frontend/src/components/help/HdsdLink.tsx` | MỚI — link "HDSD", 2 mode |
+| `frontend/src/components/help/HelpArticle.tsx` | MỚI — render markdown 1 bài |
+| `frontend/src/components/help/HelpModuleIndex.tsx` | MỚI — danh sách topic của 1 module |
+| `frontend/src/components/help/HelpLanding.tsx` | MỚI — màn hình mặc định khi chưa chọn module |
+| `frontend/src/layouts/HelpNavTree.tsx` | MỚI — cây dropdown 2 cấp, chèn vào `AppShell.tsx` |
+| `frontend/src/layouts/AppShell.tsx` | + nhánh render `HelpNavTree` trong items-map (`:211`), + `HdsdLink` trong header (`:284-328`) |
+| `frontend/src/layouts/MobileNavSheet.tsx` | + nhánh render tương tự cho mobile |
+| `frontend/src/pages/MainPage.tsx` | + `"help"` vào `ViewId`, state help*, `HelpNavContext.Provider`, case `renderActiveView()`, map `MODULE_HELP_SLUGS` |
+| **6 module ưu tiên** (bảng dưới) | + `HdsdLink` cạnh từng header popup/modal/drawer |
 | `MODULES.md` | + 1 dòng trỏ hệ thống docs mới |
 
-**Không đụng:** `GatewaySyncTab.tsx` onboarding modal, RBAC backend (`backend/`).
+### Popup/modal/drawer của 6 module ưu tiên (đã khảo sát cụ thể)
+
+| Module | File cần gắn HdsdLink | Header hiện có |
+|---|---|---|
+| **Quản lý thanh toán** | `CancelPrModal.tsx:30-36`, `TransferSaleModal.tsx:98-100`, `CreatePaymentRequestModal.tsx:162-164`, `PrHistoryModal.tsx:23-25`, `QrViewModal.tsx:210-212` | `<h3>` tự viết |
+| | `PaymentRequestDetailDrawer.tsx` — drawer chính (`:1816`) + 5 popup con: Báo đơn/Báo đơn bổ sung (`:2722-2724`), Thiếu ảnh bill (`:3042-3044`), invoice-remind fail (`:3085-3087`), Nhắc kích hoạt gấp (`:3129-3130`), activation-remind fail (`:3172-3173`), PR đủ tiền (`:3198-3200`) | `<h3>`/`drawer-head`/`modal-head` (6 điểm chèn) |
+| **Đối soát giao dịch** | `ReconciliationTab.tsx` — "Ghép CK ngoài", "Số tiền không khớp", bill viewer (~3 `modal-head`) | `modal-head` |
+| | `CardReconciliationTab.tsx` (1 `modal-head`) | `modal-head` |
+| **Kích hoạt khóa học** | `ActivationTab.tsx` (4 `modal-head` — luồng xác nhận kích hoạt) | `modal-head` |
+| **Xuất hóa đơn** | `InvoiceRequestTab.tsx` — `InvoiceDetailDrawer` nội bộ (`:63`, mount `:792`) | `drawer-head` (`:95`) |
+| **Sổ doanh thu** | `LedgerFormModal.tsx` (qua `Modal.tsx`, có `title`) | `<h2 id="gmv-modal-title">` |
+| | `SoDoanhThuTab.tsx:633` panel tỷ giá — hiện chưa có `title`, cần thêm title trước khi gắn | `<Modal>` (chưa title) |
+| **Báo cáo (BC01-03)** | Không có popup — chỉ header module/submodule, đã cover bởi cơ chế trung tâm | — |
+
+**Không đụng trong V1** (chỉ HDSD header module lớn, popup fast-follow sau): `GatewaySyncTab.tsx`, `Module5Tab.tsx` (CRM sync), Dashboard Sale, Zalo/DingTalk popup con, `auth/` (`CreateAccountModal.tsx`...), `permissions/OverrideDrawer.tsx`, `StaffPickerModal.tsx`.
+
+## Nội dung ưu tiên viết trước deadline
+
+Ưu tiên PHỦ RỘNG bằng text thuần trước — kể cả nếu chưa kịp viết đủ nội dung cho mọi HDSD của 6 module ưu tiên thì **vẫn nối dây HDSD trước** (trỏ tới bài placeholder "Nội dung đang cập nhật") — không để việc chờ viết nội dung chặn hoàn thiện UI/wiring trước deadline. Viết nội dung thật dần sau, không đổi kiến trúc.
+
+Danh sách bài tối thiểu (mỗi dòng = 1 file `.md`): tạo lần TT chuẩn, huỷ PR, chuyển giao PR, xem lịch sử PR, xem QR thanh toán, báo đơn/báo đơn bổ sung, xử lý thiếu ảnh bill, PR đủ tiền — ghép CK ngoài, số tiền không khớp — kích hoạt khoá học (4 luồng) — xuất hoá đơn — tạo/sửa dòng sổ doanh thu, quy đổi tỷ giá — BC01/BC02/BC03 tổng quan.
 
 ---
 
 ## Task 1 — Đức: dựng khung hệ thống (Ngày 1, song song Task 2)
 
-**File:** toàn bộ mục "File thay đổi cụ thể" ở trên trừ 2 file `.md` pilot.
+Cài dependency (`react-markdown`, `remark-gfm`, `gray-matter`), viết `content/help/index.ts` loader, `HelpNavContext`, `HdsdLink`, `HelpArticle`/`HelpModuleIndex`/`HelpLanding`, `HelpNavTree` (desktop + mobile), sửa `AppShell.tsx`/`MainPage.tsx`/`MobileNavSheet.tsx`. Test bằng markdown giả trước khi có nội dung thật.
 
-Cài dependency, viết `content/help/index.ts` loader, `HelpPage`/`HelpArticle`/`HelpIndex`, route `/help/*`, nút help trong `AppShell`+`MainPage`. Dùng markdown giả (lorem) để test end-to-end trước khi có nội dung thật từ Task 2.
-
-**DoD:** `npx tsc -b` + `npm run test` xanh, vào `/help` bằng tay thấy mục lục, bấm nút "?" ở module Quản lý thanh toán mở đúng tab mới đúng bài viết.
-
----
+**DoD:** `npx tsc -b` + `npm run test` xanh. Bấm "Hướng dẫn sử dụng" ở sidebar → dropdown mở đúng. Bấm HDSD ở header 1 module lớn → sidebar expand đúng module, KHÔNG đổi màn hình chính. Bấm 1 submodule trong cây → màn hình chính hiện đúng bài.
 
 ## Task 2 — Đạt: viết nội dung pilot (Ngày 1, song song Task 1)
 
-**File:** `frontend/src/content/help/paymentRequests/tao-lan-tt-chuan.md`, `frontend/src/content/help/reconciliation/ghep-giao-dich.md`
-
-2 bài đúng ví dụ Minh đưa ra — **text thuần** (không cần ảnh ở bản pilot này):
-- "Sale — Tạo lần TT chuẩn" (module `paymentRequests`)
-- "Kế toán — Ghép giao dịch" (module `reconciliation`)
-
-**Format** (frontmatter + heading + bước đánh số + callout lưu ý):
+2-3 bài đầu của Payment Requests + Sổ doanh thu (đúng ví dụ Minh đưa ra: "Tạo lần TT chuẩn", "Ghép giao dịch"). Text thuần, theo template:
 ```md
 ---
 title: "Tạo lần thanh toán (TT) chuẩn"
@@ -94,22 +124,31 @@ audience: ["sale"]
 
 > ⚠️ Lưu ý: không sửa Target sau khi khách đã bắt đầu chuyển khoản — tạo lần TT mới thay vì sửa.
 ```
+Không cần chờ Task 1 xong khung mới viết được — file `.md` độc lập.
 
-Không cần chờ Task 1 xong khung mới viết được — file `.md` độc lập, viết trước cũng được, Đức tích hợp vào sau (Task 3).
+## Task 3 — Đức: gắn HDSD vào popup 6 module ưu tiên (Ngày 2)
 
----
+Theo đúng bảng "Popup/modal/drawer của 6 module ưu tiên" ở trên — 13 file, ~23 điểm chèn. Đạt tiếp tục viết nội dung song song, review chéo.
 
-## Task 3 — Cả hai: tích hợp + mở rộng nội dung (Ngày 2 → deadline)
+## Task 4 — Cả hai: hoàn thiện nội dung + kiểm thử (Ngày 3 → deadline)
 
-1. **Ngày 2:** Đức tích hợp nội dung thật của Đạt vào khung đã dựng, review chéo, sửa lỗi hiển thị/markdown.
-2. **Ngày 3 → deadline:** viết thêm bài cho các module còn lại theo độ ưu tiên nghiệp vụ (payment lifecycle B1-B4, reconciliation mPOS/Payoo, đối soát, sổ doanh thu...) — mỗi bài 1 file `.md` độc lập, viết song song không đụng nhau. Chèn ảnh cho bài quan trọng nhất nếu còn thời gian.
-
-**Test:** unit test (Vitest) cho `HelpArticle` (render markdown cơ bản, slug không tồn tại → thông báo "chưa có bài viết" thay vì crash) và `content/help/index.ts` (parse frontmatter đúng, `order` sort đúng). Không cần Playwright e2e riêng cho V1 (tính năng đọc-tài-liệu, rủi ro thấp).
+Hoàn thiện nội dung còn thiếu (placeholder → thật), viết thêm bài cho Báo cáo, kiểm thử toàn bộ luồng HDSD của 6 module ưu tiên trên thực tế.
 
 ---
+
+## Kiểm thử
+
+- Unit test: `HelpArticle`/`HelpModuleIndex` (render đúng, slug không tồn tại → thông báo rõ ràng thay vì crash), `content/help/index.ts` (parse frontmatter, sort `order`), `HelpNavContext` (`goToModule`/`goToTopic` set đúng state).
+- Không cần Playwright e2e riêng cho V1 — thêm sau nếu cần: bấm HDSD ở 1-2 nơi tiêu biểu → đúng bài hiện lên.
+- `npx tsc -b` + `npm run test` xanh trước khi merge.
+
+## Đánh đổi đã biết (đã thông báo anh Minh)
+- Không có URL riêng cho từng bài viết — không share/bookmark trực tiếp 1 bài docs.
+- Mất state chỉ xảy ra khi bấm HDSD ở 1 submodule/popup cụ thể (đổi `activeView`, đóng popup đang mở). HDSD ở header module lớn không đổi màn hình chính — an toàn.
+- Popup của module KHÔNG thuộc nhóm 6 ưu tiên chưa có HDSD trong V1 — fast-follow sau deadline.
 
 ## Xong việc
-- `npx tsc -b` + `npm run test` xanh trước khi merge (quy ước CLAUDE.md).
-- Nghiệm thu thủ công: vào `/help`, bấm nút "?" từ ít nhất 2-3 module khác nhau, xác nhận mở đúng bài, đúng tab mới, không mất state app.
+- `npx tsc -b` + `npm run test` xanh trước khi merge.
+- Nghiệm thu thủ công luồng đầy đủ: sidebar dropdown 2 cấp, HDSD module-level (chỉ mở sidebar), HDSD topic-level (đổi màn hình chính), ít nhất 3-4 popup trong nhóm 6 module ưu tiên.
 - Cập nhật `MODULES.md`.
-- **Ngoài phạm vi V1** (đừng nhét vào đợt này): search trong docs, ảnh cho toàn bộ bài viết, help theo từng field/thao tác con trong toolbar (hiện chỉ theo module), CMS/self-serve editing UI, đồng bộ vào cờ "đã xem" kiểu `GatewaySyncTab`.
+- **Chờ anh Minh + Đạt duyệt bản kế hoạch này trước khi bắt đầu code** (dự kiến 15h chiều nay).
