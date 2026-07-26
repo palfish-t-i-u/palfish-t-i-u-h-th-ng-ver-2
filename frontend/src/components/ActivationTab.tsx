@@ -1906,7 +1906,7 @@ function ActivationDetailDrawer({
           >
             <div className="modal-head">
               <h3>Bỏ xác nhận cộng buổi</h3>
-              <HdsdLink mode="module" moduleSlug="module3" />
+              <HdsdLink mode="topic" moduleSlug="module3" topicSlug="cong-buoi-gioi-thieu" />
             </div>
             <div style={{ padding: "12px 16px", display: "flex", flexDirection: "column", gap: 10 }}>
               <div style={{ fontSize: 13, color: "var(--text-2)" }}>

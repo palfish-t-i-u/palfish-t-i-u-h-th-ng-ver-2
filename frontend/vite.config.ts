@@ -13,6 +13,13 @@ export default mergeConfig(
           rewrite: (p) => p.replace(/^\/api/, ""),
         },
       },
+      // Playwright liên tục ghi trace/video/screenshot vào e2e-results/ và
+      // e2e-report/ trong lúc chạy — nếu không loại trừ, watcher của Vite coi
+      // đó là thay đổi code và full-reload trang đang test giữa chừng, gây
+      // timeout hàng loạt không liên quan gì đến bug thật.
+      watch: {
+        ignored: ["**/e2e-results/**", "**/e2e-report/**"],
+      },
     },
   }),
   defineVitestConfig({

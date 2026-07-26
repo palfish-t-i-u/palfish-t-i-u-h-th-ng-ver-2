@@ -10,7 +10,7 @@ export default function HelpLanding() {
   return (
     <div className="min-w-0 max-w-2xl space-y-3">
       <h2 className="text-lg font-semibold text-gmv-text-strong">Hướng dẫn sử dụng</h2>
-      <p className="text-sm text-gmv-muted">Chọn 1 module ở sidebar bên trái để xem hướng dẫn từng thao tác.</p>
+      <p className="text-sm text-gmv-muted">Chọn 1 module bên dưới (hoặc ở sidebar) để xem hướng dẫn từng thao tác.</p>
       {modules.length > 0 && (
         <ul className="space-y-2">
           {modules.map((mod) => (
