@@ -1,7 +1,7 @@
 # HANDOFF — Đạt · Hệ thống Docs hướng dẫn người dùng (HDSD)
 
 > Task anh Minh giao trực tiếp, Đức + Đạt tự chủ trương lên kế hoạch và triển khai — không có ai khác tham gia. Deadline: **trước thứ 3 tuần sau**.
-> **Bản này đã được anh Minh điều chỉnh lại 1 lần** (bản đầu dùng route `/help/:slug` riêng trong app — anh Minh không duyệt, yêu cầu đổi sang cơ chế dropdown ngay trong sidebar). Đọc kỹ phần Kiến trúc bên dưới trước khi code, khác khá nhiều so với hình dung ban đầu.
+> **✅ ĐÃ DUYỆT bởi anh Minh** (review lần 2) — kèm 2 sửa kỹ thuật bắt buộc trước khi gõ dòng code đầu tiên (xem `⚠️ Sửa bắt buộc` ở mục Kiến trúc §1) + 1 khuyến nghị lazy-load (không bắt buộc) + nâng chuẩn nghiệm thu lên đủ 23/23 điểm chèn (mục Kiểm thử). Bản trước đó dùng route `/help/:slug` riêng trong app — anh Minh không duyệt bản đó, đã đổi sang cơ chế dropdown ngay trong sidebar (giữ nguyên trong bản này).
 > Đây KHÔNG phải mobile fix pass — task hoàn toàn mới, không đụng gì tới nhánh mobile trước đó.
 
 ## Bối cảnh
@@ -26,7 +26,40 @@ Anh Minh cần 1 hệ thống tài liệu hướng dẫn NGƯỜI DÙNG CUỐI (
 
 ## Kiến trúc
 
-**1. Nội dung** — `frontend/src/content/help/<module-slug>/<topic-slug>.md`, frontmatter (`title`, `order`, `audience`) parse bằng `gray-matter`, loader `frontend/src/content/help/index.ts` dùng `import.meta.glob`. Cấu trúc thư mục này tự nhiên đúng cây 2 cấp cần cho sidebar (module = tên thư mục, submodule/topic = từng file `.md`). Lưu ý "submodule" trong cây docs là khái niệm NỘI DUNG, không nhất thiết khớp 1-1 UI thật — vd. B1→B4 của Payment Requests không phải 4 tab UI riêng biệt (đã xác nhận `PaymentRequestsTab.tsx` không có step-switcher), vẫn viết 4 file `.md` riêng, chỉ là HDSD ở UI thật của `PaymentRequestsTab` là 1 nút duy nhất.
+**1. Nội dung** — `frontend/src/content/help/<module-slug>/<topic-slug>.md`, loader `frontend/src/content/help/index.ts` dùng `import.meta.glob`. Cấu trúc thư mục này tự nhiên đúng cây 2 cấp cần cho sidebar (module = tên thư mục, submodule/topic = từng file `.md`). Lưu ý "submodule" trong cây docs là khái niệm NỘI DUNG, không nhất thiết khớp 1-1 UI thật — vd. B1→B4 của Payment Requests không phải 4 tab UI riêng biệt (đã xác nhận `PaymentRequestsTab.tsx` không có step-switcher), vẫn viết 4 file `.md` riêng, chỉ là HDSD ở UI thật của `PaymentRequestsTab` là 1 nút duy nhất.
+
+**⚠️ Sửa bắt buộc theo review của anh Minh — 2 bom kỹ thuật, sửa trước khi code:**
+1. **Syntax `import.meta.glob` cho Vite 8** (repo `vite ^8.0.12`, đã verify `package.json`) — `{ as: "raw" }` đã bị xóa từ Vite 6, dùng đúng:
+   ```ts
+   const files = import.meta.glob("./**/*.md", { query: "?raw", import: "default", eager: true });
+   ```
+2. **Bỏ hẳn `gray-matter`** — gọi `Buffer` (Node global), `vite.config.ts` không polyfill (đã verify — chỉ có `@vitejs/plugin-react`) → crash trắng trang lúc runtime ("Buffer is not defined"), bẫy nổi tiếng, debug mất nửa ngày. Frontmatter chỉ 3 field cố định (`title`, `order`, `audience`) → tự viết parser regex ~15-20 dòng ngay trong `content/help/index.ts`:
+   ```ts
+   function parseFrontmatter(raw: string): { title: string; order: number; audience: string[]; body: string } {
+     const m = raw.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/);
+     if (!m) return { title: "", order: 0, audience: [], body: raw };
+     const [, fm, body] = m;
+     const data: Record<string, string> = {};
+     for (const line of fm.split(/\r?\n/)) {
+       const lm = line.match(/^(\w+):\s*(.*)$/);
+       if (lm) data[lm[1]] = lm[2].trim();
+     }
+     const audience = (data.audience ?? "")
+       .replace(/^\[|\]$/g, "")
+       .split(",")
+       .map((s) => s.trim().replace(/^["']|["']$/g, ""))
+       .filter(Boolean);
+     return {
+       title: (data.title ?? "").replace(/^["']|["']$/g, ""),
+       order: Number(data.order) || 0,
+       audience,
+       body,
+     };
+   }
+   ```
+   Dependency chỉ còn `react-markdown` + `remark-gfm` — KHÔNG cài `gray-matter`.
+
+**Khuyến nghị (nên làm, không bắt buộc):** bọc `React.lazy` quanh `HelpArticle`/`HelpModuleIndex`/`HelpLanding` để `react-markdown` (~40KB gzip) không nạp cho user chưa từng mở Docs. `HelpNavTree`/`HdsdLink` vẫn eager (nhẹ, cần hiện ngay trong sidebar/header).
 
 **2. `HelpNavContext`** (`frontend/src/contexts/HelpNavContext.tsx`, mô hình giống `PaymentFlowContext` nhưng app-wide):
 ```ts
@@ -59,8 +92,8 @@ Link chữ "HDSD", gọi `useHelpNav().goToModule(...)` hoặc `.goToTopic(...)`
 
 | File | Thay đổi |
 |---|---|
-| `frontend/package.json` | + `react-markdown`, `remark-gfm`, `gray-matter` |
-| `frontend/src/content/help/index.ts` | MỚI — loader glob + parse frontmatter, export cây module→topic |
+| `frontend/package.json` | + `react-markdown`, `remark-gfm` (KHÔNG `gray-matter` — xem Kiến trúc §1) |
+| `frontend/src/content/help/index.ts` | MỚI — loader glob (`{query:"?raw",import:"default",eager:true}`) + `parseFrontmatter()` tự viết, export cây module→topic |
 | `frontend/src/content/help/<module>/<topic>.md` | MỚI — nội dung (danh sách bài ở mục dưới) |
 | `frontend/src/contexts/HelpNavContext.tsx` | MỚI — `goToModule`/`goToTopic` |
 | `frontend/src/components/help/HdsdLink.tsx` | MỚI — link "HDSD", 2 mode |
@@ -100,7 +133,7 @@ Danh sách bài tối thiểu (mỗi dòng = 1 file `.md`): tạo lần TT chu�
 
 ## Task 1 — Đức: dựng khung hệ thống (Ngày 1, song song Task 2)
 
-Cài dependency (`react-markdown`, `remark-gfm`, `gray-matter`), viết `content/help/index.ts` loader, `HelpNavContext`, `HdsdLink`, `HelpArticle`/`HelpModuleIndex`/`HelpLanding`, `HelpNavTree` (desktop + mobile), sửa `AppShell.tsx`/`MainPage.tsx`/`MobileNavSheet.tsx`. Test bằng markdown giả trước khi có nội dung thật.
+Cài dependency (`react-markdown`, `remark-gfm` — KHÔNG `gray-matter`), viết `content/help/index.ts` loader (đúng syntax `import.meta.glob` cho Vite 8 + `parseFrontmatter()` tự viết), `HelpNavContext`, `HdsdLink`, `HelpArticle`/`HelpModuleIndex`/`HelpLanding` (khuyến nghị bọc `React.lazy`), `HelpNavTree` (desktop + mobile), sửa `AppShell.tsx`/`MainPage.tsx`/`MobileNavSheet.tsx`. Test bằng markdown giả trước khi có nội dung thật.
 
 **DoD:** `npx tsc -b` + `npm run test` xanh. Bấm "Hướng dẫn sử dụng" ở sidebar → dropdown mở đúng. Bấm HDSD ở header 1 module lớn → sidebar expand đúng module, KHÔNG đổi màn hình chính. Bấm 1 submodule trong cây → màn hình chính hiện đúng bài.
 
@@ -132,15 +165,16 @@ Theo đúng bảng "Popup/modal/drawer của 6 module ưu tiên" ở trên — 1
 
 ## Task 4 — Cả hai: hoàn thiện nội dung + kiểm thử (Ngày 3 → deadline)
 
-Hoàn thiện nội dung còn thiếu (placeholder → thật), viết thêm bài cho Báo cáo, kiểm thử toàn bộ luồng HDSD của 6 module ưu tiên trên thực tế.
+Hoàn thiện nội dung còn thiếu (placeholder → thật), viết thêm bài cho Báo cáo, chạy checklist nghiệm thu đủ 23/23 điểm chèn (xem mục Kiểm thử).
 
 ---
 
 ## Kiểm thử
 
-- Unit test: `HelpArticle`/`HelpModuleIndex` (render đúng, slug không tồn tại → thông báo rõ ràng thay vì crash), `content/help/index.ts` (parse frontmatter, sort `order`), `HelpNavContext` (`goToModule`/`goToTopic` set đúng state).
-- Không cần Playwright e2e riêng cho V1 — thêm sau nếu cần: bấm HDSD ở 1-2 nơi tiêu biểu → đúng bài hiện lên.
-- `npx tsc -b` + `npm run test` xanh trước khi merge.
+- Unit test: `HelpArticle`/`HelpModuleIndex` (render đúng, slug không tồn tại → thông báo rõ ràng thay vì crash), `content/help/index.ts` (`parseFrontmatter()` đúng field/kiểu dữ liệu, sort `order`), `HelpNavContext` (`goToModule`/`goToTopic` set đúng state).
+- Không cần Playwright e2e riêng cho V1.
+- **Nghiệm thu thủ công PHẢI đủ 23/23 điểm chèn** (không phải chỉ vài popup tiêu biểu) — dùng chính bảng "Popup/modal/drawer của 6 module ưu tiên" ở trên làm checklist: mỗi dòng tick + 1 screenshot xác nhận nút HDSD hiện đúng chỗ, không vỡ layout nút đóng (đặc biệt `PaymentRequestDetailDrawer.tsx` — chiếm 6/23 điểm, rủi ro cao nhất). Làm 1 lượt ngay sau khi xong Task 3.
+- `npx tsc -b` (KHÔNG `--noEmit`) + `npm run test` xanh trước khi merge.
 
 ## Đánh đổi đã biết (đã thông báo anh Minh)
 - Không có URL riêng cho từng bài viết — không share/bookmark trực tiếp 1 bài docs.
@@ -148,7 +182,7 @@ Hoàn thiện nội dung còn thiếu (placeholder → thật), viết thêm bà
 - Popup của module KHÔNG thuộc nhóm 6 ưu tiên chưa có HDSD trong V1 — fast-follow sau deadline.
 
 ## Xong việc
-- `npx tsc -b` + `npm run test` xanh trước khi merge.
-- Nghiệm thu thủ công luồng đầy đủ: sidebar dropdown 2 cấp, HDSD module-level (chỉ mở sidebar), HDSD topic-level (đổi màn hình chính), ít nhất 3-4 popup trong nhóm 6 module ưu tiên.
+- `npx tsc -b` (không `--noEmit`) + `npm run test` xanh trước khi merge.
+- Nghiệm thu thủ công luồng đầy đủ: sidebar dropdown 2 cấp, HDSD module-level (chỉ mở sidebar), HDSD topic-level (đổi màn hình chính), **đủ 23/23 điểm chèn popup** trong nhóm 6 module ưu tiên (checklist + screenshot mỗi điểm).
 - Cập nhật `MODULES.md`.
-- **Chờ anh Minh + Đạt duyệt bản kế hoạch này trước khi bắt đầu code** (dự kiến 15h chiều nay).
+- ✅ Plan đã được anh Minh duyệt (kèm 2 sửa bắt buộc ở trên, đã áp vào bản này) — bắt đầu code.
