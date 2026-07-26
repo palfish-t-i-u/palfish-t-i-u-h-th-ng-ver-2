@@ -6,7 +6,7 @@ describe("HelpArticle", () => {
   it("renders the pilot topic's title and body content", () => {
     render(<HelpArticle moduleSlug="paymentRequests" topicSlug="tao-lan-tt-chuan" />);
     expect(screen.getByText("Tạo lần thanh toán (TT) chuẩn")).toBeInTheDocument();
-    expect(screen.getByText(/Điền đúng UID/)).toBeInTheDocument();
+    expect(screen.getByText(/khách đã chốt gói học/)).toBeInTheDocument();
   });
 
   it("shows a friendly message instead of crashing for an unknown topic", () => {
