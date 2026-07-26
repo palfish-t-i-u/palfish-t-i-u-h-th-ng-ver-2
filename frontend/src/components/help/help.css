@@ -22,3 +22,26 @@
     animation: none;
   }
 }
+
+/* Nháy nền module vừa mở trong cây sidebar. Chỉ cuộn vào khung nhìn là chưa đủ:
+   người dùng vừa bấm HDSD ở header/popup bên vùng nội dung, mắt không ở sidebar
+   nên vẫn dễ tưởng "bấm không có gì xảy ra". */
+@keyframes helpFlash {
+  0% {
+    background-color: var(--gmv-primary-soft, rgba(99, 102, 241, 0.14));
+  }
+  100% {
+    background-color: transparent;
+  }
+}
+
+.animate-help-flash {
+  animation: helpFlash 1.1s ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-help-flash {
+    animation: none;
+    background-color: var(--gmv-primary-soft, rgba(99, 102, 241, 0.14));
+  }
+}
