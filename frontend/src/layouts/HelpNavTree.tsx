@@ -37,12 +37,17 @@ export function HelpNavTree({
   // vẫn expand đúng state, nhưng nếu sidebar đang cuộn ở chỗ khác, module/topic
   // vừa mở render ngoài khung nhìn, trông như "bấm không có gì xảy ra" (y hệt
   // vấn đề Đạt vừa fix cho <main>, nhưng ở sidebar — khác chỗ, chưa ai xử lý).
-  // Gắn ref vào đúng 1 phần tử đang active (topic nếu có, không thì module đang
-  // expand) rồi scrollIntoView mỗi khi state đổi.
-  const activeItemRef = useRef<HTMLButtonElement | null>(null);
+  //
+  // block:"nearest" (thử đầu tiên) chỉ cuộn tối thiểu để mép item chạm mép
+  // khung nhìn — module vừa mở nằm dính đúng đáy khung, đẩy hết danh sách
+  // topic của nó ra ngoài, vẫn phải tự cuộn tiếp. Gắn ref vào CẢ <li> (module
+  // + toàn bộ topics con) thay vì riêng module button, dùng block:"start" để
+  // module trồi lên đầu khung nhìn — phần còn lại của khung hiện được tối đa
+  // số topic bên dưới.
+  const activeGroupRef = useRef<HTMLLIElement | null>(null);
   useEffect(() => {
     if (!helpExpandedModuleId) return;
-    activeItemRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    activeGroupRef.current?.scrollIntoView({ block: "start", behavior: "smooth" });
   }, [helpExpandedModuleId, helpModule, helpTopic]);
 
   if (collapsed) {
@@ -86,12 +91,9 @@ export function HelpNavTree({
           )}
           {modules.map((mod) => {
             const modExpanded = helpExpandedModuleId === mod.slug;
-            const hasActiveTopicInModule =
-              modExpanded && mod.topics.some((t) => helpModule === mod.slug && helpTopic === t.topicSlug);
             return (
-              <li key={mod.slug}>
+              <li key={mod.slug} ref={modExpanded ? activeGroupRef : undefined}>
                 <button
-                  ref={modExpanded && !hasActiveTopicInModule ? activeItemRef : undefined}
                   type="button"
                   onClick={() => setHelpExpandedModuleId(modExpanded ? null : mod.slug)}
                   className={cn(
@@ -110,7 +112,6 @@ export function HelpNavTree({
                       return (
                         <li key={topic.topicSlug}>
                           <button
-                            ref={topicActive ? activeItemRef : undefined}
                             type="button"
                             onClick={() => goToTopic(mod.slug, topic.topicSlug)}
                             className={cn(
