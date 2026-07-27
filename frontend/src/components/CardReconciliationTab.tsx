@@ -431,11 +431,14 @@ export default function CardReconciliationTab({
       )}
       <div className="page page--fit">
         {!isMobile && (
-        <div style={{ fontSize: 12.5, color: "var(--text-3)", maxWidth: 760, lineHeight: 1.55, marginBottom: 4 }}>
-          Giao dịch quẹt thẻ <strong style={{ color: "var(--text-2)" }}>mPOS</strong> &{" "}
-          <strong style={{ color: "var(--text-2)" }}>Payoo</strong> được đồng bộ tự động về đây. Kế toán đối chiếu từng
-          giao dịch với ảnh bill sales gửi rồi <strong style={{ color: "var(--text-2)" }}>ghép vào đúng lần thanh toán</strong>{" "}
-          của Payment Request.
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap", marginBottom: 4 }}>
+          <div style={{ fontSize: 12.5, color: "var(--text-3)", maxWidth: 760, lineHeight: 1.55 }}>
+            Giao dịch quẹt thẻ <strong style={{ color: "var(--text-2)" }}>mPOS</strong> &{" "}
+            <strong style={{ color: "var(--text-2)" }}>Payoo</strong> được đồng bộ tự động về đây. Kế toán đối chiếu từng
+            giao dịch với ảnh bill sales gửi rồi <strong style={{ color: "var(--text-2)" }}>ghép vào đúng lần thanh toán</strong>{" "}
+            của Payment Request.
+          </div>
+          <HdsdLink moduleSlug="reconCard" topicSlug="ghep-giao-dich-the" className="shrink-0" />
         </div>
         )}
 
@@ -752,6 +755,7 @@ export default function CardReconciliationTab({
               </div>
               <div style={{ display: "flex", gap: 8, alignItems: "center", flexShrink: 0 }}>
                 <StatusBadge s={drawerTxn.match_status} />
+                <HdsdLink moduleSlug="reconCard" topicSlug="ghep-giao-dich-the" />
                 <button type="button" className="drawer-close" onClick={() => setDrawerOpen(false)}>
                   <Icons.Close size={16} />
                 </button>

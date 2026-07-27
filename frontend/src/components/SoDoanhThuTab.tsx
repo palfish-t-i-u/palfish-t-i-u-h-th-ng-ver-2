@@ -629,6 +629,7 @@ export default function SoDoanhThuTab() {
           </Button>
         )}
         {!readOnly && <Button onClick={openCreate}>+ Thêm dòng</Button>}
+        <HdsdLink moduleSlug="revenueLedger" topicSlug="tong-quan" />
       </div>
 
       <Modal

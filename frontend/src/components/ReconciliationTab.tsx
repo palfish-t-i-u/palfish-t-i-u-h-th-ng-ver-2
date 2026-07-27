@@ -815,10 +815,13 @@ export default function ReconciliationTab() {
   return (
     <div className="gmv-prototype">
       <div className="page page--fit">
-        <div style={{ fontSize: 12.5, color: "var(--text-3)", maxWidth: 720, lineHeight: 1.55, marginBottom: 4 }}>
-          Kế toán đối chiếu từng giao dịch với{" "}
-          <strong style={{ color: "var(--text-2)" }}>sao kê ngân hàng / phiếu thu / báo cáo POS</strong>, xác nhận khi
-          tiền đã về tài khoản PalFish. Mỗi lần xác nhận cập nhật ngay Payment Request tương ứng.
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap", marginBottom: 4 }}>
+          <div style={{ fontSize: 12.5, color: "var(--text-3)", maxWidth: 720, lineHeight: 1.55 }}>
+            Kế toán đối chiếu từng giao dịch với{" "}
+            <strong style={{ color: "var(--text-2)" }}>sao kê ngân hàng / phiếu thu / báo cáo POS</strong>, xác nhận khi
+            tiền đã về tài khoản PalFish. Mỗi lần xác nhận cập nhật ngay Payment Request tương ứng.
+          </div>
+          <HdsdLink moduleSlug="reconciliation" topicSlug="tong-quan" className="shrink-0" />
         </div>
 
         {apiNote && (
@@ -990,6 +993,7 @@ export default function ReconciliationTab() {
                 >
                   <Icons.Check size={13} strokeWidth={2.5} /> {isBulkConfirming ? "Đang xác nhận…" : "Xác nhận đã chọn"}
                 </button>
+                <HdsdLink moduleSlug="reconciliation" topicSlug="ghep-giao-dich" />
               </div>
             </div>
           )}

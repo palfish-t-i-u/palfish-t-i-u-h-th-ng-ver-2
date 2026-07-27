@@ -1159,11 +1159,14 @@ function ActivationDetailDrawer({
                 <h4>
                   <Icons.Wallet size={15} /> Payment Request liên kết
                 </h4>
-                {onOpenPr && (
-                  <button type="button" className="btn btn-outline btn-sm" onClick={onOpenPr}>
-                    <Icons.ChevronRight size={13} /> Mở PR
-                  </button>
-                )}
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  {onOpenPr && (
+                    <button type="button" className="btn btn-outline btn-sm" onClick={onOpenPr}>
+                      <Icons.ChevronRight size={13} /> Mở PR
+                    </button>
+                  )}
+                  <HdsdLink moduleSlug="module3" topicSlug="tao-active-request" />
+                </div>
               </div>
               <div className="act-course-grid" style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14 }}>
                 <div className="info-cell">
@@ -2096,11 +2099,14 @@ export default function ActivationTab() {
               sang B4 xuất hoá đơn.
             </div>
           )}
-          {!readOnly && (
-            <button type="button" className="btn btn-primary" onClick={() => setCreateOpen(true)}>
-              <Icons.Plus size={15} strokeWidth={2.3} /> Tạo Active Request
-            </button>
-          )}
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            {!readOnly && (
+              <button type="button" className="btn btn-primary" onClick={() => setCreateOpen(true)}>
+                <Icons.Plus size={15} strokeWidth={2.3} /> Tạo Active Request
+              </button>
+            )}
+            <HdsdLink moduleSlug="module3" topicSlug="tong-quan" />
+          </div>
         </div>
 
         {apiNote && (
