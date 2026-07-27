@@ -6,6 +6,8 @@ audience: ["ke-toan"]
 
 Áp dụng khi: cần thêm 1 dòng ghi nhận doanh thu thủ công (đơn không tự đổ từ M3), hoặc sửa lại thông tin dòng đã có.
 
+![Modal "Thêm dòng Sổ doanh thu" — điền đủ các trường bắt buộc](/docs-images/revenueLedger/tao-sua-dong-so-1.png)
+
 ## Tạo dòng mới
 
 1. Vào **Sổ doanh thu** → bấm **+ Thêm dòng**.

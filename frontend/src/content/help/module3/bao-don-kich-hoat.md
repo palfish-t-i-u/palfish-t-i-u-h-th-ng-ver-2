@@ -6,6 +6,8 @@ audience: ["sale"]
 
 Áp dụng khi: PR đã thu đủ 100% tiền, cần báo đơn lên kế toán (DingTalk) và tạo yêu cầu kích hoạt khoá học.
 
+![Modal "Báo đơn & Kích hoạt khoá học" — điền tên bé, SĐT, UID, gói học và số tiền](/docs-images/module3/bao-don-kich-hoat-1.png)
+
 ## Các bước
 
 1. Mở PR đã đủ 100% tiền → bấm nút **Báo đơn & Kích hoạt** (chỉ sáng khi đã thu đủ tiền).

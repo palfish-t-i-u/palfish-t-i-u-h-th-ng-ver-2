@@ -1,4 +1,8 @@
 > ✅ **HOÀN THÀNH 27/07/2026** — Đạt làm toàn bộ 9 module (phần Đức) + 3 module còn lại của mình luôn (theo yêu cầu "xử lý hết toàn bộ phần còn lại"). 17 bài mới, 17 điểm chèn `HdsdLink` (9 module), `tsc -b`/`npm run test`/`npm run build`/bundle-leak check đều xanh, ảnh chụp thật qua Playwright trên sandbox. Tiện thể dọn thêm 9/21 bài nợ ảnh cũ (chỉ phần chụp thuần đọc, không mutate dữ liệu — xem cuối file). MODULES.md §12 đã cập nhật số liệu cuối cùng.
+>
+> ✅ **CẬP NHẬT 28/07/2026** — Đức xử lý nốt 10/12 bài nợ ảnh còn lại (mutate + revert theo phương án "tự mutate trên sandbox, revert ngay sau khi chụp"): `paymentRequests/pr-du-tien`, `module3/bao-don-kich-hoat`, `module3/order-id-va-hold`, `module3/them-uid-them-goi`, `module4/xuat-hoa-don-theo-course-code`, `module3/cong-buoi-gioi-thieu`, `reconciliation/ghep-giao-dich`, `revenueLedger/tao-sua-dong-so` (8 bài chụp + wire xong) + `paymentRequests/chuyen-giao-pr`, `paymentRequests/huy-pr` (đã xong từ trước). `screenshots.test.ts` còn đúng 2 mục trong `NO_SCREENSHOT_YET`: `reconciliation/so-tien-khong-khop` và `revenueLedger/quy-doi-ty-gia` — cả hai **không khả thi qua UI thuần** (xem lý do cuối file), không phải do thiếu thời gian.
+>
+> **Phát hiện phụ + đã fix**: bug thật trong `PaymentRequestDetailDrawer.tsx` — form "Sửa" (B1) dùng `setDraft({ ...draft, field: v })` (closure cũ) thay vì `setDraft(prev => ({ ...prev, field: v }))`. Vì `VietnamAddressFields.handleProvinceChange` gọi 2 lần `onChange` liên tiếp (province + reset ward) trong cùng 1 handler, lần gọi thứ 2 luôn ghi đè lần thứ 1 bằng draft cũ — chọn Tỉnh/Thành lần đầu trong form Sửa bị mất ngay lập tức, chặn đúng luồng kế toán bổ sung địa chỉ để xuất HĐ. Đã sửa toàn bộ 23 chỗ `setDraft` sang functional-updater form. `tsc -b` + 656 unit test xanh.
 
 # Checklist HDSD còn lại — 12 module (27/07/2026)
 
@@ -120,20 +124,29 @@ File: `frontend/src/components/Module6Tab.tsx`
 3. Nghiệm thu tổng — dùng `grep -rn "<HdsdLink" frontend/src` liệt kê toàn bộ điểm chèn (lúc đó sẽ là 36 cũ + ~18 mới ≈ 54 điểm), click từng chỗ xác nhận đúng URL `/docs/<module>/<topic>`, ảnh hiện đúng, không vỡ layout.
 4. Cập nhật `MODULES.md` §12 với số bài/module cuối cùng.
 
-## Còn treo từ trước (không thuộc phần việc tối nay, làm khi có điều kiện)
+## Nợ ảnh cũ (21 bài — cập nhật 28/07/2026: XONG 19/21)
 
-- `module3/bao-don-kich-hoat` — cần 1 PR "sẵn sàng kích hoạt" nhưng CHƯA từng báo đơn (data sandbox hiện tại không có sẵn).
-- `reconciliation/so-tien-khong-khop` — cần 1 giao dịch lệch tiền so với lần thanh toán.
+Đã dọn 9/21 hôm 27/07 bằng thao tác THUẦN ĐỌC: `module3/tong-quan`, `module4/tong-quan`, `paymentRequests/tong-quan`, `paymentRequests/tao-lan-tt-chuan`, `paymentRequests/xem-lich-su-pr`, `paymentRequests/xem-qr-thanh-toan`, `paymentRequests/thieu-anh-bill`, `reconciliation/tong-quan`, `revenueLedger/tong-quan`.
 
-## Nợ ảnh cũ (21 bài, cập nhật 27/07/2026)
+Đã dọn thêm 10/21 hôm 28/07 bằng phương án "tự mutate trên sandbox (PR/AR/dòng sổ doanh thu test riêng, `is_test=true`), revert ngay sau khi chụp":
 
-Đã dọn 9/21 — chỉ những bài chụp được bằng thao tác THUẦN ĐỌC (mở trang/modal xem, không submit): `module3/tong-quan`, `module4/tong-quan`, `paymentRequests/tong-quan`, `paymentRequests/tao-lan-tt-chuan` (mở modal Tạo PR, không bấm submit), `paymentRequests/xem-lich-su-pr`, `paymentRequests/xem-qr-thanh-toan`, `paymentRequests/thieu-anh-bill` (mở modal upload, không tải ảnh thật), `reconciliation/tong-quan`, `revenueLedger/tong-quan`.
+- `paymentRequests/huy-pr`, `paymentRequests/chuyen-giao-pr` — PR test huỷ/chuyển giao xong, không cần revert thêm (Huỷ là hành động an toàn sẵn có).
+- `paymentRequests/pr-du-tien` — PR test trả dư tiền, đã chụp cảnh báo.
+- `module3/bao-don-kich-hoat`, `module3/order-id-va-hold`, `module3/them-uid-them-goi` — dùng chung 1 PR test ("HDSD TEST FULL") xuyên suốt B3.
+- `module3/cong-buoi-gioi-thieu` — PR test riêng nguồn KH "Giới thiệu" + gói REFER, điền đủ UID người giới thiệu + số buổi, chụp panel tick "Đã cộng buổi" (chưa tick, đúng trạng thái mặc định).
+- `module4/xuat-hoa-don-theo-course-code` — dùng lại "HDSD TEST FULL" sau khi bổ sung địa chỉ + Yêu cầu xuất; chỉ xuất **yêu cầu**, không bấm nút "Xuất hoá đơn" thật (không phát sinh INV thật).
+- `reconciliation/ghep-giao-dich` — PR test tiền mặt, chụp tab Chuyển khoản ở trạng thái "Chờ xác nhận" (đủ minh hoạ nút Xác nhận/Từ chối), rồi xác nhận.
+- `revenueLedger/tao-sua-dong-so` — tạo 1 dòng test qua "+ Thêm dòng", chụp form đã điền, **xoá dòng ngay sau khi chụp** (tính năng xoá dòng tay có sẵn trong UI).
 
-Còn 12 bài chưa chụp — **cố tình dừng lại** vì thao tác chụp sẽ mutate dữ liệu sandbox dùng chung cả team, hoặc cần trạng thái nghiệp vụ đặc thù khó dựng lại:
+**Phát hiện phụ khi làm `xuat-hoa-don-theo-course-code`**: bug thật trong `PaymentRequestDetailDrawer.tsx` khiến chọn Tỉnh/Thành lần đầu trong form Sửa (B1) bị mất ngay — đã fix (xem ghi chú đầu file), không phải lỗi thao tác Playwright.
 
-- Mutate PR/AR thật: `paymentRequests/huy-pr` (huỷ PR), `paymentRequests/chuyen-giao-pr` (chuyển chủ sở hữu PR), `paymentRequests/pr-du-tien`.
-- Mutate Active Request thật: `module3/cong-buoi-gioi-thieu` (tick cộng buổi — ghi audit log), `module3/order-id-va-hold` (điền Order ID thật), `module3/them-uid-them-goi` (thêm UID thật).
-- Mutate hoá đơn/đối soát/sổ doanh thu thật: `module4/xuat-hoa-don-theo-course-code` (xuất INV thật), `reconciliation/ghep-giao-dich` (xác nhận khớp giao dịch thật), `revenueLedger/tao-sua-dong-so` (tạo/sửa dòng doanh thu thật), `revenueLedger/quy-doi-ty-gia` (thêm mốc tỷ giá thật, ảnh hưởng báo cáo).
-- Cần trạng thái nghiệp vụ đặc thù: `module3/bao-don-kich-hoat`, `reconciliation/so-tien-khong-khop` (đã treo từ trước, xem trên).
+Còn đúng 2/21 **cố tình không chụp** — không khả thi qua UI thuần, không phải do thiếu thời gian:
 
-Trước khi chụp 12 bài này, cần: (a) quyết định dùng bản ghi test disposable riêng thay vì data thật, hoặc (b) leader/người phụ trách xác nhận việc mutate tạm thời rồi revert là chấp nhận được.
+- `reconciliation/so-tien-khong-khop` — cần 1 giao dịch CK ngoài (SePay bank feed) hoặc thẻ mPOS/Payoo lệch số tiền so với lần thanh toán. Cả 2 nguồn dữ liệu này chỉ đổ vào hệ thống qua sync tự động thật (SePay webhook / extension mPOS-Payoo) — không có nút "tạo tay giao dịch test" nào trong UI để giả lập, nên không dựng được trạng thái này an toàn qua Playwright/UI thuần. Cần một giao dịch lệch tiền THẬT xuất hiện tự nhiên trong sandbox mới chụp được.
+- `revenueLedger/quy-doi-ty-gia` — `ExchangeRatesPanel.tsx` xác nhận: thêm tỷ giá là **vĩnh viễn**, BE chưa hỗ trợ sửa/xoá (chỉ upsert đè cùng ngày hiệu lực). User đã quyết định bỏ qua mục này thay vì thêm 1 dòng test không xoá được vào bảng lịch sử tỷ giá dùng chung.
+
+## Dọn dẹp data test (28/07/2026)
+
+Trong lúc chụp phát sinh ~15 PR test (`HDSD TEST HUY/FULL/REFER/RECON`) do vài lần thử-sai (đặc biệt vòng debug `cong-buoi-gioi-thieu` tốn nhiều lượt vì bug closure ở trên). Đã huỷ 4 PR chưa từng thanh toán (đủ điều kiện `canCancel`: `doneCount===0 && !activeRequestId`) qua tính năng Huỷ Payment Request có sẵn: PR-2026-9157, 9158, 9160, 9162.
+
+Còn lại ~10 PR test (đã có lần thanh toán xác nhận + hầu hết đã tạo AR) — **không huỷ được qua UI** vì điều kiện `canCancel` yêu cầu `doneCount===0`, không có ngoại lệ cho PR test. Đây là data rõ ràng gắn cờ test (`is_test=true`, tên "HDSD TEST ...", ẩn khỏi list khi tick "Ẩn data test"), không ảnh hưởng số liệu thật — chấp nhận để lại, không dùng script xoá hàng loạt (`clean_test_data.py`) vì ảnh hưởng cả data test của người khác.

@@ -19,18 +19,8 @@ import { listHelpModules } from "./index";
 // đặc thù khó dựng lại (PR sẵn sàng kích hoạt nhưng chưa từng báo đơn; giao
 // dịch lệch số tiền) — xem docs/plans/HDSD_CHECKLIST_CON_LAI_2026-07-27.md.
 const NO_SCREENSHOT_YET = new Set([
-  "module3/bao-don-kich-hoat",
-  "module3/cong-buoi-gioi-thieu",
-  "module3/order-id-va-hold",
-  "module3/them-uid-them-goi",
-  "module4/xuat-hoa-don-theo-course-code",
-  "paymentRequests/chuyen-giao-pr",
-  "paymentRequests/huy-pr",
-  "paymentRequests/pr-du-tien",
-  "reconciliation/ghep-giao-dich",
   "reconciliation/so-tien-khong-khop",
   "revenueLedger/quy-doi-ty-gia",
-  "revenueLedger/tao-sua-dong-so",
 ]);
 
 const IMAGE_RE = /!\[[^\]]*\]\(([^)\s]+)\)/g;

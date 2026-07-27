@@ -5,6 +5,8 @@ audience: ["hr", "ops"]
 ---
 Áp dụng khi: kế toán cần xác nhận 1 giao dịch chuyển khoản (SePay) đã về đúng với 1 lần thanh toán của khách.
 
+![Tab "Chuyển khoản" — dòng "Chờ xác nhận" với nút Xác nhận (✓) và Từ chối (✗) ở cột Hành động](/docs-images/reconciliation/ghep-giao-dich-1.png)
+
 ## Các bước
 
 1. Vào **Đối soát giao dịch · Chuyển khoản**.

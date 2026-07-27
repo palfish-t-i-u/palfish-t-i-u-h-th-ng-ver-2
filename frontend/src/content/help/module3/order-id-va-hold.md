@@ -6,6 +6,8 @@ audience: ["sale", "admin"]
 
 Áp dụng khi: đã đăng ký khoá học thật trên CRM, cần đối chiếu lại vào hệ thống; hoặc PH chưa muốn kích hoạt ngay.
 
+![Ô nhập Order ID cho từng Course Code, trạng thái "Chưa lưu"](/docs-images/module3/order-id-va-hold-1.png)
+
 ## Điền Order ID CRM
 
 1. Mở AR → tìm đúng dòng **Course Code** cần điền.

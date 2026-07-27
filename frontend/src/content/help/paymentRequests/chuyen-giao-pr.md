@@ -6,6 +6,8 @@ audience: ["sale", "leader"]
 
 Áp dụng khi: cần tạo PR thay cho sale khác, hoặc bàn giao PR đang có cho người khác quản lý.
 
+![Modal "Chuyển giao PR" — chọn người nhận, lý do, cảnh báo doanh thu/KPI theo sale mới](/docs-images/paymentRequests/chuyen-giao-pr-1.png)
+
 ## Tạo hộ (lúc tạo PR mới)
 
 1. Ở modal **Tạo Payment Request**, chọn **Sale sở hữu PR** khác với chính mình.

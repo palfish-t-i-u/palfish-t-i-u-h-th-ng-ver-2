@@ -6,6 +6,8 @@ audience: ["sale"]
 
 Hiện khi cố tạo thêm lần thanh toán mới cho PR đã thu đủ **Tổng tiền dự kiến**.
 
+![Cảnh báo "PR đã nhận đủ tiền" khi cố tạo thêm lần thanh toán](/docs-images/paymentRequests/pr-du-tien-1.png)
+
 ## Cách xử lý
 
 Nếu khách thực sự cần đóng thêm tiền (chốt gói lớn hơn):

@@ -6,6 +6,8 @@ audience: ["sale"]
 
 Áp dụng khi: AR đã tạo cho 1 bé, nay cần thêm UID cho bé thứ 2 (hoặc thêm gói học mới) trong cùng PR/AR.
 
+![Modal "Thêm UID mới" — nhập UID và chọn bé](/docs-images/module3/them-uid-them-goi-1.png)
+
 ## Các bước
 
 1. Mở AR cần thêm → bấm **Thêm UID mới**.

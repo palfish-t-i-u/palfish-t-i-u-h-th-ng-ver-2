@@ -6,6 +6,8 @@ audience: ["sale", "admin"]
 
 Áp dụng khi: gói học có nguồn khách "Giới thiệu" (gioi_thieu) và có buổi thưởng cho người giới thiệu và/hoặc người được giới thiệu.
 
+![Panel "Khoá này có thưởng giới thiệu" — tick Đã cộng buổi cho người được giới thiệu và người giới thiệu](/docs-images/module3/cong-buoi-gioi-thieu-1.png)
+
 ## Điều kiện để tick
 
 - Course Code phải **đã kích hoạt** (đã điền Order ID CRM) — chưa điền Order ID thì ô tick bị khoá, có tooltip nhắc "Cần điền Order ID (kích hoạt khoá) trước khi tick cộng buổi".

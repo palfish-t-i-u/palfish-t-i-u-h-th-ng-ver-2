@@ -6,6 +6,8 @@ audience: ["ke-toan"]
 
 Áp dụng khi: 1 Course Code đã đủ điều kiện (đủ thông tin khách hàng), cần phát hành hoá đơn.
 
+![Drawer chi tiết xuất hoá đơn theo Course Code — số tiền, thông tin khách, nút Xuất hoá đơn](/docs-images/module4/xuat-hoa-don-theo-course-code-1.png)
+
 ## Xuất từng dòng
 
 1. Vào **Xuất hóa đơn** → tab **Chờ xuất**.

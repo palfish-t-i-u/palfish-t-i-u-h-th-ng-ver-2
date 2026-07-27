@@ -6,6 +6,8 @@ audience: ["sale"]
 
 Áp dụng khi: PR tạo nhầm, khách đổi ý, hoặc trùng với PR-ID khác.
 
+![Popup "Huỷ Payment Request?" — lý do huỷ + ô gõ DELETE xác nhận](/docs-images/paymentRequests/huy-pr-1.png)
+
 ## Các bước
 
 1. Mở PR cần huỷ → bấm **Huỷ**.
