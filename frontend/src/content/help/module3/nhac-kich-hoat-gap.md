@@ -6,6 +6,8 @@ audience: ["sale"]
 
 Dùng khi cần Ops xử lý kích hoạt gấp cho PR đã báo đơn nhưng chưa kích hoạt (khách cần học sớm).
 
+![Popup "Nhắc kích hoạt khoá học gấp" — ô ghi chú lý do gấp + nút Gửi nhắc](/docs-images/module3/nhac-kich-hoat-gap-1.png)
+
 ## Các bước
 
 1. Bấm nhắc kích hoạt gấp trên PR (hoặc trên Active Request).

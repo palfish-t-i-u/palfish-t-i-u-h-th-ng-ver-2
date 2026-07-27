@@ -12,15 +12,11 @@ import { listHelpModules } from "./index";
 // này khi đã bổ sung ảnh thật cho bài đó (đừng xoá "khống" — test sẽ đỏ ngay
 // nếu ảnh chưa thực sự tồn tại trên đĩa).
 const NO_SCREENSHOT_YET = new Set([
-  "module3/bao-don-bo-sung",
   "module3/bao-don-kich-hoat",
   "module3/cong-buoi-gioi-thieu",
-  "module3/nhac-kich-hoat-gap",
   "module3/order-id-va-hold",
-  "module3/tao-active-request",
   "module3/them-uid-them-goi",
   "module3/tong-quan",
-  "module4/nhac-xuat-hoa-don",
   "module4/tong-quan",
   "module4/xuat-hoa-don-theo-course-code",
   "paymentRequests/chuyen-giao-pr",
@@ -31,8 +27,6 @@ const NO_SCREENSHOT_YET = new Set([
   "paymentRequests/tong-quan",
   "paymentRequests/xem-lich-su-pr",
   "paymentRequests/xem-qr-thanh-toan",
-  "reconCard/ghep-giao-dich-the",
-  "reconciliation/ghep-ck-ngoai",
   "reconciliation/ghep-giao-dich",
   "reconciliation/so-tien-khong-khop",
   "reconciliation/tong-quan",

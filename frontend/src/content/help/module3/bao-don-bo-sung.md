@@ -6,6 +6,8 @@ audience: ["sale"]
 
 Áp dụng khi: PR đã có yêu cầu kích hoạt (AR), nay phát sinh thêm bé/gói mới — bổ sung vào AR có sẵn thay vì tạo mới.
 
+![Popup "Báo đơn bổ sung" — chọn kích hoạt ngay/chưa kích hoạt, tên bé, SĐT, UID CRM, gói học](/docs-images/module3/bao-don-bo-sung-1.png)
+
 ## Các bước
 
 1. Bấm **Báo đơn bổ sung** trên PR đã có Active Request.

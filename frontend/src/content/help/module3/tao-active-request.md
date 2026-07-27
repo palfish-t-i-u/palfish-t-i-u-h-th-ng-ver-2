@@ -8,6 +8,8 @@ audience: ["sale"]
 
 > Cách thường dùng nhất vẫn là bấm **Báo đơn & Kích hoạt** ngay trên PR đã đủ tiền. Bài này mô tả cách tạo AR độc lập khi cần.
 
+![Form "Tạo Active Request mới" — liên kết PR, tên khách, UID học viên, gói học đầu tiên](/docs-images/module3/tao-active-request-1.png)
+
 ## Các bước
 
 1. Vào **Kích hoạt khóa học** → bấm **+ Tạo Active Request**.

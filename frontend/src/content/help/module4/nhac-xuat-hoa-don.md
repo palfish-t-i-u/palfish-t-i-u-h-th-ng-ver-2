@@ -6,6 +6,8 @@ audience: ["sale", "ke-toan"]
 
 Dùng khi khoá học đã đủ Order ID, cần nhắc kế toán xuất hoá đơn (INV) sớm.
 
+![Drawer PR với nút "Nhắc xuất HĐ" ở thanh hành động cuối drawer](/docs-images/module4/nhac-xuat-hoa-don-1.png)
+
 ## Điều kiện
 
 PR phải đã thu **đủ tiền** theo Tổng tiền dự kiến — hệ thống chặn gửi nhắc và hiện popup **"PR chưa đủ tiền — không nhắc xuất HĐ được"** nếu chưa đủ, kèm số đã thu / còn thiếu.

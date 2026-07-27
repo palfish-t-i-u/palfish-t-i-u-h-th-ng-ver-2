@@ -6,6 +6,8 @@ audience: ["ke-toan"]
 
 Áp dụng khi: có tiền vào tài khoản công ty nhưng hệ thống chưa tự khớp được với lần thanh toán nào (không có mã app, hoặc mã sai) — tiền nằm ở tab **CK ngoài chờ ghép**.
 
+![Modal "Ghép CK ngoài → Lần thanh toán" — số tiền/thời gian/nội dung CK ở trên, ô tìm + bộ lọc, ảnh bill bên phải](/docs-images/reconciliation/ghep-ck-ngoai-1.png)
+
 ## Các bước
 
 1. Vào **Đối soát giao dịch** → tab **CK ngoài chờ ghép**.

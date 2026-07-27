@@ -6,6 +6,8 @@ audience: ["ke-toan"]
 
 Áp dụng khi: khách thanh toán bằng quẹt thẻ hoặc trả góp qua máy mPOS / Payoo, cần ghép giao dịch với lần thanh toán trên PR.
 
+![Drawer đối soát quẹt thẻ — thông tin giao dịch (khách, thẻ, số tiền, thực nhận) + panel ghép với lần thanh toán](/docs-images/reconCard/ghep-giao-dich-the-1.png)
+
 ## Các bước
 
 1. Vào **Đối soát giao dịch · Quẹt thẻ** → chọn tab **mPOS** hoặc **Payoo**.
