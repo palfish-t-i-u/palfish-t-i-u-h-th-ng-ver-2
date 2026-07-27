@@ -1753,7 +1753,7 @@ export default function ReconciliationTab() {
             onClose={() => { setBankMatchOpen(false); setBankMatchTxnId(null); }}
             title="Ghép CK ngoài → Lần thanh toán"
             extraWide
-            headerExtra={<HdsdLink mode="topic" moduleSlug="reconciliation" topicSlug="ghep-ck-ngoai" />}
+            headerExtra={<HdsdLink moduleSlug="reconciliation" topicSlug="ghep-ck-ngoai" />}
           >
             {drawerTxn && (
               <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
@@ -1982,7 +1982,7 @@ export default function ReconciliationTab() {
         open={bankMismatchConfirm.open}
         onClose={() => setBankMismatchConfirm({ open: false, discrepancy: 0 })}
         title="Số tiền không khớp"
-        headerExtra={<HdsdLink mode="topic" moduleSlug="reconciliation" topicSlug="so-tien-khong-khop" />}
+        headerExtra={<HdsdLink moduleSlug="reconciliation" topicSlug="so-tien-khong-khop" />}
       >
         <div style={{ display: "flex", flexDirection: "column", gap: 14, fontSize: 14 }}>
           <div style={{
@@ -2139,7 +2139,7 @@ export default function ReconciliationTab() {
                   </div>
                 </div>
                 <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                  <HdsdLink mode="module" moduleSlug="reconciliation" />
+                  <HdsdLink moduleSlug="reconciliation" />
                   <button className="drawer-close" onClick={() => setAlbumOpen(false)}>
                     <Icons.Close size={16} />
                   </button>

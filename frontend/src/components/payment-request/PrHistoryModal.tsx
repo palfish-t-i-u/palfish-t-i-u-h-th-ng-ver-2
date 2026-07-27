@@ -32,7 +32,7 @@ export default function PrHistoryModal({
             </div>
           </div>
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            <HdsdLink mode="topic" moduleSlug="paymentRequests" topicSlug="xem-lich-su-pr" />
+            <HdsdLink moduleSlug="paymentRequests" topicSlug="xem-lich-su-pr" />
             <button className="drawer-close" onClick={onClose}>
               <Icons.Close size={16} />
             </button>

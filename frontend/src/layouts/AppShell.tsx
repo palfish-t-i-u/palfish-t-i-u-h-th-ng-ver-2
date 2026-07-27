@@ -3,7 +3,6 @@ import { useCallback, useEffect, useState } from "react";
 import Badge from "../components/ui/Badge";
 import { cn } from "../lib/cn";
 import MobileNavSheet from "./MobileNavSheet";
-import { HelpNavTree } from "./HelpNavTree";
 import { HdsdLink } from "../components/help/HdsdLink";
 
 export interface NavChildItem {
@@ -34,9 +33,8 @@ interface Props {
   onSignOut?: () => void;
   wideContent?: boolean;
   headerExtras?: ReactNode;
-  /** HDSD ở header — module đang active (nếu có bài hướng dẫn) và submodule/topic mặc định của nó. */
+  /** HDSD ở header — trỏ tới trang docs của module đang active, mở tab mới. */
   helpModuleSlug?: string;
-  helpTopicSlug?: string;
   children: ReactNode;
 }
 
@@ -140,7 +138,6 @@ export default function AppShell({
   wideContent,
   headerExtras,
   helpModuleSlug,
-  helpTopicSlug,
   children,
 }: Props) {
   const reportParentId = items.find((it) => it.children?.some((c) => c.id === activeId))?.id;
@@ -230,21 +227,17 @@ export default function AppShell({
                   {showSection && collapsed && (
                     <div className="mx-auto my-2 h-px w-6 bg-gmv-border" />
                   )}
-                  {it.id === "help" ? (
-                    <HelpNavTree it={it} activeId={activeId} collapsed={collapsed} />
-                  ) : (
-                    <NavButton
-                      it={it}
-                      active={active}
-                      onSelect={onSelect}
-                      onHover={onHover}
-                      collapsed={collapsed}
-                      expanded={expandedIds.has(it.id)}
-                      onToggleExpand={() => toggleExpand(it.id)}
-                      childActive={childActive}
-                    />
-                  )}
-                  {it.id !== "help" && !collapsed && it.children && expandedIds.has(it.id) && (
+                  <NavButton
+                    it={it}
+                    active={active}
+                    onSelect={onSelect}
+                    onHover={onHover}
+                    collapsed={collapsed}
+                    expanded={expandedIds.has(it.id)}
+                    onToggleExpand={() => toggleExpand(it.id)}
+                    childActive={childActive}
+                  />
+                  {!collapsed && it.children && expandedIds.has(it.id) && (
                     <ul className="mb-1 ml-3 mt-0.5 space-y-0.5 border-l border-gmv-border pl-2">
                       {it.children.map((child) => (
                         <li key={child.id}>
@@ -275,7 +268,24 @@ export default function AppShell({
             })}
           </ul>
         </nav>
-        <div className="border-t border-gmv-border px-2.5 py-3">
+        <div className="border-t border-gmv-border px-2.5 py-3 space-y-1.5">
+          <a
+            href="/docs"
+            target="_blank"
+            rel="noopener noreferrer"
+            title="Hướng dẫn sử dụng"
+            className={cn(
+              "flex h-9 w-full items-center gap-2 overflow-hidden rounded-gmv-md border border-gmv-border bg-gmv-bg px-2.5 text-gmv-muted transition-colors hover:border-gmv-primary hover:bg-gmv-primary-soft hover:text-gmv-primary",
+              collapsed && "justify-center px-0"
+            )}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0">
+              <circle cx="12" cy="12" r="10" />
+              <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
+              <line x1="12" y1="17" x2="12.01" y2="17" />
+            </svg>
+            {!collapsed && <span className="truncate text-[11px] font-medium">Hướng dẫn sử dụng</span>}
+          </a>
           <button
             type="button"
             onClick={toggleCollapse}
@@ -298,12 +308,7 @@ export default function AppShell({
               <h1 className="truncate text-base font-semibold text-gmv-text-strong">{title}</h1>
               {subtitle && <p className="truncate text-xs text-gmv-muted">{subtitle}</p>}
             </div>
-            {helpModuleSlug &&
-              (helpTopicSlug ? (
-                <HdsdLink mode="topic" moduleSlug={helpModuleSlug} topicSlug={helpTopicSlug} className="shrink-0" />
-              ) : (
-                <HdsdLink mode="module" moduleSlug={helpModuleSlug} className="shrink-0" />
-              ))}
+            {helpModuleSlug && <HdsdLink moduleSlug={helpModuleSlug} className="shrink-0" />}
           </div>
           <div className="flex shrink-0 items-center gap-2 md:gap-3">
             {isDevMode && (

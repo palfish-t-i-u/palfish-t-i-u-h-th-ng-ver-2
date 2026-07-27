@@ -1831,7 +1831,7 @@ export default function PaymentRequestDetailDrawer({
           </div>
           <div style={{ display: "flex", gap: 8, alignItems: "center", flexShrink: 0 }}>
             <PaymentRequestStatusBadge state={request.state} totalCount={request.totalCount} provisional={hasUnverifiedFeeLine(request)} />
-            <HdsdLink mode="module" moduleSlug="paymentRequests" />
+            <HdsdLink moduleSlug="paymentRequests" />
             <button className="drawer-close" onClick={onClose}>
               <Icons.Close size={16} />
             </button>
@@ -2732,7 +2732,6 @@ export default function PaymentRequestDetailDrawer({
               </div>
               <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                 <HdsdLink
-                  mode="topic"
                   moduleSlug="module3"
                   topicSlug={reportBtn.isAppend ? "bao-don-bo-sung" : "bao-don-kich-hoat"}
                 />
@@ -3056,7 +3055,7 @@ export default function PaymentRequestDetailDrawer({
                 </div>
               </div>
               <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                <HdsdLink mode="topic" moduleSlug="paymentRequests" topicSlug="thieu-anh-bill" />
+                <HdsdLink moduleSlug="paymentRequests" topicSlug="thieu-anh-bill" />
                 <button className="drawer-close" onClick={() => setMissingBillsPopupOpen(false)}>
                   <Icons.Close size={16} />
                 </button>
@@ -3104,7 +3103,7 @@ export default function PaymentRequestDetailDrawer({
                   )}
                 </div>
                 <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                  <HdsdLink mode="topic" moduleSlug="module4" topicSlug="nhac-xuat-hoa-don" />
+                  <HdsdLink moduleSlug="module4" topicSlug="nhac-xuat-hoa-don" />
                   <button className="drawer-close" onClick={dismissRemindError}>
                     <Icons.Close size={16} />
                   </button>
@@ -3144,7 +3143,7 @@ export default function PaymentRequestDetailDrawer({
             <div className="modal-head">
               <div><h3>Nhắc kích hoạt khóa học gấp</h3></div>
               <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                <HdsdLink mode="topic" moduleSlug="module3" topicSlug="nhac-kich-hoat-gap" />
+                <HdsdLink moduleSlug="module3" topicSlug="nhac-kich-hoat-gap" />
                 <button className="drawer-close" onClick={() => setActivationNoteModalOpen(false)}>
                   <Icons.Close size={16} />
                 </button>
@@ -3190,7 +3189,7 @@ export default function PaymentRequestDetailDrawer({
             <div className="modal-head">
               <div><h3>Không gửi được nhắc kích hoạt</h3></div>
               <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                <HdsdLink mode="topic" moduleSlug="module3" topicSlug="nhac-kich-hoat-gap" />
+                <HdsdLink moduleSlug="module3" topicSlug="nhac-kich-hoat-gap" />
                 <button className="drawer-close" onClick={dismissActivationRemindError}>
                   <Icons.Close size={16} />
                 </button>
@@ -3224,7 +3223,7 @@ export default function PaymentRequestDetailDrawer({
                 </div>
               </div>
               <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                <HdsdLink mode="topic" moduleSlug="paymentRequests" topicSlug="pr-du-tien" />
+                <HdsdLink moduleSlug="paymentRequests" topicSlug="pr-du-tien" />
                 <button className="drawer-close" onClick={() => setPrFullModalOpen(false)}>
                   <Icons.Close size={16} />
                 </button>

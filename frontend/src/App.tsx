@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 import { useAuth } from "./hooks/useAuth";
 import LoginPage from "./pages/LoginPage";
@@ -7,6 +8,9 @@ import MainPage from "./pages/MainPage";
 import PendingActivationPage from "./pages/PendingActivationPage";
 import { useMe } from "./hooks/useMe";
 import ErrorBoundary from "./components/ErrorBoundary";
+import { lazyRetry } from "./lib/lazyRetry";
+
+const DocsLayout = lazyRetry(() => import("./pages/docs/DocsLayout"));
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading, isDevMode } = useAuth();
@@ -107,6 +111,22 @@ export default function App() {
         element={
           <ProtectedRoute>
             <MainPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/docs/*"
+        element={
+          <ProtectedRoute>
+            <Suspense
+              fallback={
+                <div className="flex min-h-screen items-center justify-center text-sm text-gmv-muted">
+                  Đang tải...
+                </div>
+              }
+            >
+              <DocsLayout />
+            </Suspense>
           </ProtectedRoute>
         }
       />

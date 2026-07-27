@@ -112,7 +112,7 @@ function InvoiceDetailDrawer({
             </div>
           </div>
           <div style={{ display: "flex", gap: 8, alignItems: "center", flexShrink: 0 }}>
-            <HdsdLink mode="topic" moduleSlug="module4" topicSlug="xuat-hoa-don-theo-course-code" />
+            <HdsdLink moduleSlug="module4" topicSlug="xuat-hoa-don-theo-course-code" />
             <button type="button" className="drawer-close" onClick={onClose}>
               <Icons.Close size={16} />
             </button>

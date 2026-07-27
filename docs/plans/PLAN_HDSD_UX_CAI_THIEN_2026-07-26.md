@@ -1,5 +1,7 @@
 # Kế hoạch cải thiện UX HDSD + Audit tổng thể (26/07/2026)
 
+> **SUPERSEDED 2026-07-27** — anh Minh đảo ngược quyết định "làm in-app", xem `HANDOFF_HDSD_DOCS_ROUTE_PIVOT_2026-07-27.md` cho kiến trúc mới (route `/docs/*`, HDSD mở tab mới, phạm vi mở rộng toàn app).
+
 > Bối cảnh: sau khi Task 1-4 xong và merge vào `sandbox` (commit `d4337e8`), anh Đạt bấm thử thấy nút HDSD "không phản ứng gì". Điều tra qua browser thật + đọc code cho thấy: **cơ chế cốt lõi hoạt động đúng**, nhưng có 3 khoảng trống UX thật khiến việc bấm HDSD *cảm giác* như không có gì xảy ra — đặc biệt khi cuộn sâu trong 1 trang dài, hoặc dùng trên mobile. File này gồm 2 phần: (A) audit hiện trạng theo đúng câu hỏi của Đạt, (B) kế hoạch sửa.
 
 ---

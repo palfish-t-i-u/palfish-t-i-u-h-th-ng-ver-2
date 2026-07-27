@@ -1,43 +1,36 @@
 import { describe, it, expect } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import HelpModuleIndex from "./HelpModuleIndex";
-import { HelpNavProvider, useHelpNav } from "../../contexts/HelpNavContext";
 
 describe("HelpModuleIndex", () => {
   it("lists topics for a known module with human-readable label", () => {
     render(
-      <HelpNavProvider>
+      <MemoryRouter>
         <HelpModuleIndex moduleSlug="paymentRequests" />
-      </HelpNavProvider>
+      </MemoryRouter>
     );
     expect(screen.getByText("Hướng dẫn — Quản lý thanh toán")).toBeInTheDocument();
     expect(screen.getByText("Tạo lần thanh toán (TT) chuẩn")).toBeInTheDocument();
   });
 
-  it("clicking a topic calls goToTopic", () => {
-    function Probe() {
-      const { helpModule, helpTopic } = useHelpNav();
-      return (
-        <span data-testid="probe">
-          {helpModule ?? "none"}/{helpTopic ?? "none"}
-        </span>
-      );
-    }
+  it("links each topic to its article route", () => {
     render(
-      <HelpNavProvider>
+      <MemoryRouter>
         <HelpModuleIndex moduleSlug="paymentRequests" />
-        <Probe />
-      </HelpNavProvider>
+      </MemoryRouter>
     );
-    fireEvent.click(screen.getByText("Tạo lần thanh toán (TT) chuẩn"));
-    expect(screen.getByTestId("probe").textContent).toBe("paymentRequests/tao-lan-tt-chuan");
+    expect(screen.getByText("Tạo lần thanh toán (TT) chuẩn").closest("a")).toHaveAttribute(
+      "href",
+      "/docs/paymentRequests/tao-lan-tt-chuan"
+    );
   });
 
   it("shows a friendly message for a module with no help content", () => {
     render(
-      <HelpNavProvider>
+      <MemoryRouter>
         <HelpModuleIndex moduleSlug="does-not-exist" />
-      </HelpNavProvider>
+      </MemoryRouter>
     );
     expect(screen.getByText("Chưa có hướng dẫn")).toBeInTheDocument();
   });

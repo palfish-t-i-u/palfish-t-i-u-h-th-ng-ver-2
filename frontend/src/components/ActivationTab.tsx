@@ -198,7 +198,7 @@ function ARCreateModal({
             </div>
           </div>
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            <HdsdLink mode="topic" moduleSlug="module3" topicSlug="tao-active-request" />
+            <HdsdLink moduleSlug="module3" topicSlug="tao-active-request" />
             <button type="button" className="drawer-close" onClick={onClose}>
               <Icons.Close size={16} />
             </button>
@@ -1717,7 +1717,7 @@ function ActivationDetailDrawer({
                 <div className="modal-head">
                   <h3>Thêm UID mới</h3>
                   <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                    <HdsdLink mode="topic" moduleSlug="module3" topicSlug="them-uid-them-goi" />
+                    <HdsdLink moduleSlug="module3" topicSlug="them-uid-them-goi" />
                     <button
                       type="button"
                       className="drawer-close"
@@ -1906,7 +1906,7 @@ function ActivationDetailDrawer({
           >
             <div className="modal-head">
               <h3>Bỏ xác nhận cộng buổi</h3>
-              <HdsdLink mode="topic" moduleSlug="module3" topicSlug="cong-buoi-gioi-thieu" />
+              <HdsdLink moduleSlug="module3" topicSlug="cong-buoi-gioi-thieu" />
             </div>
             <div style={{ padding: "12px 16px", display: "flex", flexDirection: "column", gap: 10 }}>
               <div style={{ fontSize: 13, color: "var(--text-2)" }}>
@@ -2510,7 +2510,7 @@ export default function ActivationTab() {
                   )}
                 </div>
                 <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                  <HdsdLink mode="topic" moduleSlug="module3" topicSlug="order-id-va-hold" />
+                  <HdsdLink moduleSlug="module3" topicSlug="order-id-va-hold" />
                   <button className="drawer-close" onClick={dismissOrderIdConflict}>✕</button>
                 </div>
               </div>

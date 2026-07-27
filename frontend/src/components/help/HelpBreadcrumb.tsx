@@ -1,33 +1,25 @@
 // frontend/src/components/help/HelpBreadcrumb.tsx
+import { Link } from "react-router-dom";
 import { getModuleLabel } from "../../content/help/moduleLabels";
-import { useHelpNavOptional } from "../../contexts/HelpNavContext";
 
 /**
  * Dòng "Hướng dẫn sử dụng › Module › Bài viết" ở đầu HelpArticle/HelpModuleIndex —
  * giúp người dùng nhận ra ngay là đã điều hướng đúng, đặc biệt khi bấm HdsdLink
  * từ 1 popup đang mở (không nhìn tiêu đề trang cũng vẫn thấy được thay đổi).
- * Segment "Module" bấm được để quay lại mục lục — KHÔNG khôi phục lại thao tác
- * dở trước đó, chỉ là điều hướng thuận trong chính hệ thống docs.
- *
- * Dùng useHelpNavOptional (không throw) — HelpArticle/HelpModuleIndex có unit
- * test dựng lại riêng lẻ không bọc HelpNavProvider. Không có ctx thì segment
- * module chỉ hiện chữ tĩnh, không bấm được, thay vì crash cả cây render.
+ * Mỗi segment là 1 link thật (URL riêng) — không còn phụ thuộc context, chỉ
+ * cần router bọc ngoài (test dùng MemoryRouter).
  */
 export default function HelpBreadcrumb({ moduleSlug, topicTitle }: { moduleSlug: string; topicTitle?: string }) {
-  const ctx = useHelpNavOptional();
-
   return (
     <nav className="flex min-w-0 flex-wrap items-center gap-1 text-xs text-gmv-muted" aria-label="breadcrumb">
-      <span>Hướng dẫn sử dụng</span>
+      <Link to="/docs" className="hover:text-gmv-primary hover:underline">
+        Hướng dẫn sử dụng
+      </Link>
       <span aria-hidden="true">›</span>
-      {topicTitle && ctx ? (
-        <button
-          type="button"
-          onClick={() => ctx.goToModuleIndex(moduleSlug)}
-          className="text-gmv-primary hover:underline"
-        >
+      {topicTitle ? (
+        <Link to={`/docs/${moduleSlug}`} className="text-gmv-primary hover:underline">
           {getModuleLabel(moduleSlug)}
-        </button>
+        </Link>
       ) : (
         <span className="font-medium text-gmv-text">{getModuleLabel(moduleSlug)}</span>
       )}

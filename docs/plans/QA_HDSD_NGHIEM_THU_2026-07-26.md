@@ -1,5 +1,7 @@
 # Nghiệm thu HDSD — 26/07/2026 (Đạt)
 
+> **SUPERSEDED 2026-07-27** — anh Minh đảo ngược quyết định "làm in-app", xem `HANDOFF_HDSD_DOCS_ROUTE_PIVOT_2026-07-27.md` cho kiến trúc mới (route `/docs/*`, HDSD mở tab mới, phạm vi mở rộng toàn app).
+
 > Kiểm chứng trực tiếp trên `https://palfish-gmv-manager-sandbox.vercel.app/` (tài khoản `test.admin@dev`), sau khi Đức push xong Task 1-3 + merge nội dung 26 bài của Đạt vào cấu trúc slug thật (`hdsd-help-docs-duc` → `sandbox`, commit `d4337e8`).
 > Đối chiếu với checklist "Popup/modal/drawer của 6 module ưu tiên" trong [`HANDOFF_DAT_USER_HELP_DOCS_2026-07-26.md`](HANDOFF_DAT_USER_HELP_DOCS_2026-07-26.md).
 > Danh sách 23 điểm chèn lấy trực tiếp từ `grep -rn "<HdsdLink" frontend/src/` (nguồn sự thật, không suy đoán từ tài liệu).

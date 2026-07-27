@@ -1083,7 +1083,7 @@ export default function CardReconciliationTab({
           <div className="modal" style={{ width: "min(440px, 92vw)" }} onClick={(e) => e.stopPropagation()}>
             <div className="modal-head">
               <h3>Số tiền không khớp</h3>
-              <HdsdLink mode="module" moduleSlug="reconCard" />
+              <HdsdLink moduleSlug="reconCard" />
             </div>
             <div style={{ padding: "12px 16px", display: "flex", flexDirection: "column", gap: 14, fontSize: 14 }}>
               <div style={{

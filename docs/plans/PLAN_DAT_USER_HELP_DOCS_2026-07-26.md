@@ -1,5 +1,7 @@
 # KẾ HOẠCH THỰC THI — Đạt · Hệ thống HDSD người dùng
 
+> **SUPERSEDED 2026-07-27** — anh Minh đảo ngược quyết định "làm in-app", xem `HANDOFF_HDSD_DOCS_ROUTE_PIVOT_2026-07-27.md` cho kiến trúc mới (route `/docs/*`, HDSD mở tab mới, phạm vi mở rộng toàn app).
+
 > Kế hoạch cá nhân của Đạt, bám theo [`HANDOFF_DAT_USER_HELP_DOCS_2026-07-26.md`](HANDOFF_DAT_USER_HELP_DOCS_2026-07-26.md) (đã được anh Minh duyệt).
 > Phạm vi file này: **chỉ phần việc của Đạt**. Phần khung code là của Đức, không lặp lại ở đây.
 > Trạng thái nền: `sandbox` = `39e789b`, chưa có dòng code HDSD nào (`frontend/src/content/`, `components/help/`, `HelpNavContext.tsx` đều **chưa tồn tại**; `react-markdown`/`remark-gfm` **chưa cài**). Tức là cả Đạt lẫn Đức đều đang ở vạch xuất phát.

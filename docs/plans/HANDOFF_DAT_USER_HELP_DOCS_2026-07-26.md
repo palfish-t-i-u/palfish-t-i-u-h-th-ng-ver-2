@@ -1,5 +1,7 @@
 # HANDOFF — Đạt · Hệ thống Docs hướng dẫn người dùng (HDSD)
 
+> **SUPERSEDED 2026-07-27** — anh Minh đảo ngược quyết định "làm in-app", xem `HANDOFF_HDSD_DOCS_ROUTE_PIVOT_2026-07-27.md` cho kiến trúc mới (route `/docs/*`, HDSD mở tab mới, phạm vi mở rộng toàn app).
+
 > Task anh Minh giao trực tiếp, Đức + Đạt tự chủ trương lên kế hoạch và triển khai — không có ai khác tham gia. Deadline: **trước thứ 3 tuần sau**.
 > **✅ ĐÃ DUYỆT bởi anh Minh** (review lần 2) — kèm 2 sửa kỹ thuật bắt buộc trước khi gõ dòng code đầu tiên (xem `⚠️ Sửa bắt buộc` ở mục Kiến trúc §1) + 1 khuyến nghị lazy-load (không bắt buộc) + nâng chuẩn nghiệm thu lên đủ 23/23 điểm chèn (mục Kiểm thử). Bản trước đó dùng route `/help/:slug` riêng trong app — anh Minh không duyệt bản đó, đã đổi sang cơ chế dropdown ngay trong sidebar (giữ nguyên trong bản này).
 > Đây KHÔNG phải mobile fix pass — task hoàn toàn mới, không đụng gì tới nhánh mobile trước đó.

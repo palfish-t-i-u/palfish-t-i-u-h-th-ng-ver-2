@@ -216,7 +216,7 @@ export default function QrViewModal({
             </div>
           </div>
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            <HdsdLink mode="topic" moduleSlug="paymentRequests" topicSlug="xem-qr-thanh-toan" />
+            <HdsdLink moduleSlug="paymentRequests" topicSlug="xem-qr-thanh-toan" />
             <button className="drawer-close" onClick={onClose}>
               <Icons.Close size={16} />
             </button>

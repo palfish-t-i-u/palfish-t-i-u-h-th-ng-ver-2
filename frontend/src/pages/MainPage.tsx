@@ -1,12 +1,10 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import AuthAccountsTab from "../components/AuthAccountsTab";
 import PermissionsTab from "../components/permissions/PermissionsTab";
 import Module5Tab from "../components/Module5Tab";
 import Module6Tab from "../components/Module6Tab";
 import DashboardTab from "../components/DashboardTab";
 import { PaymentFlowProvider, usePaymentFlow, type PaymentFlowView } from "../contexts/PaymentFlowContext";
-import { HelpNavProvider, useHelpNav } from "../contexts/HelpNavContext";
-import { hasHelpModule } from "../content/help";
 import { useAuth } from "../hooks/useAuth";
 import { useMe } from "../hooks/useMe";
 import ProfilePage from "./ProfilePage";
@@ -14,19 +12,7 @@ import AppShell, { type NavChildItem, type NavItem } from "../layouts/AppShell";
 import Badge from "../components/ui/Badge";
 import { DEPARTMENT_LIST } from "../types/permissions";
 import NotificationBell from "../components/NotificationBell";
-
-function retryImport<T>(load: () => Promise<T>, retries: number): Promise<T> {
-  return load().catch((err) => {
-    if (retries <= 0) throw err;
-    return new Promise<T>((resolve) =>
-      setTimeout(() => resolve(retryImport(load, retries - 1)), 1000),
-    );
-  });
-}
-
-function lazyRetry<P extends object = object>(load: () => Promise<{ default: React.ComponentType<P> }>) {
-  return lazy(() => retryImport(load, 2));
-}
+import { lazyRetry } from "../lib/lazyRetry";
 
 const BC01SalesPerformance = lazyRetry(() => import("../components/reports/BC01SalesPerformance"));
 const BC02KeyDataReport = lazyRetry(() => import("../components/reports/BC02KeyDataReport"));
@@ -44,9 +30,6 @@ const ZaloOutboxTab = lazyRetry(() => import("../components/admin/ZaloOutboxTab"
 const DingTalkConfigTab = lazyRetry(() => import("../components/admin/DingTalkConfigTab"));
 const DingTalkGroupsTab = lazyRetry(() => import("../components/admin/DingTalkGroupsTab"));
 const DingTalkOutboxTab = lazyRetry(() => import("../components/admin/DingTalkOutboxTab"));
-const HelpArticle = lazyRetry(() => import("../components/help/HelpArticle"));
-const HelpModuleIndex = lazyRetry(() => import("../components/help/HelpModuleIndex"));
-const HelpLanding = lazyRetry(() => import("../components/help/HelpLanding"));
 
 const PRELOAD_MAP: Record<string, () => Promise<unknown>> = {
   paymentRequests: () => import("../components/PaymentRequestsTab"),
@@ -83,8 +66,7 @@ type ViewId =
   | "zaloOutbox"
   | "dingtalkConfig"
   | "dingtalkGroups"
-  | "dingtalkOutbox"
-  | "help";
+  | "dingtalkOutbox";
 
 const FLOW_VIEW_MAP: Record<PaymentFlowView, ViewId> = {
   paymentRequests: "paymentRequests",
@@ -174,13 +156,6 @@ const I = {
       <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5" />
     </svg>
   ),
-  help: (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <circle cx="12" cy="12" r="10" />
-      <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
-      <line x1="12" y1="17" x2="12.01" y2="17" />
-    </svg>
-  ),
 };
 
 const TITLES: Record<ViewId, { title: string; subtitle?: string }> = {
@@ -248,64 +223,35 @@ const TITLES: Record<ViewId, { title: string; subtitle?: string }> = {
     title: "DingTalk — Outbox",
     subtitle: "50 tin nhắn gần nhất — theo dõi trạng thái gửi & retry",
   },
-  help: {
-    title: "Hướng dẫn sử dụng",
-    subtitle: "Tra cứu hướng dẫn từng thao tác theo module",
-  },
 };
 
 export default function MainPage() {
   const flowNavRef = useRef<(view: PaymentFlowView) => void>(() => {});
-  const helpNavRef = useRef<() => void>(() => {});
 
   return (
     <PaymentFlowProvider onViewChange={(view) => flowNavRef.current(view)}>
-      <HelpNavProvider onNavigateToHelp={() => helpNavRef.current()}>
-        <MainPageInner flowNavRef={flowNavRef} helpNavRef={helpNavRef} />
-      </HelpNavProvider>
+      <MainPageInner flowNavRef={flowNavRef} />
     </PaymentFlowProvider>
   );
 }
 
 function MainPageInner({
   flowNavRef,
-  helpNavRef,
 }: {
   flowNavRef: React.MutableRefObject<(view: PaymentFlowView) => void>;
-  helpNavRef: React.MutableRefObject<() => void>;
 }) {
   const { user, signOut, isDevMode } = useAuth();
   const { profile } = useMe();
   const [activeView, setActiveView] = useState<ViewId>("dashboard");
 
   const { badgeCounts } = usePaymentFlow();
-  const { helpModule, helpTopic } = useHelpNav();
 
   useEffect(() => {
     flowNavRef.current = (view) => setActiveView(FLOW_VIEW_MAP[view]);
   }, [flowNavRef]);
 
-  // Bấm HdsdLink (mode="topic") có thể xảy ra khi trang đang cuộn sâu (popup mở
-  // giữa 1 danh sách dài) — không reset scroll thì bài viết mới render ở ngoài
-  // khung nhìn, trông như "bấm không có gì xảy ra". Chỉ áp dụng khi vào/đổi bài
-  // trong "help", không đụng scroll của các tab khác.
-  useEffect(() => {
-    if (activeView !== "help") return;
-    // Defensive: jsdom không implement Element.scrollTo → test nào render
-    // MainPage sẽ ném TypeError nếu gọi thẳng (cùng lý do useIsMobile guard
-    // matchMedia). Không dùng optional-chaining vì nó chỉ chặn null, không
-    // chặn method thiếu.
-    const main = document.querySelector("main");
-    if (typeof main?.scrollTo === "function") main.scrollTo({ top: 0 });
-  }, [activeView, helpModule, helpTopic]);
-
-  useEffect(() => {
-    helpNavRef.current = () => setActiveView("help");
-  }, [helpNavRef]);
-
   const perms = profile?.permissions ?? {};
   const can = (key: string) => {
-    if (key === "help") return true; // tài liệu tham khảo — không gate quyền
     const k = key === "zaloConfig" || key === "zaloGroups" || key === "zaloOutbox" ? "zalo"
       : key === "dingtalkConfig" || key === "dingtalkGroups" || key === "dingtalkOutbox" ? "dingtalk"
       : key;
@@ -410,17 +356,10 @@ function MainPageInner({
       list.push(...accountItems);
     }
 
-    // ── Hỗ trợ (HDSD) ── luôn hiện, không gate quyền — cây dropdown riêng do
-    // HelpNavTree render (AppShell.tsx đặc cách nhánh id==="help").
-    list.push({ id: "help", label: "Hướng dẫn sử dụng", icon: I.help, section: "Hỗ trợ" });
-
     return list;
   }, [badgeCounts, perms, isDevMode]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const head = TITLES[activeView as keyof typeof TITLES] ?? TITLES.paymentRequests;
-  // HDSD ở header — chỉ hiện khi module đang active thật sự có bài hướng dẫn.
-  const headerHelpModuleSlug =
-    activeView !== "help" && hasHelpModule(activeView) ? activeView : undefined;
   const wideContent =
     activeView === "dashboard" ||
     activeView === "paymentRequests" ||
@@ -464,11 +403,6 @@ function MainPageInner({
       case "dingtalkConfig": return <DingTalkConfigTab />;
       case "dingtalkGroups": return <DingTalkGroupsTab />;
       case "dingtalkOutbox": return <DingTalkOutboxTab />;
-      case "help": {
-        if (helpModule && helpTopic) return <HelpArticle moduleSlug={helpModule} topicSlug={helpTopic} />;
-        if (helpModule) return <HelpModuleIndex moduleSlug={helpModule} />;
-        return <HelpLanding />;
-      }
       default: return <PaymentRequestsTab />;
     }
   };
@@ -487,7 +421,7 @@ function MainPageInner({
       isDevMode={isDevMode}
       onSignOut={signOut}
       headerExtras={<NotificationBell onNavigate={(view) => setActiveView(view as ViewId)} />}
-      helpModuleSlug={headerHelpModuleSlug}
+      helpModuleSlug={activeView}
     >
       <Suspense fallback={<ViewFallback />}>{renderActiveView()}</Suspense>
     </AppShell>

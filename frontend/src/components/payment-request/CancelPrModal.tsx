@@ -41,7 +41,7 @@ export default function CancelPrModal({
             </div>
           </div>
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            <HdsdLink mode="topic" moduleSlug="paymentRequests" topicSlug="huy-pr" />
+            <HdsdLink moduleSlug="paymentRequests" topicSlug="huy-pr" />
             <button className="drawer-close" onClick={onClose}>
               <Icons.Close size={16} />
             </button>

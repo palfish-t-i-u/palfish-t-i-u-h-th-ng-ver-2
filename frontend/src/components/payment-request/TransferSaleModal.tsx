@@ -105,7 +105,7 @@ export default function TransferSaleModal({
             </div>
           </div>
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            <HdsdLink mode="topic" moduleSlug="paymentRequests" topicSlug="chuyen-giao-pr" />
+            <HdsdLink moduleSlug="paymentRequests" topicSlug="chuyen-giao-pr" />
             <button className="drawer-close" onClick={onClose}>
               <Icons.Close size={16} />
             </button>

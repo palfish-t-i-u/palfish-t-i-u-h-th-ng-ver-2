@@ -636,7 +636,7 @@ export default function SoDoanhThuTab() {
         onClose={() => setRateModalOpen(false)}
         wide
         className="max-w-4xl"
-        headerExtra={<HdsdLink mode="topic" moduleSlug="revenueLedger" topicSlug="quy-doi-ty-gia" />}
+        headerExtra={<HdsdLink moduleSlug="revenueLedger" topicSlug="quy-doi-ty-gia" />}
       >
         <ExchangeRatesPanel />
       </Modal>

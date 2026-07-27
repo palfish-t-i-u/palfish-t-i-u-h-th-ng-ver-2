@@ -162,7 +162,7 @@ export default function LedgerFormModal({
       onClose={onClose}
       wide
       title={mode === "create" ? "Thêm dòng Sổ doanh thu" : "Chỉnh sửa dòng Sổ doanh thu"}
-      headerExtra={<HdsdLink mode="topic" moduleSlug="revenueLedger" topicSlug="tao-sua-dong-so" />}
+      headerExtra={<HdsdLink moduleSlug="revenueLedger" topicSlug="tao-sua-dong-so" />}
     >
       {rowMeta?.loaiNhap && (
         <div className="mb-4 flex flex-wrap items-center gap-2 text-sm">

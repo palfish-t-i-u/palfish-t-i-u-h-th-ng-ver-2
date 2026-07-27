@@ -1,12 +1,11 @@
 // frontend/src/components/help/HelpModuleIndex.tsx
+import { Link } from "react-router-dom";
 import { getHelpModule } from "../../content/help";
 import { getModuleLabel } from "../../content/help/moduleLabels";
-import { useHelpNav } from "../../contexts/HelpNavContext";
 import HelpBreadcrumb from "./HelpBreadcrumb";
 
 export default function HelpModuleIndex({ moduleSlug }: { moduleSlug: string }) {
   const mod = getHelpModule(moduleSlug);
-  const { goToTopic } = useHelpNav();
 
   if (!mod || mod.topics.length === 0) {
     return (
@@ -25,13 +24,12 @@ export default function HelpModuleIndex({ moduleSlug }: { moduleSlug: string }) 
       <ul className="space-y-2">
         {mod.topics.map((topic) => (
           <li key={topic.topicSlug}>
-            <button
-              type="button"
-              onClick={() => goToTopic(mod.slug, topic.topicSlug)}
-              className="w-full rounded-gmv-md border border-gmv-border px-3 py-2 text-left text-sm text-gmv-text hover:bg-gmv-bg"
+            <Link
+              to={`/docs/${mod.slug}/${topic.topicSlug}`}
+              className="block w-full rounded-gmv-md border border-gmv-border px-3 py-2 text-left text-sm text-gmv-text hover:bg-gmv-bg"
             >
               {topic.title}
-            </button>
+            </Link>
           </li>
         ))}
       </ul>

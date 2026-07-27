@@ -1,35 +1,28 @@
 import { describe, it, expect } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import HelpLanding from "./HelpLanding";
-import { HelpNavProvider, useHelpNav } from "../../contexts/HelpNavContext";
 
 describe("HelpLanding", () => {
   it("lists all modules that have help content", () => {
     render(
-      <HelpNavProvider>
+      <MemoryRouter>
         <HelpLanding />
-      </HelpNavProvider>
+      </MemoryRouter>
     );
     expect(screen.getByText("Quản lý thanh toán")).toBeInTheDocument();
     expect(screen.getByText("Đối soát giao dịch · Chuyển khoản")).toBeInTheDocument();
   });
 
-  it("clicking a module navigates to its module index (goToModuleIndex)", () => {
-    function Probe() {
-      const { helpModule, helpTopic } = useHelpNav();
-      return (
-        <span data-testid="probe">
-          {helpModule ?? "none"}/{helpTopic ?? "none"}
-        </span>
-      );
-    }
+  it("links each module to its module index route", () => {
     render(
-      <HelpNavProvider>
+      <MemoryRouter>
         <HelpLanding />
-        <Probe />
-      </HelpNavProvider>
+      </MemoryRouter>
     );
-    fireEvent.click(screen.getByText("Quản lý thanh toán"));
-    expect(screen.getByTestId("probe").textContent).toBe("paymentRequests/none");
+    expect(screen.getByText("Quản lý thanh toán").closest("a")).toHaveAttribute(
+      "href",
+      "/docs/paymentRequests"
+    );
   });
 });

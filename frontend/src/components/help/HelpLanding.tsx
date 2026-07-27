@@ -1,11 +1,10 @@
 // frontend/src/components/help/HelpLanding.tsx
+import { Link } from "react-router-dom";
 import { listHelpModules } from "../../content/help";
 import { getModuleLabel } from "../../content/help/moduleLabels";
-import { useHelpNav } from "../../contexts/HelpNavContext";
 
 export default function HelpLanding() {
   const modules = listHelpModules();
-  const { goToModuleIndex } = useHelpNav();
 
   return (
     <div className="min-w-0 max-w-2xl space-y-3">
@@ -15,13 +14,12 @@ export default function HelpLanding() {
         <ul className="space-y-2">
           {modules.map((mod) => (
             <li key={mod.slug}>
-              <button
-                type="button"
-                onClick={() => goToModuleIndex(mod.slug)}
-                className="w-full rounded-gmv-md border border-gmv-border px-3 py-2 text-left text-sm text-gmv-text hover:bg-gmv-bg"
+              <Link
+                to={`/docs/${mod.slug}`}
+                className="block w-full rounded-gmv-md border border-gmv-border px-3 py-2 text-left text-sm text-gmv-text hover:bg-gmv-bg"
               >
                 {getModuleLabel(mod.slug)}
-              </button>
+              </Link>
             </li>
           ))}
         </ul>
