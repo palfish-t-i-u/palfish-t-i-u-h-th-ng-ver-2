@@ -6,6 +6,8 @@ audience: ["sale"]
 
 Áp dụng khi: khách đã chuyển khoản, cần tải ảnh biên lai (bill) lên PR để kế toán đối soát.
 
+![Khu vực Tải ảnh bill trong 1 lần thanh toán — dán/kéo-thả/chọn file](/docs-images/paymentRequests/thieu-anh-bill-1.png)
+
 ## Tải ảnh bill
 
 1. Mở PR → vào lần thanh toán cần gắn bill → bấm vào khu vực **"Tải ảnh bill"**.

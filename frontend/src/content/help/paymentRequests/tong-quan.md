@@ -6,6 +6,8 @@ audience: ["sale", "ke-toan"]
 
 Áp dụng khi: cần hiểu tổng thể 1 đơn hàng đi qua những bước nào từ lúc chốt khách đến lúc xuất hoá đơn.
 
+![Màn hình Quản lý thanh toán: danh sách Payment Request, bộ lọc trạng thái](/docs-images/paymentRequests/tong-quan-1.png)
+
 ## 4 bước chính
 
 1. **B1 — Quản lý thanh toán**: tạo Payment Request (PR), sinh mã QR, khách chuyển tiền, sale tải ảnh bill.

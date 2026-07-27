@@ -11,28 +11,26 @@ import { listHelpModules } from "./index";
 // được thêm vào đây — phải có ảnh ngay khi viết. Xoá đúng dòng khỏi danh sách
 // này khi đã bổ sung ảnh thật cho bài đó (đừng xoá "khống" — test sẽ đỏ ngay
 // nếu ảnh chưa thực sự tồn tại trên đĩa).
+// 2026-07-27: đã dọn 9/21 mục — chỉ những bài chụp được bằng thao tác THUẦN
+// ĐỌC (mở trang/modal xem, không submit/mutate dữ liệu sandbox dùng chung cả
+// team). 12 mục còn lại cần quyết định riêng vì thao tác chụp sẽ mutate dữ
+// liệu thật (huỷ PR, chuyển giao PR, tick cộng buổi, điền Order ID, ghép giao
+// dịch, sửa dòng sổ doanh thu, sửa tỷ giá...) hoặc cần trạng thái nghiệp vụ
+// đặc thù khó dựng lại (PR sẵn sàng kích hoạt nhưng chưa từng báo đơn; giao
+// dịch lệch số tiền) — xem docs/plans/HDSD_CHECKLIST_CON_LAI_2026-07-27.md.
 const NO_SCREENSHOT_YET = new Set([
   "module3/bao-don-kich-hoat",
   "module3/cong-buoi-gioi-thieu",
   "module3/order-id-va-hold",
   "module3/them-uid-them-goi",
-  "module3/tong-quan",
-  "module4/tong-quan",
   "module4/xuat-hoa-don-theo-course-code",
   "paymentRequests/chuyen-giao-pr",
   "paymentRequests/huy-pr",
   "paymentRequests/pr-du-tien",
-  "paymentRequests/tao-lan-tt-chuan",
-  "paymentRequests/thieu-anh-bill",
-  "paymentRequests/tong-quan",
-  "paymentRequests/xem-lich-su-pr",
-  "paymentRequests/xem-qr-thanh-toan",
   "reconciliation/ghep-giao-dich",
   "reconciliation/so-tien-khong-khop",
-  "reconciliation/tong-quan",
   "revenueLedger/quy-doi-ty-gia",
   "revenueLedger/tao-sua-dong-so",
-  "revenueLedger/tong-quan",
 ]);
 
 const IMAGE_RE = /!\[[^\]]*\]\(([^)\s]+)\)/g;

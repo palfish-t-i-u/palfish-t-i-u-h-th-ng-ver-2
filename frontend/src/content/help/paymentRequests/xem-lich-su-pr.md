@@ -6,6 +6,8 @@ audience: ["sale", "leader"]
 
 Áp dụng khi: cần kiểm tra PR từng qua tay ai, hoặc ai đã sửa/xác nhận gì trên PR này.
 
+![Modal Lịch sử PR — lịch sử lưu chuyển sở hữu + lịch sử thao tác](/docs-images/paymentRequests/xem-lich-su-pr-1.png)
+
 ## Các bước
 
 1. Mở PR cần xem → bấm **Xem lịch sử**.

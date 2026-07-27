@@ -9,6 +9,7 @@ import {
 } from "../../lib/api/zaloAdmin";
 import useIsMobile from "../../hooks/useIsMobile";
 import ZaloGroupCards from "./ZaloGroupCards";
+import { HdsdLink } from "../help/HdsdLink";
 
 function formatDate(iso?: string): string {
   if (!iso) return "—";
@@ -129,8 +130,9 @@ export default function ZaloGroupsTab() {
       )}
 
       <div className="flex items-center justify-between">
-        <p className="text-sm text-gray-500">
+        <p className="text-sm text-gray-500 flex items-center gap-2">
           Mapping team → nhóm Zalo GMF. Trigger tự tra bảng này khi gửi thông báo.
+          <HdsdLink moduleSlug="zaloGroups" topicSlug="tong-quan" className="shrink-0" />
         </p>
         <button
           onClick={() => { setShowForm(!showForm); setError(null); }}

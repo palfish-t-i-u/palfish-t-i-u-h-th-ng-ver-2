@@ -6,6 +6,8 @@ audience: ["sale"]
 
 Áp dụng khi: cần hiểu tổng thể bước đăng ký khoá học sau khi PR đã báo đơn.
 
+![Màn hình Kích hoạt khóa học: danh sách Active Request, trạng thái Order ID](/docs-images/module3/tong-quan-1.png)
+
 ## Khái niệm chính
 
 - **Active Request (AR)** — 1 yêu cầu kích hoạt, chứa danh sách bé + gói học đã đăng ký cho 1 PR.

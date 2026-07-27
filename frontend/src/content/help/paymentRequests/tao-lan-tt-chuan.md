@@ -6,6 +6,8 @@ audience: ["sale"]
 
 Áp dụng khi: khách đã chốt gói học, cần tạo Payment Request (PR) mới để bắt đầu thu tiền.
 
+![Modal Tạo Payment Request — SĐT, tên khách, tổng tiền dự kiến, nguồn KH](/docs-images/paymentRequests/tao-lan-tt-chuan-1.png)
+
 ## Các bước
 
 1. Vào **Quản lý thanh toán** → bấm **+ Tạo Payment Request**.

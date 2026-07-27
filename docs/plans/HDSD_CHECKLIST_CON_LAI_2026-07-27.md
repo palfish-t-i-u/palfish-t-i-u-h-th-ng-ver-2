@@ -1,3 +1,5 @@
+> ✅ **HOÀN THÀNH 27/07/2026** — Đạt làm toàn bộ 9 module (phần Đức) + 3 module còn lại của mình luôn (theo yêu cầu "xử lý hết toàn bộ phần còn lại"). 17 bài mới, 17 điểm chèn `HdsdLink` (9 module), `tsc -b`/`npm run test`/`npm run build`/bundle-leak check đều xanh, ảnh chụp thật qua Playwright trên sandbox. Tiện thể dọn thêm 9/21 bài nợ ảnh cũ (chỉ phần chụp thuần đọc, không mutate dữ liệu — xem cuối file). MODULES.md §12 đã cập nhật số liệu cuối cùng.
+
 # Checklist HDSD còn lại — 12 module (27/07/2026)
 
 > Đọc kèm `docs/HDSD_HUONG_DAN_VIET_BAI.md` (cách viết 1 bài + cách gắn HdsdLink) trước khi bắt đầu. Nguồn sự thật cho điểm chèn đã gắn: `grep -rn "<HdsdLink" frontend/src`.
@@ -122,3 +124,16 @@ File: `frontend/src/components/Module6Tab.tsx`
 
 - `module3/bao-don-kich-hoat` — cần 1 PR "sẵn sàng kích hoạt" nhưng CHƯA từng báo đơn (data sandbox hiện tại không có sẵn).
 - `reconciliation/so-tien-khong-khop` — cần 1 giao dịch lệch tiền so với lần thanh toán.
+
+## Nợ ảnh cũ (21 bài, cập nhật 27/07/2026)
+
+Đã dọn 9/21 — chỉ những bài chụp được bằng thao tác THUẦN ĐỌC (mở trang/modal xem, không submit): `module3/tong-quan`, `module4/tong-quan`, `paymentRequests/tong-quan`, `paymentRequests/tao-lan-tt-chuan` (mở modal Tạo PR, không bấm submit), `paymentRequests/xem-lich-su-pr`, `paymentRequests/xem-qr-thanh-toan`, `paymentRequests/thieu-anh-bill` (mở modal upload, không tải ảnh thật), `reconciliation/tong-quan`, `revenueLedger/tong-quan`.
+
+Còn 12 bài chưa chụp — **cố tình dừng lại** vì thao tác chụp sẽ mutate dữ liệu sandbox dùng chung cả team, hoặc cần trạng thái nghiệp vụ đặc thù khó dựng lại:
+
+- Mutate PR/AR thật: `paymentRequests/huy-pr` (huỷ PR), `paymentRequests/chuyen-giao-pr` (chuyển chủ sở hữu PR), `paymentRequests/pr-du-tien`.
+- Mutate Active Request thật: `module3/cong-buoi-gioi-thieu` (tick cộng buổi — ghi audit log), `module3/order-id-va-hold` (điền Order ID thật), `module3/them-uid-them-goi` (thêm UID thật).
+- Mutate hoá đơn/đối soát/sổ doanh thu thật: `module4/xuat-hoa-don-theo-course-code` (xuất INV thật), `reconciliation/ghep-giao-dich` (xác nhận khớp giao dịch thật), `revenueLedger/tao-sua-dong-so` (tạo/sửa dòng doanh thu thật), `revenueLedger/quy-doi-ty-gia` (thêm mốc tỷ giá thật, ảnh hưởng báo cáo).
+- Cần trạng thái nghiệp vụ đặc thù: `module3/bao-don-kich-hoat`, `reconciliation/so-tien-khong-khop` (đã treo từ trước, xem trên).
+
+Trước khi chụp 12 bài này, cần: (a) quyết định dùng bản ghi test disposable riêng thay vì data thật, hoặc (b) leader/người phụ trách xác nhận việc mutate tạm thời rồi revert là chấp nhận được.

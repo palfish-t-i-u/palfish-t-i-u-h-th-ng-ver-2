@@ -6,6 +6,8 @@ audience: ["ke-toan"]
 
 Áp dụng khi: cần hiểu tổng thể việc xác nhận tiền khách chuyển đã thực sự về tài khoản công ty.
 
+![Màn hình Đối soát giao dịch — các tab Chờ xác nhận / CK ngoài / Quẹt thẻ](/docs-images/reconciliation/tong-quan-1.png)
+
 ## Các loại đối soát
 
 | Loại | Tab | Khi nào dùng |

@@ -6,6 +6,8 @@ audience: ["ke-toan"]
 
 Áp dụng khi: cần hiểu tổng thể bước phát hành hoá đơn sau khi khoá học đã được đăng ký ở B3.
 
+![Màn hình Xuất hóa đơn: tab Chờ xuất / Đã xuất, danh sách Course Code](/docs-images/module4/tong-quan-1.png)
+
 ## Nguyên tắc
 
 - Mỗi **Course Code** (1 gói học đã đăng ký ở Kích hoạt khóa học) → **1 hoá đơn (INV)**.

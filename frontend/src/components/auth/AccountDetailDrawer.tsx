@@ -4,6 +4,7 @@ import { endpoints } from "../../lib/api";
 import { subTeamLabel } from "../../lib/subTeamLabels";
 import { Button, Input, Select } from "../ui";
 import CrmLinkModal from "./CrmLinkModal";
+import { HdsdLink } from "../help/HdsdLink";
 import "./auth-accounts.css";
 
 /* ── helpers ── */
@@ -244,6 +245,7 @@ export default function AccountDetailDrawer({ user, onClose, onUpdated, linkedCr
             </div>
           </div>
           <div className="aa-drawer-badges">
+            <HdsdLink moduleSlug="authAccounts" topicSlug="chi-tiet-tai-khoan" className="shrink-0" />
             <span className={`aa-role-badge ${currentRole.toLowerCase()}`}>
               <span className="aa-role-dot" />
               {currentRole}

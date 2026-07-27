@@ -6,6 +6,8 @@ audience: ["sale"]
 
 Áp dụng khi: cần lấy mã QR chuyển khoản của 1 lần thanh toán để gửi cho khách.
 
+![Modal QR thanh toán — mã QR, ngân hàng, số tài khoản, nội dung CK](/docs-images/paymentRequests/xem-qr-thanh-toan-1.png)
+
 ## Các bước
 
 1. Mở PR → chọn đúng lần thanh toán cần lấy QR.

@@ -17,6 +17,7 @@ import { endpoints } from "../../lib/api";
 import { TableWrap } from "../ui/Table";
 import StaffPickerModal from "./StaffPickerModal";
 import OverrideDrawer from "./OverrideDrawer";
+import { HdsdLink } from "../help/HdsdLink";
 import "./permissions.css";
 
 type TabId = "byGroup" | "override";
@@ -179,6 +180,7 @@ export default function PermissionsTab() {
     <div>
       {/* Banner */}
       <div className="pm-banner">
+        <HdsdLink moduleSlug="permissions" topicSlug="tong-quan" className="shrink-0" />
         <span>ℹ️</span>
         <span>
           Hai lớp quyền hoạt động độc lập: Phân quyền module xác định <strong>ai được vào module nào</strong>.
@@ -456,7 +458,10 @@ function OverrideTab({
     <div>
       <div className="pm-override-header">
         <div>
-          <h3>Override cá nhân</h3>
+          <h3 style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            Override cá nhân
+            <HdsdLink moduleSlug="permissions" topicSlug="override-ca-nhan" className="shrink-0" />
+          </h3>
           <p>Ghi đè quyền nhóm cho từng người cụ thể</p>
         </div>
         <button

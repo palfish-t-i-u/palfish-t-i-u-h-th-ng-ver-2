@@ -6,6 +6,8 @@ audience: ["ke-toan", "leader"]
 
 Áp dụng khi: cần hiểu tổng thể sổ ghi nhận doanh thu tổng hợp của công ty.
 
+![Màn hình Sổ doanh thu — bảng dữ liệu, thanh công cụ Làm mới/Hôm nay/Sync Data](/docs-images/revenueLedger/tong-quan-1.png)
+
 ## Nguồn dữ liệu
 
 - **Tự động** — phần lớn dòng đổ về từ Active Request/Course sau khi kích hoạt khoá học (B3), không cần nhập tay.
