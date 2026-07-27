@@ -39,9 +39,35 @@ export default function HelpArticle({ moduleSlug, topicSlug }: { moduleSlug: str
           "[&_blockquote]:border-l-2 [&_blockquote]:border-gmv-border [&_blockquote]:pl-3 [&_blockquote]:text-gmv-muted",
           "[&_a]:text-gmv-primary [&_a]:underline",
           "[&_code]:rounded [&_code]:bg-gmv-bg [&_code]:px-1 [&_code]:py-0.5 [&_code]:text-xs",
+          // Ảnh minh họa — viền + bo góc + đổ bóng nhẹ để tách khỏi nền trang
+          // (trước đây border/radius/shadow đều 0 → ảnh dính liền nền, trông thô).
+          "[&_img]:my-3 [&_img]:w-full [&_img]:rounded-gmv-md [&_img]:border [&_img]:border-gmv-border [&_img]:shadow-gmv-1",
+          // Bảng — remark-gfm đã parse đúng nhưng không có style nào đi kèm
+          // (trước đây padding 1px, border 0 → chữ dính nhau, không đọc được).
+          "[&_table]:my-3 [&_table]:w-full [&_table]:border-collapse [&_table]:text-sm",
+          "[&_thead]:bg-gmv-bg",
+          "[&_th]:border [&_th]:border-gmv-border [&_th]:px-3 [&_th]:py-2 [&_th]:text-left [&_th]:font-semibold",
+          "[&_td]:border [&_td]:border-gmv-border [&_td]:px-3 [&_td]:py-2 [&_td]:align-top",
+          "[&_hr]:my-5 [&_hr]:border-gmv-border",
+          "[&_p]:leading-relaxed",
         ].join(" ")}
       >
-        <ReactMarkdown remarkPlugins={[remarkGfm]}>{topic.body}</ReactMarkdown>
+        <ReactMarkdown
+          remarkPlugins={[remarkGfm]}
+          components={{
+            // Bọc scroll ngang riêng cho bảng — trang docs không giới hạn
+            // max-width cho <table> (để bảng nhiều cột vẫn đọc được trên
+            // desktop), nên trên mobile phải tự cuộn thay vì tràn ra ngoài
+            // khung bài, đè lên sidebar.
+            table: ({ children }) => (
+              <div className="overflow-x-auto">
+                <table>{children}</table>
+              </div>
+            ),
+          }}
+        >
+          {topic.body}
+        </ReactMarkdown>
       </div>
     </article>
   );
