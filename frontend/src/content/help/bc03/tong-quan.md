@@ -5,6 +5,8 @@ audience: ["sale", "hr"]
 ---
 Báo cáo đầy đủ nhất — KPI thủ công + doanh thu/trial/referral tự động, chia 3 tab: **Doanh thu & Order**, **Trial (L4)**, **Referral (L1.2)**.
 
+![Màn hình BC03 với ô số liệu "PalFish live" trên đầu, bộ lọc tháng/kỳ xem/team/tỷ giá, và tab Doanh thu & Order](/docs-images/bc03/tong-quan-1.png)
+
 ## Cách dùng
 
 - Chọn **tháng** cần xem (ô "Tháng KPI & tỷ giá"), rồi chọn **Cả tháng** hoặc **Theo ngày** (1 khoảng ngày cụ thể trong tháng đó).

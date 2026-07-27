@@ -5,6 +5,8 @@ audience: ["sale", "hr"]
 ---
 Bảng GMV theo **Team → Sale → từng tháng**, dữ liệu lấy từ Sổ doanh thu.
 
+![Màn hình BC01: Sales performance với bộ lọc Team/khoảng ngày và bảng GMV theo team × sale](/docs-images/bc01/tong-quan-1.png)
+
 ## Cách dùng
 
 - Lọc theo **Team** và khoảng ngày (**Từ ngày**/**Đến ngày**) — lọc theo **Pay Time** (ngày tiền thực sự về), không phải ngày chốt đơn.

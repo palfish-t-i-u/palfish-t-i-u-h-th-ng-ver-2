@@ -12,9 +12,6 @@ import { listHelpModules } from "./index";
 // này khi đã bổ sung ảnh thật cho bài đó (đừng xoá "khống" — test sẽ đỏ ngay
 // nếu ảnh chưa thực sự tồn tại trên đĩa).
 const NO_SCREENSHOT_YET = new Set([
-  "bc01/tong-quan",
-  "bc02/tong-quan",
-  "bc03/tong-quan",
   "module3/bao-don-bo-sung",
   "module3/bao-don-kich-hoat",
   "module3/cong-buoi-gioi-thieu",

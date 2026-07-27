@@ -5,6 +5,8 @@ audience: ["sale", "hr"]
 ---
 Bảng dữ liệu then chốt theo **từng ngày**: tổng số đơn, tổng GMV, và số liệu chia theo từng nguồn doanh thu (CRM/loại ghi sổ).
 
+![Màn hình BC02: Key Data với bảng tổng đơn/GMV theo ngày, chia cột theo nguồn (Quảng cáo/Offline/Giới thiệu/Kho chung)](/docs-images/bc02/tong-quan-1.png)
+
 ## Cách dùng
 
 - Lọc theo **Team** và khoảng ngày.
