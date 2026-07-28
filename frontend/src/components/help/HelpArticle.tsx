@@ -26,17 +26,17 @@ export default function HelpArticle({ moduleSlug, topicSlug }: { moduleSlug: str
     // tự replay. Phải kèm moduleSlug vì `tong-quan` trùng ở 8 module: chỉ dùng
     // topicSlug thì nhảy paymentRequests/tong-quan → module3/tong-quan giữ
     // nguyên key, mất hiệu ứng đúng ở luồng browse hay dùng nhất.
-    <article key={`${moduleSlug}/${topicSlug}`} className="min-w-0 max-w-3xl space-y-4">
+    <article key={`${moduleSlug}/${topicSlug}`} className="min-w-0 max-w-3xl space-y-5">
       <HelpBreadcrumb moduleSlug={moduleSlug} topicTitle={topic.title} />
-      <h2 className="animate-fade-in-once text-lg font-semibold text-gmv-text-strong">{topic.title}</h2>
+      <h2 className="animate-fade-in-once text-xl font-semibold text-black">{topic.title}</h2>
       <div
         className={[
-          "space-y-3 text-sm text-gmv-text",
-          "[&_h2]:mt-4 [&_h2]:text-base [&_h2]:font-semibold [&_h2]:text-gmv-text-strong",
-          "[&_h3]:mt-3 [&_h3]:text-sm [&_h3]:font-semibold [&_h3]:text-gmv-text-strong",
+          "space-y-4 text-base leading-relaxed text-black",
+          "[&_h2]:mt-5 [&_h2]:text-lg [&_h2]:font-semibold [&_h2]:text-black",
+          "[&_h3]:mt-4 [&_h3]:text-base [&_h3]:font-semibold [&_h3]:text-black",
           "[&_ul]:list-disc [&_ul]:space-y-1 [&_ul]:pl-5",
           "[&_ol]:list-decimal [&_ol]:space-y-1 [&_ol]:pl-5",
-          "[&_blockquote]:border-l-2 [&_blockquote]:border-gmv-border [&_blockquote]:pl-3 [&_blockquote]:text-gmv-muted",
+          "[&_blockquote]:border-l-2 [&_blockquote]:border-gmv-border [&_blockquote]:pl-3 [&_blockquote]:text-neutral-600",
           "[&_a]:text-gmv-primary [&_a]:underline",
           "[&_code]:rounded [&_code]:bg-gmv-bg [&_code]:px-1 [&_code]:py-0.5 [&_code]:text-xs",
           // Ảnh minh họa — viền + bo góc + đổ bóng nhẹ để tách khỏi nền trang

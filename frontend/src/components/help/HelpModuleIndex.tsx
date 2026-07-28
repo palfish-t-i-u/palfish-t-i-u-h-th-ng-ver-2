@@ -20,13 +20,13 @@ export default function HelpModuleIndex({ moduleSlug }: { moduleSlug: string }) 
   return (
     <div className="min-w-0 max-w-2xl space-y-3">
       <HelpBreadcrumb moduleSlug={moduleSlug} />
-      <h2 className="text-lg font-semibold text-gmv-text-strong">Hướng dẫn — {getModuleLabel(moduleSlug)}</h2>
+      <h2 className="text-xl font-semibold text-black">Hướng dẫn — {getModuleLabel(moduleSlug)}</h2>
       <ul className="space-y-2">
         {mod.topics.map((topic) => (
           <li key={topic.topicSlug}>
             <Link
               to={`/docs/${mod.slug}/${topic.topicSlug}`}
-              className="block w-full rounded-gmv-md border border-gmv-border px-3 py-2 text-left text-sm text-gmv-text hover:bg-gmv-bg"
+              className="block w-full rounded-gmv-md border border-gmv-border px-4 py-3 text-left text-base text-black hover:bg-gmv-bg"
             >
               {topic.title}
             </Link>
