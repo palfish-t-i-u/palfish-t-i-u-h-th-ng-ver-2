@@ -7,6 +7,7 @@ import {
 } from "../../lib/api/zaloAdmin";
 import useIsMobile from "../../hooks/useIsMobile";
 import ZaloOutboxCards from "./ZaloOutboxCards";
+import { HdsdLink } from "../help/HdsdLink";
 
 function formatDate(iso?: string | null): string {
   if (!iso) return "—";
@@ -116,6 +117,7 @@ export default function ZaloOutboxTab() {
 
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3 text-sm text-gray-500">
+          <HdsdLink moduleSlug="zaloOutbox" topicSlug="tong-quan" className="shrink-0" />
           <span>50 tin gần nhất</span>
           <span className="text-green-600">{sent} đã gửi</span>
           {pending > 0 && <span className="text-blue-600">{pending} chờ</span>}

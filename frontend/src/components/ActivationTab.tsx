@@ -26,6 +26,7 @@ import { activationAuditText, formatPaymentDateFull, formatPaymentDateTime, from
 import { downloadTaxInvoiceZip } from "../utils/taxInvoiceXlsxExport";
 import type { InvoiceRow } from "./payment-flow/paymentFlowUtils";
 import { getUidSyncState } from "./ActivationTab.uidSync";
+import { HdsdLink } from "./help/HdsdLink";
 import "../styles/prototype-payments.css";
 
 type ArTabId = "pending_order" | "activated" | "all";
@@ -196,9 +197,12 @@ function ARCreateModal({
               Bước 3 · Đăng ký khoá học cho UID khách hàng, hệ thống xuất ra Course Code dùng để đối chiếu hoá đơn.
             </div>
           </div>
-          <button type="button" className="drawer-close" onClick={onClose}>
-            <Icons.Close size={16} />
-          </button>
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <HdsdLink moduleSlug="module3" topicSlug="tao-active-request" />
+            <button type="button" className="drawer-close" onClick={onClose}>
+              <Icons.Close size={16} />
+            </button>
+          </div>
         </div>
         <div className="modal-body">
           <div className="field">
@@ -1155,11 +1159,14 @@ function ActivationDetailDrawer({
                 <h4>
                   <Icons.Wallet size={15} /> Payment Request liên kết
                 </h4>
-                {onOpenPr && (
-                  <button type="button" className="btn btn-outline btn-sm" onClick={onOpenPr}>
-                    <Icons.ChevronRight size={13} /> Mở PR
-                  </button>
-                )}
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  {onOpenPr && (
+                    <button type="button" className="btn btn-outline btn-sm" onClick={onOpenPr}>
+                      <Icons.ChevronRight size={13} /> Mở PR
+                    </button>
+                  )}
+                  <HdsdLink moduleSlug="module3" topicSlug="tao-active-request" />
+                </div>
               </div>
               <div className="act-course-grid" style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14 }}>
                 <div className="info-cell">
@@ -1712,14 +1719,17 @@ function ActivationDetailDrawer({
               >
                 <div className="modal-head">
                   <h3>Thêm UID mới</h3>
-                  <button
-                    type="button"
-                    className="drawer-close"
-                    onClick={() => !locked && setAddUidDialogOpen(false)}
-                    disabled={locked}
-                  >
-                    <Icons.Close size={16} />
-                  </button>
+                  <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                    <HdsdLink moduleSlug="module3" topicSlug="them-uid-them-goi" />
+                    <button
+                      type="button"
+                      className="drawer-close"
+                      onClick={() => !locked && setAddUidDialogOpen(false)}
+                      disabled={locked}
+                    >
+                      <Icons.Close size={16} />
+                    </button>
+                  </div>
                 </div>
                 <div className="modal-body">
                   <div className="field">
@@ -1899,6 +1909,7 @@ function ActivationDetailDrawer({
           >
             <div className="modal-head">
               <h3>Bỏ xác nhận cộng buổi</h3>
+              <HdsdLink moduleSlug="module3" topicSlug="cong-buoi-gioi-thieu" />
             </div>
             <div style={{ padding: "12px 16px", display: "flex", flexDirection: "column", gap: 10 }}>
               <div style={{ fontSize: 13, color: "var(--text-2)" }}>
@@ -2088,11 +2099,14 @@ export default function ActivationTab() {
               sang B4 xuất hoá đơn.
             </div>
           )}
-          {!readOnly && (
-            <button type="button" className="btn btn-primary" onClick={() => setCreateOpen(true)}>
-              <Icons.Plus size={15} strokeWidth={2.3} /> Tạo Active Request
-            </button>
-          )}
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            {!readOnly && (
+              <button type="button" className="btn btn-primary" onClick={() => setCreateOpen(true)}>
+                <Icons.Plus size={15} strokeWidth={2.3} /> Tạo Active Request
+              </button>
+            )}
+            <HdsdLink moduleSlug="module3" topicSlug="tong-quan" />
+          </div>
         </div>
 
         {apiNote && (
@@ -2501,7 +2515,10 @@ export default function ActivationTab() {
                     </div>
                   )}
                 </div>
-                <button className="drawer-close" onClick={dismissOrderIdConflict}>✕</button>
+                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                  <HdsdLink moduleSlug="module3" topicSlug="order-id-va-hold" />
+                  <button className="drawer-close" onClick={dismissOrderIdConflict}>✕</button>
+                </div>
               </div>
               <div className="modal-body">
                 <div style={{ display: "flex", gap: 10, alignItems: "flex-start", padding: "4px 0" }}>

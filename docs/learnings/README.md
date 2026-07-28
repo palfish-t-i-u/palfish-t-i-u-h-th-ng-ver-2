@@ -7,6 +7,7 @@ Written by the `extract-approach` skill. One insight per file.
 ## Index
 
 <!-- Add entries below: - [topic](filename.md) — one-line hook -->
+- [stale-closure-chained-setstate-clobbers-first-update](stale-closure-chained-setstate-clobbers-first-update.md) — 2 setState liên tiếp cùng handler, cả 2 dùng `{...draft}` (không phải functional updater) → lời gọi sau đè lời gọi trước; chọn Tỉnh/Thành lần đầu trong form Sửa PR mất ngay, tưởng lỗi Playwright nhưng là bug code thật
 - [oom-per-request-supabase-clients](oom-per-request-supabase-clients.md) — OOM leo đều theo traffic = per-request client churn; đọc Render metrics shape TRƯỚC khi đọc code
 - [filter-after-limit-postgrest](filter-after-limit-postgrest.md) — thêm .range() vào query có lọc hậu kỳ Python = sale mất dữ liệu; filter phải vào SQL trước limit
 - [filtered-list-index-vs-stable-line-number](filtered-list-index-vs-stable-line-number.md) — "Lần #" phải dùng line.idx BE đánh (tính cả line huỷ), không dùng index mảng đã lọc
@@ -28,3 +29,5 @@ Written by the `extract-approach` skill. One insight per file.
 - [ios-input-under-16px-autozoom-reload-chain](ios-input-under-16px-autozoom-reload-chain.md) — input `font-size<16px` → iOS auto-zoom focus → user zoom-out → iOS discard tab reload về Dashboard; fix blanket `16px !important` mobile (thắng đặc hiệu component); WebKit-only, phải test iPhone thật
 - [fold-ambiguous-chars-transfer-code-match](fold-ambiguous-chars-transfer-code-match.md) — khách gõ tay NDCK nhầm I→l (verify bằng ASCII() đừng tin mắt); fold {I,L,1}/{O,0} lúc so với guard bất đối xứng (unique + exact amount); ĐỪNG đổi alphabet generator (deterministic, đổi base = collision 2028)
 - [stale-refresh-must-not-rebuild-from-own-stale-field](stale-refresh-must-not-rebuild-from-own-stale-field.md) — nút "Cập nhật QR" no-op vì rebuild content từ `line.name_for_transfer` (chính tên CŨ stale) → new==old → early-return không ghi; detect + resolve phải đọc CÙNG nguồn (tên PR hiện tại)
+- [vite-eager-glob-bundle-leak](vite-eager-glob-bundle-leak.md) — 1 import vô hại (`hasHelpModule`) từ file eager-load kéo cả nội dung `import.meta.glob(eager:true)` vào bundle chính; lazy() component không đủ, phải chặn cả import graph — verify bằng grep string thật trong dist, không grep tên hàm (bị minify)
+- [react-router-useparams-sibling-scope](react-router-useparams-sibling-scope.md) — `useParams()` không thấy param của route con/sibling, chỉ thấy param của chính route branch đang khớp; sidebar cạnh `<Routes>` phải dùng `useLocation()` parse tay, không phải `useParams()`

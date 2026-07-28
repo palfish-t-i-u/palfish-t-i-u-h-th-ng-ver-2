@@ -26,6 +26,7 @@ import PaymentRequestTable from "./payment-request/PaymentRequestTable";
 import PaymentRequestToolbar from "./payment-request/PaymentRequestToolbar";
 import QrViewModal from "./payment-request/QrViewModal";
 import Modal from "./ui/Modal";
+import { HdsdLink } from "./help/HdsdLink";
 import TvtsFilterDropdown from "./payment-request/TvtsFilterDropdown";
 import {
   type RequestBucket,
@@ -786,11 +787,14 @@ export default function PaymentRequestsTab() {
               <strong style={{ color: "var(--text-2)" }}>nhiều lần thanh toán</strong> (chuyển khoản nhiều lần hoặc 1 lần CK cho nhiều đơn). Khi đủ 100% sẽ chuyển sang bước Active Request.
             </div>
           )}
-          {!readOnly && (
-            <button className="btn btn-primary" onClick={() => setCreateOpen(true)}>
-              <Icons.Plus size={15} strokeWidth={2.3} /> Tạo Payment Request
-            </button>
-          )}
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            {!readOnly && (
+              <button className="btn btn-primary" onClick={() => setCreateOpen(true)}>
+                <Icons.Plus size={15} strokeWidth={2.3} /> Tạo Payment Request
+              </button>
+            )}
+            <HdsdLink moduleSlug="paymentRequests" />
+          </div>
         </div>
 
         {tab !== "cancelled" && <PaymentRequestKpiCards requests={trackingRequests} />}
@@ -850,7 +854,8 @@ export default function PaymentRequestsTab() {
           showTvts={showTvts}
         />
 
-        <div style={{ display: "flex", justifyContent: "flex-end" }}>
+        <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 8 }}>
+          <HdsdLink moduleSlug="paymentRequests" topicSlug="tong-quan" />
           <button className="btn btn-outline btn-sm" onClick={() => void loadData()} disabled={loading}>
             {loading ? "Đang tải..." : "Tải lại dữ liệu"}
           </button>
@@ -900,6 +905,7 @@ export default function PaymentRequestsTab() {
         open={billModal.open}
         onClose={() => setBillModal((m) => ({ ...m, open: false }))}
         title={`Bill: ${billModal.code}`}
+        headerExtra={<HdsdLink moduleSlug="paymentRequests" topicSlug="thieu-anh-bill" />}
         wide
         overlayClassName="z-[120]"
         className="text-center"

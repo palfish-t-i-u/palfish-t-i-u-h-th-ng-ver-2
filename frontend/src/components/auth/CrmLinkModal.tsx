@@ -4,6 +4,7 @@ import { subTeamLabel } from "../../lib/subTeamLabels";
 import type { SaleStaffRow } from "../../types/profile";
 import { Button, Input, Select } from "../ui";
 import Modal from "../ui/Modal";
+import { HdsdLink } from "../help/HdsdLink";
 import "./auth-accounts.css";
 
 interface Props {
@@ -84,7 +85,13 @@ export default function CrmLinkModal({ open, onClose, onConfirm, linkedCrmNames 
   const selectedStaff = selected ? sales.find((s) => s.crmName === selected) : null;
 
   return (
-    <Modal open={open} onClose={onClose} title="Chọn Nhân sự Sale để liên kết" wide>
+    <Modal
+      open={open}
+      onClose={onClose}
+      title="Chọn Nhân sự Sale để liên kết"
+      headerExtra={<HdsdLink moduleSlug="authAccounts" topicSlug="lien-ket-crm" className="shrink-0" />}
+      wide
+    >
       {/* Filters */}
       <div className="aa-crm-modal-filters">
         <div className="aa-search">

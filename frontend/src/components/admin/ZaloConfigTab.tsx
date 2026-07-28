@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { getZaloConfig, updateZaloConfig, testZaloMessage, getZaloGroups, type ZaloConfigData, type ZaloConfigPayload, type ZaloTestPayload, type ZaloGroup } from '../../lib/api/zaloAdmin';
 import useIsMobile from '../../hooks/useIsMobile';
+import { HdsdLink } from '../help/HdsdLink';
 
 export const ZaloConfigTab: React.FC = () => {
   const isMobile = useIsMobile();
@@ -130,7 +131,10 @@ export const ZaloConfigTab: React.FC = () => {
 
   return (
     <div className="max-w-4xl mx-auto space-y-6 p-4">
-      <h2 className="text-2xl font-bold text-gray-800">Cấu Hình Zalo OA</h2>
+      <h2 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
+        Cấu Hình Zalo OA
+        <HdsdLink moduleSlug="zaloConfig" topicSlug="tong-quan" className="shrink-0" />
+      </h2>
 
       {alert && (
         <div
@@ -144,7 +148,10 @@ export const ZaloConfigTab: React.FC = () => {
 
       {/* Status Card */}
       <div className={`p-4 rounded-lg border ${statusColor} shadow-sm`}>
-        <h3 className="font-semibold text-lg mb-2">Trạng thái Token</h3>
+        <h3 className="font-semibold text-lg mb-2 flex items-center gap-2">
+          Trạng thái Token
+          <HdsdLink moduleSlug="zaloConfig" topicSlug="trang-thai-token" className="shrink-0" />
+        </h3>
         <p><strong>App ID:</strong> {configData?.app_id || 'N/A'}</p>
         <p><strong>Status:</strong> {statusText}</p>
         <p><strong>Hết hạn:</strong> {configData?.expires_at ? new Date(configData.expires_at).toLocaleString('vi-VN') : 'N/A'}</p>
@@ -228,7 +235,10 @@ export const ZaloConfigTab: React.FC = () => {
 
       {/* Test Section */}
       <div className="bg-gray-50 p-6 rounded-lg border border-gray-200">
-        <h3 className="text-lg font-semibold mb-2 text-gray-800">Kiểm tra kết nối</h3>
+        <h3 className="text-lg font-semibold mb-2 text-gray-800 flex items-center gap-2">
+          Kiểm tra kết nối
+          <HdsdLink moduleSlug="zaloConfig" topicSlug="kiem-tra-ket-noi" className="shrink-0" />
+        </h3>
         {!isMobile && (
           <p className="text-sm text-gray-600 mb-4">
             Gửi thử một tin nhắn tới nhóm Zalo để kiểm tra token hoạt động.

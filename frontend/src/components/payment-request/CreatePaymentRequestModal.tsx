@@ -10,6 +10,7 @@ import VietnamAddressFields from "./VietnamAddressFields";
 import Combobox from "../ui/Combobox";
 import numberToVietnameseWords from "../../lib/numberToWords";
 import { MoneyInput } from "../ui/MoneyInput";
+import { HdsdLink } from "../help/HdsdLink";
 
 interface FormState {
   uid: string;
@@ -166,9 +167,12 @@ export default function CreatePaymentRequestModal({
               Bước 1 · Điền thông tin khách &amp; tổng tiền dự kiến → hệ thống xuất PR-ID
             </div>
           </div>
-          <button className="drawer-close" onClick={onClose}>
-            <Icons.Close size={16} />
-          </button>
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <HdsdLink moduleSlug="paymentRequests" topicSlug="tao-lan-tt-chuan" />
+            <button className="drawer-close" onClick={onClose}>
+              <Icons.Close size={16} />
+            </button>
+          </div>
         </div>
         <div className="modal-body">
           {/* Tạo hộ: chỉ Leader/Manager thấy — PR đứng tên sale được chọn */}

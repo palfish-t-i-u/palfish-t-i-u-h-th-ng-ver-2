@@ -2,6 +2,7 @@ import type { PaymentRequest } from "../../types/paymentRequest";
 import AuditTrail from "../ui/AuditTrail";
 import OwnershipLogSection from "./OwnershipLogSection";
 import { Icons } from "./Icons";
+import { HdsdLink } from "../help/HdsdLink";
 
 /** Modal "Xem lịch sử" của 1 PR — mô phỏng nút "Xem lịch sử" trên CRM.
  *
@@ -30,9 +31,12 @@ export default function PrHistoryModal({
               </strong>
             </div>
           </div>
-          <button className="drawer-close" onClick={onClose}>
-            <Icons.Close size={16} />
-          </button>
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <HdsdLink moduleSlug="paymentRequests" topicSlug="xem-lich-su-pr" />
+            <button className="drawer-close" onClick={onClose}>
+              <Icons.Close size={16} />
+            </button>
+          </div>
         </div>
         <div className="modal-body">
           <div style={{ marginBottom: 16 }}>

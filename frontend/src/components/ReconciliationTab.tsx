@@ -29,6 +29,7 @@ import useIsMobile from "../hooks/useIsMobile";
 import ReconTxnCards from "./reconciliation/ReconTxnCards";
 import ReconBankCards from "./reconciliation/ReconBankCards";
 import { phoneMatchesQuery } from "../lib/phoneSearch";
+import { HdsdLink } from "./help/HdsdLink";
 import "../styles/prototype-payments.css";
 
 // Cutoff đợt fix 14/7: từ ngày này, tab "Chờ xác nhận" chỉ phục vụ tiền mặt.
@@ -814,10 +815,13 @@ export default function ReconciliationTab() {
   return (
     <div className="gmv-prototype">
       <div className="page page--fit">
-        <div style={{ fontSize: 12.5, color: "var(--text-3)", maxWidth: 720, lineHeight: 1.55, marginBottom: 4 }}>
-          Kế toán đối chiếu từng giao dịch với{" "}
-          <strong style={{ color: "var(--text-2)" }}>sao kê ngân hàng / phiếu thu / báo cáo POS</strong>, xác nhận khi
-          tiền đã về tài khoản PalFish. Mỗi lần xác nhận cập nhật ngay Payment Request tương ứng.
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap", marginBottom: 4 }}>
+          <div style={{ fontSize: 12.5, color: "var(--text-3)", maxWidth: 720, lineHeight: 1.55 }}>
+            Kế toán đối chiếu từng giao dịch với{" "}
+            <strong style={{ color: "var(--text-2)" }}>sao kê ngân hàng / phiếu thu / báo cáo POS</strong>, xác nhận khi
+            tiền đã về tài khoản PalFish. Mỗi lần xác nhận cập nhật ngay Payment Request tương ứng.
+          </div>
+          <HdsdLink moduleSlug="reconciliation" topicSlug="tong-quan" className="shrink-0" />
         </div>
 
         {apiNote && (
@@ -989,6 +993,7 @@ export default function ReconciliationTab() {
                 >
                   <Icons.Check size={13} strokeWidth={2.5} /> {isBulkConfirming ? "Đang xác nhận…" : "Xác nhận đã chọn"}
                 </button>
+                <HdsdLink moduleSlug="reconciliation" topicSlug="ghep-giao-dich" />
               </div>
             </div>
           )}
@@ -1003,8 +1008,9 @@ export default function ReconciliationTab() {
               </div>
             ) : (
             <div className="tbl-wrap">
-              <div style={{ padding: "10px 14px", fontSize: 12, color: "var(--text-2)", background: "var(--surface-3, #f1f5f9)", borderBottom: "1px solid var(--border)" }}>
-                Tiền vào TK công ty không khớp lần TT nào (không có mã app hoặc mã sai). Kế toán bấm <strong>Ghép</strong> để gắn vào đúng lần TT của PR.
+              <div style={{ padding: "10px 14px", fontSize: 12, color: "var(--text-2)", background: "var(--surface-3, #f1f5f9)", borderBottom: "1px solid var(--border)", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+                <span>Tiền vào TK công ty không khớp lần TT nào (không có mã app hoặc mã sai). Kế toán bấm <strong>Ghép</strong> để gắn vào đúng lần TT của PR.</span>
+                <HdsdLink moduleSlug="reconciliation" topicSlug="ghep-ck-ngoai" />
               </div>
               <table className="tbl">
                 <thead>
@@ -1752,6 +1758,7 @@ export default function ReconciliationTab() {
             onClose={() => { setBankMatchOpen(false); setBankMatchTxnId(null); }}
             title="Ghép CK ngoài → Lần thanh toán"
             extraWide
+            headerExtra={<HdsdLink moduleSlug="reconciliation" topicSlug="ghep-ck-ngoai" />}
           >
             {drawerTxn && (
               <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
@@ -1980,6 +1987,7 @@ export default function ReconciliationTab() {
         open={bankMismatchConfirm.open}
         onClose={() => setBankMismatchConfirm({ open: false, discrepancy: 0 })}
         title="Số tiền không khớp"
+        headerExtra={<HdsdLink moduleSlug="reconciliation" topicSlug="so-tien-khong-khop" />}
       >
         <div style={{ display: "flex", flexDirection: "column", gap: 14, fontSize: 14 }}>
           <div style={{
@@ -2135,9 +2143,12 @@ export default function ReconciliationTab() {
                     {bills.length} ảnh · Tick để chọn từng ảnh, hoặc "Tải tất cả"
                   </div>
                 </div>
-                <button className="drawer-close" onClick={() => setAlbumOpen(false)}>
-                  <Icons.Close size={16} />
-                </button>
+                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                  <HdsdLink moduleSlug="reconciliation" topicSlug="xem-anh-bill" />
+                  <button className="drawer-close" onClick={() => setAlbumOpen(false)}>
+                    <Icons.Close size={16} />
+                  </button>
+                </div>
               </div>
               <div
                 className="modal-body"

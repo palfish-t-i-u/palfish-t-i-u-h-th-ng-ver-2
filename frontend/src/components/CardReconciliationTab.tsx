@@ -12,6 +12,7 @@ import { endpoints } from "../lib/api";
 import DateRangeFilter, { EMPTY_RANGE, type DateRange, inDateRange } from "./payment-request/DateRangeFilter";
 import CardReconRowCards from "./card-recon/CardReconRowCards";
 import useIsMobile from "../hooks/useIsMobile";
+import { HdsdLink } from "./help/HdsdLink";
 import "../styles/prototype-payments.css";
 
 type StatusFilter = "all" | MatchStatus;
@@ -430,11 +431,14 @@ export default function CardReconciliationTab({
       )}
       <div className="page page--fit">
         {!isMobile && (
-        <div style={{ fontSize: 12.5, color: "var(--text-3)", maxWidth: 760, lineHeight: 1.55, marginBottom: 4 }}>
-          Giao dịch quẹt thẻ <strong style={{ color: "var(--text-2)" }}>mPOS</strong> &{" "}
-          <strong style={{ color: "var(--text-2)" }}>Payoo</strong> được đồng bộ tự động về đây. Kế toán đối chiếu từng
-          giao dịch với ảnh bill sales gửi rồi <strong style={{ color: "var(--text-2)" }}>ghép vào đúng lần thanh toán</strong>{" "}
-          của Payment Request.
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap", marginBottom: 4 }}>
+          <div style={{ fontSize: 12.5, color: "var(--text-3)", maxWidth: 760, lineHeight: 1.55 }}>
+            Giao dịch quẹt thẻ <strong style={{ color: "var(--text-2)" }}>mPOS</strong> &{" "}
+            <strong style={{ color: "var(--text-2)" }}>Payoo</strong> được đồng bộ tự động về đây. Kế toán đối chiếu từng
+            giao dịch với ảnh bill sales gửi rồi <strong style={{ color: "var(--text-2)" }}>ghép vào đúng lần thanh toán</strong>{" "}
+            của Payment Request.
+          </div>
+          <HdsdLink moduleSlug="reconCard" topicSlug="ghep-giao-dich-the" className="shrink-0" />
         </div>
         )}
 
@@ -459,7 +463,8 @@ export default function CardReconciliationTab({
                 Đồng bộ gần nhất: <strong>{lastSync ?? "chưa có"}</strong>
               </span>
               <span className="card-sync-desc" style={{ color: "var(--text-3)" }}>· Tự động tải định kỳ qua tiện ích trình duyệt · Bấm "Đồng bộ ngay" sẽ kéo cả mPOS lẫn Payoo</span>
-              <div className="card-sync-actions" style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
+              <div className="card-sync-actions" style={{ marginLeft: "auto", display: "flex", gap: 8, alignItems: "center" }}>
+                <HdsdLink moduleSlug="gatewaySync" topicSlug="cai-tien-ich" />
                 <button type="button" className="btn btn-outline btn-sm" onClick={() => onGoToSync?.()}>
                   <Icons.AlertCircle size={13} /> Hướng dẫn đồng bộ
                 </button>
@@ -751,6 +756,7 @@ export default function CardReconciliationTab({
               </div>
               <div style={{ display: "flex", gap: 8, alignItems: "center", flexShrink: 0 }}>
                 <StatusBadge s={drawerTxn.match_status} />
+                <HdsdLink moduleSlug="reconCard" topicSlug="ghep-giao-dich-the" />
                 <button type="button" className="drawer-close" onClick={() => setDrawerOpen(false)}>
                   <Icons.Close size={16} />
                 </button>
@@ -1082,6 +1088,7 @@ export default function CardReconciliationTab({
           <div className="modal" style={{ width: "min(440px, 92vw)" }} onClick={(e) => e.stopPropagation()}>
             <div className="modal-head">
               <h3>Số tiền không khớp</h3>
+              <HdsdLink moduleSlug="reconCard" />
             </div>
             <div style={{ padding: "12px 16px", display: "flex", flexDirection: "column", gap: 14, fontSize: 14 }}>
               <div style={{

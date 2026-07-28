@@ -49,6 +49,7 @@ import TransferSaleModal from "./TransferSaleModal";
 import PrHistoryModal from "./PrHistoryModal";
 import { MoneyInput } from "../ui/MoneyInput";
 import { findPaidLinesWithoutBill } from "./billGuardUtils";
+import { HdsdLink } from "../help/HdsdLink";
 
 const METHOD_META: Record<PaymentMethod, { cls: string; label: string; icon: IconKey; sub: string }> = {
   qr: { cls: "method-qr", label: "Chuyển khoản", icon: "QrCode", sub: "QR / chuyển khoản" },
@@ -1830,6 +1831,7 @@ export default function PaymentRequestDetailDrawer({
           </div>
           <div style={{ display: "flex", gap: 8, alignItems: "center", flexShrink: 0 }}>
             <PaymentRequestStatusBadge state={request.state} totalCount={request.totalCount} provisional={hasUnverifiedFeeLine(request)} />
+            <HdsdLink moduleSlug="paymentRequests" />
             <button className="drawer-close" onClick={onClose}>
               <Icons.Close size={16} />
             </button>
@@ -1885,7 +1887,9 @@ export default function PaymentRequestDetailDrawer({
               <h4>
                 <Icons.User size={15} /> Thông tin khách hàng (B1)
               </h4>
-              {!editing && !readOnly ? (
+              <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                <HdsdLink moduleSlug="paymentRequests" topicSlug="sua-thong-tin-khach-hang" />
+                {!editing && !readOnly ? (
                 <button
                   className="btn btn-outline btn-sm"
                   onClick={() => {
@@ -1973,6 +1977,7 @@ export default function PaymentRequestDetailDrawer({
                   </button>
                 </div>
               )}
+              </div>
             </div>
 
             {!editing && !detailLoading && request.wantsInvoice && (!request.ward || !request.address?.trim()) && (() => {
@@ -2107,7 +2112,7 @@ export default function PaymentRequestDetailDrawer({
                   <div className="info-label">UID CRM</div>
                   <input
                     value={draft.uid}
-                    onChange={(e) => setDraft({ ...draft, uid: e.target.value })}
+                    onChange={(e) => setDraft((prev) => (prev ? { ...prev, uid: e.target.value } : prev))}
                     style={{
                       border: "1px solid var(--border)",
                       borderRadius: 8,
@@ -2122,7 +2127,7 @@ export default function PaymentRequestDetailDrawer({
                   <div className="info-label">Tên khách hàng</div>
                   <input
                     value={draft.name}
-                    onChange={(e) => setDraft({ ...draft, name: e.target.value })}
+                    onChange={(e) => setDraft((prev) => (prev ? { ...prev, name: e.target.value } : prev))}
                     style={{
                       border: "1px solid var(--border)",
                       borderRadius: 8,
@@ -2136,7 +2141,7 @@ export default function PaymentRequestDetailDrawer({
                   <div className="info-label">Tên con (học viên)</div>
                   <input
                     value={draft.childName}
-                    onChange={(e) => setDraft({ ...draft, childName: e.target.value })}
+                    onChange={(e) => setDraft((prev) => (prev ? { ...prev, childName: e.target.value } : prev))}
                     placeholder="Nếu khác tên KH"
                     style={{
                       border: "1px solid var(--border)",
@@ -2150,7 +2155,7 @@ export default function PaymentRequestDetailDrawer({
                 <div className="info-cell">
                   <div className="info-label">Số điện thoại</div>
                   <div style={{ display: "flex", gap: 8 }}>
-                    <CountryCombo value={draft.country} onChange={(v) => setDraft({ ...draft, country: v })} />
+                    <CountryCombo value={draft.country} onChange={(v) => setDraft((prev) => (prev ? { ...prev, country: v } : prev))} />
                     {(() => {
                       const country = findCountry(draft.country);
                       const norm = normalizeLocalPhone(draft.phone, country);
@@ -2159,11 +2164,13 @@ export default function PaymentRequestDetailDrawer({
                           value={draft.phone}
                           onChange={(e) => {
                             const r = applySmartPhoneInput(e.target.value);
-                            setDraft({ ...draft, phone: r.phone, ...(r.countryCode ? { country: r.countryCode } : {}) });
+                            setDraft((prev) =>
+                              prev ? { ...prev, phone: r.phone, ...(r.countryCode ? { country: r.countryCode } : {}) } : prev
+                            );
                           }}
                           onBlur={() => {
                             const n = normalizeLocalPhone(draft.phone, findCountry(draft.country));
-                            if (n.value !== draft.phone) setDraft({ ...draft, phone: n.value });
+                            if (n.value !== draft.phone) setDraft((prev) => (prev ? { ...prev, phone: n.value } : prev));
                           }}
                           placeholder={country.exampleLocal}
                           style={{
@@ -2197,7 +2204,7 @@ export default function PaymentRequestDetailDrawer({
                   <input
                     type="email"
                     value={draft.email}
-                    onChange={(e) => setDraft({ ...draft, email: e.target.value })}
+                    onChange={(e) => setDraft((prev) => (prev ? { ...prev, email: e.target.value } : prev))}
                     placeholder="example@gmail.com"
                     style={{
                       border: "1px solid var(--border)",
@@ -2214,14 +2221,14 @@ export default function PaymentRequestDetailDrawer({
                     <button
                       type="button"
                       className={`btn btn-sm ${!draft.isForeign ? "btn-primary" : "btn-outline"}`}
-                      onClick={() => setDraft({ ...draft, isForeign: false, country: "VN", foreignCountry: "" })}
+                      onClick={() => setDraft((prev) => (prev ? { ...prev, isForeign: false, country: "VN", foreignCountry: "" } : prev))}
                     >
                       Khách VN
                     </button>
                     <button
                       type="button"
                       className={`btn btn-sm ${draft.isForeign ? "btn-primary" : "btn-outline"}`}
-                      onClick={() => setDraft({ ...draft, isForeign: true, wantsInvoice: false })}
+                      onClick={() => setDraft((prev) => (prev ? { ...prev, isForeign: true, wantsInvoice: false } : prev))}
                     >
                       Khách nước ngoài
                     </button>
@@ -2231,12 +2238,12 @@ export default function PaymentRequestDetailDrawer({
                   <div className="info-cell">
                     <div
                       style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer" }}
-                      onClick={() => setDraft({ ...draft, wantsInvoice: !draft.wantsInvoice })}
+                      onClick={() => setDraft((prev) => (prev ? { ...prev, wantsInvoice: !prev.wantsInvoice } : prev))}
                     >
                       <input
                         type="checkbox"
                         checked={draft.wantsInvoice}
-                        onChange={(e) => setDraft({ ...draft, wantsInvoice: e.target.checked })}
+                        onChange={(e) => setDraft((prev) => (prev ? { ...prev, wantsInvoice: e.target.checked } : prev))}
                         onClick={(e) => e.stopPropagation()}
                         style={{ accentColor: "var(--danger)", margin: 0 }}
                       />
@@ -2252,14 +2259,14 @@ export default function PaymentRequestDetailDrawer({
                     <button
                       type="button"
                       className={`btn btn-sm ${draft.customerType === "individual" ? "btn-primary" : "btn-outline"}`}
-                      onClick={() => setDraft({ ...draft, customerType: "individual", companyName: "" })}
+                      onClick={() => setDraft((prev) => (prev ? { ...prev, customerType: "individual", companyName: "" } : prev))}
                     >
                       Cá nhân
                     </button>
                     <button
                       type="button"
                       className={`btn btn-sm ${draft.customerType === "business" ? "btn-primary" : "btn-outline"}`}
-                      onClick={() => setDraft({ ...draft, customerType: "business" })}
+                      onClick={() => setDraft((prev) => (prev ? { ...prev, customerType: "business" } : prev))}
                     >
                       Doanh nghiệp
                     </button>
@@ -2270,7 +2277,7 @@ export default function PaymentRequestDetailDrawer({
                     <div className="info-label">Tên công ty</div>
                     <input
                       value={draft.companyName}
-                      onChange={(e) => setDraft({ ...draft, companyName: e.target.value })}
+                      onChange={(e) => setDraft((prev) => (prev ? { ...prev, companyName: e.target.value } : prev))}
                       placeholder="VD: Công ty TNHH ABC"
                       style={{
                         border: "1px solid var(--border)",
@@ -2286,7 +2293,7 @@ export default function PaymentRequestDetailDrawer({
                   <div className="info-label">{draft.customerType === "business" ? "MST doanh nghiệp" : "MST cá nhân"}</div>
                   <input
                     value={draft.taxId}
-                    onChange={(e) => setDraft({ ...draft, taxId: e.target.value.replace(/[^\d]/g, "") })}
+                    onChange={(e) => setDraft((prev) => (prev ? { ...prev, taxId: e.target.value.replace(/[^\d]/g, "") } : prev))}
                     placeholder="VD: 0123456789"
                     style={{
                       border: "1px solid var(--border)",
@@ -2302,7 +2309,7 @@ export default function PaymentRequestDetailDrawer({
                   <div className="info-label">Nguồn KH</div>
                   <select
                     value={draft.leadSource}
-                    onChange={(e) => setDraft({ ...draft, leadSource: e.target.value, leadChannel: "" })}
+                    onChange={(e) => setDraft((prev) => (prev ? { ...prev, leadSource: e.target.value, leadChannel: "" } : prev))}
                     style={{
                       border: "1px solid var(--border)",
                       borderRadius: 8,
@@ -2322,7 +2329,7 @@ export default function PaymentRequestDetailDrawer({
                     <div className="info-label">Kênh</div>
                     <select
                       value={draft.leadChannel}
-                      onChange={(e) => setDraft({ ...draft, leadChannel: e.target.value })}
+                      onChange={(e) => setDraft((prev) => (prev ? { ...prev, leadChannel: e.target.value } : prev))}
                       style={{
                         border: "1px solid var(--border)",
                         borderRadius: 8,
@@ -2343,7 +2350,7 @@ export default function PaymentRequestDetailDrawer({
                   {draft.isForeign ? (
                     <Combobox
                       value={draft.foreignCountry}
-                      onChange={(v) => setDraft({ ...draft, foreignCountry: v })}
+                      onChange={(v) => setDraft((prev) => (prev ? { ...prev, foreignCountry: v } : prev))}
                       options={FOREIGN_COUNTRY_OPTIONS}
                       placeholder="Chọn quốc gia"
                       emptyLabel="— Bỏ chọn —"
@@ -2354,9 +2361,9 @@ export default function PaymentRequestDetailDrawer({
                       province={draft.province}
                       ward={draft.ward}
                       address={draft.address}
-                      onProvinceChange={(v) => setDraft({ ...draft, province: v })}
-                      onWardChange={(v) => setDraft({ ...draft, ward: v })}
-                      onAddressChange={(v) => setDraft({ ...draft, address: v })}
+                      onProvinceChange={(v) => setDraft((prev) => (prev ? { ...prev, province: v } : prev))}
+                      onWardChange={(v) => setDraft((prev) => (prev ? { ...prev, ward: v } : prev))}
+                      onAddressChange={(v) => setDraft((prev) => (prev ? { ...prev, address: v } : prev))}
                     />
                   )}
                   {draft.isForeign && (
@@ -2370,7 +2377,7 @@ export default function PaymentRequestDetailDrawer({
                   <MoneyInput
                     inputRef={targetInputRef}
                     value={draft.target}
-                    onValueChange={(v) => setDraft({ ...draft, target: v })}
+                    onValueChange={(v) => setDraft((prev) => (prev ? { ...prev, target: v } : prev))}
                     style={{
                       border: highlightTarget ? "2px solid var(--warning, #f59e0b)" : "1px solid var(--border)",
                       borderRadius: 8,
@@ -2388,7 +2395,7 @@ export default function PaymentRequestDetailDrawer({
                   <div className="info-label">Ghi chú</div>
                   <textarea
                     value={draft.note}
-                    onChange={(e) => setDraft({ ...draft, note: e.target.value })}
+                    onChange={(e) => setDraft((prev) => (prev ? { ...prev, note: e.target.value } : prev))}
                     placeholder="Ghi chú nội bộ"
                     style={{
                       border: "1px solid var(--border)",
@@ -2414,15 +2421,18 @@ export default function PaymentRequestDetailDrawer({
                   <span className="num-pill">{request.payments.length}</span>
                 )}
               </h4>
-              {!showAdd && !readOnly && !detailLoading && request.state !== "cancelled" && (
-                <button
-                  className={`btn btn-sm ${isPrFull ? "btn-outline" : "btn-secondary"}`}
-                  onClick={handleAddPaymentClick}
-                  title={isPrFull ? "PR đã nhận đủ tiền — cần tăng Tổng tiền dự kiến trước khi tạo thêm lần TT" : undefined}
-                >
-                  <Icons.Plus size={13} /> Tạo lần thanh toán
-                </button>
-              )}
+              <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                <HdsdLink moduleSlug="paymentRequests" topicSlug="quan-ly-lan-thanh-toan" />
+                {!showAdd && !readOnly && !detailLoading && request.state !== "cancelled" && (
+                  <button
+                    className={`btn btn-sm ${isPrFull ? "btn-outline" : "btn-secondary"}`}
+                    onClick={handleAddPaymentClick}
+                    title={isPrFull ? "PR đã nhận đủ tiền — cần tăng Tổng tiền dự kiến trước khi tạo thêm lần TT" : undefined}
+                  >
+                    <Icons.Plus size={13} /> Tạo lần thanh toán
+                  </button>
+                )}
+              </div>
             </div>
 
             {detailLoading ? (
@@ -2728,9 +2738,15 @@ export default function PaymentRequestDetailDrawer({
                     : "Điền gói học → bấm xác nhận = báo đơn lên DingTalk (kèm bill) + tạo yêu cầu kích hoạt."}
                 </div>
               </div>
-              <button className="drawer-close" onClick={() => setArPackageModalOpen(false)}>
-                <Icons.Close size={16} />
-              </button>
+              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <HdsdLink
+                  moduleSlug="module3"
+                  topicSlug={reportBtn.isAppend ? "bao-don-bo-sung" : "bao-don-kich-hoat"}
+                />
+                <button className="drawer-close" onClick={() => setArPackageModalOpen(false)}>
+                  <Icons.Close size={16} />
+                </button>
+              </div>
             </div>
             <div className="modal-body">
               {/* Yêu cầu kích hoạt — 1 lần cho cả báo đơn (không per-gói) */}
@@ -3046,9 +3062,12 @@ export default function PaymentRequestDetailDrawer({
                   Vui lòng up bill cho các lần thanh toán dưới đây trước khi tạo yêu cầu kích hoạt.
                 </div>
               </div>
-              <button className="drawer-close" onClick={() => setMissingBillsPopupOpen(false)}>
-                <Icons.Close size={16} />
-              </button>
+              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <HdsdLink moduleSlug="paymentRequests" topicSlug="thieu-anh-bill" />
+                <button className="drawer-close" onClick={() => setMissingBillsPopupOpen(false)}>
+                  <Icons.Close size={16} />
+                </button>
+              </div>
             </div>
             <div className="modal-body">
               <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: 8 }}>
@@ -3091,9 +3110,12 @@ export default function PaymentRequestDetailDrawer({
                     </div>
                   )}
                 </div>
-                <button className="drawer-close" onClick={dismissRemindError}>
-                  <Icons.Close size={16} />
-                </button>
+                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                  <HdsdLink moduleSlug="module4" topicSlug="nhac-xuat-hoa-don" />
+                  <button className="drawer-close" onClick={dismissRemindError}>
+                    <Icons.Close size={16} />
+                  </button>
+                </div>
               </div>
               <div className="modal-body">
                 <div style={{ display: "flex", gap: 10, alignItems: "flex-start", padding: "4px 0" }}>
@@ -3128,9 +3150,12 @@ export default function PaymentRequestDetailDrawer({
           <div className="modal" style={{ width: "min(420px, 100%)" }} onClick={(e) => e.stopPropagation()}>
             <div className="modal-head">
               <div><h3>Nhắc kích hoạt khóa học gấp</h3></div>
-              <button className="drawer-close" onClick={() => setActivationNoteModalOpen(false)}>
-                <Icons.Close size={16} />
-              </button>
+              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <HdsdLink moduleSlug="module3" topicSlug="nhac-kich-hoat-gap" />
+                <button className="drawer-close" onClick={() => setActivationNoteModalOpen(false)}>
+                  <Icons.Close size={16} />
+                </button>
+              </div>
             </div>
             <div className="modal-body">
               <div style={{ fontSize: 13, color: "var(--text-2)", marginBottom: 8, lineHeight: 1.5 }}>
@@ -3171,9 +3196,12 @@ export default function PaymentRequestDetailDrawer({
           <div className="modal" style={{ width: "min(420px, 100%)" }} onClick={(e) => e.stopPropagation()}>
             <div className="modal-head">
               <div><h3>Không gửi được nhắc kích hoạt</h3></div>
-              <button className="drawer-close" onClick={dismissActivationRemindError}>
-                <Icons.Close size={16} />
-              </button>
+              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <HdsdLink moduleSlug="module3" topicSlug="nhac-kich-hoat-gap" />
+                <button className="drawer-close" onClick={dismissActivationRemindError}>
+                  <Icons.Close size={16} />
+                </button>
+              </div>
             </div>
             <div className="modal-body">
               <div style={{ display: "flex", gap: 10, alignItems: "flex-start", padding: "4px 0" }}>
@@ -3202,9 +3230,12 @@ export default function PaymentRequestDetailDrawer({
                   Đã thu {vnd(request.received)} / {vnd(request.target)}
                 </div>
               </div>
-              <button className="drawer-close" onClick={() => setPrFullModalOpen(false)}>
-                <Icons.Close size={16} />
-              </button>
+              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <HdsdLink moduleSlug="paymentRequests" topicSlug="pr-du-tien" />
+                <button className="drawer-close" onClick={() => setPrFullModalOpen(false)}>
+                  <Icons.Close size={16} />
+                </button>
+              </div>
             </div>
             <div className="modal-body">
               <div style={{ display: "flex", gap: 10, alignItems: "flex-start", padding: "4px 0" }}>

@@ -32,6 +32,7 @@ import { Input } from "./ui/Input";
 import Modal from "./ui/Modal";
 import ColumnVisibilityMenu from "./ui/ColumnVisibilityMenu";
 import ExchangeRatesPanel from "./admin/ExchangeRatesPanel";
+import { HdsdLink } from "./help/HdsdLink";
 import {
   Table,
   TableScrollWrap,
@@ -628,6 +629,7 @@ export default function SoDoanhThuTab() {
           </Button>
         )}
         {!readOnly && <Button onClick={openCreate}>+ Thêm dòng</Button>}
+        <HdsdLink moduleSlug="revenueLedger" topicSlug="tong-quan" />
       </div>
 
       <Modal
@@ -635,6 +637,7 @@ export default function SoDoanhThuTab() {
         onClose={() => setRateModalOpen(false)}
         wide
         className="max-w-4xl"
+        headerExtra={<HdsdLink moduleSlug="revenueLedger" topicSlug="quy-doi-ty-gia" />}
       >
         <ExchangeRatesPanel />
       </Modal>

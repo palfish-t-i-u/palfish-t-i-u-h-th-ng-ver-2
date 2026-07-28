@@ -3,6 +3,7 @@ import { Icons } from "./payment-request/Icons";
 import { formatPaymentDateFull } from "./payment-request/paymentRequestUtils";
 import { EXT_VERSION_KEY, LAST_SYNC_AT, getExtVersion, isExtInstalled, setExtInstalled } from "./card-recon/mockGatewayTxns";
 import Modal from "./ui/Modal";
+import { HdsdLink } from "./help/HdsdLink";
 import "../styles/prototype-payments.css";
 
 const FIRST_SEEN_STORAGE_KEY = "gw_ext_first_seen";
@@ -251,6 +252,7 @@ export default function GatewaySyncTab() {
         {/* Page header: description + channel badges */}
         <div className="gateway-header-row" style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, marginBottom: 12 }}>
           <div style={{ fontSize: 12.5, color: "var(--text-3)", maxWidth: 720, lineHeight: 1.55 }}>
+            <HdsdLink moduleSlug="gatewaySync" topicSlug="tong-quan" className="shrink-0" />{" "}
             Cài <strong style={{ color: "var(--text-2)" }}>1 lần</strong> tiện ích trình duyệt để app tự kéo giao dịch{" "}
             <strong style={{ color: "var(--text-2)" }}>mPOS</strong> & <strong style={{ color: "var(--text-2)" }}>Payoo</strong>{" "}
             về. Tiện ích dùng phiên đăng nhập sẵn của bạn — không cần nhập lại mật khẩu, không lưu mật khẩu ở đâu.
@@ -416,7 +418,10 @@ export default function GatewaySyncTab() {
         {/* Tải + hướng dẫn cài */}
         <div className="panel" style={{ padding: 16 }}>
           <div className="panel-head" style={{ marginBottom: 12, display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
-            <h4>Cài tiện ích đồng bộ</h4>
+            <h4 style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              Cài tiện ích đồng bộ
+              <HdsdLink moduleSlug="gatewaySync" topicSlug="cai-tien-ich" className="shrink-0" />
+            </h4>
             <a
               className="btn btn-primary btn-sm"
               href="/palfish-gmv-sync.zip"

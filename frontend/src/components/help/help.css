@@ -1,0 +1,47 @@
+/* frontend/src/components/help/help.css */
+
+/* Nháy nhẹ 1 lần khi vừa điều hướng tới 1 bài viết mới — giúp mắt bắt được
+   thay đổi ngay cả khi vừa bấm HdsdLink từ 1 popup ở chỗ khác trên màn hình. */
+@keyframes helpFadeInOnce {
+  from {
+    opacity: 0;
+    transform: translateY(2px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in-once {
+  animation: helpFadeInOnce 0.35s ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-fade-in-once {
+    animation: none;
+  }
+}
+
+/* Nháy nền module vừa mở trong cây sidebar. Chỉ cuộn vào khung nhìn là chưa đủ:
+   người dùng vừa bấm HDSD ở header/popup bên vùng nội dung, mắt không ở sidebar
+   nên vẫn dễ tưởng "bấm không có gì xảy ra". */
+@keyframes helpFlash {
+  0% {
+    background-color: var(--gmv-primary-soft, rgba(99, 102, 241, 0.14));
+  }
+  100% {
+    background-color: transparent;
+  }
+}
+
+.animate-help-flash {
+  animation: helpFlash 1.1s ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-help-flash {
+    animation: none;
+    background-color: var(--gmv-primary-soft, rgba(99, 102, 241, 0.14));
+  }
+}

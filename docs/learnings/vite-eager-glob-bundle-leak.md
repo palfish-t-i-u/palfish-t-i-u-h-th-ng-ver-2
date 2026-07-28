@@ -1,0 +1,13 @@
+# Eager `import.meta.glob` leaks into any chunk that imports its module
+
+**Related files:** `frontend/src/content/help/index.ts`, `frontend/src/pages/MainPage.tsx`, `frontend/vite.config.ts`
+
+**Problem:** Stakeholder wanted the HDSD docs system (30+ markdown articles, growing) moved out of the main app because "more modules/screenshots will make the app slower over time." Needed to guarantee docs content never bloats the main bundle, no matter how much content gets added later.
+
+**Trap:** Assuming that wrapping the *rendering component* (`HelpArticle`, `DocsLayout`) in `React.lazy()` is enough to isolate a content-heavy feature. It isn't — `MainPage.tsx` (never lazy, loaded on every page) had one innocuous-looking line: `import { hasHelpModule } from "../content/help"` to decide whether to show a header link. That loader uses `import.meta.glob("./**/*.md", { eager: true })`, which inlines the full text of *every* matched file as a JS string literal directly into whichever chunk imports the module — Vite doesn't know or care that only `hasHelpModule()`'s boolean return value was actually used. One import of an eager-glob module from an eager-loaded file drags the entire glob's content along with it, defeating any amount of `lazy()`-wrapping done elsewhere.
+
+**Insight:** Code-splitting isolation is a property of the **import graph**, not of which components happen to be wrapped in `lazy()`. `eager: true` glob content becomes part of the bundle of every chunk that has a static import path to that module, transitively. The fix here was to delete the cross-boundary import entirely (render the header link unconditionally instead of checking `hasHelpModule()`), so nothing in the eager path imports `content/help/*` at all.
+
+**Rule:** Before trusting that a `React.lazy()` boundary isolates a content-heavy module, grep for every import of that module's package: `grep -rn "from .*content/help" frontend/src/pages frontend/src/layouts` (adjust path per feature) and confirm zero hits outside the lazy chunk's own files. After a production build, verify directly: pick a distinctive string only present in the heavy content, then `grep -l "<distinctive string>" dist/assets/*.js` — it must appear in exactly the lazy chunk, never in `index-*.js`. Don't rely on function/variable name greps post-build (minification renames identifiers) — only string-literal content survives minification unchanged, so that's the reliable post-build check.
+
+**Verify:** `cd frontend && npm run build && grep -l "khách đã chốt gói học" dist/assets/index-*.js` should print nothing (exit non-zero from grep); the same string should be found in `dist/assets/DocsLayout-*.js`.
