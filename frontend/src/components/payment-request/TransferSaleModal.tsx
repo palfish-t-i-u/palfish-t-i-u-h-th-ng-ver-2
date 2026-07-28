@@ -4,6 +4,7 @@ import { endpoints } from "../../lib/api";
 import { useMe } from "../../hooks/useMe";
 import Combobox from "../ui/Combobox";
 import { Icons } from "./Icons";
+import { HdsdLink } from "../help/HdsdLink";
 
 const LEAD_ROLES = new Set(["leader", "manager", "system"]);
 
@@ -103,9 +104,12 @@ export default function TransferSaleModal({
               {" · "}KH: {pr.name}
             </div>
           </div>
-          <button className="drawer-close" onClick={onClose}>
-            <Icons.Close size={16} />
-          </button>
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <HdsdLink moduleSlug="paymentRequests" topicSlug="chuyen-giao-pr" />
+            <button className="drawer-close" onClick={onClose}>
+              <Icons.Close size={16} />
+            </button>
+          </div>
         </div>
         <div className="modal-body">
           <div className="field">

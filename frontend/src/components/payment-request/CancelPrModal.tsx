@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import type { PaymentRequest } from "../../types/paymentRequest";
 import { Icons } from "./Icons";
 import { displayReceived, hasUnverifiedInstallment, vnd } from "./paymentRequestUtils";
+import { HdsdLink } from "../help/HdsdLink";
 
 export default function CancelPrModal({
   pr,
@@ -39,9 +40,12 @@ export default function CancelPrModal({
               </div>
             </div>
           </div>
-          <button className="drawer-close" onClick={onClose}>
-            <Icons.Close size={16} />
-          </button>
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <HdsdLink moduleSlug="paymentRequests" topicSlug="huy-pr" />
+            <button className="drawer-close" onClick={onClose}>
+              <Icons.Close size={16} />
+            </button>
+          </div>
         </div>
         <div className="modal-body" style={{ gap: 16 }}>
           <div

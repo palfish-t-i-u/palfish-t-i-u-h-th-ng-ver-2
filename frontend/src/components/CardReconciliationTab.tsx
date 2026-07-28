@@ -1,17 +1,20 @@
 import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
 import { Icons } from "./payment-request/Icons";
 import { formatPaymentDateFull, formatPaymentDateTime, vnd } from "./payment-request/paymentRequestUtils";
+import { formatPhoneIntl } from "./payment-request/phoneUtils";
 import {
   isExtInstalled,
   type GatewaySource,
   type GatewayTxn,
   type MatchCandidate,
+  type MatchedPr,
   type MatchStatus,
 } from "./card-recon/mockGatewayTxns";
 import { endpoints } from "../lib/api";
 import DateRangeFilter, { EMPTY_RANGE, type DateRange, inDateRange } from "./payment-request/DateRangeFilter";
 import CardReconRowCards from "./card-recon/CardReconRowCards";
 import useIsMobile from "../hooks/useIsMobile";
+import { HdsdLink } from "./help/HdsdLink";
 import "../styles/prototype-payments.css";
 
 type StatusFilter = "all" | MatchStatus;
@@ -60,6 +63,61 @@ function StatusBadge({ s }: { s: MatchStatus }) {
       <span className="dot" />
       {m.text}
     </span>
+  );
+}
+
+const chipStyle = (kind: "ok" | "warn"): CSSProperties => ({
+  fontSize: 10.5,
+  padding: "1px 6px",
+  borderRadius: 4,
+  fontWeight: 600,
+  background: kind === "ok" ? "var(--success-bg, #dcfce7)" : "var(--warning-bg, #fef9c3)",
+  color: kind === "ok" ? "var(--success-text, #166534)" : "var(--warning-text, #92400e)",
+});
+
+/** Card PR đã ghép — hiển thị đủ thông tin như bên đối soát CK (yêu cầu Hiền 28/7). */
+function MatchedPrCard({ pr, txnAmount }: { pr: MatchedPr; txnAmount: number }) {
+  const exactAmount = Math.abs(pr.amount - txnAmount) < 1;
+  const methodLabel = pr.method === "installment" ? "Trả góp" : pr.method === "card" ? "Quẹt thẻ" : pr.method;
+  return (
+    <div
+      style={{
+        border: "2px solid var(--success-text, #16a34a)",
+        background: "var(--success-bg)",
+        borderRadius: 10,
+        padding: "12px 14px",
+      }}
+    >
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+        <span style={{ display: "flex", alignItems: "center", gap: 6, fontWeight: 700, fontSize: 15, color: "var(--success-text)" }}>
+          <Icons.CheckCircle size={16} /> {pr.pr_name || pr.pr_id}
+        </span>
+        <span style={{ fontWeight: 700, fontSize: 15, color: "var(--success-text)" }}>
+          {vnd(pr.amount)}{exactAmount && " ✓"}
+        </span>
+      </div>
+      <div style={{ fontSize: 13, color: "var(--text)", marginTop: 4 }}>
+        <strong>{pr.pr_id}</strong>
+        {pr.pr_uid ? <> · UID <strong>{pr.pr_uid}</strong></> : null}
+        {pr.pr_phone ? <> · {pr.pr_country ? formatPhoneIntl(pr.pr_country, pr.pr_phone) : pr.pr_phone}</> : null}
+      </div>
+      {(pr.child_name || pr.sale_name || pr.team_name) && (
+        <div style={{ fontSize: 13, color: "var(--text)", marginTop: 3 }}>
+          {pr.child_name ? <>Con: <strong>{pr.child_name}</strong></> : null}
+          {pr.child_name && (pr.sale_name || pr.team_name) ? " · " : ""}
+          {pr.sale_name ? <>Sale: <strong>{pr.sale_name}</strong></> : null}
+          {pr.sale_name && pr.team_name ? " · " : ""}
+          {pr.team_name ? <>Team: <strong>{pr.team_name}</strong></> : null}
+        </div>
+      )}
+      <div style={{ fontSize: 12, color: "var(--text-2)", marginTop: 3 }}>
+        {methodLabel}{pr.status ? ` · ${pr.status}` : ""}{pr.created_at ? ` · ${formatPaymentDateFull(pr.created_at)}` : ""}
+      </div>
+      <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginTop: 6 }}>
+        {exactAmount && <span style={chipStyle("ok")}>Cùng số tiền</span>}
+        <span style={chipStyle(pr.has_bill ? "ok" : "warn")}>{pr.has_bill ? "Có bill" : "Chưa có bill"}</span>
+      </div>
+    </div>
   );
 }
 
@@ -430,11 +488,14 @@ export default function CardReconciliationTab({
       )}
       <div className="page page--fit">
         {!isMobile && (
-        <div style={{ fontSize: 12.5, color: "var(--text-3)", maxWidth: 760, lineHeight: 1.55, marginBottom: 4 }}>
-          Giao dịch quẹt thẻ <strong style={{ color: "var(--text-2)" }}>mPOS</strong> &{" "}
-          <strong style={{ color: "var(--text-2)" }}>Payoo</strong> được đồng bộ tự động về đây. Kế toán đối chiếu từng
-          giao dịch với ảnh bill sales gửi rồi <strong style={{ color: "var(--text-2)" }}>ghép vào đúng lần thanh toán</strong>{" "}
-          của Payment Request.
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap", marginBottom: 4 }}>
+          <div style={{ fontSize: 12.5, color: "var(--text-3)", maxWidth: 760, lineHeight: 1.55 }}>
+            Giao dịch quẹt thẻ <strong style={{ color: "var(--text-2)" }}>mPOS</strong> &{" "}
+            <strong style={{ color: "var(--text-2)" }}>Payoo</strong> được đồng bộ tự động về đây. Kế toán đối chiếu từng
+            giao dịch với ảnh bill sales gửi rồi <strong style={{ color: "var(--text-2)" }}>ghép vào đúng lần thanh toán</strong>{" "}
+            của Payment Request.
+          </div>
+          <HdsdLink moduleSlug="reconCard" topicSlug="ghep-giao-dich-the" className="shrink-0" />
         </div>
         )}
 
@@ -459,7 +520,8 @@ export default function CardReconciliationTab({
                 Đồng bộ gần nhất: <strong>{lastSync ?? "chưa có"}</strong>
               </span>
               <span className="card-sync-desc" style={{ color: "var(--text-3)" }}>· Tự động tải định kỳ qua tiện ích trình duyệt · Bấm "Đồng bộ ngay" sẽ kéo cả mPOS lẫn Payoo</span>
-              <div className="card-sync-actions" style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
+              <div className="card-sync-actions" style={{ marginLeft: "auto", display: "flex", gap: 8, alignItems: "center" }}>
+                <HdsdLink moduleSlug="gatewaySync" topicSlug="cai-tien-ich" />
                 <button type="button" className="btn btn-outline btn-sm" onClick={() => onGoToSync?.()}>
                   <Icons.AlertCircle size={13} /> Hướng dẫn đồng bộ
                 </button>
@@ -751,6 +813,7 @@ export default function CardReconciliationTab({
               </div>
               <div style={{ display: "flex", gap: 8, alignItems: "center", flexShrink: 0 }}>
                 <StatusBadge s={drawerTxn.match_status} />
+                <HdsdLink moduleSlug="reconCard" topicSlug="ghep-giao-dich-the" />
                 <button type="button" className="drawer-close" onClick={() => setDrawerOpen(false)}>
                   <Icons.Close size={16} />
                 </button>
@@ -813,21 +876,25 @@ export default function CardReconciliationTab({
                   <div className="panel-head" style={{ marginBottom: 10 }}>
                     <h4>Đã ghép</h4>
                   </div>
-                  <div
-                    style={{
-                      background: "var(--success-bg)",
-                      color: "var(--success-text)",
-                      borderRadius: 10,
-                      padding: "12px 14px",
-                      fontSize: 13.5,
-                      fontWeight: 600,
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 8,
-                    }}
-                  >
-                    <Icons.CheckCircle size={16} /> {drawerTxn.matched_label}
-                  </div>
+                  {drawerTxn.matched_pr ? (
+                    <MatchedPrCard pr={drawerTxn.matched_pr} txnAmount={drawerTxn.amount} />
+                  ) : (
+                    <div
+                      style={{
+                        background: "var(--success-bg)",
+                        color: "var(--success-text)",
+                        borderRadius: 10,
+                        padding: "12px 14px",
+                        fontSize: 13.5,
+                        fontWeight: 600,
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 8,
+                      }}
+                    >
+                      <Icons.CheckCircle size={16} /> {drawerTxn.matched_label}
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div className="panel" style={{ padding: 16 }}>
@@ -1082,6 +1149,7 @@ export default function CardReconciliationTab({
           <div className="modal" style={{ width: "min(440px, 92vw)" }} onClick={(e) => e.stopPropagation()}>
             <div className="modal-head">
               <h3>Số tiền không khớp</h3>
+              <HdsdLink moduleSlug="reconCard" />
             </div>
             <div style={{ padding: "12px 16px", display: "flex", flexDirection: "column", gap: 14, fontSize: 14 }}>
               <div style={{

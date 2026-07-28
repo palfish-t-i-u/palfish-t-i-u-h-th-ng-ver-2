@@ -20,6 +20,7 @@ import { endpoints } from "../lib/api";
 import "../styles/prototype-payments.css";
 import useIsMobile from "../hooks/useIsMobile";
 import InvoiceRowCards from "./invoice/InvoiceRowCards";
+import { HdsdLink } from "./help/HdsdLink";
 
 const CUSTOMER_TYPE_META = {
   individual: { label: "Cá nhân", cls: "is-active" },
@@ -111,6 +112,7 @@ function InvoiceDetailDrawer({
             </div>
           </div>
           <div style={{ display: "flex", gap: 8, alignItems: "center", flexShrink: 0 }}>
+            <HdsdLink moduleSlug="module4" topicSlug="xuat-hoa-don-theo-course-code" />
             <button type="button" className="drawer-close" onClick={onClose}>
               <Icons.Close size={16} />
             </button>
@@ -362,9 +364,12 @@ export default function InvoiceRequestTab() {
     <div className="gmv-prototype">
       <div className="page">
         {!isMobile && (
-          <div style={{ fontSize: 12.5, color: "var(--text-3)", maxWidth: 720, lineHeight: 1.55, marginBottom: 4 }}>
-            Mỗi <strong style={{ color: "var(--text-2)" }}>Course Code</strong> có Order ID → một hoá đơn (INV). Sau xuất, tải{" "}
-            <strong style={{ color: "var(--text-2)" }}>ZIP 3 file Excel</strong> kê khai thuế (don_hang, khach_hang, san_pham).
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap", marginBottom: 4 }}>
+            <div style={{ fontSize: 12.5, color: "var(--text-3)", maxWidth: 720, lineHeight: 1.55 }}>
+              Mỗi <strong style={{ color: "var(--text-2)" }}>Course Code</strong> có Order ID → một hoá đơn (INV). Sau xuất, tải{" "}
+              <strong style={{ color: "var(--text-2)" }}>ZIP 3 file Excel</strong> kê khai thuế (don_hang, khach_hang, san_pham).
+            </div>
+            <HdsdLink moduleSlug="module4" topicSlug="tong-quan" className="shrink-0" />
           </div>
         )}
 
@@ -559,6 +564,7 @@ export default function InvoiceRequestTab() {
                 >
                   <Icons.Doc size={13} /> {bulkExporting ? "Đang xuất…" : "Xuất hóa đơn hàng loạt"}
                 </button>
+                <HdsdLink moduleSlug="module4" topicSlug="xuat-hoa-don-theo-course-code" />
               </div>
             </div>
           )}

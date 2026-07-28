@@ -10,6 +10,7 @@ import VietnamAddressFields from "./VietnamAddressFields";
 import Combobox from "../ui/Combobox";
 import numberToVietnameseWords from "../../lib/numberToWords";
 import { MoneyInput } from "../ui/MoneyInput";
+import { HdsdLink } from "../help/HdsdLink";
 
 interface FormState {
   uid: string;
@@ -108,7 +109,9 @@ export default function CreatePaymentRequestModal({
   const emailTrimmed = form.email.trim();
   const emailValid = emailTrimmed === "" || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailTrimmed);
 
-  // Địa chỉ bắt buộc khi tạo PR:
+  // Địa chỉ KHÔNG bắt buộc khi tạo PR cho khách VN (anh Hiếu 11/7 "Tạo PR cực nhanh" —
+  // chỉ SĐT + Tên + Số tiền + Nguồn; địa chỉ bổ sung sau). Chỉ khách nước ngoài phải chọn
+  // quốc gia. Địa chỉ VN được siết ở bước SAU: Kích hoạt (Tỉnh+Phường) và Xuất HĐ (đủ 3 ô).
   const addressOk = form.isForeign
     ? !!form.foreignCountry
     : true;
@@ -166,9 +169,12 @@ export default function CreatePaymentRequestModal({
               Bước 1 · Điền thông tin khách &amp; tổng tiền dự kiến → hệ thống xuất PR-ID
             </div>
           </div>
-          <button className="drawer-close" onClick={onClose}>
-            <Icons.Close size={16} />
-          </button>
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <HdsdLink moduleSlug="paymentRequests" topicSlug="tao-lan-tt-chuan" />
+            <button className="drawer-close" onClick={onClose}>
+              <Icons.Close size={16} />
+            </button>
+          </div>
         </div>
         <div className="modal-body">
           {/* Tạo hộ: chỉ Leader/Manager thấy — PR đứng tên sale được chọn */}

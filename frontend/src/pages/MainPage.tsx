@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import AuthAccountsTab from "../components/AuthAccountsTab";
 import PermissionsTab from "../components/permissions/PermissionsTab";
 import Module5Tab from "../components/Module5Tab";
@@ -12,19 +12,7 @@ import AppShell, { type NavChildItem, type NavItem } from "../layouts/AppShell";
 import Badge from "../components/ui/Badge";
 import { DEPARTMENT_LIST } from "../types/permissions";
 import NotificationBell from "../components/NotificationBell";
-
-function retryImport<T>(load: () => Promise<T>, retries: number): Promise<T> {
-  return load().catch((err) => {
-    if (retries <= 0) throw err;
-    return new Promise<T>((resolve) =>
-      setTimeout(() => resolve(retryImport(load, retries - 1)), 1000),
-    );
-  });
-}
-
-function lazyRetry<P extends object = object>(load: () => Promise<{ default: React.ComponentType<P> }>) {
-  return lazy(() => retryImport(load, 2));
-}
+import { lazyRetry } from "../lib/lazyRetry";
 
 const BC01SalesPerformance = lazyRetry(() => import("../components/reports/BC01SalesPerformance"));
 const BC02KeyDataReport = lazyRetry(() => import("../components/reports/BC02KeyDataReport"));
@@ -433,6 +421,7 @@ function MainPageInner({
       isDevMode={isDevMode}
       onSignOut={signOut}
       headerExtras={<NotificationBell onNavigate={(view) => setActiveView(view as ViewId)} />}
+      helpModuleSlug={activeView}
     >
       <Suspense fallback={<ViewFallback />}>{renderActiveView()}</Suspense>
     </AppShell>

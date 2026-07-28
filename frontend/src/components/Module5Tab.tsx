@@ -3,6 +3,7 @@ import { endpoints } from "../lib/api";
 import { supabase } from "../lib/supabase";
 import { usePermission } from "../hooks/usePermission";
 import Button from "./ui/Button";
+import { HdsdLink } from "./help/HdsdLink";
 
 function todayStr() {
   return new Date().toISOString().slice(0, 10);
@@ -216,12 +217,15 @@ export default function Module5Tab() {
           <span className="text-xs font-semibold uppercase tracking-wider text-gmv-text-strong">
             Trạng thái kết nối CRM
           </span>
-          <button
-            onClick={checkToken}
-            className="text-xs text-gmv-primary hover:underline transition"
-          >
-            Làm mới
-          </button>
+          <div className="flex items-center gap-2">
+            <HdsdLink moduleSlug="module5" topicSlug="tong-quan" />
+            <button
+              onClick={checkToken}
+              className="text-xs text-gmv-primary hover:underline transition"
+            >
+              Làm mới
+            </button>
+          </div>
         </div>
         <TokenStatus hasToken={hasToken} updatedAt={tokenUpdatedAt} />
       </div>
@@ -237,6 +241,7 @@ export default function Module5Tab() {
                 Soi 60 ngày gần nhất trong DB, chỉ sync những ngày chưa có dữ liệu.
               </p>
             </div>
+            <HdsdLink moduleSlug="module5" topicSlug="phat-hien-ngay-thieu" className="shrink-0" />
             <button
               onClick={checkMissing}
               disabled={missingLoading}

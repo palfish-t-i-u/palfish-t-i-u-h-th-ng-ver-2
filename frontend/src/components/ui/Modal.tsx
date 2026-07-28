@@ -6,6 +6,8 @@ interface Props {
   open: boolean;
   onClose: () => void;
   title?: string;
+  /** Nội dung phụ đặt góc trên-phải header (vd. HdsdLink) — không ảnh hưởng layout title khi bỏ trống. */
+  headerExtra?: ReactNode;
   children: ReactNode;
   className?: string;
   overlayClassName?: string;
@@ -13,7 +15,7 @@ interface Props {
   extraWide?: boolean;
 }
 
-export default function Modal({ open, onClose, title, children, className, overlayClassName, wide, extraWide }: Props) {
+export default function Modal({ open, onClose, title, headerExtra, children, className, overlayClassName, wide, extraWide }: Props) {
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
@@ -33,7 +35,7 @@ export default function Modal({ open, onClose, title, children, className, overl
     >
       <div
         className={cn(
-          "max-h-[90vh] w-full overflow-y-auto rounded-gmv-lg bg-gmv-canvas p-6 shadow-gmv-2",
+          "relative max-h-[90vh] w-full overflow-y-auto rounded-gmv-lg bg-gmv-canvas p-6 shadow-gmv-2",
           "max-md:max-h-[92vh] max-md:max-w-none max-md:rounded-b-none max-md:p-4",
           extraWide ? "max-w-5xl" : wide ? "max-w-3xl" : "max-w-lg",
           className
@@ -43,6 +45,7 @@ export default function Modal({ open, onClose, title, children, className, overl
         aria-modal="true"
         aria-labelledby={title ? "gmv-modal-title" : undefined}
       >
+        {headerExtra && <div className="absolute right-4 top-4">{headerExtra}</div>}
         {title && (
           <h2 id="gmv-modal-title" className="mb-4 text-center text-lg font-semibold text-gmv-primary">
             {title}

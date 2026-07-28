@@ -491,12 +491,19 @@
   transform: translate(-50%, -50%) scale(0.96);
   transition: transform 200ms cubic-bezier(.4, 0, .2, 1), opacity 200ms;
   opacity: 0;
+  /* Đóng: opacity:0 nhưng panel VẪN ở giữa viewport (transform translate) + z-index 60.
+     drawerId KHÔNG bị xoá khi đóng → aside vẫn render full content (cao ~400-600px).
+     Thiếu pointer-events:none = panel vô hình nuốt click toàn bộ vùng giữa (toolbar/hàng)
+     sau khi mở drawer 1 lần → "bộ lọc chết, phải chuyển tab mới bấm lại được".
+     Mirror đúng fix bản mobile (@media max-767, "nếu không tab chết"). */
+  pointer-events: none;
   box-shadow: 0 24px 70px rgba(20, 22, 36, 0.28);
   overflow: hidden;
 }
 .gmv-prototype .drawer.drawer-center.open {
   transform: translate(-50%, -50%) scale(1);
   opacity: 1;
+  pointer-events: auto;
 }
 .gmv-prototype .drawer.drawer-center .drawer-head { padding: 20px 28px; }
 .gmv-prototype .drawer.drawer-center .drawer-body { padding: 20px 28px; overflow-y: auto; flex: 1; }

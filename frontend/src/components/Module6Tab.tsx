@@ -13,6 +13,7 @@ import { fromApiExchangeRate } from "../types/exchangeRate";
 import useIsMobile from "../hooks/useIsMobile";
 import SaleDetailCards from "./SaleDetailCards";
 import { SALE_DETAIL_COLUMNS, detailCellValue } from "../lib/saleDetailColumns";
+import { HdsdLink } from "./help/HdsdLink";
 
 // --------------------------------------------------------------------------
 // Helpers
@@ -227,11 +228,14 @@ export default function Module6Tab() {
 
       {/* ── HEADER & FILTERS ── */}
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h2 className="text-lg font-bold text-gmv-text-strong">Sale Leader / System</h2>
-          <p className="text-xs text-gmv-muted">
-            {period ? `${period.start} → ${period.end}` : "Dashboard tổng quan hiệu suất Sale"}
-          </p>
+        <div className="flex items-start gap-2">
+          <div>
+            <h2 className="text-lg font-bold text-gmv-text-strong">Sale Leader / System</h2>
+            <p className="text-xs text-gmv-muted">
+              {period ? `${period.start} → ${period.end}` : "Dashboard tổng quan hiệu suất Sale"}
+            </p>
+          </div>
+          <HdsdLink moduleSlug="module6" topicSlug="tong-quan" className="shrink-0" />
         </div>
         <div className="flex flex-wrap gap-2">
           {/* Date range tabs */}

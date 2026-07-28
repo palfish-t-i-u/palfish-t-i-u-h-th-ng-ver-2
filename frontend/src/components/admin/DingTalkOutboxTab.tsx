@@ -7,6 +7,7 @@ import {
 } from '../../lib/api/dingtalkAdmin';
 import useIsMobile from '../../hooks/useIsMobile';
 import DingTalkOutboxCards from './DingTalkOutboxCards';
+import { HdsdLink } from '../help/HdsdLink';
 
 export const DingTalkOutboxTab: React.FC = () => {
   const isMobile = useIsMobile();
@@ -50,7 +51,10 @@ export const DingTalkOutboxTab: React.FC = () => {
   return (
     <div className="max-w-6xl mx-auto p-4 space-y-4">
       <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-bold text-gray-800">DingTalk — Outbox (50 gần nhất)</h2>
+        <h2 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
+          DingTalk — Outbox (50 gần nhất)
+          <HdsdLink moduleSlug="dingtalkOutbox" topicSlug="tong-quan" className="shrink-0" />
+        </h2>
         <button onClick={fetchRows} className="px-3 py-1 text-sm border rounded hover:bg-gray-50">Refresh</button>
       </div>
 
