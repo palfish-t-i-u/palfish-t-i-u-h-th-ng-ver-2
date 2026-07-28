@@ -474,6 +474,25 @@ export function reportButtonState(args: {
   return { enabled: false, label: arLabel, title: arLabel, isAppend: false };
 }
 
+/**
+ * Địa chỉ tối thiểu để Ops tạo được gói học trên CRM cho số Việt Nam (đầu 84-).
+ * CRM chỉ bắt buộc "Tỉnh/TP + Quận/Huyện" (ô có dấu * đỏ) — KHÔNG cần Số nhà/Căn.
+ * Map field app: cần `province` (Tỉnh/TP) + `ward` (Phường/Xã). Khách nước ngoài
+ * (country != "VN") → CRM chỉ cần quốc gia (đã bắt lúc tạo PR) nên coi như luôn đủ.
+ *
+ * ⚠ Định mức này LỎNG HƠN `_invoice_address_complete` / `getInvoiceBlockers`
+ * (bước Xuất HĐ còn cần cả Số nhà). Cố ý tách 2 luật — đừng gộp làm một.
+ */
+export function activationAddressComplete(args: {
+  country?: string | null;
+  province?: string | null;
+  ward?: string | null;
+}): boolean {
+  const isForeign = (args.country || "VN") !== "VN";
+  if (isForeign) return true;
+  return Boolean((args.province || "").trim() && (args.ward || "").trim());
+}
+
 export type ReferralStatus = "none" | "partial" | "full";
 
 export const REFERRAL_STATUS_PANEL_STYLE: Record<ReferralStatus, CSSProperties> = {

@@ -109,7 +109,9 @@ export default function CreatePaymentRequestModal({
   const emailTrimmed = form.email.trim();
   const emailValid = emailTrimmed === "" || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailTrimmed);
 
-  // Địa chỉ bắt buộc khi tạo PR:
+  // Địa chỉ KHÔNG bắt buộc khi tạo PR cho khách VN (anh Hiếu 11/7 "Tạo PR cực nhanh" —
+  // chỉ SĐT + Tên + Số tiền + Nguồn; địa chỉ bổ sung sau). Chỉ khách nước ngoài phải chọn
+  // quốc gia. Địa chỉ VN được siết ở bước SAU: Kích hoạt (Tỉnh+Phường) và Xuất HĐ (đủ 3 ô).
   const addressOk = form.isForeign
     ? !!form.foreignCountry
     : true;
