@@ -463,7 +463,8 @@ export default function CardReconciliationTab({
                 Đồng bộ gần nhất: <strong>{lastSync ?? "chưa có"}</strong>
               </span>
               <span className="card-sync-desc" style={{ color: "var(--text-3)" }}>· Tự động tải định kỳ qua tiện ích trình duyệt · Bấm "Đồng bộ ngay" sẽ kéo cả mPOS lẫn Payoo</span>
-              <div className="card-sync-actions" style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
+              <div className="card-sync-actions" style={{ marginLeft: "auto", display: "flex", gap: 8, alignItems: "center" }}>
+                <HdsdLink moduleSlug="gatewaySync" topicSlug="cai-tien-ich" />
                 <button type="button" className="btn btn-outline btn-sm" onClick={() => onGoToSync?.()}>
                   <Icons.AlertCircle size={13} /> Hướng dẫn đồng bộ
                 </button>

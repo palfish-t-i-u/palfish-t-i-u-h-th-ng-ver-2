@@ -1008,8 +1008,9 @@ export default function ReconciliationTab() {
               </div>
             ) : (
             <div className="tbl-wrap">
-              <div style={{ padding: "10px 14px", fontSize: 12, color: "var(--text-2)", background: "var(--surface-3, #f1f5f9)", borderBottom: "1px solid var(--border)" }}>
-                Tiền vào TK công ty không khớp lần TT nào (không có mã app hoặc mã sai). Kế toán bấm <strong>Ghép</strong> để gắn vào đúng lần TT của PR.
+              <div style={{ padding: "10px 14px", fontSize: 12, color: "var(--text-2)", background: "var(--surface-3, #f1f5f9)", borderBottom: "1px solid var(--border)", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+                <span>Tiền vào TK công ty không khớp lần TT nào (không có mã app hoặc mã sai). Kế toán bấm <strong>Ghép</strong> để gắn vào đúng lần TT của PR.</span>
+                <HdsdLink moduleSlug="reconciliation" topicSlug="ghep-ck-ngoai" />
               </div>
               <table className="tbl">
                 <thead>
@@ -2143,7 +2144,7 @@ export default function ReconciliationTab() {
                   </div>
                 </div>
                 <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                  <HdsdLink moduleSlug="reconciliation" />
+                  <HdsdLink moduleSlug="reconciliation" topicSlug="xem-anh-bill" />
                   <button className="drawer-close" onClick={() => setAlbumOpen(false)}>
                     <Icons.Close size={16} />
                   </button>

@@ -1887,7 +1887,9 @@ export default function PaymentRequestDetailDrawer({
               <h4>
                 <Icons.User size={15} /> Thông tin khách hàng (B1)
               </h4>
-              {!editing && !readOnly ? (
+              <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                <HdsdLink moduleSlug="paymentRequests" topicSlug="sua-thong-tin-khach-hang" />
+                {!editing && !readOnly ? (
                 <button
                   className="btn btn-outline btn-sm"
                   onClick={() => {
@@ -1975,6 +1977,7 @@ export default function PaymentRequestDetailDrawer({
                   </button>
                 </div>
               )}
+              </div>
             </div>
 
             {!editing && !detailLoading && request.wantsInvoice && (!request.ward || !request.address?.trim()) && (() => {
@@ -2418,15 +2421,18 @@ export default function PaymentRequestDetailDrawer({
                   <span className="num-pill">{request.payments.length}</span>
                 )}
               </h4>
-              {!showAdd && !readOnly && !detailLoading && request.state !== "cancelled" && (
-                <button
-                  className={`btn btn-sm ${isPrFull ? "btn-outline" : "btn-secondary"}`}
-                  onClick={handleAddPaymentClick}
-                  title={isPrFull ? "PR đã nhận đủ tiền — cần tăng Tổng tiền dự kiến trước khi tạo thêm lần TT" : undefined}
-                >
-                  <Icons.Plus size={13} /> Tạo lần thanh toán
-                </button>
-              )}
+              <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                <HdsdLink moduleSlug="paymentRequests" topicSlug="quan-ly-lan-thanh-toan" />
+                {!showAdd && !readOnly && !detailLoading && request.state !== "cancelled" && (
+                  <button
+                    className={`btn btn-sm ${isPrFull ? "btn-outline" : "btn-secondary"}`}
+                    onClick={handleAddPaymentClick}
+                    title={isPrFull ? "PR đã nhận đủ tiền — cần tăng Tổng tiền dự kiến trước khi tạo thêm lần TT" : undefined}
+                  >
+                    <Icons.Plus size={13} /> Tạo lần thanh toán
+                  </button>
+                )}
+              </div>
             </div>
 
             {detailLoading ? (
