@@ -167,7 +167,7 @@ export default function LedgerFormModal({
       {rowMeta?.loaiNhap && (
         <div className="mb-4 flex flex-wrap items-center gap-2 text-sm">
           <Badge tone={rowMeta.loaiNhap === "tu_dong" ? "primary" : "neutral"}>
-            {rowMeta.loaiNhap === "tu_dong" ? "Tự động (M3)" : "Điền tay"}
+            {rowMeta.loaiNhap === "tu_dong" ? "Tự động" : "Thủ công"}
           </Badge>
           {rowMeta.maDonHang && (
             <span className="text-gmv-muted">Mã đơn: {rowMeta.maDonHang}</span>

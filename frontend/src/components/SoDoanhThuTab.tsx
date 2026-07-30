@@ -136,9 +136,13 @@ export const LEDGER_COLUMNS: readonly LedgerColumnDef[] = [
     renderTd: (row) => (
       <Td className="text-left">
         <div className="font-medium text-gmv-text-strong">{row.tenKhach || "—"}</div>
-        <Badge tone={row.loaiNhap === "tu_dong" ? "primary" : "neutral"} className="mt-1">
-          {row.loaiNhap === "tu_dong" ? "M3" : "Tay"}
-        </Badge>
+        <span title={row.loaiNhap === "tu_dong"
+          ? "Tự ghi khi đơn đã thu đủ 100% và tới bước Kích hoạt."
+          : "Nhập tay hoặc mang từ ngoài vào."}>
+          <Badge tone={row.loaiNhap === "tu_dong" ? "primary" : "neutral"} className="mt-1">
+            {row.loaiNhap === "tu_dong" ? "Tự động" : "Thủ công"}
+          </Badge>
+        </span>
       </Td>
     ),
   },
@@ -585,8 +589,8 @@ export default function SoDoanhThuTab() {
             onChange={(e) => setDraftLoai(e.target.value)}
           >
             <option value="">Tất cả</option>
-            <option value="tu_dong">Tự động (M3)</option>
-            <option value="tay">Điền tay</option>
+            <option value="tu_dong">Tự động</option>
+            <option value="tay">Thủ công</option>
           </select>
         </label>
         <label className="text-sm text-gmv-muted">
@@ -736,7 +740,7 @@ export default function SoDoanhThuTab() {
               ? "Đang tải…"
               : hasActiveFilter
                 ? "Không có dòng trong khoảng đã lọc — thử Reset bộ lọc hoặc mở rộng ngày."
-                : "Chưa có dòng — bấm Thêm dòng hoặc xác nhận M3."
+                : "Chưa có dòng — bấm Thêm dòng để thêm thủ công."
           }
         />
       ) : (
@@ -757,7 +761,7 @@ export default function SoDoanhThuTab() {
                   <Td colSpan={visibleColumns.length} className="text-center text-gmv-muted">
                     {hasActiveFilter
                       ? "Không có dòng trong khoảng đã lọc — thử Reset bộ lọc hoặc mở rộng ngày."
-                      : "Chưa có dòng — bấm Thêm dòng hoặc xác nhận M3."}
+                      : "Chưa có dòng — bấm Thêm dòng để thêm thủ công."}
                   </Td>
                 </Tr>
               )}

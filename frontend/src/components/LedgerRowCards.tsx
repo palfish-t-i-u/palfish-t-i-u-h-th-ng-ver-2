@@ -46,9 +46,13 @@ export default function LedgerRowCards({
             value={`${formatVndNumber(row.soTienVnd) || "0"} ₫`}
             badges={
               <>
-                <Badge tone={row.loaiNhap === "tu_dong" ? "primary" : "neutral"}>
-                  {row.loaiNhap === "tu_dong" ? "M3" : "Tay"}
-                </Badge>
+                <span title={row.loaiNhap === "tu_dong"
+                  ? "Tự ghi khi đơn đã thu đủ 100% và tới bước Kích hoạt."
+                  : "Nhập tay hoặc mang từ ngoài vào."}>
+                  <Badge tone={row.loaiNhap === "tu_dong" ? "primary" : "neutral"}>
+                    {row.loaiNhap === "tu_dong" ? "Tự động" : "Thủ công"}
+                  </Badge>
+                </span>
                 {row.paymentMethod ? (
                   <span className={cn(ledgerPillBase, paymentMethodCellClass(row.paymentMethod))}>
                     {row.paymentMethod}
