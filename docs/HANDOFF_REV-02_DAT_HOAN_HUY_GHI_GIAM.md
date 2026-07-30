@@ -6,7 +6,7 @@
 
 **Estimated effort:** ~1 ngày. BE (endpoint + guard + RBAC + migration). FE nút "Ghi giảm" do Minh làm.
 
-**Hạn:** Minh review muộn nhất **31/7**.
+**Hạn:** không deadline cố định. Trần: xong trong **nửa đầu tháng 8 — muộn nhất 15/8**. Việc này độc lập, Đạt chạy ngay được (không chờ Đức).
 
 ---
 

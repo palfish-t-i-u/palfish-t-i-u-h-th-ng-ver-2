@@ -76,7 +76,7 @@
 
 ## VIỆC 2 — Thống nhất mốc/kỳ thời gian  ·  BE  ·  To nhất  ·  Q1 chốt (đổi ngày sau 22h)
 
-Chia 2 phần. 2a (gom 1 cột) kịp 31/7; 2b (áp luật 22h, cần giờ thực + backfill) → đợt 2 ngay sau.
+Chia 2 phần. 2a (gom 1 cột) = đợt 1; 2b (áp luật 22h, cần giờ thực + backfill) → đợt 2 ngay sau.
 
 ### 2a — Gom về 1 cột thời gian chuẩn
 **Root:** Sổ+BC02 lọc/bucket theo `pay_time`; BC01+BC03 theo `ngay_tien_ve` → cùng 1 CK rơi kỳ khác nhau tùy báo cáo.
@@ -93,14 +93,14 @@ Luật: giao dịch **sau 22h VN → ngày hôm sau**; ngày **cuối tháng** n
 1. Sửa auto-sync ghi `pay_time` = **giờ thực** giao dịch giờ VN (`payment_lines.paid_at` / `giao_dich.thoi_gian_giao_dich`), thay `{ngày}T00:00:00` (`revenue_routes.py:963`, `:1156`).
 2. `ngay_tien_ve = ky_doanh_thu(pay_time)` áp luật 22h + cuối tháng 00h, dùng `ZoneInfo("Asia/Ho_Chi_Minh")` (mẫu `dashboard_routes.py:41`; `revenue_routes` chưa có tz VN → thêm).
 3. Backfill `ngay_tien_ve` dòng lịch sử từ giờ thực; dòng import không có giờ thực giữ nguyên.
-**Không kịp 31/7** (đụng auto-sync + backfill) → đợt 2 ngay sau. Người: Đức.
+**Đợt 2** (đụng auto-sync + backfill) → sau đợt 1. Người: Đức.
 
 **Test (`backend/tests/test_revenue_period_bucket.py`):**
 1. Cùng bộ dòng → BC01/BC02/BC03/Sổ trả cùng kỳ cho mỗi dòng (2a).
 2. (2b) giao dịch 21:59 → ngày N; 22:01 → ngày N+1; 31/M 22:30 → vẫn tháng M (không nhảy tháng M+1); 1 tháng mới 00:30 → tháng mới.
 3. Timezone: 23:30 giờ VN (=16:30 UTC) rơi đúng ngày VN.
 
-**Ước lượng:** 2a = 1 ngày (kịp 31/7). 2b = 1.5–2 ngày (đợt 2: auto-sync + backfill + tz).
+**Ước lượng:** 2a = 1 ngày (đợt 1). 2b = 1.5–2 ngày (đợt 2: auto-sync + backfill + tz).
 
 ---
 
@@ -165,7 +165,7 @@ Luật: giao dịch **sau 22h VN → ngày hôm sau**; ngày **cuối tháng** n
 | Đợt | Việc | Ngày |
 |---|---|---|
 | 0 | Backup `so_doanh_thu` (bắt buộc trước mọi migration) | 0.1 |
-| 1 (≤31/7) | **Việc 7** (lọc test) + **2a** (gom 1 cột) + **Việc 6** (hoàn/hủy, kỳ gốc) | 2.5 |
+| 1 | **Việc 7** (lọc test) + **2a** (gom 1 cột) + **Việc 6** (hoàn/hủy, kỳ gốc) | 2.5 |
 | 2 | **Việc 3** (net phí, trừ cả phí trả góp) | 1.5–2 |
 | 3 | **2b** (luật 22h: đổi ngày + giờ thực + backfill) | 1.5–2 |
 
@@ -201,11 +201,13 @@ Luật: giao dịch **sau 22h VN → ngày hôm sau**; ngày **cuối tháng** n
 
 ---
 
-## PHÂN CÔNG & LỊCH — chốt 29/7, Minh review muộn nhất 31/7
+## PHÂN CÔNG & LỊCH — chốt 29/7; không deadline cố định, xong nửa đầu tháng 8 (trần 15/8)
 
-**Chỉ 2 người: Đức + Đạt.** Có 2 ngày (30/7 + 31/7 sáng). Định nghĩa đã chốt 29/7 → hết gate, cả 4 việc code được. Nhưng 2 người × 2 ngày không gánh nổi cả 4 — **31/7 nhận 3 việc gọn nhất (7 + 2a + 6); việc 3 (net) và 2b (luật 22h) sang đợt 2 ngay sau**, không còn chờ ai. Đây là đánh giá trung thực về khối lượng khớp 2 ngày — không nhồi.
+**Chỉ 2 người: Đức + Đạt.** Đức đang **đi viện** → chưa vào việc ngay được. Vì vậy **bỏ hạn 31/7, không đặt deadline cứng** — nhưng chốt **trần: xong trong nửa đầu tháng 8, muộn nhất 15/8**. Định nghĩa đã chốt 29/7 → hết gate, cả 4 việc code được. **Đợt 1 = 3 việc gọn nhất (7 + 2a + 6); việc 3 (net) và 2b (luật 22h) đợt 2.**
 
-### Vào mốc 31/7 (làm ngay)
+**Phụ thuộc do Đức nghỉ:** Việc 6 (Đạt) độc lập → **chạy ngay được, không chờ Đức**. Việc 7 + 2a + cả đợt 2 đều thuộc Đức → **kẹt tới khi Đức khỏe lại**. Nếu Đức nghỉ dài, cân nhắc dồn việc 7 + 2a sang người khác để không nghẽn cả tuyến (đây là rủi ro tiến độ, không phải rủi ro kỹ thuật).
+
+### Đợt 1 (làm trước — trần 15/8)
 
 **ĐỨC — Việc 7 + Việc 2a** (đều thuộc revenue_routes/report_routes, domain của Đức). Ước ~1.5 ngày.
 
@@ -236,12 +238,12 @@ Luật: giao dịch **sau 22h VN → ngày hôm sau**; ngày **cuối tháng** n
 
 **Điểm coi chừng chung file:** cả Đức và Đạt đụng `revenue_routes.py`. Đức sửa vùng query/filter (`_ledger_query`, `_row_pay_date`); Đạt **chỉ thêm hàm route mới ở cuối** — không sửa vùng của Đức. Chia vùng rõ, merge cuối ngày theo thứ tự Đức trước → Đạt rebase. (Bài học `lesson_concurrent_sessions_worktree`.)
 
-### ĐỢT 2 — ngay sau 31/7 (hết gate, không chờ ai)
+### ĐỢT 2 — ngay sau đợt 1 (hết gate, không chờ ai)
 
 - **Việc 3 (net phí).** Migration `phi_cong`/`so_tien_net`/`gateway_txn_id`; báo cáo đọc `so_tien_net` fallback gross; điểm ghép phí dùng `computed_net` sẵn (`mpos_import.py:283-285`, net = amount − fee − installment_fee) stamp lên dòng Sổ khớp `don_hang_id`/`ma_don_hang`. Người: Đức (migration + báo cáo) + phần stamp ở `mpos_import` vốn của Giang — Giang không tham gia thì Đức gánh. ~1.5–2 ngày.
 - **Việc 2b (luật 22h).** Sửa auto-sync ghi `pay_time` = giờ thực VN (`revenue_routes.py:963`/`:1156`); `ngay_tien_ve = ky_doanh_thu(pay_time)` áp luật 22h + cuối tháng 00h (`ZoneInfo("Asia/Ho_Chi_Minh")`, `revenue_routes` chưa có tz VN → thêm); backfill `ngay_tien_ve` dòng lịch sử từ giờ thực. Người: Đức. ~1.5–2 ngày.
 
-### Việc Minh trước 31/7
+### Việc Minh (trước khi 2 dev merge)
 - Backup `so_doanh_thu` trên prod trước mọi migration.
 - FE: toggle "hiện đơn test" + nút "Ghi giảm".
-- Chạy `cd frontend && npx tsc -b` + `npm run test`; review 2 nhánh Đức/Đạt 31/7.
+- Chạy `cd frontend && npx tsc -b` + `npm run test`; review 2 nhánh Đức/Đạt khi xong (trần 15/8).

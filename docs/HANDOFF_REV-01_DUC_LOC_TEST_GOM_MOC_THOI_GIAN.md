@@ -6,7 +6,7 @@
 
 **Estimated effort:** ~1.5 ngày. BE-only (FE toggle "Hiện đơn test" do Minh làm). **Không migration.**
 
-**Hạn:** Minh review muộn nhất **31/7**.
+**Hạn:** không deadline cố định (Đức đang đi viện, chưa vào việc ngay). Trần: xong trong **nửa đầu tháng 8 — muộn nhất 15/8**.
 
 ---
 
