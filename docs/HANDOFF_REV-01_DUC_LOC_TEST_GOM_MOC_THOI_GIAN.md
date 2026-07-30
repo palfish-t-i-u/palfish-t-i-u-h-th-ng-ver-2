@@ -8,7 +8,7 @@
 
 **Hạn:** không deadline cố định (Đức đang đi viện, chưa vào việc ngay). Trần: xong trong **nửa đầu tháng 8 — muộn nhất 15/8**.
 
----
+**⚠️ Vị trí trong 2 tuyến (xem master plan §PHÂN CÔNG):** REV-01 là **bước 1 tuyến Đức**; sau nó Đức làm tiếp **REV-03** (`docs/HANDOFF_REV-03_DUC_LUAT_22H_DOI_NGAY.md`, luật 22h) — REV-03 chỉ sửa `ky_doanh_thu`, nên hàm này ở REV-01 phải để **1 chỗ duy nhất**. **REV-01 merge TRƯỚC** cả nhánh của Đạt: REV-04 (`docs/HANDOFF_REV-04_DAT_NET_PHI_CONG.md`) đụng cùng dòng `select`/đọc VND ở `report_routes.py` `_load_ledger_revenue` → Đạt **rebase REV-04 sau khi REV-01 merge**. REV-02 (route refund) thêm route ở cuối file, cũng rebase sau.
 
 ## Bối cảnh (ĐÃ verify — grep 30/7 trên nhánh `sandbox`)
 
@@ -37,10 +37,10 @@ Số dòng dưới đây verify lại 30/7 (đã **lệch ~10 dòng** so master 
 2. **Việc 2a — gom 1 cột thời gian**: mọi báo cáo bucket/lọc theo `ngay_tien_ve` (bỏ `pay_time`).
 
 ### OUT of scope (KHÔNG làm)
-- **KHÔNG** đụng luật mốc 22h / giờ thực / backfill `ngay_tien_ve` — đó là **Việc 2b, đợt 2**, không phải bây giờ.
+- **KHÔNG** đụng luật mốc 22h / giờ thực / backfill `ngay_tien_ve` — đó là **REV-03 (Việc 2b)**, làm sau REV-01, không phải bây giờ.
 - **KHÔNG** sửa Dashboard (`dashboard_routes.py`) — đã lọc `is_test` sẵn (:487), đọc `payment_lines` không đọc Sổ.
 - **KHÔNG** đổi cách ghi `is_test` (đã đúng) → không backfill.
-- **KHÔNG** thêm/sửa route refund (đó là Đạt, REV-02).
+- **KHÔNG** thêm/sửa route refund (Đạt, REV-02) hay net phí / cột `so_tien_net` (Đạt, REV-04).
 - **KHÔNG** làm toggle FE — Minh làm.
 
 ---

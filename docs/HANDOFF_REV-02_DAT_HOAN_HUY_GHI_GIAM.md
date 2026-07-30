@@ -8,7 +8,7 @@
 
 **Hạn:** không deadline cố định. Trần: xong trong **nửa đầu tháng 8 — muộn nhất 15/8**. Việc này độc lập, Đạt chạy ngay được (không chờ Đức).
 
----
+**⚠️ Vị trí trong 2 tuyến (xem master plan §PHÂN CÔNG):** REV-02 là **bước 1 tuyến Đạt** — độc lập hoàn toàn, không đụng vùng Đức, làm ngay. Sau REV-02, Đạt làm tiếp **REV-04** (`docs/HANDOFF_REV-04_DAT_NET_PHI_CONG.md`, net phí) — REV-04 có 1 mắt phải rebase sau REV-01 của Đức. REV-02 thì không: chỉ thêm route mới ở cuối `revenue_routes.py`, merge lúc nào cũng được (Đức merge REV-01 trước cho gọn).
 
 ## Bối cảnh (ĐÃ verify — grep 30/7 trên nhánh `sandbox`)
 

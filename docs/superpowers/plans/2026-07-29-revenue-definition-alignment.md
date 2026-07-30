@@ -158,27 +158,31 @@ Luật: giao dịch **sau 22h VN → ngày hôm sau**; ngày **cuối tháng** n
 
 ---
 
-## Thứ tự triển khai (rủi ro thấp → cao)
+## Thứ tự triển khai — 2 tuyến song song (không ai chờ ai)
 
-Định nghĩa đã chốt 29/7 → không còn gate, cả 4 việc code được.
+Định nghĩa đã chốt 29/7 → không còn gate. Chia theo **topo code**: cụm read-query `revenue_routes.py` (7+2a+2b) **không cắt được** (cùng sửa `_ledger_query`/`ky_doanh_thu`) → 1 người = **Đức**. Phần độc lập (route mới + migration + stamp + file khác) → **Đạt**. Workload ~cân, mắt nối tối thiểu.
 
-| Đợt | Việc | Ngày |
-|---|---|---|
-| 0 | Backup `so_doanh_thu` (bắt buộc trước mọi migration) | 0.1 |
-| 1 | **Việc 7** (lọc test) + **2a** (gom 1 cột) + **Việc 6** (hoàn/hủy, kỳ gốc) | 2.5 |
-| 2 | **Việc 3** (net phí, trừ cả phí trả góp) | 1.5–2 |
-| 3 | **2b** (luật 22h: đổi ngày + giờ thực + backfill) | 1.5–2 |
+| Tuyến | Người | Việc (thứ tự nội bộ) | Handoff | Ngày |
+|---|---|---|---|---|
+| 0 | Minh | Backup `so_doanh_thu` (trước mọi migration) | — | 0.1 |
+| **Đức** | Đức | Việc 7 + 2a → rồi 2b | REV-01, REV-03 | ~3.25 |
+| **Đạt** | Đạt | Việc 6 → rồi Việc 3 | REV-02, REV-04 | ~3 |
 
-Đợt 1 làm app **tự khớp với chính nó** — điều kiện để bước A1 (đối chiếu Sổ ↔ All File) có nghĩa. Sau đợt 1 chạy lại BC01/02/03 trên sandbox, xác nhận cùng 1 CK ra cùng kỳ ở mọi báo cáo. **Lưu ý:** hết đợt 1 mọi báo cáo *tự khớp nhau* nhưng chưa theo đúng luật 22h — 2b (đợt 3) mới làm số *khớp luật Thu Hiền*.
+**Mắt nối duy nhất:** REV-04 (việc 3, Đạt) sửa 1 dòng chung với REV-01 (Đức) ở `report_routes.py` `_load_ledger_revenue` → **Đức merge REV-01 trước, Đạt rebase REV-04**. Ngoài mắt đó, 2 tuyến chạy độc lập.
+
+**Cột mốc ý nghĩa:** xong 7 + 2a + 6 → app **tự khớp với chính nó** (điều kiện để bước A1 đối chiếu Sổ ↔ All File có nghĩa); xong thêm 2b → số **khớp luật 22h Thu Hiền**; xong thêm việc 3 → số là **net phí** đúng định nghĩa. Sau mỗi mốc chạy lại BC01/02/03 sandbox xác nhận cùng 1 CK ra cùng kỳ + cùng số ở mọi báo cáo.
 
 ---
 
-## Phân công (theo `docs/PROJECT.md`)
+## Phân công — 2 tuyến, workload ~cân, không ai chờ ai
 
-- **Đức (BE: dashboard, exchange rate, DB):** Việc 7, 2a, 2b, 3 (migration + báo cáo đọc net).
-- **Giang (BE: SePay, recon, import):** điểm ghép phí trong `mpos_import.py` (việc 3).
-- **Đạt (BE: RBAC):** RBAC nút hoàn tiền (việc 6).
-- **Minh (FE + QA + deploy):** toggle "hiện đơn test", cột Phí/Thực nhận, nút Ghi giảm (`SoDoanhThuTab.tsx`); chạy pytest + tsc -b + e2e; merge sandbox→main; migration prod.
+Chia theo **topo code** (không theo phân môn cũ ở `docs/PROJECT.md`): cụm read-query `revenue_routes.py` (7 + 2a + 2b cùng sửa `_ledger_query` / `ky_doanh_thu`) **không cắt được** → dồn 1 người. Phần độc lập (route mới + migration + stamp + file khác) tách sang người kia.
+
+- **Tuyến Đức — Việc 7 + 2a → 2b** (`REV-01` rồi `REV-03`). Toàn bộ cụm read-query 1 tay: `apply_revenue_filters`, `ky_doanh_thu`, gom `ngay_tien_ve`, luật 22h + backfill. ~3.25 ngày. **Không migration cột mới** (chỉ đổi giá trị ghi + backfill).
+- **Tuyến Đạt — Việc 6 → Việc 3** (`REV-02` rồi `REV-04`). Route refund mới + 2 migration (`hoan_ref_id`; `phi_cong`/`so_tien_net`/`gateway_txn_id`) + stamp net phí (`gateway_routes`, `mpos_import`, auto-sync) + BC03 đọc net. ~3 ngày. **Giang không tham gia** — phần `mpos_import` gộp vào tuyến Đạt.
+- **Minh (FE + QA + deploy):** backup `so_doanh_thu`; toggle "hiện đơn test", cột Phí/Thực nhận, nút Ghi giảm (`SoDoanhThuTab.tsx`); pytest + tsc -b + e2e; merge sandbox→main theo thứ tự **REV-01 trước → REV-04 rebase**; migration prod.
+
+**Mắt nối duy nhất giữa 2 tuyến:** REV-04 sửa `report_routes.py` `_load_ledger_revenue` (dòng `select` + đọc VND) — trùng REV-01. → Đức merge REV-01 trước, Đạt rebase REV-04. Ngoài mắt đó độc lập hoàn toàn.
 
 ---
 
@@ -203,47 +207,49 @@ Luật: giao dịch **sau 22h VN → ngày hôm sau**; ngày **cuối tháng** n
 
 ## PHÂN CÔNG & LỊCH — chốt 29/7; không deadline cố định, xong nửa đầu tháng 8 (trần 15/8)
 
-**Chỉ 2 người: Đức + Đạt.** Đức đang **đi viện** → chưa vào việc ngay được. Vì vậy **bỏ hạn 31/7, không đặt deadline cứng** — nhưng chốt **trần: xong trong nửa đầu tháng 8, muộn nhất 15/8**. Định nghĩa đã chốt 29/7 → hết gate, cả 4 việc code được. **Đợt 1 = 3 việc gọn nhất (7 + 2a + 6); việc 3 (net) và 2b (luật 22h) đợt 2.**
+**Chỉ 2 người: Đức + Đạt.** Đức đang **đi viện** → chưa vào việc ngay được. Vì vậy **bỏ hạn 31/7, không đặt deadline cứng** — nhưng chốt **trần: xong trong nửa đầu tháng 8, muộn nhất 15/8**. Định nghĩa đã chốt 29/7 → hết gate, cả 4 việc code được. Chia **2 tuyến song song, workload ~cân, không ai chờ ai** (trừ 1 mắt rebase).
 
-**Phụ thuộc do Đức nghỉ:** Việc 6 (Đạt) độc lập → **chạy ngay được, không chờ Đức**. Việc 7 + 2a + cả đợt 2 đều thuộc Đức → **kẹt tới khi Đức khỏe lại**. Nếu Đức nghỉ dài, cân nhắc dồn việc 7 + 2a sang người khác để không nghẽn cả tuyến (đây là rủi ro tiến độ, không phải rủi ro kỹ thuật).
+**4 tờ handoff (đọc trước khi code):**
+- `docs/HANDOFF_REV-01_DUC_LOC_TEST_GOM_MOC_THOI_GIAN.md` — Đức, Việc 7 + 2a.
+- `docs/HANDOFF_REV-03_DUC_LUAT_22H_DOI_NGAY.md` — Đức, Việc 2b (sau REV-01).
+- `docs/HANDOFF_REV-02_DAT_HOAN_HUY_GHI_GIAM.md` — Đạt, Việc 6.
+- `docs/HANDOFF_REV-04_DAT_NET_PHI_CONG.md` — Đạt, Việc 3 (rebase phần BC03 sau REV-01).
 
-### Đợt 1 (làm trước — trần 15/8)
+**Phụ thuộc do Đức nghỉ:** cả tuyến Đức (7 + 2a + 2b) **kẹt tới khi Đức khỏe**. Tuyến Đạt (6 → 3) **độc lập, chạy ngay được** — chỉ 1 mắt (BC03 trong REV-04) phải rebase sau khi REV-01 của Đức merge; phần còn lại của Đạt (route refund + 2 migration + stamp) không chờ Đức. Nếu Đức nghỉ dài, cân nhắc dồn tuyến Đức sang người khác để không nghẽn (rủi ro tiến độ, không phải kỹ thuật).
 
-**ĐỨC — Việc 7 + Việc 2a** (đều thuộc revenue_routes/report_routes, domain của Đức). Ước ~1.5 ngày.
+### TUYẾN ĐỨC — Việc 7 + 2a → 2b (`REV-01` → `REV-03`)
 
-- *Việc 7 — lọc đơn test:*
-  - Viết `apply_revenue_filters(query, include_test=False)` gom `is_test=false` (+ chừa chỗ cho `NON_VN_TEAMS`).
-  - `_ledger_query` (`revenue_routes.py:521`) gọi hàm này; thêm tham số `include_test` truyền từ endpoint `/revenue/ledger` (:1271).
-  - BC03 `_load_ledger_revenue` (`report_routes.py:237-241`) thêm `.eq("is_test", False)`.
-  - BC01 (:1577-1582) / BC02 (:1604-1609) dùng chung `_ledger_query` → xác minh tự hưởng, không có nhánh bypass.
-  - KHÔNG cần backfill (cột `is_test` đã đúng dữ liệu: `revenue_routes.py:982/1175/1455`).
-- *Việc 2a — gom 1 cột thời gian:*
-  - **Trước khi sửa**, chạy query đếm ảnh hưởng (SQL Editor): `SELECT count(*) FROM so_doanh_thu WHERE pay_time::date <> ngay_tien_ve;` — báo Minh số này trước khi đổi.
-  - Viết `ky_doanh_thu(row) -> date` trả `ngay_tien_ve` (chỗ duy nhất để 2b sau sửa).
-  - `_ledger_query` (:527-530): đổi lọc `pay_time` → `ngay_tien_ve`.
-  - BC02 `_row_pay_date` (:191-192): bucket theo `ngay_tien_ve`, bỏ nhánh `pay_time`.
-- *Nghiệm thu Đức:* `python -m pytest backend/tests/test_ledger_is_test_filter.py backend/tests/test_revenue_period_bucket.py -v` PASS; trên sandbox cùng kỳ → **BC01 = BC02 = BC03 = tổng Sổ**, và đơn `@dev` không lọt tổng nào.
+**Bước 1 — REV-01 (Việc 7 + 2a).** Toàn bộ cụm read-query. Ước ~1.5 ngày. Không migration.
+- *Việc 7 — lọc đơn test:* viết `apply_revenue_filters(query, include_test=False)` gom `is_test=false` (+ chừa chỗ `NON_VN_TEAMS`); `_ledger_query` gọi hàm này + tham số `include_test` từ endpoint `/revenue/ledger`; BC03 `_load_ledger_revenue` thêm `.eq("is_test", False)`; BC01/BC02 (query riêng) gọi trực tiếp `apply_revenue_filters`. KHÔNG backfill (cột `is_test` đã đúng).
+- *Việc 2a — gom 1 cột thời gian:* trước khi sửa chạy `SELECT count(*) FROM so_doanh_thu WHERE pay_time::date <> ngay_tien_ve;` báo Minh; viết `ky_doanh_thu(row) -> date` trả `ngay_tien_ve` (chỗ duy nhất 2b sau sửa); `_ledger_query` + `_row_pay_date` chuyển `pay_time` → `ngay_tien_ve`.
+- *Số dòng chính xác:* xem REV-01 (đã verify grep 30/7 — lệch ~10 dòng so số cũ trong plan này).
+- *Nghiệm thu:* `pytest test_ledger_is_test_filter.py test_revenue_period_bucket.py` PASS; sandbox cùng kỳ → **BC01 = BC02 = BC03 = tổng Sổ**; đơn `@dev` không lọt tổng nào.
 
-**ĐẠT — Việc 6 (hoàn/hủy)** — dựng được TOÀN BỘ ngay (Q3 chốt kỳ gốc, không còn dòng nào treo). Hợp domain Đạt (RBAC + validation). Ước ~1 ngày.
+**Bước 2 — REV-03 (Việc 2b, luật 22h).** SAU khi REV-01 merge (cần `ky_doanh_thu` + cột đã gom). Ước ~1.5–2 ngày. Có backfill, không migration cột.
+- Auto-sync ghi `pay_time` = **giờ thực VN** (không còn nửa đêm); `ngay_tien_ve = ky_tu_gio_thuc(giờ thực)` áp luật 22h + ngoại lệ cuối tháng 00h (`ZoneInfo("Asia/Ho_Chi_Minh")`, thêm import tz).
+- Thêm biến thể resolver `*_time` trả datetime tz-aware (giữ nguyên `_resolve_payment_date*` cũ).
+- Backfill `ngay_tien_ve` dòng `loai_nhap='tu_dong'` truy được giờ thực (dry-run mặc định; backup trước).
+- *Nghiệm thu:* `pytest test_revenue_22h_rule.py` PASS (21:59→N; 22:01→N+1; cuối tháng giữ tháng; tz UTC không lệch ngày).
 
-- Migration: mở CHECK `loai_nhap` thêm `'hoan'`; thêm cột `hoan_ref_id uuid null`. (Backup `so_doanh_thu` trước.)
-- Endpoint `POST /revenue/ledger/{id}/refund` (`revenue_routes.py`, **thêm hàm route MỚI ở cuối vùng ledger — không sửa `_ledger_query` để tránh đụng Đức**), body `amount`,`reason`.
-  - Insert dòng âm: `so_tien_vnd=-amount`, `gmv_rmb` âm, `loai_nhap='hoan'`, `hoan_ref_id=id gốc`, `is_test`/`team`/`sale_crm_name` **kế thừa dòng gốc**.
-  - `ngay_tien_ve = ngày dòng gốc` (Thu Hiền chốt: truy về kỳ gốc, ghi giảm ở kỳ đó — số kỳ gốc đổi hồi tố).
-  - **Guard chống hoàn quá tay:** `sum(dòng hoan_ref_id=id) + amount ≤ so_tien_vnd gốc` → nếu vượt trả 400. Cho hoàn 1 phần.
-  - RBAC: dùng mẫu `require_min_role` (tham chiếu upsert tỷ giá `revenue_routes.py:1396`) — chỉ kế toán/leader; Sale → 403.
-  - Giữ nguyên dòng gốc (KHÔNG xóa/sửa — audit).
-- FE nút "Ghi giảm / Hoàn tiền" (`SoDoanhThuTab.tsx`) — Minh làm phần UI, Đạt lo endpoint + guard.
-- *Nghiệm thu Đạt:* `python -m pytest backend/tests/test_ledger_refund.py -v` PASS (hoàn full→tổng gốc=0 giữ dòng gốc; hoàn 1 phần; vượt gốc→400; role Sale→403; dòng hoàn kế thừa team/sale/is_test).
+### TUYẾN ĐẠT — Việc 6 → Việc 3 (`REV-02` → `REV-04`)
 
-**Điểm coi chừng chung file:** cả Đức và Đạt đụng `revenue_routes.py`. Đức sửa vùng query/filter (`_ledger_query`, `_row_pay_date`); Đạt **chỉ thêm hàm route mới ở cuối** — không sửa vùng của Đức. Chia vùng rõ, merge cuối ngày theo thứ tự Đức trước → Đạt rebase. (Bài học `lesson_concurrent_sessions_worktree`.)
+**Bước 1 — REV-02 (Việc 6, hoàn/hủy).** Độc lập hoàn toàn, **chạy ngay không chờ Đức**. Ước ~1 ngày.
+- Migration: `hoan_ref_id uuid null`; mở CHECK `loai_nhap` thêm `'hoan'`. (Backup trước.)
+- Endpoint `POST /revenue/ledger/{id}/refund` — **thêm route MỚI ở CUỐI vùng ledger (sau `sync-gsheet` ~1710), không đụng `_ledger_query`** (tránh đè vùng Đức). Insert dòng âm: `so_tien_vnd=-amount`, `gmv_rmb` âm, `loai_nhap='hoan'`, `hoan_ref_id=id gốc`, `ngay_tien_ve = ngày dòng gốc` (Thu Hiền chốt kỳ gốc), kế thừa `is_test`/`team`/`sale_crm_name`. Guard chống hoàn quá tay (tổng hoàn ≤ gốc → vượt 400). RBAC `require_min_role(actor,"manager")`; Sale → 403. Giữ nguyên dòng gốc.
+- *Nghiệm thu:* `pytest test_ledger_refund.py` PASS.
 
-### ĐỢT 2 — ngay sau đợt 1 (hết gate, không chờ ai)
+**Bước 2 — REV-04 (Việc 3, net phí).** Migration + stamp độc lập chạy song song REV-01; **chỉ phần BC03 rebase sau REV-01**. Ước ~1.5–2 ngày.
+- Migration: `phi_cong bigint default 0`, `so_tien_net bigint null`, `gateway_txn_id uuid null`. (Backup trước.)
+- Hàm chung `stamp_net_fee(...)` idempotent (guard `is_("gateway_txn_id","null")`); set `gmv_rmb = vnd_to_rmb(net, rate)` → BC01/BC02 tự net.
+- Stamp 2 điểm: `gateway_routes.py` `match_gateway_txn` (~592, phí về sau) + auto-sync `revenue_routes.py` (963/1156, phí về trước). Dùng `computed_net` sẵn (`mpos_import.py:285`, net = amount − fee − installment_fee). Chỉ dòng `payment_method ∈ {thẻ, trả góp}`.
+- BC03 `report_routes.py`: `select` thêm `so_tien_net`/`phi_cong`, VND đọc `coalesce(so_tien_net, so_tien_vnd)` — **rebase sau REV-01** (Đức cũng sửa dòng select thêm `is_test`).
+- **KHÔNG** đè `so_tien_vnd` gross (giữ đối soát ngân hàng + link PR). **KHÔNG** stamp dòng CK/tiền mặt.
+- *Nghiệm thu:* `pytest test_ledger_net_fee.py` PASS (net đúng, gross giữ, idempotent, fallback gross khi chưa ghép phí).
 
-- **Việc 3 (net phí).** Migration `phi_cong`/`so_tien_net`/`gateway_txn_id`; báo cáo đọc `so_tien_net` fallback gross; điểm ghép phí dùng `computed_net` sẵn (`mpos_import.py:283-285`, net = amount − fee − installment_fee) stamp lên dòng Sổ khớp `don_hang_id`/`ma_don_hang`. Người: Đức (migration + báo cáo) + phần stamp ở `mpos_import` vốn của Giang — Giang không tham gia thì Đức gánh. ~1.5–2 ngày.
-- **Việc 2b (luật 22h).** Sửa auto-sync ghi `pay_time` = giờ thực VN (`revenue_routes.py:963`/`:1156`); `ngay_tien_ve = ky_doanh_thu(pay_time)` áp luật 22h + cuối tháng 00h (`ZoneInfo("Asia/Ho_Chi_Minh")`, `revenue_routes` chưa có tz VN → thêm); backfill `ngay_tien_ve` dòng lịch sử từ giờ thực. Người: Đức. ~1.5–2 ngày.
+### Mắt nối 2 tuyến (thứ tự merge)
+Đức merge **REV-01 trước** → Đạt **rebase REV-04** phần BC03 (`_load_ledger_revenue`). REV-03 (2b) cũng rebase trên REV-01 đã merge. Ngoài mắt đó 2 tuyến độc lập. (Bài học `lesson_concurrent_sessions_worktree` — chia vùng rõ, không cùng sửa 1 hàm.)
 
-### Việc Minh (trước khi 2 dev merge)
-- Backup `so_doanh_thu` trên prod trước mọi migration.
-- FE: toggle "hiện đơn test" + nút "Ghi giảm".
-- Chạy `cd frontend && npx tsc -b` + `npm run test`; review 2 nhánh Đức/Đạt khi xong (trần 15/8).
+### Việc Minh (song song + khi 2 dev xong)
+- Backup `so_doanh_thu` trên prod **trước mọi migration**.
+- FE: toggle "hiện đơn test" (REV-01) + cột Phí/Thực nhận (REV-04) + nút "Ghi giảm" (REV-02).
+- Chạy `cd frontend && npx tsc -b` + `npm run test`; review + merge 2 nhánh theo thứ tự REV-01 → REV-04 rebase (trần 15/8).
