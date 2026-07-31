@@ -466,14 +466,28 @@ def build_activation_request_created_message(
         courses = courses if isinstance(courses, list) else []
 
         course_lines: list[str] = []
+        block_total = 0.0
+        block_has_amount = False
         for course in courses:
             if not isinstance(course, dict):
                 continue
             course_name = _first_nonempty(course.get("name"), default="(chưa có tên gói)")
             course_lines.append(f"{block_child}, {course_name}")
             course_lines.extend(_referral_lines(course, block_child))
+            amount = course.get("amount")
+            if amount not in (None, ""):
+                try:
+                    block_total += float(amount)
+                    block_has_amount = True
+                except (TypeError, ValueError):
+                    logger.warning("Invalid course amount %r in %s", amount, ctx)
         if not course_lines:
             course_lines = [block_child]
+        # 29/7 (a Minh): "Tiền" mỗi con = tổng amount gói của con đó, để kế toán soi
+        # lệch với Tổng(PR received) ở footer. Vắng amount → ẩn dòng (không bịa 0).
+        if block_has_amount:
+            tien_str = f"{int(round(block_total)):,}".replace(",", ".")
+            course_lines.append(f"Tiền: {tien_str} VND")
 
         # 17/7 (a Hiếu chốt): block chỉ Phone/UID/<bé, gói>. Nguồn + Tổng(PR) ở footer chung.
         blocks.append(
