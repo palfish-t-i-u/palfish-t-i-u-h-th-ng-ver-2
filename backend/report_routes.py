@@ -238,6 +238,7 @@ def _load_ledger_revenue(sb, d_start: str, d_end: str, team: str | None) -> tupl
             .select("sale_crm_name, team, so_tien_vnd, so_tien_net, phi_cong, gmv_rmb, don_hang_id, ngay_tien_ve")
             .gte("ngay_tien_ve", d_start)
             .lte("ngay_tien_ve", d_end)
+            .eq("is_test", False)
         )
         if team:
             q = q.eq("team", team)

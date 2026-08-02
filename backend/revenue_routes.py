@@ -238,6 +238,19 @@ def _is_test_email(email: str) -> bool:
     return email.strip().lower().endswith("@dev")
 
 
+def apply_revenue_filters(query, *, include_test: bool = False):
+    """Bộ lọc doanh thu dùng chung cho Sổ + BC01/02/03. Mặc định loại đơn test.
+    (Chừa chỗ mở rộng NON_VN_TEAMS sau — đợt khác.)"""
+    if not include_test:
+        query = query.eq("is_test", False)
+    return query
+
+
+def ky_doanh_thu(row: dict) -> date | None:
+    """Kỳ doanh thu chuẩn = ngay_tien_ve. Việc 2b (đợt 2) chỉ sửa hàm này."""
+    return _parse_date(row.get("ngay_tien_ve"))
+
+
 def _bc02_type_goc(loai: str | None, loai2: str | None) -> str:
     l1 = (loai or "").strip()
     l2 = (loai2 or "").strip()
@@ -264,8 +277,8 @@ def bc02_type_from_row(loai: str | None, loai2: str | None) -> str:
 
 
 def _row_pay_date(row: dict[str, Any]) -> date | None:
-    """BC02 day bucket — Pay Time (pay_time), fallback ngay_tien_ve."""
-    return _parse_date(row.get("pay_time")) or _parse_date(row.get("ngay_tien_ve"))
+    """BC02 day bucket — kỳ doanh thu chuẩn (ngay_tien_ve)."""
+    return ky_doanh_thu(row)
 
 
 def _row_month_date(row: dict[str, Any]) -> date | None:
@@ -593,17 +606,18 @@ def _ledger_query(
     search: str | None = None,
     created_by_emails: list[str] | None = None,
     count: str | None = None,
+    include_test: bool = False,
 ):
-    """Lọc theo Pay Time (pay_time) — khớp pivot Excel Hiếu, không dùng ngay_tien_ve."""
+    """Lọc theo ngay_tien_ve — kỳ doanh thu chuẩn (REV-01)."""
     if count:
         q = sb.table("so_doanh_thu").select(select, count=count)
     else:
         q = sb.table("so_doanh_thu").select(select)
-    q = q.order("pay_time", desc=True).order("created_at", desc=True)
+    q = q.order("ngay_tien_ve", desc=True).order("created_at", desc=True)
     if from_date:
-        q = q.gte("pay_time", f"{from_date[:10]}T00:00:00")
+        q = q.gte("ngay_tien_ve", from_date[:10])
     if to_date:
-        q = q.lte("pay_time", f"{to_date[:10]}T23:59:59")
+        q = q.lte("ngay_tien_ve", to_date[:10])
     if loai_nhap in ("tu_dong", "tay"):
         q = q.eq("loai_nhap", loai_nhap)
     if created_by_emails is not None:
@@ -619,6 +633,7 @@ def _ledger_query(
             )
         )
         q = q.or_(or_clauses)
+    q = apply_revenue_filters(q, include_test=include_test)
     return q
 
 
@@ -646,6 +661,7 @@ def _count_so_doanh_thu(
     team_filter: str | None = None,
     search: str | None = None,
     created_by_emails: list[str] | None = None,
+    include_test: bool = False,
 ) -> int:
     if team_filter:
         rows = _fetch_so_doanh_thu(
@@ -656,6 +672,7 @@ def _count_so_doanh_thu(
             loai_nhap=loai_nhap,
             search=search,
             created_by_emails=created_by_emails,
+            include_test=include_test,
         )
         return len(_filter_rows_by_team(rows, team_filter))
     res = _ledger_query(
@@ -667,6 +684,7 @@ def _count_so_doanh_thu(
         search=search,
         created_by_emails=created_by_emails,
         count="exact",
+        include_test=include_test,
     ).limit(0).execute()
     return int(res.count or 0)
 
@@ -682,6 +700,7 @@ def _fetch_so_doanh_thu_page(
     created_by_emails: list[str] | None = None,
     limit: int = LEDGER_TABLE_PAGE,
     offset: int = 0,
+    include_test: bool = False,
 ) -> list[dict[str, Any]]:
     res = (
         _ledger_query(
@@ -692,6 +711,7 @@ def _fetch_so_doanh_thu_page(
             loai_nhap=loai_nhap,
             search=search,
             created_by_emails=created_by_emails,
+            include_test=include_test,
         )
         .range(offset, offset + max(limit, 1) - 1)
         .execute()
@@ -726,6 +746,7 @@ def _fetch_ledger_summary_rows(
     to_date: str | None = None,
     loai_nhap: str | None = None,
     created_by_emails: list[str] | None = None,
+    include_test: bool = False,
 ) -> list[dict[str, Any]]:
     """Chỉ cột cần cho thẻ tổng hợp — paginate, không enrich."""
     from analytics_limits import fetch_rows_capped
@@ -740,6 +761,7 @@ def _fetch_ledger_summary_rows(
             created_by_emails=created_by_emails,
             limit=limit,
             offset=offset,
+            include_test=include_test,
         )
 
     rows, _ = fetch_rows_capped(
@@ -757,6 +779,7 @@ def _fetch_so_doanh_thu(
     loai_nhap: str | None = None,
     search: str | None = None,
     created_by_emails: list[str] | None = None,
+    include_test: bool = False,
 ) -> list[dict[str, Any]]:
     """PostgREST trả tối đa 1000 dòng/lần — paginate có giới hạn MAX_ANALYTICS_ROWS."""
     from analytics_limits import fetch_rows_capped
@@ -767,13 +790,13 @@ def _fetch_so_doanh_thu(
         q = (
             sb.table("so_doanh_thu")
             .select(select_cols)
-            .order("pay_time", desc=True)
+            .order("ngay_tien_ve", desc=True)
             .order("created_at", desc=True)
         )
         if from_date:
-            q = q.gte("pay_time", f"{from_date[:10]}T00:00:00")
+            q = q.gte("ngay_tien_ve", from_date[:10])
         if to_date:
-            q = q.lte("pay_time", f"{to_date[:10]}T23:59:59")
+            q = q.lte("ngay_tien_ve", to_date[:10])
         if loai_nhap in ("tu_dong", "tay"):
             q = q.eq("loai_nhap", loai_nhap)
         if created_by_emails is not None:
@@ -789,6 +812,7 @@ def _fetch_so_doanh_thu(
                 )
             )
             q = q.or_(or_clauses)
+        q = apply_revenue_filters(q, include_test=include_test)
         res = q.range(offset, offset + limit - 1).execute()
         return res.data or []
 
@@ -1368,6 +1392,7 @@ def register_revenue_routes(app, get_supabase) -> None:
         search: str | None = Query(None),
         limit: int = Query(LEDGER_TABLE_PAGE, ge=1, le=200),
         offset: int = Query(0, ge=0),
+        include_test: bool = Query(False),
     ):
         sb = _sb()
         actor = resolve_actor(sb, authorization)
@@ -1392,6 +1417,7 @@ def register_revenue_routes(app, get_supabase) -> None:
                     loai_nhap=loai_nhap,
                     search=search_term,
                     created_by_emails=scoped_emails,
+                    include_test=include_test,
                 )
                 filtered = _filter_rows_by_team(all_rows, team)
                 total = len(filtered)
@@ -1405,6 +1431,7 @@ def register_revenue_routes(app, get_supabase) -> None:
                     loai_nhap=loai_nhap,
                     search=search_term,
                     created_by_emails=scoped_emails,
+                    include_test=include_test,
                 )
                 db_rows = _fetch_so_doanh_thu_page(
                     sb,
@@ -1416,6 +1443,7 @@ def register_revenue_routes(app, get_supabase) -> None:
                     created_by_emails=scoped_emails,
                     limit=limit,
                     offset=offset,
+                    include_test=include_test,
                 )
                 rows = _enrich_ledger_rows(sb, db_rows)
             return {

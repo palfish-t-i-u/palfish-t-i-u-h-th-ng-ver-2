@@ -205,6 +205,7 @@ def test_bc03_report_uses_net_with_gross_fallback():
         "phi_cong": 200000,
         "gmv_rmb": 2648.65,
         "ngay_tien_ve": "2026-07-20",
+        "is_test": False,
     }
     cash_unstamped = {
         "id": "row-cash",
@@ -215,6 +216,7 @@ def test_bc03_report_uses_net_with_gross_fallback():
         "phi_cong": 0,
         "gmv_rmb": 1351.35,
         "ngay_tien_ve": "2026-07-20",
+        "is_test": False,
     }
     sb = FakeSB({"so_doanh_thu": [card_stamped, cash_unstamped]})
 
