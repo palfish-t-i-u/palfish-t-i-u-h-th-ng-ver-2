@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime, timezone
+import calendar
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal, ROUND_HALF_UP
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from fastapi import Header, HTTPException, Query
 from pydantic import BaseModel
@@ -149,6 +151,36 @@ def _parse_date(value: Any) -> date | None:
         return date.fromisoformat(s[:10])
     except ValueError:
         return None
+
+
+VN_TZ = ZoneInfo("Asia/Ho_Chi_Minh")
+
+
+def _parse_datetime(value: Any) -> datetime | None:
+    """Parse timestamp string → tz-aware datetime. Naive → treat as giờ VN (không phải UTC)."""
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value if value.tzinfo else value.replace(tzinfo=VN_TZ)
+    s = str(value).strip()
+    if not s:
+        return None
+    try:
+        dt = datetime.fromisoformat(s)
+        return dt if dt.tzinfo else dt.replace(tzinfo=VN_TZ)
+    except ValueError:
+        return None
+
+
+def ky_tu_gio_thuc(dt: datetime) -> date:
+    """Kỳ doanh thu theo luật Thu Hiền: sau 22h VN → ngày sau;
+    ngoại lệ ngày cuối tháng (22h–24h giữ nguyên tháng đó)."""
+    local = dt.astimezone(VN_TZ)
+    last_day = calendar.monthrange(local.year, local.month)[1]
+    is_last_day = (local.day == last_day)
+    if local.hour >= 22 and not is_last_day:
+        return (local + timedelta(days=1)).date()
+    return local.date()
 
 
 def vnd_to_rmb(vnd: int | float, rate: Decimal = DEFAULT_TY_GIA) -> float:
@@ -493,6 +525,32 @@ def _resolve_payment_date(sb, order_row: dict[str, Any]) -> date:
         if d:
             return d
     return datetime.now(timezone.utc).date()
+
+
+def _resolve_payment_time(sb, order_row: dict[str, Any]) -> datetime | None:
+    """Như _resolve_payment_date nhưng trả datetime tz-aware (giữ giờ thực VN)."""
+    order_id = order_row.get("id")
+    if order_id:
+        try:
+            gd = (
+                sb.table("giao_dich")
+                .select("thoi_gian_giao_dich")
+                .eq("don_hang_id", order_id)
+                .order("thoi_gian_giao_dich", desc=True)
+                .limit(1)
+                .execute()
+            )
+            if gd.data:
+                dt = _parse_datetime(gd.data[0].get("thoi_gian_giao_dich"))
+                if dt:
+                    return dt
+        except Exception:
+            pass
+    for key in ("m3_approved_at", "updated_at", "created_at"):
+        dt = _parse_datetime(order_row.get(key))
+        if dt:
+            return dt
+    return None
 
 
 def _format_sdt(kh: dict[str, Any] | None) -> str:
@@ -960,6 +1018,28 @@ def _resolve_payment_date_from_pr(sb, pr_id: str) -> date:
     return datetime.now(timezone.utc).date()
 
 
+def _resolve_payment_time_from_pr(sb, pr_id: str) -> datetime | None:
+    """Như _resolve_payment_date_from_pr nhưng trả datetime tz-aware."""
+    try:
+        res = (
+            sb.table("payment_lines")
+            .select("paid_at, created_at")
+            .eq("payment_request_id", pr_id)
+            .eq("status", "paid")
+            .order("paid_at", desc=True)
+            .limit(1)
+            .execute()
+        )
+        if res.data:
+            for key in ("paid_at", "created_at"):
+                dt = _parse_datetime(res.data[0].get(key))
+                if dt:
+                    return dt
+    except Exception:
+        pass
+    return None
+
+
 def _resolve_payment_method_from_pr(sb, pr_id: str) -> str:
     try:
         res = (
@@ -1047,10 +1127,18 @@ def sync_ledger_from_ar_course(
         team = _resolve_team(sb, sale or None, sale_email or actor_email)
 
         if pr_id:
-            ngay = _resolve_payment_date_from_pr(sb, pr_id)
+            t = _resolve_payment_time_from_pr(sb, pr_id)
+            if t:
+                ngay_tien_ve = ky_tu_gio_thuc(t)
+                pay_time_str = t.isoformat()
+            else:
+                ngay_tien_ve = _resolve_payment_date_from_pr(sb, pr_id)
+                pay_time_str = f"{ngay_tien_ve.isoformat()}T00:00:00"
             payment_method = _resolve_payment_method_from_pr(sb, pr_id)
         else:
-            ngay = datetime.now(timezone.utc).date()
+            now = datetime.now(timezone.utc)
+            ngay_tien_ve = ky_tu_gio_thuc(now)
+            pay_time_str = now.isoformat()
             payment_method = ""
 
         ten_khach = str(ar_row.get("customer_name") or "").strip()
@@ -1062,8 +1150,8 @@ def sync_ledger_from_ar_course(
         goi_hoc = str(course.get("name") or course_code).strip()
 
         payload = {
-            "ngay_tien_ve": ngay.isoformat(),
-            "pay_time": f"{ngay.isoformat()}T00:00:00",
+            "ngay_tien_ve": ngay_tien_ve.isoformat(),
+            "pay_time": pay_time_str,
             "ten_khach": ten_khach,
             "sdt": phone,
             "uid": uid,
@@ -1090,7 +1178,7 @@ def sync_ledger_from_ar_course(
                 sb.table("so_doanh_thu")
                 .select("id")
                 .eq("uid", uid)
-                .eq("ngay_tien_ve", ngay.isoformat())
+                .eq("ngay_tien_ve", ngay_tien_ve.isoformat())
                 .eq("so_tien_vnd", vnd)
                 .limit(2)
                 .execute()
@@ -1254,11 +1342,17 @@ def sync_ledger_from_m3_order(sb, don_hang_id: str, actor_email: str) -> str | N
         rate = DEFAULT_TY_GIA
         sale = (row.get("sale_crm_name") or "").strip()
         team = _resolve_team(sb, sale, row.get("created_by"))
-        ngay = _resolve_payment_date(sb, row)
+        t = _resolve_payment_time(sb, row)
+        if t:
+            ngay_tien_ve = ky_tu_gio_thuc(t)
+            pay_time_str = t.isoformat()
+        else:
+            ngay_tien_ve = _resolve_payment_date(sb, row)
+            pay_time_str = f"{ngay_tien_ve.isoformat()}T00:00:00"
 
         payload = {
-            "ngay_tien_ve": ngay.isoformat(),
-            "pay_time": f"{ngay.isoformat()}T00:00:00",
+            "ngay_tien_ve": ngay_tien_ve.isoformat(),
+            "pay_time": pay_time_str,
             "ten_khach": kh.get("ho_ten") or "",
             "sdt": _format_sdt(kh),
             "uid": str(kh.get("crm_uid") or ""),
