@@ -597,6 +597,40 @@ def register_gateway_routes(app, get_supabase: Callable[[], Any]) -> None:
         if pr_id:
             pr_res = sb.table("payment_requests").select("*").eq("id", pr_id).limit(1).execute()
             pr = (pr_res.data or [{}])[0]
+
+        if pr_id and wrote_net and gw_net > 0:
+            try:
+                from revenue_routes import stamp_net_fee
+                # Sổ ghi từ B3 (sync_ledger_from_ar_course) không có don_hang_id/khoá join
+                # trực tiếp tới PR — nhưng mang note="AR {ar_id}". Tra ar_id qua
+                # active_requests.pr_id rồi lọc theo note (mirror cơ chế đã có).
+                ar_res = sb.table("active_requests").select("id").eq("pr_id", pr_id).execute()
+                ar_ids = [str(a["id"]) for a in (ar_res.data or []) if a.get("id")]
+                l_res = None
+                if ar_ids:
+                    notes = [f"AR {aid}" for aid in ar_ids]
+                    l_res = (
+                        sb.table("so_doanh_thu")
+                        .select("id, so_tien_vnd, ty_gia_vnd_rmb, payment_method")
+                        .in_("note", notes)
+                        .is_("gateway_txn_id", "null")
+                        .execute()
+                    )
+                if l_res and l_res.data:
+                    fee_vnd = max(0, int(gw_amount) - int(gw_net))
+                    for l_row in l_res.data:
+                        pm = (l_row.get("payment_method") or "").lower()
+                        if not pm or any(k in pm for k in ("thẻ", "quẹt", "trả góp", "card", "installment")):
+                            stamp_net_fee(
+                                sb,
+                                ledger_row_id=l_row["id"],
+                                gateway_txn_id=txn_id,
+                                gross_vnd=l_row.get("so_tien_vnd") or gw_amount,
+                                fee_vnd=fee_vnd,
+                                rate=l_row.get("ty_gia_vnd_rmb"),
+                            )
+            except Exception as exc:
+                print(f"[gateway] back-stamp net fee to ledger failed: {exc}")
         log_audit(sb, actor.email, "recon.txn_matched", "gateway_txn", txn_id, {
             "payment_line_id": line_id, "pr_id": pr_id,
             "amount": _parse_amount(line_row.get("amount")),

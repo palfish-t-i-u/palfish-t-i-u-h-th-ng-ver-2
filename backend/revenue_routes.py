@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime, timezone
+import calendar
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal, ROUND_HALF_UP
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from fastapi import Header, HTTPException, Query
 from pydantic import BaseModel
@@ -151,6 +153,36 @@ def _parse_date(value: Any) -> date | None:
         return None
 
 
+VN_TZ = ZoneInfo("Asia/Ho_Chi_Minh")
+
+
+def _parse_datetime(value: Any) -> datetime | None:
+    """Parse timestamp string → tz-aware datetime. Naive → treat as giờ VN (không phải UTC)."""
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value if value.tzinfo else value.replace(tzinfo=VN_TZ)
+    s = str(value).strip()
+    if not s:
+        return None
+    try:
+        dt = datetime.fromisoformat(s)
+        return dt if dt.tzinfo else dt.replace(tzinfo=VN_TZ)
+    except ValueError:
+        return None
+
+
+def ky_tu_gio_thuc(dt: datetime) -> date:
+    """Kỳ doanh thu theo luật Thu Hiền: sau 22h VN → ngày sau;
+    ngoại lệ ngày cuối tháng (22h–24h giữ nguyên tháng đó)."""
+    local = dt.astimezone(VN_TZ)
+    last_day = calendar.monthrange(local.year, local.month)[1]
+    is_last_day = (local.day == last_day)
+    if local.hour >= 22 and not is_last_day:
+        return (local + timedelta(days=1)).date()
+    return local.date()
+
+
 def vnd_to_rmb(vnd: int | float, rate: Decimal = DEFAULT_TY_GIA) -> float:
     if not vnd:
         return 0.0
@@ -158,8 +190,97 @@ def vnd_to_rmb(vnd: int | float, rate: Decimal = DEFAULT_TY_GIA) -> float:
     return float(r)
 
 
+def stamp_net_fee(
+    sb,
+    *,
+    ledger_row_id: str,
+    gateway_txn_id: str,
+    gross_vnd: int,
+    fee_vnd: int,
+    rate: float | Decimal | None = None,
+) -> bool:
+    """REV-04: Stamp net fee & net VND/RMB to a so_doanh_thu row. Idempotent according to gateway_txn_id IS NULL."""
+    net_vnd = max(0, int(gross_vnd) - int(fee_vnd))
+    eff_rate = Decimal(str(rate or DEFAULT_TY_GIA))
+    net_rmb = vnd_to_rmb(net_vnd, eff_rate)
+
+    res = (
+        sb.table("so_doanh_thu")
+        .update({
+            "phi_cong": int(fee_vnd),
+            "so_tien_net": int(net_vnd),
+            "gateway_txn_id": str(gateway_txn_id),
+            "gmv_rmb": float(net_rmb),
+        })
+        .eq("id", ledger_row_id)
+        .is_("gateway_txn_id", "null")
+        .execute()
+    )
+    return bool(res.data)
+
+
+def _try_auto_stamp_fee(
+    sb,
+    ledger_row_id: str,
+    pr_id: str | None,
+    gross_vnd: int,
+    rate: float | Decimal | None,
+    payment_method: str | None = None,
+) -> bool:
+    """Helper auto-stamp fee if PR has an existing matched gateway transaction."""
+    if not ledger_row_id or not pr_id:
+        return False
+    pm = (payment_method or "").lower()
+    if pm and not any(k in pm for k in ("thẻ", "quẹt", "trả góp", "card", "installment")):
+        return False
+    try:
+        lines_res = sb.table("payment_lines").select("id").eq("payment_request_id", pr_id).execute()
+        line_ids = [r["id"] for r in (lines_res.data or []) if r.get("id")]
+        if not line_ids:
+            return False
+
+        gw_res = (
+            sb.table("gateway_transactions")
+            .select("id, amount, net_amount")
+            .in_("payment_line_id", line_ids)
+            .eq("match_status", "matched")
+            .limit(1)
+            .execute()
+        )
+        if gw_res.data:
+            gw = gw_res.data[0]
+            gw_amt = float(gw.get("amount") or 0)
+            gw_net = float(gw.get("net_amount") or 0)
+            if gw_net > 0:
+                fee = max(0, int(gw_amt - gw_net))
+                return stamp_net_fee(
+                    sb,
+                    ledger_row_id=ledger_row_id,
+                    gateway_txn_id=gw["id"],
+                    gross_vnd=gross_vnd,
+                    fee_vnd=fee,
+                    rate=rate,
+                )
+    except Exception as exc:
+        print(f"[revenue] auto-stamp fee check failed: {exc}")
+    return False
+
+
 def _is_test_email(email: str) -> bool:
     return email.strip().lower().endswith("@dev")
+
+
+def apply_revenue_filters(query, *, include_test: bool = False):
+    """Bộ lọc doanh thu dùng chung cho Sổ + BC01/02/03. Mặc định loại đơn test.
+    (Chừa chỗ mở rộng NON_VN_TEAMS sau — đợt khác.)"""
+    if not include_test:
+        query = query.eq("is_test", False)
+    return query
+
+
+def ky_doanh_thu(row: dict) -> date | None:
+    """Kỳ doanh thu chuẩn = ngay_tien_ve. Việc 2b (đợt 2) chỉ sửa hàm này."""
+    return _parse_date(row.get("ngay_tien_ve"))
 
 
 def _bc02_type_goc(loai: str | None, loai2: str | None) -> str:
@@ -188,8 +309,8 @@ def bc02_type_from_row(loai: str | None, loai2: str | None) -> str:
 
 
 def _row_pay_date(row: dict[str, Any]) -> date | None:
-    """BC02 day bucket — Pay Time (pay_time), fallback ngay_tien_ve."""
-    return _parse_date(row.get("pay_time")) or _parse_date(row.get("ngay_tien_ve"))
+    """BC02 day bucket — kỳ doanh thu chuẩn (ngay_tien_ve)."""
+    return ky_doanh_thu(row)
 
 
 def _row_month_date(row: dict[str, Any]) -> date | None:
@@ -406,6 +527,32 @@ def _resolve_payment_date(sb, order_row: dict[str, Any]) -> date:
     return datetime.now(timezone.utc).date()
 
 
+def _resolve_payment_time(sb, order_row: dict[str, Any]) -> datetime | None:
+    """Như _resolve_payment_date nhưng trả datetime tz-aware (giữ giờ thực VN)."""
+    order_id = order_row.get("id")
+    if order_id:
+        try:
+            gd = (
+                sb.table("giao_dich")
+                .select("thoi_gian_giao_dich")
+                .eq("don_hang_id", order_id)
+                .order("thoi_gian_giao_dich", desc=True)
+                .limit(1)
+                .execute()
+            )
+            if gd.data:
+                dt = _parse_datetime(gd.data[0].get("thoi_gian_giao_dich"))
+                if dt:
+                    return dt
+        except Exception:
+            pass
+    for key in ("m3_approved_at", "updated_at", "created_at"):
+        dt = _parse_datetime(order_row.get(key))
+        if dt:
+            return dt
+    return None
+
+
 def _format_sdt(kh: dict[str, Any] | None) -> str:
     k = kh or {}
     sdt = k.get("so_dien_thoai") or ""
@@ -517,17 +664,18 @@ def _ledger_query(
     search: str | None = None,
     created_by_emails: list[str] | None = None,
     count: str | None = None,
+    include_test: bool = False,
 ):
-    """Lọc theo Pay Time (pay_time) — khớp pivot Excel Hiếu, không dùng ngay_tien_ve."""
+    """Lọc theo ngay_tien_ve — kỳ doanh thu chuẩn (REV-01)."""
     if count:
         q = sb.table("so_doanh_thu").select(select, count=count)
     else:
         q = sb.table("so_doanh_thu").select(select)
-    q = q.order("pay_time", desc=True).order("created_at", desc=True)
+    q = q.order("ngay_tien_ve", desc=True).order("created_at", desc=True)
     if from_date:
-        q = q.gte("pay_time", f"{from_date[:10]}T00:00:00")
+        q = q.gte("ngay_tien_ve", from_date[:10])
     if to_date:
-        q = q.lte("pay_time", f"{to_date[:10]}T23:59:59")
+        q = q.lte("ngay_tien_ve", to_date[:10])
     if loai_nhap in ("tu_dong", "tay"):
         q = q.eq("loai_nhap", loai_nhap)
     if created_by_emails is not None:
@@ -543,6 +691,7 @@ def _ledger_query(
             )
         )
         q = q.or_(or_clauses)
+    q = apply_revenue_filters(q, include_test=include_test)
     return q
 
 
@@ -570,6 +719,7 @@ def _count_so_doanh_thu(
     team_filter: str | None = None,
     search: str | None = None,
     created_by_emails: list[str] | None = None,
+    include_test: bool = False,
 ) -> int:
     if team_filter:
         rows = _fetch_so_doanh_thu(
@@ -580,6 +730,7 @@ def _count_so_doanh_thu(
             loai_nhap=loai_nhap,
             search=search,
             created_by_emails=created_by_emails,
+            include_test=include_test,
         )
         return len(_filter_rows_by_team(rows, team_filter))
     res = _ledger_query(
@@ -591,6 +742,7 @@ def _count_so_doanh_thu(
         search=search,
         created_by_emails=created_by_emails,
         count="exact",
+        include_test=include_test,
     ).limit(0).execute()
     return int(res.count or 0)
 
@@ -606,6 +758,7 @@ def _fetch_so_doanh_thu_page(
     created_by_emails: list[str] | None = None,
     limit: int = LEDGER_TABLE_PAGE,
     offset: int = 0,
+    include_test: bool = False,
 ) -> list[dict[str, Any]]:
     res = (
         _ledger_query(
@@ -616,6 +769,7 @@ def _fetch_so_doanh_thu_page(
             loai_nhap=loai_nhap,
             search=search,
             created_by_emails=created_by_emails,
+            include_test=include_test,
         )
         .range(offset, offset + max(limit, 1) - 1)
         .execute()
@@ -650,6 +804,7 @@ def _fetch_ledger_summary_rows(
     to_date: str | None = None,
     loai_nhap: str | None = None,
     created_by_emails: list[str] | None = None,
+    include_test: bool = False,
 ) -> list[dict[str, Any]]:
     """Chỉ cột cần cho thẻ tổng hợp — paginate, không enrich."""
     from analytics_limits import fetch_rows_capped
@@ -664,6 +819,7 @@ def _fetch_ledger_summary_rows(
             created_by_emails=created_by_emails,
             limit=limit,
             offset=offset,
+            include_test=include_test,
         )
 
     rows, _ = fetch_rows_capped(
@@ -681,6 +837,7 @@ def _fetch_so_doanh_thu(
     loai_nhap: str | None = None,
     search: str | None = None,
     created_by_emails: list[str] | None = None,
+    include_test: bool = False,
 ) -> list[dict[str, Any]]:
     """PostgREST trả tối đa 1000 dòng/lần — paginate có giới hạn MAX_ANALYTICS_ROWS."""
     from analytics_limits import fetch_rows_capped
@@ -691,13 +848,13 @@ def _fetch_so_doanh_thu(
         q = (
             sb.table("so_doanh_thu")
             .select(select_cols)
-            .order("pay_time", desc=True)
+            .order("ngay_tien_ve", desc=True)
             .order("created_at", desc=True)
         )
         if from_date:
-            q = q.gte("pay_time", f"{from_date[:10]}T00:00:00")
+            q = q.gte("ngay_tien_ve", from_date[:10])
         if to_date:
-            q = q.lte("pay_time", f"{to_date[:10]}T23:59:59")
+            q = q.lte("ngay_tien_ve", to_date[:10])
         if loai_nhap in ("tu_dong", "tay"):
             q = q.eq("loai_nhap", loai_nhap)
         if created_by_emails is not None:
@@ -713,6 +870,7 @@ def _fetch_so_doanh_thu(
                 )
             )
             q = q.or_(or_clauses)
+        q = apply_revenue_filters(q, include_test=include_test)
         res = q.range(offset, offset + limit - 1).execute()
         return res.data or []
 
@@ -801,6 +959,9 @@ def _row_to_ledger(row: dict[str, Any], sb=None) -> dict[str, Any]:
         "updatedByEmail": row.get("updated_by_email") or "",
         "createdAt": row.get("created_at") or "",
         "updatedAt": row.get("updated_at") or "",
+        "phiCong": int(row.get("phi_cong") or 0),
+        "soTienNet": int(row["so_tien_net"]) if row.get("so_tien_net") is not None else None,
+        "gatewayTxnId": row.get("gateway_txn_id"),
     }
 
 
@@ -855,6 +1016,28 @@ def _resolve_payment_date_from_pr(sb, pr_id: str) -> date:
     except Exception:
         pass
     return datetime.now(timezone.utc).date()
+
+
+def _resolve_payment_time_from_pr(sb, pr_id: str) -> datetime | None:
+    """Như _resolve_payment_date_from_pr nhưng trả datetime tz-aware."""
+    try:
+        res = (
+            sb.table("payment_lines")
+            .select("paid_at, created_at")
+            .eq("payment_request_id", pr_id)
+            .eq("status", "paid")
+            .order("paid_at", desc=True)
+            .limit(1)
+            .execute()
+        )
+        if res.data:
+            for key in ("paid_at", "created_at"):
+                dt = _parse_datetime(res.data[0].get(key))
+                if dt:
+                    return dt
+    except Exception:
+        pass
+    return None
 
 
 def _resolve_payment_method_from_pr(sb, pr_id: str) -> str:
@@ -944,10 +1127,18 @@ def sync_ledger_from_ar_course(
         team = _resolve_team(sb, sale or None, sale_email or actor_email)
 
         if pr_id:
-            ngay = _resolve_payment_date_from_pr(sb, pr_id)
+            t = _resolve_payment_time_from_pr(sb, pr_id)
+            if t:
+                ngay_tien_ve = ky_tu_gio_thuc(t)
+                pay_time_str = t.isoformat()
+            else:
+                ngay_tien_ve = _resolve_payment_date_from_pr(sb, pr_id)
+                pay_time_str = f"{ngay_tien_ve.isoformat()}T00:00:00"
             payment_method = _resolve_payment_method_from_pr(sb, pr_id)
         else:
-            ngay = datetime.now(timezone.utc).date()
+            now = datetime.now(timezone.utc)
+            ngay_tien_ve = ky_tu_gio_thuc(now)
+            pay_time_str = now.isoformat()
             payment_method = ""
 
         ten_khach = str(ar_row.get("customer_name") or "").strip()
@@ -959,8 +1150,8 @@ def sync_ledger_from_ar_course(
         goi_hoc = str(course.get("name") or course_code).strip()
 
         payload = {
-            "ngay_tien_ve": ngay.isoformat(),
-            "pay_time": f"{ngay.isoformat()}T00:00:00",
+            "ngay_tien_ve": ngay_tien_ve.isoformat(),
+            "pay_time": pay_time_str,
             "ten_khach": ten_khach,
             "sdt": phone,
             "uid": uid,
@@ -987,7 +1178,7 @@ def sync_ledger_from_ar_course(
                 sb.table("so_doanh_thu")
                 .select("id")
                 .eq("uid", uid)
-                .eq("ngay_tien_ve", ngay.isoformat())
+                .eq("ngay_tien_ve", ngay_tien_ve.isoformat())
                 .eq("so_tien_vnd", vnd)
                 .limit(2)
                 .execute()
@@ -1006,7 +1197,9 @@ def sync_ledger_from_ar_course(
 
         ins = sb.table("so_doanh_thu").insert(payload).execute()
         if ins.data:
-            return str(ins.data[0]["id"])
+            new_id = str(ins.data[0]["id"])
+            _try_auto_stamp_fee(sb, ledger_row_id=new_id, pr_id=pr_id, gross_vnd=vnd, rate=rate, payment_method=payment_method)
+            return new_id
     except Exception as exc:
         print(f"[revenue] sync B3 course → Sổ thất bại (non-fatal): {exc}")
     return None
@@ -1149,11 +1342,17 @@ def sync_ledger_from_m3_order(sb, don_hang_id: str, actor_email: str) -> str | N
         rate = DEFAULT_TY_GIA
         sale = (row.get("sale_crm_name") or "").strip()
         team = _resolve_team(sb, sale, row.get("created_by"))
-        ngay = _resolve_payment_date(sb, row)
+        t = _resolve_payment_time(sb, row)
+        if t:
+            ngay_tien_ve = ky_tu_gio_thuc(t)
+            pay_time_str = t.isoformat()
+        else:
+            ngay_tien_ve = _resolve_payment_date(sb, row)
+            pay_time_str = f"{ngay_tien_ve.isoformat()}T00:00:00"
 
         payload = {
-            "ngay_tien_ve": ngay.isoformat(),
-            "pay_time": f"{ngay.isoformat()}T00:00:00",
+            "ngay_tien_ve": ngay_tien_ve.isoformat(),
+            "pay_time": pay_time_str,
             "ten_khach": kh.get("ho_ten") or "",
             "sdt": _format_sdt(kh),
             "uid": str(kh.get("crm_uid") or ""),
@@ -1176,7 +1375,11 @@ def sync_ledger_from_m3_order(sb, don_hang_id: str, actor_email: str) -> str | N
         }
         ins = sb.table("so_doanh_thu").insert(payload).execute()
         if ins.data:
-            return str(ins.data[0]["id"])
+            new_id = str(ins.data[0]["id"])
+            # REV-04: M3 (don_hang) không phát sinh quẹt thẻ/trả góp qua cổng (xác nhận
+            # nghiệp vụ 30/7) và không link payment_requests/payment_lines/gateway_transactions
+            # -> không stamp net phí cho luồng này. so_tien_net giữ NULL, báo cáo fallback gross.
+            return new_id
     except Exception as exc:
         print(f"[revenue] sync M3 → Sổ thất bại (non-fatal): {exc}")
     return None
@@ -1223,6 +1426,11 @@ class GsheetSyncBody(BaseModel):
     limit: int = 0
     spreadsheetId: str | None = None
     tabs: list[str] | None = None
+
+
+class RefundLedgerRowBody(BaseModel):
+    amount: int
+    reason: str | None = None
 
 
 LEDGER_PATCH_MAP = {
@@ -1278,6 +1486,7 @@ def register_revenue_routes(app, get_supabase) -> None:
         search: str | None = Query(None),
         limit: int = Query(LEDGER_TABLE_PAGE, ge=1, le=200),
         offset: int = Query(0, ge=0),
+        include_test: bool = Query(False),
     ):
         sb = _sb()
         actor = resolve_actor(sb, authorization)
@@ -1302,6 +1511,7 @@ def register_revenue_routes(app, get_supabase) -> None:
                     loai_nhap=loai_nhap,
                     search=search_term,
                     created_by_emails=scoped_emails,
+                    include_test=include_test,
                 )
                 filtered = _filter_rows_by_team(all_rows, team)
                 total = len(filtered)
@@ -1315,6 +1525,7 @@ def register_revenue_routes(app, get_supabase) -> None:
                     loai_nhap=loai_nhap,
                     search=search_term,
                     created_by_emails=scoped_emails,
+                    include_test=include_test,
                 )
                 db_rows = _fetch_so_doanh_thu_page(
                     sb,
@@ -1326,6 +1537,7 @@ def register_revenue_routes(app, get_supabase) -> None:
                     created_by_emails=scoped_emails,
                     limit=limit,
                     offset=offset,
+                    include_test=include_test,
                 )
                 rows = _enrich_ledger_rows(sb, db_rows)
             return {
@@ -1733,3 +1945,95 @@ def register_revenue_routes(app, get_supabase) -> None:
             raise
         except Exception as exc:
             raise HTTPException(500, f"Lỗi sync Google Sheet: {exc}") from exc
+
+    @app.post("/revenue/ledger/{row_id}/refund")
+    def refund_ledger_row(
+        row_id: str,
+        body: RefundLedgerRowBody,
+        authorization: str | None = Header(None),
+    ):
+        """
+        REV-02: Ghi giảm doanh thu (hoàn/hủy) cho dòng Sổ gốc.
+        - Truy về kỳ gốc (ngay_tien_ve = dòng gốc).
+        - Tạo dòng âm mới loai_nhap='hoan', hoan_ref_id=row_id.
+        - RBAC: Yêu cầu tối thiểu vai trò Manager (manager/system). Sale -> 403.
+        - Guard: Kiểm tra tổng hoàn không vượt số gốc.
+        """
+        sb = _sb()
+        actor = resolve_actor(sb, authorization)
+        require_min_role(actor, "manager")
+
+        if body.amount <= 0:
+            raise HTTPException(400, "Số tiền hoàn phải lớn hơn 0")
+
+        # 1. Fetch original row
+        orig_res = sb.table("so_doanh_thu").select("*").eq("id", row_id).limit(1).execute()
+        if not orig_res.data:
+            raise HTTPException(404, "Không tìm thấy dòng Sổ doanh thu gốc")
+
+        orig = orig_res.data[0]
+        orig_vnd = orig.get("so_tien_vnd") or 0
+        if orig_vnd <= 0:
+            raise HTTPException(400, "Dòng gốc phải có số tiền lớn hơn 0 để có thể ghi giảm")
+
+        # 2. Check cumulative existing refunds for this row_id
+        existing_refunds_res = (
+            sb.table("so_doanh_thu")
+            .select("so_tien_vnd")
+            .eq("hoan_ref_id", row_id)
+            .execute()
+        )
+        already_refunded = sum(abs(r.get("so_tien_vnd") or 0) for r in (existing_refunds_res.data or []))
+
+        if already_refunded + body.amount > orig_vnd:
+            raise HTTPException(
+                400,
+                f"Tổng số tiền hoàn ({already_refunded + body.amount:,} VND) vượt quá số tiền gốc ({orig_vnd:,} VND)",
+            )
+
+        # 3. Proportional GMV RMB calculation
+        orig_rmb = Decimal(str(orig.get("gmv_rmb") or 0))
+        refund_rmb = (
+            -(Decimal(body.amount) * orig_rmb / Decimal(orig_vnd)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+            if orig_vnd > 0 and orig_rmb != 0
+            else Decimal(0)
+        )
+
+        # 4. Construct new negative refund row inheriting all identifiers from original
+        reason_note = body.reason.strip() if body.reason and body.reason.strip() else ""
+        note_text = f"[Ghi giảm/Hoàn tiền] {reason_note}".strip()
+
+        refund_payload = {
+            "so_tien_vnd": -body.amount,
+            "gmv_rmb": float(refund_rmb),
+            "ty_gia_vnd_rmb": float(orig.get("ty_gia_vnd_rmb") or DEFAULT_TY_GIA),
+            "loai_nhap": "hoan",
+            "hoan_ref_id": row_id,
+            "ngay_tien_ve": orig.get("ngay_tien_ve"),
+            "pay_time": orig.get("pay_time"),
+            "is_test": orig.get("is_test", False),
+            "team": orig.get("team"),
+            "team_pivot_label": orig.get("team_pivot_label"),
+            "sale_crm_name": orig.get("sale_crm_name"),
+            "ma_don_hang": orig.get("ma_don_hang"),
+            "don_hang_id": orig.get("don_hang_id"),
+            "crm_order_id": orig.get("crm_order_id"),
+            "ten_khach": orig.get("ten_khach"),
+            "sdt": orig.get("sdt"),
+            "uid": orig.get("uid"),
+            "goi_hoc": orig.get("goi_hoc"),
+            "loai": orig.get("loai"),
+            "loai_2": orig.get("loai_2"),
+            "payment_method": orig.get("payment_method"),
+            "created_by_email": actor.email or "he_thong",
+            "updated_by_email": actor.email or "he_thong",
+            "note": note_text,
+        }
+
+        try:
+            ins_res = sb.table("so_doanh_thu").insert(refund_payload).execute()
+            new_row = ins_res.data[0] if ins_res.data else refund_payload
+            return {"ok": True, "refund_row": new_row}
+        except Exception as exc:
+            raise HTTPException(500, f"Lỗi tạo dòng ghi giảm: {exc}") from exc
+

@@ -4,7 +4,7 @@ order: 2
 audience: ["ke-toan"]
 ---
 
-Áp dụng khi: cần thêm 1 dòng ghi nhận doanh thu thủ công (đơn không tự đổ từ M3), hoặc sửa lại thông tin dòng đã có.
+Áp dụng khi: cần thêm 1 dòng ghi nhận doanh thu thủ công (đơn không tự đổ về (Tự động)), hoặc sửa lại thông tin dòng đã có.
 
 ![Modal "Thêm dòng Sổ doanh thu" — điền đủ các trường bắt buộc](/docs-images/revenueLedger/tao-sua-dong-so-1.png)
 
@@ -32,6 +32,6 @@ audience: ["ke-toan"]
 2. Modal **"Chỉnh sửa dòng Sổ doanh thu"** mở ra với dữ liệu hiện có.
 3. Sửa các trường cần thiết → bấm **Lưu**.
 
-> ⚠️ Lưu ý: các dòng do M3 tự động đổ về từ Active Request/Course thì không nên sửa tay số tiền hay Pay Time — đối chiếu lại nguồn gốc AR trước khi sửa, tránh lệch số với hệ thống kích hoạt.
+> ⚠️ Lưu ý: các dòng Tự động đổ về từ Active Request/Course thì không nên sửa tay số tiền hay Pay Time — đối chiếu lại nguồn gốc AR trước khi sửa, tránh lệch số với hệ thống kích hoạt.
 >
 > ⚠️ Lưu ý thêm: **Real Pay (VND)** và **GMV (RMB)** là 2 ô riêng, đứng cạnh nhau trong form — điền nhầm sang ô bên cạnh sẽ làm sai số liệu doanh thu mà không có cảnh báo nào.

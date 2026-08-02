@@ -38,6 +38,8 @@ const baseProps = {
   deletingId: null,
   onEdit: noop,
   onDelete: noop,
+  onRefund: noop,
+  canRefund: false,
   hasMore: false,
   loadingMore: false,
   onLoadMore: noop,
@@ -65,9 +67,9 @@ describe("LedgerRowCards", () => {
     expect(onDelete).toHaveBeenCalledWith(row);
   });
 
-  it("dòng tự động (M3) không có nút Xóa", () => {
+  it("dòng tự động (Tự động) không có nút Xóa", () => {
     render(<LedgerRowCards {...baseProps} rows={[makeRow({ loaiNhap: "tu_dong" })]} />);
-    expect(screen.getByText("M3")).toBeInTheDocument();
+    expect(screen.getByText("Tự động")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Xóa" })).toBeNull();
   });
 
