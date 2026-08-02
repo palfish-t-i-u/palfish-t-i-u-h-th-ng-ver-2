@@ -334,6 +334,7 @@ export const endpoints = {
       search?: string;
       limit?: number;
       offset?: number;
+      include_test?: boolean;
     }) => api.get<RevenueLedgerListResponse>("/revenue/ledger", { params }),
     ledgerSummary: (params?: { from?: string; to?: string; loai_nhap?: string; team?: string }) =>
       api.get<LedgerSummaryResponse>("/revenue/ledger/summary", { params }),
@@ -343,6 +344,8 @@ export const endpoints = {
       api.patch<RevenueLedgerRow>(`/revenue/ledger/${id}`, body),
     deleteLedger: (id: string) =>
       api.delete<{ ok: boolean; id: string }>(`/revenue/ledger/${id}`),
+    refundLedger: (id: string, body: { amount: number; reason?: string }) =>
+      api.post<{ ok: boolean; refund_row: RevenueLedgerRow }>(`/revenue/ledger/${id}/refund`, body),
     pivot: (params?: { from?: string; to?: string; team?: string }) =>
       api.get<RevenuePivotResponse>("/revenue/pivot", { params }),
     pivotSalesPerformance: (params?: { from?: string; to?: string; team?: string }) =>

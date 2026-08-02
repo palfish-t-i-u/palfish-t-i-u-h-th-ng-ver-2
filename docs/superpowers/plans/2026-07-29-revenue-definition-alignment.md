@@ -6,6 +6,8 @@
 
 **Bối cảnh (ĐÃ verify — rà code 29/7):** path:line dưới đây grep xác nhận trên nhánh `sandbox` 29/7. ⚠️ **Số dòng đã lệch ~10 dòng khi verify lại 30/7** — người thực thi lấy số dòng ĐÚNG trong 2 handoff (verify 30/7): `docs/HANDOFF_REV-01_DUC_LOC_TEST_GOM_MOC_THOI_GIAN.md` (Đức) + `docs/HANDOFF_REV-02_DAT_HOAN_HUY_GHI_GIAM.md` (Đạt).
 
+> **⚠️ CẬP NHẬT 2/8/2026 — đọc mục cuối "CẬP NHẬT TRIỂN KHAI (2/8)" TRƯỚC.** Cả 4 việc REV-01..04 đã code + test xong trên `sandbox` (280 pytest pass; `report_routes.py` đã hòa REV-01 is_test + REV-04 net). Phân công Đức/Đạt + thứ tự merge-rebase bên dưới **đã thực hiện xong** → chỉ còn giá trị tham khảo thiết kế. Việc 2b **KHÔNG backfill** (Thu Hiền chốt forward-only). Kế hoạch triển khai hiện hành = mục cuối file.
+
 ---
 
 ## Nguyên tắc xuyên suốt (áp cho cả 4 việc)
@@ -253,3 +255,39 @@ Chia theo **topo code** (không theo phân môn cũ ở `docs/PROJECT.md`): cụ
 - Backup `so_doanh_thu` trên prod **trước mọi migration**.
 - FE: toggle "hiện đơn test" (REV-01) + cột Phí/Thực nhận (REV-04) + nút "Ghi giảm" (REV-02).
 - Chạy `cd frontend && npx tsc -b` + `npm run test`; review + merge 2 nhánh theo thứ tự REV-01 → REV-04 rebase (trần 15/8).
+
+---
+
+## CẬP NHẬT TRIỂN KHAI (2/8/2026) — SUPERSEDES §Thứ tự triển khai + §Phân công + §PHÂN CÔNG&LỊCH phía trên
+
+### Trạng thái thực tế
+- REV-01, REV-02, REV-03, REV-04 **đã code + test xong trên `sandbox`** (280 pytest pass; `report_routes.py` đã hòa REV-01 `is_test` + REV-04 net). Màn phân công Đức/Đạt + rebase REV-01→REV-04 ở trên **đã xong**, giờ chỉ là hồ sơ thiết kế.
+- Backend REV chưa lên `main`/prod. Migration **chưa apply** (kể cả sandbox DB — test dùng mock, không đụng DB thật).
+- Frontend 3 việc (toggle đơn test / nút Ghi giảm / cột Phí-Thực nhận) **chưa làm** (grep 0 hit trên `SoDoanhThuTab.tsx`).
+
+### Quyết định backfill 22h — HỦY (Thu Hiền chốt 2/8)
+- **Forward-only:** luật 22h chỉ áp cho đơn MỚI từ lúc deploy; đơn cũ giữ nguyên.
+- Lý do (verify code `ky_tu_gio_thuc` `revenue_routes.py:175`): đơn sau 22h đẩy sang ngày sau **cùng tháng**, đơn cuối tháng giữ nguyên → **không đơn nào nhảy tháng** → tổng THÁNG bất biến, COM tháng không đổi. Dịch mốc chỉ đổi số theo NGÀY trong quá khứ — Hiền không cần.
+- ⇒ **Bỏ hẳn bước chạy `scripts/backfill_ngay_tien_ve_22h.py`** (script để dormant trong repo phòng sau đổi ý). §2b "backfill dòng lịch sử" + mọi Anti-pattern/Nghiệm thu liên quan backfill: BỎ QUA. "Seam" pre/post-deploy vô hại (tổng tháng như nhau).
+
+### Kế hoạch triển khai hiện hành — 2 nhóm song song → trục deploy
+Nguyên tắc: **không ai làm thêm việc** — Hiền số cũ nguyên vẹn; Sales mọi thứ additive, mặc định ẩn/không bắt thao tác thêm.
+
+**Nhóm A — Frontend (song song, additive, 1 file `SoDoanhThuTab.tsx`; làm tuần tự A1→A2→A3 tránh đụng edit):**
+- A1. Toggle "Hiện đơn test" — mặc định ẩn (BE REV-01 đã lọc `is_test`; đây chỉ là nút bật xem lại, truyền `include_test=true`).
+- A2. Nút "Ghi giảm" + drawer xác nhận (REV-02) — gọi `POST /revenue/ledger/{id}/refund`; RBAC ≥ manager (Sale ẩn nút). Đọc contract THỰC từ route đã implement, không chỉ handoff.
+- A3. Cột "Phí" + "Thực nhận" (REV-04) — hiển thị `phi_cong` + `so_tien_net` (fallback `so_tien_vnd` khi null, nhãn "chờ phí").
+
+**Nhóm B — Migration DB (song song với A):**
+- B0. Apply 2 migration lên **sandbox DB trước** (idempotent) — CẦN cho A2/A3 test thật + verify BC trên số thật, vì tests hiện dùng mock. Xác nhận cột đã có.
+- B1. **Backup** `so_doanh_thu` prod: `CREATE TABLE so_doanh_thu_backup_20260802 AS SELECT * FROM so_doanh_thu;` (SQL Editor prod `jozcvbbypwvzaefteoxn`). Bắt buộc trước B2.
+- B2. Apply `docs/migrations/2026-07-30-ledger-refund.sql` + `2026-07-30-ledger-net-fee.sql` lên **prod** (đều `ADD COLUMN IF NOT EXISTS` → cột mới NULL, số cũ không đổi).
+
+**Trục chính (tuần tự, sau khi A + B xong):**
+- C. Merge `sandbox`→`main` (1 merge sạch — `merge-tree` exit 0; main GIỮ country-dial ISO + SePay suppress fix).
+- D. Deploy BE Render thủ công `bash scripts/deploy.sh` (Render Auto-Deploy OFF).
+- E. FE Vercel auto-deploy khi push `main`.
+- F. ~~Backfill 22h~~ — **HỦY**.
+- G. Verify prod: BC01 = BC02 = BC03 = tổng Sổ cùng kỳ + spot-check vài đơn → nhắn Thu Hiền "xong".
+
+**Thứ tự chạy:** A ∥ B → C → D → E → G. Rủi ro còn lại ~0: không bước nào ghi đè số lịch sử.

@@ -34,6 +34,8 @@ function row(partial: Partial<RevenueLedgerRow>): RevenueLedgerRow {
     maDonHang: partial.maDonHang ?? "",
     crmOrderId: partial.crmOrderId ?? "",
     infoCode: partial.infoCode ?? "",
+    phiCong: partial.phiCong ?? 0,
+    soTienNet: partial.soTienNet ?? null,
   };
 }
 

@@ -38,6 +38,8 @@ const baseProps = {
   deletingId: null,
   onEdit: noop,
   onDelete: noop,
+  onRefund: noop,
+  canRefund: false,
   hasMore: false,
   loadingMore: false,
   onLoadMore: noop,
