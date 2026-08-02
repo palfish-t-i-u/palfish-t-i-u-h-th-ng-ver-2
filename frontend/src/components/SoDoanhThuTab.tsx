@@ -285,11 +285,11 @@ export const LEDGER_COLUMNS: readonly LedgerColumnDef[] = [
   {
     key: "actions",
     label: "Thao tác",
-    thClass: "min-w-[9rem]",
+    thClass: "min-w-[14rem]",
     hideable: true,
     renderTd: (row, ctx) => (
       <Td>
-        <div className="flex flex-wrap justify-center gap-1.5">
+        <div className="flex flex-nowrap items-center justify-center gap-1.5 whitespace-nowrap">
           <Button type="button" size="sm" variant="ghost" onClick={() => ctx.openEdit(row)}>
             Chỉnh sửa
           </Button>
