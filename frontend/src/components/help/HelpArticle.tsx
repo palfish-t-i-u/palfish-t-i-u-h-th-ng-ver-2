@@ -105,27 +105,6 @@ export default function HelpArticle({ moduleSlug, topicSlug }: { moduleSlug: str
 
   return (
     <div className="flex justify-center gap-8">
-      {/* Thanh mục lục bên trái — sticky, chỉ hiện trên màn rộng (xl trở lên) */}
-      {showToc && (
-        <nav className="sticky top-6 hidden w-52 shrink-0 self-start py-1 xl:block">
-          <div className="mb-2 px-3 text-[11px] font-semibold uppercase tracking-wide text-gmv-muted">
-            Mục lục
-          </div>
-          <ul className="space-y-0.5 border-l border-gmv-border">
-            {toc.map((h) => (
-              <li key={h.id}>
-                <a
-                  href={`#${h.id}`}
-                  className="-ml-px block border-l-2 border-transparent py-1 pl-3 text-[13px] leading-snug text-gmv-muted transition-colors hover:border-gmv-primary hover:text-gmv-primary"
-                >
-                  {h.text}
-                </a>
-              </li>
-            ))}
-          </ul>
-        </nav>
-      )}
-
       {/* key gồm CẢ moduleSlug: ép remount khi đổi bài để animate-fade-in-once
           chạy lại — không thì React chỉ update text trong node cũ, animation
           không tự replay. Phải kèm moduleSlug vì `tong-quan` trùng ở 8 module:
@@ -179,6 +158,29 @@ export default function HelpArticle({ moduleSlug, topicSlug }: { moduleSlug: str
           </ReactMarkdown>
         </div>
       </article>
+
+      {/* Thanh mục lục bên phải — sticky, chỉ hiện trên màn rộng (xl trở lên).
+          Đặt SAU bài để bám lề phải theo layout docs kinh điển; mobile ẩn (đã có
+          khối mục lục inline trong <article>). */}
+      {showToc && (
+        <nav className="sticky top-6 hidden w-52 shrink-0 self-start py-1 xl:block">
+          <div className="mb-2 px-3 text-[11px] font-semibold uppercase tracking-wide text-gmv-muted">
+            Mục lục
+          </div>
+          <ul className="space-y-0.5 border-l border-gmv-border">
+            {toc.map((h) => (
+              <li key={h.id}>
+                <a
+                  href={`#${h.id}`}
+                  className="-ml-px block border-l-2 border-transparent py-1 pl-3 text-[13px] leading-snug text-gmv-muted transition-colors hover:border-gmv-primary hover:text-gmv-primary"
+                >
+                  {h.text}
+                </a>
+              </li>
+            ))}
+          </ul>
+        </nav>
+      )}
     </div>
   );
 }

@@ -98,7 +98,7 @@ Dùng khi: khách là công ty, cần xuất hoá đơn GTGT.
 3. Nhập **Mã số thuế doanh nghiệp** (chỉ chứa số, VD: 0123456789).
 4. Tick ☑ **Khách hàng cần xuất hoá đơn?** (mục Địa chỉ).
 5. Nhập **Email** khách để gửi hoá đơn điện tử.
-6. Điền đầy đủ **Địa chỉ** (Tỉnh/TP, Phường/Xã, Số nhà) — cần có trước 15h ngày N+1 để kế toán xuất HĐ.
+6. Điền đầy đủ **Địa chỉ** (Tỉnh/TP, Phường/Xã, Số nhà) — cần điền xong **trước 15h ngày hôm sau, kể từ ngày tiền vào tài khoản**, để kế toán kịp xuất hoá đơn.
 
 ![Mục Loại khách hàng — Doanh nghiệp được chọn, kèm ô Tên công ty và MST](/docs-images/paymentRequests/tao-payment-request-4.png)
 
