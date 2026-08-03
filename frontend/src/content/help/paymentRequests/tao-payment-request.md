@@ -18,7 +18,7 @@ audience: ["sale", "leader"]
 
 Dùng khi: cần tạo đơn nhanh nhất có thể, các thông tin phụ bổ sung sau.
 
-### Các bước
+### Các bước tạo nhanh
 
 1. Vào **Quản lý thanh toán** → bấm **+ Tạo Payment Request** (nút tím, góc phải trên).
 2. Nhập **Số điện thoại** — chọn đúng quốc gia ở ô bên trái, rồi gõ số. Có thể dán cả cụm dạng `84-352334789`, hệ thống tự tách đầu số.
@@ -35,7 +35,7 @@ Dùng khi: cần tạo đơn nhanh nhất có thể, các thông tin phụ bổ 
 
 Dùng khi: đã có sẵn đầy đủ thông tin khách, muốn điền 1 lần cho xong.
 
-### Các bước
+### Các bước tạo đầy đủ
 
 1. Bấm **+ Tạo Payment Request**.
 2. Điền 4 trường bắt buộc giống phần [Tạo PR nhanh](#tao-pr-nhanh-chi-4-truong-bat-buoc).
@@ -59,7 +59,7 @@ Dùng khi: đã có sẵn đầy đủ thông tin khách, muốn điền 1 lần
 
 Dùng khi: 1 phụ huynh đăng ký khoá học cho 2 bé trở lên, muốn gộp chung 1 PR.
 
-### Cách làm
+### Cách gộp nhiều con vào 1 PR
 
 - Ở ô **Tên con (học viên)**, gõ tên các bé cách nhau bằng dấu `-`, `&`, `,`, `/`, hoặc chữ "và".
 - VD: `Bảo Châu - Bảo Khánh` hoặc `Minh Anh, Minh Khôi`.
@@ -75,7 +75,7 @@ Dùng khi: 1 phụ huynh đăng ký khoá học cho 2 bé trở lên, muốn g�
 
 Dùng khi: khách đang sống ở nước ngoài, SĐT quốc tế.
 
-### Cách làm
+### Cách nhập khách nước ngoài
 
 1. Ở ô **Số điện thoại**, đổi quốc gia sang nước tương ứng (VD: chọn 🇩🇪 DE +49 cho khách ở Đức).
 2. Tại mục **Địa chỉ khách hàng**, bấm **Khách nước ngoài** → chọn quốc gia khách đang ở (bắt buộc).
@@ -91,7 +91,7 @@ Dùng khi: khách đang sống ở nước ngoài, SĐT quốc tế.
 
 Dùng khi: khách là công ty, cần xuất hoá đơn GTGT.
 
-### Cách làm
+### Cách nhập khách doanh nghiệp
 
 1. Tại mục **Loại khách hàng**, bấm **Doanh nghiệp**.
 2. Nhập **Tên công ty** (VD: Công ty TNHH ABC).
@@ -110,7 +110,7 @@ Dùng khi: khách là công ty, cần xuất hoá đơn GTGT.
 
 Dùng khi: Leader/Manager tạo PR thay cho sale trong đội.
 
-### Cách làm
+### Cách tạo hộ PR
 
 1. Mở modal Tạo Payment Request — trường đầu tiên là **Sale sở hữu PR** (chỉ Leader/Manager thấy).
 2. Chọn sale trong dropdown — có thể gõ tên để tìm.

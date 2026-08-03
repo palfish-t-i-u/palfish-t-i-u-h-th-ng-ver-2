@@ -29,18 +29,21 @@ function slugify(text: string): string {
     .replace(/^-+|-+$/g, "");
 }
 
-// Rút các heading cấp 2 (## ...) từ markdown thô để dựng mục lục — bỏ chính
-// heading "Mục lục" (nó chỉ là cờ bật mục lục). Slug PHẢI khớp id do renderer
-// h2 sinh ra (cùng dùng slugify) thì anchor mới cuộn đúng.
-function extractHeadings(body: string): { id: string; text: string }[] {
-  const out: { id: string; text: string }[] = [];
+// Rút heading cấp 2 (## mục lớn) và cấp 3 (### mục con) từ markdown thô để dựng
+// mục lục 2 cấp — bỏ chính heading "Mục lục" (nó chỉ là cờ bật mục lục). Slug
+// PHẢI khớp id do renderer h2/h3 sinh ra (cùng dùng slugify) thì anchor mới cuộn
+// đúng — nên nhãn ### trong .md phải DUY NHẤT, không trùng chữ (id trùng = anchor
+// chỉ nhảy cái đầu).
+function extractHeadings(body: string): { id: string; text: string; level: number }[] {
+  const out: { id: string; text: string; level: number }[] = [];
   for (const line of body.split(/\r?\n/)) {
-    const m = line.match(/^##\s+(.+?)\s*$/);
+    const m = line.match(/^(#{2,3})\s+(.+?)\s*$/);
     if (!m) continue;
-    const text = m[1].trim();
+    const level = m[1].length;
+    const text = m[2].trim();
     const id = slugify(text);
     if (id === "muc-luc") continue;
-    out.push({ id, text });
+    out.push({ id, text, level });
   }
   return out;
 }
@@ -112,7 +115,7 @@ export default function HelpArticle({ moduleSlug, topicSlug }: { moduleSlug: str
           giữ nguyên key, mất hiệu ứng đúng ở luồng browse hay dùng nhất. */}
       <article key={`${moduleSlug}/${topicSlug}`} className="min-w-0 max-w-3xl grow space-y-5">
         <HelpBreadcrumb moduleSlug={moduleSlug} topicTitle={topic.title} />
-        <h2 className="animate-fade-in-once text-xl font-semibold text-black">{topic.title}</h2>
+        <h2 className="animate-fade-in-once text-2xl font-bold text-black">{topic.title}</h2>
 
         {/* Mục lục inline cho mobile — thanh bên trái ẩn dưới xl */}
         {showToc && (
@@ -120,8 +123,14 @@ export default function HelpArticle({ moduleSlug, topicSlug }: { moduleSlug: str
             <div className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-gmv-muted">Mục lục</div>
             <ul className="space-y-1">
               {toc.map((h) => (
-                <li key={h.id}>
-                  <a href={`#${h.id}`} className="text-sm text-gmv-primary underline">
+                <li key={h.id} className={h.level === 3 ? "ml-4" : ""}>
+                  <a
+                    href={`#${h.id}`}
+                    className={[
+                      "text-gmv-primary underline",
+                      h.level === 3 ? "text-xs" : "text-sm font-medium",
+                    ].join(" ")}
+                  >
                     {h.text}
                   </a>
                 </li>
@@ -133,8 +142,11 @@ export default function HelpArticle({ moduleSlug, topicSlug }: { moduleSlug: str
         <div
           className={[
             "space-y-4 text-base leading-relaxed text-black",
-            "[&_h2]:mt-5 [&_h2]:text-lg [&_h2]:font-semibold [&_h2]:text-black",
-            "[&_h3]:mt-4 [&_h3]:text-base [&_h3]:font-semibold [&_h3]:text-black",
+            // Cấp heading rõ ràng: bài (h1, text-2xl) > mục lớn (h2, text-xl + gạch
+            // chân tách chương) > mục con (h3, base đậm). Bước size + gạch chân giúp
+            // sale nhìn ra ngay cha/con, không lẫn với chữ thường.
+            "[&_h2]:mt-8 [&_h2]:border-b [&_h2]:border-gmv-border [&_h2]:pb-1 [&_h2]:text-xl [&_h2]:font-semibold [&_h2]:text-black",
+            "[&_h3]:mt-5 [&_h3]:text-base [&_h3]:font-semibold [&_h3]:text-gmv-text-strong",
             "[&_ul]:list-disc [&_ul]:space-y-1 [&_ul]:pl-5",
             "[&_ol]:list-decimal [&_ol]:space-y-1 [&_ol]:pl-5",
             "[&_blockquote]:border-l-2 [&_blockquote]:border-gmv-border [&_blockquote]:pl-3 [&_blockquote]:text-neutral-600",
@@ -172,7 +184,12 @@ export default function HelpArticle({ moduleSlug, topicSlug }: { moduleSlug: str
               <li key={h.id}>
                 <a
                   href={`#${h.id}`}
-                  className="-ml-px block border-l-2 border-transparent py-1 pl-3 text-[13px] leading-snug text-gmv-muted transition-colors hover:border-gmv-primary hover:text-gmv-primary"
+                  className={[
+                    "-ml-px block border-l-2 border-transparent py-1 leading-snug transition-colors hover:border-gmv-primary hover:text-gmv-primary",
+                    h.level === 3
+                      ? "pl-7 text-[12px] text-gmv-muted" // mục con — thụt sâu hơn + nhạt
+                      : "pl-3 text-[13px] font-medium text-gmv-text-strong", // mục lớn
+                  ].join(" ")}
                 >
                   {h.text}
                 </a>
