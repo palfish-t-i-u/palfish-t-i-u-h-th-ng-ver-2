@@ -61,7 +61,7 @@ export default function DocsLayout() {
         </div>
 
         <main className="min-h-0 flex-1 overflow-auto motion-safe:scroll-smooth p-4 md:p-6">
-          <div className="mx-auto max-w-3xl">
+          <div className="mx-auto max-w-5xl">
             <Routes>
               <Route index element={<HelpLanding />} />
               <Route path=":moduleSlug" element={<ModuleIndexRoute />} />

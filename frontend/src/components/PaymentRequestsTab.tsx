@@ -793,7 +793,7 @@ export default function PaymentRequestsTab() {
                 <Icons.Plus size={15} strokeWidth={2.3} /> Tạo Payment Request
               </button>
             )}
-            <HdsdLink moduleSlug="paymentRequests" />
+            <HdsdLink moduleSlug="paymentRequests" topicSlug="tao-payment-request" />
           </div>
         </div>
 

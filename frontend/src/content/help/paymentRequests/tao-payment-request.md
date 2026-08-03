@@ -10,13 +10,7 @@ audience: ["sale", "leader"]
 
 ## Mục lục
 
-- [Tạo PR nhanh — chỉ 4 trường bắt buộc](#tao-pr-nhanh-chi-4-truong-bat-buoc)
-- [Tạo PR đầy đủ thông tin](#tao-pr-day-du-thong-tin)
-- [PR cho nhiều con (nhiều bé cùng 1 đơn)](#pr-cho-nhieu-con-nhieu-be-cung-1-don)
-- [Khách nước ngoài](#khach-nuoc-ngoai)
-- [Khách doanh nghiệp — cần xuất hoá đơn](#khach-doanh-nghiep-can-xuat-hoa-don)
-- [Tạo hộ PR cho sale khác (dành cho Leader)](#tao-ho-pr-cho-sale-khac-danh-cho-leader)
-- [Sau khi tạo PR — bước tiếp theo](#sau-khi-tao-pr-buoc-tiep-theo)
+<!-- Mục lục tự sinh từ các heading "## " bên dưới → thanh mục lục bên trái (desktop) + khối inline (mobile). Giữ heading "## Mục lục" này làm cờ bật mục lục; không cần liệt kê tay. -->
 
 ---
 
