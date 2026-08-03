@@ -1,6 +1,6 @@
 ---
 title: "Xem & gửi mã QR cho khách"
-order: 5
+order: 6
 audience: ["sale"]
 ---
 

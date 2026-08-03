@@ -1,12 +1,46 @@
 // frontend/src/components/help/HelpArticle.tsx
+import { useEffect } from "react";
+import type { ReactNode, ReactElement } from "react";
+import { useLocation } from "react-router-dom";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { getHelpTopic } from "../../content/help";
 import HelpBreadcrumb from "./HelpBreadcrumb";
 import "./help.css";
 
+function extractText(node: ReactNode): string {
+  if (typeof node === "string") return node;
+  if (typeof node === "number") return String(node);
+  if (Array.isArray(node)) return node.map(extractText).join("");
+  if (node && typeof node === "object" && "props" in node) {
+    const props = (node as ReactElement).props as Record<string, unknown>;
+    return extractText(props.children as ReactNode);
+  }
+  return "";
+}
+
+function slugify(text: string): string {
+  return text
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[đĐ]/g, "d")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
 export default function HelpArticle({ moduleSlug, topicSlug }: { moduleSlug: string; topicSlug: string }) {
   const topic = getHelpTopic(moduleSlug, topicSlug);
+  const { hash } = useLocation();
+
+  // React Router nuốt scroll-to-fragment mặc định của trình duyệt (popstate
+  // handler hủy smooth scroll đang chạy), và khi mở thẳng URL kèm #anchor thì
+  // nội dung chưa mount lúc trình duyệt xử lý fragment — tự scroll ở đây.
+  useEffect(() => {
+    if (!hash) return;
+    const el = document.getElementById(decodeURIComponent(hash.slice(1)));
+    if (el) el.scrollIntoView();
+  }, [hash, moduleSlug, topicSlug]);
 
   if (!topic) {
     return (
@@ -55,15 +89,19 @@ export default function HelpArticle({ moduleSlug, topicSlug }: { moduleSlug: str
         <ReactMarkdown
           remarkPlugins={[remarkGfm]}
           components={{
-            // Bọc scroll ngang riêng cho bảng — trang docs không giới hạn
-            // max-width cho <table> (để bảng nhiều cột vẫn đọc được trên
-            // desktop), nên trên mobile phải tự cuộn thay vì tràn ra ngoài
-            // khung bài, đè lên sidebar.
             table: ({ children }) => (
               <div className="overflow-x-auto">
                 <table>{children}</table>
               </div>
             ),
+            h2: ({ children, ...props }) => {
+              const id = slugify(extractText(children));
+              return <h2 id={id} className="scroll-mt-6" {...props}>{children}</h2>;
+            },
+            h3: ({ children, ...props }) => {
+              const id = slugify(extractText(children));
+              return <h3 id={id} className="scroll-mt-6" {...props}>{children}</h3>;
+            },
           }}
         >
           {topic.body}
