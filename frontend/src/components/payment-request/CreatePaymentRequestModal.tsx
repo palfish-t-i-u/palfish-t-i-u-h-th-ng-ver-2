@@ -170,7 +170,7 @@ export default function CreatePaymentRequestModal({
             </div>
           </div>
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            <HdsdLink moduleSlug="paymentRequests" topicSlug="tao-lan-tt-chuan" />
+            <HdsdLink moduleSlug="paymentRequests" topicSlug="tao-payment-request" />
             <button className="drawer-close" onClick={onClose}>
               <Icons.Close size={16} />
             </button>

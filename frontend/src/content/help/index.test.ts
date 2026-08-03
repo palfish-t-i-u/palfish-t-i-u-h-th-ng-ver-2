@@ -13,7 +13,7 @@ describe("content/help/index.ts", () => {
     const topic = getHelpTopic("paymentRequests", "tao-lan-tt-chuan");
     expect(topic).toBeDefined();
     expect(topic?.title).toBe("Tạo lần thanh toán (TT) chuẩn");
-    expect(topic?.order).toBe(1);
+    expect(topic?.order).toBe(2);
     expect(topic?.audience).toEqual(["sale"]);
     expect(topic?.body).toContain("## Các bước");
     expect(topic?.body).not.toContain("---");

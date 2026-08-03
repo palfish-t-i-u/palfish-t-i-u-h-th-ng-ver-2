@@ -27,6 +27,7 @@ from activation_routes import _compute_referral_status
 
 from payos_qr import create_payos_payment_link, fetch_payos_payment, payos_payment_is_paid
 from audit import log_audit
+from utils.country_dial import dial_for
 
 router = APIRouter(prefix="/api/v1", tags=["payment-requests"])
 
@@ -1258,15 +1259,6 @@ def _ascii_transfer_name(value: Any) -> str:
     return " ".join(cleaned.split())
 
 
-_COUNTRY_DIAL: dict[str, str] = {
-    "VN": "84", "US": "1", "GB": "44", "CN": "86", "JP": "81",
-    "KR": "82", "TH": "66", "SG": "65", "MY": "60", "ID": "62", "PH": "63",
-    "DE": "49", "FR": "33", "AU": "61", "CA": "1", "RU": "7", "IN": "91",
-    "TW": "886", "HK": "852", "NZ": "64", "NL": "31", "IT": "39", "ES": "34",
-}
-
-
-
 def _build_payos_transfer_description(
     pr_row: dict[str, Any],
     name_for_transfer: str | None,
@@ -1278,7 +1270,7 @@ def _build_payos_transfer_description(
 
     raw_phone = re.sub(r"\D", "", str(pr_row.get("phone") or pr_row.get("sdt") or ""))
     country = str(pr_row.get("country") or "VN").upper()
-    dial = _COUNTRY_DIAL.get(country, "84")
+    dial = dial_for(country)
     phone = f"{dial}{raw_phone}" if raw_phone and not raw_phone.startswith(dial) else raw_phone
     name = _ascii_transfer_name(name_for_transfer)
     if not name:

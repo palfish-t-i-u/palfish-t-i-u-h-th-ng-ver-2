@@ -1,6 +1,6 @@
 ---
 title: "Sửa thông tin khách hàng (B1)"
-order: 8
+order: 9
 audience: ["sale"]
 ---
 

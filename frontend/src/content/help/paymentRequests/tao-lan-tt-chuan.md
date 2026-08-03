@@ -1,6 +1,6 @@
 ---
 title: "Tạo lần thanh toán (TT) chuẩn"
-order: 1
+order: 2
 audience: ["sale"]
 ---
 

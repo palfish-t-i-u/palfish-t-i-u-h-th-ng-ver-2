@@ -1,6 +1,6 @@
 ---
 title: "Tải ảnh bill & xử lý thiếu bill"
-order: 6
+order: 7
 audience: ["sale"]
 ---
 

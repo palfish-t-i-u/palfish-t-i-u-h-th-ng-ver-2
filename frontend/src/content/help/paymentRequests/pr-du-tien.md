@@ -1,6 +1,6 @@
 ---
 title: "PR đã nhận đủ tiền — không tạo thêm lần TT được"
-order: 7
+order: 8
 audience: ["sale"]
 ---
 
