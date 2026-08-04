@@ -60,4 +60,10 @@ describe("activationAddressComplete", () => {
     expect(activationAddressComplete({ country: "US", province: "", ward: "" })).toBe(true);
     expect(activationAddressComplete({ country: "JP" })).toBe(true);
   });
+
+  it("khách OV dùng SĐT Việt (country=VN + Tỉnh giữ tên quốc gia) → true", () => {
+    // Regression 04/8: khách nước ngoài số Việt bị coi nhầm là khách VN → chặn kích hoạt.
+    expect(activationAddressComplete({ country: "VN", province: "Japan", ward: "" })).toBe(true);
+    expect(activationAddressComplete({ country: "VN", province: "United States", ward: "" })).toBe(true);
+  });
 });

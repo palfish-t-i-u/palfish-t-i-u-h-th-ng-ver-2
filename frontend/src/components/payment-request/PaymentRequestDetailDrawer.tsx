@@ -34,6 +34,7 @@ import {
   paymentAttemptLabel,
   paymentConfirmationText,
   activationAddressComplete,
+  isForeignCustomer,
   REFERRAL_STATUS_HEADER,
   REFERRAL_STATUS_PANEL_STYLE,
   reportButtonState,
@@ -1713,7 +1714,7 @@ export default function PaymentRequestDetailDrawer({
   };
   const handleOpenEditForTarget = () => {
     if (!request) return;
-    const isForeign = (request.country || "VN") !== "VN";
+    const isForeign = isForeignCustomer(request.country, request.province);
     setDraft({
       uid: request.uid,
       name: request.name,
@@ -1908,7 +1909,7 @@ export default function PaymentRequestDetailDrawer({
                 <button
                   className="btn btn-outline btn-sm"
                   onClick={() => {
-                    const isForeign = (request.country || "VN") !== "VN";
+                    const isForeign = isForeignCustomer(request.country, request.province);
                     setDraft({
                       uid: request.uid,
                       name: request.name,
