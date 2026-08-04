@@ -18,7 +18,7 @@ import type {
 } from "../types/paymentRequest";
 import CancelPrModal from "./payment-request/CancelPrModal";
 import CreatePaymentRequestModal from "./payment-request/CreatePaymentRequestModal";
-import { type DateRange, EMPTY_RANGE, inDateRange } from "./payment-request/DateRangeFilter";
+import { type DateRange, inDateRange, presetRange } from "./payment-request/DateRangeFilter";
 import { Icons } from "./payment-request/Icons";
 import PaymentRequestDetailDrawer from "./payment-request/PaymentRequestDetailDrawer";
 import PaymentRequestKpiCards from "./payment-request/PaymentRequestKpiCards";
@@ -75,7 +75,7 @@ export default function PaymentRequestsTab() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState<StatusFilter>("all");
-  const [dateRange, setDateRange] = useState<DateRange>(EMPTY_RANGE);
+  const [dateRange, setDateRange] = useState<DateRange>(() => presetRange("thismonth"));
   const [tab, setTab] = useState<RequestBucket>("tracking");
   const [hideTest, setHideTest] = useState(true);
   // Bộ lọc TVTS tạm thời (leader+): useState thường — chủ ý KHÔNG persist,
@@ -143,21 +143,26 @@ export default function PaymentRequestsTab() {
     [visibleRequests, tvtsSelected]
   );
 
+  const dateFiltered = useMemo(
+    () => tvtsFiltered.filter((r) => inDateRange(r.createdAt, dateRange)),
+    [tvtsFiltered, dateRange]
+  );
+
   const trackingRequests = useMemo(
-    () => tvtsFiltered.filter((r) => r.state !== "cancelled"),
-    [tvtsFiltered]
+    () => dateFiltered.filter((r) => r.state !== "cancelled"),
+    [dateFiltered]
   );
   const cancelledRequests = useMemo(
-    () => tvtsFiltered.filter((r) => r.state === "cancelled"),
-    [tvtsFiltered]
+    () => dateFiltered.filter((r) => r.state === "cancelled"),
+    [dateFiltered]
   );
   const createdRequests = useMemo(
-    () => tvtsFiltered.filter((r) => r.state !== "cancelled" && arByPrId[r.id]),
-    [tvtsFiltered, arByPrId]
+    () => dateFiltered.filter((r) => r.state !== "cancelled" && arByPrId[r.id]),
+    [dateFiltered, arByPrId]
   );
 
   const filtered = useMemo(() => {
-    return tvtsFiltered.filter((r) => {
+    return dateFiltered.filter((r) => {
       if (tab === "cancelled") {
         if (r.state !== "cancelled") return false;
       } else {
@@ -165,11 +170,10 @@ export default function PaymentRequestsTab() {
         if (tab === "created" && !arByPrId[r.id]) return false;
       }
       if (tab !== "cancelled" && status !== "all" && r.state !== status) return false;
-      if (!inDateRange(r.createdAt, dateRange)) return false;
       // Search accent-insensitive: PR-ID, tên khách, UID, SĐT, tên con (bé 1 + bé phụ)
       return paymentRequestMatchesSearch(r, search);
     });
-  }, [tvtsFiltered, tab, status, dateRange, search, arByPrId]);
+  }, [dateFiltered, tab, status, search, arByPrId]);
 
   // Đổi tab/filter → về trang 1; danh sách co lại thì paginate tự clamp
   useEffect(() => {
