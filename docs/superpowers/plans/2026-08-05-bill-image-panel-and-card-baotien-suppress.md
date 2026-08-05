@@ -519,10 +519,10 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 > Nếu Part A cũng đã xong và anh Minh duyệt gộp: thêm 2 file Part A vào cùng commit, đổi message cho phù hợp. Mặc định Part A và Part B commit riêng.
 
 ### Definition of Done — Part B
-- [ ] Function sandbox + prod KHÔNG còn `NOT IN ('card', 'installment')`, CÒN `<> 'sepay'`.
-- [ ] 6 test case pass ở CẢ 2 env, không rác (`ZZT%`/`ZZGT%` = 0).
-- [ ] Learnings note + index committed.
-- [ ] 1 commit trên main, đã push. Không file Python/TS nào bị sửa.
+- [x] Function sandbox + prod KHÔNG còn `NOT IN ('card', 'installment')`, CÒN `<> 'sepay'`.
+- [x] 6 test case pass ở CẢ 2 env, không rác (`ZZT%`/`ZZGT%` = 0).
+- [x] Learnings note + index committed.
+- [x] 1 commit trên main, đã push. Không file Python/TS nào bị sửa.
 
 ### Đối chiếu 5 tiêu chuẩn — Part B
 | Tiêu chí | Đạt? | Ghi chú |
