@@ -141,10 +141,10 @@ Expected: có dòng `const imgs = pc.bill_images ?? [];` và block `<img ... src
 3. **Smoke trực quan (best-effort — chỉ khi có `.env.local` + session đăng nhập):** chạy `cd frontend && npm run dev`, mở màn Đối soát giao dịch · Quẹt thẻ → mở 1 GD mPOS chưa ghép có candidate đã up bill → chọn candidate → panel phải hiện **ảnh thật** (không phải card chữ), click ảnh mở tab mới. Nếu không có session/dữ liệu thì bỏ qua bước này — gate cứng là tsc+build (rủi ro còn lại chỉ là CSS, thấp; field name `bill_images` đã xác nhận khớp BE).
 
 ### Definition of Done — Part A
-- [ ] `MatchCandidate` có `bill_images?: string[]`.
-- [ ] Nhánh has_bill render `<img>` thật + caption, có guard `imgs.length === 0`.
-- [ ] `npx tsc -b` PASS, `npm run build` PASS.
-- [ ] Không đụng file nào ngoài 2 file khai báo.
+- [x] `MatchCandidate` có `bill_images?: string[]`.
+- [x] Nhánh has_bill render `<img>` thật + caption, có guard `imgs.length === 0`.
+- [x] `npx tsc -b` PASS, `npm run build` PASS.
+- [x] Không đụng file nào ngoài 2 file khai báo.
 
 ### Đối chiếu 5 tiêu chuẩn — Part A
 | Tiêu chí | Đạt? | Ghi chú |

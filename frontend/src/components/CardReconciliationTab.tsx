@@ -1097,19 +1097,28 @@ export default function CardReconciliationTab({
                               <span>{pc.pr_id} chưa có ảnh bill — nhắc sales upload trước khi ghép</span>
                             </div>
                           );
+                        const imgs = pc.bill_images ?? [];
+                        if (imgs.length === 0)
+                          return (
+                            <div style={{ ...box, border: "1.5px dashed var(--border)", color: "var(--text-3)", alignItems: "center", justifyContent: "center", textAlign: "center" }}>
+                              <Icons.Image size={22} />
+                              <span>Không tải được ảnh bill</span>
+                            </div>
+                          );
                         return (
-                          <div style={{ ...box, border: "1px solid var(--border)", background: "var(--surface-2)" }}>
-                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                              <span style={{ fontSize: 10.5, letterSpacing: "0.05em", color: "var(--text-3)", textTransform: "uppercase", fontWeight: 600 }}>
-                                Biên lai · {pc.pr_id}
-                              </span>
-                              <Icons.Receipt size={15} />
+                          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                            <div style={{ fontSize: 10.5, letterSpacing: "0.05em", color: "var(--text-3)", textTransform: "uppercase", fontWeight: 600 }}>
+                              Biên lai · {pc.pr_id} · {vnd(pc.amount)}
                             </div>
-                            <div style={{ fontSize: 12, color: "var(--text-2)", marginTop: 2 }}>
-                              {pc.pr_name} · lần TT {pc.attempt_idx}
-                            </div>
-                            <div style={{ fontSize: 18, fontWeight: 800, color: "var(--money)", marginTop: "auto" }}>{vnd(pc.amount)}</div>
-                            <div style={{ fontSize: 10.5, color: "var(--text-3)" }}>{pc.created_at}</div>
+                            {imgs.map((src, i) => (
+                              <img
+                                key={i}
+                                src={src}
+                                alt={`bill ${pc.pr_id} ${i + 1}`}
+                                onClick={() => window.open(src, "_blank")}
+                                style={{ width: "100%", maxHeight: 280, objectFit: "contain", borderRadius: 8, border: "1px solid var(--border)", cursor: "zoom-in", background: "var(--surface-2)" }}
+                              />
+                            ))}
                           </div>
                         );
                       })()}

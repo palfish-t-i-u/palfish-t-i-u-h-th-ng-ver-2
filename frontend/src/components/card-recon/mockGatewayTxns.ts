@@ -63,6 +63,8 @@ export interface MatchCandidate {
   uid: string;
   /** Lần thanh toán này đã có ảnh bill sales upload chưa (để kế toán đối chiếu) */
   has_bill: boolean;
+  /** URL ảnh bill của lần TT — BE match-candidates trả kèm để hiện trực tiếp ở panel ghép (gateway_routes.py:519). */
+  bill_images?: string[];
   /** "card" | "installment" */
   method?: string;
   /** Nền tảng trả góp: "mpos" | "payoo" | "" */
