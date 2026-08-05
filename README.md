@@ -222,10 +222,9 @@ E2E theo project: `e2e` · `e2e:mobile` · `e2e:journeys` · `e2e:rbac`. Xem bá
 | Vai trò | Phạm vi |
 |---------|---------|
 | **Minh** | FE/BE chính, UI/UX, deploy, QA, kiến trúc |
-| **Giang** | Backend — SePay/thanh toán, webhook, PR routes |
+| **Giang** (biệt danh Kem) | Backend — SePay/thanh toán, webhook, PR routes, dashboard gamification, CRM sync |
 | **Đức** | Backend — integration, Supabase, migrations |
 | **Đạt** | Backend — auth, activation, tỷ giá |
-| **Kem** | Backend — Pandas/Supabase (dashboard, CRM) |
 | **Hiếu** | Product owner — spec, prototype, UX feedback |
 
 ---
