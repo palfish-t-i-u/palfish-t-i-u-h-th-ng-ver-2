@@ -4,7 +4,7 @@ order: 0
 audience: ["admin"]
 ---
 
-Áp dụng khi: cần thêm/sửa mapping **team → nhóm DingTalk** nhận thông báo kích hoạt khoá học.
+Áp dụng khi: cần thêm/sửa mapping **team → nhóm DingTalk** nhận thông báo tạo gói học.
 
 ![Form Thêm nhóm mới + bảng danh sách nhóm DingTalk](/docs-images/dingtalkGroups/tong-quan-1.png)
 

@@ -226,7 +226,7 @@ function ARCreateModal({
             />
             {linkedPr && linkedPr.state !== "done" && linkedPr.state !== "over" && (
               <div style={{ marginTop: 8, fontSize: 12, color: "var(--warning-text)", display: "flex", gap: 6, alignItems: "center" }}>
-                <Icons.AlertCircle size={13} /> PR này chưa thanh toán đủ — thường chỉ kích hoạt khi đủ tiền.
+                <Icons.AlertCircle size={13} /> PR này chưa thanh toán đủ — thường chỉ tạo gói học khi đủ tiền.
               </div>
             )}
             {linkedPrOverAmount > 0 && (
@@ -1032,7 +1032,7 @@ function ActivationDetailDrawer({
             }}>
               <span style={{ fontSize: 16, flexShrink: 0, marginTop: 1 }}>⏸</span>
               <div>
-                <strong style={{ color: "#f57f17" }}>PH chưa muốn kích hoạt</strong>
+                <strong style={{ color: "#f57f17" }}>PH chưa muốn tạo gói học</strong>
                 <div style={{ marginTop: 2, color: "var(--text-2)" }}>
                   {enriched.holdNote ? `“${enriched.holdNote}”` : "(sale không ghi lý do)"}
                 </div>
@@ -1305,7 +1305,7 @@ function ActivationDetailDrawer({
                 {uidSync.kind === "diverged" && (
                   <span
                     className="badge"
-                    title={`UID thông tin khách (B1) hiện là ${uidSync.prUid} — khác UID đang lưu ở bản kích hoạt. Có thể sale đã sửa UID sau khi tạo bản kích hoạt.`}
+                    title={`UID thông tin khách (B1) hiện là ${uidSync.prUid} — khác UID đang lưu ở bản ghi gói học. Có thể sale đã sửa UID sau khi tạo bản ghi gói học.`}
                     style={{
                       background: "var(--danger-50, #fef2f2)",
                       color: "var(--danger-700, #b91c1c)",
@@ -1321,7 +1321,7 @@ function ActivationDetailDrawer({
                     type="button"
                     className="btn btn-outline btn-sm"
                     onClick={() => void syncUidFromPr(uidIdx)}
-                    title={`Ghi ${uidSync.prUid} (UID thông tin khách) đè lên UID bản kích hoạt`}
+                    title={`Ghi ${uidSync.prUid} (UID thông tin khách) đè lên UID bản ghi gói học`}
                   >
                     <Icons.RefreshCw size={12} strokeWidth={2.5} /> Đồng bộ từ PR
                   </button>
@@ -1606,14 +1606,14 @@ function ActivationDetailDrawer({
                     const referrerKey = creditKey(uidObj.uid || "", course.courseCode, "referrer");
                     const courseActivated = Boolean(course.orderId?.trim());
                     const lockedTooltip = !courseActivated
-                      ? "Cần điền Order ID (kích hoạt khoá) trước khi tick cộng buổi"
+                      ? "Cần điền Order ID (tạo gói học) trước khi tick cộng buổi"
                       : "";
                     return (
                       <div style={{ padding: "10px 12px 10px 16px", borderRadius: 8, marginTop: 6, marginLeft: 12, marginRight: 12, ...panelStyle }}>
                         <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text-1, #111)", marginBottom: 6 }}>{headerText}</div>
                         {!courseActivated && (
                           <div style={{ fontSize: 12, color: "var(--caution-text, #92400e)", marginBottom: 6, fontStyle: "italic" }}>
-                            Chưa kích hoạt khoá (chưa điền Order ID) — không thể tick cộng buổi.
+                            Chưa tạo gói học (chưa điền Order ID) — không thể tick cộng buổi.
                           </div>
                         )}
                         {(course.bonusSessionsReferee ?? 0) > 0 && (
@@ -2134,7 +2134,7 @@ export default function ActivationTab() {
           }}>
             <Icons.Bell size={15} style={{ color: "#e65100", flexShrink: 0, marginTop: 1 }} />
             <div>
-              <strong style={{ color: "#e65100" }}>Sales đang nhắc kích hoạt gấp ({reminders.length})</strong>
+              <strong style={{ color: "#e65100" }}>Sales đang nhắc tạo gói học gấp ({reminders.length})</strong>
               <div style={{ marginTop: 4, lineHeight: 1.6 }}>
                 {reminders.map((rem) => {
                   const dt = new Date(rem.requested_at);
@@ -2162,7 +2162,7 @@ export default function ActivationTab() {
           }}>
             <span style={{ fontSize: 16, flexShrink: 0, marginTop: 1 }}>⏸</span>
             <div>
-              <strong style={{ color: "#f57f17" }}>PH chưa muốn kích hoạt ({holdArs.length})</strong>
+              <strong style={{ color: "#f57f17" }}>PH chưa muốn tạo gói học ({holdArs.length})</strong>
               <div style={{ marginTop: 4, lineHeight: 1.6 }}>
                 {holdArs.map((a) => (
                   <div key={a.id} style={{ color: "var(--text-2)" }}>
@@ -2198,7 +2198,7 @@ export default function ActivationTab() {
             <div className="kpi-icon" style={{ background: "var(--success-bg)", color: "var(--success-text)" }}>
               <Icons.CheckCircle size={16} />
             </div>
-            <div className="kpi-label">Đã kích hoạt</div>
+            <div className="kpi-label">Đã tạo gói học</div>
             <div className="kpi-value">{counts.activated}</div>
             <div className="kpi-sub">{vnd(sumReady)} sẵn sàng xuất HĐ</div>
           </div>
@@ -2243,11 +2243,11 @@ export default function ActivationTab() {
           {/* Hàng dưới (dưới "Thưởng giới thiệu"): nhóm "Kích hoạt" trái + "Khoảng thời gian" phải */}
           <div style={{ flexBasis: "100%", display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center" }}>
             <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
-              <span style={{ fontSize: 11.5, color: "var(--text-3)", marginRight: 4 }}>Kích hoạt:</span>
+              <span style={{ fontSize: 11.5, color: "var(--text-3)", marginRight: 4 }}>Tạo gói học:</span>
               {([
                 { id: "all" as const, label: "Tất cả" },
-                { id: "now" as const, label: "Kích hoạt ngay" },
-                { id: "hold" as const, label: "Chưa muốn KH" },
+                { id: "now" as const, label: "Tạo gói học ngay" },
+                { id: "hold" as const, label: "KH chưa muốn tạo gói" },
               ]).map((f) => (
                 <button
                   key={f.id}
@@ -2271,7 +2271,7 @@ export default function ActivationTab() {
               {(
                 [
                   { id: "pending_order" as const, label: "Chờ điền Order ID", icon: "Clock" as const, count: counts.pending_order, attention: true },
-                  { id: "activated" as const, label: "Đã kích hoạt", icon: "CheckCircle" as const, count: counts.activated },
+                  { id: "activated" as const, label: "Đã tạo gói học", icon: "CheckCircle" as const, count: counts.activated },
                   { id: "all" as const, label: "Tất cả", icon: "Database" as const, count: counts.all },
                 ] as const
               ).map((tc) => {
@@ -2332,7 +2332,7 @@ export default function ActivationTab() {
                   {filtered.map((a) => {
                     const rem = a.prId ? reminderByPrId.get(a.prId) : undefined;
                     const remTip = rem
-                      ? `Sales nhắc kích hoạt lúc ${new Date(rem.requested_at).toLocaleDateString("vi-VN")} ${new Date(rem.requested_at).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })} — bởi ${rem.requested_by_name}${rem.note ? ` · "${rem.note}"` : ""}`
+                      ? `Sales nhắc tạo gói học lúc ${new Date(rem.requested_at).toLocaleDateString("vi-VN")} ${new Date(rem.requested_at).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })} — bởi ${rem.requested_by_name}${rem.note ? ` · "${rem.note}"` : ""}`
                       : undefined;
                     return (
                     <tr
@@ -2392,9 +2392,9 @@ export default function ActivationTab() {
                             <span
                               className="badge badge-warning"
                               style={{ fontSize: 11 }}
-                              title={a.holdNote ? `Chưa muốn kích hoạt — "${a.holdNote}"` : "Chưa muốn kích hoạt"}
+                              title={a.holdNote ? `Chưa muốn tạo gói học — "${a.holdNote}"` : "Chưa muốn tạo gói học"}
                             >
-                              ⏸ Chưa muốn KH
+                              ⏸ KH chưa muốn tạo gói
                             </span>
                           )}
                         </div>

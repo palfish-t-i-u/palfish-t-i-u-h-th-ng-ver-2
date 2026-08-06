@@ -21,4 +21,4 @@ audience: ["sale"]
 
 - UID và tên bé mới xuất hiện trong AR, tách biệt với bé đầu tiên — mỗi bé có UID và tên riêng, không bị gộp chung.
 
-> ⚠️ Lưu ý: mục **"Của bé nào?"** chỉ bắt buộc chọn khi PR đang có nhiều tên bé chưa gán hết UID. Luôn kiểm tra đúng tên trước khi lưu — gán nhầm bé sẽ làm sai hồ sơ kích hoạt và khó sửa lại sau.
+> ⚠️ Lưu ý: mục **"Của bé nào?"** chỉ bắt buộc chọn khi PR đang có nhiều tên bé chưa gán hết UID. Luôn kiểm tra đúng tên trước khi lưu — gán nhầm bé sẽ làm sai hồ sơ gói học và khó sửa lại sau.

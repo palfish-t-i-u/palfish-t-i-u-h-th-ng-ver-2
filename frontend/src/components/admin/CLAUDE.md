@@ -47,9 +47,9 @@ Endpoints admin đều nằm trong `backend/admin_routes.py` (Zalo từ ~dòng 1
 - `bill_uploaded` — bill ảnh đính kèm.
 
 ### DingTalk (activation flow)
-- `activation_request_created` — Yêu cầu kích hoạt khoá học (🆕 YÊU CẦU KÍCH HOẠT KHOÁ HỌC — AR-xxx).
-- `course_activated` — Thông báo kích hoạt thành công (✅ ĐÃ KÍCH HOẠT THÀNH CÔNG GÓI HỌC).
-- `activation_urgent_reminder` — Nhắc kích hoạt gấp (⚡ Cần kích hoạt khóa học GẤP).
+- `activation_request_created` — Yêu cầu tạo gói học (🆕 YÊU CẦU KÍCH HOẠT KHOÁ HỌC — AR-xxx).
+- `course_activated` — Thông báo tạo gói học thành công (✅ ĐÃ TẠO GÓI HỌC THÀNH CÔNG).
+- `activation_urgent_reminder` — Nhắc tạo gói học gấp (⚡ Cần tạo gói học GẤP).
 
 ### Chung
 - Routing: sale_email → `nhan_su_sale.team` → `get_canonical_team()` → group. Sale không team / team không group / group inactive → **silent skip, không error**.

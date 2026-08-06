@@ -161,7 +161,7 @@ def test_dingtalk_enqueue_hold_true_adds_hold_line():
 
     assert len(inserted_messages) == 1
     msg = inserted_messages[0]["message"]
-    assert "⏸ PH CHƯA MUỐN KÍCH HOẠT" in msg
+    assert "⏸ PH CHƯA MUỐN TẠO GÓI HỌC" in msg
     assert "PH chờ hè" in msg
 
 
@@ -209,7 +209,7 @@ def test_dingtalk_enqueue_hold_true_no_note_no_note_line():
 
     assert len(inserted_messages) == 1
     msg = inserted_messages[0]["message"]
-    assert "⏸ PH CHƯA MUỐN KÍCH HOẠT" in msg
+    assert "⏸ PH CHƯA MUỐN TẠO GÓI HỌC" in msg
     assert "Ghi chú:" not in msg
 
 

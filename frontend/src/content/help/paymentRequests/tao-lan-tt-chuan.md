@@ -16,7 +16,7 @@ audience: ["sale"]
 4. Nhập **Tổng tiền dự kiến** — số tiền khách dự kiến chuyển, không để trống.
 5. Chọn **Nguồn KH** và **Kênh** (nếu nguồn yêu cầu chọn kênh).
 6. (Tuỳ chọn) Nhập **Tên con (học viên)** — nếu để trống, nội dung chuyển khoản sẽ dùng tên khách hàng thay thế.
-7. (Tuỳ chọn) Nhập **UID CRM** nếu đã có — có thể bổ sung sau, nhưng bắt buộc phải điền trước khi kích hoạt khoá học (B3).
+7. (Tuỳ chọn) Nhập **UID CRM** nếu đã có — có thể bổ sung sau, nhưng bắt buộc phải điền trước khi tạo gói học (B3).
 8. Bấm **Tạo PR-ID & mở chi tiết**.
 
 ## Sau khi tạo
@@ -25,4 +25,4 @@ audience: ["sale"]
 - Gửi mã QR cho khách để khách chuyển tiền.
 - Sau khi khách chuyển xong, tải ảnh bill lên PR để kế toán đối soát.
 
-> ⚠️ Lưu ý: nếu PR phục vụ nhiều con, gõ nhiều tên vào ô **Tên con**, phân cách bằng `-`, `&`, `,`, `/`, "và" — VD: `Bảo Châu - Bảo Khánh`. Hệ thống tự tách thành từng bé riêng khi kích hoạt (xem bài "Thêm UID / thêm gói cho bé khác" ở bước Kích hoạt khóa học). Khi tạo lần thanh toán, ô **Tên trên nội dung CK** cho chọn đúng 1 bé cụ thể (hoặc cả PH, hoặc cả các bé) — không phải lúc nào cũng ghi chung 1 tên.
+> ⚠️ Lưu ý: nếu PR phục vụ nhiều con, gõ nhiều tên vào ô **Tên con**, phân cách bằng `-`, `&`, `,`, `/`, "và" — VD: `Bảo Châu - Bảo Khánh`. Hệ thống tự tách thành từng bé riêng khi tạo gói học (xem bài "Thêm UID / thêm gói cho bé khác" ở bước Tạo gói học). Khi tạo lần thanh toán, ô **Tên trên nội dung CK** cho chọn đúng 1 bé cụ thể (hoặc cả PH, hoặc cả các bé) — không phải lúc nào cũng ghi chung 1 tên.

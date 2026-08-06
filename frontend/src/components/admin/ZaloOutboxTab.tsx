@@ -26,9 +26,9 @@ function statusOf(row: ZaloOutboxRow): { label: string; cls: string } {
 
 const EVENT_LABELS: Record<string, string> = {
   payment_paid: "Báo tiền về",
-  course_activated: "Kích hoạt TP",
-  activation_urgent_reminder: "Nhắc kích hoạt",
-  activation_request_created: "Y/c kích hoạt",
+  course_activated: "Tạo gói TP",
+  activation_urgent_reminder: "Nhắc tạo gói",
+  activation_request_created: "Y/c tạo gói",
   bill_uploaded: "Ảnh bill",
 };
 

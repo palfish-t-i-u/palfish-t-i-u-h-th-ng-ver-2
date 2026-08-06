@@ -10,7 +10,7 @@ audience: ["ke-toan"]
 
 ## Nguyên tắc
 
-- Mỗi **Course Code** (1 gói học đã đăng ký ở Kích hoạt khóa học) → **1 hoá đơn (INV)**.
+- Mỗi **Course Code** (1 gói học đã đăng ký ở Tạo gói học) → **1 hoá đơn (INV)**.
 - Xuất hoá đơn **không phụ thuộc Order ID CRM** — vẫn xuất được kể cả khi Order ID chưa điền, chỉ cần đủ thông tin khách hàng.
 - Điều kiện đủ để xuất: có **Tên khách**, **SĐT**, và **Địa chỉ** (hoặc Phường/Xã, hoặc Tỉnh/Thành) đầy đủ.
 

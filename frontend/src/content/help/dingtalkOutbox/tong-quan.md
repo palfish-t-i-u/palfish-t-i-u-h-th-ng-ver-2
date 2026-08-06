@@ -4,7 +4,7 @@ order: 0
 audience: ["admin"]
 ---
 
-Áp dụng khi: cần kiểm tra 1 thông báo DingTalk (yêu cầu kích hoạt, kích hoạt thành công, nhắc gấp) đã gửi chưa hoặc vì sao lỗi.
+Áp dụng khi: cần kiểm tra 1 thông báo DingTalk (yêu cầu tạo gói học, tạo gói học thành công, nhắc gấp) đã gửi chưa hoặc vì sao lỗi.
 
 ![Bảng Outbox DingTalk — 50 tin gần nhất](/docs-images/dingtalkOutbox/tong-quan-1.png)
 

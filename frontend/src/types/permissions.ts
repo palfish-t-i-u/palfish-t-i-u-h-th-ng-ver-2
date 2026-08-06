@@ -48,7 +48,7 @@ export const MODULE_LIST: ModuleDef[] = [
   // ── Đối soát & Hóa đơn ──
   { key: "reconciliation", label: "Đối soát giao dịch (Chuyển khoản)", description: "So khớp chuyển khoản SePay", section: "Đối soát & Hóa đơn" },
   { key: "reconCard", label: "Đối soát giao dịch mPOS/Payoo", description: "So khớp giao dịch quẹt thẻ với lần thanh toán", section: "Đối soát & Hóa đơn" },
-  { key: "module3", label: "Kích hoạt khóa học", description: "Kích hoạt gói học cho học viên", section: "Đối soát & Hóa đơn" },
+  { key: "module3", label: "Tạo gói học", description: "Tạo gói học cho học viên", section: "Đối soát & Hóa đơn" },
   { key: "module4", label: "Xuất hóa đơn", description: "Tạo và xuất hóa đơn VAT", section: "Đối soát & Hóa đơn" },
   // ── Báo cáo ──
   { key: "revenueLedger", label: "Sổ doanh thu", description: "Báo cáo doanh thu theo thời gian, team", section: "Báo cáo" },

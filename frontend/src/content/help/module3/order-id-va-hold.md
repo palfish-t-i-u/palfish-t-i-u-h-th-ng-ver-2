@@ -1,10 +1,10 @@
 ---
-title: "Điền Order ID & tạm hoãn kích hoạt"
+title: "Điền Order ID & tạm hoãn tạo gói học"
 order: 7
 audience: ["sale", "admin"]
 ---
 
-Áp dụng khi: đã đăng ký khoá học thật trên CRM, cần đối chiếu lại vào hệ thống; hoặc PH chưa muốn kích hoạt ngay.
+Áp dụng khi: đã đăng ký khoá học thật trên CRM, cần đối chiếu lại vào hệ thống; hoặc PH chưa muốn tạo gói học ngay.
 
 ![Ô nhập Order ID cho từng Course Code, trạng thái "Chưa lưu"](/docs-images/module3/order-id-va-hold-1.png)
 
@@ -15,14 +15,14 @@ audience: ["sale", "admin"]
 3. Bấm **Lưu** ở cuối dòng để ghi vào hệ thống.
 4. Sau khi đủ Order ID, dùng nút **Yêu cầu xuất** (từng dòng) hoặc **Yêu cầu xuất hoá đơn (B4)** (cả AR) để báo kế toán xuất hoá đơn.
 
-## AR đang tạm hoãn kích hoạt ("Chưa kích hoạt")
+## AR đang tạm hoãn tạo gói học ("Chưa tạo gói học")
 
-Khi báo đơn, sale có thể chọn **Chưa kích hoạt** kèm ghi chú lý do. AR đó sẽ:
+Khi báo đơn, sale có thể chọn **Chưa tạo gói học** kèm ghi chú lý do. AR đó sẽ:
 
-- Hiện banner vàng **"PH chưa muốn kích hoạt"** kèm ghi chú lý do trong drawer chi tiết.
-- Lọc được riêng bằng bộ lọc trạng thái hoãn kích hoạt trong danh sách AR.
+- Hiện banner vàng **"PH chưa muốn tạo gói học"** kèm ghi chú lý do trong drawer chi tiết.
+- Lọc được riêng bằng bộ lọc trạng thái hoãn tạo gói học trong danh sách AR.
 
-Khi PH đồng ý kích hoạt trở lại, xử lý bình thường (điền Order ID, yêu cầu xuất hoá đơn) — banner tự ẩn khi AR chuyển trạng thái đã kích hoạt/đã xuất hoá đơn.
+Khi PH đồng ý tạo gói học trở lại, xử lý bình thường (điền Order ID, yêu cầu xuất hoá đơn) — banner tự ẩn khi AR chuyển trạng thái đã tạo gói học/đã xuất hoá đơn.
 
 ## Nếu popup báo "Order ID đã tồn tại — không lưu được"
 

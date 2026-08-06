@@ -177,7 +177,7 @@ const TITLES: Record<ViewId, { title: string; subtitle?: string }> = {
   },
   profile: { title: "Thông tin cá nhân" },
   module3: {
-    title: "Kích hoạt khóa học",
+    title: "Tạo gói học",
     subtitle: "B3 — Active Request, Course Code & Order ID CRM",
   },
   module4: { title: "Xuất hóa đơn", subtitle: "B4 — Phát hành INV theo Course Code (Order ID điền sau được)" },
@@ -293,7 +293,7 @@ function MainPageInner({
     if (reconItem) list.push(reconItem);
 
     if (can("module3"))
-      list.push({ id: "module3", label: "Kích hoạt khóa học", icon: I.check,
+      list.push({ id: "module3", label: "Tạo gói học", icon: I.check,
         ...(!reconItem ? { section: "Đối soát & Hóa đơn" } : {}),
         badge: badgeCounts.activation > 0 ? <Badge tone="warn">{badgeCounts.activation}</Badge> : null });
     if (can("module4"))

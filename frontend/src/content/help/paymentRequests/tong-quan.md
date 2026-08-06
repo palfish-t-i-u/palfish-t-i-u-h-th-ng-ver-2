@@ -12,7 +12,7 @@ audience: ["sale", "ke-toan"]
 
 1. **B1 — Quản lý thanh toán**: tạo Payment Request (PR), sinh mã QR, khách chuyển tiền, sale tải ảnh bill.
 2. **B2 — Đối soát giao dịch**: kế toán xác nhận tiền đã về (tự động qua PayOS/SePay, hoặc ghép tay CK ngoài/quẹt thẻ).
-3. **B3 — Kích hoạt khóa học**: khi PR đủ 100% tiền, sale báo đơn → tạo Active Request (AR), đăng ký khoá học, sinh Course Code.
+3. **B3 — Tạo gói học**: khi PR đủ 100% tiền, sale báo đơn → tạo Active Request (AR), đăng ký khoá học, sinh Course Code.
 4. **B4 — Xuất hóa đơn**: kế toán xuất hoá đơn (INV) theo từng Course Code.
 
 ## Quan hệ giữa các khái niệm
@@ -27,8 +27,8 @@ audience: ["sale", "ke-toan"]
 |---|---|
 | Tạo đơn mới, xem QR, tải bill, báo đơn | **Quản lý thanh toán** |
 | Xác nhận tiền CK/quẹt thẻ đã về | **Đối soát giao dịch** |
-| Đăng ký khoá học, điền Order ID CRM | **Kích hoạt khóa học** |
+| Đăng ký khoá học, điền Order ID CRM | **Tạo gói học** |
 | Xuất hoá đơn, tải file kê khai thuế | **Xuất hóa đơn** |
 | Xem/sửa dòng doanh thu tổng hợp | **Sổ doanh thu** |
 
-> ⚠️ Lưu ý: mọi thao tác đi đúng thứ tự B1→B4 — không thể kích hoạt khoá học khi PR chưa thu đủ 100% tiền, và không xuất được hoá đơn nếu khoá học chưa được đăng ký ở B3.
+> ⚠️ Lưu ý: mọi thao tác đi đúng thứ tự B1→B4 — không thể tạo gói học khi PR chưa thu đủ 100% tiền, và không xuất được hoá đơn nếu khoá học chưa được đăng ký ở B3.

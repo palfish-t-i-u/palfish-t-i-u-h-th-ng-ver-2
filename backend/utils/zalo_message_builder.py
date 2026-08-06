@@ -285,7 +285,7 @@ def build_activation_urgent_reminder_message(
         courses_line = f"Gói: {courses_activated}/{courses_total}"
 
     lines = [
-        "⚡ Cần kích hoạt khóa học GẤP",
+        "⚡ Cần tạo gói học GẤP",
         f"{pr_code} · {customer}",
         courses_line,
         f"Sale nhắc: {sale_name}",
@@ -363,7 +363,7 @@ def build_course_activated_message(
     order_ids_str = ", ".join(order_ids) if order_ids else "?"
 
     lines = [
-        "✅ ĐÃ KÍCH HOẠT THÀNH CÔNG",
+        "✅ ĐÃ TẠO GÓI HỌC THÀNH CÔNG",
         f"SĐT: {phones_str} · Sale {sale_name}",
         f"Order ID: {order_ids_str}",
     ]

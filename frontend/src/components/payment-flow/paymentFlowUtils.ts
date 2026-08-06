@@ -54,7 +54,7 @@ export const AR_STATUS_META: Record<
   { cls: string; text: string }
 > = {
   pending_order: { cls: "is-ar-pending", text: "Chờ điền Order ID" },
-  activated: { cls: "is-ar-ready", text: "Đã kích hoạt" },
+  activated: { cls: "is-ar-ready", text: "Đã tạo gói học" },
   invoiced: { cls: "is-ar-invoiced", text: "Đã xuất hoá đơn" },
 };
 

@@ -558,7 +558,7 @@ export function PaymentFlowProvider({
         notifyLedgerChanged();
       }
     } catch {
-      setApiNote("Đã đổi tạm trên giao diện; máy chủ chưa lưu được thay đổi Kích hoạt khóa học.");
+      setApiNote("Đã đổi tạm trên giao diện; máy chủ chưa lưu được thay đổi Tạo gói học.");
     }
   }, [updateActiveRequest]);
 

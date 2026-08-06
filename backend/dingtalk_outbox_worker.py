@@ -22,8 +22,8 @@ BATCH_SIZE = 20
 
 EVENT_TITLES = {
     "activation_request_created": "Báo đơn",
-    "course_activated": "Kích hoạt thành công",
-    "activation_urgent_reminder": "Nhắc kích hoạt gấp",
+    "course_activated": "Tạo gói học thành công",
+    "activation_urgent_reminder": "Nhắc tạo gói học gấp",
     "pr_fully_paid": "Đơn đã đủ tiền",
 }
 

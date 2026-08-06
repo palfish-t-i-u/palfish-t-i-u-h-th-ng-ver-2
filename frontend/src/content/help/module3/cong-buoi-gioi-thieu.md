@@ -10,7 +10,7 @@ audience: ["sale", "admin"]
 
 ## Điều kiện để tick
 
-- Course Code phải **đã kích hoạt** (đã điền Order ID CRM) — chưa điền Order ID thì ô tick bị khoá, có tooltip nhắc "Cần điền Order ID (kích hoạt khoá) trước khi tick cộng buổi".
+- Course Code phải **đã tạo gói học** (đã điền Order ID CRM) — chưa điền Order ID thì ô tick bị khoá, có tooltip nhắc "Cần điền Order ID (tạo gói học) trước khi tick cộng buổi".
 - Panel cộng buổi chỉ hiện khi gói có `bonusSessionsReferee` (buổi thưởng người được giới thiệu) hoặc `bonusSessionsReferrer` (buổi thưởng người giới thiệu) > 0.
 
 ## Cách dùng
@@ -23,4 +23,4 @@ audience: ["sale", "admin"]
 - Bỏ tick **bắt buộc nhập lý do** vào audit log (VD: "Bù sai số buổi, cộng nhầm khoá học…") — không nhập lý do thì nút "Xác nhận bỏ tick" bị khoá.
 - Lý do này được lưu lại để tra soát sau, không hiển thị lại trên giao diện chính.
 
-> ⚠️ Lưu ý: quyền tick/bỏ tick cộng buổi được kiểm tra cả ở backend (`require_referral_credit`) — Sale không có quyền vào tab Kích hoạt khoá học vẫn không tự cộng buổi được kể cả khi biết API.
+> ⚠️ Lưu ý: quyền tick/bỏ tick cộng buổi được kiểm tra cả ở backend (`require_referral_credit`) — Sale không có quyền vào tab Tạo gói học vẫn không tự cộng buổi được kể cả khi biết API.

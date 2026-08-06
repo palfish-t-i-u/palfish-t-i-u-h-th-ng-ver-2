@@ -250,7 +250,7 @@ class TestBuildCourseActivatedMessage:
 
         result = build_course_activated_message(req_data, sale_info)
         assert result["message"] == (
-            "✅ ĐÃ KÍCH HOẠT THÀNH CÔNG\n"
+            "✅ ĐÃ TẠO GÓI HỌC THÀNH CÔNG\n"
             "SĐT: 84-772333555 · Sale Trần Thị B\n"
             "Order ID: 756503406889218"
         )

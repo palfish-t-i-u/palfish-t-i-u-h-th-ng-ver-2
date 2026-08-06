@@ -146,11 +146,11 @@ describe("creditReferral endpoint contract", () => {
     expect(body.reason).toBe("Cộng nhầm");
   });
 
-  it("trồi lỗi 400 'khoá chưa kích hoạt' từ BE qua axios error", async () => {
+  it("trồi lỗi 400 'khoá chưa tạo gói học' từ BE qua axios error", async () => {
     server.use(
       http.patch(`${BASE}/api/v1/active-requests/:id/credit-referral`, () =>
         HttpResponse.json(
-          { detail: "Khoá học chưa được kích hoạt (chưa có Order ID) — không thể cộng buổi" },
+          { detail: "Khoá học chưa được tạo gói học (chưa có Order ID) — không thể cộng buổi" },
           { status: 400 },
         )
       )
@@ -167,7 +167,7 @@ describe("creditReferral endpoint contract", () => {
 
     const err = captured as { response?: { status?: number; data?: { detail?: string } } };
     expect(err.response?.status).toBe(400);
-    expect(err.response?.data?.detail).toContain("kích hoạt");
+    expect(err.response?.data?.detail).toContain("tạo gói học");
   });
 
   it("trồi lỗi 403 khi sale không có quyền", async () => {

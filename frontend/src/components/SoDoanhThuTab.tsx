@@ -550,7 +550,7 @@ export default function SoDoanhThuTab() {
     <div className="min-w-0 space-y-4 overflow-x-hidden">
       <p className="text-xs text-gmv-muted">
         Sổ doanh thu: lọc theo <span className="font-medium text-gmv-text">Pay Time</span> (ngày tiền về PR,
-        không phải ngày kích hoạt). Dòng tự động từ B3 chỉ xuất hiện sau khi{" "}
+        không phải ngày tạo gói học). Dòng tự động từ B3 chỉ xuất hiện sau khi{" "}
         <span className="font-medium text-gmv-text">lưu Order ID</span> — tab tự làm mới khi có thay đổi.
         Quy đổi RMB mặc định:{" "}
         <span className="font-medium text-gmv-text">

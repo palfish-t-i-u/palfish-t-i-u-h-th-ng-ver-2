@@ -118,7 +118,7 @@ def assert_all_paid_lines_have_bill(sb, pr: dict) -> None:
             status_code=422,
             detail={
                 "code": "MISSING_BILLS",
-                "message": f"{len(missing)} lần thanh toán chưa có ảnh bill. Vui lòng up bill trước khi tạo yêu cầu kích hoạt.",
+                "message": f"{len(missing)} lần thanh toán chưa có ảnh bill. Vui lòng up bill trước khi tạo yêu cầu tạo gói học.",
                 "missing_lines": missing,
             },
         )
