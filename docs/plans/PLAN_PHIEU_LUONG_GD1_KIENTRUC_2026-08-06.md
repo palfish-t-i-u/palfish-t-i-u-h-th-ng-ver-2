@@ -90,3 +90,16 @@ NGUỒN (GĐ1 = Sheet)         KHO CHUNG          REVIEW (Apps Script gate)     
    - **"Sales xác nhận":** cập nhật khi sales bấm nút *Xác nhận* trên phiếu ở app.
 
 *Trạng thái (05):* đã chốt phương án với Trang/Vân; 2 chị đang soạn nguồn dữ liệu, dự kiến **có trong chiều 06/08**.
+
+---
+
+## 8. TRẠNG THÁI THỰC THI (06/08)
+**Nền BigQuery đã dựng (nằm trên cloud — không phụ thuộc máy):**
+- Project **`pf-salary`** · dataset **`payroll`** @ `asia-southeast1`.
+- Auth: tài khoản Minh (đã cấp **Drive scope** để `bq` đọc được Google Sheet).
+- **IAM (cấp project):** Chung = *BigQuery Data Editor* + *Job User*; Hiếu = *BigQuery Data Viewer* + *Job User*. Xem tại **IAM & Admin → IAM** (`console.cloud.google.com/iam-admin/iam?project=pf-salary`).
+- `bq` CLI đã chạy được (test `SELECT 1` OK).
+
+**Còn lại (M2+):** external table từ Sheet sạch (Trang/Vân giao) → **6 view `prod_*`** theo block → **đối chiếu phiếu T6/T7** → M3 (Apps Script gate) → M4 (module app).
+
+**⚠️ Khi đổi máy:** project/dataset/IAM còn nguyên trên cloud. NHƯNG gcloud/bq + đăng nhập là **theo từng máy** → máy mới phải: cài Google Cloud SDK → `gcloud auth login --enable-gdrive-access --update-adc` → `gcloud config set project pf-salary`. *(Nếu path cài có dấu cách trong tên user thì `bq` phải gọi qua đường dẫn 8.3 rút gọn — xem ghi nhớ dự án.)*
