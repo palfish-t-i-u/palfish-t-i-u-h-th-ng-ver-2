@@ -323,7 +323,7 @@ export function activationAuditText(course: ActiveCourse): string | null {
   if (!course.orderIdSetBy || !course.orderIdSetAt) return null;
   const name = emailToName(course.orderIdSetBy);
   const date = formatPaymentDateFull(course.orderIdSetAt);
-  return date ? `Kích hoạt lúc ${date} bởi ${name}` : `Kích hoạt bởi ${name}`;
+  return date ? `Tạo gói học lúc ${date} bởi ${name}` : `Tạo gói học bởi ${name}`;
 }
 
 export function progressPercent(request: PaymentRequest) {
@@ -470,7 +470,7 @@ export function reportButtonState(args: {
   if (!ready) {
     return {
       enabled: false,
-      label: "Báo đơn & Kích hoạt",
+      label: "Báo đơn & Tạo gói học",
       title: "Cần thu đủ 100% số tiền trước khi báo đơn",
       isAppend: false,
     };
@@ -478,8 +478,8 @@ export function reportButtonState(args: {
   if (!hasAr) {
     return {
       enabled: true,
-      label: "Báo đơn & Kích hoạt",
-      title: "Báo đơn lên DingTalk + tạo yêu cầu kích hoạt khoá học",
+      label: "Báo đơn & Tạo gói học",
+      title: "Báo đơn lên DingTalk + tạo yêu cầu tạo gói học",
       isAppend: false,
     };
   }
@@ -803,8 +803,8 @@ export function activationSummary(ar: ActiveRequest | null | undefined) {
       invoicedCount: 0,
       allInvoiced: false,
       courseCount: 0,
-      buttonLabel: "Kích hoạt khóa học",
-      courseBadgeLabel: "Chờ kích hoạt",
+      buttonLabel: "Tạo gói học",
+      courseBadgeLabel: "Chờ tạo gói học",
       courseBadgeClass: "is-over",
     };
   }
@@ -819,8 +819,8 @@ export function activationSummary(ar: ActiveRequest | null | undefined) {
     invoicedCount,
     allInvoiced,
     courseCount: courses.length,
-    buttonLabel: allActivated ? "Đã kích hoạt khóa học" : "Chờ kích hoạt khóa học",
-    courseBadgeLabel: allActivated ? "Đã kích hoạt" : "Chờ kích hoạt",
+    buttonLabel: allActivated ? "Đã tạo gói học" : "Chờ tạo gói học",
+    courseBadgeLabel: allActivated ? "Đã tạo gói học" : "Chờ tạo gói học",
     courseBadgeClass: allActivated ? "is-done" : "is-over",
   };
 }

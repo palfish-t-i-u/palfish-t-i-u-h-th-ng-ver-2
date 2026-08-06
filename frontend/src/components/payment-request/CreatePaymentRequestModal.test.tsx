@@ -58,7 +58,7 @@ function fillRequiredFields() {
 describe("CreatePaymentRequestModal — UID optional", () => {
   it("renders UID field at bottom with hint text", () => {
     renderModal();
-    expect(screen.getByText(/Bổ sung sau.*kích hoạt/i)).toBeDefined();
+    expect(screen.getByText(/Bổ sung sau.*tạo gói học/i)).toBeDefined();
     expect(screen.getByPlaceholderText(/UID CRM \(bổ sung sau/i)).toBeDefined();
   });
 

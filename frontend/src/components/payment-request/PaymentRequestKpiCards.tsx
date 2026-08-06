@@ -48,7 +48,7 @@ export default function PaymentRequestKpiCards({ requests }: { requests: Payment
         <div className="kpi-icon" style={{ background: "var(--warning-bg)", color: "var(--warning-text)" }}>
           <Icons.Clock size={16} />
         </div>
-        <div className="kpi-label">Sẵn sàng kích hoạt</div>
+        <div className="kpi-label">Sẵn sàng tạo gói học</div>
         <div className="kpi-value">{ready}</div>
         <div className="kpi-sub">PR đủ tiền chờ chuyển B3</div>
       </div>

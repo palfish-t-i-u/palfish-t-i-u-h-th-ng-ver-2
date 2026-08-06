@@ -323,12 +323,12 @@ export default function CreatePaymentRequestModal({
           <div className="field">
             <label>UID CRM</label>
             <input
-              placeholder="UID CRM (bổ sung sau — cần trước khi kích hoạt)"
+              placeholder="UID CRM (bổ sung sau — cần trước khi tạo gói học)"
               value={form.uid}
               onChange={(e) => set("uid", e.target.value)}
             />
             <div style={{ fontSize: 11.5, color: "var(--text-3)", lineHeight: 1.45, marginTop: 4 }}>
-              Bổ sung sau — cần trước khi kích hoạt (bước B3).
+              Bổ sung sau — cần trước khi tạo gói học (bước B3).
             </div>
           </div>
 

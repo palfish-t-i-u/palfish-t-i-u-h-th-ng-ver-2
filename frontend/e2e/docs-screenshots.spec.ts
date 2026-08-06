@@ -239,7 +239,7 @@ test("dingtalkOutbox — tong-quan", async ({ page }) => {
 // dữ liệu sandbox dùng chung cả team.
 
 test("module3 — tong-quan", async ({ page }) => {
-  await gotoModule(page, "Kích hoạt khóa học");
+  await gotoModule(page, "Tạo gói học");
   await expect(page.getByText(/Active Request|AR-/).first()).toBeVisible({ timeout: 15_000 });
   await page.waitForTimeout(500);
   await screenshotViewport(page, "public/docs-images/module3/tong-quan-1.png");

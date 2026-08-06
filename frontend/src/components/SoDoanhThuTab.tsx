@@ -140,7 +140,7 @@ export const LEDGER_COLUMNS: readonly LedgerColumnDef[] = [
         <div className="font-medium text-gmv-text-strong">{row.tenKhach || "—"}</div>
         <span title={
           row.loaiNhap === "tu_dong"
-            ? "Tự ghi khi đơn đã thu đủ 100% và tới bước Kích hoạt."
+            ? "Tự ghi khi đơn đã thu đủ 100% và tới bước Tạo gói học."
             : row.loaiNhap === "hoan"
               ? "Dòng ghi giảm/hoàn tiền."
               : "Nhập tay hoặc mang từ ngoài vào."
@@ -654,7 +654,7 @@ export default function SoDoanhThuTab() {
     <div className="min-w-0 space-y-4 overflow-x-hidden">
       <p className="text-xs text-gmv-muted">
         Sổ doanh thu: lọc theo <span className="font-medium text-gmv-text">Pay Time</span> (ngày tiền về PR,
-        không phải ngày kích hoạt). Dòng tự động từ B3 chỉ xuất hiện sau khi{" "}
+        không phải ngày tạo gói học). Dòng tự động từ B3 chỉ xuất hiện sau khi{" "}
         <span className="font-medium text-gmv-text">lưu Order ID</span> — tab tự làm mới khi có thay đổi.
         Quy đổi RMB mặc định:{" "}
         <span className="font-medium text-gmv-text">

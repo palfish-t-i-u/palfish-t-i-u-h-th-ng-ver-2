@@ -10,7 +10,7 @@ audience: ["ke-toan", "leader"]
 
 ## Nguồn dữ liệu
 
-- **Tự động** — phần lớn dòng đổ về từ Active Request/Course sau khi kích hoạt khoá học (B3), không cần nhập tay.
+- **Tự động** — phần lớn dòng đổ về từ Active Request/Course sau khi tạo gói học (B3), không cần nhập tay.
 - **Nhập tay** — dùng cho các trường hợp đơn không tự đổ (xem bài **Tạo & sửa dòng sổ doanh thu**).
 - **Sync Data** — đồng bộ thêm từ Google Sheet ngoài khi cần đối chiếu chéo.
 

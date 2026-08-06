@@ -21,6 +21,6 @@ audience: ["ke-toan"]
 1. Giao dịch tiền về xuất hiện ở tab tương ứng.
 2. Kế toán đối chiếu với lần thanh toán (payment line) của đúng PR.
 3. Nếu số tiền lệch, hệ thống hỏi xác nhận trước khi ghép (xem bài **Xử lý số tiền không khớp**).
-4. Xác nhận xong, lần thanh toán chuyển sang trạng thái đã nhận tiền, PR tiến tới bước Kích hoạt khóa học khi đủ 100%.
+4. Xác nhận xong, lần thanh toán chuyển sang trạng thái đã nhận tiền, PR tiến tới bước Tạo gói học khi đủ 100%.
 
 > ⚠️ Lưu ý: luôn đối chiếu ảnh bill sales gửi trước khi xác nhận — đặc biệt khi có nhiều giao dịch trùng số tiền, đây là nguyên nhân ghép nhầm phổ biến nhất.

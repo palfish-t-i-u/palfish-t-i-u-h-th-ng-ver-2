@@ -2,7 +2,7 @@
  * E2E luồng nghiệp vụ Referral — góc nhìn Activator (anh Đức).
  *
  * Scenario:
- *  1. Login → vào tab Kích hoạt khoá học.
+ *  1. Login → vào tab Tạo gói học.
  *  2. Verify panel + filter chips referral hiển thị đầy đủ.
  *  3. Mở 1 AR có khoá kích hoạt rồi (orderId set) → verify section
  *     "Cộng buổi referral" hiện 2 checkbox referee/referrer.
@@ -14,23 +14,23 @@
 
 import { expect, test } from "@playwright/test";
 
-test.describe("Module 3 — Kích hoạt khoá học (Referral)", () => {
+test.describe("Module 3 — Tạo gói học (Referral)", () => {
   test.beforeEach(async ({ page }) => {
     await page.goto("/");
     await expect(
       page.getByRole("heading", { name: "Bảng thông tin" })
     ).toBeVisible({ timeout: 20_000 });
 
-    // Sidebar → "Kích hoạt khóa học"
-    await page.click("text=Kích hoạt khóa học");
+    // Sidebar → "Tạo gói học"
+    await page.click("text=Tạo gói học");
     await expect(
-      page.locator("h1, h2").filter({ hasText: "Kích hoạt khóa học" }).first()
+      page.locator("h1, h2").filter({ hasText: "Tạo gói học" }).first()
     ).toBeVisible({ timeout: 10_000 });
   });
 
   test("hiển thị tab + filter chip referral status", async ({ page }) => {
     // Tab nội bộ: Đang chờ / Đã kích hoạt / Tất cả
-    await expect(page.getByText(/chờ kích hoạt|Đang chờ/i).first())
+    await expect(page.getByText(/đã tạo gói học|chờ điền|tất cả/i).first())
       .toBeVisible({ timeout: 10_000 });
 
     // Filter chip referral (none / partial / full / any)
@@ -122,7 +122,7 @@ test.describe("Module 3 — Kích hoạt khoá học (Referral)", () => {
     if (!wasDisabled) {
       await first.check();
       // Verify nếu có error "kích hoạt"
-      const errorMsg = page.getByText(/chưa được kích hoạt|chưa có Order ID/i);
+      const errorMsg = page.getByText(/chưa được tạo gói học|chưa có Order ID/i);
       if (await errorMsg.isVisible({ timeout: 3_000 }).catch(() => false)) {
         await expect(errorMsg).toBeVisible();
       }

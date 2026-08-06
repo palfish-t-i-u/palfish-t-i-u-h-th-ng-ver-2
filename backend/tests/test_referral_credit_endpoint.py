@@ -212,7 +212,7 @@ class TestBlockCreditWhenCourseNotActive:
 
         assert res.status_code == 400
         detail = res.json()["detail"].lower()
-        assert "kích hoạt" in detail or "order id" in detail
+        assert "tạo gói học" in detail or "order id" in detail
         course = sb.tables["active_requests"][0]["uids_data"][0]["courses"][0]
         assert course.get("referee_credited_at") is None
 

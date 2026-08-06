@@ -19,10 +19,10 @@ audience: ["sale"]
 
 ## Khi hệ thống báo thiếu bill
 
-Nếu bấm **Báo đơn & Kích hoạt** mà còn lần thanh toán nào chưa có ảnh bill, hệ thống sẽ chặn lại và hiện cảnh báo yêu cầu bổ sung bill trước khi tiếp tục — liệt kê rõ từng lần TT còn thiếu (Lần #... và số tiền).
+Nếu bấm **Báo đơn & Tạo gói học** mà còn lần thanh toán nào chưa có ảnh bill, hệ thống sẽ chặn lại và hiện cảnh báo yêu cầu bổ sung bill trước khi tiếp tục — liệt kê rõ từng lần TT còn thiếu (Lần #... và số tiền).
 
 1. Đọc cảnh báo để biết đúng lần thanh toán nào còn thiếu.
 2. Đóng popup, quay lại lần thanh toán đó → tải ảnh bill như hướng dẫn ở trên.
-3. Quay lại bấm **Báo đơn & Kích hoạt** lần nữa.
+3. Quay lại bấm **Báo đơn & Tạo gói học** lần nữa.
 
 > ⚠️ Lưu ý: kế toán dùng ảnh bill để đối chiếu khi ghép chuyển khoản ngoài (tab **CK ngoài chờ ghép**) — thiếu bill sẽ làm chậm quá trình xác nhận tiền về, đặc biệt khi có nhiều lần TT cùng số tiền.

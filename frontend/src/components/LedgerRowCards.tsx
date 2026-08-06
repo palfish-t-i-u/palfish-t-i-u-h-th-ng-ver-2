@@ -52,7 +52,7 @@ export default function LedgerRowCards({
               <>
                 <span title={
                   row.loaiNhap === "tu_dong"
-                    ? "Tự ghi khi đơn đã thu đủ 100% và tới bước Kích hoạt."
+                    ? "Tự ghi khi đơn đã thu đủ 100% và tới bước Tạo gói học."
                     : row.loaiNhap === "hoan"
                       ? "Dòng ghi giảm/hoàn tiền."
                       : "Nhập tay hoặc mang từ ngoài vào."

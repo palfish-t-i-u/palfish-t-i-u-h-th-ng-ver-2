@@ -83,8 +83,8 @@ describe("active request course package updates", () => {
   });
 
   it("labels a created active request as waiting until all courses have order ids", () => {
-    expect(activationSummary(null).buttonLabel).toBe("Kích hoạt khóa học");
-    expect(activationSummary(ar).buttonLabel).toBe("Chờ kích hoạt khóa học");
+    expect(activationSummary(null).buttonLabel).toBe("Tạo gói học");
+    expect(activationSummary(ar).buttonLabel).toBe("Chờ tạo gói học");
 
     const activated: ActiveRequest = {
       ...ar,
@@ -96,8 +96,8 @@ describe("active request course package updates", () => {
       ],
     };
 
-    expect(activationSummary(activated).buttonLabel).toBe("Đã kích hoạt khóa học");
-    expect(activationSummary(activated).courseBadgeLabel).toBe("Đã kích hoạt");
+    expect(activationSummary(activated).buttonLabel).toBe("Đã tạo gói học");
+    expect(activationSummary(activated).courseBadgeLabel).toBe("Đã tạo gói học");
   });
 
   it("creates linked active request courses from received money, not target money", () => {

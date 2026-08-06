@@ -849,7 +849,7 @@ function ActiveRequestMiniCardV2({
     }
     if (course.orderId && course.orderId.trim()) {
       window.alert(
-        `Khóa học ${courseCode} đã được Ops kích hoạt (Order ID ${course.orderId}). Sales không thể xóa — liên hệ Ops nếu cần hủy.`
+        `Khóa học ${courseCode} đã được Ops tạo gói (Order ID ${course.orderId}). Sales không thể xóa — liên hệ Ops nếu cần hủy.`
       );
       return;
     }
@@ -875,7 +875,7 @@ function ActiveRequestMiniCardV2({
     if (!u) return;
     const hasLocked = u.courses.some((c) => !!(c.orderId?.trim()) || !!c.invoiced);
     if (hasLocked) {
-      window.alert("UID này có gói học đã kích hoạt — không thể xóa.");
+      window.alert("UID này có gói học đã tạo — không thể xóa.");
       return;
     }
     if (!window.confirm(`Xóa UID "${u.uid || "(trống)"}" và tất cả gói học của nó?`)) return;
@@ -920,12 +920,12 @@ function ActiveRequestMiniCardV2({
     <div className={`panel ar-mini-card ${allocation.isOver ? "is-over-allocated" : ""}`}>
       <div className="panel-head ar-mini-head">
         <h4>
-          <Icons.CheckSquare size={15} /> Kích hoạt khoá học
+          <Icons.CheckSquare size={15} /> Tạo gói học
           <span className="num-pill">{ar.id}</span>
         </h4>
         <span
           className={`badge ${summary.allActivated ? "is-done" : "is-over"}`}
-          title={summary.allActivated ? "Tất cả gói học đã được Ops kích hoạt" : "Đang chờ Ops kích hoạt gói học"}
+          title={summary.allActivated ? "Tất cả gói học đã được Ops tạo" : "Đang chờ Ops tạo gói học"}
         >
           {summary.allActivated ? <Icons.Check size={11} strokeWidth={2.5} /> : <Icons.Clock size={11} />}{" "}
           {summary.buttonLabel}
@@ -935,7 +935,7 @@ function ActiveRequestMiniCardV2({
             <button
               type="button"
               className={`btn btn-sm btn-ar-action ${!editing && !editFullyLocked ? "btn-edit-hint" : "btn-outline"}`}
-              title={editFullyLocked ? "Tất cả gói học đã được kích hoạt và đã dùng hết tiền" : "Sửa thông tin gói học"}
+              title={editFullyLocked ? "Tất cả gói học đã được tạo và đã dùng hết tiền" : "Sửa thông tin gói học"}
               aria-label="Sửa thông tin gói học"
               disabled={editFullyLocked}
               onClick={() => setEditing(true)}
@@ -985,14 +985,14 @@ function ActiveRequestMiniCardV2({
         <div className="pulse-progress-head">
           <div className="pulse-progress-count">
             <span className="pulse-count-num">{summary.activatedCount}/{summary.courseCount}</span>
-            <span className="pulse-count-label">gói đã kích hoạt</span>
+            <span className="pulse-count-label">gói đã tạo</span>
           </div>
           <div className="pulse-progress-total">
             <span className="pulse-total-label">TỔNG TIỀN</span>
             <span className="pulse-total-amount">{vnd(allocation.total)}</span>
           </div>
         </div>
-        <div className="prog-bar" aria-label="Tiến độ kích hoạt gói học">
+        <div className="prog-bar" aria-label="Tiến độ tạo gói học">
           <div
             className={`prog-fill ${summary.allActivated ? "is-done" : activationPct > 0 ? "is-mid" : ""}`}
             style={{ width: `${activationPct}%` }}
@@ -1068,7 +1068,7 @@ function ActiveRequestMiniCardV2({
               {ar.uids.length > 1 && (
                 <button type="button" className="btn btn-outline btn-sm"
                   disabled={u.courses.some((c) => !!(c.orderId?.trim()) || !!c.invoiced)}
-                  title={u.courses.some((c) => !!(c.orderId?.trim()) || !!c.invoiced) ? "UID có gói đã kích hoạt — không thể xóa" : "Xóa UID này"}
+                  title={u.courses.some((c) => !!(c.orderId?.trim()) || !!c.invoiced) ? "UID có gói đã tạo — không thể xóa" : "Xóa UID này"}
                   onClick={() => removeUidGroup(uIdx)}
                   style={{ color: "var(--danger)" }}>
                   <Icons.Close size={12} /> Xóa UID
@@ -1102,7 +1102,7 @@ function ActiveRequestMiniCardV2({
                     )}
                     <div
                       style={{ minWidth: 0, display: editing ? "block" : "none", position: "relative" }}
-                      title={courseLocked ? "Đã kích hoạt — Sales không thể đổi gói học" : undefined}
+                      title={courseLocked ? "Đã tạo gói học — Sales không thể đổi gói học" : undefined}
                     >
                       <Combobox
                         value={c.packageName || c.name || ""}
@@ -1182,7 +1182,7 @@ function ActiveRequestMiniCardV2({
                       onBlur={() => commitAmount(uIdx, c.courseCode)}
                       readOnly={courseLocked}
                       placeholder="Số tiền"
-                      title={courseLocked ? "Đã kích hoạt — Sales không thể đổi số tiền" : undefined}
+                      title={courseLocked ? "Đã tạo gói học — Sales không thể đổi số tiền" : undefined}
                       style={{
                         display: editing ? "block" : "none",
                         border: "1px solid var(--border)",
@@ -1199,11 +1199,11 @@ function ActiveRequestMiniCardV2({
                     />
                     <div className="ar-toggle-cell">
                       <span className={`ar-toggle-label ${c.orderId ? "is-active" : ""}`}>
-                        {c.orderId ? "Đã kích hoạt" : "Chờ kích hoạt"}
+                        {c.orderId ? "Đã tạo gói học" : "Chờ tạo gói học"}
                       </span>
                       <span
                         className={`ar-toggle ${c.orderId ? "is-on" : ""}`}
-                        title={c.orderId ? "Gói học đã được Ops kích hoạt" : "Chờ Ops kích hoạt gói học"}
+                        title={c.orderId ? "Gói học đã được Ops tạo" : "Chờ Ops tạo gói học"}
                       >
                         <span className="ar-toggle-knob" />
                       </span>
@@ -1218,7 +1218,7 @@ function ActiveRequestMiniCardV2({
                       <button
                         type="button"
                         className="btn btn-outline btn-sm"
-                        title={courseLocked ? "Đã kích hoạt — không thể xóa" : "Xóa khóa học"}
+                        title={courseLocked ? "Đã tạo gói học — không thể xóa" : "Xóa khóa học"}
                         aria-label="Xóa khóa học"
                         disabled={courseLocked}
                         onClick={() => removeCourse(uIdx, c.courseCode)}
@@ -1450,7 +1450,7 @@ function ActiveRequestMiniCardV2({
         </button>
       </div>
       <div style={{ fontSize: 11.5, color: "var(--text-3)", paddingTop: 6, lineHeight: 1.5 }}>
-        Sales bấm "Kích hoạt khoá học" sẽ tự động dùng thông tin KH từ PR. Bộ phận quản trị (chị Thu Hiền) sẽ điền Order ID trong tab <strong>Kích hoạt khoá học</strong>.
+        Sales bấm "Tạo gói học" sẽ tự động dùng thông tin KH từ PR. Bộ phận quản trị (chị Thu Hiền) sẽ điền Order ID trong tab <strong>Tạo gói học</strong>.
       </div>
     </div>
   );
@@ -1526,7 +1526,7 @@ function useActivationRemind(prId: string | null) {
       setErrorMessage(
         typeof detail === "string" && detail
           ? detail
-          : "Không gửi được nhắc kích hoạt gấp. Vui lòng thử lại."
+          : "Không gửi được nhắc tạo gói học gấp. Vui lòng thử lại."
       );
     } finally {
       setSending(false);
@@ -2550,14 +2550,14 @@ export default function PaymentRequestDetailDrawer({
               <div className="tl-item">
                 <div className={`tl-dot ${ready ? "active" : "pending"}`} />
                 <div className="tl-content">
-                  <div className="tl-title">B3 · Báo đơn & Kích hoạt</div>
+                  <div className="tl-title">B3 · Báo đơn & Tạo gói học</div>
                   <div className="tl-meta">
                     {reportBtn.isAppend
                       ? `Còn ${arUnallocated.toLocaleString("vi-VN")} đ chưa phân bổ — bấm "Báo đơn bổ sung" cho bé/gói mới`
                       : hasActiveRequest
                       ? `Active Request ${activeRequestId} — ${activeSummary.buttonLabel}`
                       : ready
-                      ? 'Sẵn sàng — bấm "Báo đơn & Kích hoạt" để báo kế toán & mở gói'
+                      ? 'Sẵn sàng — bấm "Báo đơn & Tạo gói học" để báo kế toán & mở gói'
                       : "Sẽ mở khoá khi đủ 100% tiền"}
                   </div>
                 </div>
@@ -2641,11 +2641,11 @@ export default function PaymentRequestDetailDrawer({
                 title={
                   !canRemindActivation && lastActivationReminder
                     ? `Đã nhắc lúc ${formatPaymentDateFull(lastActivationReminder.requested_at)} bởi ${lastActivationReminder.requested_by_name}`
-                    : "Nhắc Ops kích hoạt khóa học gấp qua Zalo"
+                    : "Nhắc Ops tạo gói học gấp qua Zalo"
                 }
                 style={!canRemindActivation ? { opacity: 0.6 } : undefined}
               >
-                <Icons.Bell size={13} /> {activationRemindSending ? "Đang gửi…" : !canRemindActivation ? "Đã nhắc kích hoạt" : "Nhắc kích hoạt gấp"}
+                <Icons.Bell size={13} /> {activationRemindSending ? "Đang gửi…" : !canRemindActivation ? "Đã nhắc tạo gói học" : "Nhắc tạo gói học gấp"}
               </button>
             )}
             {!readOnly && request.state !== "cancelled" &&
@@ -2747,11 +2747,11 @@ export default function PaymentRequestDetailDrawer({
           <div className="modal" style={{ width: "min(720px, 100%)" }} onClick={(e) => e.stopPropagation()}>
             <div className="modal-head">
               <div>
-                <h3>{reportBtn.isAppend ? "Báo đơn bổ sung" : "Báo đơn & Kích hoạt khoá học"}</h3>
+                <h3>{reportBtn.isAppend ? "Báo đơn bổ sung" : "Báo đơn & Tạo gói học"}</h3>
                 <div style={{ fontSize: 12, color: "var(--text-3)", marginTop: 2 }}>
                   {reportBtn.isAppend
-                    ? "Bé/gói mới sẽ cộng vào yêu cầu kích hoạt hiện có + gửi tin báo đơn bổ sung lên DingTalk (kèm bill)."
-                    : "Điền gói học → bấm xác nhận = báo đơn lên DingTalk (kèm bill) + tạo yêu cầu kích hoạt."}
+                    ? "Bé/gói mới sẽ cộng vào yêu cầu tạo gói học hiện có + gửi tin báo đơn bổ sung lên DingTalk (kèm bill)."
+                    : "Điền gói học → bấm xác nhận = báo đơn lên DingTalk (kèm bill) + gửi yêu cầu tạo gói học."}
                 </div>
               </div>
               <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
@@ -2768,21 +2768,21 @@ export default function PaymentRequestDetailDrawer({
               {/* Yêu cầu kích hoạt — 1 lần cho cả báo đơn (không per-gói) */}
               <div style={{ marginBottom: 12, padding: "10px 12px", border: "1px solid var(--border)", borderRadius: 8, background: "var(--bg-2)" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
-                  <span style={{ fontSize: 13, fontWeight: 500, color: "var(--text-1)", whiteSpace: "nowrap" }}>Yêu cầu kích hoạt:</span>
+                  <span style={{ fontSize: 13, fontWeight: 500, color: "var(--text-1)", whiteSpace: "nowrap" }}>Tạo gói học:</span>
                   <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", fontSize: 13 }}>
                     <input type="radio" name="arHoldActivation" checked={!holdActivation} onChange={() => { setHoldActivation(false); setHoldNote(""); }} />
-                    Kích hoạt ngay
+                    Tạo gói học ngay
                   </label>
                   <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", fontSize: 13 }}>
                     <input type="radio" name="arHoldActivation" checked={holdActivation} onChange={() => setHoldActivation(true)} />
-                    Chưa kích hoạt
+                    Chưa tạo gói học
                   </label>
                 </div>
                 {holdActivation && (
                   <div style={{ marginTop: 8 }}>
                     <label style={{ fontSize: 12, color: "var(--text-2)" }}>Ghi chú — không bắt buộc</label>
                     <textarea
-                      placeholder="VD: PH muốn kích hoạt sau Tết / chờ bé nghỉ hè xong"
+                      placeholder="VD: PH muốn tạo gói học sau Tết / chờ bé nghỉ hè xong"
                       value={holdNote}
                       onChange={(e) => setHoldNote(e.target.value)}
                       rows={2}
@@ -2806,7 +2806,7 @@ export default function PaymentRequestDetailDrawer({
                         emptyLabel="— Bỏ chọn —"
                       />
                       <div style={{ marginTop: 3, fontSize: 11.5, color: "var(--text-3)" }}>
-                        Hiển thị trong yêu cầu kích hoạt
+                        Hiển thị trong yêu cầu tạo gói học
                       </div>
                     </div>
                     <div className="field" style={{ flex: 1, minWidth: 200, marginBottom: 0 }}>
@@ -2815,7 +2815,7 @@ export default function PaymentRequestDetailDrawer({
                         const norm = normalizeLocalPhone(row.phone, country);
                         return (
                           <>
-                            <label>SĐT kích hoạt <span style={{ color: "var(--danger)" }}>*</span></label>
+                            <label>SĐT tạo gói <span style={{ color: "var(--danger)" }}>*</span></label>
                             <div style={{ display: "flex", gap: 6 }}>
                               <CountryCombo
                                 value={row.phoneCountry}
@@ -2854,7 +2854,7 @@ export default function PaymentRequestDetailDrawer({
                       UID CRM <span style={{ color: "var(--danger)" }}>*</span>
                       {!row.uid.trim() && (
                         <span style={{ marginLeft: 6, fontSize: 11, color: "var(--danger)", fontWeight: 400 }}>
-                          Bắt buộc trước khi kích hoạt
+                          Bắt buộc trước khi tạo gói học
                         </span>
                       )}
                     </label>
@@ -3010,7 +3010,7 @@ export default function PaymentRequestDetailDrawer({
                 <strong>{arReceived.toLocaleString("vi-VN")} đ</strong>
                 {arRemaining > 0 && (
                   <span style={{ color: "var(--text-3)" }}>
-                    {" "}— còn {arRemaining.toLocaleString("vi-VN")} đ chưa phân bổ (có thể phân bổ nốt ở tab Kích hoạt)
+                    {" "}— còn {arRemaining.toLocaleString("vi-VN")} đ chưa phân bổ (có thể phân bổ nốt ở tab Tạo gói học)
                   </span>
                 )}
                 {arRemaining < 0 && (
@@ -3055,8 +3055,8 @@ export default function PaymentRequestDetailDrawer({
               >
                 <Icons.CheckSquare size={14} />{" "}
                 {arSubmitting ? "Đang gửi…" : reportBtn.isAppend
-                  ? (holdActivation ? "Xác nhận báo đơn bổ sung (chưa kích hoạt)" : "Xác nhận báo đơn bổ sung")
-                  : (holdActivation ? "Xác nhận báo đơn (chưa kích hoạt)" : "Xác nhận báo đơn & kích hoạt")}
+                  ? (holdActivation ? "Xác nhận báo đơn bổ sung (chưa tạo gói học)" : "Xác nhận báo đơn bổ sung")
+                  : (holdActivation ? "Xác nhận báo đơn (chưa tạo gói học)" : "Xác nhận báo đơn & tạo gói học")}
               </button>
             </div>
           </div>
@@ -3075,9 +3075,9 @@ export default function PaymentRequestDetailDrawer({
           <div className="modal" style={{ width: "min(480px, 100%)" }} onClick={(e) => e.stopPropagation()}>
             <div className="modal-head">
               <div>
-                <h3>Chưa thể báo đơn &amp; kích hoạt</h3>
+                <h3>Chưa thể báo đơn &amp; tạo gói học</h3>
                 <div style={{ fontSize: 12, color: "var(--text-3)", marginTop: 2 }}>
-                  Bổ sung các thông tin dưới đây trong phiếu trước khi tạo yêu cầu kích hoạt.
+                  Bổ sung các thông tin dưới đây trong phiếu trước khi tạo yêu cầu tạo gói học.
                 </div>
               </div>
               <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
@@ -3190,7 +3190,7 @@ export default function PaymentRequestDetailDrawer({
         >
           <div className="modal" style={{ width: "min(420px, 100%)" }} onClick={(e) => e.stopPropagation()}>
             <div className="modal-head">
-              <div><h3>Nhắc kích hoạt khóa học gấp</h3></div>
+              <div><h3>Nhắc tạo gói học gấp</h3></div>
               <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                 <HdsdLink moduleSlug="module3" topicSlug="nhac-kich-hoat-gap" />
                 <button className="drawer-close" onClick={() => setActivationNoteModalOpen(false)}>
@@ -3236,7 +3236,7 @@ export default function PaymentRequestDetailDrawer({
         >
           <div className="modal" style={{ width: "min(420px, 100%)" }} onClick={(e) => e.stopPropagation()}>
             <div className="modal-head">
-              <div><h3>Không gửi được nhắc kích hoạt</h3></div>
+              <div><h3>Không gửi được nhắc tạo gói học</h3></div>
               <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                 <HdsdLink moduleSlug="module3" topicSlug="nhac-kich-hoat-gap" />
                 <button className="drawer-close" onClick={dismissActivationRemindError}>

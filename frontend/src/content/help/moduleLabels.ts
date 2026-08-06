@@ -7,7 +7,7 @@ export const HELP_MODULE_LABELS: Record<string, string> = {
   paymentRequests: "Quản lý thanh toán",
   reconciliation: "Đối soát giao dịch · Chuyển khoản",
   reconCard: "Đối soát giao dịch · Quẹt thẻ",
-  module3: "Kích hoạt khóa học",
+  module3: "Tạo gói học",
   module4: "Xuất hóa đơn",
   revenueLedger: "Sổ doanh thu",
   bc01: "BC01: Sales performance",

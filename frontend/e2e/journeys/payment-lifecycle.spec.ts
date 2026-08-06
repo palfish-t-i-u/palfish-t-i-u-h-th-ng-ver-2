@@ -209,15 +209,15 @@ test.describe.serial("Payment Lifecycle: B1 → B2 → B3 → B4", () => {
     }
   });
 
-  // ── B3: Kích hoạt khóa học ──
+  // ── B3: Tạo gói học ──
 
-  test("B3 — Smoke: Kích hoạt khóa học loads with full UI", async ({ page }) => {
+  test("B3 — Smoke: Tạo gói học loads with full UI", async ({ page }) => {
     await page.goto("/");
-    await navigateTo(page, "Kích hoạt khóa học");
-    await expectModuleLoaded(page, "Kích hoạt khóa học");
+    await navigateTo(page, "Tạo gói học");
+    await expectModuleLoaded(page, "Tạo gói học");
 
     await expect(
-      page.locator("text=Chờ kích hoạt").or(page.locator("text=Chờ order")).or(page.locator("text=Tất cả"))
+      page.locator("text=Đã tạo gói học").or(page.locator("text=Chờ điền Order ID")).or(page.locator("text=Tất cả"))
     ).toBeVisible({ timeout: 10_000 });
 
     await page.screenshot({ path: "e2e-results/b3-smoke.png" });
@@ -225,8 +225,8 @@ test.describe.serial("Payment Lifecycle: B1 → B2 → B3 → B4", () => {
 
   test("B3 — Create Active Request linked to test PR", async ({ page }) => {
     await page.goto("/");
-    await navigateTo(page, "Kích hoạt khóa học");
-    await expectModuleLoaded(page, "Kích hoạt khóa học");
+    await navigateTo(page, "Tạo gói học");
+    await expectModuleLoaded(page, "Tạo gói học");
     await waitForLoaded(page);
 
     const createBtn = page.locator("button:has-text('Tạo')").or(

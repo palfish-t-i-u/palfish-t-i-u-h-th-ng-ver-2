@@ -44,7 +44,7 @@ Dùng khi: đã có sẵn đầy đủ thông tin khách, muốn điền 1 lần
 | Trường | Mô tả | Lưu ý |
 |---|---|---|
 | **Tên con (học viên)** | Tên bé đăng ký khoá học | Nếu để trống, nội dung chuyển khoản dùng tên PH |
-| **UID CRM** | Mã khách hàng trên hệ thống CRM | Bổ sung sau được, nhưng **bắt buộc** trước khi kích hoạt (B3) |
+| **UID CRM** | Mã khách hàng trên hệ thống CRM | Bổ sung sau được, nhưng **bắt buộc** trước khi tạo gói học (B3) |
 | **Địa chỉ** | Tỉnh/TP, Phường/Xã, Số nhà (khách VN) | Bổ sung sau được; cần đủ trước khi xuất hoá đơn |
 | **Email** | Email khách | Dùng khi khách cần nhận hoá đơn điện tử |
 | **Loại khách hàng** | Cá nhân hoặc Doanh nghiệp | Xem mục [Khách doanh nghiệp](#khach-doanh-nghiep-can-xuat-hoa-don) |
@@ -63,7 +63,7 @@ Dùng khi: 1 phụ huynh đăng ký khoá học cho 2 bé trở lên, muốn g�
 
 - Ở ô **Tên con (học viên)**, gõ tên các bé cách nhau bằng dấu `-`, `&`, `,`, `/`, hoặc chữ "và".
 - VD: `Bảo Châu - Bảo Khánh` hoặc `Minh Anh, Minh Khôi`.
-- Hệ thống tự tách thành từng bé riêng biệt khi làm bước Kích hoạt (B3).
+- Hệ thống tự tách thành từng bé riêng biệt khi làm bước Tạo gói học (B3).
 
 ![Ô Tên con với 2 tên bé phân cách bằng dấu gạch ngang](/docs-images/paymentRequests/tao-payment-request-2.png)
 

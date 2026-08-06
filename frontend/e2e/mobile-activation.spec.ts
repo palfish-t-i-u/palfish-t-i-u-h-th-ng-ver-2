@@ -5,14 +5,14 @@ import { assertNoHorizontalOverflow, openViaThem } from "./helpers/mobile";
 test.describe("Mobile Phase 2: B3 Kích hoạt + B4 Xuất hoá đơn", () => {
   test("B3 Kích hoạt list: không tràn ngang", async ({ page }) => {
     await page.goto("/");
-    await openViaThem(page, /Kích hoạt khoá học/);
+    await openViaThem(page, /Tạo gói học/);
     await page.waitForTimeout(1500);
     await assertNoHorizontalOverflow(page);
   });
 
   test("B3 tap card → ar-drawer không tràn ngang", async ({ page }) => {
     await page.goto("/");
-    await openViaThem(page, /Kích hoạt khoá học/);
+    await openViaThem(page, /Tạo gói học/);
     await page.waitForTimeout(1500);
 
     const firstCard = page.locator(".ar-row-card, [data-ar-id]").first();
@@ -36,7 +36,7 @@ test.describe("Mobile Phase 2: B3 Kích hoạt + B4 Xuất hoá đơn", () => {
 
   test("B3 drawer UID input visible và focusable", async ({ page }) => {
     await page.goto("/");
-    await openViaThem(page, /Kích hoạt khoá học/);
+    await openViaThem(page, /Tạo gói học/);
     await page.waitForTimeout(1500);
 
     const firstCard = page.locator(".ar-row-card, [data-ar-id]").first();

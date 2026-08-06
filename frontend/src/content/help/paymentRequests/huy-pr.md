@@ -19,4 +19,4 @@ audience: ["sale"]
 
 - PR chuyển sang tab **"Đã huỷ"** — **không bị xoá vĩnh viễn**, vẫn xem lại được.
 
-> ⚠️ Lưu ý: chỉ huỷ được PR của chính mình (sale) khi lần thanh toán còn đang chờ xác nhận. Nếu PR đã có tiền về hoặc đã kích hoạt khoá học, cân nhắc kỹ trước khi huỷ — liên hệ leader nếu không chắc.
+> ⚠️ Lưu ý: chỉ huỷ được PR của chính mình (sale) khi lần thanh toán còn đang chờ xác nhận. Nếu PR đã có tiền về hoặc đã tạo gói học, cân nhắc kỹ trước khi huỷ — liên hệ leader nếu không chắc.

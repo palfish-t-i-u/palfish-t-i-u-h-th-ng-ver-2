@@ -332,7 +332,7 @@ def _assert_course_names_present(uids_data: list[dict[str, Any]]) -> None:
     if missing:
         raise HTTPException(
             400,
-            "Chưa chọn tên gói học — cần điền tên gói cho từng khoá trước khi gửi yêu cầu kích hoạt",
+            "Chưa chọn tên gói học — cần điền tên gói cho từng khoá trước khi gửi yêu cầu tạo gói học",
         )
 
 
@@ -1218,7 +1218,7 @@ def _enqueue_activation_request_created_dingtalk(
         source_uuid = str(uuid.UUID(hashlib.md5(f"{ar_id}{source_suffix}".encode()).hexdigest()))
         outbox_message = result["message"]
         if hold_activation:
-            hold_line = "\n⏸ PH CHƯA MUỐN KÍCH HOẠT"
+            hold_line = "\n⏸ PH CHƯA MUỐN TẠO GÓI HỌC"
             if hold_note:
                 hold_line += f"\nGhi chú: {hold_note}"
             outbox_message = outbox_message + hold_line
@@ -1265,7 +1265,7 @@ def _assert_uids_have_uid(uids_data: list[Any]) -> None:
             status_code=422,
             detail={
                 "code": "MISSING_UID",
-                "message": f"{len(missing)} học viên chưa có UID. Vui lòng bổ sung UID trước khi kích hoạt.",
+                "message": f"{len(missing)} học viên chưa có UID. Vui lòng bổ sung UID trước khi tạo gói học.",
                 "children": missing,
             },
         )
@@ -2059,7 +2059,7 @@ def register_activation_routes(app, supabase_factory):
         # Chỉ cho cộng buổi khi course đã kích hoạt (có order_id) — bỏ tick thì
         # vẫn cho phép để sửa lỗi cộng nhầm trên course đã rollback Order ID.
         if body.credited and not str(target_course.get("order_id") or "").strip():
-            raise HTTPException(400, "Khoá học chưa được kích hoạt (chưa có Order ID) — không thể cộng buổi")
+            raise HTTPException(400, "Khoá học chưa được tạo gói học (chưa có Order ID) — không thể cộng buổi")
 
         now = datetime.now(timezone.utc).isoformat()
         from audit import log_audit
@@ -2486,7 +2486,7 @@ def register_activation_routes(app, supabase_factory):
         if not ar:
             raise HTTPException(400, "PR chưa có Active Request")
         if ar.get("status") == "activated":
-            raise HTTPException(400, "Khóa học đã được kích hoạt")
+            raise HTTPException(400, "Khóa học đã được tạo gói học")
 
         # Parse pending courses từ uids_data trước khi check cooldown
         pending_courses: list[dict[str, str]] = []
@@ -2529,7 +2529,7 @@ def register_activation_routes(app, supabase_factory):
             cooldown_elapsed = elapsed >= timedelta(minutes=15)
             if not progress_made and not cooldown_elapsed:
                 wait_min = int((timedelta(minutes=15) - elapsed).total_seconds() / 60) + 1
-                raise HTTPException(429, f"Đã nhắc gần đây. Đợi ~{wait_min} phút hoặc đợi Ops kích hoạt thêm gói rồi nhắc lại")
+                raise HTTPException(429, f"Đã nhắc gần đây. Đợi ~{wait_min} phút hoặc đợi Ops tạo gói học thêm rồi nhắc lại")
 
         sale_name = (actor.staff or {}).get("display_name") or (actor.staff or {}).get("crm_name") or actor.email
         note_text = (body.note or "").strip() if body else None

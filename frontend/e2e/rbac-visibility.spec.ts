@@ -11,7 +11,7 @@ const ROLE_EXPECTATIONS: Record<
       "Bảng thông tin",
       "Quản lý thanh toán",
       "Đối soát giao dịch",
-      "Kích hoạt khóa học",
+      "Tạo gói học",
       "Dashboard Sale",
       "Thông tin cá nhân",
     ],
@@ -31,7 +31,7 @@ const ROLE_EXPECTATIONS: Record<
     hidden: [
       "Quản lý thanh toán",
       "Đối soát giao dịch",
-      "Kích hoạt khóa học",
+      "Tạo gói học",
       "Xuất hóa đơn",
       "Tài khoản Auth",
       "Đồng bộ CRM",
@@ -43,7 +43,7 @@ const ROLE_EXPECTATIONS: Record<
   cs: {
     visible: [
       "Bảng thông tin",
-      "Kích hoạt khóa học",
+      "Tạo gói học",
       "Thông tin cá nhân",
     ],
     hidden: [
