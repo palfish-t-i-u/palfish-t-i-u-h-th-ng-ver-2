@@ -7,16 +7,20 @@ Xem thêm bản nghiệp vụ: `docs/plans/PLAN_PHIEU_LUONG_2026-08-05.md`.
 
 ## 1. LUỒNG DỮ LIỆU (chốt)
 ```
-NGUỒN THÔ                          KHO CHUNG            REVIEW               NHÂN VIÊN
-- Google Sheet 1-2-3 (Trang, Vân)
-- Máy chấm công            ==>     BigQuery      ==>    Sheet kết quả   ==>   Module phiếu app GMV
-- DingTalk (phép/nghỉ)             (1 view tổng ->      Trang/Vân xác         (mỗi người chỉ xem
-                                    tách view theo       nhận + bấm nút        phiếu của mình,
-                                    6 block)             xác minh)             khoá mật khẩu)
+NGUỒN (GĐ1 = Sheet)         KHO CHUNG          REVIEW (Apps Script gate)      NHÂN VIÊN
+- Sheet lương (Trang)                                                          Phiếu lương app GMV
+  công đã CHỐT TAY    ==>    BigQuery     ==>   Sheet kết quả            ==>    (xem theo user,
+- Sheet thuế (Vân)          (1 view tổng        Trang/Vân tick đủ ô             khoá mật khẩu)
+- Sheet hồ sơ NS            -> tách 6 block,     xác minh --------------->      2 nút: yêu cầu
+  (master)                  real-time)                                         xem xét / xác nhận
+                                                ô "Xem xét lại" & "Sales   <-- (app ghi ngược
+(máy chấm công/DingTalk=GĐ2)                     xác nhận"                       về Sheet)
 ```
 - **BigQuery = "kho dữ liệu duy nhất"** trong đề xuất business — hiện thực hoá cụ thể.
-- Gom mọi nguồn → **1 view tổng**, rồi tách thành **các view theo block giống app GMV:** Lương cơ bản · Thưởng+COM · Phụ cấp · Bảo hiểm · Thuế+Bù tiền · Tổng tiền.
-- BigQuery → **Sheet kết quả** → Trang/Vân xác nhận → bấm **nút xác minh** → đủ điều kiện → **tự bắn phiếu** về module app.
+- **Nguồn GĐ1 chỉ còn các Sheet** (công đã được Trang chốt tay → không cần nối máy chấm công).
+- Gom → **1 view tổng** → tách **view theo 6 block giống app:** Lương cơ bản · Thưởng+COM · Phụ cấp · Bảo hiểm · Thuế+Bù tiền · Tổng tiền.
+- **BQ → Sheet: real-time.** **Sheet → app: Apps Script** — Trang/Vân tick đủ ô xác minh thì tự bắn phiếu sang app.
+- **App → Sheet (ghi ngược):** sales bấm *Yêu cầu xem xét lại* → tick ô "Xem xét lại"; bấm *Xác nhận* → cập nhật ô "Sales xác nhận".
 
 ## 2. BẢO MẬT & PHÂN QUYỀN (lương = dữ liệu nhạy cảm)
 - **BigQuery:** Minh = owner; **Chung = editor**; **anh Hiếu = viewer**. (Dữ liệu lương thật nằm ở đây → siết quyền, không share rộng.)
@@ -53,22 +57,21 @@ NGUỒN THÔ                          KHO CHUNG            REVIEW               
 | # | Việc | Ai | Ước lượng | Mốc |
 |---|---|---|---|---|
 | 0 | Chốt phương án + GĐ1 với Hiếu; chốt §5 với Trang/Vân | Minh+Chung | 0,5 ngày | **6/8** |
-| **M1** | **Nền dữ liệu — BigQuery + nối nguồn** | | | **~13/8** |
-| 1.1 | Tạo BigQuery (project+dataset) + share (Chung editor, Hiếu viewer) + convention tên view | Minh | 0,5 ngày | |
-| 1.2 | Nối Google Sheet 1-2-3 (external table / scheduled load) | Minh | 0,5 ngày | |
-| 1.3 | Nối DingTalk (phép/xin nghỉ) — tái dùng tích hợp sẵn trong repo | Minh+Chung | 0,5 ngày | |
-| 1.4 | Nối máy chấm công ⚠️ **chưa có API (Hiếu xác nhận chỉ có web)** → GĐ1 dùng **export tay vào Sheet**; API để GĐ2 | Chung | 0,5 ngày (tay) | |
+| **M1** | **Nền dữ liệu — BigQuery + nối Sheet** | | | **~13/8** |
+| 1.1 | Minh tạo BigQuery (project tài khoản Minh) + dataset + share (Chung editor, Hiếu viewer) + convention `M_/C_/prod_*` | Minh | 0,5 ngày | |
+| 1.2 | Nối các Sheet nguồn (lương Trang, thuế Vân, hồ sơ NS) — external table, real-time | Minh | 0,5 ngày | |
+| — | ~~Máy chấm công / DingTalk~~ → **GĐ2** (GĐ1 công chốt tay qua Sheet Trang) | | — | |
 | **M2** | **Xử lý + TÍNH KHỚP (cổng đúng-sai quan trọng nhất)** | | | **~20/8** |
 | 2.1 | Gom nguồn → 1 view tổng; tách view theo 6 block | Chung + Minh | 1,5 ngày | |
 | 2.2 | Viết SQL từng block khớp công thức (từng ROUND) | Minh | 1,5 ngày | |
 | 2.3 | **Đối chiếu kết quả với phiếu tháng 6 & 7 → đo % chính xác → sửa tới khớp từng đồng** | Chung | 1 ngày + lặp | |
-| **M3** | **Sheet kết quả + nút xác minh (Trang/Vân)** | | | **~25/8** |
-| 3.1 | BigQuery → Sheet kết quả (scheduled) | Minh | 0,5 ngày | |
-| 3.2 | Nút trạng thái + xác minh; logic "đủ điều kiện → phát hành" | Minh | 1 ngày | |
+| **M3** | **Sheet kết quả + xác minh (Apps Script)** | | | **~25/8** |
+| 3.1 | BigQuery → Sheet kết quả (real-time) | Minh | 0,5 ngày | |
+| 3.2 | Ô trạng thái xác minh + **Apps Script**: tick đủ ô → tự bắn phiếu sang app | Minh | 1 ngày | |
 | **M4** | **Module phiếu lương trong app GMV** | | | **~31/8** |
 | 4.1 | Module phiếu: xem theo user (RBAC), khoá mật khẩu tài khoản, audit | Minh | 1,5 ngày | |
 | 4.2 | 2 nút (yêu cầu xem xét / xác nhận) + auto-khoá nút xem-xét vào mùng 4 | Minh | 1 ngày | |
-| 4.3 | Bắn phiếu tự động khi phát hành (tái dùng Zalo/email notifier) | Minh | 0,5 ngày | |
+| 4.3 | **Ghi ngược app→Sheet:** cập nhật ô "Xem xét lại" & "Sales xác nhận"; bắn phiếu qua Zalo/email (tái dùng notifier) | Minh | 1 ngày | |
 | **PR** | **Chạy song song chu kỳ tháng 9, đối soát lệch = 0** | Cả nhóm + Trang/Vân | chờ chu kỳ | **1/9→4/9** |
 | **GL** | **Go-live** nếu tháng 9 sạch | | | **chu kỳ tháng 10** |
 
@@ -76,10 +79,14 @@ NGUỒN THÔ                          KHO CHUNG            REVIEW               
 
 ---
 
-## 7. QUYẾT ĐỊNH CÒN MỞ (cần Minh chốt)
-1. **Máy chấm công:** GĐ1 export tay (đề xuất) hay cố nối API ngay? — ảnh hưởng M1.
-2. **Trigger BigQuery→Sheet→app:** scheduled query + backend đọc BQ (đề xuất) hay Apps Script?
-3. **Convention view production** (`prod_*` theo block) — chốt để khỏi lẫn view cá nhân.
-4. **BigQuery:** dùng project/billing của ai? (tài khoản Minh hay GCP công ty?) — có chi phí.
-5. Xác nhận **mốc khoá nút "yêu cầu xem xét" = mùng 4** (1 ngày trước mùng 5).
-6. Hai lớp xác nhận (Trang/Vân trên Sheet + nhân viên trên app) — giữ cả hai đúng không?
+## 7. QUYẾT ĐỊNH ĐÃ CHỐT (06/08 chiều)
+1. **Máy chấm công: KHÔNG nối vào BQ.** Chỉ cần biết web; **công cuối cùng do Trang chốt tay** → vào hệ thống qua Sheet của Trang. ⇒ Nguồn GĐ1 thực chất chỉ còn các **Google Sheet**. (Nối máy chấm công/DingTalk = GĐ2.)
+2. **BigQuery → Sheet: real-time.** **Sheet → app: qua bước xác minh bằng Apps Script** — tick đủ các ô trạng thái xác minh thì mới tự bắn phiếu sang app.
+3. **Convention view production `prod_*`** — chốt dùng (cạnh view cá nhân `M_/C_`).
+4. **Billing: tài khoản Minh trả trước;** phát sinh chi phí thì đề xuất dời sang tài khoản công ty sau.
+5. **Khoá nút "yêu cầu xem xét" = mùng 4** (1 ngày trước mùng 5) — đúng.
+6. **Hai lớp xác nhận — đúng, kèm luồng app→Sheet.** Trên Sheet có 2 ô trạng thái:
+   - **"Xem xét lại":** tick = sales có feedback (lấy từ app khi sales bấm *Yêu cầu xem xét lại*); không tick = không vấn đề.
+   - **"Sales xác nhận":** cập nhật khi sales bấm nút *Xác nhận* trên phiếu ở app.
+
+*Trạng thái (05):* đã chốt phương án với Trang/Vân; 2 chị đang soạn nguồn dữ liệu, dự kiến **có trong chiều 06/08**.
