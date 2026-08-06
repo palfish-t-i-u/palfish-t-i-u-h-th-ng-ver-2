@@ -116,6 +116,8 @@ export type LedgerCellCtx = {
   deletingId: string | null;
   openEdit: (row: RevenueLedgerRow) => void;
   handleDelete: (row: RevenueLedgerRow) => void;
+  openRefund: (row: RevenueLedgerRow) => void;
+  canRefund: boolean;
 };
 
 export type LedgerColumnDef = {
@@ -136,9 +138,20 @@ export const LEDGER_COLUMNS: readonly LedgerColumnDef[] = [
     renderTd: (row) => (
       <Td className="text-left">
         <div className="font-medium text-gmv-text-strong">{row.tenKhach || "—"}</div>
-        <Badge tone={row.loaiNhap === "tu_dong" ? "primary" : "neutral"} className="mt-1">
-          {row.loaiNhap === "tu_dong" ? "M3" : "Tay"}
-        </Badge>
+        <span title={
+          row.loaiNhap === "tu_dong"
+            ? "Tự ghi khi đơn đã thu đủ 100% và tới bước Tạo gói học."
+            : row.loaiNhap === "hoan"
+              ? "Dòng ghi giảm/hoàn tiền."
+              : "Nhập tay hoặc mang từ ngoài vào."
+        }>
+          <Badge
+            tone={row.loaiNhap === "tu_dong" ? "primary" : row.loaiNhap === "hoan" ? "danger" : "neutral"}
+            className="mt-1"
+          >
+            {row.loaiNhap === "tu_dong" ? "Tự động" : row.loaiNhap === "hoan" ? "Ghi giảm" : "Thủ công"}
+          </Badge>
+        </span>
       </Td>
     ),
   },
@@ -240,16 +253,56 @@ export const LEDGER_COLUMNS: readonly LedgerColumnDef[] = [
     renderTd: (row) => <Td className="text-left text-sm">{row.team || "—"}</Td>,
   },
   {
+    key: "phiCong",
+    label: "Phí (VND)",
+    hideable: true,
+    renderTd: (row) => (
+      <Td className="text-right text-sm tabular-nums text-gmv-muted">
+        {(row.phiCong ?? 0) > 0 ? formatVndNumber(row.phiCong!) : "—"}
+      </Td>
+    ),
+  },
+  {
+    key: "soTienNet",
+    label: "Thực nhận (VND)",
+    thClass: "min-w-[9.5rem]",
+    hideable: true,
+    renderTd: (row) => {
+      const net = (row.soTienNet !== undefined ? row.soTienNet : null) ?? row.soTienVnd;
+      const isPending =
+        (row.soTienNet === null || row.soTienNet === undefined) &&
+        (row.paymentMethod === "Card" || row.paymentMethod === "Installment");
+      return (
+        <Td className="text-right text-sm tabular-nums">
+          <div>{formatVndNumber(net)}</div>
+          {isPending && (
+            <span className="text-xs text-amber-600">chờ phí</span>
+          )}
+        </Td>
+      );
+    },
+  },
+  {
     key: "actions",
     label: "Thao tác",
-    thClass: "min-w-[9rem]",
+    thClass: "min-w-[14rem]",
     hideable: true,
     renderTd: (row, ctx) => (
       <Td>
-        <div className="flex flex-wrap justify-center gap-1.5">
+        <div className="flex flex-nowrap items-center justify-center gap-1.5 whitespace-nowrap">
           <Button type="button" size="sm" variant="ghost" onClick={() => ctx.openEdit(row)}>
             Chỉnh sửa
           </Button>
+          {ctx.canRefund && row.loaiNhap !== "hoan" && row.soTienVnd > 0 && (
+            <Button
+              type="button"
+              size="sm"
+              variant="secondary"
+              onClick={() => ctx.openRefund(row)}
+            >
+              Ghi giảm
+            </Button>
+          )}
           {row.loaiNhap === "tay" && (
             <Button
               type="button"
@@ -272,6 +325,10 @@ export default function SoDoanhThuTab() {
   const { profile } = useMe();
   // Tỷ giá là cấu hình hệ thống cấp HR/admin — không phải tất cả ai sửa được Sổ DT đều được sửa tỷ giá.
   const canConfigRate = profile?.role === "system" || profile?.department === "hr";
+  const canRefund = !readOnly && (profile?.role === "manager" || profile?.role === "system");
+  const canSeeTestRows = profile?.role === "manager" || profile?.role === "system";
+
+  const [showTest, setShowTest] = useState(false);
   const [rateModalOpen, setRateModalOpen] = useState(false);
   const [rows, setRows] = useState<RevenueLedgerRow[]>([]);
   const [summary, setSummary] = useState<LedgerSummaryResponse | null>(null);
@@ -280,6 +337,12 @@ export default function SoDoanhThuTab() {
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState("");
+
+  const [refundRow, setRefundRow] = useState<RevenueLedgerRow | null>(null);
+  const [refundAmount, setRefundAmount] = useState("");
+  const [refundReason, setRefundReason] = useState("");
+  const [refundSaving, setRefundSaving] = useState(false);
+  const [refundError, setRefundError] = useState("");
 
   const [draftFrom, setDraftFrom] = useState("");
   const [draftTo, setDraftTo] = useState("");
@@ -314,6 +377,7 @@ export default function SoDoanhThuTab() {
         ...filterParams(appliedFrom, appliedTo, appliedLoai, appliedTeam, appliedSearch),
         limit: PAGE_SIZE,
         offset,
+        include_test: showTest || undefined,
       };
       const res = await endpoints.revenue.listLedger(params);
       setTotalCount(res.data.count);
@@ -321,7 +385,7 @@ export default function SoDoanhThuTab() {
       setRows((prev) => (replace ? res.data.rows : [...prev, ...res.data.rows]));
       return res.data;
     },
-    [appliedFrom, appliedTo, appliedLoai, appliedTeam, appliedSearch]
+    [appliedFrom, appliedTo, appliedLoai, appliedTeam, appliedSearch, showTest]
   );
 
   const reloadAll = useCallback(async (opts?: { silent?: boolean }) => {
@@ -512,6 +576,46 @@ export default function SoDoanhThuTab() {
     }
   }
 
+  function openRefund(row: RevenueLedgerRow) {
+    setRefundRow(row);
+    setRefundAmount("");
+    setRefundReason("");
+    setRefundError("");
+  }
+
+  function closeRefund() {
+    if (refundSaving) return;
+    setRefundRow(null);
+    setRefundError("");
+  }
+
+  async function handleRefundSave() {
+    if (!refundRow) return;
+    const amt = parseInt(refundAmount.replace(/\D/g, ""), 10);
+    if (!amt || amt <= 0) {
+      setRefundError("Số tiền phải lớn hơn 0.");
+      return;
+    }
+    if (amt > refundRow.soTienVnd) {
+      setRefundError(`Không được vượt quá số gốc (${formatVndNumber(refundRow.soTienVnd)} VND).`);
+      return;
+    }
+    setRefundSaving(true);
+    setRefundError("");
+    try {
+      await endpoints.revenue.refundLedger(refundRow.id, {
+        amount: amt,
+        reason: refundReason.trim() || undefined,
+      });
+      setRefundRow(null);
+      reloadAll();
+    } catch {
+      setRefundError("Ghi giảm thất bại. Thử lại.");
+    } finally {
+      setRefundSaving(false);
+    }
+  }
+
   async function handleSyncGsheet() {
     if (syncing) return;
     if (!window.confirm(GSHEET_SYNC_CONFIRM)) return;
@@ -543,7 +647,7 @@ export default function SoDoanhThuTab() {
     baseColumns.map((c) => c.key)
   );
   const visibleColumns = baseColumns.filter((c) => isVisible(c.key));
-  const cellCtx: LedgerCellCtx = { deletingId, openEdit, handleDelete };
+  const cellCtx: LedgerCellCtx = { deletingId, openEdit, handleDelete, openRefund, canRefund };
   const isMobile = useIsMobile();
 
   return (
@@ -585,8 +689,8 @@ export default function SoDoanhThuTab() {
             onChange={(e) => setDraftLoai(e.target.value)}
           >
             <option value="">Tất cả</option>
-            <option value="tu_dong">Tự động (M3)</option>
-            <option value="tay">Điền tay</option>
+            <option value="tu_dong">Tự động</option>
+            <option value="tay">Thủ công</option>
           </select>
         </label>
         <label className="text-sm text-gmv-muted">
@@ -623,6 +727,17 @@ export default function SoDoanhThuTab() {
             </Button>
           </Tooltip>
         )}
+        {canSeeTestRows && (
+          <label className="flex cursor-pointer items-center gap-1.5 text-sm text-gmv-muted">
+            <input
+              type="checkbox"
+              checked={showTest}
+              onChange={(e) => setShowTest(e.target.checked)}
+              className="rounded"
+            />
+            Hiện đơn test
+          </label>
+        )}
         {canConfigRate && (
           <Button variant="ghost" onClick={() => setRateModalOpen(true)}>
             Cấu hình tỷ giá
@@ -640,6 +755,57 @@ export default function SoDoanhThuTab() {
         headerExtra={<HdsdLink moduleSlug="revenueLedger" topicSlug="quy-doi-ty-gia" />}
       >
         <ExchangeRatesPanel />
+      </Modal>
+
+      <Modal
+        open={!!refundRow}
+        onClose={closeRefund}
+        className="max-w-md"
+      >
+        <div className="space-y-4 p-1">
+          <div>
+            <p className="text-sm font-semibold text-gmv-text-strong">Ghi giảm doanh thu</p>
+            {refundRow && (
+              <p className="mt-1 text-xs text-gmv-muted">
+                Dòng gốc: <span className="font-medium text-gmv-text">{refundRow.tenKhach || refundRow.maDonHang || refundRow.id}</span>
+                {" — "}{formatVndNumber(refundRow.soTienVnd)} VND ({refundRow.ngayTienVe})
+              </p>
+            )}
+          </div>
+          <label className="block text-sm text-gmv-muted">
+            Số tiền ghi giảm (VND)
+            <Input
+              type="number"
+              className="mt-1"
+              value={refundAmount}
+              onChange={(e) => setRefundAmount(e.target.value)}
+              placeholder="Nhập số tiền..."
+              min={1}
+              max={refundRow?.soTienVnd}
+              disabled={refundSaving}
+            />
+          </label>
+          <label className="block text-sm text-gmv-muted">
+            Lý do (không bắt buộc)
+            <Input
+              type="text"
+              className="mt-1"
+              value={refundReason}
+              onChange={(e) => setRefundReason(e.target.value)}
+              placeholder="Nhập lý do hoàn/hủy..."
+              disabled={refundSaving}
+            />
+          </label>
+          {refundError && <p className="text-xs text-red-600">{refundError}</p>}
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="ghost" onClick={closeRefund} disabled={refundSaving}>
+              Hủy
+            </Button>
+            <Button variant="danger" onClick={handleRefundSave} disabled={refundSaving}>
+              {refundSaving ? "Đang lưu…" : "Xác nhận ghi giảm"}
+            </Button>
+          </div>
+        </div>
       </Modal>
 
       {syncing && (
@@ -728,6 +894,8 @@ export default function SoDoanhThuTab() {
           deletingId={deletingId}
           onEdit={openEdit}
           onDelete={handleDelete}
+          onRefund={openRefund}
+          canRefund={canRefund}
           hasMore={hasMore}
           loadingMore={loadingMore}
           onLoadMore={loadMore}
@@ -736,7 +904,7 @@ export default function SoDoanhThuTab() {
               ? "Đang tải…"
               : hasActiveFilter
                 ? "Không có dòng trong khoảng đã lọc — thử Reset bộ lọc hoặc mở rộng ngày."
-                : "Chưa có dòng — bấm Thêm dòng hoặc xác nhận M3."
+                : "Chưa có dòng — bấm Thêm dòng để thêm thủ công."
           }
         />
       ) : (
@@ -757,7 +925,7 @@ export default function SoDoanhThuTab() {
                   <Td colSpan={visibleColumns.length} className="text-center text-gmv-muted">
                     {hasActiveFilter
                       ? "Không có dòng trong khoảng đã lọc — thử Reset bộ lọc hoặc mở rộng ngày."
-                      : "Chưa có dòng — bấm Thêm dòng hoặc xác nhận M3."}
+                      : "Chưa có dòng — bấm Thêm dòng để thêm thủ công."}
                   </Td>
                 </Tr>
               )}

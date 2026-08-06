@@ -111,6 +111,25 @@ class TestBuildPayosTransferDescription:
         desc = pr._build_payos_transfer_description(row, None, code)
         assert desc == code
 
+    def test_foreign_country_uses_its_dial_not_vn_default(self):
+        """PR-2026-0578 (26/7): khách Séc (CZ) → mã vùng 420, KHÔNG rơi về 84 mặc định.
+        Trước fix: bảng dial cụt thiếu CZ → ra "84777737388 ..."."""
+        row = {"phone": "777737388", "country": "CZ", "name": "Nguyen Thi Hue"}
+        desc = pr._build_payos_transfer_description(row, "Vuong Bao Khanh", "FIIBT")
+        assert desc.startswith("420777737388 ")
+        assert "FIIBT" in desc
+        assert len(desc) <= 40
+
+    def test_vn_country_still_prefixes_84(self):
+        row = {"phone": "777737388", "country": "VN", "name": "Nguyen Van A"}
+        desc = pr._build_payos_transfer_description(row, None, "FH9VT")
+        assert desc.startswith("84777737388")
+
+    def test_unknown_country_falls_back_to_84(self):
+        row = {"phone": "777737388", "country": "ZZ", "name": "Test"}
+        desc = pr._build_payos_transfer_description(row, None, "FH9VT")
+        assert desc.startswith("84777737388")
+
 
 class TestCreatePaymentLineSource:
     def test_payment_line_create_has_name_for_transfer(self):

@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { MoneyInput } from "./ui/MoneyInput";
 import { COURSE_PACKAGES } from "../constants/coursePackages";
 import { usePaymentFlow } from "../contexts/PaymentFlowContext";
@@ -22,14 +22,19 @@ import CountryCombo, { COUNTRIES, findCountry } from "./payment-request/CountryC
 import DateRangeFilter, { EMPTY_RANGE, type DateRange, inDateRange } from "./payment-request/DateRangeFilter";
 import { Icons } from "./payment-request/Icons";
 import { useNoticeCardCollapse } from "../hooks/useNoticeCardCollapse";
-import { activationAuditText, formatPaymentDateFull, formatPaymentDateTime, fromApiActiveRequest, getArReferralStatus, getReferralStatus, REFERRAL_STATUS_HEADER, REFERRAL_STATUS_PANEL_STYLE, toActiveRequestPatchUidsData } from "./payment-request/paymentRequestUtils";
+import { activationAuditText, formatPaymentDateFull, formatPaymentDateTime, fromApiActiveRequest, getArReferralStatus, getReferralStatus, pageItems, paginate, REFERRAL_STATUS_HEADER, REFERRAL_STATUS_PANEL_STYLE, toActiveRequestPatchUidsData } from "./payment-request/paymentRequestUtils";
 import { downloadTaxInvoiceZip } from "../utils/taxInvoiceXlsxExport";
 import type { InvoiceRow } from "./payment-flow/paymentFlowUtils";
 import { getUidSyncState } from "./ActivationTab.uidSync";
 import { HdsdLink } from "./help/HdsdLink";
 import "../styles/prototype-payments.css";
+import { AR_PER_PAGE, applyCourseOrderId, countCourseTabs, courseRowMatchesSearch, courseRowMatchesTab, flatCourseRows, groupRowsByAr, type CourseRow } from "./activation/activationFlatList";
+import { normVi } from "../lib/textUtils";
 
 type ArTabId = "pending_order" | "activated" | "all";
+
+/** Vạch màu trái xoay vòng theo cụm AR (không random — ổn định giữa các render). */
+const GROUP_TINTS = ["#7c6cff", "#0ea5e9", "#10b981", "#f59e0b", "#ec4899", "#8b5cf6"];
 
 function PrSearchCombo({
   prs,
@@ -1972,6 +1977,14 @@ export default function ActivationTab() {
   const [openArId, setOpenArId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [tab, setTab] = useState<ArTabId>("pending_order");
+  const [page, setPage] = useState(1);
+  const [orderIdDrafts, setOrderIdDrafts] = useState<Record<string, string>>({});
+  const [editingKeys, setEditingKeys] = useState<Set<string>>(() => new Set());
+  const [savingArIds, setSavingArIds] = useState<Set<string>>(() => new Set());
+  const [copiedRowKey, setCopiedRowKey] = useState<string | null>(null);
+  const [savedRowKey, setSavedRowKey] = useState<string | null>(null);
+  const copyResetRef = useRef<number | null>(null);
+  const savedResetRef = useRef<number | null>(null);
   const [dateRange, setDateRange] = useState<DateRange>(EMPTY_RANGE);
   const [createOpen, setCreateOpen] = useState(false);
   // 1.5 — filter "Thưởng giới thiệu"
@@ -2048,6 +2061,51 @@ export default function ActivationTab() {
     });
   }, [rows, tab, search, dateRange, referralFilter, holdFilter]);
 
+  // Badge tab đếm ở cấp khoá học (toàn bộ, không lọc) — khác KPI (cấp AR).
+  const tabCounts = useMemo(() => countCourseTabs(rows), [rows]);
+
+  // Pipeline desktop: lọc AR (date/referral/hold) → trải khoá → lọc tab+search cấp khoá.
+  const courseVisible = useMemo(() => {
+    const nq = normVi(search.trim());
+    const arFiltered = rows.filter((a) => {
+      if (!inDateRange(a.createdAt, dateRange)) return false;
+      if (referralFilter !== "all") {
+        const rs = getArReferralStatus(a);
+        if (referralFilter === "any") {
+          if (rs === null) return false;
+        } else if (rs !== referralFilter) {
+          return false;
+        }
+      }
+      if (holdFilter !== "all") {
+        const isHold = !!a.holdActivation && a.status !== "activated" && a.status !== "invoiced";
+        if (holdFilter === "hold" && !isHold) return false;
+        if (holdFilter === "now" && isHold) return false;
+      }
+      return true;
+    });
+    return flatCourseRows(arFiltered).filter(
+      (r) => courseRowMatchesTab(r, tab) && courseRowMatchesSearch(r, nq)
+    );
+  }, [rows, tab, search, dateRange, referralFilter, holdFilter]);
+
+  const courseGroups = useMemo(() => groupRowsByAr(courseVisible), [courseVisible]);
+  const coursePage = useMemo(() => paginate(courseGroups, page, AR_PER_PAGE), [courseGroups, page]);
+
+  // Đổi bộ lọc/tab/tìm kiếm → về trang 1.
+  useEffect(() => {
+    setPage(1);
+  }, [tab, search, dateRange, referralFilter, holdFilter]);
+
+  // Dọn timer feedback khi unmount.
+  useEffect(
+    () => () => {
+      if (copyResetRef.current) window.clearTimeout(copyResetRef.current);
+      if (savedResetRef.current) window.clearTimeout(savedResetRef.current);
+    },
+    []
+  );
+
   const isMobile = useIsMobile();
 
   const openAr = openArId ? activeRequests.find((a) => a.id === openArId) ?? null : null;
@@ -2084,6 +2142,249 @@ export default function ActivationTab() {
       setApiNote(error);
       return { ok: false as const, error };
     }
+  };
+
+  const copyUid = async (rowKey: string, uid: string) => {
+    if (!uid) return;
+    const fallbackCopy = () => {
+      try {
+        const ta = document.createElement("textarea");
+        ta.value = uid;
+        ta.setAttribute("readonly", "");
+        ta.style.position = "fixed";
+        ta.style.left = "-9999px";
+        document.body.appendChild(ta);
+        ta.select();
+        const ok = document.execCommand("copy");
+        document.body.removeChild(ta);
+        return ok;
+      } catch {
+        return false;
+      }
+    };
+    let ok: boolean;
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(uid);
+        ok = true;
+      } else {
+        ok = fallbackCopy();
+      }
+    } catch {
+      ok = fallbackCopy();
+    }
+    if (!ok) {
+      window.prompt("Không thể tự copy trong trình duyệt này. Copy UID thủ công:", uid);
+      return;
+    }
+    setCopiedRowKey(rowKey);
+    if (copyResetRef.current) window.clearTimeout(copyResetRef.current);
+    copyResetRef.current = window.setTimeout(() => setCopiedRowKey(null), 1400);
+  };
+
+  // Lưu Order ID inline. Đọc AR tươi từ activeRequests (không dùng snapshot dòng),
+  // khoá theo AR để 2 lần lưu cùng AR không ghi đè full uids_data của nhau.
+  const saveOrderIdInline = async (row: CourseRow) => {
+    const draft = (orderIdDrafts[row.key] ?? row.orderId).trim();
+    if (!draft || draft === row.orderId.trim()) return;
+    if (savingArIds.has(row.arId)) return;
+    const freshAr = activeRequests.find((a) => a.id === row.arId);
+    if (!freshAr) return;
+    const next = applyCourseOrderId(freshAr, row.courseCode, draft);
+    setSavingArIds((prev) => {
+      const s = new Set(prev);
+      s.add(row.arId);
+      return s;
+    });
+    const result = await persistActiveRequest(next);
+    setSavingArIds((prev) => {
+      const s = new Set(prev);
+      s.delete(row.arId);
+      return s;
+    });
+    if (result.ok) {
+      setOrderIdDrafts((prev) => {
+        const n = { ...prev };
+        delete n[row.key];
+        return n;
+      });
+      setEditingKeys((prev) => {
+        const s = new Set(prev);
+        s.delete(row.key);
+        return s;
+      });
+      setSavedRowKey(row.key);
+      if (savedResetRef.current) window.clearTimeout(savedResetRef.current);
+      savedResetRef.current = window.setTimeout(() => setSavedRowKey(null), 1400);
+    }
+  };
+
+  const renderReferralChip = (rs: CourseRow["referral"]) => {
+    if (rs === null) return <span style={{ color: "var(--text-3)", fontSize: 12 }}>—</span>;
+    const cfg = {
+      full: { bg: "var(--success-bg)", color: "var(--success-text)", label: "Đã cộng" },
+      partial: { bg: "var(--caution-bg, #fef9c3)", color: "var(--caution-text, #92400e)", label: "1 phần" },
+      none: { bg: "var(--danger-bg, #fee2e2)", color: "var(--danger-text, #b91c1c)", label: "Chưa cộng" },
+    }[rs];
+    return (
+      <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 6, background: cfg.bg, color: cfg.color, fontWeight: 600, whiteSpace: "nowrap" }}>
+        {cfg.label}
+      </span>
+    );
+  };
+
+  const renderCourseRow = (row: CourseRow, tint: string) => {
+    const rem = row.prId ? reminderByPrId.get(row.prId) : undefined;
+    const remTip = rem
+      ? `Sales nhắc tạo gói học lúc ${new Date(rem.requested_at).toLocaleDateString("vi-VN")} ${new Date(rem.requested_at).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })} — bởi ${rem.requested_by_name}${rem.note ? ` · "${rem.note}"` : ""}`
+      : undefined;
+    const borderColor = rem ? "#e65100" : tint; // nhắc gấp đè màu cam, không mất tín hiệu cũ
+    const draftVal = orderIdDrafts[row.key] ?? row.orderId;
+    const isSavingAr = savingArIds.has(row.arId);
+    const isEditing = editingKeys.has(row.key);
+    const showInput = !row.invoiced && (!row.activated || isEditing);
+    const saveEnabled = !readOnly && draftVal.trim() !== "" && draftVal.trim() !== row.orderId.trim() && !isSavingAr;
+    const iconBtnStyle: CSSProperties = {
+      display: "inline-flex",
+      alignItems: "center",
+      justifyContent: "center",
+      width: 24,
+      height: 24,
+      borderRadius: 6,
+      border: "1px solid var(--border, #e5e7eb)",
+      background: "var(--canvas, #fff)",
+      cursor: "pointer",
+      color: "var(--text-2, #555)",
+      flex: "0 0 auto",
+    };
+    return (
+      <tr
+        key={row.key}
+        className={openArId === row.arId ? "selected" : ""}
+        onClick={() => setOpenArId(row.arId)}
+        title={remTip}
+        style={{ borderLeft: `3px solid ${borderColor}` }}
+      >
+        <td>
+          <span className="ar-id-pill">{row.arId}</span>
+          <div style={{ marginTop: 3 }}>
+            {row.prId ? (
+              <span className="pr-id-pill" style={{ fontSize: 11 }}>{row.prId}</span>
+            ) : (
+              <span style={{ color: "var(--text-3)", fontSize: 11.5 }}>— Standalone —</span>
+            )}
+          </div>
+        </td>
+        <td>
+          <div className="cell-name">{row.uidName || row.customerName || "—"}</div>
+          {(row.saleName || (row.uidName && row.uidName !== row.customerName)) && (
+            <div className="cell-sub">
+              {row.uidName && row.uidName !== row.customerName ? `KH: ${row.customerName}` : ""}
+              {row.uidName && row.uidName !== row.customerName && row.saleName ? " · " : ""}
+              {row.saleName ? (
+                <>
+                  Sale: <strong>{row.saleName}</strong>
+                </>
+              ) : null}
+            </div>
+          )}
+        </td>
+        <td>
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <button
+              type="button"
+              title="Copy UID"
+              aria-label={`Copy UID ${row.uid}`}
+              disabled={!row.uid}
+              onClick={(e) => {
+                e.stopPropagation();
+                copyUid(row.key, row.uid);
+              }}
+              style={{ ...iconBtnStyle, cursor: row.uid ? "pointer" : "not-allowed", color: copiedRowKey === row.key ? "var(--success-text, #047857)" : "var(--text-2, #555)" }}
+            >
+              {copiedRowKey === row.key ? <Icons.Check size={14} /> : <Icons.Copy size={14} />}
+            </button>
+            <span style={{ fontFamily: "var(--font-mono, ui-monospace, monospace)", fontSize: 12.5 }}>{row.uid || "—"}</span>
+          </div>
+        </td>
+        <td>{row.packageName || "—"}</td>
+        <td style={{ textAlign: "right" }}>
+          <span style={{ fontWeight: 700, color: "var(--money)" }}>{vnd(row.amount)}</span>
+        </td>
+        <td onClick={(e) => e.stopPropagation()}>
+          {row.invoiced ? (
+            <span style={{ fontFamily: "ui-monospace, monospace", fontSize: 12.5 }} title="Đã xuất hoá đơn — không sửa Order ID ở đây">
+              {row.orderId || "—"}
+            </span>
+          ) : showInput ? (
+            <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+              <input
+                value={draftVal}
+                placeholder="Dán Order ID"
+                disabled={readOnly || isSavingAr}
+                onChange={(e) => setOrderIdDrafts((p) => ({ ...p, [row.key]: e.target.value }))}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && saveEnabled) saveOrderIdInline(row);
+                }}
+                style={{ width: 150, height: 30, padding: "0 8px", fontSize: 12.5, fontFamily: "ui-monospace, monospace", border: "1px solid var(--border, #d1d5db)", borderRadius: 6 }}
+              />
+              <button type="button" className="btn btn-primary" disabled={!saveEnabled} onClick={() => saveOrderIdInline(row)} style={{ height: 30, padding: "0 12px", fontSize: 12.5, whiteSpace: "nowrap" }}>
+                {isSavingAr ? "Đang lưu…" : "Lưu"}
+              </button>
+              {savedRowKey === row.key && <span style={{ fontSize: 11, color: "var(--success-text, #047857)", whiteSpace: "nowrap" }}>Đã lưu ✓</span>}
+            </div>
+          ) : (
+            <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+              <span style={{ fontFamily: "ui-monospace, monospace", fontSize: 12.5 }}>{row.orderId || "—"}</span>
+              {!readOnly && (
+                <button
+                  type="button"
+                  title="Sửa Order ID"
+                  aria-label={`Sửa Order ID ${row.orderId}`}
+                  onClick={() =>
+                    setEditingKeys((s) => {
+                      const n = new Set(s);
+                      n.add(row.key);
+                      return n;
+                    })
+                  }
+                  style={iconBtnStyle}
+                >
+                  <Icons.Pencil size={13} />
+                </button>
+              )}
+              {savedRowKey === row.key && <span style={{ fontSize: 11, color: "var(--success-text, #047857)", whiteSpace: "nowrap" }}>Đã lưu ✓</span>}
+            </div>
+          )}
+        </td>
+        <td>
+          <div style={{ display: "flex", flexDirection: "column", gap: 4, alignItems: "flex-start" }}>
+            {row.activated ? (
+              <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 6, background: "var(--success-bg)", color: "var(--success-text)", fontWeight: 600, whiteSpace: "nowrap" }}>✓ Đã tạo gói học</span>
+            ) : (
+              <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 6, background: "var(--warning-bg)", color: "var(--warning-text)", fontWeight: 600, whiteSpace: "nowrap" }}>⏳ Chờ điền</span>
+            )}
+            {row.holdActivation && !row.activated && (
+              <span className="badge badge-warning" style={{ fontSize: 11 }} title={row.holdNote ? `Chưa muốn tạo gói học — "${row.holdNote}"` : "Chưa muốn tạo gói học"}>
+                ⏸ KH chưa muốn tạo gói
+              </span>
+            )}
+          </div>
+        </td>
+        <td>{renderReferralChip(row.referral)}</td>
+        <td>
+          {(() => {
+            const ts = formatPaymentDateTime(row.createdAt);
+            return (
+              <>
+                <div className="cell-time">{ts.date}</div>
+                {ts.time ? <div className="time-relative">{ts.time}</div> : null}
+              </>
+            );
+          })()}
+        </td>
+      </tr>
+    );
   };
 
   return (
@@ -2190,15 +2491,15 @@ export default function ActivationTab() {
             <div className="kpi-icon" style={{ background: "var(--warning-bg)", color: "var(--warning-text)" }}>
               <Icons.Clock size={16} />
             </div>
-            <div className="kpi-label">Chờ điền Order ID</div>
+            <div className="kpi-label">AR chờ điền Order ID</div>
             <div className="kpi-value">{counts.pending_order}</div>
-            <div className="kpi-sub">Ops chưa điền hết Order ID</div>
+            <div className="kpi-sub">Còn khoá chưa có Order ID</div>
           </div>
           <div className="kpi">
             <div className="kpi-icon" style={{ background: "var(--success-bg)", color: "var(--success-text)" }}>
               <Icons.CheckCircle size={16} />
             </div>
-            <div className="kpi-label">Đã tạo gói học</div>
+            <div className="kpi-label">AR đã tạo gói học</div>
             <div className="kpi-value">{counts.activated}</div>
             <div className="kpi-sub">{vnd(sumReady)} sẵn sàng xuất HĐ</div>
           </div>
@@ -2206,7 +2507,7 @@ export default function ActivationTab() {
             <div className="kpi-icon" style={{ background: "var(--info-bg)", color: "var(--info-text)" }}>
               <Icons.Doc size={16} />
             </div>
-            <div className="kpi-label">Đã xuất HĐ</div>
+            <div className="kpi-label">AR đã xuất HĐ</div>
             <div className="kpi-value">{counts.invoiced}</div>
             <div className="kpi-sub">AR đã hoàn tất</div>
           </div>
@@ -2216,7 +2517,7 @@ export default function ActivationTab() {
           <div className="search">
             <Icons.Search size={15} stroke="var(--text-3)" />
             <input
-              placeholder="Tìm theo AR-ID, PR-ID, tên khách, UID…"
+              placeholder="Tìm theo AR-ID, PR-ID, tên khách, UID, gói, Order ID…"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
@@ -2270,9 +2571,9 @@ export default function ActivationTab() {
             <div className="tabs">
               {(
                 [
-                  { id: "pending_order" as const, label: "Chờ điền Order ID", icon: "Clock" as const, count: counts.pending_order, attention: true },
-                  { id: "activated" as const, label: "Đã tạo gói học", icon: "CheckCircle" as const, count: counts.activated },
-                  { id: "all" as const, label: "Tất cả", icon: "Database" as const, count: counts.all },
+                  { id: "pending_order" as const, label: "Chờ điền Order ID", icon: "Clock" as const, count: tabCounts.pending_order, attention: true },
+                  { id: "activated" as const, label: "Đã tạo gói học", icon: "CheckCircle" as const, count: tabCounts.activated },
+                  { id: "all" as const, label: "Tất cả", icon: "Database" as const, count: tabCounts.all },
                 ] as const
               ).map((tc) => {
                 const Ico = Icons[tc.icon];
@@ -2288,7 +2589,7 @@ export default function ActivationTab() {
                 );
               })}
             </div>
-            <span className="right-meta">{filtered.length} kết quả</span>
+            <span className="right-meta">{isMobile ? `${filtered.length} kết quả` : `${courseVisible.length} dòng khoá học`}</span>
           </div>
 
           {isMobile ? (
@@ -2302,151 +2603,66 @@ export default function ActivationTab() {
               />
             </div>
           ) : (
-            <div className="tbl-wrap">
-              <table className="tbl">
-                <thead>
-                  <tr>
-                    <th>AR-ID</th>
-                    <th>PR-ID</th>
-                    <th>Khách hàng</th>
-                    <th style={{ textAlign: "center" }}>UID</th>
-                    <th style={{ textAlign: "right" }}>Tổng tiền</th>
-                    <th style={{ textAlign: "center" }}>Order ID</th>
-                    <th>Trạng thái</th>
-                    <th>Thưởng GT</th>
-                    <th>Tạo lúc</th>
-                    <th />
-                  </tr>
-                </thead>
-                <tbody>
-                  {filtered.length === 0 && (
+            <>
+              <div className="tbl-wrap" style={{ overflowX: "auto" }}>
+                <table className="tbl" style={{ minWidth: 1180 }}>
+                  <thead>
                     <tr>
-                      <td colSpan={10}>
-                        <div className="empty">
-                          <Icons.Sparkle size={20} />
-                          <div>Chưa có Active Request nào khớp với điều kiện lọc.</div>
-                        </div>
-                      </td>
+                      <th>AR-ID / PR-ID</th>
+                      <th>Khách hàng</th>
+                      <th>UID</th>
+                      <th>Gói học</th>
+                      <th style={{ textAlign: "right" }}>Tiền</th>
+                      <th>Order ID</th>
+                      <th>Trạng thái</th>
+                      <th>Thưởng GT</th>
+                      <th>Tạo lúc</th>
                     </tr>
-                  )}
-                  {filtered.map((a) => {
-                    const rem = a.prId ? reminderByPrId.get(a.prId) : undefined;
-                    const remTip = rem
-                      ? `Sales nhắc tạo gói học lúc ${new Date(rem.requested_at).toLocaleDateString("vi-VN")} ${new Date(rem.requested_at).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })} — bởi ${rem.requested_by_name}${rem.note ? ` · "${rem.note}"` : ""}`
-                      : undefined;
-                    return (
-                    <tr
-                      key={a.id}
-                      className={openArId === a.id ? "selected" : ""}
-                      onClick={() => setOpenArId(a.id)}
-                      title={remTip}
-                      style={rem ? { borderLeft: "3px solid #e65100" } : undefined}
-                    >
-                      <td>
-                        <span className="ar-id-pill">{a.id}</span>
-                      </td>
-                      <td>
-                        {a.prId ? (
-                          <span className="pr-id-pill" style={{ fontSize: 11.5 }}>
-                            {a.prId}
-                          </span>
-                        ) : (
-                          <span style={{ color: "var(--text-3)", fontSize: 12 }}>— Standalone —</span>
-                        )}
-                      </td>
-                      <td>
-                        <div className="cell-name">
-                          {a.customerName}
-                          {a.saleName && (
-                            <span style={{ fontSize: 12, color: "var(--text-3)" }}> · Sale: <strong>{a.saleName}</strong></span>
-                          )}
-                        </div>
-                        <div className="cell-sub">UID: {a.uids[0]?.uid || "—"}</div>
-                      </td>
-                      <td style={{ textAlign: "center" }}>
-                        <span className="qr-count">
-                          <span className="num-done">{a.uids.length}</span>
+                  </thead>
+                  <tbody>
+                    {courseVisible.length === 0 && (
+                      <tr>
+                        <td colSpan={9}>
+                          <div className="empty">
+                            <Icons.Sparkle size={20} />
+                            <div>Chưa có khoá học nào khớp với điều kiện lọc.</div>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                    {coursePage.rows.map((group, gi) =>
+                      group.rows.map((row) => renderCourseRow(row, GROUP_TINTS[gi % GROUP_TINTS.length]))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+              {courseGroups.length > 0 && (
+                <div className="pagi">
+                  <span>
+                    Trang {coursePage.page}/{coursePage.totalPages} · {courseVisible.length} dòng khoá học trong {courseGroups.length} AR
+                  </span>
+                  <div className="pagi-btns">
+                    <button className="pagi-btn" disabled={coursePage.page <= 1} onClick={() => setPage(coursePage.page - 1)} aria-label="Trang trước">
+                      <Icons.ChevronLeft size={13} />
+                    </button>
+                    {pageItems(coursePage.page, coursePage.totalPages).map((it, i) =>
+                      it === "..." ? (
+                        <span key={`gap-${i}`} className="pagi-gap">
+                          …
                         </span>
-                      </td>
-                      <td style={{ textAlign: "right" }}>
-                        <span style={{ fontWeight: 700, color: "var(--money)" }}>{vnd(a.total)}</span>
-                      </td>
-                      <td style={{ textAlign: "center" }}>
-                        <span className="qr-count">
-                          <span
-                            className="num-done"
-                            style={{
-                              color: a.orderedCount === a.totalCourses ? "var(--success-text)" : "var(--warning-text)",
-                            }}
-                          >
-                            {a.orderedCount}
-                          </span>
-                          <span className="slash">/</span>
-                          <span className="num-total">{a.totalCourses}</span>
-                        </span>
-                      </td>
-                      <td>
-                        <div style={{ display: "flex", flexDirection: "column", gap: 4, alignItems: "flex-start" }}>
-                          <ARStatusBadge status={a.status} />
-                          {a.holdActivation && a.status !== "activated" && a.status !== "invoiced" && (
-                            <span
-                              className="badge badge-warning"
-                              style={{ fontSize: 11 }}
-                              title={a.holdNote ? `Chưa muốn tạo gói học — "${a.holdNote}"` : "Chưa muốn tạo gói học"}
-                            >
-                              ⏸ KH chưa muốn tạo gói
-                            </span>
-                          )}
-                        </div>
-                      </td>
-                      <td>
-                        {(() => {
-                          const rs = getArReferralStatus(a);
-                          if (rs === null) {
-                            return <span style={{ color: "var(--text-3)", fontSize: 12 }}>—</span>;
-                          }
-                          const cfg = {
-                            full: { bg: "var(--success-bg)", color: "var(--success-text)", label: "Đã cộng" },
-                            partial: { bg: "var(--caution-bg, #fef9c3)", color: "var(--caution-text, #92400e)", label: "1 phần" },
-                            none: { bg: "var(--danger-bg, #fee2e2)", color: "var(--danger-text, #b91c1c)", label: "Chưa cộng" },
-                          }[rs];
-                          return (
-                            <span style={{
-                              fontSize: 11,
-                              padding: "2px 8px",
-                              borderRadius: 6,
-                              background: cfg.bg,
-                              color: cfg.color,
-                              fontWeight: 600,
-                              whiteSpace: "nowrap",
-                            }}>
-                              {cfg.label}
-                            </span>
-                          );
-                        })()}
-                      </td>
-                      <td>
-                        {(() => {
-                          const ts = formatPaymentDateTime(a.createdAt);
-                          return (
-                            <>
-                              <div className="cell-time">{ts.date}</div>
-                              {ts.time ? <div className="time-relative">{ts.time}</div> : null}
-                            </>
-                          );
-                        })()}
-                      </td>
-                      <td>
-                        <span className="row-action">
-                          <Icons.ChevronRight size={15} />
-                        </span>
-                      </td>
-                    </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+                      ) : (
+                        <button key={it} className={`pagi-btn ${it === coursePage.page ? "active" : ""}`} onClick={() => setPage(it)}>
+                          {it}
+                        </button>
+                      )
+                    )}
+                    <button className="pagi-btn" disabled={coursePage.page >= coursePage.totalPages} onClick={() => setPage(coursePage.page + 1)} aria-label="Trang sau">
+                      <Icons.ChevronRight size={13} />
+                    </button>
+                  </div>
+                </div>
+              )}
+            </>
           )}
         </div>
       </div>

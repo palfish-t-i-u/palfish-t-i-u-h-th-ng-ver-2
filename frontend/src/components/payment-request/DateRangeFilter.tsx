@@ -21,8 +21,33 @@ function fmt(s: string) {
   return s ? s.split("-").reverse().join("/") : "";
 }
 
-function iso(d: Date) {
-  return d.toISOString().slice(0, 10);
+export function localIso(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+export function presetRange(preset: string, today: Date = new Date()): DateRange {
+  if (preset === "today") {
+    const t = localIso(today);
+    return { from: t, to: t, preset };
+  }
+  if (preset === "7d") {
+    const from = new Date(today);
+    from.setDate(today.getDate() - 6);
+    return { from: localIso(from), to: localIso(today), preset };
+  }
+  if (preset === "30d") {
+    const from = new Date(today);
+    from.setDate(today.getDate() - 29);
+    return { from: localIso(from), to: localIso(today), preset };
+  }
+  if (preset === "thismonth") {
+    const from = new Date(today.getFullYear(), today.getMonth(), 1);
+    return { from: localIso(from), to: localIso(today), preset };
+  }
+  return { from: "", to: "", preset: "all" };
 }
 
 export default function DateRangeFilter({
@@ -47,24 +72,7 @@ export default function DateRangeFilter({
   const hasFilter = !!(value?.from || value?.to);
 
   const setPreset = (preset: string) => {
-    const today = new Date();
-    if (preset === "today") {
-      const t = iso(today);
-      onChange({ from: t, to: t, preset });
-    } else if (preset === "7d") {
-      const from = new Date(today);
-      from.setDate(today.getDate() - 6);
-      onChange({ from: iso(from), to: iso(today), preset });
-    } else if (preset === "30d") {
-      const from = new Date(today);
-      from.setDate(today.getDate() - 29);
-      onChange({ from: iso(from), to: iso(today), preset });
-    } else if (preset === "thismonth") {
-      const from = new Date(today.getFullYear(), today.getMonth(), 1);
-      onChange({ from: iso(from), to: iso(today), preset });
-    } else {
-      onChange({ from: "", to: "", preset: "all" });
-    }
+    onChange(presetRange(preset));
   };
 
   return (

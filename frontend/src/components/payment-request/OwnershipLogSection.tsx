@@ -56,23 +56,30 @@ export default function OwnershipLogSection({ prId }: { prId: string }) {
           <span style={{ color: "var(--text-3)", whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" }}>
             {fmtTime(e.created_at)}
           </span>
-          <span>
-            <strong>{ACTION_LABEL[e.action] ?? e.action}</strong>
-            {": "}
-            {e.action === "transfer" ? (
-              <>
-                {who(e.from_sale_name, e.from_sale_email)}
-                {" → "}
+          <div style={{ display: "flex", flexDirection: "column", gap: 3, color: "var(--text-1)" }}>
+            <div>
+              <strong>{ACTION_LABEL[e.action] ?? e.action}</strong>
+              {": "}
+              {e.action === "transfer" ? (
+                <>
+                  {who(e.from_sale_name, e.from_sale_email)}
+                  {" → "}
+                  <strong>{who(e.to_sale_name, e.to_sale_email)}</strong>
+                </>
+              ) : (
                 <strong>{who(e.to_sale_name, e.to_sale_email)}</strong>
-              </>
-            ) : (
-              <strong>{who(e.to_sale_name, e.to_sale_email)}</strong>
-            )}
-            <span style={{ color: "var(--text-3)" }}>
-              {" · "}thao tác: {who(e.actor_name, e.actor_email)}
-              {e.reason ? ` · lý do: ${e.reason}` : ""}
-            </span>
-          </span>
+              )}
+            </div>
+            <div>
+              <span style={{ color: "var(--text-2)" }}>Người thao tác:</span>{" "}
+              {who(e.actor_name, e.actor_email)}
+            </div>
+            {e.reason ? (
+              <div>
+                <span style={{ color: "var(--text-2)" }}>Lý do:</span> {e.reason}
+              </div>
+            ) : null}
+          </div>
         </div>
       ))}
     </div>

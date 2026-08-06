@@ -110,11 +110,86 @@ def _matched_label(line: dict[str, Any] | None, pr: dict[str, Any] | None) -> st
     return " · ".join(parts) if parts else None
 
 
+def _line_bill_images(line: dict[str, Any]) -> list[Any]:
+    imgs = line.get("bill_images") if isinstance(line.get("bill_images"), list) else []
+    if line.get("bill_image") and line.get("bill_image") not in imgs:
+        imgs = [*imgs, line.get("bill_image")]
+    return imgs
+
+
+def _matched_pr(
+    line: dict[str, Any] | None,
+    pr: dict[str, Any] | None,
+    *,
+    sale_name: str = "",
+    team_name: str = "",
+) -> dict[str, Any] | None:
+    """Thông tin PR đã ghép — đầy đủ như card bên đối soát CK (drawer 'Đã ghép')."""
+    if not line or not pr:
+        return None
+    bill_images = _line_bill_images(line)
+    return {
+        "pr_id": _clean_text(pr.get("id") or line.get("payment_request_id")),
+        "pr_name": _clean_text(pr.get("name") or pr.get("ten_khach")),
+        "pr_uid": _clean_text(pr.get("uid") or pr.get("uid_khach_hang")),
+        "pr_phone": _clean_text(pr.get("phone")),
+        "pr_country": _clean_text(pr.get("country")),
+        "child_name": _clean_text(line.get("student_name") or pr.get("child_name")),
+        "sale_name": sale_name or _clean_text(pr.get("sale_email")),
+        "team_name": team_name,
+        "amount": _parse_amount(line.get("amount")),
+        "created_at": _format_dt(line.get("created_at")),
+        "method": _clean_text(line.get("method")),
+        "status": _clean_text(line.get("status")) or "pending",
+        "has_bill": bool(bill_images),
+        "bill_images": bill_images,
+    }
+
+
+def _sale_team_maps(sb, prs) -> tuple[dict[str, str], dict[str, str]]:
+    """(sale_name_map, team_by_email) cho tập PR đã ghép — tên TVTS + team hiện ở card 'Đã ghép'.
+
+    Fail-open: lỗi tra cứu chỉ mất tên sale/team, không kéo sập list. Bỏ qua hẳn khi
+    không PR nào có sale_email (tránh full-scan nhan_su_sale vô ích + KeyError trong test)."""
+    sale_emails = sorted({
+        _clean_text(pr.get("sale_email")).lower()
+        for pr in prs
+        if pr and _clean_text(pr.get("sale_email"))
+    })
+    if not sale_emails:
+        return {}, {}
+    sale_name_map: dict[str, str] = {}
+    team_by_email: dict[str, str] = {}
+    try:
+        from payment_request_routes import _sale_name_map
+
+        sale_name_map = _sale_name_map(sb)
+    except Exception as exc:
+        print(f"[gateway] sale name lookup failed: {exc}")
+    try:
+        ns_res = (
+            sb.table("nhan_su_sale")
+            .select("email, team, sub_team")
+            .in_("email", sale_emails)
+            .execute()
+        )
+        team_by_email = {
+            _clean_text(row.get("email")).lower(): _clean_text(row.get("team") or row.get("sub_team"))
+            for row in (ns_res.data or [])
+            if _clean_text(row.get("email"))
+        }
+    except Exception as exc:
+        print(f"[gateway] team lookup failed: {exc}")
+    return sale_name_map, team_by_email
+
+
 def _serialize_gateway_txn(
     row: dict[str, Any],
     *,
     line: dict[str, Any] | None = None,
     pr: dict[str, Any] | None = None,
+    sale_name: str = "",
+    team_name: str = "",
 ) -> dict[str, Any]:
     return {
         "id": _clean_text(row.get("id")),
@@ -135,6 +210,7 @@ def _serialize_gateway_txn(
         "match_status": _public_match_status(_clean_text(row.get("match_status"))),
         "payment_line_id": row.get("payment_line_id"),
         "matched_label": _matched_label(line, pr),
+        "matched_pr": _matched_pr(line, pr, sale_name=sale_name, team_name=team_name),
         "bill_url": ((line or {}).get("bill_image") if line else None),
     }
 
@@ -322,14 +398,22 @@ def register_gateway_routes(app, get_supabase: Callable[[], Any]) -> None:
         rows = query.execute().data or []
         line_ids = [str(row.get("payment_line_id")) for row in rows if row.get("payment_line_id")]
         lines, prs = _load_lines_and_prs(sb, line_ids)
-        return [
-            _serialize_gateway_txn(
-                row,
-                line=lines.get(str(row.get("payment_line_id"))),
-                pr=prs.get(str((lines.get(str(row.get("payment_line_id"))) or {}).get("payment_request_id"))),
+        sale_name_map, team_by_email = _sale_team_maps(sb, prs.values())
+        result: list[dict[str, Any]] = []
+        for row in rows:
+            line = lines.get(str(row.get("payment_line_id")))
+            pr = prs.get(str((line or {}).get("payment_request_id"))) if line else None
+            sale_email = _clean_text((pr or {}).get("sale_email")).lower()
+            result.append(
+                _serialize_gateway_txn(
+                    row,
+                    line=line,
+                    pr=pr,
+                    sale_name=sale_name_map.get(sale_email, sale_email),
+                    team_name=team_by_email.get(sale_email, ""),
+                )
             )
-            for row in rows
-        ]
+        return result
 
     @router.get("/gateway-txns/{txn_id}/match-candidates")
     def gateway_match_candidates(
@@ -513,11 +597,53 @@ def register_gateway_routes(app, get_supabase: Callable[[], Any]) -> None:
         if pr_id:
             pr_res = sb.table("payment_requests").select("*").eq("id", pr_id).limit(1).execute()
             pr = (pr_res.data or [{}])[0]
+
+        if pr_id and wrote_net and gw_net > 0:
+            try:
+                from revenue_routes import stamp_net_fee
+                # Sổ ghi từ B3 (sync_ledger_from_ar_course) không có don_hang_id/khoá join
+                # trực tiếp tới PR — nhưng mang note="AR {ar_id}". Tra ar_id qua
+                # active_requests.pr_id rồi lọc theo note (mirror cơ chế đã có).
+                ar_res = sb.table("active_requests").select("id").eq("pr_id", pr_id).execute()
+                ar_ids = [str(a["id"]) for a in (ar_res.data or []) if a.get("id")]
+                l_res = None
+                if ar_ids:
+                    notes = [f"AR {aid}" for aid in ar_ids]
+                    l_res = (
+                        sb.table("so_doanh_thu")
+                        .select("id, so_tien_vnd, ty_gia_vnd_rmb, payment_method")
+                        .in_("note", notes)
+                        .is_("gateway_txn_id", "null")
+                        .execute()
+                    )
+                if l_res and l_res.data:
+                    fee_vnd = max(0, int(gw_amount) - int(gw_net))
+                    for l_row in l_res.data:
+                        pm = (l_row.get("payment_method") or "").lower()
+                        if not pm or any(k in pm for k in ("thẻ", "quẹt", "trả góp", "card", "installment")):
+                            stamp_net_fee(
+                                sb,
+                                ledger_row_id=l_row["id"],
+                                gateway_txn_id=txn_id,
+                                gross_vnd=l_row.get("so_tien_vnd") or gw_amount,
+                                fee_vnd=fee_vnd,
+                                rate=l_row.get("ty_gia_vnd_rmb"),
+                            )
+            except Exception as exc:
+                print(f"[gateway] back-stamp net fee to ledger failed: {exc}")
         log_audit(sb, actor.email, "recon.txn_matched", "gateway_txn", txn_id, {
             "payment_line_id": line_id, "pr_id": pr_id,
             "amount": _parse_amount(line_row.get("amount")),
         })
-        return _serialize_gateway_txn(res.data[0], line=line_res.data[0], pr=pr)
+        sale_name_map, team_by_email = _sale_team_maps(sb, [pr] if pr else [])
+        sale_email = _clean_text(pr.get("sale_email")).lower()
+        return _serialize_gateway_txn(
+            res.data[0],
+            line=line_res.data[0],
+            pr=pr,
+            sale_name=sale_name_map.get(sale_email, sale_email),
+            team_name=team_by_email.get(sale_email, ""),
+        )
 
     @router.patch("/gateway-txns/{txn_id}/status")
     def patch_gateway_status(txn_id: str, body: GatewayStatusBody, authorization: str | None = Header(None)):

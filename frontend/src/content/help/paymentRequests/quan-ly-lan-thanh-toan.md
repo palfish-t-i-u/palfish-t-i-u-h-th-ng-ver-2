@@ -1,6 +1,6 @@
 ---
 title: "Quản lý từng lần thanh toán"
-order: 9
+order: 10
 audience: ["sale", "ke-toan"]
 ---
 

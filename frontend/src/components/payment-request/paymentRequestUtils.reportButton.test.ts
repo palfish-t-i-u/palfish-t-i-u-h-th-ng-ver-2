@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { reportButtonState } from "./paymentRequestUtils";
+import { reportButtonState, activationAddressComplete } from "./paymentRequestUtils";
 
 describe("reportButtonState", () => {
   it("chưa đủ tiền → disabled, label mặc định", () => {
@@ -31,5 +31,39 @@ describe("reportButtonState", () => {
   it("chưa đủ tiền nhưng có AR (edge PR tăng target) → disabled", () => {
     const s = reportButtonState({ ready: false, hasAr: true, unallocated: 500, arLabel: "Chờ tạo gói học" });
     expect(s.enabled).toBe(false);
+  });
+});
+
+describe("activationAddressComplete", () => {
+  it("VN đủ Tỉnh + Phường → true (KHÔNG cần Số nhà)", () => {
+    expect(activationAddressComplete({ country: "VN", province: "Thành phố Hồ Chí Minh", ward: "Phường Gò Vấp" })).toBe(true);
+  });
+
+  it("VN thiếu Tỉnh → false", () => {
+    expect(activationAddressComplete({ country: "VN", province: "", ward: "Phường Gò Vấp" })).toBe(false);
+  });
+
+  it("VN thiếu Phường → false", () => {
+    expect(activationAddressComplete({ country: "VN", province: "Hà Nội", ward: "" })).toBe(false);
+  });
+
+  it("VN chỉ khoảng trắng → false", () => {
+    expect(activationAddressComplete({ country: "VN", province: "  ", ward: "  " })).toBe(false);
+  });
+
+  it("country mặc định (undefined → VN) áp luật VN", () => {
+    expect(activationAddressComplete({ province: "Hà Nội", ward: "Phường Cửa Nam" })).toBe(true);
+    expect(activationAddressComplete({ province: "Hà Nội" })).toBe(false);
+  });
+
+  it("khách nước ngoài (country != VN) → true dù thiếu Tỉnh/Phường", () => {
+    expect(activationAddressComplete({ country: "US", province: "", ward: "" })).toBe(true);
+    expect(activationAddressComplete({ country: "JP" })).toBe(true);
+  });
+
+  it("khách OV dùng SĐT Việt (country=VN + Tỉnh giữ tên quốc gia) → true", () => {
+    // Regression 04/8: khách nước ngoài số Việt bị coi nhầm là khách VN → chặn kích hoạt.
+    expect(activationAddressComplete({ country: "VN", province: "Japan", ward: "" })).toBe(true);
+    expect(activationAddressComplete({ country: "VN", province: "United States", ward: "" })).toBe(true);
   });
 });

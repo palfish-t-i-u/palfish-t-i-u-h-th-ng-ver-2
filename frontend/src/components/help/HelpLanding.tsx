@@ -10,8 +10,8 @@ export default function HelpLanding() {
   return (
     <div className="min-w-0 max-w-2xl space-y-5">
       <div className="space-y-3">
-        <h2 className="text-lg font-semibold text-gmv-text-strong">Hướng dẫn sử dụng</h2>
-        <p className="text-sm text-gmv-muted">Chọn 1 module bên dưới (hoặc ở sidebar) để xem hướng dẫn từng thao tác.</p>
+        <h2 className="text-xl font-semibold text-black">Hướng dẫn sử dụng</h2>
+        <p className="text-base text-neutral-600">Chọn 1 module bên dưới (hoặc ở sidebar) để xem hướng dẫn từng thao tác.</p>
       </div>
       {groups.map((group) => (
         <div key={group.label} className="space-y-2">
@@ -23,7 +23,7 @@ export default function HelpLanding() {
               <li key={mod.slug}>
                 <Link
                   to={`/docs/${mod.slug}`}
-                  className="block w-full rounded-gmv-md border border-gmv-border px-3 py-2 text-left text-sm text-gmv-text hover:bg-gmv-bg"
+                  className="block w-full rounded-gmv-md border border-gmv-border px-4 py-3 text-left text-base text-black hover:bg-gmv-bg"
                 >
                   {getModuleLabel(mod.slug)}
                 </Link>

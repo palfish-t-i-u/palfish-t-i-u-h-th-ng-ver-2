@@ -304,6 +304,48 @@ test("paymentRequests — tong-quan + tao-lan-tt-chuan + xem-lich-su-pr + xem-qr
   }
 });
 
+test("paymentRequests — tao-payment-request (4 ảnh, chỉ mở modal, KHÔNG submit)", async ({ page }) => {
+  await gotoModule(page, "Quản lý thanh toán");
+  await expect(page.getByRole("button", { name: "Tạo Payment Request" })).toBeVisible({ timeout: 15_000 });
+  await page.getByRole("button", { name: "Tạo Payment Request" }).click();
+  await expect(page.getByText("Tổng tiền dự kiến").first()).toBeVisible();
+  await page.waitForTimeout(300);
+
+  const modal = page.locator(".create-pr-modal");
+
+  // Ảnh 1 — tạo nhanh: 4 trường bắt buộc đã điền
+  await modal.locator(".phone-input").fill("987654321");
+  await page.getByPlaceholder("Họ và tên").fill("Nguyễn Thị Mai");
+  await page.getByPlaceholder("VD: 12.000.000").fill("12000000");
+  await modal.locator("select").first().selectOption({ index: 1 });
+  await page.waitForTimeout(300);
+  await screenshotViewport(page, "public/docs-images/paymentRequests/tao-payment-request-1.png");
+
+  // Ảnh 2 — nhiều con: gõ 2 tên phân cách bằng "-"
+  const childInput = page.getByPlaceholder("VD: Nguyễn Minh Anh");
+  await childInput.fill("Bảo Châu - Bảo Khánh");
+  await childInput.scrollIntoViewIfNeeded();
+  await page.waitForTimeout(300);
+  await screenshotViewport(page, "public/docs-images/paymentRequests/tao-payment-request-2.png");
+
+  // Ảnh 3 — khách nước ngoài: toggle + combobox quốc gia
+  await page.getByRole("button", { name: "Khách nước ngoài" }).click();
+  await page.waitForTimeout(300);
+  await screenshotViewport(page, "public/docs-images/paymentRequests/tao-payment-request-3.png");
+
+  // Ảnh 4 — doanh nghiệp + cần xuất hoá đơn
+  await page.getByRole("button", { name: "Khách VN" }).click();
+  await page.getByText("Khách hàng cần xuất hoá đơn?").click();
+  await page.getByRole("button", { name: "Doanh nghiệp" }).click();
+  await page.getByPlaceholder("VD: Công ty TNHH ABC").fill("Công ty TNHH ABC");
+  await page.getByRole("button", { name: "Doanh nghiệp" }).scrollIntoViewIfNeeded();
+  await page.waitForTimeout(300);
+  await screenshotViewport(page, "public/docs-images/paymentRequests/tao-payment-request-4.png");
+
+  // Đóng modal — tuyệt đối không submit
+  await page.getByRole("button", { name: "Huỷ", exact: true }).click();
+});
+
 test("reconciliation — tong-quan", async ({ page }) => {
   await gotoModule(page, "Đối soát giao dịch");
   await page.waitForTimeout(500);

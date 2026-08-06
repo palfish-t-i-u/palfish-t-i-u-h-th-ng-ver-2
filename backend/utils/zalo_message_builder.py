@@ -19,6 +19,7 @@ try:
 except ImportError:
     from backports.zoneinfo import ZoneInfo  # type: ignore[no-redef]
 
+from utils.country_dial import dial_for
 from utils.lead_source_map import resolve_lead_label
 from utils.team_mapper import get_canonical_team
 
@@ -80,17 +81,13 @@ def _first_nonempty(*values: Any, default: str = "") -> str:
     return default
 
 
-_COUNTRY_DIAL_CODE: dict[str, str] = {
-    "VN": "84", "CN": "86", "KR": "82", "US": "1", "JP": "81",
-    "TW": "886", "HK": "852", "SG": "65", "TH": "66", "PH": "63",
-}
-
-
 def format_phone_intl(phone: Any, country: Any = None) -> str | None:
     """Format phone as ``{dial_code}-{local}`` (VD: ``84-353748121``).
 
-    Mirror of SQL ``public.format_phone_intl`` (migration
-    2026-07-04-zalo-phone-intl-format.sql).  Keep in sync.
+    Mã vùng lấy từ ``utils.country_dial`` (bảng ISO đầy đủ — trước đây map cụt 10 nước
+    làm khách nước ngoài ra "84", xem PR-2026-0578). Mirror of SQL
+    ``public.format_phone_intl`` — đã đồng bộ bảng ISO đầy đủ ở migration
+    2026-07-26-country-dial-full-iso.sql (gốc 2026-07-04-zalo-phone-intl-format.sql).
     """
     if phone is None:
         return None
@@ -101,7 +98,7 @@ def format_phone_intl(phone: Any, country: Any = None) -> str | None:
     if not digits:
         return raw
     cc_key = (str(country).strip().upper() if country else "VN") or "VN"
-    dial = _COUNTRY_DIAL_CODE.get(cc_key, "84")
+    dial = dial_for(cc_key)
     digits = digits.lstrip("0")
     if digits.startswith(dial) and len(digits) > len(dial) + 5:
         digits = digits[len(dial):]
@@ -469,14 +466,28 @@ def build_activation_request_created_message(
         courses = courses if isinstance(courses, list) else []
 
         course_lines: list[str] = []
+        block_total = 0.0
+        block_has_amount = False
         for course in courses:
             if not isinstance(course, dict):
                 continue
             course_name = _first_nonempty(course.get("name"), default="(chưa có tên gói)")
             course_lines.append(f"{block_child}, {course_name}")
             course_lines.extend(_referral_lines(course, block_child))
+            amount = course.get("amount")
+            if amount not in (None, ""):
+                try:
+                    block_total += float(amount)
+                    block_has_amount = True
+                except (TypeError, ValueError):
+                    logger.warning("Invalid course amount %r in %s", amount, ctx)
         if not course_lines:
             course_lines = [block_child]
+        # 29/7 (a Minh): "Tiền" mỗi con = tổng amount gói của con đó, để kế toán soi
+        # lệch với Tổng(PR received) ở footer. Vắng amount → ẩn dòng (không bịa 0).
+        if block_has_amount:
+            tien_str = f"{int(round(block_total)):,}".replace(",", ".")
+            course_lines.append(f"Tiền: {tien_str} VND")
 
         # 17/7 (a Hiếu chốt): block chỉ Phone/UID/<bé, gói>. Nguồn + Tổng(PR) ở footer chung.
         blocks.append(

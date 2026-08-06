@@ -6,6 +6,8 @@ export default mergeConfig(
   defineConfig({
     plugins: [react()],
     server: {
+      // Cho phép harness/preview gán port động qua env PORT (vite không tự đọc).
+      port: process.env.PORT ? Number(process.env.PORT) : undefined,
       proxy: {
         "/api": {
           target: "http://localhost:8000",

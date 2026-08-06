@@ -18,6 +18,8 @@ interface Props {
   deletingId: string | null;
   onEdit: (row: RevenueLedgerRow) => void;
   onDelete: (row: RevenueLedgerRow) => void;
+  onRefund: (row: RevenueLedgerRow) => void;
+  canRefund: boolean;
   hasMore: boolean;
   loadingMore: boolean;
   onLoadMore: () => void;
@@ -30,6 +32,8 @@ export default function LedgerRowCards({
   deletingId,
   onEdit,
   onDelete,
+  onRefund,
+  canRefund,
   hasMore,
   loadingMore,
   onLoadMore,
@@ -46,9 +50,17 @@ export default function LedgerRowCards({
             value={`${formatVndNumber(row.soTienVnd) || "0"} ₫`}
             badges={
               <>
-                <Badge tone={row.loaiNhap === "tu_dong" ? "primary" : "neutral"}>
-                  {row.loaiNhap === "tu_dong" ? "M3" : "Tay"}
-                </Badge>
+                <span title={
+                  row.loaiNhap === "tu_dong"
+                    ? "Tự ghi khi đơn đã thu đủ 100% và tới bước Tạo gói học."
+                    : row.loaiNhap === "hoan"
+                      ? "Dòng ghi giảm/hoàn tiền."
+                      : "Nhập tay hoặc mang từ ngoài vào."
+                }>
+                  <Badge tone={row.loaiNhap === "tu_dong" ? "primary" : row.loaiNhap === "hoan" ? "danger" : "neutral"}>
+                    {row.loaiNhap === "tu_dong" ? "Tự động" : row.loaiNhap === "hoan" ? "Ghi giảm" : "Thủ công"}
+                  </Badge>
+                </span>
                 {row.paymentMethod ? (
                   <span className={cn(ledgerPillBase, paymentMethodCellClass(row.paymentMethod))}>
                     {row.paymentMethod}
@@ -76,6 +88,11 @@ export default function LedgerRowCards({
                   <Button type="button" size="sm" variant="ghost" onClick={() => onEdit(row)}>
                     Chỉnh sửa
                   </Button>
+                  {canRefund && row.loaiNhap !== "hoan" && row.soTienVnd > 0 && (
+                    <Button type="button" size="sm" variant="secondary" onClick={() => onRefund(row)}>
+                      Ghi giảm
+                    </Button>
+                  )}
                   {row.loaiNhap === "tay" && (
                     <Button
                       type="button"

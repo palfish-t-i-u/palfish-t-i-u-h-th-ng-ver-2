@@ -235,16 +235,18 @@ def _load_ledger_revenue(sb, d_start: str, d_end: str, team: str | None) -> tupl
     try:
         q = (
             sb.table("so_doanh_thu")
-            .select("sale_crm_name, team, so_tien_vnd, gmv_rmb, don_hang_id, ngay_tien_ve")
+            .select("sale_crm_name, team, so_tien_vnd, so_tien_net, phi_cong, gmv_rmb, don_hang_id, ngay_tien_ve")
             .gte("ngay_tien_ve", d_start)
             .lte("ngay_tien_ve", d_end)
+            .eq("is_test", False)
         )
         if team:
             q = q.eq("team", team)
         for r in q.execute().data or []:
             sname = _sale_key(r.get("sale_crm_name"))
             entry = _ensure_rev(out, sname, (r.get("team") or "—").strip() or "—")
-            vnd = parse_metric(r.get("so_tien_vnd"))
+            net_val = r.get("so_tien_net")
+            vnd = parse_metric(net_val if net_val is not None else r.get("so_tien_vnd"))
             gmv = int(float(r.get("gmv_rmb") or 0))
             day = str(r.get("ngay_tien_ve") or "")[:10]
             entry["collected_vnd"] += vnd

@@ -73,12 +73,39 @@ class TestBuildActivationRequestCreatedMessage:
             "Phone: 84-772333555​\n"
             "UID: 3307542974\n"
             "Thành Nam 9T, Phil 48+5 fix 2b/tuần\n"
+            "Tiền: 8.500.000 VND\n"
             "Nguồn: Kho chung - Imperia\n"
             "Tổng: 8.500.000 VND\n"
             "Sale: Trần Thị B · Team Inhouse 2"
         )
         assert result["message"] == expected
         assert result["canonical_team_code"] == "Inhouse 2"
+
+    def test_per_con_tien_line_split_while_footer_total_stays_pr_received(self):
+        # 29/7 (a Minh): mỗi con có dòng "Tiền" riêng (amount gói con đó); footer
+        # vẫn 1 "Tổng" = tiền thu PR. Sum(Tiền) ≠ Tổng ⇒ kế toán soi được lệch.
+        ar_data = {
+            "id": "AR-2026-0597",
+            "customer_name": "",
+            "uids_data": [
+                {"uid": "3315147172", "name": "Cao Lê Thanh Thư", "phone": "986019442",
+                 "country": "VN", "courses": [{"name": "2/W- NEW 48 PHI+5 HN", "amount": 9_340_500}]},
+                {"uid": "3315396315", "name": "Cao Lê Nguyên Thư", "phone": "964892469",
+                 "country": "VN", "courses": [{"name": "2/W- Both AB REFER 48 PHI+5 HN", "amount": 9_340_500}]},
+            ],
+        }
+        pr_data = {"lead_source": "quang_cao", "lead_channel": "300531", "received": 18_681_000}
+        sale_info = {"display_name": "Pham Thi Thao", "team": "Inhouse 1"}
+
+        message = build_activation_request_created_message(ar_data, pr_data, sale_info)["message"]
+
+        # mỗi con 1 dòng Tiền
+        assert message.count("Tiền: 9.340.500 VND") == 2
+        # Tiền nằm TRONG block (trước footer Nguồn/Tổng), không phải cuối tin
+        assert message.index("Tiền: 9.340.500 VND") < message.index("Nguồn:")
+        # footer vẫn đúng 1 Tổng = received, không gộp/tách
+        assert message.count("Tổng:") == 1
+        assert "Tổng: 18.681.000 VND" in message
 
     def test_multi_uid_produces_multiple_blocks_separated_by_blank_line(self):
         ar_data = {

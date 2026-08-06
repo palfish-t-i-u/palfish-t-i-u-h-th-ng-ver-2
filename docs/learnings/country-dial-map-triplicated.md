@@ -1,0 +1,13 @@
+# Country dial map triplicated → foreign customers default to "84"
+
+**Related files:** `backend/utils/country_dial.py`, `backend/payment_request_routes.py`, `backend/utils/zalo_message_builder.py`, `backend/migrations/2026-07-26-country-dial-full-iso.sql`, `frontend/src/components/payment-request/phoneUtils.ts`
+
+**Problem:** QR transfer content + Zalo/DingTalk phone display showed Vietnam dial `84` for foreign customers (Czech PR-2026-0578 / PR-2026-0524 → `84777737388 ...` instead of `420777737388 ...`), making the customer distrust the transfer even though the sale entered the phone correctly.
+
+**Trap:** Two traps. (1) Diagnostic: assuming the sale typed the phone wrong. The phone was fine — the `country → dial` lookup was the bug. Diagnose by the PR's `country` column, not the phone. (2) Fix scope: patching only the first map you find. The dial map was duplicated in **four** places with three different *stunted* copies — `payment_request_routes._COUNTRY_DIAL` (22 countries, QR content), `zalo_message_builder._COUNTRY_DIAL_CODE` (10, notif phone), SQL `public.format_phone_intl` (10, used by payment-paid message triggers), and FE `phoneUtils.ts` (correct 248-country *generated* list). Fixing one leaves the other two still emitting `84`. FE was right the whole time — BE hand-maintained partial copies that drifted.
+
+**Insight:** SePay auto-reconciliation matches on the 5-char `transfer_code` embedded in the content, **not** the phone/dial — so a wrong dial never breaks recon. That's why the bug lived silently: money still matched, only the customer-facing string was wrong. Root fix = one Python source of truth (`utils.country_dial.dial_for`, ~230 ISO alpha-2) wired into both Python consumers + a mirrored SQL migration (jsonb map inside `format_phone_intl`, IMMUTABLE preserved so every caller — `build_payment_paid_message` etc. — inherits it without edits).
+
+**Rule:** When touching phone/dial/country formatting, grep every copy first — there are 2 Python consumers + 1 SQL function, all must share the map. To hotfix a live wrong `transfer_content` row in DB, also set `content_stale_dismissed_at = now()`, else the stale-content detector rebuilds from the (pre-deploy, still-stunted) map, re-flags the banner, and a "Cập nhật QR" click is a no-op that reverts nothing. Ship the Python fix + SQL migration together (two independent notif paths).
+
+**Verify:** `cd backend && python -m pytest tests/test_country_dial.py -q` (asserts CZ→420, VN→84, unknown→84, + Zalo consumer). And `grep -rn "_COUNTRY_DIAL[_A-Z]*: dict" backend/ --include=*.py` must return nothing — both stunted dict definitions removed (a comment in `country_dial.py` naming the old maps is expected).

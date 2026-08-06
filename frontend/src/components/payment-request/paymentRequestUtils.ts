@@ -2,6 +2,26 @@ import type { CSSProperties } from "react";
 import type { ActiveCourse, ActiveRequest, ActiveRequestApiRow, ActiveRequestPatchUidPayload, ArDraftRow, CreateActiveRequestCoursePayload, CreateActiveRequestPayload, CreateActiveRequestUidPayload, PaymentAttempt, PaymentMethod, PaymentRequest, PaymentRequestStatus } from "../../types/paymentRequest";
 import { normVi } from "../../lib/textUtils";
 import { phoneMatchesQuery } from "../../lib/phoneSearch";
+import { COUNTRY_DIAL_CODES } from "../../data/countryDialCodes";
+
+/**
+ * Tên các quốc gia nước ngoài (khách OV chọn lúc tạo PR → lưu vào ô `province`).
+ * Nguồn: countryDialCodes (bỏ VN). Tỉnh/TP Việt Nam không nằm trong set này.
+ */
+export const FOREIGN_COUNTRY_NAMES: ReadonlySet<string> = new Set(
+  COUNTRY_DIAL_CODES.filter((c) => c.code !== "VN").map((c) => c.name)
+);
+
+/**
+ * Khách nước ngoài (OV) khi: đầu số ĐT khác VN, HOẶC ô Tỉnh/TP giữ tên 1 quốc
+ * gia nước ngoài. Vế `province` là bắt buộc: khách OV dùng SĐT Việt thì `country`
+ * (đầu số) vẫn là "VN" — chỉ nhìn đầu số sẽ nhầm OV thành khách VN và bắt điền
+ * địa chỉ VN. Khớp BE `_invoice_address_complete` (activation_routes.py) — đừng lệch.
+ */
+export function isForeignCustomer(country?: string | null, province?: string | null): boolean {
+  if ((country || "VN").trim().toUpperCase() !== "VN") return true;
+  return FOREIGN_COUNTRY_NAMES.has((province || "").trim());
+}
 
 /** Gói giới thiệu (tên chứa "REFER") → cần điền thông tin người giới thiệu. */
 export function isReferralPackage(name?: string | null): boolean {
@@ -472,6 +492,24 @@ export function reportButtonState(args: {
     };
   }
   return { enabled: false, label: arLabel, title: arLabel, isAppend: false };
+}
+
+/**
+ * Địa chỉ tối thiểu để Ops tạo được gói học trên CRM cho số Việt Nam (đầu 84-).
+ * CRM chỉ bắt buộc "Tỉnh/TP + Quận/Huyện" (ô có dấu * đỏ) — KHÔNG cần Số nhà/Căn.
+ * Map field app: cần `province` (Tỉnh/TP) + `ward` (Phường/Xã). Khách nước ngoài
+ * (country != "VN") → CRM chỉ cần quốc gia (đã bắt lúc tạo PR) nên coi như luôn đủ.
+ *
+ * ⚠ Định mức này LỎNG HƠN `_invoice_address_complete` / `getInvoiceBlockers`
+ * (bước Xuất HĐ còn cần cả Số nhà). Cố ý tách 2 luật — đừng gộp làm một.
+ */
+export function activationAddressComplete(args: {
+  country?: string | null;
+  province?: string | null;
+  ward?: string | null;
+}): boolean {
+  if (isForeignCustomer(args.country, args.province)) return true;
+  return Boolean((args.province || "").trim() && (args.ward || "").trim());
 }
 
 export type ReferralStatus = "none" | "partial" | "full";

@@ -30,7 +30,27 @@ export interface GatewayTxn {
   payment_line_id: string | null;
   /** Nhãn lần thanh toán đã ghép (hiển thị) */
   matched_label: string | null;
+  /** Thông tin PR đã ghép — đầy đủ như card bên đối soát CK (drawer "Đã ghép") */
+  matched_pr?: MatchedPr | null;
   bill_url: string | null;
+}
+
+/** PR đã ghép của 1 giao dịch thẻ — mirror BankMatchCandidate để card "Đã ghép" hiển thị đủ. */
+export interface MatchedPr {
+  pr_id: string;
+  pr_name: string;
+  pr_uid: string;
+  pr_phone: string;
+  pr_country: string;
+  child_name: string;
+  sale_name: string;
+  team_name: string;
+  amount: number;
+  created_at: string | null;
+  method: string;
+  status: string;
+  has_bill: boolean;
+  bill_images: string[];
 }
 
 export interface MatchCandidate {

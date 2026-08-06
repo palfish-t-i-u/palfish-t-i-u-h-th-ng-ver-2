@@ -22,7 +22,7 @@ function makePr(
     address: "",
     target: 0,
     source: "manual",
-    createdAt: "2026-01-01T00:00:00Z",
+    createdAt: new Date().toISOString(),
     received: 0,
     doneCount: 0,
     totalCount: 1,

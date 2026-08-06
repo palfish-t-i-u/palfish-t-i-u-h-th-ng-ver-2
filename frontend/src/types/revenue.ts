@@ -1,4 +1,4 @@
-export type LoaiNhap = "tu_dong" | "tay";
+export type LoaiNhap = "tu_dong" | "tay" | "hoan";
 
 export interface RevenueLedgerRow {
   id: string;
@@ -24,6 +24,9 @@ export interface RevenueLedgerRow {
   maDonHang: string;
   crmOrderId: string;
   infoCode: string;
+  phiCong?: number;
+  soTienNet?: number | null;
+  hoanRefId?: string | null;
 }
 
 export interface RevenuePivotSale {

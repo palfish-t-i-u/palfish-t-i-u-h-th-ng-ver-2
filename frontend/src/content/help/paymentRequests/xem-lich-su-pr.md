@@ -1,6 +1,6 @@
 ---
 title: "Xem lịch sử thay đổi của PR"
-order: 4
+order: 5
 audience: ["sale", "leader"]
 ---
 

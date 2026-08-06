@@ -33,6 +33,8 @@ import {
   parsePaymentDate,
   paymentAttemptLabel,
   paymentConfirmationText,
+  activationAddressComplete,
+  isForeignCustomer,
   REFERRAL_STATUS_HEADER,
   REFERRAL_STATUS_PANEL_STYLE,
   reportButtonState,
@@ -1712,7 +1714,7 @@ export default function PaymentRequestDetailDrawer({
   };
   const handleOpenEditForTarget = () => {
     if (!request) return;
-    const isForeign = (request.country || "VN") !== "VN";
+    const isForeign = isForeignCustomer(request.country, request.province);
     setDraft({
       uid: request.uid,
       name: request.name,
@@ -1774,6 +1776,20 @@ export default function PaymentRequestDetailDrawer({
     unallocated: arUnallocated,
     arLabel: activeSummary.buttonLabel,
   });
+  // Địa chỉ để Ops tạo gói học trên CRM (số VN 84-): cần Tỉnh/TP + Phường/Xã.
+  // Thiếu → chặn NGAY ở nút "Báo đơn & Kích hoạt" (trước khi vào form) nên cả
+  // "Kích hoạt ngay" lẫn "Chưa kích hoạt" đều phải có địa chỉ. Khách nước ngoài luôn đủ.
+  const activationAddrMissingParts = activationAddressComplete({
+    country: request.country,
+    province: request.province,
+    ward: request.ward,
+  })
+    ? []
+    : ([
+        !(request.province || "").trim() ? "Tỉnh/TP" : null,
+        !(request.ward || "").trim() ? "Phường/Xã" : null,
+      ].filter(Boolean) as string[]);
+  const activationAddrMissing = activationAddrMissingParts.length > 0;
   const copyPrId = async () => {
     const id = request.id;
     const fallbackCopy = () => {
@@ -1893,7 +1909,7 @@ export default function PaymentRequestDetailDrawer({
                 <button
                   className="btn btn-outline btn-sm"
                   onClick={() => {
-                    const isForeign = (request.country || "VN") !== "VN";
+                    const isForeign = isForeignCustomer(request.country, request.province);
                     setDraft({
                       uid: request.uid,
                       name: request.name,
@@ -2671,7 +2687,7 @@ export default function PaymentRequestDetailDrawer({
               title={reportBtn.title}
               onClick={() => {
                 const missingLines = findPaidLinesWithoutBill(request.payments ?? []);
-                if (missingLines.length > 0) {
+                if (missingLines.length > 0 || activationAddrMissing) {
                   setMissingBillLines(missingLines.map((l) => ({ line_id: l.id, idx: l.idx, amount: l.amount ?? 0 })));
                   setMissingBillsPopupOpen(true);
                   return;
@@ -3047,7 +3063,9 @@ export default function PaymentRequestDetailDrawer({
         </div>
         );
       })()}
-      {/* bill guard — popup chặn tạo AR khi còn paid line thiếu ảnh bill */}
+      {/* Guard trước form báo đơn — chặn khi thiếu ảnh bill và/hoặc thiếu địa chỉ (số VN).
+          Chặn ở đây (trước khi mở form) nên cả "Kích hoạt ngay" lẫn "Chưa kích hoạt" đều
+          buộc phải có địa chỉ — hold radio nằm TRONG form, không vào được nếu chưa đủ. */}
       {missingBillsPopupOpen && (
         <div
           className="gmv-prototype-modal-scrim"
@@ -3057,28 +3075,51 @@ export default function PaymentRequestDetailDrawer({
           <div className="modal" style={{ width: "min(480px, 100%)" }} onClick={(e) => e.stopPropagation()}>
             <div className="modal-head">
               <div>
-                <h3>Thiếu ảnh bill</h3>
+                <h3>Chưa thể báo đơn &amp; tạo gói học</h3>
                 <div style={{ fontSize: 12, color: "var(--text-3)", marginTop: 2 }}>
-                  Vui lòng up bill cho các lần thanh toán dưới đây trước khi tạo yêu cầu tạo gói học.
+                  Bổ sung các thông tin dưới đây trong phiếu trước khi tạo yêu cầu tạo gói học.
                 </div>
               </div>
               <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                <HdsdLink moduleSlug="paymentRequests" topicSlug="thieu-anh-bill" />
+                {missingBillLines.length > 0 && <HdsdLink moduleSlug="paymentRequests" topicSlug="thieu-anh-bill" />}
                 <button className="drawer-close" onClick={() => setMissingBillsPopupOpen(false)}>
                   <Icons.Close size={16} />
                 </button>
               </div>
             </div>
-            <div className="modal-body">
-              <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: 8 }}>
-                {missingBillLines.map((l) => (
-                  <li key={l.line_id} style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", borderBottom: "1px solid var(--border)" }}>
-                    {/* idx = số thứ tự thật của lần TT (BE đánh, tính cả lần đã huỷ) — không dùng index mảng đã lọc */}
-                    <span style={{ color: "var(--text-2)" }}>Lần #{l.idx}</span>
-                    <span style={{ fontWeight: 600 }}>{l.amount.toLocaleString("vi-VN")} đ</span>
-                  </li>
-                ))}
-              </ul>
+            <div className="modal-body" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+              {missingBillLines.length > 0 && (
+                <div>
+                  <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 6, display: "flex", alignItems: "center", gap: 6 }}>
+                    <Icons.Image size={15} /> Thiếu ảnh bill
+                  </div>
+                  <div style={{ fontSize: 12, color: "var(--text-3)", marginBottom: 8 }}>
+                    Up bill cho các lần thanh toán sau:
+                  </div>
+                  <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: 8 }}>
+                    {missingBillLines.map((l) => (
+                      <li key={l.line_id} style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", borderBottom: "1px solid var(--border)" }}>
+                        {/* idx = số thứ tự thật của lần TT (BE đánh, tính cả lần đã huỷ) — không dùng index mảng đã lọc */}
+                        <span style={{ color: "var(--text-2)" }}>Lần #{l.idx}</span>
+                        <span style={{ fontWeight: 600 }}>{l.amount.toLocaleString("vi-VN")} đ</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {activationAddrMissing && (
+                <div>
+                  <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 6, display: "flex", alignItems: "center", gap: 6, color: "var(--danger, #ef4444)" }}>
+                    <Icons.AlertCircle size={15} /> Thiếu địa chỉ khách (số Việt Nam)
+                  </div>
+                  <div style={{ fontSize: 12.5, lineHeight: 1.55, color: "var(--text-2)" }}>
+                    CRM cần <strong>Tỉnh/TP + Phường/Xã</strong> để tạo gói học cho khách.{" "}
+                    Phiếu đang thiếu: <strong>{activationAddrMissingParts.join(" + ")}</strong>.
+                    <br />
+                    👉 Bấm <strong>Sửa</strong> thông tin khách trong phiếu → điền địa chỉ → báo đơn lại.
+                  </div>
+                </div>
+              )}
             </div>
             <div className="modal-foot">
               <button type="button" className="btn btn-outline" onClick={() => setMissingBillsPopupOpen(false)}>
