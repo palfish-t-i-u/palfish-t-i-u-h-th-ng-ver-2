@@ -176,12 +176,33 @@ export const LEDGER_COLUMNS: readonly LedgerColumnDef[] = [
     ),
   },
   {
+    key: "realPayRmb",
+    label: "Real Pay (RMB)",
+    thClass: "min-w-[9.5rem]",
+    hideable: true,
+    renderTd: (row) => {
+      const rmb = row.tyGiaVndRmb > 0 ? row.soTienVnd / row.tyGiaVndRmb : null;
+      return (
+        <Td className="min-w-[9.5rem] px-3 text-center text-sm font-medium tabular-nums">
+          <span className="inline-block max-w-full break-all leading-snug">
+            {rmb != null
+              ? rmb.toLocaleString("vi-VN", {
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 2,
+                })
+              : "—"}
+          </span>
+        </Td>
+      );
+    },
+  },
+  {
     key: "realPay",
     label: "Real Pay (VND)",
     thClass: "min-w-[9.5rem]",
     hideable: true,
     renderTd: (row) => (
-      <Td className="min-w-[9.5rem] px-3 text-right text-sm font-medium tabular-nums">
+      <Td className="min-w-[9.5rem] px-3 text-center text-sm font-medium tabular-nums">
         <span className="inline-block max-w-full break-all leading-snug">
           {formatVndNumber(row.soTienVnd) || "—"}
         </span>
@@ -257,7 +278,7 @@ export const LEDGER_COLUMNS: readonly LedgerColumnDef[] = [
     label: "Phí (VND)",
     hideable: true,
     renderTd: (row) => (
-      <Td className="text-right text-sm tabular-nums text-gmv-muted">
+      <Td className="text-center text-sm tabular-nums text-gmv-muted">
         {(row.phiCong ?? 0) > 0 ? formatVndNumber(row.phiCong!) : "—"}
       </Td>
     ),
@@ -273,7 +294,7 @@ export const LEDGER_COLUMNS: readonly LedgerColumnDef[] = [
         (row.soTienNet === null || row.soTienNet === undefined) &&
         (row.paymentMethod === "Card" || row.paymentMethod === "Installment");
       return (
-        <Td className="text-right text-sm tabular-nums">
+        <Td className="text-center text-sm tabular-nums">
           <div>{formatVndNumber(net)}</div>
           {isPending && (
             <span className="text-xs text-amber-600">chờ phí</span>
