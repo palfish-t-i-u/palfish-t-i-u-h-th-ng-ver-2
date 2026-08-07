@@ -206,7 +206,8 @@ describe("active request course package updates", () => {
       totalCount: 2,
       delta: -4000,
       state: "short",
-      payments: [],
+      // received thật 2000 = 1 line QR paid (activatableReceived đọc line, không đọc field received)
+      payments: [{ id: "l1", idx: 1, amount: 2000, status: "paid", createdAt: "2026-05-29T14:56:16.000Z", code: "PR065", bill: true, method: "qr" }],
     };
     const overAllocated: ActiveRequest = {
       ...ar,

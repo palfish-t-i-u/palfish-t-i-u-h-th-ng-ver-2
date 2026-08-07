@@ -2202,7 +2202,9 @@ def register_payment_request_routes(app, _get_supabase) -> None:
 
         # 2. Assert PR paid and paid lines have bill
         from pr_guards import assert_pr_paid, assert_all_paid_lines_have_bill
-        assert_pr_paid(pr_row)
+        # Q1 (chốt 7/8): báo đơn hoàn thành nới theo "đủ tạm" như tạo gói học —
+        # đơn tín dụng cả vòng đời pre-mPOS, nếu bắt 100% tiền thật thì kẹt mãi.
+        assert_pr_paid(sb, pr_row)
         assert_all_paid_lines_have_bill(sb, pr_row)
 
         reason_val = _clean_text(body.reason if body else None) or None

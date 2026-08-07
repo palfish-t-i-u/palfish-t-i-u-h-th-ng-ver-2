@@ -45,6 +45,7 @@ from pr_guards import (
     _pr_amounts,
     assert_pr_paid,
     assert_all_paid_lines_have_bill,
+    activatable_received,
 )
 
 ALLOWED_AR_STATUSES = frozenset({"pending_order", "partial_order", "ready_invoice", "invoiced", "activated"})
@@ -650,8 +651,11 @@ def _validate_course_amounts(
     if not pr_id:
         return  # standalone AR, không gắn PR → skip
 
-    target, received = _pr_amounts(pr)
-    budget = max(target, received)
+    target, _received = _pr_amounts(pr)
+    # Budget = max(target, activatable) — "đủ tạm" (line thẻ/trả góp pending có bill)
+    # cũng được tính vào trần phân bổ, khớp cổng assert_pr_paid. activatable_received
+    # tự fail-closed (query lỗi → trả received gốc) nên không raise ngoài try bên dưới.
+    budget = max(target, activatable_received(sb, pr))
     if budget <= 0:
         return  # PR target = 0 → skip (edge case)
 
@@ -1334,7 +1338,7 @@ def _save_active_request(
         # 17/7 (a Hiếu chốt): bỏ bước "Báo đơn hoàn thành" riêng — tin báo đơn giờ bắn
         # ngay khi tạo Active Request. Không còn gate completion-report trước AR.
         if require_paid_pr:
-            assert_pr_paid(pr)
+            assert_pr_paid(sb, pr)
         assert_all_paid_lines_have_bill(sb, pr)
 
     ar_id = _next_ar_id(sb)
@@ -2193,7 +2197,7 @@ def register_activation_routes(app, supabase_factory):
         pr = _fetch_payment_request(sb, pr_id)
 
         # G4 — server-side guards y hệt create
-        assert_pr_paid(pr)
+        assert_pr_paid(sb, pr)
         assert_all_paid_lines_have_bill(sb, pr)
 
         _, _, uids_in = _parse_create_ar_payload(payload)

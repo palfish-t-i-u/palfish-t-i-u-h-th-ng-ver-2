@@ -19,6 +19,7 @@ import { getAvailableBanks } from "../../constants/bank";
 import { useMe } from "../../hooks/useMe";
 import Combobox from "../ui/Combobox";
 import {
+  activatableReceived,
   activationSummary,
   activeRequestAllocation,
   displayReceived,
@@ -1764,7 +1765,8 @@ export default function PaymentRequestDetailDrawer({
   const country = findCountry(request.country);
   const remaining = Math.max(0, request.target - request.received);
   const canCancel = request.state !== "cancelled" && request.doneCount === 0 && !activeRequestId;
-  const ready = request.state === "done" || request.state === "over";
+  const activatable = activatableReceived(request);
+  const ready = activatable > 0 && activatable >= request.target;
   const hasActiveRequest = !!activeRequestId;
   const activeSummary = activationSummary(activeRequest);
   const arUnallocated = hasActiveRequest && activeRequest
@@ -2695,7 +2697,7 @@ export default function PaymentRequestDetailDrawer({
                 setArDraftRows([
                   reportBtn.isAppend
                     ? { childName: "", uid: "", phone: "", phoneCountry: request.country || "VN", packageName: "", amount: arUnallocated, leadSource: request.leadSource || "", leadChannel: request.leadChannel || "" }
-                    : { childName: splitChildNames(request.childName)[0] ?? "", uid: request.uid ?? "", phone: (request.phone ?? "").replace(/\D/g, ""), phoneCountry: request.country || "VN", packageName: "", amount: Math.max(0, request.received), leadSource: request.leadSource || "", leadChannel: request.leadChannel || "" },
+                    : { childName: splitChildNames(request.childName)[0] ?? "", uid: request.uid ?? "", phone: (request.phone ?? "").replace(/\D/g, ""), phoneCountry: request.country || "VN", packageName: "", amount: Math.max(0, activatableReceived(request)), leadSource: request.leadSource || "", leadChannel: request.leadChannel || "" },
                 ]);
                 setHoldActivation(false);
                 setHoldNote("");
@@ -2719,7 +2721,11 @@ export default function PaymentRequestDetailDrawer({
       <PrHistoryModal pr={historyOpen ? request : null} onClose={() => setHistoryOpen(false)} />
       {arPackageModalOpen && (() => {
         const arTotal = arDraftRows.reduce((s, r) => s + (r.amount || 0), 0);
-        const arReceived = Math.max(0, request.received);
+        const arReceived = Math.max(0, activatableReceived(request));
+        // Q3: "có thể kích hoạt" chỉ khi con số gồm tiền tạm (line thẻ/trả góp pending có bill);
+        // nếu đơn đã thực nhận đủ (không có phần tạm) thì giữ chữ "thực nhận".
+        const arReceivedProvisional = arReceived > Math.max(0, request.received);
+        const arReceivedLabel = arReceivedProvisional ? "có thể kích hoạt" : "thực nhận";
         const arAlreadyAllocated = reportBtn.isAppend && activeRequest
           ? activeRequestAllocation(activeRequest, request).total
           : 0;
@@ -3006,7 +3012,7 @@ export default function PaymentRequestDetailDrawer({
                 {reportBtn.isAppend && (
                   <>Gói đã báo trước <strong>{arAlreadyAllocated.toLocaleString("vi-VN")} đ</strong> + </>
                 )}
-                {reportBtn.isAppend ? "bổ sung" : "Đã phân bổ"} <strong>{arTotal.toLocaleString("vi-VN")} đ</strong> / thực nhận{" "}
+                {reportBtn.isAppend ? "bổ sung" : "Đã phân bổ"} <strong>{arTotal.toLocaleString("vi-VN")} đ</strong> / {arReceivedLabel}{" "}
                 <strong>{arReceived.toLocaleString("vi-VN")} đ</strong>
                 {arRemaining > 0 && (
                   <span style={{ color: "var(--text-3)" }}>
@@ -3015,7 +3021,7 @@ export default function PaymentRequestDetailDrawer({
                 )}
                 {arRemaining < 0 && (
                   <span style={{ color: "var(--danger)" }}>
-                    {" "}— vượt {Math.abs(arRemaining).toLocaleString("vi-VN")} đ so với tiền thực nhận
+                    {" "}— vượt {Math.abs(arRemaining).toLocaleString("vi-VN")} đ so với tiền {arReceivedLabel}
                   </span>
                 )}
               </div>

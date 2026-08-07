@@ -257,6 +257,28 @@ export function lineNet(p: PaymentAttempt): number {
   return p.amount;
 }
 
+/** Tiền "có thể kích hoạt" (đủ tạm pre-mPOS) = received THẬT (net của line paid)
+ *  ＋ GROSS của line card/installment status='pending' CÓ bill.
+ *  Đơn quẹt thẻ/trả góp: tiền về thật sau khi kế toán ghép mPOS; line giữ 'pending'
+ *  (không set 'paid' → không fire trigger Zalo báo "ĐÃ VÀO TK" giả), nhưng đã đủ điều
+ *  kiện để mở CỔNG báo đơn/tạo gói học.
+ *  ⚠ Nhánh paid PHẢI khớp `normalizeRequest.received`; nhánh pending phải khớp
+ *  byte-for-byte BE `pr_guards.activatable_received`. */
+export function activatableReceived(pr: PaymentRequest): number {
+  return (pr.payments || []).reduce((sum, p) => {
+    if (p.cancelled) return sum;
+    if (p.status === "paid") return sum + lineNet(p);
+    if (
+      p.status === "pending" &&
+      FEE_METHODS.has(p.method) &&
+      ((p.billImage ?? "").trim().length > 0 || (Array.isArray(p.billImages) && p.billImages.length > 0))
+    ) {
+      return sum + p.amount; // GROSS — khớp BE
+    }
+    return sum;
+  }, 0);
+}
+
 export function normalizeRequest(req: PaymentRequest): PaymentRequest {
   const payments = req.payments || [];
   const live = payments.filter((p) => !p.cancelled);
@@ -445,7 +467,9 @@ export function activeRequestAllocation(ar: ActiveRequest, pr: PaymentRequest | 
     (sum, uid) => sum + uid.courses.reduce((courseSum, course) => courseSum + Math.max(0, course.amount || 0), 0),
     0
   );
-  const received = Math.max(0, pr?.received ?? 0);
+  // Base = activatable (gồm line thẻ/trả góp pending có bill) để nhánh Sửa-AR /
+  // "Báo đơn bổ sung" khớp cổng báo đơn; đơn thẻ đủ tạm không báo nhầm "vượt tiền".
+  const received = pr ? Math.max(0, activatableReceived(pr)) : 0;
   const overAmount = Math.max(0, total - received);
   return {
     total,

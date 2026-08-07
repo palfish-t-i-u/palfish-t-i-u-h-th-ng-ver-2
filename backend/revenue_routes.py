@@ -997,11 +997,23 @@ def _resolve_sale_from_pr_email(sb, pr: dict[str, Any]) -> tuple[str, str]:
     return "", email
 
 
-def _resolve_payment_date_from_pr(sb, pr_id: str) -> date:
+# Đơn quẹt thẻ / trả góp có thể được kích hoạt TRƯỚC khi kế toán ghép mPOS
+# → chưa có line status='paid'. Khi đó lấy ngày/kiểu từ chính line thẻ pending
+# (paid_at nếu có, else created_at = lúc quẹt) để sổ doanh thu không ghi nhầm
+# ngày = hôm nay / kiểu = trống. Xem G-LEDGERDATE (plan 2026-08-07, Q4).
+_LEDGER_PROVISIONAL_METHODS = ("card", "installment")
+
+
+def _resolve_ledger_line_from_pr(sb, pr_id: str) -> dict | None:
+    """Line dùng suy ra ngày/kiểu thanh toán cho Sổ.
+
+    Ưu tiên line status='paid' (tiền về thật). Không có → fallback line
+    card/installment status='pending' (đủ tạm, chưa ghép mPOS). Cả 2 miss → None.
+    """
     try:
         res = (
             sb.table("payment_lines")
-            .select("paid_at, created_at")
+            .select("paid_at, created_at, method")
             .eq("payment_request_id", pr_id)
             .eq("status", "paid")
             .order("paid_at", desc=True)
@@ -1009,53 +1021,50 @@ def _resolve_payment_date_from_pr(sb, pr_id: str) -> date:
             .execute()
         )
         if res.data:
-            for key in ("paid_at", "created_at"):
-                d = _parse_date(res.data[0].get(key))
-                if d:
-                    return d
-    except Exception:
-        pass
-    return datetime.now(timezone.utc).date()
-
-
-def _resolve_payment_time_from_pr(sb, pr_id: str) -> datetime | None:
-    """Như _resolve_payment_date_from_pr nhưng trả datetime tz-aware."""
-    try:
+            return res.data[0]
         res = (
             sb.table("payment_lines")
-            .select("paid_at, created_at")
+            .select("paid_at, created_at, method")
             .eq("payment_request_id", pr_id)
-            .eq("status", "paid")
-            .order("paid_at", desc=True)
+            .eq("status", "pending")
+            .in_("method", list(_LEDGER_PROVISIONAL_METHODS))
+            .order("created_at", desc=True)
             .limit(1)
             .execute()
         )
         if res.data:
-            for key in ("paid_at", "created_at"):
-                dt = _parse_datetime(res.data[0].get(key))
-                if dt:
-                    return dt
+            return res.data[0]
     except Exception:
         pass
     return None
 
 
+def _resolve_payment_date_from_pr(sb, pr_id: str) -> date:
+    row = _resolve_ledger_line_from_pr(sb, pr_id)
+    if row:
+        for key in ("paid_at", "created_at"):
+            d = _parse_date(row.get(key))
+            if d:
+                return d
+    return datetime.now(timezone.utc).date()
+
+
+def _resolve_payment_time_from_pr(sb, pr_id: str) -> datetime | None:
+    """Như _resolve_payment_date_from_pr nhưng trả datetime tz-aware."""
+    row = _resolve_ledger_line_from_pr(sb, pr_id)
+    if row:
+        for key in ("paid_at", "created_at"):
+            dt = _parse_datetime(row.get(key))
+            if dt:
+                return dt
+    return None
+
+
 def _resolve_payment_method_from_pr(sb, pr_id: str) -> str:
-    try:
-        res = (
-            sb.table("payment_lines")
-            .select("method")
-            .eq("payment_request_id", pr_id)
-            .eq("status", "paid")
-            .order("paid_at", desc=True)
-            .limit(1)
-            .execute()
-        )
-        if res.data:
-            method = str(res.data[0].get("method") or "").strip().lower()
-            return _PAYMENT_LINE_METHOD_LABELS.get(method, method.upper() if method else "")
-    except Exception:
-        pass
+    row = _resolve_ledger_line_from_pr(sb, pr_id)
+    if row:
+        method = str(row.get("method") or "").strip().lower()
+        return _PAYMENT_LINE_METHOD_LABELS.get(method, method.upper() if method else "")
     return ""
 
 

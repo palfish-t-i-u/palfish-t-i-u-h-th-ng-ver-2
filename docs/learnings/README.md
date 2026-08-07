@@ -7,6 +7,7 @@ Written by the `extract-approach` skill. One insight per file.
 ## Index
 
 <!-- Add entries below: - [topic](filename.md) — one-line hook -->
+- [provisional-activation-gate-no-paid-status](provisional-activation-gate-no-paid-status.md) — mở cổng kích hoạt đơn thẻ "đủ tạm" pre-mPOS bằng helper đọc (activatable_received = net paid + gross card/installment pending có bill); TUYỆT ĐỐI không set status='paid' (trigger Zalo bắn tin "ĐÃ VÀO TK" giả); FE≡BE branch-for-branch
 - [stale-closure-chained-setstate-clobbers-first-update](stale-closure-chained-setstate-clobbers-first-update.md) — 2 setState liên tiếp cùng handler, cả 2 dùng `{...draft}` (không phải functional updater) → lời gọi sau đè lời gọi trước; chọn Tỉnh/Thành lần đầu trong form Sửa PR mất ngay, tưởng lỗi Playwright nhưng là bug code thật
 - [oom-per-request-supabase-clients](oom-per-request-supabase-clients.md) — OOM leo đều theo traffic = per-request client churn; đọc Render metrics shape TRƯỚC khi đọc code
 - [filter-after-limit-postgrest](filter-after-limit-postgrest.md) — thêm .range() vào query có lọc hậu kỳ Python = sale mất dữ liệu; filter phải vào SQL trước limit

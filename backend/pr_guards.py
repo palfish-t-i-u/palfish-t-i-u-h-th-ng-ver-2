@@ -6,6 +6,11 @@ from fastapi import HTTPException
 # Parent PR must be fully paid (100% or overpaid) before course activation.
 ALLOWED_PR_STATES = frozenset({"done", "over"})
 
+# Đơn quẹt thẻ / trả góp: tiền chỉ về thật sau khi kế toán ghép mPOS (vài ngày).
+# Line pending của 2 method này + CÓ bill được coi là "đủ tạm" để mở CỔNG kích hoạt,
+# NHƯNG line vẫn giữ status='pending' (không set 'paid' → không fire trg_payment_paid_zalo).
+_PROVISIONAL_METHODS = frozenset({"card", "installment"})
+
 _TRANG_THAI_ALIASES: dict[str, str] = {
     "done": "done",
     "over": "over",
@@ -79,18 +84,64 @@ def _pr_amounts(pr: dict[str, Any]) -> tuple[int, int]:
     return target, received
 
 
-def assert_pr_paid(pr: dict[str, Any]) -> None:
+def assert_pr_paid(sb, pr: dict[str, Any]) -> None:
+    """Cổng "được báo đơn / tạo gói học": PR đủ tiền (thật hoặc "đủ tạm").
+
+    "Đủ tạm" = received thật + GROSS của line card/installment pending CÓ bill
+    (đơn quẹt thẻ chưa ghép mPOS). Xem activatable_received.
+    """
     state = _pr_payment_state(pr)
-    target, received = _pr_amounts(pr)
+    target, _received = _pr_amounts(pr)
+    activatable = activatable_received(sb, pr)
     paid_by_state = state in ALLOWED_PR_STATES
-    paid_by_amount = target > 0 and received >= target
+    paid_by_amount = target > 0 and activatable >= target
     if paid_by_state or paid_by_amount:
         return
     raise HTTPException(
         400,
         f"Payment Request chưa thanh toán đủ — trang_thai={pr.get('trang_thai')!r}, "
-        f"da_thu={received}/{target}, cần đủ 100% tiền",
+        f"da_thu={activatable}/{target}, cần đủ 100% tiền",
     )
+
+
+def _line_has_bill(line: dict[str, Any]) -> bool:
+    """Line có ảnh bill chưa. Khớp CHÍNH XÁC predicate FE billGuardUtils.ts:12-14."""
+    if bool((line.get("bill_image") or "").strip()):
+        return True
+    imgs = line.get("bill_images")
+    return isinstance(imgs, list) and len(imgs) > 0
+
+
+def activatable_received(sb, pr: dict[str, Any]) -> int:
+    """received THẬT (net paid) + GROSS của line card/installment status=pending CÓ bill.
+
+    Line giữ pending → KHÔNG set paid → KHÔNG kích hoạt trg_payment_paid_zalo.
+    qr/cash pending, hoặc card/installment thiếu bill → KHÔNG cộng (vẫn chặn cổng).
+    Fail-closed: query lỗi → trả received gốc (chặn, không mở nhầm).
+    ⚠ Phải khớp byte-for-byte FE paymentRequestUtils.ts activatableReceived.
+    """
+    _, received = _pr_amounts(pr)
+    pr_id = str(pr.get("id") or "")
+    if not pr_id:
+        return received
+    try:
+        res = (
+            sb.table("payment_lines")
+            .select("amount, method, status, bill_image, bill_images")
+            .eq("payment_request_id", pr_id)
+            .eq("status", "pending")
+            .execute()
+        )
+    except Exception:
+        return received  # fail-closed
+    provisional = 0
+    for line in (res.data or []):
+        if (line.get("method") or "").lower() in _PROVISIONAL_METHODS and _line_has_bill(line):
+            try:
+                provisional += int(line.get("amount") or 0)
+            except (TypeError, ValueError):
+                pass
+    return received + provisional
 
 
 def assert_all_paid_lines_have_bill(sb, pr: dict) -> None:
@@ -107,11 +158,7 @@ def assert_all_paid_lines_have_bill(sb, pr: dict) -> None:
     )
     missing = []
     for line in (lines_res.data or []):
-        has_bill = bool((line.get("bill_image") or "").strip())
-        if not has_bill:
-            imgs = line.get("bill_images")
-            has_bill = isinstance(imgs, list) and len(imgs) > 0
-        if not has_bill:
+        if not _line_has_bill(line):
             missing.append({"line_id": line["id"], "amount": line.get("amount")})
     if missing:
         raise HTTPException(
