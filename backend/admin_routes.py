@@ -385,6 +385,37 @@ def _sale_row_to_api(row: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+# Ô lớn (depart6) mà store con (depart7) phải gộp về thành 1 team, store thành sub-team.
+# CRM tree đặt team = tên store con và để trống sub_team → sai cấp. Chỉ áp cho ô này;
+# IH1/IH2 KHÔNG nằm đây (depart6 của họ là "HN Inhouse", team đúng vẫn là depart7).
+_DEPART6_AS_TEAM = frozenset({"HN Offline Store"})
+
+
+def _hierarchy_member_to_row(m: dict[str, Any]) -> dict[str, Any]:
+    d6 = (m.get("depart6") or [None])[0]
+    d7 = (m.get("depart7") or [None])[0]
+    d8 = (m.get("depart8") or [None])[0]
+    team_val = (m.get("team") or "").strip() or None
+    sub_team_val = (m.get("sub_team") or "").strip() or None
+    # HN Offline Store: các store con (An Bình, Linh Đàm…) phải cùng team "HN Offline Store",
+    # store trở thành sub-team. Nếu không, routing Zalo (khớp team_code chính xác) + team-scope
+    # dashboard/báo cáo/RBAC đều lệch. Xem sự cố 2026-08-07 (sync ghi đè team = tên store).
+    if (d6 or "").strip() in _DEPART6_AS_TEAM and (d7 or "").strip():
+        team_val = (d6 or "").strip()
+        sub_team_val = (d7 or "").strip()
+    return {
+        "crm_name": m["sale"].strip(),
+        "depart6_name": d6,
+        "depart7_name": d7,
+        "depart8_name": d8,
+        "team": team_val,
+        "sub_team": sub_team_val,
+        "role": "sale",
+        "is_active": True,
+        "synced_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+
 def _flatten_hierarchy() -> list[dict[str, Any]]:
     if not HIERARCHY_JSON.exists():
         return []
@@ -400,20 +431,7 @@ def _flatten_hierarchy() -> list[dict[str, Any]]:
             for m in members:
                 if not isinstance(m, dict) or not m.get("sale"):
                     continue
-                d6 = (m.get("depart6") or [None])[0]
-                d7 = (m.get("depart7") or [None])[0]
-                d8 = (m.get("depart8") or [None])[0]
-                row = {
-                    "crm_name": m["sale"].strip(),
-                    "depart6_name": d6,
-                    "depart7_name": d7,
-                    "depart8_name": d8,
-                    "team": (m.get("team") or "").strip() or None,
-                    "sub_team": (m.get("sub_team") or "").strip() or None,
-                    "role": "sale",
-                    "is_active": True,
-                    "synced_at": datetime.now(timezone.utc).isoformat(),
-                }
+                row = _hierarchy_member_to_row(m)
                 if is_vn_sale_row(row):
                     rows.append(row)
     return rows
