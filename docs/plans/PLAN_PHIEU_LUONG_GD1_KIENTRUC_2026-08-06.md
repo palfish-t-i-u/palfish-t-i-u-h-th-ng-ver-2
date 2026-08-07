@@ -103,3 +103,5 @@ NGUỒN (GĐ1 = Sheet)         KHO CHUNG          REVIEW (Apps Script gate)     
 **Còn lại (M2+):** external table từ Sheet sạch (Trang/Vân giao) → **6 view `prod_*`** theo block → **đối chiếu phiếu T6/T7** → M3 (Apps Script gate) → M4 (module app).
 
 **⚠️ Khi đổi máy:** project/dataset/IAM còn nguyên trên cloud. NHƯNG gcloud/bq + đăng nhập là **theo từng máy** → máy mới phải: cài Google Cloud SDK → `gcloud auth login --enable-gdrive-access --update-adc` → `gcloud config set project pf-salary`. *(Nếu path cài có dấu cách trong tên user thì `bq` phải gọi qua đường dẫn 8.3 rút gọn — xem ghi nhớ dự án.)*
+
+**Máy laptop (user `silly`, 06/08):** SDK cài tại `C:\Users\silly\AppData\Local\Google\Cloud SDK\google-cloud-sdk\bin`; auth `anhminhcv0512@gmail.com` OK, `SELECT 1` + `bq ls payroll` chạy được (dataset rỗng, đúng trạng thái M2). Gotcha khi gọi `bq` từ Git-Bash: phải có `gcloud` trên PATH mới lấy được creds → `export PATH=".../google-cloud-sdk/bin:$PATH"` trước lệnh `bq` (nếu không: `Error retrieving auth credentials from gcloud [WinError 2]`). Terminal thật (PS/CMD) đã có PATH sẵn.
