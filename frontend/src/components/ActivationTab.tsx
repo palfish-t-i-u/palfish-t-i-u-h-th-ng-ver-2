@@ -5,6 +5,7 @@ import { usePaymentFlow } from "../contexts/PaymentFlowContext";
 import { usePermission } from "../hooks/usePermission";
 import useIsMobile from "../hooks/useIsMobile";
 import ActivationRowCards from "./activation/ActivationRowCards";
+import FilterSelect from "./activation/FilterSelect";
 import { endpoints } from "../lib/api";
 import { notifyLedgerChanged } from "../lib/ledgerEvents";
 import type { ActiveRequest, ActiveCourse, ActiveUidGroup, PaymentRequest } from "../types/paymentRequest";
@@ -2885,48 +2886,24 @@ export default function ActivationTab() {
             />
           </div>
           {/* Bộ lọc gọn: mỗi nhóm 1 dropdown, cùng hàng với ô tìm kiếm. */}
-          <label className="filter-field">
-            <span>Thưởng GT</span>
-            <select
-              className={`filter-select${referralFilter !== "all" ? " active" : ""}`}
-              value={referralFilter}
-              onChange={(e) => setReferralFilter(e.target.value as ReferralFilter)}
-            >
-              {ACTIVATION_REFERRAL_FILTERS.map((f) => (
-                <option key={f.id} value={f.id}>
-                  {f.label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="filter-field">
-            <span>Tạo gói học</span>
-            <select
-              className={`filter-select${holdFilter !== "all" ? " active" : ""}`}
-              value={holdFilter}
-              onChange={(e) => setHoldFilter(e.target.value as HoldFilter)}
-            >
-              {ACTIVATION_HOLD_FILTERS.map((f) => (
-                <option key={f.id} value={f.id}>
-                  {f.label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="filter-field">
-            <span>Xuất HĐ</span>
-            <select
-              className={`filter-select${invoiceFilter !== "all" ? " active" : ""}`}
-              value={invoiceFilter}
-              onChange={(e) => setInvoiceFilter(e.target.value as InvoiceStatusFilter)}
-            >
-              {ACTIVATION_INVOICE_FILTERS.map((f) => (
-                <option key={f.id} value={f.id}>
-                  {f.label}
-                </option>
-              ))}
-            </select>
-          </label>
+          <FilterSelect
+            label="Thưởng GT"
+            value={referralFilter}
+            options={ACTIVATION_REFERRAL_FILTERS}
+            onChange={setReferralFilter}
+          />
+          <FilterSelect
+            label="Tạo gói học"
+            value={holdFilter}
+            options={ACTIVATION_HOLD_FILTERS}
+            onChange={setHoldFilter}
+          />
+          <FilterSelect
+            label="Xuất HĐ"
+            value={invoiceFilter}
+            options={ACTIVATION_INVOICE_FILTERS}
+            onChange={setInvoiceFilter}
+          />
           <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
             <DateRangeFilter
               value={dateRange}
