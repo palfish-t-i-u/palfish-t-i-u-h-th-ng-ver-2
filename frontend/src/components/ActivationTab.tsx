@@ -84,6 +84,32 @@ function fmtTienVeDate(d: string | null | undefined): string {
   return `${parts[2]}/${parts[1]}/${parts[0]}`;
 }
 
+/** Bộ lọc trạng thái xuất hoá đơn cấp AR (A-T6). */
+type InvoiceStatusFilter = "all" | "ready" | "blocked" | "requested" | "invoiced";
+const ACTIVATION_INVOICE_FILTERS: { id: InvoiceStatusFilter; label: string }[] = [
+  { id: "all", label: "Tất cả" },
+  { id: "ready", label: "Sẵn sàng xuất" },
+  { id: "blocked", label: "Còn thiếu" },
+  { id: "requested", label: "Đã yêu cầu" },
+  { id: "invoiced", label: "Đã xuất" },
+];
+
+/** AR có khớp bộ lọc trạng thái HĐ không. Map action.kind → filter id. */
+function matchesInvoiceFilter(action: ArInvoiceAction, f: InvoiceStatusFilter): boolean {
+  switch (f) {
+    case "all":
+      return true;
+    case "ready":
+      return action.kind === "ready";
+    case "blocked":
+      return action.kind === "blocked";
+    case "requested":
+      return action.kind === "all_requested";
+    case "invoiced":
+      return action.kind === "all_invoiced";
+  }
+}
+
 /** Nhãn hiển thị + tooltip cho nút/chip "Xuất HĐ" cấp AR trên list. */
 function arInvoiceActionLabel(action: ArInvoiceAction): string {
   switch (action.kind) {
@@ -2064,6 +2090,8 @@ export default function ActivationTab() {
   // 1.5 — filter "Thưởng giới thiệu"
   const [referralFilter, setReferralFilter] = useState<"all" | "none" | "partial" | "full" | "any">("all");
   const [holdFilter, setHoldFilter] = useState<"all" | "now" | "hold">("all");
+  // A-T6 — lọc theo trạng thái xuất hoá đơn cấp AR.
+  const [invoiceFilter, setInvoiceFilter] = useState<InvoiceStatusFilter>("all");
 
   // TOP3: activation urgent reminders banner
   type ActivationReminder = { id: string; payment_request_id: string; pr_code: string; customer_name: string; requested_by_name: string; requested_at: string; note: string | null };
@@ -2089,6 +2117,38 @@ export default function ActivationTab() {
   }, [nav.openArId, setNav]);
 
   const rows = useMemo(() => activeRequests.map(enrichActiveRequest), [activeRequests]);
+
+  // Địa chỉ để tính blocker cứng lấy từ PR liên kết (khớp getInvoiceBlockers).
+  const prById = useMemo(() => {
+    const m = new Map<string, PaymentRequest>();
+    for (const p of requests) m.set(p.id, p);
+    return m;
+  }, [requests]);
+
+  // Trạng thái nút Xuất HĐ mức AR. Bỏ blocker "soft" (Order ID) — chỉ tiền/gói/địa
+  // chỉ mới chặn (rule chị Thu Hiền: có tiền là xuất được HĐ, Order ID điền sau).
+  // Khai báo TRƯỚC các memo lọc để invoiceFilter dùng được (tránh TDZ).
+  const arActionById = useMemo(() => {
+    const m = new Map<string, ArInvoiceAction>();
+    for (const ar of activeRequests) {
+      const pr = ar.prId ? prById.get(ar.prId) ?? null : null;
+      const courses: { invoiced: boolean; requested: boolean; hardMissing: string[] }[] = [];
+      for (const u of ar.uids) {
+        for (const c of u.courses) {
+          const hardMissing = getInvoiceBlockers(c, pr)
+            .filter((b) => !b.soft)
+            .map((b) => HARD_BLOCKER_LABEL[b.key] ?? b.key);
+          courses.push({
+            invoiced: Boolean(c.invoiced),
+            requested: Boolean(c.invoiceRequestedAt),
+            hardMissing,
+          });
+        }
+      }
+      m.set(ar.id, summarizeArInvoiceAction(courses));
+    }
+    return m;
+  }, [activeRequests, prById]);
 
   const holdArs = useMemo(
     () => rows.filter((a) => a.holdActivation && a.status !== "activated" && a.status !== "invoiced"),
@@ -2128,12 +2188,16 @@ export default function ActivationTab() {
         if (holdFilter === "hold" && !isHold) return false;
         if (holdFilter === "now" && isHold) return false;
       }
+      if (invoiceFilter !== "all") {
+        const act = arActionById.get(a.id) ?? { kind: "empty" as const };
+        if (!matchesInvoiceFilter(act, invoiceFilter)) return false;
+      }
       if (!q) return true;
       return [a.id, a.prId || "", a.customerName, a.uids[0]?.uid || ""].some((v) =>
         v.toLowerCase().includes(q)
       );
     });
-  }, [rows, tab, search, dateRange, timeType, referralFilter, holdFilter]);
+  }, [rows, tab, search, dateRange, timeType, referralFilter, holdFilter, invoiceFilter, arActionById]);
 
   // Badge tab đếm ở cấp khoá học (toàn bộ, không lọc) — khác KPI (cấp AR).
   const tabCounts = useMemo(() => countCourseTabs(rows), [rows]);
@@ -2156,12 +2220,16 @@ export default function ActivationTab() {
         if (holdFilter === "hold" && !isHold) return false;
         if (holdFilter === "now" && isHold) return false;
       }
+      if (invoiceFilter !== "all") {
+        const act = arActionById.get(a.id) ?? { kind: "empty" as const };
+        if (!matchesInvoiceFilter(act, invoiceFilter)) return false;
+      }
       return true;
     });
     return flatCourseRows(arFiltered).filter(
       (r) => courseRowMatchesTab(r, tab) && courseRowMatchesSearch(r, nq)
     );
-  }, [rows, tab, search, dateRange, timeType, referralFilter, holdFilter]);
+  }, [rows, tab, search, dateRange, timeType, referralFilter, holdFilter, invoiceFilter, arActionById]);
 
   const courseGroups = useMemo(() => groupRowsByAr(courseVisible), [courseVisible]);
   const coursePage = useMemo(() => paginate(courseGroups, page, AR_PER_PAGE), [courseGroups, page]);
@@ -2170,7 +2238,7 @@ export default function ActivationTab() {
   useEffect(() => {
     setPage(1);
     setSelectedArIds(new Set());
-  }, [tab, search, dateRange, timeType, referralFilter, holdFilter]);
+  }, [tab, search, dateRange, timeType, referralFilter, holdFilter, invoiceFilter]);
 
   // Dọn timer feedback khi unmount.
   useEffect(
@@ -2192,37 +2260,6 @@ export default function ActivationTab() {
   const [selectedArIds, setSelectedArIds] = useState<Set<string>>(() => new Set());
   const [requestingArIds, setRequestingArIds] = useState<Set<string>>(() => new Set());
   const [bulkBusy, setBulkBusy] = useState(false);
-
-  // Địa chỉ để tính blocker cứng lấy từ PR liên kết (khớp getInvoiceBlockers).
-  const prById = useMemo(() => {
-    const m = new Map<string, PaymentRequest>();
-    for (const p of requests) m.set(p.id, p);
-    return m;
-  }, [requests]);
-
-  // Trạng thái nút Xuất HĐ mức AR. Bỏ blocker "soft" (Order ID) — chỉ tiền/gói/địa
-  // chỉ mới chặn (rule chị Thu Hiền: có tiền là xuất được HĐ, Order ID điền sau).
-  const arActionById = useMemo(() => {
-    const m = new Map<string, ArInvoiceAction>();
-    for (const ar of activeRequests) {
-      const pr = ar.prId ? prById.get(ar.prId) ?? null : null;
-      const courses: { invoiced: boolean; requested: boolean; hardMissing: string[] }[] = [];
-      for (const u of ar.uids) {
-        for (const c of u.courses) {
-          const hardMissing = getInvoiceBlockers(c, pr)
-            .filter((b) => !b.soft)
-            .map((b) => HARD_BLOCKER_LABEL[b.key] ?? b.key);
-          courses.push({
-            invoiced: Boolean(c.invoiced),
-            requested: Boolean(c.invoiceRequestedAt),
-            hardMissing,
-          });
-        }
-      }
-      m.set(ar.id, summarizeArInvoiceAction(courses));
-    }
-    return m;
-  }, [activeRequests, prById]);
 
   // Chỉ AR "ready" (đủ điều kiện) mới cho chọn + xuất hàng loạt.
   const eligibleArIds = useMemo(
@@ -2862,6 +2899,19 @@ export default function ActivationTab() {
                   type="button"
                   className={`filter-chip ${holdFilter === f.id ? "active" : ""}`}
                   onClick={() => setHoldFilter(f.id)}
+                >
+                  {f.label}
+                </button>
+              ))}
+            </div>
+            <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+              <span style={{ fontSize: 11.5, color: "var(--text-3)", marginRight: 4 }}>Xuất HĐ:</span>
+              {ACTIVATION_INVOICE_FILTERS.map((f) => (
+                <button
+                  key={f.id}
+                  type="button"
+                  className={`filter-chip ${invoiceFilter === f.id ? "active" : ""}`}
+                  onClick={() => setInvoiceFilter(f.id)}
                 >
                   {f.label}
                 </button>
