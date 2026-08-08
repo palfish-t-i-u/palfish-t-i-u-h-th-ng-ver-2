@@ -28,13 +28,56 @@ import type { InvoiceRow } from "./payment-flow/paymentFlowUtils";
 import { getUidSyncState } from "./ActivationTab.uidSync";
 import { HdsdLink } from "./help/HdsdLink";
 import "../styles/prototype-payments.css";
-import { AR_PER_PAGE, applyCourseOrderId, countCourseTabs, courseRowMatchesSearch, courseRowMatchesTab, flatCourseRows, groupRowsByAr, type CourseRow } from "./activation/activationFlatList";
+import { AR_PER_PAGE, applyCourseOrderId, countCourseTabs, courseRowMatchesSearch, courseRowMatchesTab, flatCourseRows, groupRowsByAr, isArInvoiceActionable, summarizeArInvoiceAction, type ArInvoiceAction, type CourseRow } from "./activation/activationFlatList";
 import { normVi } from "../lib/textUtils";
+import { useColumnVisibility } from "../hooks/useColumnVisibility";
+import ColumnVisibilityMenu, { type ColumnOption } from "./ui/ColumnVisibilityMenu";
 
 type ArTabId = "pending_order" | "activated" | "all";
 
 /** Vạch màu trái xoay vòng theo cụm AR (không random — ổn định giữa các render). */
 const GROUP_TINTS = ["#7c6cff", "#0ea5e9", "#10b981", "#f59e0b", "#ec4899", "#8b5cf6"];
+
+/** Cột dữ liệu (theo khoá học) có thể ẩn/hiện — tái dùng cơ chế "Cột hiển thị"
+ * của Sổ doanh thu. Cột chọn (checkbox) và cột "Xuất HĐ" là cột cấu trúc cấp AR,
+ * KHÔNG nằm trong danh sách này (luôn hiện). */
+const ACTIVATION_COLUMNS: readonly ColumnOption[] = [
+  { key: "arPr", label: "AR-ID / PR-ID", hideable: false },
+  { key: "customer", label: "Khách hàng", hideable: true },
+  { key: "uid", label: "UID", hideable: true },
+  { key: "package", label: "Gói học", hideable: true },
+  { key: "amount", label: "Tiền", hideable: true },
+  { key: "order", label: "Order ID", hideable: true },
+  { key: "status", label: "Trạng thái", hideable: true },
+  { key: "referral", label: "Thưởng GT", hideable: true },
+  { key: "createdAt", label: "Tạo lúc", hideable: true },
+];
+/** Mặc định ẩn "Tạo lúc" (mong muốn chị Hiền) — vẫn giữ dữ liệu createdAt để sắp xếp. */
+const ACTIVATION_DEFAULT_HIDDEN = ["createdAt"] as const;
+
+/** Nhãn hiển thị + tooltip cho nút/chip "Xuất HĐ" cấp AR trên list. */
+function arInvoiceActionLabel(action: ArInvoiceAction): string {
+  switch (action.kind) {
+    case "ready":
+      return "Đưa yêu cầu xuất hoá đơn của AR này sang B4 (Xuất hoá đơn)";
+    case "blocked":
+      return `Chưa xuất được — còn thiếu: ${action.missing.join(", ")}`;
+    case "all_invoiced":
+      return "Tất cả khoá học của AR đã xuất hoá đơn";
+    case "all_requested":
+      return "Đã yêu cầu xuất hoá đơn — xử lý tiếp ở B4 (Xuất hoá đơn)";
+    default:
+      return "";
+  }
+}
+
+/** Nhãn ngắn cho blocker CỨNG (dùng trong tooltip "còn thiếu: …" của nút Xuất HĐ mức AR).
+ * Khớp key của getInvoiceBlockers; "order" là soft nên không có ở đây. */
+const HARD_BLOCKER_LABEL: Record<string, string> = {
+  package: "tên gói học",
+  amount: "số tiền",
+  address: "địa chỉ",
+};
 
 function PrSearchCombo({
   prs,
@@ -2092,9 +2135,10 @@ export default function ActivationTab() {
   const courseGroups = useMemo(() => groupRowsByAr(courseVisible), [courseVisible]);
   const coursePage = useMemo(() => paginate(courseGroups, page, AR_PER_PAGE), [courseGroups, page]);
 
-  // Đổi bộ lọc/tab/tìm kiếm → về trang 1.
+  // Đổi bộ lọc/tab/tìm kiếm → về trang 1 + bỏ chọn (tránh "chọn ẩn" gây nhầm).
   useEffect(() => {
     setPage(1);
+    setSelectedArIds(new Set());
   }, [tab, search, dateRange, referralFilter, holdFilter]);
 
   // Dọn timer feedback khi unmount.
@@ -2107,6 +2151,190 @@ export default function ActivationTab() {
   );
 
   const isMobile = useIsMobile();
+
+  // ── A-T1/A-T2: cột hiển thị (như Sổ doanh thu) + chọn nhiều AR + nút Xuất HĐ ngoài list ──
+  const { isVisible, toggle, showAll, visibleCount } = useColumnVisibility(
+    "activationList",
+    ACTIVATION_COLUMNS.map((c) => c.key),
+    ACTIVATION_DEFAULT_HIDDEN
+  );
+  const [selectedArIds, setSelectedArIds] = useState<Set<string>>(() => new Set());
+  const [requestingArIds, setRequestingArIds] = useState<Set<string>>(() => new Set());
+  const [bulkBusy, setBulkBusy] = useState(false);
+
+  // Địa chỉ để tính blocker cứng lấy từ PR liên kết (khớp getInvoiceBlockers).
+  const prById = useMemo(() => {
+    const m = new Map<string, PaymentRequest>();
+    for (const p of requests) m.set(p.id, p);
+    return m;
+  }, [requests]);
+
+  // Trạng thái nút Xuất HĐ mức AR. Bỏ blocker "soft" (Order ID) — chỉ tiền/gói/địa
+  // chỉ mới chặn (rule chị Thu Hiền: có tiền là xuất được HĐ, Order ID điền sau).
+  const arActionById = useMemo(() => {
+    const m = new Map<string, ArInvoiceAction>();
+    for (const ar of activeRequests) {
+      const pr = ar.prId ? prById.get(ar.prId) ?? null : null;
+      const courses: { invoiced: boolean; requested: boolean; hardMissing: string[] }[] = [];
+      for (const u of ar.uids) {
+        for (const c of u.courses) {
+          const hardMissing = getInvoiceBlockers(c, pr)
+            .filter((b) => !b.soft)
+            .map((b) => HARD_BLOCKER_LABEL[b.key] ?? b.key);
+          courses.push({
+            invoiced: Boolean(c.invoiced),
+            requested: Boolean(c.invoiceRequestedAt),
+            hardMissing,
+          });
+        }
+      }
+      m.set(ar.id, summarizeArInvoiceAction(courses));
+    }
+    return m;
+  }, [activeRequests, prById]);
+
+  // Chỉ AR "ready" (đủ điều kiện) mới cho chọn + xuất hàng loạt.
+  const eligibleArIds = useMemo(
+    () =>
+      courseGroups
+        .map((g) => g.arId)
+        .filter((id) => isArInvoiceActionable(arActionById.get(id) ?? { kind: "empty" })),
+    [courseGroups, arActionById]
+  );
+  const selectedEligible = useMemo(
+    () => eligibleArIds.filter((id) => selectedArIds.has(id)),
+    [eligibleArIds, selectedArIds]
+  );
+  const allEligibleSelected =
+    eligibleArIds.length > 0 && eligibleArIds.every((id) => selectedArIds.has(id));
+  const visibleDataCols = ACTIVATION_COLUMNS.filter((c) => isVisible(c.key)).length;
+
+  const toggleSelectAr = (arId: string) => {
+    setSelectedArIds((prev) => {
+      const n = new Set(prev);
+      if (n.has(arId)) n.delete(arId);
+      else n.add(arId);
+      return n;
+    });
+  };
+  const toggleSelectAll = () => {
+    setSelectedArIds((prev) => {
+      const n = new Set(prev);
+      if (eligibleArIds.length > 0 && eligibleArIds.every((id) => prev.has(id))) {
+        for (const id of eligibleArIds) n.delete(id);
+      } else {
+        for (const id of eligibleArIds) n.add(id);
+      }
+      return n;
+    });
+  };
+
+  // Đưa 1 AR sang B4: gọi requestInvoice (đánh dấu invoiceRequestedAt các gói chờ).
+  const requestInvoiceForAr = async (arId: string): Promise<boolean> => {
+    if (requestingArIds.has(arId)) return false;
+    setRequestingArIds((p) => new Set(p).add(arId));
+    try {
+      const res = await endpoints.activeRequests.requestInvoice(arId);
+      updateActiveRequest(arId, () => fromApiActiveRequest(res.data));
+      return true;
+    } catch {
+      return false;
+    } finally {
+      setRequestingArIds((p) => {
+        const n = new Set(p);
+        n.delete(arId);
+        return n;
+      });
+    }
+  };
+
+  // Nút Xuất HĐ trên 1 AR: đưa sang B4 rồi báo (ở lại màn Tạo gói học).
+  const handleSingleRequestInvoice = async (arId: string) => {
+    const ok = await requestInvoiceForAr(arId);
+    setApiNote(
+      ok
+        ? `Đã đưa ${arId} sang B4 (Xuất hoá đơn) — mở tab “Xuất hóa đơn” để xuất file.`
+        : "Không đưa được sang B4, thử lại sau."
+    );
+    setSelectedArIds((prev) => {
+      if (!prev.has(arId)) return prev;
+      const n = new Set(prev);
+      n.delete(arId);
+      return n;
+    });
+  };
+
+  // Nút Xuất HĐ hàng loạt: đưa mọi AR đang chọn sang B4 rồi chuyển sang tab đó.
+  const handleBulkRequestInvoice = async () => {
+    if (bulkBusy) return;
+    const ids = selectedEligible;
+    if (ids.length === 0) return;
+    setBulkBusy(true);
+    let ok = 0;
+    for (const id of ids) {
+      if (await requestInvoiceForAr(id)) ok++;
+    }
+    setBulkBusy(false);
+    setSelectedArIds(new Set());
+    if (ok > 0) {
+      setApiNote(`Đã đưa ${ok} AR sang B4 (Xuất hoá đơn).`);
+      navigate("module4");
+    } else {
+      setApiNote("Không đưa được AR nào sang B4, thử lại sau.");
+    }
+  };
+
+  const renderArInvoiceCell = (arId: string, action: ArInvoiceAction) => {
+    const tip = arInvoiceActionLabel(action);
+    switch (action.kind) {
+      case "ready":
+        return (
+          <button
+            type="button"
+            className="btn-invoice"
+            disabled={requestingArIds.has(arId)}
+            title={tip}
+            onClick={(e) => {
+              e.stopPropagation();
+              void handleSingleRequestInvoice(arId);
+            }}
+          >
+            <Icons.Doc size={12} /> {requestingArIds.has(arId) ? "Đang gửi…" : "Xuất HĐ"}
+          </button>
+        );
+      case "blocked":
+        return (
+          <button
+            type="button"
+            className="btn-invoice"
+            disabled
+            style={{ opacity: 0.45, cursor: "not-allowed" }}
+            title={tip}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <Icons.Doc size={12} /> Xuất HĐ
+          </button>
+        );
+      case "all_invoiced":
+        return (
+          <span className="invoice-chip" title={tip}>
+            <Icons.Doc size={11} /> Đã xuất
+          </span>
+        );
+      case "all_requested":
+        return (
+          <span
+            className="badge"
+            title={tip}
+            style={{ background: "var(--info-bg)", color: "var(--info-text)", whiteSpace: "nowrap" }}
+          >
+            <Icons.CheckCircle size={11} /> Đã yêu cầu
+          </span>
+        );
+      default:
+        return <span style={{ color: "var(--text-3)" }}>—</span>;
+    }
+  };
 
   const openAr = openArId ? activeRequests.find((a) => a.id === openArId) ?? null : null;
   const openPr = openAr?.prId ? requests.find((p) => p.id === openAr.prId) ?? null : null;
@@ -2233,7 +2461,17 @@ export default function ActivationTab() {
     );
   };
 
-  const renderCourseRow = (row: CourseRow, tint: string) => {
+  const renderCourseRow = (
+    row: CourseRow,
+    tint: string,
+    ctx: {
+      isFirstOfGroup: boolean;
+      groupSize: number;
+      action: ArInvoiceAction;
+      selectable: boolean;
+      checked: boolean;
+    }
+  ) => {
     const rem = row.prId ? reminderByPrId.get(row.prId) : undefined;
     const remTip = rem
       ? `Sales nhắc tạo gói học lúc ${new Date(rem.requested_at).toLocaleDateString("vi-VN")} ${new Date(rem.requested_at).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })} — bởi ${rem.requested_by_name}${rem.note ? ` · "${rem.note}"` : ""}`
@@ -2263,8 +2501,23 @@ export default function ActivationTab() {
         className={openArId === row.arId ? "selected" : ""}
         onClick={() => setOpenArId(row.arId)}
         title={remTip}
-        style={{ borderLeft: `3px solid ${borderColor}` }}
       >
+        {ctx.isFirstOfGroup && (
+          <td
+            rowSpan={ctx.groupSize}
+            onClick={(e) => e.stopPropagation()}
+            style={{ borderLeft: `3px solid ${borderColor}`, textAlign: "center", verticalAlign: "top", paddingTop: 12, width: 40 }}
+          >
+            {ctx.selectable ? (
+              <input
+                type="checkbox"
+                aria-label={`Chọn ${row.arId} để xuất hoá đơn`}
+                checked={ctx.checked}
+                onChange={() => toggleSelectAr(row.arId)}
+              />
+            ) : null}
+          </td>
+        )}
         <td>
           <span className="ar-id-pill">{row.arId}</span>
           <div style={{ marginTop: 3 }}>
@@ -2275,6 +2528,7 @@ export default function ActivationTab() {
             )}
           </div>
         </td>
+        {isVisible("customer") && (
         <td>
           <div className="cell-name">{row.uidName || row.customerName || "—"}</div>
           {(row.saleName || (row.uidName && row.uidName !== row.customerName)) && (
@@ -2289,6 +2543,8 @@ export default function ActivationTab() {
             </div>
           )}
         </td>
+        )}
+        {isVisible("uid") && (
         <td>
           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
             <button
@@ -2307,10 +2563,14 @@ export default function ActivationTab() {
             <span style={{ fontFamily: "var(--font-mono, ui-monospace, monospace)", fontSize: 12.5 }}>{row.uid || "—"}</span>
           </div>
         </td>
-        <td>{row.packageName || "—"}</td>
+        )}
+        {isVisible("package") && <td>{row.packageName || "—"}</td>}
+        {isVisible("amount") && (
         <td style={{ textAlign: "right" }}>
           <span style={{ fontWeight: 700, color: "var(--money)" }}>{vnd(row.amount)}</span>
         </td>
+        )}
+        {isVisible("order") && (
         <td onClick={(e) => e.stopPropagation()}>
           {row.invoiced ? (
             <span style={{ fontFamily: "ui-monospace, monospace", fontSize: 12.5 }} title="Đã xuất hoá đơn — không sửa Order ID ở đây">
@@ -2357,6 +2617,13 @@ export default function ActivationTab() {
             </div>
           )}
         </td>
+        )}
+        {ctx.isFirstOfGroup && (
+          <td rowSpan={ctx.groupSize} onClick={(e) => e.stopPropagation()} style={{ verticalAlign: "top", paddingTop: 10 }}>
+            {renderArInvoiceCell(row.arId, ctx.action)}
+          </td>
+        )}
+        {isVisible("status") && (
         <td>
           <div style={{ display: "flex", flexDirection: "column", gap: 4, alignItems: "flex-start" }}>
             {row.activated ? (
@@ -2371,7 +2638,9 @@ export default function ActivationTab() {
             )}
           </div>
         </td>
-        <td>{renderReferralChip(row.referral)}</td>
+        )}
+        {isVisible("referral") && <td>{renderReferralChip(row.referral)}</td>}
+        {isVisible("createdAt") && (
         <td>
           {(() => {
             const ts = formatPaymentDateTime(row.createdAt);
@@ -2383,6 +2652,7 @@ export default function ActivationTab() {
             );
           })()}
         </td>
+        )}
       </tr>
     );
   };
@@ -2560,8 +2830,17 @@ export default function ActivationTab() {
                 </button>
               ))}
             </div>
-            <div style={{ marginLeft: "auto" }}>
+            <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
               <DateRangeFilter value={dateRange} onChange={setDateRange} />
+              {!isMobile && (
+                <ColumnVisibilityMenu
+                  columns={ACTIVATION_COLUMNS}
+                  isVisible={isVisible}
+                  onToggle={toggle}
+                  onShowAll={showAll}
+                  visibleCount={visibleCount}
+                />
+              )}
             </div>
           </div>
         </div>
@@ -2604,25 +2883,53 @@ export default function ActivationTab() {
             </div>
           ) : (
             <>
+              {selectedEligible.length > 0 && (
+                <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", background: "var(--info-bg, #eff6ff)", borderBottom: "1px solid var(--border, #e5e7eb)" }}>
+                  <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text-1)" }}>Đã chọn {selectedEligible.length} AR</span>
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    disabled={bulkBusy}
+                    onClick={handleBulkRequestInvoice}
+                    style={{ height: 32, padding: "0 14px", fontSize: 13, whiteSpace: "nowrap" }}
+                  >
+                    {bulkBusy ? "Đang đưa sang B4…" : `Xuất hoá đơn cho ${selectedEligible.length} AR đang chọn`}
+                  </button>
+                  <button type="button" className="btn" disabled={bulkBusy} onClick={() => setSelectedArIds(new Set())} style={{ height: 32, padding: "0 12px", fontSize: 13 }}>
+                    Bỏ chọn
+                  </button>
+                </div>
+              )}
               <div className="tbl-wrap" style={{ overflowX: "auto" }}>
                 <table className="tbl" style={{ minWidth: 1180 }}>
                   <thead>
                     <tr>
+                      <th style={{ width: 40, textAlign: "center" }}>
+                        <input
+                          type="checkbox"
+                          title="Chọn tất cả AR đủ điều kiện xuất HĐ (theo bộ lọc hiện tại)"
+                          checked={allEligibleSelected}
+                          disabled={eligibleArIds.length === 0}
+                          onChange={toggleSelectAll}
+                          style={{ cursor: eligibleArIds.length === 0 ? "not-allowed" : "pointer" }}
+                        />
+                      </th>
                       <th>AR-ID / PR-ID</th>
-                      <th>Khách hàng</th>
-                      <th>UID</th>
-                      <th>Gói học</th>
-                      <th style={{ textAlign: "right" }}>Tiền</th>
-                      <th>Order ID</th>
-                      <th>Trạng thái</th>
-                      <th>Thưởng GT</th>
-                      <th>Tạo lúc</th>
+                      {isVisible("customer") && <th>Khách hàng</th>}
+                      {isVisible("uid") && <th>UID</th>}
+                      {isVisible("package") && <th>Gói học</th>}
+                      {isVisible("amount") && <th style={{ textAlign: "right" }}>Tiền</th>}
+                      {isVisible("order") && <th>Order ID</th>}
+                      <th>Xuất HĐ</th>
+                      {isVisible("status") && <th>Trạng thái</th>}
+                      {isVisible("referral") && <th>Thưởng GT</th>}
+                      {isVisible("createdAt") && <th>Tạo lúc</th>}
                     </tr>
                   </thead>
                   <tbody>
                     {courseVisible.length === 0 && (
                       <tr>
-                        <td colSpan={9}>
+                        <td colSpan={visibleDataCols + 2}>
                           <div className="empty">
                             <Icons.Sparkle size={20} />
                             <div>Chưa có khoá học nào khớp với điều kiện lọc.</div>
@@ -2630,9 +2937,21 @@ export default function ActivationTab() {
                         </td>
                       </tr>
                     )}
-                    {coursePage.rows.map((group, gi) =>
-                      group.rows.map((row) => renderCourseRow(row, GROUP_TINTS[gi % GROUP_TINTS.length]))
-                    )}
+                    {coursePage.rows.map((group, gi) => {
+                      const tint = GROUP_TINTS[gi % GROUP_TINTS.length];
+                      const action = arActionById.get(group.arId) ?? { kind: "empty" as const };
+                      const selectable = isArInvoiceActionable(action);
+                      const checked = selectedArIds.has(group.arId);
+                      return group.rows.map((row, ri) =>
+                        renderCourseRow(row, tint, {
+                          isFirstOfGroup: ri === 0,
+                          groupSize: group.rows.length,
+                          action,
+                          selectable,
+                          checked,
+                        })
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>

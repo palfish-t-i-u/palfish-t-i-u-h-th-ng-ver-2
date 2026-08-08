@@ -21,11 +21,15 @@ export interface ColumnVisibilityApi {
 
 export function useColumnVisibility(
   tableId: string,
-  allKeys: readonly string[]
+  allKeys: readonly string[],
+  // Cột ẩn mặc định LẦN ĐẦU trong session (chưa có cache). Khi người dùng đã
+  // tự bật/tắt (cache tồn tại, kể cả rỗng do "Hiện tất cả") thì tôn trọng lựa
+  // chọn đó, KHÔNG áp lại mặc định. Prune về allKeys để né key rác sau deploy.
+  defaultHidden: readonly string[] = []
 ): ColumnVisibilityApi {
   const [hidden, setHidden] = useState<ReadonlySet<string>>(() => {
     const cached = sessionCache.get(tableId);
-    if (!cached) return new Set();
+    if (!cached) return new Set(defaultHidden.filter((k) => allKeys.includes(k)));
     // G5: prune key rác không còn trong allKeys khi init
     return new Set([...cached].filter((k) => allKeys.includes(k)));
   });
