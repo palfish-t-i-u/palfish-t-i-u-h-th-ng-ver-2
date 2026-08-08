@@ -162,24 +162,24 @@
   white-space: nowrap;
 }
 .gmv-prototype .filter-field > span {
-  font-size: 11px; font-weight: 700; color: var(--text-3);
+  font-size: 11px; font-weight: 700; color: var(--primary-700);
   text-transform: uppercase; letter-spacing: 0.03em;
 }
 .gmv-prototype .filter-select {
   appearance: none; -webkit-appearance: none; -moz-appearance: none;
   padding: 8px 30px 8px 12px;
-  border: 1.5px solid var(--border-strong);
+  border: 1.5px solid var(--primary);
   border-radius: 9px;
   background-color: white;
-  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%238b91a4' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'><polyline points='6 9 12 15 18 9'/></svg>");
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%236f5cf3' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'><polyline points='6 9 12 15 18 9'/></svg>");
   background-repeat: no-repeat;
   background-position: right 9px center;
-  color: var(--text);
+  color: var(--primary-700);
   font-size: 13px; font-weight: 600;
   cursor: pointer;
   transition: border-color 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease;
 }
-.gmv-prototype .filter-select:hover { border-color: var(--primary); }
+.gmv-prototype .filter-select:hover { border-color: var(--primary); background-color: var(--primary-50); }
 .gmv-prototype .filter-select:focus {
   outline: none; border-color: var(--primary);
   box-shadow: 0 0 0 3px rgba(111, 92, 243, 0.14);
