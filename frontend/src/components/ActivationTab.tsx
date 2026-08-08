@@ -51,9 +51,38 @@ const ACTIVATION_COLUMNS: readonly ColumnOption[] = [
   { key: "status", label: "Trạng thái", hideable: true },
   { key: "referral", label: "Thưởng GT", hideable: true },
   { key: "createdAt", label: "Tạo lúc", hideable: true },
+  { key: "tienVeSom", label: "Tiền về (sớm nhất)", hideable: true },
+  { key: "tienVeMuon", label: "Tiền về (muộn nhất)", hideable: true },
 ];
 /** Mặc định ẩn "Tạo lúc" (mong muốn chị Hiền) — vẫn giữ dữ liệu createdAt để sắp xếp. */
 const ACTIVATION_DEFAULT_HIDDEN = ["createdAt"] as const;
+
+/** Loại thời gian dùng cho bộ lọc khoảng thời gian trên list Tạo gói học (A-T4). */
+type ActivationTimeType = "tien_ve_som" | "tien_ve_muon" | "created";
+const ACTIVATION_TIME_TYPE_OPTIONS: { value: ActivationTimeType; label: string }[] = [
+  { value: "tien_ve_som", label: "Thời gian tiền về (sớm nhất)" },
+  { value: "tien_ve_muon", label: "Thời gian tiền về (muộn nhất)" },
+  { value: "created", label: "Thời gian tạo yêu cầu" },
+];
+
+/** Ngày dùng để lọc theo loại thời gian đã chọn. Trống → bị loại khi có filter (đúng: chưa có tiền về). */
+function activationFilterDate(
+  a: { createdAt?: string; tienVeSom?: string | null; tienVeMuon?: string | null },
+  tt: ActivationTimeType
+): string {
+  if (tt === "created") return a.createdAt ?? "";
+  if (tt === "tien_ve_muon") return a.tienVeMuon ?? "";
+  return a.tienVeSom ?? "";
+}
+
+/** Ngày ISO "YYYY-MM-DD" → "DD/MM/YYYY". Trống → "-". */
+function fmtTienVeDate(d: string | null | undefined): string {
+  const s = (d ?? "").slice(0, 10);
+  if (!s) return "-";
+  const parts = s.split("-");
+  if (parts.length !== 3) return s;
+  return `${parts[2]}/${parts[1]}/${parts[0]}`;
+}
 
 /** Nhãn hiển thị + tooltip cho nút/chip "Xuất HĐ" cấp AR trên list. */
 function arInvoiceActionLabel(action: ArInvoiceAction): string {
@@ -2029,6 +2058,8 @@ export default function ActivationTab() {
   const copyResetRef = useRef<number | null>(null);
   const savedResetRef = useRef<number | null>(null);
   const [dateRange, setDateRange] = useState<DateRange>(EMPTY_RANGE);
+  // A-T4 — loại thời gian áp cho bộ lọc khoảng: tiền về sớm/muộn nhất hoặc ngày tạo YC.
+  const [timeType, setTimeType] = useState<ActivationTimeType>("tien_ve_som");
   const [createOpen, setCreateOpen] = useState(false);
   // 1.5 — filter "Thưởng giới thiệu"
   const [referralFilter, setReferralFilter] = useState<"all" | "none" | "partial" | "full" | "any">("all");
@@ -2083,7 +2114,7 @@ export default function ActivationTab() {
     const q = search.trim().toLowerCase();
     return rows.filter((a) => {
       if (tab !== "all" && a.status !== tab) return false;
-      if (!inDateRange(a.createdAt, dateRange)) return false;
+      if (!inDateRange(activationFilterDate(a, timeType), dateRange)) return false;
       if (referralFilter !== "all") {
         const rs = getArReferralStatus(a);
         if (referralFilter === "any") {
@@ -2102,7 +2133,7 @@ export default function ActivationTab() {
         v.toLowerCase().includes(q)
       );
     });
-  }, [rows, tab, search, dateRange, referralFilter, holdFilter]);
+  }, [rows, tab, search, dateRange, timeType, referralFilter, holdFilter]);
 
   // Badge tab đếm ở cấp khoá học (toàn bộ, không lọc) — khác KPI (cấp AR).
   const tabCounts = useMemo(() => countCourseTabs(rows), [rows]);
@@ -2111,7 +2142,7 @@ export default function ActivationTab() {
   const courseVisible = useMemo(() => {
     const nq = normVi(search.trim());
     const arFiltered = rows.filter((a) => {
-      if (!inDateRange(a.createdAt, dateRange)) return false;
+      if (!inDateRange(activationFilterDate(a, timeType), dateRange)) return false;
       if (referralFilter !== "all") {
         const rs = getArReferralStatus(a);
         if (referralFilter === "any") {
@@ -2130,7 +2161,7 @@ export default function ActivationTab() {
     return flatCourseRows(arFiltered).filter(
       (r) => courseRowMatchesTab(r, tab) && courseRowMatchesSearch(r, nq)
     );
-  }, [rows, tab, search, dateRange, referralFilter, holdFilter]);
+  }, [rows, tab, search, dateRange, timeType, referralFilter, holdFilter]);
 
   const courseGroups = useMemo(() => groupRowsByAr(courseVisible), [courseVisible]);
   const coursePage = useMemo(() => paginate(courseGroups, page, AR_PER_PAGE), [courseGroups, page]);
@@ -2139,7 +2170,7 @@ export default function ActivationTab() {
   useEffect(() => {
     setPage(1);
     setSelectedArIds(new Set());
-  }, [tab, search, dateRange, referralFilter, holdFilter]);
+  }, [tab, search, dateRange, timeType, referralFilter, holdFilter]);
 
   // Dọn timer feedback khi unmount.
   useEffect(
@@ -2653,6 +2684,12 @@ export default function ActivationTab() {
           })()}
         </td>
         )}
+        {isVisible("tienVeSom") && (
+          <td><div className="cell-time">{fmtTienVeDate(row.tienVeSom)}</div></td>
+        )}
+        {isVisible("tienVeMuon") && (
+          <td><div className="cell-time">{fmtTienVeDate(row.tienVeMuon)}</div></td>
+        )}
       </tr>
     );
   };
@@ -2831,7 +2868,13 @@ export default function ActivationTab() {
               ))}
             </div>
             <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
-              <DateRangeFilter value={dateRange} onChange={setDateRange} />
+              <DateRangeFilter
+                value={dateRange}
+                onChange={setDateRange}
+                timeType={timeType}
+                timeTypeOptions={ACTIVATION_TIME_TYPE_OPTIONS}
+                onTimeTypeChange={(v) => setTimeType(v as ActivationTimeType)}
+              />
               {!isMobile && (
                 <ColumnVisibilityMenu
                   columns={ACTIVATION_COLUMNS}
@@ -2924,6 +2967,8 @@ export default function ActivationTab() {
                       {isVisible("status") && <th>Trạng thái</th>}
                       {isVisible("referral") && <th>Thưởng GT</th>}
                       {isVisible("createdAt") && <th>Tạo lúc</th>}
+                      {isVisible("tienVeSom") && <th>Tiền về (sớm nhất)</th>}
+                      {isVisible("tienVeMuon") && <th>Tiền về (muộn nhất)</th>}
                     </tr>
                   </thead>
                   <tbody>

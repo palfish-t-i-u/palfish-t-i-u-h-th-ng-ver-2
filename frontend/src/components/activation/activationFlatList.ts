@@ -32,6 +32,9 @@ export interface CourseRow {
   referral: ReferralStatus | null;
   holdActivation: boolean;
   holdNote: string | null;
+  /** Ngày tiền về sớm/muộn nhất của AR (Sổ doanh thu) — ISO "YYYY-MM-DD" hoặc null. */
+  tienVeSom: string | null;
+  tienVeMuon: string | null;
 }
 
 export interface CourseRowGroup {
@@ -77,6 +80,8 @@ export function flatCourseRows(ars: ActiveRequest[]): CourseRow[] {
           referral: courseReferral(c),
           holdActivation: Boolean(ar.holdActivation),
           holdNote: ar.holdNote ?? null,
+          tienVeSom: ar.tienVeSom ?? null,
+          tienVeMuon: ar.tienVeMuon ?? null,
         });
       });
     });

@@ -209,6 +209,10 @@ export interface ActiveRequest {
   uids: ActiveUidGroup[];
   holdActivation?: boolean;
   holdNote?: string | null;
+  /** Ngày tiền về sớm nhất (min) trong Sổ doanh thu của AR — ISO "YYYY-MM-DD". null = chưa có tiền về. */
+  tienVeSom?: string | null;
+  /** Ngày tiền về muộn nhất (max) trong Sổ doanh thu của AR — ISO "YYYY-MM-DD". */
+  tienVeMuon?: string | null;
 }
 
 export interface PaymentRequestsListResponse {
@@ -376,6 +380,8 @@ export type ActiveRequestApiRow = {
   created_at?: string;
   hold_activation?: boolean;
   hold_note?: string | null;
+  tien_ve_som?: string | null;
+  tien_ve_muon?: string | null;
   payment_request?: { name?: string; email?: string; sale_name?: string; sale_email?: string };
 };
 

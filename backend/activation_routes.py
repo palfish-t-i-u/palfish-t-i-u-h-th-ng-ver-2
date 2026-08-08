@@ -392,7 +392,58 @@ def _compute_referral_status(courses: list[dict[str, Any]]) -> str | None:
     return "partial"
 
 
-def _serialize_ar(row: dict[str, Any], pr: dict[str, Any] | None = None, sale_name_map: dict[str, str] | None = None) -> dict[str, Any]:
+def _tien_ve_map(sb, ar_ids: list[str]) -> dict[str, tuple[str | None, str | None]]:
+    """Ngày tiền về (sớm nhất, muộn nhất) mỗi AR — lấy từ Sổ doanh thu.
+
+    Nguồn khớp C-T1: mỗi dòng Sổ sinh từ khoá học của AR có note = "AR {ar_id}"
+    và cột `ngay_tien_ve` đã chuẩn (đơn thẻ = ngày quẹt, CK = ngày xác nhận).
+    Trả về {ar_id: (som_iso, muon_iso)}; AR chưa có dòng Sổ sẽ vắng mặt.
+    """
+    out: dict[str, tuple[str | None, str | None]] = {}
+    ids = [str(a) for a in ar_ids if a]
+    if not ids:
+        return out
+    notes = [f"AR {aid}" for aid in ids]
+    CHUNK = 150
+    rows: list[dict[str, Any]] = []
+    for i in range(0, len(notes), CHUNK):
+        try:
+            res = (
+                sb.table("so_doanh_thu")
+                .select("note, ngay_tien_ve")
+                .in_("note", notes[i : i + CHUNK])
+                .execute()
+            )
+            rows.extend(res.data or [])
+        except Exception:
+            continue
+    by_ar: dict[str, list[str]] = {}
+    for r in rows:
+        note = str(r.get("note") or "")
+        if not note.startswith("AR "):
+            continue
+        aid = note[3:].strip()
+        d = r.get("ngay_tien_ve")
+        if not d:
+            continue
+        by_ar.setdefault(aid, []).append(str(d)[:10])
+    for aid, dates in by_ar.items():
+        if dates:
+            out[aid] = (min(dates), max(dates))  # ISO date → so sánh chuỗi = so sánh thời gian
+    return out
+
+
+def _tien_ve_bounds(sb, ar_id: str) -> tuple[str | None, str | None]:
+    """Ngày tiền về (sớm, muộn) của MỘT AR — dùng cho response mutation lẻ."""
+    return _tien_ve_map(sb, [str(ar_id)]).get(str(ar_id), (None, None))
+
+
+def _serialize_ar(
+    row: dict[str, Any],
+    pr: dict[str, Any] | None = None,
+    sale_name_map: dict[str, str] | None = None,
+    tien_ve: tuple[str | None, str | None] | None = None,
+) -> dict[str, Any]:
     raw_uids_data = row.get("uids_data") or []
     uids_data: list[dict[str, Any]] = []
     for uid_block in raw_uids_data:
@@ -429,6 +480,8 @@ def _serialize_ar(row: dict[str, Any], pr: dict[str, Any] | None = None, sale_na
         "hold_activation": bool(row.get("hold_activation")),
         "hold_note": row.get("hold_note") or None,
     }
+    if tien_ve is not None:
+        out["tien_ve_som"], out["tien_ve_muon"] = tien_ve
     if pr is not None:
         target, received = _pr_amounts(pr)
         budget = max(target, received)
@@ -1757,7 +1810,16 @@ def register_activation_routes(app, supabase_factory):
             snm = _sale_name_map(sb)
         except Exception:
             snm = {}
-        return [_serialize_ar(r, pr_map.get(str(r.get("pr_id") or "")), snm) for r in rows]
+        tv_map = _tien_ve_map(sb, [str(r.get("id")) for r in rows if r.get("id")])
+        return [
+            _serialize_ar(
+                r,
+                pr_map.get(str(r.get("pr_id") or "")),
+                snm,
+                tien_ve=tv_map.get(str(r.get("id") or ""), (None, None)),
+            )
+            for r in rows
+        ]
 
     @app.get("/api/v1/active-requests/{ar_id}", tags=["Activation"])
     def get_active_request(ar_id: str, authorization: str | None = Header(None)):
@@ -1777,7 +1839,7 @@ def register_activation_routes(app, supabase_factory):
 
         row = res.data[0]
         pr = _fetch_payment_request(sb, str(row.get("pr_id") or "")) if row.get("pr_id") else None
-        return _serialize_ar(row, pr)
+        return _serialize_ar(row, pr, tien_ve=_tien_ve_bounds(sb, ar_id))
 
     @app.get("/api/v1/payment-requests/{pr_id}/course-budget", tags=["Activation"])
     def get_pr_course_budget(pr_id: str, authorization: str | None = Header(None)):
@@ -1994,7 +2056,7 @@ def register_activation_routes(app, supabase_factory):
                             500, f"Khong cap nhat active_requests: {exc}"
                         ) from exc
                 pr_map = _fetch_prs_by_ids(sb, [str(merged.get("pr_id") or "")])
-                return _serialize_ar(merged, pr_map.get(str(merged.get("pr_id") or "")))
+                return _serialize_ar(merged, pr_map.get(str(merged.get("pr_id") or "")), tien_ve=_tien_ve_bounds(sb, ar_id))
             patch["uids_data"] = uids_data
             patch["status"] = guarded_status
             guarded_uids = uids_data
@@ -2020,7 +2082,7 @@ def register_activation_routes(app, supabase_factory):
             _sync_ledger_courses_from_uids(sb, ar_id, merged.get("uids_data") or guarded_uids)
             _writeback_child_uids_to_pr(sb, merged)
         pr_map = _fetch_prs_by_ids(sb, [str(merged.get("pr_id") or "")])
-        return _serialize_ar(merged, pr_map.get(str(merged.get("pr_id") or "")))
+        return _serialize_ar(merged, pr_map.get(str(merged.get("pr_id") or "")), tien_ve=_tien_ve_bounds(sb, ar_id))
 
     @app.patch("/api/v1/active-requests/{ar_id}/credit-referral", tags=["Activation"])
     def credit_referral(
@@ -2302,7 +2364,8 @@ def register_activation_routes(app, supabase_factory):
             else:
                 print(f"[activation] B3 → Sổ: skip/fail AR {ar_id} course {course_code}")
             pr_map = _fetch_prs_by_ids(sb, [str(row.get("pr_id") or "")])
-            return _serialize_ar(row, pr_map.get(str(row.get("pr_id") or "")))
+            return _serialize_ar(row, pr_map.get(str(row.get("pr_id") or "")),
+                                 tien_ve=_tien_ve_bounds(sb, ar_id))
 
         row = rpc_active_request_row(
             sb,
@@ -2316,7 +2379,8 @@ def register_activation_routes(app, supabase_factory):
             {"old_order_id": old_order_id},
         )
         pr_map = _fetch_prs_by_ids(sb, [str(row.get("pr_id") or "")])
-        return _serialize_ar(row, pr_map.get(str(row.get("pr_id") or "")))
+        return _serialize_ar(row, pr_map.get(str(row.get("pr_id") or "")),
+                             tien_ve=_tien_ve_bounds(sb, ar_id))
 
     @app.post(
         "/api/v1/active-requests/{ar_id}/request-invoice",

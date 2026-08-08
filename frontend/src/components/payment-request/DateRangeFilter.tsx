@@ -11,6 +11,7 @@ export const EMPTY_RANGE: DateRange = { from: "", to: "", preset: "all" };
 
 const PRESETS: Array<[string, string]> = [
   ["today", "Hôm nay"],
+  ["yesterday", "Hôm qua"],
   ["7d", "7 ngày"],
   ["30d", "30 ngày"],
   ["thismonth", "Tháng này"],
@@ -33,6 +34,12 @@ export function presetRange(preset: string, today: Date = new Date()): DateRange
     const t = localIso(today);
     return { from: t, to: t, preset };
   }
+  if (preset === "yesterday") {
+    const y = new Date(today);
+    y.setDate(today.getDate() - 1);
+    const t = localIso(y);
+    return { from: t, to: t, preset };
+  }
   if (preset === "7d") {
     const from = new Date(today);
     from.setDate(today.getDate() - 6);
@@ -50,12 +57,24 @@ export function presetRange(preset: string, today: Date = new Date()): DateRange
   return { from: "", to: "", preset: "all" };
 }
 
+export interface TimeTypeOption {
+  value: string;
+  label: string;
+}
+
 export default function DateRangeFilter({
   value,
   onChange,
+  timeType,
+  timeTypeOptions,
+  onTimeTypeChange,
 }: {
   value: DateRange;
   onChange: (next: DateRange) => void;
+  /** Loại thời gian đang lọc (tuỳ chọn). Chỉ hiện selector khi truyền đủ 3 prop. */
+  timeType?: string;
+  timeTypeOptions?: TimeTypeOption[];
+  onTimeTypeChange?: (next: string) => void;
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement | null>(null);
@@ -85,6 +104,23 @@ export default function DateRangeFilter({
       </button>
       {open && (
         <div className="date-pop">
+          {timeTypeOptions && timeTypeOptions.length > 0 && onTimeTypeChange && (
+            <>
+              <div className="info-label">Loại thời gian</div>
+              <select
+                className="input input-sm"
+                style={{ width: "100%", marginBottom: 8 }}
+                value={timeType ?? timeTypeOptions[0].value}
+                onChange={(e) => onTimeTypeChange(e.target.value)}
+              >
+                {timeTypeOptions.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+            </>
+          )}
           <div className="info-label">Khoảng nhanh</div>
           <div className="quick-row">
             {PRESETS.map(([k, label]) => (

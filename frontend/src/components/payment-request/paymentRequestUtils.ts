@@ -372,6 +372,9 @@ export function fromApiActiveRequest(raw: ActiveRequestApiRow): ActiveRequest {
     createdBy: "",
     holdActivation: raw.hold_activation ?? false,
     holdNote: raw.hold_note ?? null,
+    // undefined khi API không trả (route mutation chưa wire) — tránh xoá giá trị cũ nếu có merge.
+    tienVeSom: "tien_ve_som" in raw ? (raw.tien_ve_som ?? null) : undefined,
+    tienVeMuon: "tien_ve_muon" in raw ? (raw.tien_ve_muon ?? null) : undefined,
     uids: (raw.uids_data ?? []).map((u) => ({
       uid: u.uid ?? "",
       ...(u.name ? { name: u.name } : {}),

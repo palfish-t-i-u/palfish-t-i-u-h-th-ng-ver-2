@@ -26,6 +26,16 @@ describe("presetRange", () => {
     expect(r).toEqual({ from: "2026-08-04", to: "2026-08-04", preset: "today" });
   });
 
+  it("yesterday: from = to = today - 1", () => {
+    const r = presetRange("yesterday", today);
+    expect(r).toEqual({ from: "2026-08-03", to: "2026-08-03", preset: "yesterday" });
+  });
+
+  it("yesterday: crosses month boundary", () => {
+    const r = presetRange("yesterday", new Date(2026, 7, 1)); // Aug 1
+    expect(r).toEqual({ from: "2026-07-31", to: "2026-07-31", preset: "yesterday" });
+  });
+
   it("7d: 7-day window", () => {
     const r = presetRange("7d", today);
     expect(r).toEqual({ from: "2026-07-29", to: "2026-08-04", preset: "7d" });
