@@ -617,20 +617,34 @@ def register_gateway_routes(app, get_supabase: Callable[[], Any]) -> None:
                         .execute()
                     )
                 if l_res and l_res.data:
-                    fee_vnd = max(0, int(gw_amount) - int(gw_net))
+                    fee_total = max(0, int(gw_amount) - int(gw_net))
                     gw_paid_at = txn_row.get("paid_at")
-                    for l_row in l_res.data:
-                        pm = (l_row.get("payment_method") or "").lower()
-                        if not pm or any(k in pm for k in ("thẻ", "quẹt", "trả góp", "card", "installment")):
-                            stamp_net_fee(
-                                sb,
-                                ledger_row_id=l_row["id"],
-                                gateway_txn_id=txn_id,
-                                gross_vnd=l_row.get("so_tien_vnd") or gw_amount,
-                                fee_vnd=fee_vnd,
-                                rate=l_row.get("ty_gia_vnd_rmb"),
-                                paid_at=gw_paid_at,
-                            )
+                    # Multi-con: split fee proportional to so_tien_vnd across eligible rows.
+                    # Last row gets remainder to avoid rounding loss (max 1đ drift).
+                    eligible_rows = [
+                        l_row for l_row in l_res.data
+                        if not (pm := (l_row.get("payment_method") or "").lower()) or
+                        any(k in pm for k in ("thẻ", "quẹt", "trả góp", "card", "installment"))
+                    ]
+                    total_vnd = sum(int(r.get("so_tien_vnd") or 0) for r in eligible_rows) or 1
+                    fee_remaining = fee_total
+                    for i, l_row in enumerate(eligible_rows):
+                        is_last = (i == len(eligible_rows) - 1)
+                        row_vnd = int(l_row.get("so_tien_vnd") or 0)
+                        if is_last:
+                            row_fee = fee_remaining
+                        else:
+                            row_fee = int(fee_total * row_vnd / total_vnd)
+                            fee_remaining -= row_fee
+                        stamp_net_fee(
+                            sb,
+                            ledger_row_id=l_row["id"],
+                            gateway_txn_id=txn_id,
+                            gross_vnd=l_row.get("so_tien_vnd") or gw_amount,
+                            fee_vnd=row_fee,
+                            rate=l_row.get("ty_gia_vnd_rmb"),
+                            paid_at=gw_paid_at,
+                        )
             except Exception as exc:
                 print(f"[gateway] back-stamp net fee to ledger failed: {exc}")
         log_audit(sb, actor.email, "recon.txn_matched", "gateway_txn", txn_id, {

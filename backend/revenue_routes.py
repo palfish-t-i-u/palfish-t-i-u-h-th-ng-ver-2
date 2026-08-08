@@ -265,15 +265,38 @@ def _try_auto_stamp_fee(
         if gw_res.data:
             gw = gw_res.data[0]
             gw_amt = float(gw.get("amount") or 0)
-            gw_net = float(gw.get("net_amount") or 0)
-            if gw_net > 0:
-                fee = max(0, int(gw_amt - gw_net))
+            gw_net_amt = float(gw.get("net_amount") or 0)
+            if gw_net_amt > 0:
+                fee_total = max(0, int(gw_amt - gw_net_amt))
+                # Multi-con: split fee proportional to so_tien_vnd across all siblings.
+                # Query all Sổ rows for this PR to get total eligible VND (includes
+                # already-created siblings when B3 processes children sequentially).
+                ar_res = sb.table("active_requests").select("id").eq("pr_id", pr_id).execute()
+                ar_ids = [str(a["id"]) for a in (ar_res.data or []) if a.get("id")]
+                sibling_vnd_total = gross_vnd
+                if ar_ids:
+                    notes = [f"AR {aid}" for aid in ar_ids]
+                    sib_res = (
+                        sb.table("so_doanh_thu")
+                        .select("so_tien_vnd, payment_method")
+                        .in_("note", notes)
+                        .execute()
+                    )
+                    eligible_vnd = sum(
+                        int(r.get("so_tien_vnd") or 0)
+                        for r in (sib_res.data or [])
+                        if not (pm2 := (r.get("payment_method") or "").lower()) or
+                        any(k in pm2 for k in ("thẻ", "quẹt", "trả góp", "card", "installment"))
+                    )
+                    if eligible_vnd > 0:
+                        sibling_vnd_total = eligible_vnd
+                row_fee = int(fee_total * gross_vnd / sibling_vnd_total)
                 return stamp_net_fee(
                     sb,
                     ledger_row_id=ledger_row_id,
                     gateway_txn_id=gw["id"],
                     gross_vnd=gross_vnd,
-                    fee_vnd=fee,
+                    fee_vnd=row_fee,
                     rate=rate,
                     paid_at=gw.get("paid_at"),
                 )
