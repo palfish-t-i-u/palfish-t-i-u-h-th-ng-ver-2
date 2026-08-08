@@ -8,6 +8,8 @@ import {
   courseRowMatchesTab,
   flatCourseRows,
   groupRowsByAr,
+  isArInvoiceActionable,
+  summarizeArInvoiceAction,
 } from "./activationFlatList";
 import { normVi } from "../../lib/textUtils";
 
@@ -169,5 +171,61 @@ describe("applyCourseOrderId", () => {
 describe("AR_PER_PAGE", () => {
   it("là số dương", () => {
     expect(AR_PER_PAGE).toBe(12);
+  });
+});
+
+describe("summarizeArInvoiceAction", () => {
+  it("empty: AR không có khoá nào", () => {
+    expect(summarizeArInvoiceAction([])).toEqual({ kind: "empty" });
+  });
+
+  it("all_invoiced: mọi khoá đã xuất HĐ", () => {
+    const a = summarizeArInvoiceAction([
+      { invoiced: true, requested: false, hardMissing: [] },
+      { invoiced: true, requested: true, hardMissing: [] },
+    ]);
+    expect(a).toEqual({ kind: "all_invoiced" });
+  });
+
+  it("all_requested: hết khoá chờ nhưng chưa xuất hết (còn khoá mới yêu cầu)", () => {
+    const a = summarizeArInvoiceAction([
+      { invoiced: true, requested: false, hardMissing: [] },
+      { invoiced: false, requested: true, hardMissing: [] },
+    ]);
+    expect(a).toEqual({ kind: "all_requested" });
+  });
+
+  it("ready: còn khoá chờ, không vướng blocker cứng", () => {
+    const a = summarizeArInvoiceAction([
+      { invoiced: false, requested: false, hardMissing: [] },
+    ]);
+    expect(a).toEqual({ kind: "ready" });
+  });
+
+  it("blocked: khoá chờ còn thiếu điều kiện cứng, gộp trùng nhãn", () => {
+    const a = summarizeArInvoiceAction([
+      { invoiced: false, requested: false, hardMissing: ["số tiền"] },
+      { invoiced: false, requested: false, hardMissing: ["số tiền", "địa chỉ"] },
+    ]);
+    expect(a.kind).toBe("blocked");
+    if (a.kind === "blocked") expect(a.missing.sort()).toEqual(["số tiền", "địa chỉ"].sort());
+  });
+
+  it("blocker cứng chỉ xét khoá CHỜ — khoá đã xuất/đã yêu cầu bị bỏ qua", () => {
+    const a = summarizeArInvoiceAction([
+      { invoiced: true, requested: false, hardMissing: ["số tiền"] }, // đã xuất → không tính
+      { invoiced: false, requested: false, hardMissing: [] }, // chờ, đủ điều kiện
+    ]);
+    expect(a).toEqual({ kind: "ready" });
+  });
+});
+
+describe("isArInvoiceActionable", () => {
+  it("chỉ 'ready' mới cho chọn + xuất", () => {
+    expect(isArInvoiceActionable({ kind: "ready" })).toBe(true);
+    expect(isArInvoiceActionable({ kind: "empty" })).toBe(false);
+    expect(isArInvoiceActionable({ kind: "all_invoiced" })).toBe(false);
+    expect(isArInvoiceActionable({ kind: "all_requested" })).toBe(false);
+    expect(isArInvoiceActionable({ kind: "blocked", missing: ["số tiền"] })).toBe(false);
   });
 });

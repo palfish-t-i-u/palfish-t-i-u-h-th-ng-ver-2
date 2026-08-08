@@ -71,4 +71,29 @@ describe("useColumnVisibility", () => {
     expect(second.result.current.hiddenCount).toBe(0);
     expect(second.result.current.visibleCount).toBe(3);
   });
+
+  it("defaultHidden ẩn cột đúng lần đầu (chưa có cache)", () => {
+    const { result } = renderHook(() =>
+      useColumnVisibility("t1", KEYS, ["c"])
+    );
+    expect(result.current.isVisible("c")).toBe(false);
+    expect(result.current.isVisible("a")).toBe(true);
+    expect(result.current.visibleCount).toBe(2);
+  });
+
+  it("defaultHidden bỏ qua key không có trong allKeys", () => {
+    const { result } = renderHook(() =>
+      useColumnVisibility("t1", KEYS, ["c", "khong-ton-tai"])
+    );
+    expect(result.current.hiddenCount).toBe(1);
+    expect(result.current.isVisible("c")).toBe(false);
+  });
+
+  it("khi đã có lựa chọn (cache) thì KHÔNG áp lại defaultHidden", () => {
+    const first = renderHook(() => useColumnVisibility("t1", KEYS, ["c"]));
+    act(() => first.result.current.toggle("c")); // user tự hiện lại "c" → cache
+    first.unmount();
+    const second = renderHook(() => useColumnVisibility("t1", KEYS, ["c"]));
+    expect(second.result.current.isVisible("c")).toBe(true); // tôn trọng lựa chọn, không ẩn lại
+  });
 });

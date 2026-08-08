@@ -121,6 +121,43 @@ export function groupRowsByAr(rows: CourseRow[]): CourseRowGroup[] {
   return groups;
 }
 
+/** Trạng thái nút "Xuất HĐ" mức AR trên list Tạo gói học (A-T1/A-T2).
+ * - `empty`: AR không có khoá học nào.
+ * - `all_invoiced`: mọi khoá đã xuất hoá đơn → không còn gì để yêu cầu.
+ * - `all_requested`: không còn khoá "chờ" (khoá còn lại đã yêu cầu xuất) nhưng
+ *   chưa xuất hết → hiện "Đã yêu cầu".
+ * - `blocked`: còn khoá chờ nhưng vướng điều kiện CỨNG (thiếu gói/số tiền/địa chỉ).
+ * - `ready`: còn khoá chờ và không vướng cứng → cho phép Yêu cầu xuất HĐ cả AR. */
+export type ArInvoiceAction =
+  | { kind: "empty" }
+  | { kind: "all_invoiced" }
+  | { kind: "all_requested" }
+  | { kind: "blocked"; missing: string[] }
+  | { kind: "ready" };
+
+/** Chỉ AR ở trạng thái `ready` mới cho chọn (checkbox) + xuất hàng loạt. */
+export function isArInvoiceActionable(action: ArInvoiceAction): boolean {
+  return action.kind === "ready";
+}
+
+/**
+ * Tổng hợp trạng thái nút xuất HĐ cấp AR từ các khoá của nó. Thuần (pure) để
+ * test được — caller (ActivationTab) tính `hardMissing` qua getInvoiceBlockers
+ * (blocker KHÔNG `soft`) rồi truyền vào đây, tránh vòng import.
+ */
+export function summarizeArInvoiceAction(
+  courses: { invoiced: boolean; requested: boolean; hardMissing: readonly string[] }[]
+): ArInvoiceAction {
+  if (courses.length === 0) return { kind: "empty" };
+  const pending = courses.filter((c) => !c.invoiced && !c.requested);
+  if (pending.length === 0) {
+    return courses.every((c) => c.invoiced) ? { kind: "all_invoiced" } : { kind: "all_requested" };
+  }
+  const missing = [...new Set(pending.flatMap((c) => c.hardMissing))];
+  if (missing.length > 0) return { kind: "blocked", missing };
+  return { kind: "ready" };
+}
+
 /** Thay đổi bất biến chỉ Order ID của một khoá (match theo courseCode).
  * Precondition: courseCode là duy nhất trong một AR (BE đảm bảo). */
 export function applyCourseOrderId(ar: ActiveRequest, courseCode: string, orderId: string): ActiveRequest {
