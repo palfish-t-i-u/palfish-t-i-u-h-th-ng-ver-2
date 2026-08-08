@@ -2884,68 +2884,66 @@ export default function ActivationTab() {
               onChange={(e) => setSearch(e.target.value)}
             />
           </div>
-          {/* Bộ lọc gọn: mỗi nhóm 1 dropdown thay vì rải chip inline (đỡ chật). */}
-          <div style={{ flexBasis: "100%", display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center" }}>
-            <label style={{ display: "flex", gap: 4, alignItems: "center", fontSize: 11.5, color: "var(--text-3)" }}>
-              Thưởng giới thiệu:
-              <select
-                className="input input-sm"
-                value={referralFilter}
-                onChange={(e) => setReferralFilter(e.target.value as ReferralFilter)}
-              >
-                {ACTIVATION_REFERRAL_FILTERS.map((f) => (
-                  <option key={f.id} value={f.id}>
-                    {f.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label style={{ display: "flex", gap: 4, alignItems: "center", fontSize: 11.5, color: "var(--text-3)" }}>
-              Tạo gói học:
-              <select
-                className="input input-sm"
-                value={holdFilter}
-                onChange={(e) => setHoldFilter(e.target.value as HoldFilter)}
-              >
-                {ACTIVATION_HOLD_FILTERS.map((f) => (
-                  <option key={f.id} value={f.id}>
-                    {f.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label style={{ display: "flex", gap: 4, alignItems: "center", fontSize: 11.5, color: "var(--text-3)" }}>
-              Xuất HĐ:
-              <select
-                className="input input-sm"
-                value={invoiceFilter}
-                onChange={(e) => setInvoiceFilter(e.target.value as InvoiceStatusFilter)}
-              >
-                {ACTIVATION_INVOICE_FILTERS.map((f) => (
-                  <option key={f.id} value={f.id}>
-                    {f.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
-              <DateRangeFilter
-                value={dateRange}
-                onChange={setDateRange}
-                timeType={timeType}
-                timeTypeOptions={ACTIVATION_TIME_TYPE_OPTIONS}
-                onTimeTypeChange={(v) => setTimeType(v as ActivationTimeType)}
+          {/* Bộ lọc gọn: mỗi nhóm 1 dropdown, cùng hàng với ô tìm kiếm. */}
+          <label className="filter-field">
+            <span>Thưởng GT</span>
+            <select
+              className={`filter-select${referralFilter !== "all" ? " active" : ""}`}
+              value={referralFilter}
+              onChange={(e) => setReferralFilter(e.target.value as ReferralFilter)}
+            >
+              {ACTIVATION_REFERRAL_FILTERS.map((f) => (
+                <option key={f.id} value={f.id}>
+                  {f.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="filter-field">
+            <span>Tạo gói học</span>
+            <select
+              className={`filter-select${holdFilter !== "all" ? " active" : ""}`}
+              value={holdFilter}
+              onChange={(e) => setHoldFilter(e.target.value as HoldFilter)}
+            >
+              {ACTIVATION_HOLD_FILTERS.map((f) => (
+                <option key={f.id} value={f.id}>
+                  {f.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="filter-field">
+            <span>Xuất HĐ</span>
+            <select
+              className={`filter-select${invoiceFilter !== "all" ? " active" : ""}`}
+              value={invoiceFilter}
+              onChange={(e) => setInvoiceFilter(e.target.value as InvoiceStatusFilter)}
+            >
+              {ACTIVATION_INVOICE_FILTERS.map((f) => (
+                <option key={f.id} value={f.id}>
+                  {f.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
+            <DateRangeFilter
+              value={dateRange}
+              onChange={setDateRange}
+              timeType={timeType}
+              timeTypeOptions={ACTIVATION_TIME_TYPE_OPTIONS}
+              onTimeTypeChange={(v) => setTimeType(v as ActivationTimeType)}
+            />
+            {!isMobile && (
+              <ColumnVisibilityMenu
+                columns={ACTIVATION_COLUMNS}
+                isVisible={isVisible}
+                onToggle={toggle}
+                onShowAll={showAll}
+                visibleCount={visibleCount}
               />
-              {!isMobile && (
-                <ColumnVisibilityMenu
-                  columns={ACTIVATION_COLUMNS}
-                  isVisible={isVisible}
-                  onToggle={toggle}
-                  onShowAll={showAll}
-                  visibleCount={visibleCount}
-                />
-              )}
-            </div>
+            )}
           </div>
         </div>
 
