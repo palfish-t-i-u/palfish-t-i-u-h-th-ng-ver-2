@@ -618,6 +618,7 @@ def register_gateway_routes(app, get_supabase: Callable[[], Any]) -> None:
                     )
                 if l_res and l_res.data:
                     fee_vnd = max(0, int(gw_amount) - int(gw_net))
+                    gw_paid_at = txn_row.get("paid_at")
                     for l_row in l_res.data:
                         pm = (l_row.get("payment_method") or "").lower()
                         if not pm or any(k in pm for k in ("thẻ", "quẹt", "trả góp", "card", "installment")):
@@ -628,6 +629,7 @@ def register_gateway_routes(app, get_supabase: Callable[[], Any]) -> None:
                                 gross_vnd=l_row.get("so_tien_vnd") or gw_amount,
                                 fee_vnd=fee_vnd,
                                 rate=l_row.get("ty_gia_vnd_rmb"),
+                                paid_at=gw_paid_at,
                             )
             except Exception as exc:
                 print(f"[gateway] back-stamp net fee to ledger failed: {exc}")

@@ -198,20 +198,35 @@ def stamp_net_fee(
     gross_vnd: int,
     fee_vnd: int,
     rate: float | Decimal | None = None,
+    paid_at=None,
 ) -> bool:
-    """REV-04: Stamp net fee & net VND/RMB to a so_doanh_thu row. Idempotent according to gateway_txn_id IS NULL."""
+    """REV-04: Stamp net fee & net VND/RMB to a so_doanh_thu row. Idempotent according to gateway_txn_id IS NULL.
+
+    paid_at: gateway_transactions.paid_at (timestamptz). When supplied, sets ngay_tien_ve and pay_time
+    to the actual swipe date in UTC — bypassing the 22h booking-time rule for card/installment orders.
+    """
     net_vnd = max(0, int(gross_vnd) - int(fee_vnd))
     eff_rate = Decimal(str(rate or DEFAULT_TY_GIA))
     net_rmb = vnd_to_rmb(net_vnd, eff_rate)
 
+    update: dict = {
+        "phi_cong": int(fee_vnd),
+        "so_tien_net": int(net_vnd),
+        "gateway_txn_id": str(gateway_txn_id),
+        "gmv_rmb": float(net_rmb),
+    }
+    if paid_at is not None:
+        # C-T1: ngày quẹt = (paid_at AT TIME ZONE 'UTC')::date. KHÔNG dùng _parse_datetime
+        # (hàm đó coi naive là VN → double-shift). Ép UTC tường minh.
+        dt = paid_at if isinstance(paid_at, datetime) else datetime.fromisoformat(str(paid_at))
+        if dt.tzinfo:
+            dt = dt.astimezone(timezone.utc)
+        update["ngay_tien_ve"] = dt.date().isoformat()
+        update["pay_time"] = dt.isoformat()
+
     res = (
         sb.table("so_doanh_thu")
-        .update({
-            "phi_cong": int(fee_vnd),
-            "so_tien_net": int(net_vnd),
-            "gateway_txn_id": str(gateway_txn_id),
-            "gmv_rmb": float(net_rmb),
-        })
+        .update(update)
         .eq("id", ledger_row_id)
         .is_("gateway_txn_id", "null")
         .execute()
@@ -241,7 +256,7 @@ def _try_auto_stamp_fee(
 
         gw_res = (
             sb.table("gateway_transactions")
-            .select("id, amount, net_amount")
+            .select("id, amount, net_amount, paid_at")
             .in_("payment_line_id", line_ids)
             .eq("match_status", "matched")
             .limit(1)
@@ -260,6 +275,7 @@ def _try_auto_stamp_fee(
                     gross_vnd=gross_vnd,
                     fee_vnd=fee,
                     rate=rate,
+                    paid_at=gw.get("paid_at"),
                 )
     except Exception as exc:
         print(f"[revenue] auto-stamp fee check failed: {exc}")
@@ -1181,6 +1197,28 @@ def sync_ledger_from_ar_course(
             "updated_by_email": actor_email,
             "is_test": bool(pr.get("is_test")) if pr else False,
         }
+
+        # Khoá ổn định: crm_order_id duy nhất per đơn. Ưu tiên để chống trùng
+        # khi sync lại sau khi stamp đã đổi ngay_tien_ve (khoá lỏng uid+ngày+tiền
+        # sẽ không thấy dòng cũ do ngày đã khác sau C-T1 stamp).
+        if order_id:
+            order_match = (
+                sb.table("so_doanh_thu")
+                .select("id")
+                .eq("crm_order_id", order_id)
+                .limit(1)
+                .execute()
+            )
+            if order_match.data:
+                match_id = str(order_match.data[0]["id"])
+                sb.table("so_doanh_thu").update({
+                    "ma_don_hang": course_code,
+                    "loai_nhap": "tu_dong",
+                    "don_hang_id": None,
+                    "note": f"AR {ar_id}",
+                    "updated_by_email": actor_email,
+                }).eq("id", match_id).execute()
+                return match_id
 
         if uid:
             loose_match = (
