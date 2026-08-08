@@ -2506,7 +2506,7 @@ export default function ActivationTab() {
           <td
             rowSpan={ctx.groupSize}
             onClick={(e) => e.stopPropagation()}
-            style={{ borderLeft: `3px solid ${borderColor}`, textAlign: "center", verticalAlign: "top", paddingTop: 12, width: 40 }}
+            style={{ borderLeft: `3px solid ${borderColor}`, textAlign: "center", verticalAlign: "middle", width: 40 }}
           >
             {ctx.selectable ? (
               <input
@@ -2619,7 +2619,7 @@ export default function ActivationTab() {
         </td>
         )}
         {ctx.isFirstOfGroup && (
-          <td rowSpan={ctx.groupSize} onClick={(e) => e.stopPropagation()} style={{ verticalAlign: "top", paddingTop: 10 }}>
+          <td rowSpan={ctx.groupSize} onClick={(e) => e.stopPropagation()} style={{ verticalAlign: "middle" }}>
             {renderArInvoiceCell(row.arId, ctx.action)}
           </td>
         )}
