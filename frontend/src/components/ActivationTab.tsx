@@ -110,6 +110,24 @@ function matchesInvoiceFilter(action: ArInvoiceAction, f: InvoiceStatusFilter): 
   }
 }
 
+/** Bộ lọc thưởng giới thiệu. */
+type ReferralFilter = "all" | "none" | "partial" | "full" | "any";
+const ACTIVATION_REFERRAL_FILTERS: { id: ReferralFilter; label: string }[] = [
+  { id: "all", label: "Tất cả" },
+  { id: "any", label: "Có thưởng" },
+  { id: "none", label: "Chưa cộng" },
+  { id: "partial", label: "Cộng 1 phần" },
+  { id: "full", label: "Đã cộng" },
+];
+
+/** Bộ lọc trạng thái tạo gói học. */
+type HoldFilter = "all" | "now" | "hold";
+const ACTIVATION_HOLD_FILTERS: { id: HoldFilter; label: string }[] = [
+  { id: "all", label: "Tất cả" },
+  { id: "now", label: "Tạo gói học ngay" },
+  { id: "hold", label: "KH chưa muốn tạo gói" },
+];
+
 /** Nhãn hiển thị + tooltip cho nút/chip "Xuất HĐ" cấp AR trên list. */
 function arInvoiceActionLabel(action: ArInvoiceAction): string {
   switch (action.kind) {
@@ -2088,8 +2106,8 @@ export default function ActivationTab() {
   const [timeType, setTimeType] = useState<ActivationTimeType>("tien_ve_som");
   const [createOpen, setCreateOpen] = useState(false);
   // 1.5 — filter "Thưởng giới thiệu"
-  const [referralFilter, setReferralFilter] = useState<"all" | "none" | "partial" | "full" | "any">("all");
-  const [holdFilter, setHoldFilter] = useState<"all" | "now" | "hold">("all");
+  const [referralFilter, setReferralFilter] = useState<ReferralFilter>("all");
+  const [holdFilter, setHoldFilter] = useState<HoldFilter>("all");
   // A-T6 — lọc theo trạng thái xuất hoá đơn cấp AR.
   const [invoiceFilter, setInvoiceFilter] = useState<InvoiceStatusFilter>("all");
 
@@ -2866,57 +2884,50 @@ export default function ActivationTab() {
               onChange={(e) => setSearch(e.target.value)}
             />
           </div>
-          <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
-            <span style={{ fontSize: 11.5, color: "var(--text-3)", marginRight: 4 }}>Thưởng giới thiệu:</span>
-            {([
-              { id: "all" as const, label: "Tất cả" },
-              { id: "any" as const, label: "Có thưởng" },
-              { id: "none" as const, label: "Chưa cộng" },
-              { id: "partial" as const, label: "Cộng 1 phần" },
-              { id: "full" as const, label: "Đã cộng" },
-            ]).map((f) => (
-              <button
-                key={f.id}
-                type="button"
-                className={`filter-chip ${referralFilter === f.id ? "active" : ""}`}
-                onClick={() => setReferralFilter(f.id)}
-              >
-                {f.label}
-              </button>
-            ))}
-          </div>
-          {/* Hàng dưới (dưới "Thưởng giới thiệu"): nhóm "Kích hoạt" trái + "Khoảng thời gian" phải */}
+          {/* Bộ lọc gọn: mỗi nhóm 1 dropdown thay vì rải chip inline (đỡ chật). */}
           <div style={{ flexBasis: "100%", display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center" }}>
-            <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
-              <span style={{ fontSize: 11.5, color: "var(--text-3)", marginRight: 4 }}>Tạo gói học:</span>
-              {([
-                { id: "all" as const, label: "Tất cả" },
-                { id: "now" as const, label: "Tạo gói học ngay" },
-                { id: "hold" as const, label: "KH chưa muốn tạo gói" },
-              ]).map((f) => (
-                <button
-                  key={f.id}
-                  type="button"
-                  className={`filter-chip ${holdFilter === f.id ? "active" : ""}`}
-                  onClick={() => setHoldFilter(f.id)}
-                >
-                  {f.label}
-                </button>
-              ))}
-            </div>
-            <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
-              <span style={{ fontSize: 11.5, color: "var(--text-3)", marginRight: 4 }}>Xuất HĐ:</span>
-              {ACTIVATION_INVOICE_FILTERS.map((f) => (
-                <button
-                  key={f.id}
-                  type="button"
-                  className={`filter-chip ${invoiceFilter === f.id ? "active" : ""}`}
-                  onClick={() => setInvoiceFilter(f.id)}
-                >
-                  {f.label}
-                </button>
-              ))}
-            </div>
+            <label style={{ display: "flex", gap: 4, alignItems: "center", fontSize: 11.5, color: "var(--text-3)" }}>
+              Thưởng giới thiệu:
+              <select
+                className="input input-sm"
+                value={referralFilter}
+                onChange={(e) => setReferralFilter(e.target.value as ReferralFilter)}
+              >
+                {ACTIVATION_REFERRAL_FILTERS.map((f) => (
+                  <option key={f.id} value={f.id}>
+                    {f.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label style={{ display: "flex", gap: 4, alignItems: "center", fontSize: 11.5, color: "var(--text-3)" }}>
+              Tạo gói học:
+              <select
+                className="input input-sm"
+                value={holdFilter}
+                onChange={(e) => setHoldFilter(e.target.value as HoldFilter)}
+              >
+                {ACTIVATION_HOLD_FILTERS.map((f) => (
+                  <option key={f.id} value={f.id}>
+                    {f.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label style={{ display: "flex", gap: 4, alignItems: "center", fontSize: 11.5, color: "var(--text-3)" }}>
+              Xuất HĐ:
+              <select
+                className="input input-sm"
+                value={invoiceFilter}
+                onChange={(e) => setInvoiceFilter(e.target.value as InvoiceStatusFilter)}
+              >
+                {ACTIVATION_INVOICE_FILTERS.map((f) => (
+                  <option key={f.id} value={f.id}>
+                    {f.label}
+                  </option>
+                ))}
+              </select>
+            </label>
             <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
               <DateRangeFilter
                 value={dateRange}
