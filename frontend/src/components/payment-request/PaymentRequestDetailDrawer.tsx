@@ -9,7 +9,7 @@ import type {
   PaymentMethod,
   PaymentRequest,
 } from "../../types/paymentRequest";
-import { COURSE_PACKAGES } from "../../constants/coursePackages";
+import { filterPackagesByLeadSource } from "../../constants/coursePackages";
 import CountryCombo, { COUNTRIES, findCountry } from "./CountryCombo";
 import { Icons, type IconKey } from "./Icons";
 import BillUploadZone from "./BillUploadZone";
@@ -62,7 +62,6 @@ const METHOD_META: Record<PaymentMethod, { cls: string; label: string; icon: Ico
 };
 
 const METHOD_ORDER: PaymentMethod[] = ["qr", "cash", "card", "installment"];
-const COURSE_PACKAGE_OPTIONS = COURSE_PACKAGES.map((name) => ({ value: name, label: name }));
 
 function MethodBadge({ method }: { method: PaymentMethod }) {
   const meta = METHOD_META[method];
@@ -1125,7 +1124,7 @@ function ActiveRequestMiniCardV2({
                             ),
                           }))
                         }
-                        options={COURSE_PACKAGE_OPTIONS}
+                        options={filterPackagesByLeadSource(c.leadSource || request?.leadSource).map((name) => ({ value: name, label: name }))}
                         placeholder="Chọn hoặc gõ tên gói học..."
                         emptyLabel="Chưa chọn gói"
                       />
@@ -2878,7 +2877,7 @@ export default function PaymentRequestDetailDrawer({
                       <Combobox
                         value={row.packageName}
                         onChange={(v) => setArRow(i, { packageName: v })}
-                        options={COURSE_PACKAGE_OPTIONS}
+                        options={filterPackagesByLeadSource(row.leadSource).map((name) => ({ value: name, label: name }))}
                         placeholder="Chọn hoặc gõ tên gói học..."
                         emptyLabel="Chưa chọn gói"
                       />

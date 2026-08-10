@@ -1,6 +1,6 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { MoneyInput } from "./ui/MoneyInput";
-import { COURSE_PACKAGES } from "../constants/coursePackages";
+import { filterPackagesByLeadSource } from "../constants/coursePackages";
 import { usePaymentFlow } from "../contexts/PaymentFlowContext";
 import { usePermission } from "../hooks/usePermission";
 import useIsMobile from "../hooks/useIsMobile";
@@ -404,8 +404,8 @@ function ARCreateModal({
                 onChange={(e) => setPkgName(e.target.value)}
                 placeholder="Bắt đầu nhập hoặc chọn từ danh sách…"
               />
-              <datalist id="ar-create-packages">
-                {COURSE_PACKAGES.map((p) => (
+               <datalist id="ar-create-packages">
+                {filterPackagesByLeadSource(linkedPr?.leadSource).map((p) => (
                   <option key={p} value={p} />
                 ))}
               </datalist>
@@ -1488,7 +1488,7 @@ function ActivationDetailDrawer({
                   <div className="idx-bubble">{courseIdx + 1}</div>
                   <div className="pkg-name">
                     <input
-                      list={`packages-${ar.id}`}
+                      list={`packages-${course.courseCode}`}
                       value={(courseDrafts[course.courseCode]?.packageName ?? course.packageName) || ""}
                       onChange={(e) => {
                         const nextVal = e.target.value;
@@ -1505,6 +1505,11 @@ function ActivationDetailDrawer({
                       }}
                       placeholder="VD: 2/W- NEW 48 US-UK+2 HN"
                     />
+                    <datalist id={`packages-${course.courseCode}`}>
+                      {filterPackagesByLeadSource(course.leadSource).map((p) => (
+                        <option key={p} value={p} />
+                      ))}
+                    </datalist>
                   </div>
                   <MoneyInput
                     className="amt-input"
@@ -1797,11 +1802,6 @@ function ActivationDetailDrawer({
                 </Fragment>
               ))}
               </div>
-              <datalist id={`packages-${ar.id}`}>
-                {COURSE_PACKAGES.map((p) => (
-                  <option key={p} value={p} />
-                ))}
-              </datalist>
               <div className="uid-group-foot">
                 {!readOnly && (
                   <button type="button" className="uid-add-link" onClick={() => void addCourse(uidIdx)} disabled={locked}>
