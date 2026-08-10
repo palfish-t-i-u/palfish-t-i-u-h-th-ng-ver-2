@@ -76,3 +76,22 @@ export const COURSE_PACKAGES = [
   "3/W- COMBO 48 US-UK+2 HN",
   "5/W- VIP 96 US-UK+5 HN",
 ] as const;
+
+/**
+ * Lọc danh sách gói học gợi ý theo nguồn khách (leadSource).
+ * - gia_han     → chỉ gói chứa "UPSALE"
+ * - gioi_thieu  → gói chứa "REFER" hoặc "NEW"
+ * - khác/rỗng   → toàn bộ (fallback)
+ */
+export function filterPackagesByLeadSource(
+  leadSource: string | undefined | null,
+): readonly string[] {
+  if (leadSource === "gia_han") {
+    return COURSE_PACKAGES.filter((p) => p.includes("UPSALE"));
+  }
+  if (leadSource === "gioi_thieu") {
+    return COURSE_PACKAGES.filter((p) => p.includes("REFER") || p.includes("NEW"));
+  }
+  return COURSE_PACKAGES;
+}
+
