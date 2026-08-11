@@ -140,6 +140,7 @@ export default function CardReconciliationTab({
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [picked, setPicked] = useState<string | null>(null);
   const [candSearch, setCandSearch] = useState("");
+  const [fundedRange, setFundedRange] = useState<DateRange>(EMPTY_RANGE);
   const [candRange, setCandRange] = useState<DateRange>(EMPTY_RANGE);
   const [candAmount, setCandAmount] = useState("");
   const [candIncludeAll, setCandIncludeAll] = useState(false);
@@ -157,7 +158,10 @@ export default function CardReconciliationTab({
   const loadTxns = useCallback(async () => {
     setLoading(true);
     try {
-      const params = sourceFilter === "all" ? {} : { source: sourceFilter };
+      const params: Parameters<typeof endpoints.cardRecon.list>[0] = {};
+      if (sourceFilter !== "all") params.source = sourceFilter;
+      if (fundedRange.from) params.funded_from = fundedRange.from;
+      if (fundedRange.to) params.funded_to = fundedRange.to;
       const { data } = await endpoints.cardRecon.list(params);
       setTxns(Array.isArray(data) ? data : []);
     } catch (err) {
@@ -166,7 +170,7 @@ export default function CardReconciliationTab({
     } finally {
       setLoading(false);
     }
-  }, [sourceFilter]);
+  }, [sourceFilter, fundedRange]);
 
   const loadSyncStatus = useCallback(async () => {
     try {
@@ -619,6 +623,9 @@ export default function CardReconciliationTab({
               {c.label}
             </button>
           ))}
+          <span style={{ width: 1, height: 20, background: "var(--border)", margin: "0 4px" }} />
+          <span style={{ fontSize: 12, color: "var(--text-3)", whiteSpace: "nowrap" }}>Ngày tiền về:</span>
+          <DateRangeFilter value={fundedRange} onChange={setFundedRange} />
         </div>
 
         <div className="table-card has-tabs">
@@ -656,7 +663,8 @@ export default function CardReconciliationTab({
             <table className="tbl">
               <thead>
                 <tr>
-                  <th style={{ width: 130 }}>Thời gian</th>
+                  <th style={{ width: 130 }}>Thời gian quẹt</th>
+                  <th style={{ width: 110 }}>Ngày tiền về</th>
                   <th style={{ width: 90 }}>Nguồn</th>
                   <th style={{ minWidth: 200 }}>Chủ thẻ / Thẻ</th>
                   <th style={{ width: 100 }}>Hình thức</th>
@@ -669,7 +677,7 @@ export default function CardReconciliationTab({
               <tbody>
                 {filtered.length === 0 && (
                   <tr>
-                    <td colSpan={8}>
+                    <td colSpan={9}>
                       <div className="empty">
                         <Icons.Database size={20} />
                         <div>{loading ? "Đang tải…" : "Không có giao dịch nào khớp điều kiện lọc."}</div>
@@ -688,6 +696,11 @@ export default function CardReconciliationTab({
                       <td>
                         <div className="cell-time">{dt.date}</div>
                         <div className="time-relative">{dt.time}</div>
+                      </td>
+                      <td>
+                        {t.funded_date
+                          ? <div className="cell-time">{t.funded_date.slice(8, 10)}/{t.funded_date.slice(5, 7)}/{t.funded_date.slice(0, 4)}</div>
+                          : <div className="cell-sub">—</div>}
                       </td>
                       <td>
                         <span
@@ -729,7 +742,7 @@ export default function CardReconciliationTab({
                       </td>
                       <td style={{ textAlign: "right" }}>
                         <span className="txn-amount" style={{ color: "var(--money)" }}>{vnd(t.amount)}</span>
-                        <div className="cell-sub">TN {vnd(t.net_amount)}</div>
+                        <div className="cell-sub" style={{ color: "var(--success, #10b981)" }}>Thực nhận {vnd(t.net_amount)}</div>
                       </td>
                       <td>
                         {t.source === "mpos" ? (
@@ -850,8 +863,16 @@ export default function CardReconciliationTab({
                     <div className="info-value">{vnd(drawerTxn.net_amount)}</div>
                   </div>
                   <div className="info-cell">
-                    <div className="info-label">Thời gian</div>
+                    <div className="info-label">Thời gian quẹt thẻ</div>
                     <div className="info-value">{formatPaymentDateFull(drawerTxn.paid_at)}</div>
+                  </div>
+                  <div className="info-cell">
+                    <div className="info-label">Ngày tiền về TK</div>
+                    <div className="info-value">
+                      {drawerTxn.funded_date
+                        ? `${drawerTxn.funded_date.slice(8, 10)}/${drawerTxn.funded_date.slice(5, 7)}/${drawerTxn.funded_date.slice(0, 4)}`
+                        : "—"}
+                    </div>
                   </div>
                   <div className="info-cell">
                     <div className="info-label">{drawerTxn.source === "mpos" ? "Mã phiếu chi" : "Mã chuẩn chi"}</div>

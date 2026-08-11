@@ -26,6 +26,8 @@ export interface GatewayTxn {
   collector_region: string | null;
   /** "YYYY-MM-DD HH:mm" */
   paid_at: string;
+  /** Ngày tiền về TK MB — chỉ mPOS (YYYY-MM-DD). Payoo = null */
+  funded_date?: string | null;
   match_status: MatchStatus;
   payment_line_id: string | null;
   /** Nhãn lần thanh toán đã ghép (hiển thị) */

@@ -206,6 +206,7 @@ def _serialize_gateway_txn(
         "installment_term": row.get("installment_term"),
         "bank": row.get("bank"),
         "collector_region": row.get("collector_region"),
+        "funded_date": row.get("funded_date"),
         "paid_at": _format_dt(row.get("paid_at")),
         "match_status": _public_match_status(_clean_text(row.get("match_status"))),
         "payment_line_id": row.get("payment_line_id"),
@@ -231,6 +232,7 @@ def _txn_insert_row(record: dict[str, Any]) -> dict[str, Any]:
         "bank": record.get("bank"),
         "collector_region": record.get("collector_region"),
         "paid_at": record.get("paid_at"),
+        "funded_date": record.get("funded_date"),
         "match_status": record.get("match_status") or "pending",
         "raw": record.get("raw") or {},
     }
@@ -317,6 +319,15 @@ def register_gateway_routes(app, get_supabase: Callable[[], Any]) -> None:
             inserted_settles, skipped_settles = _upsert_rows(
                 sb, "gateway_settlements", settlement_rows, "settlement_code"
             )
+            # Self-heal: fill funded_date on rows that existed before the column (DO NOTHING skips them on INSERT)
+            for row in txn_rows:
+                fd = row.get("funded_date")
+                if fd:
+                    (sb.table("gateway_transactions")
+                       .update({"funded_date": fd})
+                       .eq("txn_code", row["txn_code"])
+                       .filter("funded_date", "is", "null")
+                       .execute())
         except HTTPException:
             raise
         except ValueError as exc:
@@ -371,13 +382,19 @@ def register_gateway_routes(app, get_supabase: Callable[[], Any]) -> None:
         q: str | None = Query(None),
         from_date: str | None = Query(None, alias="from"),
         to_date: str | None = Query(None, alias="to"),
+        funded_from: str | None = Query(None),
+        funded_to: str | None = Query(None),
         authorization: str | None = Header(None),
     ):
         sb = _sb_or_503(get_supabase)
         actor = resolve_actor(sb, authorization)
         require_module_access(sb, actor, "reconCard")
 
-        query = sb.table("gateway_transactions").select("*").order("paid_at", desc=True).limit(500)
+        query = (sb.table("gateway_transactions")
+                   .select("*")
+                   .order("funded_date", desc=True, nullsfirst=False)
+                   .order("paid_at", desc=True)
+                   .limit(500))
         if source:
             query = query.eq("source", source.strip().lower())
         if status and status != "all":
@@ -387,6 +404,10 @@ def register_gateway_routes(app, get_supabase: Callable[[], Any]) -> None:
             query = query.gte("paid_at", f"{from_date[:10]}T00:00:00")
         if to_date:
             query = query.lte("paid_at", f"{to_date[:10]}T23:59:59")
+        if funded_from:
+            query = query.gte("funded_date", funded_from[:10])
+        if funded_to:
+            query = query.lte("funded_date", funded_to[:10])
         if q and q.strip():
             pattern = f"*{q.strip()}*"
             query = query.or_(

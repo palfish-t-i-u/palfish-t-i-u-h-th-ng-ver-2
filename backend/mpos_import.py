@@ -44,6 +44,7 @@ DETAIL_ALIASES = {
     "installment_fee": ("Phí TG hiện tại", "Phí trả góp"),
     "bank": ("NH Hỗ trợ", "Ngân hàng"),
     "store_name": ("Tên cửa hàng", "Business name"),
+    "funded_date": ("Ngày nhận tiền",),
 }
 
 SETTLEMENT_ALIASES = {
@@ -309,6 +310,7 @@ def _mpos_transaction_from_row(row: pd.Series, idx: int) -> dict[str, Any]:
         "detail": detail,
         "match_status": _record_match_status(status),
         "payment_line_id": None,
+        "funded_date": _date_only(_first(row, DETAIL_ALIASES, "funded_date")),
         "raw": _row_raw(row),
     }
 
@@ -490,6 +492,7 @@ def _payoo_row(row: pd.Series, idx: int, aliases: dict[str, tuple[str, ...]], ca
         "collector_region": None,
         "match_status": "pending",
         "payment_line_id": None,
+        "funded_date": None,
         "raw": _row_raw(row),
     }
 
@@ -557,6 +560,7 @@ def parse_payoo_orders(orders: list[dict[str, Any]]) -> dict[str, Any]:
                 "collector_region": None,
                 "match_status": "pending",
                 "payment_line_id": None,
+                "funded_date": None,
                 "raw": order,
             }
         )

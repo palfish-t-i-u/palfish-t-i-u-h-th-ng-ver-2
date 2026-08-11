@@ -559,7 +559,7 @@ export const endpoints = {
   },
   // Đối soát giao dịch thẻ mPOS / Payoo (BE: backend/gateway_routes.py).
   cardRecon: {
-    list: (params?: { source?: GatewaySource; status?: string; q?: string; from?: string; to?: string }) =>
+    list: (params?: { source?: GatewaySource; status?: string; q?: string; from?: string; to?: string; funded_from?: string; funded_to?: string }) =>
       api.get<GatewayTxn[]>("/api/v1/gateway-txns", { params }),
     matchCandidates: (txnId: string, params?: { search?: string; amount?: number; include_all?: boolean; match_amount?: boolean }) =>
       api.get<MatchCandidate[]>(`/api/v1/gateway-txns/${txnId}/match-candidates`, { params }),
