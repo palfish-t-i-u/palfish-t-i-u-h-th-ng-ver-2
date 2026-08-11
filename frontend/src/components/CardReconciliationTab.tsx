@@ -663,8 +663,8 @@ export default function CardReconciliationTab({
             <table className="tbl">
               <thead>
                 <tr>
-                  <th style={{ width: 130 }}>Thời gian quẹt</th>
                   <th style={{ width: 110 }}>Ngày tiền về</th>
+                  <th style={{ width: 130 }}>Thời gian quẹt</th>
                   <th style={{ width: 90 }}>Nguồn</th>
                   <th style={{ minWidth: 200 }}>Chủ thẻ / Thẻ</th>
                   <th style={{ width: 100 }}>Hình thức</th>
@@ -694,13 +694,13 @@ export default function CardReconciliationTab({
                       onClick={() => openDrawer(t)}
                     >
                       <td>
-                        <div className="cell-time">{dt.date}</div>
-                        <div className="time-relative">{dt.time}</div>
-                      </td>
-                      <td>
                         {t.funded_date
                           ? <div className="cell-time">{t.funded_date.slice(8, 10)}/{t.funded_date.slice(5, 7)}/{t.funded_date.slice(0, 4)}<br/><span className="cell-sub">{t.funded_date.slice(11, 16)}</span></div>
                           : <div className="cell-sub">—</div>}
+                      </td>
+                      <td>
+                        <div className="cell-time">{dt.date}</div>
+                        <div className="time-relative">{dt.time}</div>
                       </td>
                       <td>
                         <span
