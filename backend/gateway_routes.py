@@ -407,7 +407,7 @@ def register_gateway_routes(app, get_supabase: Callable[[], Any]) -> None:
         if funded_from:
             query = query.gte("funded_date", funded_from[:10])
         if funded_to:
-            query = query.lte("funded_date", funded_to[:10])
+            query = query.lte("funded_date", f"{funded_to[:10]}T23:59:59")
         if q and q.strip():
             pattern = f"*{q.strip()}*"
             query = query.or_(
