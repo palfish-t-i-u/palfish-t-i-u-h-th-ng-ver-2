@@ -310,7 +310,7 @@ def _mpos_transaction_from_row(row: pd.Series, idx: int) -> dict[str, Any]:
         "detail": detail,
         "match_status": _record_match_status(status),
         "payment_line_id": None,
-        "funded_date": _date_only(_first(row, DETAIL_ALIASES, "funded_date")),
+        "funded_date": _parse_datetime(_first(row, DETAIL_ALIASES, "funded_date")),
         "raw": _row_raw(row),
     }
 

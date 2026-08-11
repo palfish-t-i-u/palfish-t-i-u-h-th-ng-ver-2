@@ -699,7 +699,7 @@ export default function CardReconciliationTab({
                       </td>
                       <td>
                         {t.funded_date
-                          ? <div className="cell-time">{t.funded_date.slice(8, 10)}/{t.funded_date.slice(5, 7)}/{t.funded_date.slice(0, 4)}</div>
+                          ? <div className="cell-time">{t.funded_date.slice(8, 10)}/{t.funded_date.slice(5, 7)}/{t.funded_date.slice(0, 4)}<br/><span className="cell-sub">{t.funded_date.slice(11, 16)}</span></div>
                           : <div className="cell-sub">—</div>}
                       </td>
                       <td>
@@ -870,7 +870,7 @@ export default function CardReconciliationTab({
                     <div className="info-label">Ngày tiền về TK</div>
                     <div className="info-value">
                       {drawerTxn.funded_date
-                        ? `${drawerTxn.funded_date.slice(8, 10)}/${drawerTxn.funded_date.slice(5, 7)}/${drawerTxn.funded_date.slice(0, 4)}`
+                        ? `${drawerTxn.funded_date.slice(8, 10)}/${drawerTxn.funded_date.slice(5, 7)}/${drawerTxn.funded_date.slice(0, 4)} ${drawerTxn.funded_date.slice(11, 16)}`
                         : "—"}
                     </div>
                   </div>

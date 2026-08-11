@@ -1,16 +1,18 @@
 -- Ngày tiền về TK cho đơn thẻ mPOS (V-a)
 -- Nguồn: gateway_transactions.raw->>'Ngày nhận tiền'
 -- Payoo không có trường này → NULL
--- Dùng type DATE (không phải timestamptz) để tránh lệch ngày do UTC (bài học C-T1)
+-- Dùng type TIMESTAMP WITHOUT TIME ZONE (không phải timestamptz) để tránh lệch ngày do UTC (bài học C-T1)
+-- Raw value VD: "2026-08-10T02:29:48" — VN local time, cast ::timestamp giữ nguyên
 
+-- Bước 1: đổi từ date → timestamp (nếu đã là date từ migration trước)
 ALTER TABLE gateway_transactions
-  ADD COLUMN IF NOT EXISTS funded_date date;
+  ALTER COLUMN funded_date TYPE timestamp without time zone
+  USING funded_date::timestamp;
 
--- Backfill 92 đơn mPOS từ raw (chạy ngay sau ALTER TABLE)
+-- Bước 2: re-backfill với full datetime từ raw
 UPDATE gateway_transactions
-SET funded_date = (raw->>'Ngày nhận tiền')::date
+SET funded_date = (raw->>'Ngày nhận tiền')::timestamp
 WHERE source = 'mpos'
-  AND funded_date IS NULL
   AND coalesce(raw->>'Ngày nhận tiền', '') <> '';
 
 -- Verify: phải = 0
