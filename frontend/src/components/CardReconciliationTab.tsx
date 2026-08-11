@@ -742,7 +742,7 @@ export default function CardReconciliationTab({
                       </td>
                       <td style={{ textAlign: "right" }}>
                         <span className="txn-amount" style={{ color: "var(--money)" }}>{vnd(t.amount)}</span>
-                        <div className="cell-sub" style={{ color: "var(--success, #10b981)" }}>Thực nhận {vnd(t.net_amount)}</div>
+                        <div className="cell-sub" style={{ color: "var(--success, #10b981)", whiteSpace: "nowrap" }}>Thực nhận {vnd(t.net_amount)}</div>
                       </td>
                       <td>
                         {t.source === "mpos" ? (
