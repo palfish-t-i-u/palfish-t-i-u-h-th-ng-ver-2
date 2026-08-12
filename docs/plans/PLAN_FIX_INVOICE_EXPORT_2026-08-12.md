@@ -1,124 +1,60 @@
-# Fix 3 file Excel xuất hóa đơn B4 — 12/08/2026
+# Fix xuất hóa đơn B4 — "Tên sản phẩm" sai + "Địa chỉ" trống (12/08/2026)
 
-**Độ ưu tiên**: GẤP — hoàn thành trong ngày (trước 21-22h)
-**Reporter**: Chị Sương Mai (15:30 12/08)
-**Confirm gấp**: Anh Hiếu (15:33 12/08)
+> Ghi chú: file này ban đầu được nhắc tới trong yêu cầu task nhưng KHÔNG tồn tại
+> trong repo (đã kiểm tra toàn bộ git history mọi branch + filesystem). Nội
+> dung dưới đây là kết quả tự truy vết lại từ đầu dựa trên báo cáo lỗi của chị
+> Sương Mai + anh Hiếu (15:30 12/8) và code thật, không phải chép lại plan cũ.
 
-## Hiện tượng
+## Báo lỗi gốc
 
-Xuất HĐ cho AR-2026-0321 (Chị Hương, UID 3190649649, CC-1006-001):
+Xuất hóa đơn B4 ra 3 file Excel, 2 lỗi:
+1. Cột "Tên sản phẩm*" (file `don_hang.xlsx`) hiện **tên khách hàng** thay vì tên gói học.
+2. Cột "Địa chỉ" (file `khach_hang.xlsx`) luôn **trống**.
 
-| File | Cột | Giá trị sai | Giá trị đúng |
-|------|-----|-------------|--------------|
-| `01_1don_hang` | I "Tên sản phẩm*" | "Chị Hương" (tên khách) | Tên gói học |
-| `03_sanpham1` | B "Tên sản phẩm (*)" | "Chị Hương" (tên khách) | Tên gói học |
-| `02_khach_hang1` | E "Địa chỉ" | trống | Địa chỉ đầy đủ |
+## Root cause (lỗi 1 — nghiêm trọng hơn mô tả ban đầu)
 
-## Root cause
+Không phải lỗi đọc nhầm tên field đơn giản. `course["name"]` bị dùng cho **2 nghĩa xung đột** trong cùng vòng đời 1 course:
 
-**RC1 — Tên sản phẩm**: `backend/activation_routes.py:1499` dùng `course.get("name")` — field này là **tên khách hàng** (buyer name). Tên gói học nằm ở `course["packageName"]`.
+1. Lúc tạo AR (`_assign_course_codes`, `activation_routes.py:287`): `course["name"]` = **tên gói học** (`_course_name(c)`).
+2. Lúc Ops "Xuất hoá đơn" cho 1 course (`_build_invoice_course_patch`, gọi từ `_issue_course_invoice_atomic`): form nhập **thông tin khách hàng** để xuất hoá đơn (customer_type/email/phone/address/tax_code...) — và trước fix, field tên khách trong form này (`IssueCourseInvoiceBody.name`) bị ghi đè thẳng vào **cùng key `course["name"]`** (`activation_routes.py:931` cũ).
 
-**RC2 — Địa chỉ**: `_course_to_tax_order()` (activation_routes.py:1500-1510) không trả field địa chỉ → `_build_excel_customers()` (invoice_routes.py:326) hardcode cột 5 = `""`.
+→ Ngay khi Ops xuất hoá đơn 1 course (bước bắt buộc trước khi xuất Excel B4), `course["name"]` bị ghi đè từ "tên gói học" → "tên khách hàng". Đến lúc `_course_to_tax_order()` đọc `course.get("name")` cho `taxProductName`/`goiHoc`, giá trị đã bị hỏng từ trước.
 
-## Task
+`_course_display_name()` (dùng cho `tenKhach`) đọc đúng key `course["name"]` ĐẦU TIÊN — hàm này vốn được thiết kế giả định "name" đã là tên khách (đúng ý đồ ban đầu của tác giả), nhưng lại trùng key với tên gói học ở bước tạo AR — đây chính là chỗ collision.
 
-### T1 — Fix "Tên sản phẩm" (File 01 + File 03)
+## Fix (2 file, không migration)
 
-**File**: `backend/activation_routes.py`, dòng 1499
+### `backend/activation_routes.py`
 
-```python
-# ĐỔI dòng 1499 từ:
-    product_name = _clean_text(course.get("name")) or _clean_text(course.get("code"))
+1. **`_build_invoice_course_patch`**: đổi key ghi tên khách từ `"name"` → **`"invoice_customer_name"`** (3 chỗ: tuple patch, `setdefault` fallback từ PR, đọc lại để validate). `course["name"]` từ nay **không bao giờ bị đụng tới** sau khi tạo — giữ đúng nghĩa tên gói học xuyên suốt.
+2. **`_course_display_name`**: đổi key đọc đầu tiên từ `"name"` → `"invoice_customer_name"` (khớp key mới ở #1).
+3. **Mới**: `_course_full_address(course, pr)` — dùng lại đúng `_invoice_addr_parts()` đã có sẵn (ưu tiên địa chỉ course, fallback PR — cùng nguồn với gate `_course_invoice_blockers`), nối `street, ward, province` bằng `", "`.
+4. **`_course_to_tax_order`**: thêm field `"diaChi": _course_full_address(course, pr)` vào dict trả về.
 
-# THÀNH:
-    product_name = _clean_text(course.get("packageName")) or _clean_text(course.get("code"))
-```
+`_course_to_tax_order`'s `product_name = course.get("name")` **giữ nguyên, không đổi** — vì sau khi fix #1+#2, key này không còn bị ghi đè nữa nên luôn đúng. (Ban đầu nghĩ phải đổi sang đọc `course.get("packageName")` nhưng key đó chưa từng được ghi ở đâu cả — đổi read-key mà không có nơi ghi sẽ ra rỗng, không sửa được gì. Xem thêm `docs/learnings/invoice-export-course-field-naming-trap.md`.)
 
-Không cần sửa gì ở `invoice_routes.py` — cả File 01 (dòng 239) và File 03 (dòng 391) đều đọc từ `taxProductName`/`goiHoc` đã được set đúng khi source đúng.
+### `backend/invoice_routes.py`
 
-### T2 — Fix Địa chỉ trống (File 02)
+- `_build_excel_customers`: cột 5 ("Địa chỉ") đổi từ hardcode `""` → `row.get("diaChi", "")`.
 
-**Bước 2a** — File `backend/activation_routes.py`, hàm `_course_to_tax_order()` (dòng 1491-1510)
+## Test
 
-Thêm assembly địa chỉ VÀ field `diaChi` vào return dict. Hàm `_invoice_addr_parts` đã có sẵn ở dòng 870 cùng file.
+- `backend/tests/test_invoice_address_gate.py` — không đổi, chạy lại xác nhận không regression (9/9 pass, không đụng logic gate).
+- `backend/tests/test_invoice_export_course_name.py` — **file test mới**, 9 case:
+  - Patch xuất HĐ không đụng `course["name"]`.
+  - `_course_to_tax_order` giữ đúng tên gói học sau khi course đã qua bước xuất HĐ (mô phỏng đúng thứ tự patch → export).
+  - `_course_display_name` đọc đúng `invoice_customer_name`, có fallback khi chưa xuất HĐ.
+  - `_course_full_address`: ưu tiên course, fallback PR, rỗng khi không có gì.
+  - `_course_to_tax_order` có field `diaChi`.
+  - `_build_excel_customers` ghi đúng cột 5 (đọc lại bằng openpyxl), và để trống khi thiếu `diaChi` (không crash).
+- Đã xác nhận bằng `git stash`: 8/9 test mới **fail đúng như kỳ vọng** trên code cũ (proof test thật sự bắt được bug), sau khi pop lại toàn bộ pass.
+- Full suite `backend/tests/` (752 test): pass hết, chỉ còn 1 fail hoàn toàn không liên quan (`test_zalo_integration.py` — template text Zalo, không đụng tới bởi fix này).
 
-```python
-# ĐỔI toàn bộ hàm _course_to_tax_order (dòng 1491-1510) thành:
-def _course_to_tax_order(
-    course: dict[str, Any],
-    uid_block: dict[str, Any],
-    ar_row: dict[str, Any],
-    pr: dict[str, Any] | None,
-    tax_invoice_code: str,
-    tax_product_code: str,
-) -> dict[str, Any]:
-    product_name = _clean_text(course.get("packageName")) or _clean_text(course.get("code"))
-    province, ward, street, country = _invoice_addr_parts(course, pr)
-    if country and country.upper() != "VN":
-        full_addr = country
-    else:
-        full_addr = ", ".join(p for p in [street, ward, province] if p)
-    return {
-        "taxInvoiceCode": tax_invoice_code,
-        "taxProductCode": tax_product_code,
-        "taxProductName": product_name,
-        "goiHoc": product_name,
-        "sdt": _course_display_phone(course, uid_block, pr),
-        "tenKhach": _course_display_name(course, ar_row, pr),
-        "tongTien": int(float(course.get("amount") or 0)),
-        "m3ApprovedAt": course.get("invoiced_at") or ar_row.get("created_at") or "",
-        "email": _clean_text(course.get("email") or (pr.get("email") if pr else "")),
-        "diaChi": full_addr,
-    }
-```
+## Không làm (ngoài phạm vi)
 
-**Bước 2b** — File `backend/invoice_routes.py`, hàm `_build_excel_customers()`, dòng 321-326
+- `_course_invoice_blockers` (gate "Yêu cầu xuất HĐ") vẫn đọc `course.get("name")` cho check "thiếu tên gói học" — không đổi, vẫn đúng vì "name" giờ luôn là tên gói học.
+- Không backfill dữ liệu cũ: những course ĐÃ bị hỏng `name` từ trước (do bug cũ) vẫn còn sai — không migration nên không tự sửa được. Ops cần vào sửa lại tên gói qua UI edit sẵn có (`saveCourseRow` — patch AR-level `uids_data`, key `name` đúng theo Pydantic model) rồi xuất lại HĐ nếu cần đối chiếu lại các đơn đã lỡ xuất sai hôm nay.
 
-```python
-# ĐỔI dòng 321-326 từ:
-        row_vals = [
-            row["_maKH"],           # 1  Mã KH/NCC = 84-SĐT
-            "",                     # 2  Tên đơn vị
-            row.get("tenKhach", ""),# 3  Tên người mua = họ tên khách
-            "Khách hàng",           # 4  Loại
-            "", "", "", "", "", "", "", "", "", "",  # 5–14
-        ]
+## Verify thủ công còn thiếu (cần Ops làm trên sandbox/prod thật)
 
-# THÀNH:
-        row_vals = [
-            row["_maKH"],                # 1  Mã KH/NCC = 84-SĐT
-            "",                          # 2  Tên đơn vị
-            row.get("tenKhach", ""),      # 3  Tên người mua = họ tên khách
-            "Khách hàng",                # 4  Loại
-            row.get("diaChi", ""),        # 5  Địa chỉ
-            "", "", "", "", "", "", "", "", "",  # 6–14
-        ]
-```
-
-## Verify
-
-1. Chạy test hiện có:
-```bash
-cd backend && python -m pytest tests/test_invoice_address_gate.py -v
-```
-Expected: all pass (test này check gate logic, không bị ảnh hưởng).
-
-2. Chạy dev server, mở app → tab B4 "Xuất hoá đơn" → chọn 1 đơn đã xuất (vd Chị Hương AR-2026-0321) → bấm "Xuất HĐ" → mở ZIP kiểm tra:
-   - File `01_1don_hang`: cột I = tên gói (KHÔNG phải tên khách)
-   - File `02_khach_hang1`: cột E = địa chỉ đầy đủ (KHÔNG trống)
-   - File `03_sanpham1`: cột B = tên gói (KHÔNG phải tên khách)
-
-3. Edge case kiểm tra thêm nếu có thời gian:
-   - Đơn khách nước ngoài (OV) → cột E = tên quốc gia
-   - Đơn không có packageName → fallback course code (vd CC-0042-001)
-   - Đơn không có địa chỉ → cột E = "" (không crash)
-
-## Đánh giá 5 tiêu chí
-
-| # | Tiêu chí | P/F | Ghi chú |
-|---|----------|-----|---------|
-| 1 | Triệt để | P | Sửa đúng root cause (sai field + thiếu pipe), không workaround |
-| 2 | Không lỗi con | P | `packageName` là field chuẩn; `_invoice_addr_parts` đã tested; fallback xử lý course không có packageName hoặc không có địa chỉ |
-| 3 | Không tăng gánh hạ tầng | P | 2 file Python, 0 migration, 0 dependency |
-| 4 | Tối ưu token | P | 2 task gộp 1 commit, reuse `_invoice_addr_parts` có sẵn |
-| 5 | Bền vững context compact | P | Code trước/sau nguyên văn, file:line cụ thể, verify step có expected output |
+Chưa xuất thử 1 HĐ thật qua UI để soi 3 file Excel (cần tài khoản Ops + dữ liệu AR đủ điều kiện) — phần này ngoài khả năng test tự động, cần chị Sương Mai/anh Hiếu xác nhận sau khi deploy.

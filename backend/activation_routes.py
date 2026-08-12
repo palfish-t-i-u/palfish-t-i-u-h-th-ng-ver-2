@@ -930,7 +930,11 @@ def _build_invoice_course_patch(
     if body:
         for key, val in (
             ("customer_type", body.customer_type),
-            ("name", body.name),
+            # Tên khách hàng để xuất HĐ — KHÔNG dùng key "name": key đó là tên gói học
+            # được set lúc tạo course (_course_name), đọc lại ở B4 tax export
+            # (_course_to_tax_order). Dùng chung key sẽ ghi đè mất tên gói (fix 12/8,
+            # xem docs/learnings/invoice-export-course-field-naming-trap.md).
+            ("invoice_customer_name", body.name),
             ("email", body.email),
             ("country", body.country),
             ("phone", body.phone),
@@ -945,8 +949,8 @@ def _build_invoice_course_patch(
             if cleaned:
                 patch[key] = cleaned
 
-    if not patch.get("name") and pr:
-        patch.setdefault("name", _clean_text(pr.get("name")))
+    if not patch.get("invoice_customer_name") and pr:
+        patch.setdefault("invoice_customer_name", _clean_text(pr.get("name")))
     if not patch.get("phone") and pr:
         patch.setdefault("phone", _clean_text(pr.get("phone")))
     if not patch.get("country") and pr:
@@ -960,7 +964,7 @@ def _build_invoice_course_patch(
     patch.setdefault("customer_type", _clean_text(course.get("customer_type")) or "individual")
 
     preview = {**course, **patch}
-    name = _clean_text(preview.get("name"))
+    name = _clean_text(preview.get("invoice_customer_name"))
     phone = _clean_text(preview.get("phone"))
     address = _clean_text(preview.get("address"))
     ward = _clean_text(preview.get("ward"))
@@ -1464,7 +1468,7 @@ def _save_active_request(
 
 
 def _course_display_name(course: dict[str, Any], ar_row: dict[str, Any], pr: dict[str, Any] | None) -> str:
-    for key in ("name", "company_name"):
+    for key in ("invoice_customer_name", "company_name"):
         val = _clean_text(course.get(key))
         if val:
             return val
@@ -1488,6 +1492,13 @@ def _course_display_phone(
     return ""
 
 
+def _course_full_address(course: dict[str, Any], pr: dict[str, Any] | None) -> str:
+    """Địa chỉ đủ (số nhà, phường/xã, tỉnh/thành) — cùng nguồn với _course_invoice_blockers
+    nên nếu course đủ điều kiện xuất HĐ thì chuỗi này luôn khác rỗng."""
+    province, ward, street, _country = _invoice_addr_parts(course, pr)
+    return ", ".join(part for part in (street, ward, province) if part)
+
+
 def _course_to_tax_order(
     course: dict[str, Any],
     uid_block: dict[str, Any],
@@ -1504,6 +1515,7 @@ def _course_to_tax_order(
         "goiHoc": product_name,
         "sdt": _course_display_phone(course, uid_block, pr),
         "tenKhach": _course_display_name(course, ar_row, pr),
+        "diaChi": _course_full_address(course, pr),
         "tongTien": int(float(course.get("amount") or 0)),
         "m3ApprovedAt": course.get("invoiced_at") or ar_row.get("created_at") or "",
         "email": _clean_text(course.get("email") or (pr.get("email") if pr else "")),
