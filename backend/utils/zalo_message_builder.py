@@ -516,12 +516,16 @@ def build_activation_request_created_message(
     canonical_team = get_canonical_team(raw_team)
     team_display = str(raw_team).strip() if raw_team and str(raw_team).strip() else "?"
 
-    # Tổng = tổng tiền ĐÃ THU trong PR (received), không phải tổng amount gói.
+    # Tổng = received nếu đã thu > 0, else target (giá trị đơn — dùng khi line thẻ/trả góp chưa verify).
+    def _num(v):
+        try:
+            return float(v)
+        except (TypeError, ValueError):
+            return 0.0
     pr_received = pr_data.get("received")
-    total_val = (
-        float(pr_received) if pr_received not in (None, "")
-        else (float(pr_target) if pr_target not in (None, "") else 0.0)
-    )
+    recv_f = _num(pr_received)
+    target_f = _num(pr_target)
+    total_val = recv_f if recv_f > 0 else target_f
     total_str = f"{int(round(total_val)):,}".replace(",", ".")  # dấu chấm nghìn, đơn vị VND
     footer = "\n".join(
         [

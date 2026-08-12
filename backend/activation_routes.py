@@ -46,6 +46,8 @@ from pr_guards import (
     assert_pr_paid,
     assert_all_paid_lines_have_bill,
     activatable_received,
+    _PROVISIONAL_METHODS,
+    _line_has_bill,
 )
 
 ALLOWED_AR_STATUSES = frozenset({"pending_order", "partial_order", "ready_invoice", "invoiced", "activated"})
@@ -1221,18 +1223,29 @@ def _enqueue_activation_request_created_dingtalk(
         team_code = g.data[0]["team_code"]
 
         # 17/7 (a Hiếu chốt): gom TẤT CẢ bill của mọi lần TT đã paid — worker gửi nhiều ảnh.
+        # 12/8: gom thêm line thẻ/trả góp pending có bill (đơn "đủ tạm" báo đơn sớm).
         bill_urls: list[str] = []
         pr_id_val = str(pr.get("id") or "")
         if pr_id_val:
             lines_res = (
                 sb.table("payment_lines")
-                .select("bill_image, bill_images")
+                .select("bill_image, bill_images, method, status")
                 .eq("payment_request_id", pr_id_val)
-                .eq("status", "paid")
                 .order("paid_at", desc=False)
                 .execute()
             )
             for line in (lines_res.data or []):
+                line_method = (line.get("method") or "").lower()
+                line_status = line.get("status") or ""
+                # Chỉ lấy bill từ: line paid, HOẶC line thẻ/trả góp pending có bill
+                is_paid = line_status == "paid"
+                is_provisional = (
+                    line_method in _PROVISIONAL_METHODS
+                    and line_status == "pending"
+                    and _line_has_bill(line)
+                )
+                if not (is_paid or is_provisional):
+                    continue
                 bills = line.get("bill_images")
                 if isinstance(bills, list):
                     for b in bills:

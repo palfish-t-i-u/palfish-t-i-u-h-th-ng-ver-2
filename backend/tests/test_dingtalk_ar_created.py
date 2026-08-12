@@ -96,7 +96,7 @@ class TestEnqueueActivationRequestCreatedDingtalk:
             staff_rows=[{"email": "sale@test.com", "display_name": "Sale A",
                          "crm_name": "Sale A CRM", "team": "HN Offline Store"}],
             group_rows=[{"team_code": "HN Offline Store", "is_active": True}],
-            line_rows=[{"bill_image": "https://x/bill.jpg", "bill_images": None}],
+            line_rows=[{"bill_image": "https://x/bill.jpg", "bill_images": None, "method": "qr", "status": "paid"}],
         )
         activation_routes._enqueue_activation_request_created_dingtalk(
             sb, _sample_saved_ar(), _sample_pr())
@@ -116,7 +116,7 @@ class TestEnqueueActivationRequestCreatedDingtalk:
         sb, calls = _build_dt_sb(
             staff_rows=[{"email": "sale@test.com", "team": "Inhouse 1"}],
             group_rows=[{"team_code": "Inhouse 1", "is_active": True}],
-            line_rows=[{"bill_image": None, "bill_images": ["https://x/a.jpg", "https://x/b.jpg"]}],
+            line_rows=[{"bill_image": None, "bill_images": ["https://x/a.jpg", "https://x/b.jpg"], "method": "card", "status": "paid"}],
         )
         activation_routes._enqueue_activation_request_created_dingtalk(
             sb, _sample_saved_ar(), _sample_pr())
@@ -231,3 +231,33 @@ class TestEnqueueActivationRequestCreatedDingtalk:
         activation_routes._enqueue_activation_request_created_dingtalk(sb, ar, _sample_pr())
         ar_id = str(ar["id"])
         assert calls[0]["source_id"] == str(uuid_mod.UUID(hashlib.md5(ar_id.encode()).hexdigest()))
+
+    def test_bill_from_pending_installment_with_bill(self):
+        sb, calls = _build_dt_sb(
+            staff_rows=[{"email": "sale@test.com", "team": "Inhouse 1"}],
+            group_rows=[{"team_code": "Inhouse 1", "is_active": True}],
+            line_rows=[{
+                "method": "installment", "status": "pending",
+                "bill_image": "https://x/mpos.jpg", "bill_images": None,
+            }],
+        )
+        activation_routes._enqueue_activation_request_created_dingtalk(
+            sb, _sample_saved_ar(), _sample_pr())
+        assert len(calls) == 1
+        assert calls[0]["image_urls"] == ["https://x/mpos.jpg"]
+        assert calls[0]["image_url"] == "https://x/mpos.jpg"
+
+    def test_no_bill_from_pending_non_provisional(self):
+        sb, calls = _build_dt_sb(
+            staff_rows=[{"email": "sale@test.com", "team": "Inhouse 1"}],
+            group_rows=[{"team_code": "Inhouse 1", "is_active": True}],
+            line_rows=[{
+                "method": "qr", "status": "pending",
+                "bill_image": "https://x/qr.jpg", "bill_images": None,
+            }],
+        )
+        activation_routes._enqueue_activation_request_created_dingtalk(
+            sb, _sample_saved_ar(), _sample_pr())
+        assert len(calls) == 1
+        assert calls[0]["image_url"] is None
+        assert calls[0]["image_urls"] is None

@@ -257,6 +257,15 @@ class TestBuildActivationRequestCreatedMessage:
         r = build_activation_request_created_message(ar, pr, {"team": "Offline"})
         assert "Phone: 86-13800138000" in r["message"]
 
+    def test_tong_fallback_target_when_received_zero(self):
+        """received=0 → Tổng dùng target, không hiện 0đ (đơn đủ tạm thẻ/trả góp)."""
+        ar = {"uids_data": [{"uid": "123", "phone": "84-900000000", "courses": [{"name": "Gói A", "amount": 9_434_880}]}]}
+        pr = {"target": 9_434_880, "received": 0, "child_name": "Bé An"}
+        sale = {"display_name": "Sale A", "team": "Inhouse 1"}
+        msg = build_activation_request_created_message(ar, pr, sale)["message"]
+        assert "Tổng: 9.434.880 VND" in msg
+        assert "Tổng: 0 VND" not in msg
+
 
 class TestBuildCourseActivatedMessage:
     """17/7 (a Hiếu chốt): tin course_activated NGẮN GỌN — SĐT + Sale + Order ID."""
