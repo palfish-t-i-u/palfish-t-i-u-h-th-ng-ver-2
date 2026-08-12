@@ -183,7 +183,7 @@ const TITLES: Record<ViewId, { title: string; subtitle?: string }> = {
   module4: { title: "Xuất hóa đơn", subtitle: "B4 — Phát hành INV theo Course Code (Order ID điền sau được)" },
   revenueLedger: {
     title: "Sổ doanh thu",
-    subtitle: "Pay Time · GMV RMB = VND÷3700 — Tự động + Thủ công + Sync sheet",
+    subtitle: "Pay Time · GMV RMB = VND÷3700 — Tự động + Thủ công",
   },
   bc01: { title: "BC01: Sales performance", subtitle: "Tổng GMV theo team × sale × tháng" },
   bc02: { title: "BC02: Key Data", subtitle: "Dữ liệu then chốt quy trình bán hàng" },

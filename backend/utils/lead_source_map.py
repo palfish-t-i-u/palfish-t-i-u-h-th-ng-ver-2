@@ -98,3 +98,39 @@ def resolve_lead_label(source_key: str | None, channel_code: str | None) -> str:
     if s_key:
         return s_key
     return "?"
+
+
+# lead_source key → giá trị `loai` báo cáo (vocab BC02/Sổ doanh thu, xem
+# frontend/src/lib/loaiLabel.ts LEDGER_LOAI_OPTIONS + bc02TypeMap.ts).
+_SOURCE_TO_LOAI: dict[str, str] = {
+    "quang_cao": "广告",
+    "gioi_thieu": "转介绍",
+    "gia_han": "续费",
+    "kho_chung": "公海",
+    "offline": "Offline",
+    "koc": "KOC",
+    "khac": "Other",
+}
+
+_CHANNEL_TO_SOURCE_KEY: dict[str, str] = {
+    ch["code"]: s["key"] for s in LEAD_SOURCES for ch in s["channels"]
+}
+
+
+def resolve_loai_from_lead_source(source_key: str | None, channel_code: str | None) -> str:
+    """Map lead_source/lead_channel (Payment Request) → `loai` (vocab Sổ doanh thu/BC02).
+
+    Ưu tiên source_key; source_key không map được thì suy ra source qua channel_code.
+    Không map được gì cả → "" (giữ trống, không đoán bừa — an toàn hơn để "Khác"
+    khi thật sự không biết, so với gán nhầm loai).
+    """
+    s_key = (source_key or "").strip()
+    if s_key in _SOURCE_TO_LOAI:
+        return _SOURCE_TO_LOAI[s_key]
+
+    c_code = (channel_code or "").strip()
+    src_from_channel = _CHANNEL_TO_SOURCE_KEY.get(c_code)
+    if src_from_channel:
+        return _SOURCE_TO_LOAI.get(src_from_channel, "")
+
+    return ""
