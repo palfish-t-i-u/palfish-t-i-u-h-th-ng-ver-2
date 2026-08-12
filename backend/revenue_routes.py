@@ -1246,7 +1246,7 @@ def sync_ledger_from_ar_course(
             if order_match.data:
                 match_row = order_match.data[0]
                 match_id = str(match_row["id"])
-                if match_row.get("loai_nhap") == "thu_cong":
+                if match_row.get("loai_nhap") in ("tay", "hoan"):
                     return match_id
                 update_payload: dict[str, Any] = {
                     "ma_don_hang": course_code,
@@ -1273,7 +1273,7 @@ def sync_ledger_from_ar_course(
             if len(loose_match.data) == 1:
                 match_row = loose_match.data[0]
                 match_id = str(match_row["id"])
-                if match_row.get("loai_nhap") == "thu_cong":
+                if match_row.get("loai_nhap") in ("tay", "hoan"):
                     return match_id
                 update_payload = {
                     "crm_order_id": order_id,

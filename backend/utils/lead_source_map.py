@@ -117,18 +117,28 @@ _CHANNEL_TO_SOURCE_KEY: dict[str, str] = {
 }
 
 
+# FB-Livestream tách riêng cột "Lives" trên BC02, không gộp vào "广告" dù
+# channel này thuộc source quang_cao (chị Hiền chốt — xem plan mục 3, G2-T1).
+_LIVESTREAM_CHANNEL_CODE = "300431"
+
+
 def resolve_loai_from_lead_source(source_key: str | None, channel_code: str | None) -> str:
     """Map lead_source/lead_channel (Payment Request) → `loai` (vocab Sổ doanh thu/BC02).
 
     Ưu tiên source_key; source_key không map được thì suy ra source qua channel_code.
+    Ngoại lệ: quang_cao + kênh Livestream (300431) → "Lives", không phải "广告".
     Không map được gì cả → "" (giữ trống, không đoán bừa — an toàn hơn để "Khác"
     khi thật sự không biết, so với gán nhầm loai).
     """
     s_key = (source_key or "").strip()
+    c_code = (channel_code or "").strip()
+
+    if s_key == "quang_cao" and c_code == _LIVESTREAM_CHANNEL_CODE:
+        return "Lives"
+
     if s_key in _SOURCE_TO_LOAI:
         return _SOURCE_TO_LOAI[s_key]
 
-    c_code = (channel_code or "").strip()
     src_from_channel = _CHANNEL_TO_SOURCE_KEY.get(c_code)
     if src_from_channel:
         return _SOURCE_TO_LOAI.get(src_from_channel, "")

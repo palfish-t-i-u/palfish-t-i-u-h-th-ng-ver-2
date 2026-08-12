@@ -64,6 +64,14 @@ class TestResolveLoaiFromLeadSource:
         # Không đoán bừa — để trống thay vì gán nhầm loai
         assert resolve_loai_from_lead_source(None, None) == ""
         assert resolve_loai_from_lead_source("unknown-src", "unknown-ch") == ""
+
+    def test_livestream_channel_under_quang_cao_maps_to_lives_not_ads(self):
+        # Chị Hiền tách riêng cột "Lives" trên BC02 cho kênh FB-Livestream,
+        # không gộp chung "广告" dù channel này thuộc source quang_cao.
+        assert resolve_loai_from_lead_source("quang_cao", "300431") == "Lives"
+
+    def test_livestream_channel_alone_without_source_still_maps_via_channel(self):
+        assert resolve_loai_from_lead_source(None, "300431") == "广告"
         assert resolve_loai_from_lead_source("", "") == ""
 
 
