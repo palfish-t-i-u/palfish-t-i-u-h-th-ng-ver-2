@@ -361,7 +361,7 @@ def test_ar_sync_order_match_manual_row_dedups_without_flipping_tag():
     existing = [{
         "id": "sdt-manual-1",
         "crm_order_id": AR_ORDER_ID,
-        "loai_nhap": "thu_cong",
+        "loai_nhap": "tay",
         "loai": None,
         "uid": "UID-LOAI-1",
         "ngay_tien_ve": "2026-08-10",
@@ -375,7 +375,7 @@ def test_ar_sync_order_match_manual_row_dedups_without_flipping_tag():
     assert result == "sdt-manual-1"
     assert not sb.inserted, "Không được insert dòng mới — phải dedup vào dòng cũ"
     row = sb._tables["so_doanh_thu"][0]
-    assert row["loai_nhap"] == "thu_cong", "Dòng thủ công bị lật tag — đây chính là bug 130 dòng"
+    assert row["loai_nhap"] == "tay", "Dòng thủ công bị lật tag — đây chính là bug 130 dòng"
     assert row["loai"] is None, "Dòng thủ công không được app ghi đè loai"
 
 
@@ -385,7 +385,7 @@ def test_ar_sync_loose_match_manual_row_dedups_without_flipping_tag():
     existing = [{
         "id": "sdt-manual-2",
         "crm_order_id": "SHEET-OLD-ID",  # khác order_id AR → order_match không trúng
-        "loai_nhap": "thu_cong",
+        "loai_nhap": "tay",
         "loai": None,
         "uid": "UID-LOAI-1",
         "ngay_tien_ve": "2026-08-10",
@@ -399,8 +399,31 @@ def test_ar_sync_loose_match_manual_row_dedups_without_flipping_tag():
     assert result == "sdt-manual-2"
     assert not sb.inserted
     row = sb._tables["so_doanh_thu"][0]
-    assert row["loai_nhap"] == "thu_cong", "Dòng thủ công bị lật tag qua loose_match"
+    assert row["loai_nhap"] == "tay", "Dòng thủ công bị lật tag qua loose_match"
     assert row["crm_order_id"] == "SHEET-OLD-ID", "Không được ghi đè crm_order_id của dòng thủ công"
+
+
+def test_ar_sync_order_match_hoan_row_dedups_without_flipping_tag():
+    """order_match trúng dòng ghi giảm/hoàn (loai_nhap='hoan') → cũng chỉ dedup,
+    không lật tag — guard áp dụng cho cả 'tay' lẫn 'hoan', không riêng 1 giá trị."""
+    existing = [{
+        "id": "sdt-hoan-1",
+        "crm_order_id": AR_ORDER_ID,
+        "loai_nhap": "hoan",
+        "loai": None,
+        "uid": "UID-LOAI-1",
+        "ngay_tien_ve": "2026-08-10",
+        "so_tien_vnd": 3_000_000,
+    }]
+    sb = FakeSB(_make_ar_tables_loai(lead_source="quang_cao", existing_ledger=existing))
+
+    with _patch_sync():
+        result = rev_mod.sync_ledger_from_ar_course(sb, "ar-1", AR_COURSE_CODE)
+
+    assert result == "sdt-hoan-1"
+    assert not sb.inserted
+    row = sb._tables["so_doanh_thu"][0]
+    assert row["loai_nhap"] == "hoan", "Dòng ghi giảm/hoàn bị lật tag sang tu_dong"
 
 
 def test_ar_sync_order_match_auto_row_fills_loai_only_when_blank():
