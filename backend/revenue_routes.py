@@ -13,6 +13,7 @@ from pydantic import BaseModel
 
 from admin_routes import require_module_access, require_module_write
 from rbac import enforce_report_scope, require_min_role, resolve_actor, scope_sale_names, visible_creator_emails
+from utils.lead_source_map import resolve_loai_from_lead_source
 from utils.team_mapper import (
     TEAM_PIVOT_LABELS,
     KNOWN_BC01_TEAMS,
@@ -1196,6 +1197,10 @@ def sync_ledger_from_ar_course(
         uid = str((uid_block or {}).get("uid") or (pr.get("uid") if pr else "") or "")
         phone = str((uid_block or {}).get("phone") or (pr.get("phone") if pr else "") or "")
         goi_hoc = str(course.get("name") or course_code).strip()
+        loai_val = resolve_loai_from_lead_source(
+            pr.get("lead_source") if pr else None,
+            pr.get("lead_channel") if pr else None,
+        )
 
         payload = {
             "ngay_tien_ve": ngay_tien_ve.isoformat(),
@@ -1215,6 +1220,7 @@ def sync_ledger_from_ar_course(
             "don_hang_id": None,
             "ma_don_hang": course_code,
             "crm_order_id": order_id,
+            "loai": loai_val or None,
             "note": f"AR {ar_id}",
             "created_by_email": actor_email,
             "updated_by_email": actor_email,
@@ -1224,29 +1230,40 @@ def sync_ledger_from_ar_course(
         # Khoá ổn định: crm_order_id duy nhất per đơn. Ưu tiên để chống trùng
         # khi sync lại sau khi stamp đã đổi ngay_tien_ve (khoá lỏng uid+ngày+tiền
         # sẽ không thấy dòng cũ do ngày đã khác sau C-T1 stamp).
+        #
+        # Dòng match được có thể là dòng THỦ CÔNG (import sheet chị Hiền trùng
+        # uid/ngày/tiền với đơn app tự sinh) — không được lật loai_nhap sang
+        # "tu_dong" trong trường hợp đó (bug 130 dòng, anh Minh 12/8): chỉ dedup
+        # (trả id), không update gì cả.
         if order_id:
             order_match = (
                 sb.table("so_doanh_thu")
-                .select("id")
+                .select("id, loai_nhap, loai")
                 .eq("crm_order_id", order_id)
                 .limit(1)
                 .execute()
             )
             if order_match.data:
-                match_id = str(order_match.data[0]["id"])
-                sb.table("so_doanh_thu").update({
+                match_row = order_match.data[0]
+                match_id = str(match_row["id"])
+                if match_row.get("loai_nhap") == "thu_cong":
+                    return match_id
+                update_payload: dict[str, Any] = {
                     "ma_don_hang": course_code,
                     "loai_nhap": "tu_dong",
                     "don_hang_id": None,
                     "note": f"AR {ar_id}",
                     "updated_by_email": actor_email,
-                }).eq("id", match_id).execute()
+                }
+                if loai_val and not match_row.get("loai"):
+                    update_payload["loai"] = loai_val
+                sb.table("so_doanh_thu").update(update_payload).eq("id", match_id).execute()
                 return match_id
 
         if uid:
             loose_match = (
                 sb.table("so_doanh_thu")
-                .select("id")
+                .select("id, loai_nhap, loai")
                 .eq("uid", uid)
                 .eq("ngay_tien_ve", ngay_tien_ve.isoformat())
                 .eq("so_tien_vnd", vnd)
@@ -1254,15 +1271,21 @@ def sync_ledger_from_ar_course(
                 .execute()
             )
             if len(loose_match.data) == 1:
-                match_id = str(loose_match.data[0]["id"])
-                sb.table("so_doanh_thu").update({
+                match_row = loose_match.data[0]
+                match_id = str(match_row["id"])
+                if match_row.get("loai_nhap") == "thu_cong":
+                    return match_id
+                update_payload = {
                     "crm_order_id": order_id,
                     "ma_don_hang": course_code,
                     "loai_nhap": "tu_dong",
                     "don_hang_id": None,
                     "note": f"AR {ar_id}",
                     "updated_by_email": actor_email,
-                }).eq("id", match_id).execute()
+                }
+                if loai_val and not match_row.get("loai"):
+                    update_payload["loai"] = loai_val
+                sb.table("so_doanh_thu").update(update_payload).eq("id", match_id).execute()
                 return match_id
 
         ins = sb.table("so_doanh_thu").insert(payload).execute()
