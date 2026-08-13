@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import hashlib
 import io
+import json
 import os
 import re
 import tempfile
@@ -1177,6 +1178,89 @@ def _enqueue_activation_request_created_zalo(
         print(f"[zalo] activation_request_created enqueue failed (non-fatal): {exc}")
 
 
+def _ar_dingtalk_content_key(ar: dict[str, Any], pr: dict[str, Any] | None) -> str:
+    """Snapshot ĐÚNG các trường thật sự hiển thị trong tin DingTalk
+    activation_request_created (soi theo build_activation_request_created_message,
+    utils/zalo_message_builder.py:404-537) — dùng để so sánh trước/sau PATCH.
+
+    Đổi key này mới đáng bắn tin edit-resend. LOẠI TRỪ (không hiển thị, đổi không
+    bắn tin): order_id, status, timestamps, info_confirmed, budget, course_count,
+    dòng Sale/Team. Dùng child_label ĐÃ RESOLVE (block.name ?? pr.child_name ??
+    ar.customer_name ?? pr.name), KHÔNG dùng customer_name thô khi block đã có tên.
+    """
+    pr = pr or {}
+
+    def _s(v: Any) -> str:
+        return str(v or "").strip()
+
+    child_name = _s(pr.get("child_name")) or _s(ar.get("customer_name")) or _s(pr.get("name")) or "Unknown"
+
+    blocks: list[Any] = []
+    for uid_block in ar.get("uids_data") or []:
+        if not isinstance(uid_block, dict):
+            continue
+        block_child = _s(uid_block.get("name")) or child_name
+        courses: list[Any] = []
+        for course in uid_block.get("courses") or []:
+            if not isinstance(course, dict):
+                continue
+            name = _s(course.get("name"))
+            is_ref = "REFER" in name.upper() or _s(course.get("lead_source")) == "gioi_thieu"
+            try:
+                amount = float(course.get("amount") or 0)
+            except (TypeError, ValueError):
+                amount = 0.0
+            entry: list[Any] = [name, amount]
+            if is_ref:
+                entry.extend([
+                    _s(course.get("referrer_uid")),
+                    course.get("bonus_sessions_referee"),
+                    course.get("bonus_sessions_referrer"),
+                ])
+            courses.append(entry)
+        blocks.append([
+            block_child,
+            _s(uid_block.get("phone")),
+            _s(uid_block.get("country")),
+            _s(uid_block.get("uid")),
+            courses,
+        ])
+
+    target, received = _pr_amounts(pr)
+    total = received if received > 0 else target
+
+    payload = {
+        "blocks": blocks,
+        "lead_source": _s(pr.get("lead_source")),
+        "lead_channel": _s(pr.get("lead_channel")),
+        "total": total,
+        "hold_activation": bool(ar.get("hold_activation")),
+        "hold_note": _s(ar.get("hold_note")),
+    }
+    return json.dumps(payload, sort_keys=True, ensure_ascii=False)
+
+
+def _maybe_enqueue_ar_edit_dingtalk(
+    sb,
+    current: dict[str, Any],
+    merged: dict[str, Any],
+    pr_map: dict[str, dict[str, Any]],
+) -> None:
+    """Sale sửa AR đã báo (PATCH) → bắn tin DingTalk 'cập nhật' NẾU nội dung hiển
+    thị thật sự đổi. Best-effort — không bao giờ làm hỏng PATCH (chị Hiền 12/8).
+    """
+    try:
+        pr = pr_map.get(str(merged.get("pr_id") or ""))
+        key_before = _ar_dingtalk_content_key(current, pr)
+        key_after = _ar_dingtalk_content_key(merged, pr)
+        if key_before == key_after:
+            return
+        source_suffix = ":edit:" + hashlib.md5(key_after.encode()).hexdigest()[:12]
+        _enqueue_activation_request_created_dingtalk(sb, merged, pr, source_suffix=source_suffix)
+    except Exception as exc:
+        print(f"[dingtalk] edit-resend enqueue failed (non-fatal): {exc}")
+
+
 def _enqueue_activation_request_created_dingtalk(
     sb, saved_ar: dict[str, Any], pr: dict[str, Any] | None, source_suffix: str = "",
     hold_activation: bool = False, hold_note: str | None = None,
@@ -1291,6 +1375,8 @@ def _enqueue_activation_request_created_dingtalk(
         # — giữ md5(ar_id) là tin bổ sung bị drop im lặng (G3).
         source_uuid = str(uuid.UUID(hashlib.md5(f"{ar_id}{source_suffix}".encode()).hexdigest()))
         outbox_message = result["message"]
+        if source_suffix.startswith(":edit:"):
+            outbox_message = "🔄 SALE VỪA CẬP NHẬT ĐƠN ĐÃ BÁO\n" + outbox_message
         if hold_activation:
             hold_line = "\n⏸ PH CHƯA MUỐN TẠO GÓI HỌC"
             if hold_note:
@@ -2081,6 +2167,7 @@ def register_activation_routes(app, supabase_factory):
                             500, f"Khong cap nhat active_requests: {exc}"
                         ) from exc
                 pr_map = _fetch_prs_by_ids(sb, [str(merged.get("pr_id") or "")])
+                _maybe_enqueue_ar_edit_dingtalk(sb, current, merged, pr_map)
                 return _serialize_ar(merged, pr_map.get(str(merged.get("pr_id") or "")), tien_ve=_tien_ve_bounds(sb, ar_id))
             patch["uids_data"] = uids_data
             patch["status"] = guarded_status
@@ -2107,6 +2194,7 @@ def register_activation_routes(app, supabase_factory):
             _sync_ledger_courses_from_uids(sb, ar_id, merged.get("uids_data") or guarded_uids)
             _writeback_child_uids_to_pr(sb, merged)
         pr_map = _fetch_prs_by_ids(sb, [str(merged.get("pr_id") or "")])
+        _maybe_enqueue_ar_edit_dingtalk(sb, current, merged, pr_map)
         return _serialize_ar(merged, pr_map.get(str(merged.get("pr_id") or "")), tien_ve=_tien_ve_bounds(sb, ar_id))
 
     @app.patch("/api/v1/active-requests/{ar_id}/credit-referral", tags=["Activation"])
