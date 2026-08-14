@@ -81,9 +81,10 @@ class TestBuildActivationRequestCreatedMessage:
         assert result["message"] == expected
         assert result["canonical_team_code"] == "Inhouse 2"
 
-    def test_per_con_tien_line_split_while_footer_total_stays_pr_received(self):
-        # 29/7 (a Minh): mỗi con có dòng "Tiền" riêng (amount gói con đó); footer
-        # vẫn 1 "Tổng" = tiền thu PR. Sum(Tiền) ≠ Tổng ⇒ kế toán soi được lệch.
+    def test_footer_total_equals_sum_of_per_course_amounts(self):
+        # 14/8 (kế toán + sale chốt): mỗi con 1 dòng "Tiền"; footer Tổng = Σ dòng Tiền
+        # (tiền thực nhận sale phân bổ), KHÔNG lấy received/target. received cố tình
+        # LỆCH Σ gói để chứng minh Tổng bám Σ gói. Đảo quy tắc 29/7 (footer=received).
         ar_data = {
             "id": "AR-2026-0597",
             "customer_name": "",
@@ -94,7 +95,7 @@ class TestBuildActivationRequestCreatedMessage:
                  "country": "VN", "courses": [{"name": "2/W- Both AB REFER 48 PHI+5 HN", "amount": 9_340_500}]},
             ],
         }
-        pr_data = {"lead_source": "quang_cao", "lead_channel": "300531", "received": 18_681_000}
+        pr_data = {"lead_source": "quang_cao", "lead_channel": "300531", "received": 20_000_000}
         sale_info = {"display_name": "Pham Thi Thao", "team": "Inhouse 1"}
 
         message = build_activation_request_created_message(ar_data, pr_data, sale_info)["message"]
@@ -103,9 +104,10 @@ class TestBuildActivationRequestCreatedMessage:
         assert message.count("Tiền: 9.340.500 VND") == 2
         # Tiền nằm TRONG block (trước footer Nguồn/Tổng), không phải cuối tin
         assert message.index("Tiền: 9.340.500 VND") < message.index("Nguồn:")
-        # footer vẫn đúng 1 Tổng = received, không gộp/tách
+        # đúng 1 Tổng = Σ gói (18.681.000), KHÔNG phải received 20.000.000
         assert message.count("Tổng:") == 1
         assert "Tổng: 18.681.000 VND" in message
+        assert "Tổng: 20.000.000 VND" not in message
 
     def test_multi_uid_produces_multiple_blocks_separated_by_blank_line(self):
         ar_data = {
@@ -175,7 +177,7 @@ class TestBuildActivationRequestCreatedMessage:
 
         assert "Bé Sóc, Gói A" in message
         assert "Bé Sóc, Gói B" in message
-        # Tổng = tiền thu PR (received), không phải sum gói
+        # Tổng = Σ gói (2M + 3M = 5M)
         assert "Tổng: 5.000.000 VND" in message
 
     def test_team_ih2_alias_resolves_to_canonical_inhouse_2(self):
@@ -257,14 +259,32 @@ class TestBuildActivationRequestCreatedMessage:
         r = build_activation_request_created_message(ar, pr, {"team": "Offline"})
         assert "Phone: 86-13800138000" in r["message"]
 
-    def test_tong_fallback_target_when_received_zero(self):
-        """received=0 → Tổng dùng target, không hiện 0đ (đơn đủ tạm thẻ/trả góp)."""
+    def test_tong_from_course_amount_when_received_zero(self):
+        """received=0 (đơn thẻ/trả góp chưa verify) → Tổng = Σ amount gói, không hiện 0đ."""
         ar = {"uids_data": [{"uid": "123", "phone": "84-900000000", "courses": [{"name": "Gói A", "amount": 9_434_880}]}]}
         pr = {"target": 9_434_880, "received": 0, "child_name": "Bé An"}
         sale = {"display_name": "Sale A", "team": "Inhouse 1"}
         msg = build_activation_request_created_message(ar, pr, sale)["message"]
         assert "Tổng: 9.434.880 VND" in msg
         assert "Tổng: 0 VND" not in msg
+
+    def test_card_order_total_uses_allocation_not_course_price(self):
+        """Đơn tín dụng (chị Thảo Anh 14/8): received=0, target=giá gói gốc 20.160.000,
+        nhưng sale phân bổ tiền THỰC NHẬN (sau phí thẻ) trên gói ⇒ Tổng = Σ allocation
+        19.656.000, KHÔNG phải target. Regression cho bug footer lấy nhầm target."""
+        ar = {"id": "AR-2026-0358", "customer_name": "", "uids_data": [
+            {"uid": "3316206459", "name": "Phạm Tiến Đạt", "phone": "969612190", "country": "VN",
+             "courses": [{"name": "2/W- NEW 48 PHI+5 HN", "amount": 10_530_000}]},
+            {"uid": "3316344810", "name": "Phạm Minh Nguyệt", "phone": "986290867", "country": "VN",
+             "courses": [{"name": "2/W- Both AB REFER 48 PHI+5 HN", "amount": 9_126_000,
+                          "lead_source": "gioi_thieu", "referrer_uid": "3316206459",
+                          "bonus_sessions_referee": 5, "bonus_sessions_referrer": 5}]},
+        ]}
+        pr = {"lead_source": "quang_cao", "lead_channel": "300431", "target": 20_160_000, "received": 0}
+        sale = {"display_name": "Nguyen Thao Anh", "team": "Inhouse 1"}
+        msg = build_activation_request_created_message(ar, pr, sale)["message"]
+        assert "Tổng: 19.656.000 VND" in msg
+        assert "Tổng: 20.160.000 VND" not in msg
 
 
 class TestBuildCourseActivatedMessage:

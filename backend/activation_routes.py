@@ -1196,6 +1196,8 @@ def _ar_dingtalk_content_key(ar: dict[str, Any], pr: dict[str, Any] | None) -> s
     child_name = _s(pr.get("child_name")) or _s(ar.get("customer_name")) or _s(pr.get("name")) or "Unknown"
 
     blocks: list[Any] = []
+    grand_total = 0.0
+    any_amount = False
     for uid_block in ar.get("uids_data") or []:
         if not isinstance(uid_block, dict):
             continue
@@ -1206,10 +1208,14 @@ def _ar_dingtalk_content_key(ar: dict[str, Any], pr: dict[str, Any] | None) -> s
                 continue
             name = _s(course.get("name"))
             is_ref = "REFER" in name.upper() or _s(course.get("lead_source")) == "gioi_thieu"
+            raw_amount = course.get("amount")
+            if raw_amount not in (None, ""):
+                any_amount = True
             try:
-                amount = float(course.get("amount") or 0)
+                amount = float(raw_amount or 0)
             except (TypeError, ValueError):
                 amount = 0.0
+            grand_total += amount
             entry: list[Any] = [name, amount]
             if is_ref:
                 entry.extend([
@@ -1226,8 +1232,12 @@ def _ar_dingtalk_content_key(ar: dict[str, Any], pr: dict[str, Any] | None) -> s
             courses,
         ])
 
-    target, received = _pr_amounts(pr)
-    total = received if received > 0 else target
+    # 14/8: khớp footer builder — Tổng = Σ amount gói nếu có; else fallback received/target.
+    if any_amount:
+        total = int(round(grand_total))
+    else:
+        target, received = _pr_amounts(pr)
+        total = received if received > 0 else target
 
     payload = {
         "blocks": blocks,

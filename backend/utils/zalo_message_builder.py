@@ -450,6 +450,8 @@ def build_activation_request_created_message(
         logger.warning("Missing uids_data in %s", ctx)
 
     blocks: list[str] = []
+    grand_total = 0.0
+    any_block_amount = False
     for uid_block in uid_blocks:
         if not isinstance(uid_block, dict):
             continue
@@ -483,13 +485,15 @@ def build_activation_request_created_message(
                     logger.warning("Invalid course amount %r in %s", amount, ctx)
         if not course_lines:
             course_lines = [block_child]
-        # 29/7 (a Minh): "Tiền" mỗi con = tổng amount gói của con đó, để kế toán soi
-        # lệch với Tổng(PR received) ở footer. Vắng amount → ẩn dòng (không bịa 0).
+        # 29/7 (a Minh): "Tiền" mỗi con = tổng amount gói của con đó. Vắng amount →
+        # ẩn dòng (không bịa 0). 14/8: gom vào grand_total để footer Tổng = Σ dòng Tiền.
         if block_has_amount:
             tien_str = f"{int(round(block_total)):,}".replace(",", ".")
             course_lines.append(f"Tiền: {tien_str} VND")
+        grand_total += block_total
+        any_block_amount = any_block_amount or block_has_amount
 
-        # 17/7 (a Hiếu chốt): block chỉ Phone/UID/<bé, gói>. Nguồn + Tổng(PR) ở footer chung.
+        # 17/7 (a Hiếu chốt): block chỉ Phone/UID/<bé, gói>. Nguồn + Tổng ở footer chung.
         blocks.append(
             "\n".join(
                 [
@@ -516,16 +520,21 @@ def build_activation_request_created_message(
     canonical_team = get_canonical_team(raw_team)
     team_display = str(raw_team).strip() if raw_team and str(raw_team).strip() else "?"
 
-    # Tổng = received nếu đã thu > 0, else target (giá trị đơn — dùng khi line thẻ/trả góp chưa verify).
+    # 14/8 (kế toán + sale chốt): đơn tín dụng báo THEO tiền thực nhận (sau phí). Sale
+    # đã phân bổ actual-received trên từng gói ⇒ Tổng = ĐÚNG Σ dòng "Tiền", KHÔNG lấy
+    # received/target (giá gói có thể lệch phí thẻ). Đảo quy tắc 29/7 (footer=received).
+    # Chỉ khi KHÔNG gói nào có amount mới fallback received>0?received:target.
     def _num(v):
         try:
             return float(v)
         except (TypeError, ValueError):
             return 0.0
-    pr_received = pr_data.get("received")
-    recv_f = _num(pr_received)
-    target_f = _num(pr_target)
-    total_val = recv_f if recv_f > 0 else target_f
+    if any_block_amount:
+        total_val = grand_total
+    else:
+        recv_f = _num(pr_data.get("received"))
+        target_f = _num(pr_target)
+        total_val = recv_f if recv_f > 0 else target_f
     total_str = f"{int(round(total_val)):,}".replace(",", ".")  # dấu chấm nghìn, đơn vị VND
     footer = "\n".join(
         [
