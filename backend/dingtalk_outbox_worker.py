@@ -12,6 +12,7 @@ from typing import Any, Callable
 from dingtalk_notifier import (
     DingTalkAmbiguousDeliveryError,
     DingTalkAPIError,
+    send_group_image,
     send_group_message,
 )
 
@@ -115,19 +116,47 @@ async def poll_and_send(sb_factory: Callable[[], Any]) -> None:
 
         try:
             open_conversation_id = _load_team_group(sb, team_code)
-            title = EVENT_TITLES.get(event_type, "")
             bill_urls = _image_list_from_row(row)
-            full_message = message
-            if bill_urls:
+            has_message = bool((message or "").strip())
+
+            if bill_urls and not has_message:
+                # ROW CHỈ-ẢNH (14/8: tách tin để search được): gửi ảnh bill riêng
+                # qua sampleImageMsg. Enqueue tách mỗi ảnh 1 row (source_id theo URL)
+                # nên bill_urls thường đúng 1 phần tử → retry cô lập, không gửi trùng.
+                sent_ids: list[str] = []
+                for u in bill_urls:
+                    img_id = await asyncio.to_thread(
+                        send_group_image,
+                        open_conversation_id=open_conversation_id,
+                        photo_url=u,
+                    )
+                    if img_id:
+                        sent_ids.append(img_id)
+                if not sent_ids:
+                    # send_group_image trả "" (URL rỗng sau _clean) = KHÔNG gửi được gì.
+                    # KHÔNG mark sent (tránh mất ảnh im lặng ngụy trang thành công) —
+                    # raise để retry/dead-letter, last_error hiện ra cho người soi.
+                    raise DingTalkAPIError(f"send_group_image gửi 0 ảnh: {bill_urls}")
+                msg_id = ",".join(sent_ids)
+            elif bill_urls and has_message:
+                # LEGACY: row cũ gộp text+ảnh (enqueue TRƯỚC deploy tách). Giữ hành
+                # vi markdown nhúng ảnh để không mất tin đang tồn outbox lúc deploy.
                 full_message = message + "\n" + _build_bill_markdown(bill_urls)
-                if not title:
-                    title = "Thông báo"
-            msg_id = await asyncio.to_thread(
-                send_group_message,
-                open_conversation_id=open_conversation_id,
-                message=full_message,
-                title=title,
-            )
+                msg_id = await asyncio.to_thread(
+                    send_group_message,
+                    open_conversation_id=open_conversation_id,
+                    message=full_message,
+                    title=EVENT_TITLES.get(event_type, "") or "Thông báo",
+                )
+            else:
+                # ROW TEXT: gửi sampleText (title rỗng) → DingTalk index được nội
+                # dung, chị Hiền search đối soát được (14/8). Không còn markdown card.
+                msg_id = await asyncio.to_thread(
+                    send_group_message,
+                    open_conversation_id=open_conversation_id,
+                    message=message,
+                    title="",
+                )
             sb.table("dingtalk_outbox").update({
                 "sent_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
                 "dingtalk_message_id": msg_id,

@@ -1353,7 +1353,6 @@ def _enqueue_activation_request_created_dingtalk(
                 legacy = (line.get("bill_image") or "").strip()
                 if legacy and legacy not in bill_urls:
                     bill_urls.append(legacy)
-        bill_url = bill_urls[0] if bill_urls else None
 
         pr_target, pr_received = _pr_amounts(pr)
         result = build_activation_request_created_message(
@@ -1392,24 +1391,47 @@ def _enqueue_activation_request_created_dingtalk(
             if hold_note:
                 hold_line += f"\nGhi chú: {hold_note}"
             outbox_message = outbox_message + hold_line
-        try:
-            sb.table("dingtalk_outbox").insert(
-                {
+        def _insert_outbox(payload: dict[str, Any]) -> None:
+            try:
+                sb.table("dingtalk_outbox").insert(payload).execute()
+            except Exception as exc:
+                msg = str(exc).lower()
+                if "duplicate" in msg or "unique" in msg:
+                    return  # idempotent — UNIQUE(source_table, source_id, event_type)
+                raise
+
+        # 14/8: TÁCH tin text/ảnh để chị Hiền search đối soát được (markdown card
+        # KHÔNG được DingTalk index; sampleText thì được — worker route theo nội dung
+        # row: có ảnh + rỗng text → send_group_image, ngược lại → sampleText).
+        # Tin TEXT: source_id md5(ar_id+suffix) — ĐỔI theo :edit:/:append: nên tin
+        # cập nhật/bổ sung RE-SEND đúng ý; giữ nguyên công thức → tương thích ngược.
+        _insert_outbox({
+            "event_type": "activation_request_created",
+            "source_table": "active_requests",
+            "source_id": source_uuid,
+            "team_code": team_code,
+            "message": outbox_message,
+        })
+        # Mỗi ảnh bill = 1 tin sampleImageMsg riêng. source_id = hash(ar_id + URL),
+        # KHÔNG kèm suffix → CÙNG 1 bill của 1 AR chỉ gửi ĐÚNG 1 LẦN dù báo đơn được
+        # sửa/bổ sung nhiều lần (UNIQUE nuốt lần sau) → hết spam ảnh trùng khi edit-
+        # resend. Bill mới (URL mới) → gửi 1 lần. Hash URL (không dùng vị trí) → bền
+        # với thay đổi thứ tự. Guard từng bill: 1 insert lỗi không làm rớt bill sau.
+        for bill in bill_urls:
+            bill_hash = hashlib.md5(bill.encode()).hexdigest()
+            bill_source = str(uuid.UUID(hashlib.md5(f"{ar_id}:bill:{bill_hash}".encode()).hexdigest()))
+            try:
+                _insert_outbox({
                     "event_type": "activation_request_created",
                     "source_table": "active_requests",
-                    "source_id": source_uuid,
+                    "source_id": bill_source,
                     "team_code": team_code,
-                    "message": outbox_message,
-                    "image_url": bill_url,
-                    "image_urls": bill_urls or None,
-                }
-            ).execute()
-        except Exception as exc:
-            msg = str(exc).lower()
-            if "duplicate" in msg or "unique" in msg:
-                pass  # idempotent — UNIQUE(source_table, source_id, event_type)
-            else:
-                raise
+                    "message": "",
+                    "image_url": bill,
+                    "image_urls": [bill],
+                })
+            except Exception as bill_exc:
+                print(f"[dingtalk] bill row enqueue failed (non-fatal): {bill_exc}")
     except Exception as exc:
         print(f"[dingtalk] activation_request_created enqueue failed (non-fatal): {exc}")
 
