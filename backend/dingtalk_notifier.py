@@ -17,6 +17,7 @@ HTTP_TIMEOUT = 15.0
 
 TOKEN_URL = "https://api.dingtalk.com/v1.0/oauth2/accessToken"
 GROUP_SEND_URL = "https://api.dingtalk.com/v1.0/robot/groupMessages/send"
+MEDIA_UPLOAD_URL = "https://oapi.dingtalk.com/media/upload"
 
 _token_lock = threading.Lock()
 _cached_token: str = ""
@@ -222,13 +223,53 @@ def send_group_message(
     return f"dt-{int(time.time() * 1000)}"
 
 
+def _upload_image_to_dingtalk(image_url: str) -> str:
+    """Download image from external URL, upload to DingTalk media, return media_id.
+
+    sampleImageMsg with external URLs caches the first image sent and reuses it
+    for all subsequent sends (DingTalk bug confirmed 14/8). Uploading to DingTalk
+    media first gives each image a unique media_id → correct display.
+    """
+    token = get_access_token()
+    filename = image_url.rsplit("/", 1)[-1].split("?")[0] or "bill.jpg"
+
+    with httpx.Client(timeout=HTTP_TIMEOUT) as client:
+        img_resp = client.get(image_url)
+        img_resp.raise_for_status()
+
+    content_type = img_resp.headers.get("content-type", "image/jpeg")
+    with httpx.Client(timeout=HTTP_TIMEOUT) as client:
+        resp = client.post(
+            MEDIA_UPLOAD_URL,
+            params={"access_token": token, "type": "image"},
+            files={"media": (filename, img_resp.content, content_type)},
+        )
+
+    body = _json_or_text(resp)
+    if not isinstance(body, dict):
+        raise DingTalkAPIError(f"DingTalk upload response not JSON: {str(body)[:200]}")
+    media_id = body.get("media_id", "")
+    if not media_id:
+        errcode = body.get("errcode", "")
+        errmsg = body.get("errmsg", "")
+        raise DingTalkAPIError(
+            f"DingTalk upload failed: errcode={errcode} errmsg={errmsg}",
+            dingtalk_errcode=errcode,
+            response_body=body,
+        )
+    return media_id
+
+
 def send_group_image(
     *,
     open_conversation_id: str,
     photo_url: str,
     robot_code: str | None = None,
 ) -> str:
-    """Send an image to a DingTalk group via enterprise robot (sampleImageMsg)."""
+    """Send an image to a DingTalk group via enterprise robot (sampleImageMsg).
+
+    Uploads to DingTalk media first (external URLs get cached/mixed up by DingTalk).
+    """
     open_conversation_id = _clean(open_conversation_id)
     photo_url = _clean(photo_url)
     if not open_conversation_id or not photo_url:
@@ -237,12 +278,13 @@ def send_group_image(
     if not robot_code:
         _, _, robot_code = _get_credentials()
 
+    media_id = _upload_image_to_dingtalk(photo_url)
     token = get_access_token()
 
     import json
     payload = {
         "msgKey": "sampleImageMsg",
-        "msgParam": json.dumps({"photoURL": photo_url}, ensure_ascii=False),
+        "msgParam": json.dumps({"photoURL": media_id}, ensure_ascii=False),
         "robotCode": robot_code,
         "openConversationId": open_conversation_id,
     }

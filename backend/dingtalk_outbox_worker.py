@@ -12,6 +12,7 @@ from typing import Any, Callable
 from dingtalk_notifier import (
     DingTalkAmbiguousDeliveryError,
     DingTalkAPIError,
+    send_group_image,
     send_group_message,
 )
 
@@ -119,18 +120,21 @@ async def poll_and_send(sb_factory: Callable[[], Any]) -> None:
             has_message = bool((message or "").strip())
 
             if bill_urls and not has_message:
-                # ROW CHỈ-ẢNH: gửi markdown nhúng ảnh (sampleMarkdown). sampleImageMsg
-                # bị DingTalk cache ảnh đầu tiên, URL khác vẫn hiện ảnh cũ (bug 14/8).
-                # Markdown title ngắn "📷" để Card gọn, nội dung search nằm ở row text.
-                bill_md = _build_bill_markdown(bill_urls)
-                if not bill_md.strip():
-                    raise DingTalkAPIError(f"bill markdown rỗng: {bill_urls}")
-                msg_id = await asyncio.to_thread(
-                    send_group_message,
-                    open_conversation_id=open_conversation_id,
-                    message=bill_md,
-                    title="📷",
-                )
+                # ROW CHỈ-ẢNH: upload lên DingTalk media trước rồi gửi sampleImageMsg
+                # với media_id. External URL bị DingTalk cache ảnh đầu tiên (bug 14/8);
+                # upload giải quyết cache + ảnh mở native trong app (không trỏ web).
+                sent_ids: list[str] = []
+                for u in bill_urls:
+                    img_id = await asyncio.to_thread(
+                        send_group_image,
+                        open_conversation_id=open_conversation_id,
+                        photo_url=u,
+                    )
+                    if img_id:
+                        sent_ids.append(img_id)
+                if not sent_ids:
+                    raise DingTalkAPIError(f"send_group_image gửi 0 ảnh: {bill_urls}")
+                msg_id = ",".join(sent_ids)
             elif bill_urls and has_message:
                 # LEGACY: row cũ gộp text+ảnh (enqueue TRƯỚC deploy tách). Giữ hành
                 # vi markdown nhúng ảnh để không mất tin đang tồn outbox lúc deploy.

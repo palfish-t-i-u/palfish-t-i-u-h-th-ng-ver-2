@@ -226,10 +226,10 @@ async def test_text_row_sends_sampletext_no_title():
 
 
 @pytest.mark.asyncio
-async def test_image_only_row_sends_markdown_not_sampleimgemsg():
-    """14/8 fix: sampleImageMsg bị DingTalk cache ảnh đầu tiên → chuyển sang markdown
-    nhúng ảnh (đã chạy đúng trước đó). Row ảnh (message rỗng, có image_urls) → gửi qua
-    send_group_message với title ngắn (markdown), KHÔNG dùng send_group_image."""
+async def test_image_only_row_uploads_then_sends_sampleimgemsg():
+    """14/8 v2: upload ảnh lên DingTalk media trước rồi gửi sampleImageMsg với media_id.
+    External URL bị cache (v1 fix dùng markdown nhưng mở web, không native). Upload giải
+    quyết cả cache lẫn UX native."""
     from dingtalk_outbox_worker import poll_and_send
 
     bill = "https://abc.supabase.co/storage/v1/object/public/bills/payment-lines/L1/a.jpg"
@@ -240,21 +240,39 @@ async def test_image_only_row_sends_markdown_not_sampleimgemsg():
         "image_urls": [bill], "image_url": bill,
     }]
     sb = _SB(rows)
-    captured = []
-
-    def fake_send(*, open_conversation_id, message, title=""):
-        captured.append({"message": message, "title": title})
-        return "pqk-md-img"
 
     with patch("dingtalk_outbox_worker._load_team_group", return_value="cid123"), \
-         patch("dingtalk_outbox_worker.send_group_message", side_effect=fake_send):
+         patch("dingtalk_outbox_worker.send_group_image", return_value="pqk-img") as img_mock, \
+         patch("dingtalk_outbox_worker.send_group_message") as txt_mock:
         await poll_and_send(lambda: sb)
 
-    assert len(captured) == 1
-    assert f"![bill1]({bill})" in captured[0]["message"]
-    assert captured[0]["title"] == "📷"
+    img_mock.assert_called_once()
+    assert img_mock.call_args.kwargs["photo_url"] == bill
+    txt_mock.assert_not_called()
     sent = next(c for c in sb._table.updater.calls if c["payload"].get("sent_at"))
-    assert sent["payload"]["dingtalk_message_id"] == "pqk-md-img"
+    assert sent["payload"]["dingtalk_message_id"] == "pqk-img"
+
+
+@pytest.mark.asyncio
+async def test_image_only_row_not_marked_sent_when_nothing_sent():
+    """send_group_image trả "" → KHÔNG mark sent, schedule retry."""
+    from dingtalk_outbox_worker import poll_and_send
+
+    rows = [{
+        "id": 32, "team_code": "TEAM_A", "message": "",
+        "event_type": "activation_request_created", "retries": 0,
+        "image_urls": ["https://x/a.jpg"], "image_url": "https://x/a.jpg",
+    }]
+    sb = _SB(rows)
+
+    with patch("dingtalk_outbox_worker._load_team_group", return_value="cid123"), \
+         patch("dingtalk_outbox_worker.send_group_image", return_value=""):
+        await poll_and_send(lambda: sb)
+
+    last = sb._table.updater.calls[-1]
+    assert "sent_at" not in last["payload"]
+    assert last["payload"]["retries"] == 1
+    assert last["payload"]["last_error"]
 
 
 @pytest.mark.asyncio
