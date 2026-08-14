@@ -280,3 +280,56 @@ def visible_creator_emails(sb, actor: Actor) -> list[str] | None:
     except Exception as exc:
         print(f"visible_emails: {exc}")
         return [actor.email.lower()]
+
+
+def actor_ma_nv(actor: Actor) -> str | None:
+    """Mã NV (HN0001) của chính actor — cầu nối tới payslips.code (M4/N2)."""
+    code = ((actor.staff or {}).get("ma_nv") or "").strip()
+    return code or None
+
+
+def visible_payslip_codes(sb, actor: Actor) -> list[str] | None:
+    """Mã NV mà actor được xem phiếu lương.
+
+    None = xem hết (ops/system). Ngược lại là danh sách mã NV:
+    - sale / user thường: chỉ mã NV của chính mình
+    - leader: cả team + sub_team (active) + chính mình
+    - manager: cả team (active) + chính mình
+    """
+    role = _normalize_role(actor.role)
+    if role in OPS_ROLES:
+        return None
+
+    own = actor_ma_nv(actor)
+    if role == "sale":
+        return [own] if own else []
+
+    staff = actor.staff or {}
+    team = (staff.get("team") or "").strip()
+    if not team:
+        return [own] if own else []
+
+    try:
+        q = (
+            sb.table("nhan_su_sale")
+            .select("ma_nv")
+            .eq("team", team)
+            .eq("is_active", True)
+        )
+        if role == "leader":
+            sub = (staff.get("sub_team") or "").strip()
+            if sub:
+                q = q.eq("sub_team", sub)
+        res = q.execute()
+    except Exception as exc:
+        print(f"visible_payslip_codes: {exc}")
+        return [own] if own else []
+
+    codes = {
+        (r.get("ma_nv") or "").strip()
+        for r in (res.data or [])
+        if (r.get("ma_nv") or "").strip()
+    }
+    if own:
+        codes.add(own)
+    return list(codes)
