@@ -12,7 +12,6 @@ from typing import Any, Callable
 from dingtalk_notifier import (
     DingTalkAmbiguousDeliveryError,
     DingTalkAPIError,
-    send_group_image,
     send_group_message,
 )
 
@@ -120,24 +119,18 @@ async def poll_and_send(sb_factory: Callable[[], Any]) -> None:
             has_message = bool((message or "").strip())
 
             if bill_urls and not has_message:
-                # ROW CHỈ-ẢNH (14/8: tách tin để search được): gửi ảnh bill riêng
-                # qua sampleImageMsg. Enqueue tách mỗi ảnh 1 row (source_id theo URL)
-                # nên bill_urls thường đúng 1 phần tử → retry cô lập, không gửi trùng.
-                sent_ids: list[str] = []
-                for u in bill_urls:
-                    img_id = await asyncio.to_thread(
-                        send_group_image,
-                        open_conversation_id=open_conversation_id,
-                        photo_url=u,
-                    )
-                    if img_id:
-                        sent_ids.append(img_id)
-                if not sent_ids:
-                    # send_group_image trả "" (URL rỗng sau _clean) = KHÔNG gửi được gì.
-                    # KHÔNG mark sent (tránh mất ảnh im lặng ngụy trang thành công) —
-                    # raise để retry/dead-letter, last_error hiện ra cho người soi.
-                    raise DingTalkAPIError(f"send_group_image gửi 0 ảnh: {bill_urls}")
-                msg_id = ",".join(sent_ids)
+                # ROW CHỈ-ẢNH: gửi markdown nhúng ảnh (sampleMarkdown). sampleImageMsg
+                # bị DingTalk cache ảnh đầu tiên, URL khác vẫn hiện ảnh cũ (bug 14/8).
+                # Markdown title ngắn "📷" để Card gọn, nội dung search nằm ở row text.
+                bill_md = _build_bill_markdown(bill_urls)
+                if not bill_md.strip():
+                    raise DingTalkAPIError(f"bill markdown rỗng: {bill_urls}")
+                msg_id = await asyncio.to_thread(
+                    send_group_message,
+                    open_conversation_id=open_conversation_id,
+                    message=bill_md,
+                    title="📷",
+                )
             elif bill_urls and has_message:
                 # LEGACY: row cũ gộp text+ảnh (enqueue TRƯỚC deploy tách). Giữ hành
                 # vi markdown nhúng ảnh để không mất tin đang tồn outbox lúc deploy.
