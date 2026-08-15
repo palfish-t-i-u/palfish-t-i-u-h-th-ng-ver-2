@@ -10,6 +10,7 @@ import {
   groupRowsByAr,
   isArInvoiceActionable,
   summarizeArInvoiceAction,
+  visibleActiveRequests,
 } from "./activationFlatList";
 import { normVi } from "../../lib/textUtils";
 
@@ -227,5 +228,15 @@ describe("isArInvoiceActionable", () => {
     expect(isArInvoiceActionable({ kind: "all_invoiced" })).toBe(false);
     expect(isArInvoiceActionable({ kind: "all_requested" })).toBe(false);
     expect(isArInvoiceActionable({ kind: "blocked", missing: ["số tiền"] })).toBe(false);
+  });
+});
+
+describe("visibleActiveRequests", () => {
+  it("ẩn AR có creditSettlementPending=true, giữ phần còn lại", () => {
+    const pending = ar({ id: "AR-CARD", creditSettlementPending: true });
+    const shown = ar({ id: "AR-QR" });
+    const legacy = ar({ id: "AR-OLD" }); // field undefined → hiện
+    const out = visibleActiveRequests([pending, shown, legacy]);
+    expect(out.map((a) => a.id)).toEqual(["AR-QR", "AR-OLD"]);
   });
 });

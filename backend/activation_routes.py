@@ -441,11 +441,89 @@ def _tien_ve_bounds(sb, ar_id: str) -> tuple[str | None, str | None]:
     return _tien_ve_map(sb, [str(ar_id)]).get(str(ar_id), (None, None))
 
 
+# Loại lần TT quẹt thẻ tín dụng — đồng bộ gateway_routes.py:512 (candidates match cổng).
+CREDIT_METHODS = ("card", "installment")
+
+
+def _is_credit_pending(credit_line_ids: list[str], matched_line_ids: set[str]) -> bool:
+    """PR có đơn tín dụng CHỜ khi tồn tại ≥1 lần quẹt thẻ chưa ghép giao dịch.
+
+    Không có lần quẹt thẻ nào → False (không phải đơn tín dụng, không chờ).
+    """
+    if not credit_line_ids:
+        return False
+    return any(lid not in matched_line_ids for lid in credit_line_ids)
+
+
+def _credit_hold_map(sb, pr_ids: list[str]) -> dict[str, bool]:
+    """Map pr_id → True nếu còn lần TT quẹt thẻ (card/installment) CHƯA matched.
+
+    Đơn tín dụng bị ẩn khỏi tab Kích hoạt tới khi mọi lần quẹt thẻ đã ghép
+    (gateway_transactions.match_status='matched', trỏ payment_line_id).
+    PR không có lần quẹt thẻ → VẮNG MẶT trong map (coi như không chờ → hiện).
+    Batch, KHÔNG N+1 (mirror _tien_ve_map).
+    """
+    ids = [str(p) for p in pr_ids if p]
+    if not ids:
+        return {}
+    CHUNK = 150
+
+    # 1) Lần TT quẹt thẻ của các PR.
+    credit_lines_by_pr: dict[str, list[str]] = {}
+    all_line_ids: list[str] = []
+    for i in range(0, len(ids), CHUNK):
+        try:
+            res = (
+                sb.table("payment_lines")
+                .select("id, payment_request_id")
+                .in_("payment_request_id", ids[i : i + CHUNK])
+                .in_("method", list(CREDIT_METHODS))
+                .execute()
+            )
+        except Exception:
+            continue
+        for r in (res.data or []):
+            lid = str(r.get("id") or "")
+            prid = str(r.get("payment_request_id") or "")
+            if not lid or not prid:
+                continue
+            credit_lines_by_pr.setdefault(prid, []).append(lid)
+            all_line_ids.append(lid)
+    if not all_line_ids:
+        return {}
+
+    # 2) Lần TT quẹt thẻ nào đã matched.
+    matched: set[str] = set()
+    for i in range(0, len(all_line_ids), CHUNK):
+        try:
+            res = (
+                sb.table("gateway_transactions")
+                .select("payment_line_id")
+                .in_("payment_line_id", all_line_ids[i : i + CHUNK])
+                .eq("match_status", "matched")
+                .execute()
+            )
+        except Exception:
+            continue
+        for r in (res.data or []):
+            plid = str(r.get("payment_line_id") or "")
+            if plid:
+                matched.add(plid)
+
+    # 3) PR nào còn lần quẹt thẻ chưa matched → pending.
+    return {
+        prid: True
+        for prid, line_ids in credit_lines_by_pr.items()
+        if _is_credit_pending(line_ids, matched)
+    }
+
+
 def _serialize_ar(
     row: dict[str, Any],
     pr: dict[str, Any] | None = None,
     sale_name_map: dict[str, str] | None = None,
     tien_ve: tuple[str | None, str | None] | None = None,
+    credit_settlement_pending: bool = False,
 ) -> dict[str, Any]:
     raw_uids_data = row.get("uids_data") or []
     uids_data: list[dict[str, Any]] = []
@@ -482,6 +560,7 @@ def _serialize_ar(
         "referral_status": _compute_referral_status(courses),
         "hold_activation": bool(row.get("hold_activation")),
         "hold_note": row.get("hold_note") or None,
+        "credit_settlement_pending": bool(credit_settlement_pending),
     }
     if tien_ve is not None:
         out["tien_ve_som"], out["tien_ve_muon"] = tien_ve
@@ -503,6 +582,22 @@ def _serialize_ar(
             "sale_name": (sale_name_map or {}).get(sale_email) or sale_email,
         }
     return out
+
+
+def _serialize_ar_with_hold(sb, row: dict[str, Any], *args, **kwargs) -> dict[str, Any]:
+    """Serialize 1 AR kèm cờ credit_settlement_pending tính LIVE (single-AR).
+
+    Dùng cho MỌI endpoint trả về 1 AR (create/append/patch/order-id/issue-invoice/
+    detail…) — nếu không, cờ mặc định False sẽ un-hide đơn tín dụng khi FE merge
+    response vào state. `list_active_requests` KHÔNG dùng hàm này (đã batch riêng).
+    Chi phí: 2 query nhỏ có index/mutation → không đáng kể (mutation tần suất thấp).
+    """
+    pr_id = str(row.get("pr_id") or "")
+    kwargs.setdefault(
+        "credit_settlement_pending",
+        _credit_hold_map(sb, [pr_id]).get(pr_id, False) if pr_id else False,
+    )
+    return _serialize_ar(row, *args, **kwargs)
 
 
 def _course_order_id(course: dict[str, Any]) -> str:
@@ -1024,7 +1119,7 @@ def _issue_course_invoice_atomic(
         },
     )
     return {
-        "active_request": _serialize_ar(merged_row, pr),
+        "active_request": _serialize_ar_with_hold(sb, merged_row, pr),
         "course_code": course_code,
         "invoice_id": invoice_id,
         "invoiced_at": invoiced_at,
@@ -1049,7 +1144,7 @@ def _revoke_course_invoice_atomic(sb, ar_id: str, course_code: str) -> dict[str,
         {"p_ar_id": ar_id, "p_course_code": course_code},
     )
     pr = _fetch_payment_request(sb, str(merged_row.get("pr_id") or "")) if merged_row.get("pr_id") else None
-    return {"active_request": _serialize_ar(merged_row, pr), "course_code": course_code}
+    return {"active_request": _serialize_ar_with_hold(sb, merged_row, pr), "course_code": course_code}
 
 
 def _parse_create_ar_payload(raw: Any) -> tuple[str | None, str | None, list[Any]]:
@@ -1947,19 +2042,22 @@ def register_activation_routes(app, supabase_factory):
             raise HTTPException(500, f"Không đọc active_requests: {exc}") from exc
 
         rows = res.data or []
-        pr_map = _fetch_prs_by_ids(sb, list({str(r.get("pr_id")) for r in rows if r.get("pr_id")}))
+        pr_ids = list({str(r.get("pr_id")) for r in rows if r.get("pr_id")})
+        pr_map = _fetch_prs_by_ids(sb, pr_ids)
         from payment_request_routes import _sale_name_map
         try:
             snm = _sale_name_map(sb)
         except Exception:
             snm = {}
         tv_map = _tien_ve_map(sb, [str(r.get("id")) for r in rows if r.get("id")])
+        hold_map = _credit_hold_map(sb, pr_ids)
         return [
             _serialize_ar(
                 r,
                 pr_map.get(str(r.get("pr_id") or "")),
                 snm,
                 tien_ve=tv_map.get(str(r.get("id") or ""), (None, None)),
+                credit_settlement_pending=hold_map.get(str(r.get("pr_id") or ""), False),
             )
             for r in rows
         ]
@@ -1982,7 +2080,7 @@ def register_activation_routes(app, supabase_factory):
 
         row = res.data[0]
         pr = _fetch_payment_request(sb, str(row.get("pr_id") or "")) if row.get("pr_id") else None
-        return _serialize_ar(row, pr, tien_ve=_tien_ve_bounds(sb, ar_id))
+        return _serialize_ar_with_hold(sb, row, pr, tien_ve=_tien_ve_bounds(sb, ar_id))
 
     @app.get("/api/v1/payment-requests/{pr_id}/course-budget", tags=["Activation"])
     def get_pr_course_budget(pr_id: str, authorization: str | None = Header(None)):
@@ -2154,7 +2252,8 @@ def register_activation_routes(app, supabase_factory):
                 if rpc_out.get("conflict"):
                     cur_row = rpc_out.get("row") or current
                     pr_map = _fetch_prs_by_ids(sb, [str(cur_row.get("pr_id") or "")])
-                    current_ar = _serialize_ar(
+                    current_ar = _serialize_ar_with_hold(
+                        sb,
                         cur_row if isinstance(cur_row, dict) else current,
                         pr_map.get(str(cur_row.get("pr_id") or "") if isinstance(cur_row, dict) else ""),
                     )
@@ -2200,7 +2299,7 @@ def register_activation_routes(app, supabase_factory):
                         ) from exc
                 pr_map = _fetch_prs_by_ids(sb, [str(merged.get("pr_id") or "")])
                 _maybe_enqueue_ar_edit_dingtalk(sb, current, merged, pr_map)
-                return _serialize_ar(merged, pr_map.get(str(merged.get("pr_id") or "")), tien_ve=_tien_ve_bounds(sb, ar_id))
+                return _serialize_ar_with_hold(sb, merged, pr_map.get(str(merged.get("pr_id") or "")), tien_ve=_tien_ve_bounds(sb, ar_id))
             patch["uids_data"] = uids_data
             patch["status"] = guarded_status
             guarded_uids = uids_data
@@ -2227,7 +2326,7 @@ def register_activation_routes(app, supabase_factory):
             _writeback_child_uids_to_pr(sb, merged)
         pr_map = _fetch_prs_by_ids(sb, [str(merged.get("pr_id") or "")])
         _maybe_enqueue_ar_edit_dingtalk(sb, current, merged, pr_map)
-        return _serialize_ar(merged, pr_map.get(str(merged.get("pr_id") or "")), tien_ve=_tien_ve_bounds(sb, ar_id))
+        return _serialize_ar_with_hold(sb, merged, pr_map.get(str(merged.get("pr_id") or "")), tien_ve=_tien_ve_bounds(sb, ar_id))
 
     @app.patch("/api/v1/active-requests/{ar_id}/credit-referral", tags=["Activation"])
     def credit_referral(
@@ -2305,7 +2404,7 @@ def register_activation_routes(app, supabase_factory):
             raise HTTPException(500, "Cập nhật thất bại")
 
         pr_map = _fetch_prs_by_ids(sb, [str(upd.data[0].get("pr_id") or "")])
-        return _serialize_ar(upd.data[0], pr_map.get(str(upd.data[0].get("pr_id") or "")))
+        return _serialize_ar_with_hold(sb, upd.data[0], pr_map.get(str(upd.data[0].get("pr_id") or "")))
 
 
     @app.post("/api/v1/active-requests", tags=["Activation"])
@@ -2336,7 +2435,7 @@ def register_activation_routes(app, supabase_factory):
             hold_activation=hold_activation,
             hold_note=hold_note,
         )
-        return _serialize_ar(saved, pr)
+        return _serialize_ar_with_hold(sb, saved, pr)
 
     @app.post(
         "/api/v1/payment-requests/{pr_id}/active-requests",
@@ -2370,7 +2469,7 @@ def register_activation_routes(app, supabase_factory):
             hold_activation=hold_activation,
             hold_note=hold_note,
         )
-        return _serialize_ar(saved, pr)
+        return _serialize_ar_with_hold(sb, saved, pr)
 
     @app.post("/api/v1/active-requests/{ar_id}/append", tags=["Activation"])
     def append_active_request_children(
@@ -2451,7 +2550,7 @@ def register_activation_routes(app, supabase_factory):
         except Exception as exc:
             print(f"[activation] append audit failed (non-fatal): {exc}")
 
-        return _serialize_ar(updated, pr)
+        return _serialize_ar_with_hold(sb, updated, pr)
 
     @app.patch(
         "/api/v1/active-requests/{ar_id}/courses/{course_code}",
@@ -2509,8 +2608,8 @@ def register_activation_routes(app, supabase_factory):
             else:
                 print(f"[activation] B3 → Sổ: skip/fail AR {ar_id} course {course_code}")
             pr_map = _fetch_prs_by_ids(sb, [str(row.get("pr_id") or "")])
-            return _serialize_ar(row, pr_map.get(str(row.get("pr_id") or "")),
-                                 tien_ve=_tien_ve_bounds(sb, ar_id))
+            return _serialize_ar_with_hold(sb, row, pr_map.get(str(row.get("pr_id") or "")),
+                                           tien_ve=_tien_ve_bounds(sb, ar_id))
 
         row = rpc_active_request_row(
             sb,
@@ -2524,8 +2623,8 @@ def register_activation_routes(app, supabase_factory):
             {"old_order_id": old_order_id},
         )
         pr_map = _fetch_prs_by_ids(sb, [str(row.get("pr_id") or "")])
-        return _serialize_ar(row, pr_map.get(str(row.get("pr_id") or "")),
-                             tien_ve=_tien_ve_bounds(sb, ar_id))
+        return _serialize_ar_with_hold(sb, row, pr_map.get(str(row.get("pr_id") or "")),
+                                       tien_ve=_tien_ve_bounds(sb, ar_id))
 
     @app.post(
         "/api/v1/active-requests/{ar_id}/request-invoice",
@@ -2586,7 +2685,7 @@ def register_activation_routes(app, supabase_factory):
             if merged_row.get("pr_id")
             else None
         )
-        return _serialize_ar(merged_row, pr)
+        return _serialize_ar_with_hold(sb, merged_row, pr)
 
     @app.post(
         "/api/v1/active-requests/{ar_id}/courses/{course_code}/issue-invoice",

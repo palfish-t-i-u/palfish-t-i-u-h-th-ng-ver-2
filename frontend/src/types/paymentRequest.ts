@@ -213,6 +213,9 @@ export interface ActiveRequest {
   tienVeSom?: string | null;
   /** Ngày tiền về muộn nhất (max) trong Sổ doanh thu của AR — ISO "YYYY-MM-DD". */
   tienVeMuon?: string | null;
+  /** Đơn tín dụng còn lần quẹt thẻ chưa ghép giao dịch → ẩn hẳn khỏi tab Kích hoạt
+   * tới khi tiền về. BE tính ở list + mọi endpoint đơn-AR (batch gateway match). */
+  creditSettlementPending?: boolean;
 }
 
 export interface PaymentRequestsListResponse {
@@ -382,6 +385,7 @@ export type ActiveRequestApiRow = {
   hold_note?: string | null;
   tien_ve_som?: string | null;
   tien_ve_muon?: string | null;
+  credit_settlement_pending?: boolean;
   payment_request?: { name?: string; email?: string; sale_name?: string; sale_email?: string };
 };
 
