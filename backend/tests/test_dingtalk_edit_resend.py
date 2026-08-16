@@ -328,3 +328,61 @@ def test_create_and_append_suffix_do_not_get_update_label():
     assert len(inserted_messages) == 2
     for msg in inserted_messages:
         assert not msg["message"].startswith("🔄 SALE VỪA CẬP NHẬT")
+
+
+def test_append_suffix_prepends_supplementary_header_and_uses_pr_total():
+    """Đơn bổ sung: source_suffix ':append:' → tin (1) dán header
+    '⬆️ ĐƠN BỔ SUNG · <PR>' và (2) Tổng = received PR (lũy kế), dù block chỉ
+    chứa gói MỚI. Regression PR-2026-1070: upsell 48→96 buổi, đóng thêm 7.74M,
+    PR lũy kế 17.32M. Wiring end-to-end qua _enqueue (is_supplementary=is_append)."""
+    from activation_routes import _enqueue_activation_request_created_dingtalk
+
+    group_response = MagicMock(data=[{"team_code": "inhouse_1", "is_active": True}])
+    lines_response = MagicMock(data=[])
+    staff_response = MagicMock(data=[
+        {"email": "s@p.vn", "display_name": "Sale A", "crm_name": "Sale A", "team": "inhouse_1"}
+    ])
+
+    inserted_messages = []
+
+    def table_side(name):
+        m = MagicMock()
+        if name == "nhan_su_sale":
+            m.select.return_value.ilike.return_value.limit.return_value.execute.return_value = staff_response
+        elif name == "dingtalk_team_groups":
+            m.select.return_value.eq.return_value.limit.return_value.execute.return_value = group_response
+        elif name == "payment_lines":
+            m.select.return_value.eq.return_value.order.return_value.execute.return_value = lines_response
+        elif name == "dingtalk_outbox":
+            def insert_capture(data):
+                inserted_messages.append(data)
+                result = MagicMock()
+                result.execute.return_value = None
+                return result
+            m.insert = insert_capture
+        return m
+
+    sb = MagicMock()
+    sb.table.side_effect = table_side
+
+    # block chỉ chứa gói bổ sung 7.74M; PR đã thu lũy kế 17.32M
+    saved_ar = _make_ar_row(uids_data=[{
+        "uid": "3291469610", "name": None, "phone": "81-7083630739", "country": "VN",
+        "courses": [{"code": "CC-9101-002", "name": "2/W- NEW 96 PHI+10 HN",
+                     "amount": 7_740_000, "order_id": "", "lead_source": None,
+                     "referrer_uid": None, "bonus_sessions_referee": None,
+                     "bonus_sessions_referrer": None}],
+    }])
+    pr = _sample_pr(target=17_320_000, received=17_320_000)
+
+    with patch("activation_routes.dingtalk_event_enabled", return_value=True):
+        _enqueue_activation_request_created_dingtalk(
+            sb, saved_ar, pr, source_suffix=":append:CC-9101-002",
+        )
+
+    assert len(inserted_messages) == 1
+    msg = inserted_messages[0]["message"]
+    assert msg.startswith("⬆️ ĐƠN BỔ SUNG · PR-2026-9101\n")
+    assert "Tiền: 7.740.000 VND" in msg
+    assert "Tổng: 17.320.000 VND" in msg
+    assert "Tổng: 7.740.000 VND" not in msg

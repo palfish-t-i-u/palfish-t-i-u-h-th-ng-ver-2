@@ -405,6 +405,8 @@ def build_activation_request_created_message(
     ar_data: dict[str, Any],
     pr_data: dict[str, Any],
     sale_info: dict[str, Any],
+    *,
+    is_supplementary: bool = False,
 ) -> dict[str, str]:
     """Build the ACTIVATION REQUEST CREATED notification message.
 
@@ -529,7 +531,7 @@ def build_activation_request_created_message(
             return float(v)
         except (TypeError, ValueError):
             return 0.0
-    if any_block_amount:
+    if any_block_amount and not is_supplementary:
         total_val = grand_total
     else:
         recv_f = _num(pr_data.get("received"))

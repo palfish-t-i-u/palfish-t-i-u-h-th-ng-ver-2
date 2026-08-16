@@ -286,6 +286,45 @@ class TestBuildActivationRequestCreatedMessage:
         assert "Tổng: 19.656.000 VND" in msg
         assert "Tổng: 20.160.000 VND" not in msg
 
+    def test_supplementary_total_uses_pr_received_not_grand_total(self):
+        """Đơn bổ sung (is_supplementary=True): block chỉ chứa gói MỚI (7.74M) nhưng
+        Tổng phải = tiền LŨY KẾ toàn PR (received 17.32M), KHÔNG phải Σ block (7.74M).
+        Case thật PR-2026-1070: upsell 48→96 buổi, KH đóng thêm 7.74M. Tiền≠Tổng cố ý."""
+        ar = {"id": "AR-2026-0381", "uids_data": [
+            {"uid": "3291469610", "phone": "81-7083630739",
+             "courses": [{"name": "2/W- NEW 96 PHI+10 HN", "amount": 7_740_000}]},
+        ]}
+        pr = {"received": 17_320_000, "target": 17_320_000,
+              "child_name": "Ichibakase Mio", "lead_channel": "Kho Chung"}
+        sale = {"display_name": "Bui Thi Hong Van", "team": "Inhouse 1"}
+        msg = build_activation_request_created_message(ar, pr, sale, is_supplementary=True)["message"]
+        assert "Tiền: 7.740.000 VND" in msg   # dòng tiền = gói bổ sung
+        assert "Tổng: 17.320.000 VND" in msg  # footer = lũy kế PR
+        assert "Tổng: 7.740.000 VND" not in msg
+
+    def test_supplementary_total_falls_back_to_target_when_received_zero(self):
+        """is_supplementary=True nhưng received=0 (edge) → fallback target, KHÔNG dùng Σ block."""
+        ar = {"id": "AR-X", "uids_data": [
+            {"uid": "1", "phone": "84-900000000", "courses": [{"name": "Gói", "amount": 3_000_000}]},
+        ]}
+        pr = {"received": 0, "target": 12_000_000}
+        sale = {"team": "Inhouse 1"}
+        msg = build_activation_request_created_message(ar, pr, sale, is_supplementary=True)["message"]
+        assert "Tổng: 12.000.000 VND" in msg
+        assert "Tổng: 3.000.000 VND" not in msg
+
+    def test_non_supplementary_default_keeps_grand_total(self):
+        """Regression: mặc định is_supplementary=False → Tổng = Σ block như cũ,
+        KHÔNG bị received cao hơn ghi đè. Bảo vệ mọi caller create/edit-resend/Zalo."""
+        ar = {"id": "AR-Y", "uids_data": [
+            {"uid": "1", "phone": "84-900000000", "courses": [{"name": "Gói", "amount": 7_740_000}]},
+        ]}
+        pr = {"received": 17_320_000, "target": 17_320_000}
+        sale = {"team": "Inhouse 1"}
+        msg = build_activation_request_created_message(ar, pr, sale)["message"]
+        assert "Tổng: 7.740.000 VND" in msg
+        assert "Tổng: 17.320.000 VND" not in msg
+
 
 class TestBuildCourseActivatedMessage:
     """17/7 (a Hiếu chốt): tin course_activated NGẮN GỌN — SĐT + Sale + Order ID."""
