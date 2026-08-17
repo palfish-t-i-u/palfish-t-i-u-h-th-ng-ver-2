@@ -10,21 +10,23 @@ audience: ["sale", "ke-toan"]
 
 > "Lần thanh toán" (lần TT) là **một lần thu tiền bên trong 1 PR**. Một PR có thể có nhiều lần TT — khách chuyển làm nhiều đợt, mỗi đợt có thể một hình thức khác nhau. Muốn tạo **PR mới**, xem bài **Tạo Payment Request — Hướng dẫn đầy đủ**.
 
+## Mục lục
+
+<!-- Mục lục tự sinh từ các heading "## " (mục lớn) và "### " (mục con) bên dưới → thanh mục lục bên phải (desktop) + khối inline (mobile). Giữ heading "## Mục lục" này làm cờ bật mục lục; không cần liệt kê tay. Nhãn ### phải DUY NHẤT (id trùng = anchor nhảy sai). -->
+
 ## Tạo lần thanh toán mới
 
 1. Mở **chi tiết PR** (bấm vào dòng PR ở Quản lý thanh toán).
 2. Ở panel **Các lần thanh toán**, bấm **Tạo lần thanh toán**. Nếu PR chưa có lần nào, nút ghi **Tạo lần thanh toán đầu tiên**.
-3. Chọn **Phương thức thanh toán** — 4 lựa chọn: **Chuyển khoản / Tiền mặt / Quẹt thẻ / Trả góp**. Mỗi phương thức điền khác nhau (xem bên dưới).
+3. Chọn **Phương thức thanh toán** — 4 lựa chọn: **Chuyển khoản / Tiền mặt / Quẹt thẻ / Trả góp**. Mỗi phương thức điền khác nhau (xem chi tiết bên dưới).
 4. Điền số tiền và các trường theo phương thức.
-5. Bấm nút xác nhận — nhãn nút **đổi theo phương thức**:
-   - Chuyển khoản → **Tạo QR & mã CK**
-   - Tiền mặt / Quẹt thẻ / Trả góp → **Ghi nhận lần thanh toán**
+5. Bấm nút xác nhận ở cuối form để **lưu lần TT**. Nhãn nút đổi theo phương thức: Chuyển khoản là **Tạo QR & mã CK**; Tiền mặt / Quẹt thẻ / Trả góp là **Ghi nhận lần thanh toán**.
 
 > ⚠️ Nếu PR **đã nhận đủ tiền**, các nút Tạo lần thanh toán sẽ **không mở form** mà hiện thông báo "PR đã nhận đủ tiền". Muốn thu thêm, phải **tăng Tổng tiền dự kiến** của PR trước (bấm "Sửa thông tin PR ngay").
 
-## Chuyển khoản (QR) — mặc định
+### Chuyển khoản (QR) — mặc định
 
-Dùng khi: khách chuyển khoản ngân hàng. Hệ thống tự sinh **mã QR VietQR** + **nội dung chuyển khoản**; tiền về được đối soát **tự động** — không cần tải bill để khớp.
+Dùng khi: khách chuyển khoản ngân hàng. Hệ thống tự sinh **mã QR VietQR** + **nội dung chuyển khoản** để khách quét.
 
 | Trường | Bắt buộc | Ghi chú |
 |---|---|---|
@@ -32,10 +34,11 @@ Dùng khi: khách chuyển khoản ngân hàng. Hệ thống tự sinh **mã QR 
 | **Ngân hàng nhận** | — | Mặc định là ngân hàng đầu của đội. Chỉ hình thức Chuyển khoản mới có ô này. |
 | **Tên trên nội dung CK** | — | Chọn tên nhúng vào nội dung CK để phân biệt **ai trả**: `KH: <tên PH>` hoặc `Con: <tên bé>`. Nếu PR chỉ có 1 tên thì ô này cố định theo tên khách. |
 
-- Nút xác nhận: **Tạo QR & mã CK**.
-- Sau khi tạo: gửi mã QR cho khách (xem bài **Xem & gửi mã QR cho khách**). Không cần tải bill để đối soát.
+- Điền xong, bấm **Tạo QR & mã CK** để sinh mã, rồi gửi mã QR cho khách (xem bài **Xem & gửi mã QR cho khách**).
+- Khi khách chuyển **đúng nội dung**, hệ thống **tự đối soát** lúc tiền về — thường không phải chờ kế toán ghép tay.
+- ⚠️ Nếu khách chuyển **sai nội dung** hoặc **chuyển ngoài** (không quét QR), tiền **không tự khớp** → **vẫn phải tải ảnh bill** lên dòng lần TT để kế toán đối soát tay. (Chỉ chuyển khoản đúng nội dung mới không cần bill.)
 
-## Tiền mặt
+### Tiền mặt
 
 Dùng khi: thu tiền mặt trực tiếp.
 
@@ -44,24 +47,24 @@ Dùng khi: thu tiền mặt trực tiếp.
 | **Số tiền lần này** | ✅ | Mặc định = số còn thiếu. |
 | **Người thu** | ✅ | Mặc định là tên bạn (người đang đăng nhập). Không được để trống. |
 
-- Nút xác nhận: **Ghi nhận lần thanh toán**.
-- Ô **Mã đối soát** ghi "Tự động tạo bởi hệ thống" — không cần nhập.
+- Điền xong, bấm **Ghi nhận lần thanh toán** để lưu. Lần thu tiền mặt được **ghi nhận ngay** và cộng vào số đã nhận của PR — không phải chờ đối soát.
+- Ô **Mã đối soát** ghi "Tự động tạo bởi hệ thống" — bỏ qua, không cần nhập.
 
-## Quẹt thẻ
+### Quẹt thẻ
 
-Dùng khi: khách quẹt thẻ qua máy POS. Thẻ **có phí** nên số thực nhận (NET) **nhỏ hơn** số quẹt (GROSS); kế toán ghép mPOS/Payoo xác nhận sau.
+Dùng khi: khách quẹt thẻ qua máy POS. Quẹt thẻ là hình thức **tín dụng** — **có phí** nên số thực nhận (NET) **nhỏ hơn** số quẹt (GROSS); kế toán ghép mPOS/Payoo xác nhận sau.
 
 | Trường | Bắt buộc | Ghi chú |
 |---|---|---|
 | **Số tiền lần này** | ✅ | Là số **GROSS** khách quẹt. Mặc định = số còn thiếu. |
 | **4 số cuối thẻ** | — | Không bắt buộc. Nếu điền thì **phải đủ đúng 4 chữ số**, nếu không hệ thống báo lỗi. |
 
-- Nút xác nhận: **Ghi nhận lần thanh toán**.
-- Sau khi tạo: dòng lần TT nhắc **"Cần ảnh bill để kế toán xác nhận"** → tải bill lên (nút Up bill trên dòng đó). Khi kế toán xác nhận, dòng hiện công thức **GROSS − phí = NET**.
+- Điền xong, bấm **Ghi nhận lần thanh toán** để lưu.
+- Sau khi lưu, dòng lần TT nhắc **"Cần ảnh bill để kế toán xác nhận"** → bấm **Up bill** trên dòng đó để tải ảnh biên lai. Khi kế toán xác nhận, dòng hiện công thức **GROSS − phí = NET**.
 
-## Trả góp (tín dụng)
+### Trả góp
 
-Dùng khi: khách trả góp qua app **Payoo/Mpos**. Đây là "lần TT tín dụng".
+Dùng khi: khách trả góp qua app **Payoo/Mpos**. Trả góp cũng là hình thức **tín dụng** (giống quẹt thẻ) — **có phí**, cần bill để kế toán xác nhận NET.
 
 **Khác các phương thức trên: KHÔNG có ô "Số tiền lần này".** Thay vào đó:
 
@@ -70,20 +73,18 @@ Dùng khi: khách trả góp qua app **Payoo/Mpos**. Đây là "lần TT tín d�
 | **Tổng tiền trả góp** | ✅ | Số tiền khách chuyển qua app. **Đây mới là số tiền của lần TT** (không phải ô "Số tiền lần này" như các phương thức khác). |
 | **Nền tảng trả góp** | ✅ | Bắt buộc chọn **Payoo** hoặc **Mpos**. |
 
-- Nút xác nhận: **Ghi nhận lần thanh toán**.
-- Có phí như quẹt thẻ → **cần tải bill** để kế toán xác nhận NET.
+- Điền xong, bấm **Ghi nhận lần thanh toán** để lưu.
+- Sau khi lưu, bấm **Up bill** trên dòng lần TT để tải ảnh bill cho kế toán xác nhận NET.
 
-## Chuyển khoản vs Trả góp — khác nhau chỗ nào
+**Chuyển khoản vs Trả góp — hai hình thức hay nhầm khi điền:**
 
-Hai hình thức hay nhầm nhất khi điền:
-
-| | Chuyển khoản (QR) | Trả góp (tín dụng) |
+| | Chuyển khoản (QR) | Trả góp |
 |---|---|---|
 | Ô nhập số tiền | **Số tiền lần này** | **Tổng tiền trả góp** (không có ô "Số tiền lần này") |
 | Trường riêng | Ngân hàng nhận + Tên trên nội dung CK | Nền tảng trả góp (Payoo/Mpos) — bắt buộc |
 | Mã QR | Có, tự sinh | Không |
 | Nút xác nhận | **Tạo QR & mã CK** | **Ghi nhận lần thanh toán** |
-| Tải bill | Không cần (đối soát tự động) | Cần (có phí, kế toán xác nhận NET) |
+| Tải bill | Chỉ khi tiền không tự khớp | Bắt buộc (có phí, kế toán xác nhận NET) |
 
 ## Thêm lần TT cho PR đã có nhiều đợt
 
