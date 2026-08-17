@@ -140,6 +140,61 @@ class TestBuildActivationRequestCreatedMessage:
         assert message.count("Nguồn: Facebook") == 1
         assert result["canonical_team_code"] == "Offline"
 
+    def test_mixed_source_prints_nguon_per_course(self):
+        # Ca chị Kim Chi 17/8: 1 đơn 2 con KHÁC nguồn (Quảng cáo FB vs Kho Chung).
+        # Trước: footer 1 dòng "Nguồn" cấp PR → con 2 hiện SAI. Nay: in Nguồn per-con
+        # NGAY SAU dòng Tiền, KHÔNG có dòng Nguồn ở footer.
+        ar_data = {
+            "id": "AR-2026-0399",
+            "customer_name": "",
+            "uids_data": [
+                {"uid": "3241004064", "name": "Minh Khôi", "phone": "936757113", "country": "VN",
+                 "courses": [{"name": "2/W- NEW 48 PHI+5 HN", "amount": 9_010_000,
+                              "lead_source": "quang_cao", "lead_channel": "300265"}]},
+                {"uid": "3316511766", "name": "Minh Anh", "phone": "769120217", "country": "VN",
+                 "courses": [{"name": "2/W- NEW 48 PHI+5 HN", "amount": 8_810_000,
+                              "lead_source": "kho_chung", "lead_channel": None}]},
+            ],
+        }
+        pr_data = {"lead_source": "quang_cao", "lead_channel": "300265"}  # cấp PR = con đầu
+        sale_info = {"display_name": "Lê Kim Chi", "team": "Inhouse 1"}
+
+        message = build_activation_request_created_message(ar_data, pr_data, sale_info)["message"]
+
+        # mỗi con có dòng Nguồn riêng, đúng nguồn của con đó
+        assert "Nguồn: Quảng cáo · FB - VN" in message
+        assert "Nguồn: Kho Chung" in message
+        assert message.count("Nguồn:") == 2  # per-con, footer KHÔNG có
+        # con 2 (Minh Anh) KHÔNG bị gán nhầm sang Quảng cáo
+        minh_anh_block = message.split("Phone: 84-769120217")[1]
+        assert "Nguồn: Kho Chung" in minh_anh_block
+        assert "Nguồn: Quảng cáo" not in minh_anh_block
+        # thứ tự trong mỗi con: gói → Tiền → Nguồn (Nguồn NGAY SAU Tiền)
+        assert message.index("Tiền: 9.010.000 VND") < message.index("Nguồn: Quảng cáo · FB - VN")
+        assert message.index("Nguồn: Quảng cáo · FB - VN") < message.index("Tiền: 8.810.000 VND")
+        assert message.index("Tiền: 8.810.000 VND") < message.index("Nguồn: Kho Chung")
+        # Tổng vẫn đúng, 1 lần
+        assert message.count("Tổng:") == 1
+        assert "Tổng: 17.820.000 VND" in message
+
+    def test_uniform_source_keeps_single_footer_nguon(self):
+        # Đơn nhiều con CÙNG nguồn → giữ format cũ: 1 dòng Nguồn ở footer, không per-con.
+        ar_data = {
+            "id": "AR-2026-0600",
+            "uids_data": [
+                {"uid": "1", "name": "Bé A", "phone": "900000001", "country": "VN",
+                 "courses": [{"name": "Gói A", "amount": 5_000_000,
+                              "lead_source": "kho_chung"}]},
+                {"uid": "2", "name": "Bé B", "phone": "900000002", "country": "VN",
+                 "courses": [{"name": "Gói B", "amount": 3_000_000,
+                              "lead_source": "kho_chung"}]},
+            ],
+        }
+        message = build_activation_request_created_message(
+            ar_data, {"lead_source": "kho_chung"}, {"team": "Inhouse 1"})["message"]
+        assert message.count("Nguồn:") == 1  # đồng nhất → footer 1 dòng
+        assert "Nguồn: Kho Chung" in message
+
     def test_missing_phone_uid_lead_falls_back_to_question_mark(self):
         ar_data = {
             "id": "AR-2026-0003",
