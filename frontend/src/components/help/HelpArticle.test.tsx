@@ -15,7 +15,7 @@ describe("HelpArticle", () => {
   it("renders the pilot topic's title and body content", () => {
     renderArticle("paymentRequests", "quan-ly-lan-thanh-toan");
     expect(screen.getByRole("heading", { name: "Cách tạo và quản lý lần TT (mọi trường hợp)" })).toBeInTheDocument();
-    expect(screen.getByText(/cần tạo một lần thanh toán/)).toBeInTheDocument();
+    expect(screen.getByText(/Hướng dẫn tạo lần thanh toán/)).toBeInTheDocument();
   });
 
   it("renders a breadcrumb with the module label and topic title", () => {
