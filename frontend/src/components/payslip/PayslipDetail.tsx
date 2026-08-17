@@ -275,6 +275,14 @@ export default function PayslipDetail({ items, onUpdate }: Props) {
 
       {/* 2 nút hành động */}
       <ActionBar item={current} onUpdate={onUpdate} />
+
+      {/* Footer liên hệ HR */}
+      <p className="pt-2 text-center text-xs text-gmv-muted leading-relaxed">
+        Nếu Anh/Chị có thắc mắc, vui lòng liên hệ Phòng Nhân sự
+        {" "}(<span className="font-medium">Ms. Thu Trang — 0988.934.163</span>)
+        <br />
+        Email: <span className="font-medium">palfishrecruitment@gmail.com</span>
+      </p>
     </div>
   );
 }
