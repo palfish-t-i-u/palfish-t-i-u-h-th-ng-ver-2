@@ -451,6 +451,25 @@ def build_activation_request_created_message(
     if not uid_blocks:
         logger.warning("Missing uids_data in %s", ctx)
 
+    # Nguồn per-gói: mỗi khoá học mang lead_source riêng. Đơn nhiều gói KHÁC nguồn
+    # nhau (VD con 1 Quảng cáo, con 2 Kho Chung) mà footer chỉ in 1 dòng "Nguồn" cấp
+    # PR ⇒ gói còn lại hiện SAI nguồn (ca chị Kim Chi 17/8). Giải: đơn đồng nhất nguồn
+    # → giữ footer 1 dòng như cũ; đơn lệch nguồn → in "Nguồn:" theo TỪNG con, bỏ footer.
+    def _course_lead(course: dict[str, Any]) -> str:
+        c_src = str(course.get("lead_source") or "").strip()
+        c_ch = str(course.get("lead_channel") or "").strip()
+        if c_src or c_ch:
+            return resolve_lead_label(c_src, c_ch)
+        return lead  # gói không có nguồn riêng → fallback nguồn cấp PR
+
+    _course_leads = [
+        _course_lead(c)
+        for ub in uid_blocks if isinstance(ub, dict)
+        for c in (ub.get("courses") if isinstance(ub.get("courses"), list) else [])
+        if isinstance(c, dict)
+    ]
+    per_course_source = len({lbl for lbl in _course_leads if lbl and lbl != "?"}) >= 2
+
     blocks: list[str] = []
     grand_total = 0.0
     any_block_amount = False
@@ -472,12 +491,14 @@ def build_activation_request_created_message(
         course_lines: list[str] = []
         block_total = 0.0
         block_has_amount = False
+        block_leads: list[str] = []
         for course in courses:
             if not isinstance(course, dict):
                 continue
             course_name = _first_nonempty(course.get("name"), default="(chưa có tên gói)")
             course_lines.append(f"{block_child}, {course_name}")
             course_lines.extend(_referral_lines(course, block_child))
+            block_leads.append(_course_lead(course))
             amount = course.get("amount")
             if amount not in (None, ""):
                 try:
@@ -492,6 +513,14 @@ def build_activation_request_created_message(
         if block_has_amount:
             tien_str = f"{int(round(block_total)):,}".replace(",", ".")
             course_lines.append(f"Tiền: {tien_str} VND")
+        # Đơn lệch nguồn: in "Nguồn" của con NGAY SAU dòng Tiền (a Minh chốt 17/8 —
+        # thứ tự bé/gói → Tiền → Nguồn). Con nhiều gói khác nguồn (hiếm) → gộp 1 dòng.
+        if per_course_source:
+            _seen: list[str] = []
+            for _l in block_leads:
+                if _l and _l != "?" and _l not in _seen:
+                    _seen.append(_l)
+            course_lines.append(f"Nguồn: {' · '.join(_seen) if _seen else lead}")
         grand_total += block_total
         any_block_amount = any_block_amount or block_has_amount
 
@@ -538,13 +567,12 @@ def build_activation_request_created_message(
         target_f = _num(pr_target)
         total_val = recv_f if recv_f > 0 else target_f
     total_str = f"{int(round(total_val)):,}".replace(",", ".")  # dấu chấm nghìn, đơn vị VND
-    footer = "\n".join(
-        [
-            f"Nguồn: {lead}",
-            f"Tổng: {total_str} VND",
-            f"Sale: {sale_name} · Team {team_display}",
-        ]
-    )
+    footer_lines: list[str] = []
+    if not per_course_source:
+        footer_lines.append(f"Nguồn: {lead}")
+    footer_lines.append(f"Tổng: {total_str} VND")
+    footer_lines.append(f"Sale: {sale_name} · Team {team_display}")
+    footer = "\n".join(footer_lines)
     message = "\n\n".join(blocks) + "\n" + footer
 
     return {"message": message, "canonical_team_code": canonical_team}
