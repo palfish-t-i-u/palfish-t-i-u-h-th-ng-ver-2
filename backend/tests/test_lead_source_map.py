@@ -1,7 +1,7 @@
 """Unit tests cho utils.lead_source_map.resolve_lead_label."""
 from __future__ import annotations
 
-from utils.lead_source_map import resolve_lead_label
+from utils.lead_source_map import resolve_lead_label, resolve_loai_from_lead_source
 
 
 class TestResolveLeadLabel:
@@ -37,6 +37,42 @@ class TestResolveLeadLabel:
     def test_channel_map_beats_source_fallback_when_source_unmapped(self):
         # Source không mapped + channel mapped → hiện channel label
         assert resolve_lead_label("unknown-src", "832") == "Kênh giới thiệu"
+
+
+class TestResolveLoaiFromLeadSource:
+    """resolve_loai_from_lead_source — map lead_source/channel → loai (vocab Sổ doanh thu/BC02)."""
+
+    def test_source_key_maps_to_report_loai(self):
+        assert resolve_loai_from_lead_source("quang_cao", None) == "广告"
+        assert resolve_loai_from_lead_source("gioi_thieu", None) == "转介绍"
+        assert resolve_loai_from_lead_source("gia_han", None) == "续费"
+        assert resolve_loai_from_lead_source("kho_chung", None) == "公海"
+        assert resolve_loai_from_lead_source("offline", None) == "Offline"
+        assert resolve_loai_from_lead_source("koc", None) == "KOC"
+        assert resolve_loai_from_lead_source("khac", None) == "Other"
+
+    def test_channel_fallback_when_source_missing(self):
+        # channel "300265" thuộc source quang_cao → loai suy ra từ channel
+        assert resolve_loai_from_lead_source(None, "300265") == "广告"
+        assert resolve_loai_from_lead_source("", "832") == "转介绍"
+
+    def test_source_beats_channel_when_both_present(self):
+        # source đã map được → không cần fallback qua channel
+        assert resolve_loai_from_lead_source("gia_han", "300265") == "续费"
+
+    def test_unmapped_returns_empty_string(self):
+        # Không đoán bừa — để trống thay vì gán nhầm loai
+        assert resolve_loai_from_lead_source(None, None) == ""
+        assert resolve_loai_from_lead_source("unknown-src", "unknown-ch") == ""
+
+    def test_livestream_channel_under_quang_cao_maps_to_lives_not_ads(self):
+        # Chị Hiền tách riêng cột "Lives" trên BC02 cho kênh FB-Livestream,
+        # không gộp chung "广告" dù channel này thuộc source quang_cao.
+        assert resolve_loai_from_lead_source("quang_cao", "300431") == "Lives"
+
+    def test_livestream_channel_alone_without_source_still_maps_via_channel(self):
+        assert resolve_loai_from_lead_source(None, "300431") == "广告"
+        assert resolve_loai_from_lead_source("", "") == ""
 
 
 class TestBuilderIntegrationForLeadSource:

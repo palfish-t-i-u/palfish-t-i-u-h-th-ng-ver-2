@@ -96,35 +96,46 @@ class TestEnqueueActivationRequestCreatedDingtalk:
             staff_rows=[{"email": "sale@test.com", "display_name": "Sale A",
                          "crm_name": "Sale A CRM", "team": "HN Offline Store"}],
             group_rows=[{"team_code": "HN Offline Store", "is_active": True}],
-            line_rows=[{"bill_image": "https://x/bill.jpg", "bill_images": None}],
+            line_rows=[{"bill_image": "https://x/bill.jpg", "bill_images": None, "method": "qr", "status": "paid"}],
         )
         activation_routes._enqueue_activation_request_created_dingtalk(
             sb, _sample_saved_ar(), _sample_pr())
-        assert len(calls) == 1
-        p = calls[0]
-        assert p["event_type"] == "activation_request_created"
-        assert p["source_table"] == "active_requests"
-        assert p["team_code"] == "HN Offline Store"          # RAW, không phải "Offline"
-        assert p["image_url"] == "https://x/bill.jpg"
-        assert p["image_urls"] == ["https://x/bill.jpg"]     # 17/7: gom tất cả bill
-        assert p["source_id"] == str(uuid.UUID(hashlib.md5(b"AR-2026-9001").hexdigest()))
+        # 14/8: TÁCH tin — 1 tin TEXT (sampleText, search được) + 1 tin ẢNH riêng
+        # (sampleImageMsg). Trước đây gộp 1 tin markdown nhúng ảnh (không search được).
+        assert len(calls) == 2
+        text_row, img_row = calls[0], calls[1]
+        assert text_row["event_type"] == "activation_request_created"
+        assert text_row["source_table"] == "active_requests"
+        assert text_row["team_code"] == "HN Offline Store"          # RAW, không phải "Offline"
+        assert text_row["source_id"] == str(uuid.UUID(hashlib.md5(b"AR-2026-9001").hexdigest()))
+        assert "image_url" not in text_row and "image_urls" not in text_row  # tin TEXT KHÔNG kèm ảnh
         # 17/7 (a Hiếu): bỏ header, format "Phone:/UID:/<bé>, gói/Nguồn/Tổng/Sale·Team"
-        assert "Phone: 84-900000000" in p["message"]
-        assert "Bé An, Gói A" in p["message"]
+        assert "Phone: 84-900000000" in text_row["message"]
+        assert "Bé An, Gói A" in text_row["message"]
+        # tin ẢNH: source_id tách :bill:1, message rỗng → worker route sang send_group_image
+        assert img_row["image_url"] == "https://x/bill.jpg"
+        assert img_row["image_urls"] == ["https://x/bill.jpg"]
+        assert img_row["message"] == ""
+        _bhash = hashlib.md5(b"https://x/bill.jpg").hexdigest()
+        assert img_row["source_id"] == str(uuid.UUID(hashlib.md5(f"AR-2026-9001:bill:{_bhash}".encode()).hexdigest()))
 
     def test_falls_back_to_bill_images_array(self):
         sb, calls = _build_dt_sb(
             staff_rows=[{"email": "sale@test.com", "team": "Inhouse 1"}],
             group_rows=[{"team_code": "Inhouse 1", "is_active": True}],
-            line_rows=[{"bill_image": None, "bill_images": ["https://x/a.jpg", "https://x/b.jpg"]}],
+            line_rows=[{"bill_image": None, "bill_images": ["https://x/a.jpg", "https://x/b.jpg"], "method": "card", "status": "paid"}],
         )
         activation_routes._enqueue_activation_request_created_dingtalk(
             sb, _sample_saved_ar(), _sample_pr())
-        # 17/7: gom TẤT CẢ bill (oldest-first); image_url = ảnh đầu, image_urls = full list
-        assert calls[0]["image_urls"] == ["https://x/a.jpg", "https://x/b.jpg"]
-        assert calls[0]["image_url"] == "https://x/a.jpg"
+        # 14/8: mỗi ảnh 1 tin riêng (oldest-first) → 1 text + 2 ảnh; retry/dedup cô lập
+        assert len(calls) == 3
+        assert "image_url" not in calls[0]                       # calls[0] = tin TEXT
+        assert calls[1]["image_url"] == "https://x/a.jpg"
+        assert calls[1]["image_urls"] == ["https://x/a.jpg"]
+        assert calls[2]["image_url"] == "https://x/b.jpg"
+        assert calls[2]["image_urls"] == ["https://x/b.jpg"]
 
-    def test_no_bill_sends_null_image(self):
+    def test_no_bill_sends_text_only_no_image_row(self):
         sb, calls = _build_dt_sb(
             staff_rows=[{"email": "sale@test.com", "team": "Inhouse 1"}],
             group_rows=[{"team_code": "Inhouse 1", "is_active": True}],
@@ -132,8 +143,10 @@ class TestEnqueueActivationRequestCreatedDingtalk:
         )
         activation_routes._enqueue_activation_request_created_dingtalk(
             sb, _sample_saved_ar(), _sample_pr())
+        # không bill → chỉ 1 tin TEXT, KHÔNG sinh tin ảnh
         assert len(calls) == 1
-        assert calls[0]["image_url"] is None
+        assert "image_url" not in calls[0]
+        assert "image_urls" not in calls[0]
 
     def test_skip_when_team_has_no_group_no_ops_fallback(self):
         sb, calls = _build_dt_sb(
@@ -218,6 +231,25 @@ class TestEnqueueActivationRequestCreatedDingtalk:
         assert calls[0]["source_id"] == expect_first
         assert calls[1]["source_id"] == expect_second
 
+    def test_bill_row_source_id_stable_across_suffix(self):
+        """14/8: cùng 1 bill của 1 AR → source_id ảnh KHÔNG đổi theo suffix (:edit:/
+        :append:) → UNIQUE nuốt lần sau → ảnh gửi ĐÚNG 1 lần, hết spam khi edit-resend.
+        Tin TEXT thì source_id vẫn đổi theo suffix → tin cập nhật re-send đúng ý."""
+        sb, calls = _build_dt_sb(
+            staff_rows=[{"email": "sale@test.com", "team": "Inhouse 1"}],
+            group_rows=[{"team_code": "Inhouse 1", "is_active": True}],
+            line_rows=[{"bill_image": "https://x/bill.jpg", "bill_images": None, "method": "qr", "status": "paid"}],
+        )
+        ar = _sample_saved_ar()
+        activation_routes._enqueue_activation_request_created_dingtalk(sb, ar, _sample_pr())
+        activation_routes._enqueue_activation_request_created_dingtalk(
+            sb, ar, _sample_pr(), source_suffix=":edit:abc123")
+        img_rows = [c for c in calls if c.get("image_url")]
+        text_rows = [c for c in calls if "image_url" not in c]
+        assert len(img_rows) == 2 and len(text_rows) == 2
+        assert img_rows[0]["source_id"] == img_rows[1]["source_id"]     # ảnh: UNIQUE sẽ dedup
+        assert text_rows[0]["source_id"] != text_rows[1]["source_id"]   # text: re-send
+
     def test_source_suffix_default_unchanged(self):
         """Không truyền suffix → source_id giữ nguyên md5(ar_id) — tin create cũ idempotent như trước."""
         import uuid as uuid_mod
@@ -231,3 +263,35 @@ class TestEnqueueActivationRequestCreatedDingtalk:
         activation_routes._enqueue_activation_request_created_dingtalk(sb, ar, _sample_pr())
         ar_id = str(ar["id"])
         assert calls[0]["source_id"] == str(uuid_mod.UUID(hashlib.md5(ar_id.encode()).hexdigest()))
+
+    def test_bill_from_pending_installment_with_bill(self):
+        sb, calls = _build_dt_sb(
+            staff_rows=[{"email": "sale@test.com", "team": "Inhouse 1"}],
+            group_rows=[{"team_code": "Inhouse 1", "is_active": True}],
+            line_rows=[{
+                "method": "installment", "status": "pending",
+                "bill_image": "https://x/mpos.jpg", "bill_images": None,
+            }],
+        )
+        activation_routes._enqueue_activation_request_created_dingtalk(
+            sb, _sample_saved_ar(), _sample_pr())
+        # bill từ line trả góp pending "đủ tạm" → 1 text + 1 ảnh
+        assert len(calls) == 2
+        assert calls[1]["image_urls"] == ["https://x/mpos.jpg"]
+        assert calls[1]["image_url"] == "https://x/mpos.jpg"
+
+    def test_no_bill_from_pending_non_provisional(self):
+        sb, calls = _build_dt_sb(
+            staff_rows=[{"email": "sale@test.com", "team": "Inhouse 1"}],
+            group_rows=[{"team_code": "Inhouse 1", "is_active": True}],
+            line_rows=[{
+                "method": "qr", "status": "pending",
+                "bill_image": "https://x/qr.jpg", "bill_images": None,
+            }],
+        )
+        activation_routes._enqueue_activation_request_created_dingtalk(
+            sb, _sample_saved_ar(), _sample_pr())
+        # qr pending không phải "đủ tạm" → không lấy bill → chỉ 1 tin TEXT
+        assert len(calls) == 1
+        assert "image_url" not in calls[0]
+        assert "image_urls" not in calls[0]

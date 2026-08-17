@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import hashlib
 import io
+import json
 import os
 import re
 import tempfile
@@ -46,6 +47,8 @@ from pr_guards import (
     assert_pr_paid,
     assert_all_paid_lines_have_bill,
     activatable_received,
+    _PROVISIONAL_METHODS,
+    _line_has_bill,
 )
 
 ALLOWED_AR_STATUSES = frozenset({"pending_order", "partial_order", "ready_invoice", "invoiced", "activated"})
@@ -438,11 +441,89 @@ def _tien_ve_bounds(sb, ar_id: str) -> tuple[str | None, str | None]:
     return _tien_ve_map(sb, [str(ar_id)]).get(str(ar_id), (None, None))
 
 
+# Loại lần TT quẹt thẻ tín dụng — đồng bộ gateway_routes.py:512 (candidates match cổng).
+CREDIT_METHODS = ("card", "installment")
+
+
+def _is_credit_pending(credit_line_ids: list[str], matched_line_ids: set[str]) -> bool:
+    """PR có đơn tín dụng CHỜ khi tồn tại ≥1 lần quẹt thẻ chưa ghép giao dịch.
+
+    Không có lần quẹt thẻ nào → False (không phải đơn tín dụng, không chờ).
+    """
+    if not credit_line_ids:
+        return False
+    return any(lid not in matched_line_ids for lid in credit_line_ids)
+
+
+def _credit_hold_map(sb, pr_ids: list[str]) -> dict[str, bool]:
+    """Map pr_id → True nếu còn lần TT quẹt thẻ (card/installment) CHƯA matched.
+
+    Đơn tín dụng bị ẩn khỏi tab Kích hoạt tới khi mọi lần quẹt thẻ đã ghép
+    (gateway_transactions.match_status='matched', trỏ payment_line_id).
+    PR không có lần quẹt thẻ → VẮNG MẶT trong map (coi như không chờ → hiện).
+    Batch, KHÔNG N+1 (mirror _tien_ve_map).
+    """
+    ids = [str(p) for p in pr_ids if p]
+    if not ids:
+        return {}
+    CHUNK = 150
+
+    # 1) Lần TT quẹt thẻ của các PR.
+    credit_lines_by_pr: dict[str, list[str]] = {}
+    all_line_ids: list[str] = []
+    for i in range(0, len(ids), CHUNK):
+        try:
+            res = (
+                sb.table("payment_lines")
+                .select("id, payment_request_id")
+                .in_("payment_request_id", ids[i : i + CHUNK])
+                .in_("method", list(CREDIT_METHODS))
+                .execute()
+            )
+        except Exception:
+            continue
+        for r in (res.data or []):
+            lid = str(r.get("id") or "")
+            prid = str(r.get("payment_request_id") or "")
+            if not lid or not prid:
+                continue
+            credit_lines_by_pr.setdefault(prid, []).append(lid)
+            all_line_ids.append(lid)
+    if not all_line_ids:
+        return {}
+
+    # 2) Lần TT quẹt thẻ nào đã matched.
+    matched: set[str] = set()
+    for i in range(0, len(all_line_ids), CHUNK):
+        try:
+            res = (
+                sb.table("gateway_transactions")
+                .select("payment_line_id")
+                .in_("payment_line_id", all_line_ids[i : i + CHUNK])
+                .eq("match_status", "matched")
+                .execute()
+            )
+        except Exception:
+            continue
+        for r in (res.data or []):
+            plid = str(r.get("payment_line_id") or "")
+            if plid:
+                matched.add(plid)
+
+    # 3) PR nào còn lần quẹt thẻ chưa matched → pending.
+    return {
+        prid: True
+        for prid, line_ids in credit_lines_by_pr.items()
+        if _is_credit_pending(line_ids, matched)
+    }
+
+
 def _serialize_ar(
     row: dict[str, Any],
     pr: dict[str, Any] | None = None,
     sale_name_map: dict[str, str] | None = None,
     tien_ve: tuple[str | None, str | None] | None = None,
+    credit_settlement_pending: bool = False,
 ) -> dict[str, Any]:
     raw_uids_data = row.get("uids_data") or []
     uids_data: list[dict[str, Any]] = []
@@ -479,6 +560,7 @@ def _serialize_ar(
         "referral_status": _compute_referral_status(courses),
         "hold_activation": bool(row.get("hold_activation")),
         "hold_note": row.get("hold_note") or None,
+        "credit_settlement_pending": bool(credit_settlement_pending),
     }
     if tien_ve is not None:
         out["tien_ve_som"], out["tien_ve_muon"] = tien_ve
@@ -500,6 +582,22 @@ def _serialize_ar(
             "sale_name": (sale_name_map or {}).get(sale_email) or sale_email,
         }
     return out
+
+
+def _serialize_ar_with_hold(sb, row: dict[str, Any], *args, **kwargs) -> dict[str, Any]:
+    """Serialize 1 AR kèm cờ credit_settlement_pending tính LIVE (single-AR).
+
+    Dùng cho MỌI endpoint trả về 1 AR (create/append/patch/order-id/issue-invoice/
+    detail…) — nếu không, cờ mặc định False sẽ un-hide đơn tín dụng khi FE merge
+    response vào state. `list_active_requests` KHÔNG dùng hàm này (đã batch riêng).
+    Chi phí: 2 query nhỏ có index/mutation → không đáng kể (mutation tần suất thấp).
+    """
+    pr_id = str(row.get("pr_id") or "")
+    kwargs.setdefault(
+        "credit_settlement_pending",
+        _credit_hold_map(sb, [pr_id]).get(pr_id, False) if pr_id else False,
+    )
+    return _serialize_ar(row, *args, **kwargs)
 
 
 def _course_order_id(course: dict[str, Any]) -> str:
@@ -928,7 +1026,11 @@ def _build_invoice_course_patch(
     if body:
         for key, val in (
             ("customer_type", body.customer_type),
-            ("name", body.name),
+            # Tên khách hàng để xuất HĐ — KHÔNG dùng key "name": key đó là tên gói học
+            # được set lúc tạo course (_course_name), đọc lại ở B4 tax export
+            # (_course_to_tax_order). Dùng chung key sẽ ghi đè mất tên gói (fix 12/8,
+            # xem docs/learnings/invoice-export-course-field-naming-trap.md).
+            ("invoice_customer_name", body.name),
             ("email", body.email),
             ("country", body.country),
             ("phone", body.phone),
@@ -943,8 +1045,8 @@ def _build_invoice_course_patch(
             if cleaned:
                 patch[key] = cleaned
 
-    if not patch.get("name") and pr:
-        patch.setdefault("name", _clean_text(pr.get("name")))
+    if not patch.get("invoice_customer_name") and pr:
+        patch.setdefault("invoice_customer_name", _clean_text(pr.get("name")))
     if not patch.get("phone") and pr:
         patch.setdefault("phone", _clean_text(pr.get("phone")))
     if not patch.get("country") and pr:
@@ -958,7 +1060,7 @@ def _build_invoice_course_patch(
     patch.setdefault("customer_type", _clean_text(course.get("customer_type")) or "individual")
 
     preview = {**course, **patch}
-    name = _clean_text(preview.get("name"))
+    name = _clean_text(preview.get("invoice_customer_name"))
     phone = _clean_text(preview.get("phone"))
     address = _clean_text(preview.get("address"))
     ward = _clean_text(preview.get("ward"))
@@ -1017,7 +1119,7 @@ def _issue_course_invoice_atomic(
         },
     )
     return {
-        "active_request": _serialize_ar(merged_row, pr),
+        "active_request": _serialize_ar_with_hold(sb, merged_row, pr),
         "course_code": course_code,
         "invoice_id": invoice_id,
         "invoiced_at": invoiced_at,
@@ -1042,7 +1144,7 @@ def _revoke_course_invoice_atomic(sb, ar_id: str, course_code: str) -> dict[str,
         {"p_ar_id": ar_id, "p_course_code": course_code},
     )
     pr = _fetch_payment_request(sb, str(merged_row.get("pr_id") or "")) if merged_row.get("pr_id") else None
-    return {"active_request": _serialize_ar(merged_row, pr), "course_code": course_code}
+    return {"active_request": _serialize_ar_with_hold(sb, merged_row, pr), "course_code": course_code}
 
 
 def _parse_create_ar_payload(raw: Any) -> tuple[str | None, str | None, list[Any]]:
@@ -1171,6 +1273,99 @@ def _enqueue_activation_request_created_zalo(
         print(f"[zalo] activation_request_created enqueue failed (non-fatal): {exc}")
 
 
+def _ar_dingtalk_content_key(ar: dict[str, Any], pr: dict[str, Any] | None) -> str:
+    """Snapshot ĐÚNG các trường thật sự hiển thị trong tin DingTalk
+    activation_request_created (soi theo build_activation_request_created_message,
+    utils/zalo_message_builder.py:404-537) — dùng để so sánh trước/sau PATCH.
+
+    Đổi key này mới đáng bắn tin edit-resend. LOẠI TRỪ (không hiển thị, đổi không
+    bắn tin): order_id, status, timestamps, info_confirmed, budget, course_count,
+    dòng Sale/Team. Dùng child_label ĐÃ RESOLVE (block.name ?? pr.child_name ??
+    ar.customer_name ?? pr.name), KHÔNG dùng customer_name thô khi block đã có tên.
+    """
+    pr = pr or {}
+
+    def _s(v: Any) -> str:
+        return str(v or "").strip()
+
+    child_name = _s(pr.get("child_name")) or _s(ar.get("customer_name")) or _s(pr.get("name")) or "Unknown"
+
+    blocks: list[Any] = []
+    grand_total = 0.0
+    any_amount = False
+    for uid_block in ar.get("uids_data") or []:
+        if not isinstance(uid_block, dict):
+            continue
+        block_child = _s(uid_block.get("name")) or child_name
+        courses: list[Any] = []
+        for course in uid_block.get("courses") or []:
+            if not isinstance(course, dict):
+                continue
+            name = _s(course.get("name"))
+            is_ref = "REFER" in name.upper() or _s(course.get("lead_source")) == "gioi_thieu"
+            raw_amount = course.get("amount")
+            if raw_amount not in (None, ""):
+                any_amount = True
+            try:
+                amount = float(raw_amount or 0)
+            except (TypeError, ValueError):
+                amount = 0.0
+            grand_total += amount
+            entry: list[Any] = [name, amount]
+            if is_ref:
+                entry.extend([
+                    _s(course.get("referrer_uid")),
+                    course.get("bonus_sessions_referee"),
+                    course.get("bonus_sessions_referrer"),
+                ])
+            courses.append(entry)
+        blocks.append([
+            block_child,
+            _s(uid_block.get("phone")),
+            _s(uid_block.get("country")),
+            _s(uid_block.get("uid")),
+            courses,
+        ])
+
+    # 14/8: khớp footer builder — Tổng = Σ amount gói nếu có; else fallback received/target.
+    if any_amount:
+        total = int(round(grand_total))
+    else:
+        target, received = _pr_amounts(pr)
+        total = received if received > 0 else target
+
+    payload = {
+        "blocks": blocks,
+        "lead_source": _s(pr.get("lead_source")),
+        "lead_channel": _s(pr.get("lead_channel")),
+        "total": total,
+        "hold_activation": bool(ar.get("hold_activation")),
+        "hold_note": _s(ar.get("hold_note")),
+    }
+    return json.dumps(payload, sort_keys=True, ensure_ascii=False)
+
+
+def _maybe_enqueue_ar_edit_dingtalk(
+    sb,
+    current: dict[str, Any],
+    merged: dict[str, Any],
+    pr_map: dict[str, dict[str, Any]],
+) -> None:
+    """Sale sửa AR đã báo (PATCH) → bắn tin DingTalk 'cập nhật' NẾU nội dung hiển
+    thị thật sự đổi. Best-effort — không bao giờ làm hỏng PATCH (chị Hiền 12/8).
+    """
+    try:
+        pr = pr_map.get(str(merged.get("pr_id") or ""))
+        key_before = _ar_dingtalk_content_key(current, pr)
+        key_after = _ar_dingtalk_content_key(merged, pr)
+        if key_before == key_after:
+            return
+        source_suffix = ":edit:" + hashlib.md5(key_after.encode()).hexdigest()[:12]
+        _enqueue_activation_request_created_dingtalk(sb, merged, pr, source_suffix=source_suffix)
+    except Exception as exc:
+        print(f"[dingtalk] edit-resend enqueue failed (non-fatal): {exc}")
+
+
 def _enqueue_activation_request_created_dingtalk(
     sb, saved_ar: dict[str, Any], pr: dict[str, Any] | None, source_suffix: str = "",
     hold_activation: bool = False, hold_note: str | None = None,
@@ -1221,18 +1416,29 @@ def _enqueue_activation_request_created_dingtalk(
         team_code = g.data[0]["team_code"]
 
         # 17/7 (a Hiếu chốt): gom TẤT CẢ bill của mọi lần TT đã paid — worker gửi nhiều ảnh.
+        # 12/8: gom thêm line thẻ/trả góp pending có bill (đơn "đủ tạm" báo đơn sớm).
         bill_urls: list[str] = []
         pr_id_val = str(pr.get("id") or "")
         if pr_id_val:
             lines_res = (
                 sb.table("payment_lines")
-                .select("bill_image, bill_images")
+                .select("bill_image, bill_images, method, status")
                 .eq("payment_request_id", pr_id_val)
-                .eq("status", "paid")
                 .order("paid_at", desc=False)
                 .execute()
             )
             for line in (lines_res.data or []):
+                line_method = (line.get("method") or "").lower()
+                line_status = line.get("status") or ""
+                # Chỉ lấy bill từ: line paid, HOẶC line thẻ/trả góp pending có bill
+                is_paid = line_status == "paid"
+                is_provisional = (
+                    line_method in _PROVISIONAL_METHODS
+                    and line_status == "pending"
+                    and _line_has_bill(line)
+                )
+                if not (is_paid or is_provisional):
+                    continue
                 bills = line.get("bill_images")
                 if isinstance(bills, list):
                     for b in bills:
@@ -1242,7 +1448,6 @@ def _enqueue_activation_request_created_dingtalk(
                 legacy = (line.get("bill_image") or "").strip()
                 if legacy and legacy not in bill_urls:
                     bill_urls.append(legacy)
-        bill_url = bill_urls[0] if bill_urls else None
 
         pr_target, pr_received = _pr_amounts(pr)
         result = build_activation_request_created_message(
@@ -1274,29 +1479,54 @@ def _enqueue_activation_request_created_dingtalk(
         # — giữ md5(ar_id) là tin bổ sung bị drop im lặng (G3).
         source_uuid = str(uuid.UUID(hashlib.md5(f"{ar_id}{source_suffix}".encode()).hexdigest()))
         outbox_message = result["message"]
+        if source_suffix.startswith(":edit:"):
+            outbox_message = "🔄 SALE VỪA CẬP NHẬT ĐƠN ĐÃ BÁO\n" + outbox_message
         if hold_activation:
             hold_line = "\n⏸ PH CHƯA MUỐN TẠO GÓI HỌC"
             if hold_note:
                 hold_line += f"\nGhi chú: {hold_note}"
             outbox_message = outbox_message + hold_line
-        try:
-            sb.table("dingtalk_outbox").insert(
-                {
+        def _insert_outbox(payload: dict[str, Any]) -> None:
+            try:
+                sb.table("dingtalk_outbox").insert(payload).execute()
+            except Exception as exc:
+                msg = str(exc).lower()
+                if "duplicate" in msg or "unique" in msg:
+                    return  # idempotent — UNIQUE(source_table, source_id, event_type)
+                raise
+
+        # 14/8: TÁCH tin text/ảnh để chị Hiền search đối soát được (markdown card
+        # KHÔNG được DingTalk index; sampleText thì được — worker route theo nội dung
+        # row: có ảnh + rỗng text → send_group_image, ngược lại → sampleText).
+        # Tin TEXT: source_id md5(ar_id+suffix) — ĐỔI theo :edit:/:append: nên tin
+        # cập nhật/bổ sung RE-SEND đúng ý; giữ nguyên công thức → tương thích ngược.
+        _insert_outbox({
+            "event_type": "activation_request_created",
+            "source_table": "active_requests",
+            "source_id": source_uuid,
+            "team_code": team_code,
+            "message": outbox_message,
+        })
+        # Mỗi ảnh bill = 1 tin sampleImageMsg riêng. source_id = hash(ar_id + URL),
+        # KHÔNG kèm suffix → CÙNG 1 bill của 1 AR chỉ gửi ĐÚNG 1 LẦN dù báo đơn được
+        # sửa/bổ sung nhiều lần (UNIQUE nuốt lần sau) → hết spam ảnh trùng khi edit-
+        # resend. Bill mới (URL mới) → gửi 1 lần. Hash URL (không dùng vị trí) → bền
+        # với thay đổi thứ tự. Guard từng bill: 1 insert lỗi không làm rớt bill sau.
+        for bill in bill_urls:
+            bill_hash = hashlib.md5(bill.encode()).hexdigest()
+            bill_source = str(uuid.UUID(hashlib.md5(f"{ar_id}:bill:{bill_hash}".encode()).hexdigest()))
+            try:
+                _insert_outbox({
                     "event_type": "activation_request_created",
                     "source_table": "active_requests",
-                    "source_id": source_uuid,
+                    "source_id": bill_source,
                     "team_code": team_code,
-                    "message": outbox_message,
-                    "image_url": bill_url,
-                    "image_urls": bill_urls or None,
-                }
-            ).execute()
-        except Exception as exc:
-            msg = str(exc).lower()
-            if "duplicate" in msg or "unique" in msg:
-                pass  # idempotent — UNIQUE(source_table, source_id, event_type)
-            else:
-                raise
+                    "message": "",
+                    "image_url": bill,
+                    "image_urls": [bill],
+                })
+            except Exception as bill_exc:
+                print(f"[dingtalk] bill row enqueue failed (non-fatal): {bill_exc}")
     except Exception as exc:
         print(f"[dingtalk] activation_request_created enqueue failed (non-fatal): {exc}")
 
@@ -1451,7 +1681,7 @@ def _save_active_request(
 
 
 def _course_display_name(course: dict[str, Any], ar_row: dict[str, Any], pr: dict[str, Any] | None) -> str:
-    for key in ("name", "company_name"):
+    for key in ("invoice_customer_name", "company_name"):
         val = _clean_text(course.get(key))
         if val:
             return val
@@ -1475,6 +1705,13 @@ def _course_display_phone(
     return ""
 
 
+def _course_full_address(course: dict[str, Any], pr: dict[str, Any] | None) -> str:
+    """Địa chỉ đủ (số nhà, phường/xã, tỉnh/thành) — cùng nguồn với _course_invoice_blockers
+    nên nếu course đủ điều kiện xuất HĐ thì chuỗi này luôn khác rỗng."""
+    province, ward, street, _country = _invoice_addr_parts(course, pr)
+    return ", ".join(part for part in (street, ward, province) if part)
+
+
 def _course_to_tax_order(
     course: dict[str, Any],
     uid_block: dict[str, Any],
@@ -1491,6 +1728,7 @@ def _course_to_tax_order(
         "goiHoc": product_name,
         "sdt": _course_display_phone(course, uid_block, pr),
         "tenKhach": _course_display_name(course, ar_row, pr),
+        "diaChi": _course_full_address(course, pr),
         "tongTien": int(float(course.get("amount") or 0)),
         "m3ApprovedAt": course.get("invoiced_at") or ar_row.get("created_at") or "",
         "email": _clean_text(course.get("email") or (pr.get("email") if pr else "")),
@@ -1804,19 +2042,22 @@ def register_activation_routes(app, supabase_factory):
             raise HTTPException(500, f"Không đọc active_requests: {exc}") from exc
 
         rows = res.data or []
-        pr_map = _fetch_prs_by_ids(sb, list({str(r.get("pr_id")) for r in rows if r.get("pr_id")}))
+        pr_ids = list({str(r.get("pr_id")) for r in rows if r.get("pr_id")})
+        pr_map = _fetch_prs_by_ids(sb, pr_ids)
         from payment_request_routes import _sale_name_map
         try:
             snm = _sale_name_map(sb)
         except Exception:
             snm = {}
         tv_map = _tien_ve_map(sb, [str(r.get("id")) for r in rows if r.get("id")])
+        hold_map = _credit_hold_map(sb, pr_ids)
         return [
             _serialize_ar(
                 r,
                 pr_map.get(str(r.get("pr_id") or "")),
                 snm,
                 tien_ve=tv_map.get(str(r.get("id") or ""), (None, None)),
+                credit_settlement_pending=hold_map.get(str(r.get("pr_id") or ""), False),
             )
             for r in rows
         ]
@@ -1839,7 +2080,7 @@ def register_activation_routes(app, supabase_factory):
 
         row = res.data[0]
         pr = _fetch_payment_request(sb, str(row.get("pr_id") or "")) if row.get("pr_id") else None
-        return _serialize_ar(row, pr, tien_ve=_tien_ve_bounds(sb, ar_id))
+        return _serialize_ar_with_hold(sb, row, pr, tien_ve=_tien_ve_bounds(sb, ar_id))
 
     @app.get("/api/v1/payment-requests/{pr_id}/course-budget", tags=["Activation"])
     def get_pr_course_budget(pr_id: str, authorization: str | None = Header(None)):
@@ -2011,7 +2252,8 @@ def register_activation_routes(app, supabase_factory):
                 if rpc_out.get("conflict"):
                     cur_row = rpc_out.get("row") or current
                     pr_map = _fetch_prs_by_ids(sb, [str(cur_row.get("pr_id") or "")])
-                    current_ar = _serialize_ar(
+                    current_ar = _serialize_ar_with_hold(
+                        sb,
                         cur_row if isinstance(cur_row, dict) else current,
                         pr_map.get(str(cur_row.get("pr_id") or "") if isinstance(cur_row, dict) else ""),
                     )
@@ -2056,7 +2298,8 @@ def register_activation_routes(app, supabase_factory):
                             500, f"Khong cap nhat active_requests: {exc}"
                         ) from exc
                 pr_map = _fetch_prs_by_ids(sb, [str(merged.get("pr_id") or "")])
-                return _serialize_ar(merged, pr_map.get(str(merged.get("pr_id") or "")), tien_ve=_tien_ve_bounds(sb, ar_id))
+                _maybe_enqueue_ar_edit_dingtalk(sb, current, merged, pr_map)
+                return _serialize_ar_with_hold(sb, merged, pr_map.get(str(merged.get("pr_id") or "")), tien_ve=_tien_ve_bounds(sb, ar_id))
             patch["uids_data"] = uids_data
             patch["status"] = guarded_status
             guarded_uids = uids_data
@@ -2082,7 +2325,8 @@ def register_activation_routes(app, supabase_factory):
             _sync_ledger_courses_from_uids(sb, ar_id, merged.get("uids_data") or guarded_uids)
             _writeback_child_uids_to_pr(sb, merged)
         pr_map = _fetch_prs_by_ids(sb, [str(merged.get("pr_id") or "")])
-        return _serialize_ar(merged, pr_map.get(str(merged.get("pr_id") or "")), tien_ve=_tien_ve_bounds(sb, ar_id))
+        _maybe_enqueue_ar_edit_dingtalk(sb, current, merged, pr_map)
+        return _serialize_ar_with_hold(sb, merged, pr_map.get(str(merged.get("pr_id") or "")), tien_ve=_tien_ve_bounds(sb, ar_id))
 
     @app.patch("/api/v1/active-requests/{ar_id}/credit-referral", tags=["Activation"])
     def credit_referral(
@@ -2160,7 +2404,7 @@ def register_activation_routes(app, supabase_factory):
             raise HTTPException(500, "Cập nhật thất bại")
 
         pr_map = _fetch_prs_by_ids(sb, [str(upd.data[0].get("pr_id") or "")])
-        return _serialize_ar(upd.data[0], pr_map.get(str(upd.data[0].get("pr_id") or "")))
+        return _serialize_ar_with_hold(sb, upd.data[0], pr_map.get(str(upd.data[0].get("pr_id") or "")))
 
 
     @app.post("/api/v1/active-requests", tags=["Activation"])
@@ -2191,7 +2435,7 @@ def register_activation_routes(app, supabase_factory):
             hold_activation=hold_activation,
             hold_note=hold_note,
         )
-        return _serialize_ar(saved, pr)
+        return _serialize_ar_with_hold(sb, saved, pr)
 
     @app.post(
         "/api/v1/payment-requests/{pr_id}/active-requests",
@@ -2225,7 +2469,7 @@ def register_activation_routes(app, supabase_factory):
             hold_activation=hold_activation,
             hold_note=hold_note,
         )
-        return _serialize_ar(saved, pr)
+        return _serialize_ar_with_hold(sb, saved, pr)
 
     @app.post("/api/v1/active-requests/{ar_id}/append", tags=["Activation"])
     def append_active_request_children(
@@ -2306,7 +2550,7 @@ def register_activation_routes(app, supabase_factory):
         except Exception as exc:
             print(f"[activation] append audit failed (non-fatal): {exc}")
 
-        return _serialize_ar(updated, pr)
+        return _serialize_ar_with_hold(sb, updated, pr)
 
     @app.patch(
         "/api/v1/active-requests/{ar_id}/courses/{course_code}",
@@ -2364,8 +2608,8 @@ def register_activation_routes(app, supabase_factory):
             else:
                 print(f"[activation] B3 → Sổ: skip/fail AR {ar_id} course {course_code}")
             pr_map = _fetch_prs_by_ids(sb, [str(row.get("pr_id") or "")])
-            return _serialize_ar(row, pr_map.get(str(row.get("pr_id") or "")),
-                                 tien_ve=_tien_ve_bounds(sb, ar_id))
+            return _serialize_ar_with_hold(sb, row, pr_map.get(str(row.get("pr_id") or "")),
+                                           tien_ve=_tien_ve_bounds(sb, ar_id))
 
         row = rpc_active_request_row(
             sb,
@@ -2379,8 +2623,8 @@ def register_activation_routes(app, supabase_factory):
             {"old_order_id": old_order_id},
         )
         pr_map = _fetch_prs_by_ids(sb, [str(row.get("pr_id") or "")])
-        return _serialize_ar(row, pr_map.get(str(row.get("pr_id") or "")),
-                             tien_ve=_tien_ve_bounds(sb, ar_id))
+        return _serialize_ar_with_hold(sb, row, pr_map.get(str(row.get("pr_id") or "")),
+                                       tien_ve=_tien_ve_bounds(sb, ar_id))
 
     @app.post(
         "/api/v1/active-requests/{ar_id}/request-invoice",
@@ -2441,7 +2685,7 @@ def register_activation_routes(app, supabase_factory):
             if merged_row.get("pr_id")
             else None
         )
-        return _serialize_ar(merged_row, pr)
+        return _serialize_ar_with_hold(sb, merged_row, pr)
 
     @app.post(
         "/api/v1/active-requests/{ar_id}/courses/{course_code}/issue-invoice",

@@ -1,8 +1,15 @@
-# PLAN — Ngày tiền về + Thực nhận (tab Quẹt thẻ)
+# PLAN — Ngày tiền về + Thực nhận (tab Quẹt thẻ) — DONE
 
 **Ngày**: 2026-08-11 · **Người execute**: Sonnet 4.6 · **Đã duyệt**: anh Minh
+**Status**: **SHIPPED prod 11/8** (main `b047a3f`). Migration sandbox done, prod chờ Render build xong.
 **Scope**: V-a (cột Ngày tiền về) + V-b (lọc theo ngày tiền về) + V-c (Thực nhận rõ hơn).
 **RÀNG BUỘC LỚN NHẤT**: đây là **hiển thị thuần (Nhánh A)**. TUYỆT ĐỐI KHÔNG đụng `so_doanh_thu.ngay_tien_ve`, `stamp_net_fee`, báo cáo BC01/02/03, xuất hoá đơn, GMV BigQuery. Doanh thu vẫn tính theo **ngày quẹt** (đã chốt với chị Thu Hiền — đừng đổi).
+
+**Thay đổi so với plan gốc (feedback anh Minh 11/8):**
+- `funded_date` đổi từ `date` → `timestamp without time zone` — giữ full giờ phút (VD: `2026-08-10 02:29:48`), vẫn tránh UTC shift
+- Cột "Ngày tiền về" hiện `DD/MM/YYYY` + giờ phút, đứng vị trí đầu tiên (trước "Thời gian quẹt")
+- Filter `lte` thêm `T23:59:59` bao trọn ngày cuối khi so sánh timestamp
+- "Thực nhận" thêm `white-space: nowrap` tránh xuống dòng
 
 ---
 

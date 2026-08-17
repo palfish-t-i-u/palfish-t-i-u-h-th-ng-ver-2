@@ -103,6 +103,12 @@ export function countCourseTabs(ars: ActiveRequest[]): { all: number; pending_or
   return { all: rows.length, activated, pending_order: rows.length - activated };
 }
 
+/** Ẩn hẳn đơn tín dụng còn lần quẹt thẻ chưa ghép giao dịch (backlog chờ tiền về).
+ * Áp ở NGUỒN `rows` của ActivationTab → biến mất khỏi cả 3 tab, badge, KPI. */
+export function visibleActiveRequests(ars: ActiveRequest[]): ActiveRequest[] {
+  return ars.filter((a) => !a.creditSettlementPending);
+}
+
 /** nq PHẢI đã normVi sẵn ở caller. So khớp bỏ dấu trên nhiều trường. */
 export function courseRowMatchesSearch(row: CourseRow, nq: string): boolean {
   if (!nq) return true;

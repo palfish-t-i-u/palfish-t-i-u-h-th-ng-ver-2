@@ -346,6 +346,69 @@ test("paymentRequests — tao-payment-request (4 ảnh, chỉ mở modal, KHÔNG
   await page.getByRole("button", { name: "Huỷ", exact: true }).click();
 });
 
+// chuyen-giao-pr — 4 ảnh từng bước. AN TOÀN: thao tác THUẦN ĐỌC — mở PR, mở
+// modal, focus combobox, chọn 1 người nhận (chỉ đổi state client), mở Lịch sử.
+// TUYỆT ĐỐI không bấm "Xác nhận chuyển" (endpoint transfer chỉ chạy khi bấm nút
+// đó) nên không mutate quyền sở hữu PR trên sandbox dùng chung.
+test("paymentRequests — chuyen-giao-pr (4 ảnh, KHÔNG bấm Xác nhận)", async ({ page }) => {
+  test.setTimeout(120_000);
+  await gotoModule(page, "Quản lý thanh toán");
+  await expect(page.getByRole("button", { name: "Tạo Payment Request" })).toBeVisible({ timeout: 15_000 });
+  await page.waitForLoadState("networkidle").catch(() => {});
+
+  // Sandbox chủ yếu là data test — bỏ tick "Ẩn data test" để có PR hiện ra.
+  const hideTest = page.getByLabel("Ẩn data test");
+  if (await hideTest.isChecked({ timeout: 5_000 }).catch(() => false)) {
+    await hideTest.uncheck();
+    await page.waitForTimeout(800);
+  }
+  // Sandbox thưa PR trong cửa sổ ngày mặc định — mở rộng về "Toàn bộ".
+  await page.getByRole("button", { name: /→/ }).first().click();
+  await page.getByText("Toàn bộ", { exact: true }).click();
+  await page.waitForTimeout(1500);
+
+  const firstRow = page.locator('[data-testid="pr-row"]').first();
+  await firstRow.waitFor({ state: "visible", timeout: 45_000 });
+  await firstRow.click();
+  await page.waitForTimeout(1000);
+  const transferBtn = page.getByRole("button", { name: "Chuyển giao PR", exact: true });
+  await expect(transferBtn).toBeVisible({ timeout: 15_000 });
+
+  // Ảnh 1 — drawer PR: nút "Chuyển giao PR" ở thanh dưới
+  await screenshotViewport(page, "public/docs-images/paymentRequests/chuyen-giao-pr-1.png");
+
+  // Ảnh 4 — Lịch sử PR (chụp trước, thao tác đọc): nhật ký lưu chuyển sở hữu
+  await page.getByRole("button", { name: "Xem lịch sử", exact: true }).click();
+  await expect(page.getByText(/Lịch sử PR —/)).toBeVisible({ timeout: 15_000 });
+  // Đợi nhật ký load xong (fetch ownership-log) — tránh chụp skeleton "Đang tải…"
+  await expect(page.getByText("Đang tải nhật ký…")).toBeHidden({ timeout: 15_000 });
+  await expect(page.getByText(/Tạo PR|Tạo hộ|Chuyển giao/).first()).toBeVisible({ timeout: 15_000 });
+  await page.waitForTimeout(400);
+  await screenshotViewport(page, "public/docs-images/paymentRequests/chuyen-giao-pr-4.png");
+  await page.locator(".modal").getByRole("button", { name: "Đóng", exact: true }).click();
+  await expect(page.getByText(/Lịch sử PR —/)).not.toBeVisible();
+
+  // Mở modal chuyển giao
+  await transferBtn.click();
+  await expect(page.getByText(/Chuyển giao PR —/)).toBeVisible();
+  const modal = page.locator(".modal");
+
+  // Ảnh 2 — combobox "Chuyển cho" mở, danh sách người nhận
+  const combo = modal.getByRole("combobox");
+  await combo.click();
+  await expect(page.getByRole("listbox")).toBeVisible({ timeout: 10_000 });
+  await page.waitForTimeout(300);
+  await screenshotViewport(page, "public/docs-images/paymentRequests/chuyen-giao-pr-2.png");
+
+  // Ảnh 3 — đã chọn người nhận: nút "Xác nhận chuyển cho …" bật sáng (KHÔNG bấm)
+  await page.getByRole("option").first().click();
+  await page.waitForTimeout(300);
+  await screenshotViewport(page, "public/docs-images/paymentRequests/chuyen-giao-pr-3.png");
+
+  // Đóng — không chuyển thật
+  await modal.getByRole("button", { name: "Huỷ", exact: true }).click();
+});
+
 test("reconciliation — tong-quan", async ({ page }) => {
   await gotoModule(page, "Đối soát giao dịch");
   await page.waitForTimeout(500);

@@ -22,7 +22,8 @@ Endpoints admin đều nằm trong `backend/admin_routes.py` (Zalo từ ~dòng 1
 
 - **Auth**: OAuth2 via `POST https://api.dingtalk.com/v1.0/oauth2/accessToken` (appKey/appSecret). Token cached thread-safe, refreshes 300s before expiry.
 - **Send**: `POST https://api.dingtalk.com/v1.0/robot/groupMessages/send` with `x-acs-dingtalk-access-token` header.
-- **Message formats**: `sampleText` (plain `{"content": "..."}`) hoặc `sampleMarkdown` (`{"title": "...", "text": "..."}`). Có title → Markdown, không → Text.
+- **Message formats**: `sampleText` (plain `{"content": "..."}`), `sampleMarkdown` (`{"title": "...", "text": "..."}`), `sampleImageMsg` (`{"photoURL": "..."}`). `send_group_message`: có title → Markdown, không → Text.
+- **⚠️ Tất cả event auto giờ đi `sampleText` (14/8)**: `sampleMarkdown` render dạng **[Card]** → DingTalk KHÔNG index nội dung (không search được để đối soát); `sampleText` thì search full-text được. Worker gửi title rỗng cho mọi row text. Ảnh bill đi tin **`sampleImageMsg` RIÊNG** (không nhúng markdown nữa) — worker route theo nội dung row (có ảnh+text rỗng → ảnh; chỉ text → sampleText; có cả hai → LEGACY markdown cho row cũ tồn outbox lúc deploy). Chi tiết idempotency: `docs/learnings/dingtalk-markdown-not-searchable-split-idempotency.md`.
 - **Per-team routing**: `dingtalk_team_groups.open_conversation_id` — mỗi team map tới 1 group conversation.
 
 ## Zalo token auto-refresh
@@ -76,7 +77,7 @@ Chỉ dùng nhóm **internal** — nhóm external không hỗ trợ enterprise r
 ## Gotchas
 
 - DingTalk OAuth token sống ~7200s (2h), notifier cache và tự refresh — không cần refresh thủ công.
-- **DingTalk markdown line break**: dùng `<br>`, KHÔNG trailing-space convention (DingTalk render thừa space đầu dòng — fix `918e012`).
+- **DingTalk markdown line break**: dùng `<br>`, KHÔNG trailing-space (DingTalk render thừa space đầu dòng — fix `918e012`). ⚠️ Chỉ còn áp cho nhánh LEGACY markdown (`_to_dingtalk_md` trên title path); tin `sampleText` (mặc định từ 14/8) render `\n` thô, KHÔNG chuyển `<br>`.
 - DingTalk tin bổ sung (append bé/gói): dùng `source_suffix` deterministic né outbox UNIQUE constraint.
 - Zalo `bill_uploaded` đã tắt 17/07 (sale feedback gây nhầm lẫn). Chỉ còn `payment_paid`.
 - Test send (`/admin/zalo/test-send`, `/admin/dingtalk/test-send`) yêu cầu `require_module_write(actor, "zalo"/"dingtalk")`.

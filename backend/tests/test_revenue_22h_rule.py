@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import os
 import sys
 from datetime import date, datetime, timezone
@@ -290,3 +291,158 @@ def test_m3_sync_no_time_fallback_midnight():
     row = sb.inserted[0]
     assert row["ngay_tien_ve"] == "2026-07-15"
     assert "T00:00:00" in row["pay_time"]
+
+
+# ---------------------------------------------------------------------------
+# E. Nguồn (loai) tự động fill + guard không lật tag Thủ công (anh Minh 12/8)
+# ---------------------------------------------------------------------------
+
+def _make_ar_tables_loai(
+    lead_source: str | None = "quang_cao",
+    lead_channel: str | None = None,
+    uid: str = "UID-LOAI-1",
+    existing_ledger: list[dict] | None = None,
+):
+    """Tables cho nhóm test Nguồn (loai): PR có lead_source/lead_channel + UID
+    thật (để loose_match chạy được) + so_doanh_thu khởi tạo theo existing_ledger."""
+    payment_line = {"paid_at": "2026-08-10T10:00:00+07:00",
+                     "created_at": "2026-08-10T10:00:00+07:00",
+                     "status": "paid", "payment_request_id": "pr-1"}
+    return {
+        "active_requests": [{
+            "id": "ar-1",
+            "pr_id": "pr-1",
+            "customer_name": "KH Test",
+            "uids_data": [{
+                "uid": uid,
+                "phone": "0900000000",
+                "courses": [{
+                    "code": AR_COURSE_CODE,
+                    "amount": 3_000_000,
+                    "name": "Gói 1 năm",
+                    "order_id": AR_ORDER_ID,
+                }],
+            }],
+        }],
+        "payment_requests": [{
+            "id": "pr-1", "uid": uid, "phone": "0900000000", "name": "KH",
+            "is_test": False, "lead_source": lead_source, "lead_channel": lead_channel,
+        }],
+        "payment_lines": [payment_line],
+        "so_doanh_thu": existing_ledger or [],
+    }
+
+
+@contextlib.contextmanager
+def _patch_sync():
+    with patch.object(rev_mod, "_resolve_team", return_value="HN Inhouse"), \
+         patch.object(rev_mod, "_resolve_sale_from_pr_email", return_value=("Sale A", "sale@test.com")), \
+         patch.object(rev_mod, "_resolve_payment_method_from_pr", return_value="CK"), \
+         patch.object(rev_mod, "_resolve_payment_time_from_pr", return_value=vn(2026, 8, 10, 10, 0)), \
+         patch.object(rev_mod, "_try_auto_stamp_fee", return_value=False):
+        yield
+
+
+def test_ar_sync_insert_fills_loai_from_lead_source():
+    """Dòng mới (không match gì có sẵn) → loai lấy từ lead_source qua resolve_loai_from_lead_source."""
+    sb = FakeSB(_make_ar_tables_loai(lead_source="quang_cao"))
+
+    with _patch_sync():
+        result = rev_mod.sync_ledger_from_ar_course(sb, "ar-1", AR_COURSE_CODE)
+
+    assert result is not None
+    assert sb.inserted, "Không có dòng nào được insert"
+    assert sb.inserted[0]["loai"] == "广告"
+
+
+def test_ar_sync_order_match_manual_row_dedups_without_flipping_tag():
+    """order_match trúng dòng Thủ công (import sheet) → chỉ dedup (trả id cũ),
+    KHÔNG lật loai_nhap sang tu_dong (bug 130 dòng, anh Minh 12/8)."""
+    existing = [{
+        "id": "sdt-manual-1",
+        "crm_order_id": AR_ORDER_ID,
+        "loai_nhap": "tay",
+        "loai": None,
+        "uid": "UID-LOAI-1",
+        "ngay_tien_ve": "2026-08-10",
+        "so_tien_vnd": 3_000_000,
+    }]
+    sb = FakeSB(_make_ar_tables_loai(lead_source="quang_cao", existing_ledger=existing))
+
+    with _patch_sync():
+        result = rev_mod.sync_ledger_from_ar_course(sb, "ar-1", AR_COURSE_CODE)
+
+    assert result == "sdt-manual-1"
+    assert not sb.inserted, "Không được insert dòng mới — phải dedup vào dòng cũ"
+    row = sb._tables["so_doanh_thu"][0]
+    assert row["loai_nhap"] == "tay", "Dòng thủ công bị lật tag — đây chính là bug 130 dòng"
+    assert row["loai"] is None, "Dòng thủ công không được app ghi đè loai"
+
+
+def test_ar_sync_loose_match_manual_row_dedups_without_flipping_tag():
+    """loose_match (uid+ngày+tiền, không cùng crm_order_id) trúng dòng Thủ công
+    → cũng chỉ dedup, không lật tag."""
+    existing = [{
+        "id": "sdt-manual-2",
+        "crm_order_id": "SHEET-OLD-ID",  # khác order_id AR → order_match không trúng
+        "loai_nhap": "tay",
+        "loai": None,
+        "uid": "UID-LOAI-1",
+        "ngay_tien_ve": "2026-08-10",
+        "so_tien_vnd": 3_000_000,
+    }]
+    sb = FakeSB(_make_ar_tables_loai(lead_source="gioi_thieu", existing_ledger=existing))
+
+    with _patch_sync():
+        result = rev_mod.sync_ledger_from_ar_course(sb, "ar-1", AR_COURSE_CODE)
+
+    assert result == "sdt-manual-2"
+    assert not sb.inserted
+    row = sb._tables["so_doanh_thu"][0]
+    assert row["loai_nhap"] == "tay", "Dòng thủ công bị lật tag qua loose_match"
+    assert row["crm_order_id"] == "SHEET-OLD-ID", "Không được ghi đè crm_order_id của dòng thủ công"
+
+
+def test_ar_sync_order_match_hoan_row_dedups_without_flipping_tag():
+    """order_match trúng dòng ghi giảm/hoàn (loai_nhap='hoan') → cũng chỉ dedup,
+    không lật tag — guard áp dụng cho cả 'tay' lẫn 'hoan', không riêng 1 giá trị."""
+    existing = [{
+        "id": "sdt-hoan-1",
+        "crm_order_id": AR_ORDER_ID,
+        "loai_nhap": "hoan",
+        "loai": None,
+        "uid": "UID-LOAI-1",
+        "ngay_tien_ve": "2026-08-10",
+        "so_tien_vnd": 3_000_000,
+    }]
+    sb = FakeSB(_make_ar_tables_loai(lead_source="quang_cao", existing_ledger=existing))
+
+    with _patch_sync():
+        result = rev_mod.sync_ledger_from_ar_course(sb, "ar-1", AR_COURSE_CODE)
+
+    assert result == "sdt-hoan-1"
+    assert not sb.inserted
+    row = sb._tables["so_doanh_thu"][0]
+    assert row["loai_nhap"] == "hoan", "Dòng ghi giảm/hoàn bị lật tag sang tu_dong"
+
+
+def test_ar_sync_order_match_auto_row_fills_loai_only_when_blank():
+    """order_match trúng dòng Tự động ĐÃ có loai sẵn → không ghi đè (giữ giá trị cũ)."""
+    existing = [{
+        "id": "sdt-auto-1",
+        "crm_order_id": AR_ORDER_ID,
+        "loai_nhap": "tu_dong",
+        "loai": "续费",  # đã có sẵn, khác với "广告" mà lead_source="quang_cao" sẽ tính ra
+        "uid": "UID-LOAI-1",
+        "ngay_tien_ve": "2026-08-10",
+        "so_tien_vnd": 3_000_000,
+    }]
+    sb = FakeSB(_make_ar_tables_loai(lead_source="quang_cao", existing_ledger=existing))
+
+    with _patch_sync():
+        result = rev_mod.sync_ledger_from_ar_course(sb, "ar-1", AR_COURSE_CODE)
+
+    assert result == "sdt-auto-1"
+    row = sb._tables["so_doanh_thu"][0]
+    assert row["loai_nhap"] == "tu_dong"
+    assert row["loai"] == "续费", "loai đã có sẵn không được ghi đè khi re-sync"

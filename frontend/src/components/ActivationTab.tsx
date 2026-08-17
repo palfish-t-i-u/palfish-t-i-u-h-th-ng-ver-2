@@ -29,7 +29,7 @@ import type { InvoiceRow } from "./payment-flow/paymentFlowUtils";
 import { getUidSyncState } from "./ActivationTab.uidSync";
 import { HdsdLink } from "./help/HdsdLink";
 import "../styles/prototype-payments.css";
-import { AR_PER_PAGE, applyCourseOrderId, countCourseTabs, courseRowMatchesSearch, courseRowMatchesTab, flatCourseRows, groupRowsByAr, isArInvoiceActionable, summarizeArInvoiceAction, type ArInvoiceAction, type CourseRow } from "./activation/activationFlatList";
+import { AR_PER_PAGE, applyCourseOrderId, countCourseTabs, courseRowMatchesSearch, courseRowMatchesTab, flatCourseRows, groupRowsByAr, isArInvoiceActionable, summarizeArInvoiceAction, visibleActiveRequests, type ArInvoiceAction, type CourseRow } from "./activation/activationFlatList";
 import { normVi } from "../lib/textUtils";
 import { useColumnVisibility } from "../hooks/useColumnVisibility";
 import ColumnVisibilityMenu, { type ColumnOption } from "./ui/ColumnVisibilityMenu";
@@ -2135,7 +2135,10 @@ export default function ActivationTab() {
     }
   }, [nav.openArId, setNav]);
 
-  const rows = useMemo(() => activeRequests.map(enrichActiveRequest), [activeRequests]);
+  const rows = useMemo(
+    () => visibleActiveRequests(activeRequests).map(enrichActiveRequest),
+    [activeRequests]
+  );
 
   // Địa chỉ để tính blocker cứng lấy từ PR liên kết (khớp getInvoiceBlockers).
   const prById = useMemo(() => {

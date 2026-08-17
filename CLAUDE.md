@@ -109,6 +109,28 @@ Module có business rules riêng — CLAUDE.md trong thư mục tự load khi đ
 - `docs/DESIGN.md` — Design tokens, UI components, rules
 - `docs/learnings/` — Extracted reasoning from past solved problems (Problem/Trap/Insight/Rule format)
 
+## Cross-machine Sync (palfish-internal-notes)
+
+Repo **PRIVATE** sibling: `D:\File làm việc\automation\palfish-internal-notes` (GitHub: `GiganticBakery/palfish-internal-notes`).
+
+Memory của Claude (`~/.claude`) nằm trên từng máy — đổi máy mất hết. Repo này là cầu nối: ghi trạng thái + ngữ cảnh session → push; máy khác pull → đọc → nối tiếp.
+
+### Khi nào đọc
+- **Đầu session nếu user đổi máy** hoặc nhắc "lấy thông tin từ internal notes" / "nối tiếp" / "check note"
+- Đọc `README.md` (index + tình hình chốt) → đọc note liên quan topic đang làm
+
+### Khi nào ghi
+- **Cuối session có thông tin mới** cần sync: quyết định, trạng thái task, bàn giao, bẫy kỹ thuật
+- User bảo "cập nhật lên internal notes" / "lên repo" / "sync notes"
+- Dùng skill `/sync-notes` để tự động hoá
+
+### Quy ước viết note
+- Mỗi file **PHẢI có dòng `Dự án: gmv`** ở đầu
+- Ghi **ngữ cảnh đầy đủ**: điều tra đã làm gì, kết luận, quyết định, bẫy, theo dõi tiếp — KHÔNG chỉ ghi sự kiện
+- Tham chiếu file code bằng relative path (`backend/activation_routes.py:1499`)
+- Cập nhật `README.md` section "Nội dung" + "Tình hình chốt ngày"
+- KHÔNG commit dữ liệu nhạy cảm (lương thô, HRIS dump, thông tin khách)
+
 ## Learning Law
 
 **Before** starting a non-trivial bug fix or architecture change, check for prior learnings:
