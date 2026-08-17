@@ -273,9 +273,6 @@ export default function PayslipDetail({ items, onUpdate }: Props) {
       {/* 6 block + Khác */}
       <PhieuBlocks phieu={current.phieu} />
 
-      {/* 2 nút hành động */}
-      <ActionBar item={current} onUpdate={onUpdate} />
-
       {/* Footer liên hệ HR */}
       <p className="pt-2 text-center text-xs text-gmv-muted leading-relaxed">
         Nếu Anh/Chị có thắc mắc, vui lòng liên hệ Phòng Nhân sự
@@ -283,6 +280,9 @@ export default function PayslipDetail({ items, onUpdate }: Props) {
         <br />
         Email: <span className="font-medium">palfishrecruitment@gmail.com</span>
       </p>
+
+      {/* 2 nút hành động */}
+      <ActionBar item={current} onUpdate={onUpdate} />
     </div>
   );
 }
