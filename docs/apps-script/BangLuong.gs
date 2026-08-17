@@ -1,7 +1,6 @@
 /**
- * PalFish — BẢNG LƯƠNG TỰ ĐỘNG (M3 v2)
+ * PalFish — BẢNG LƯƠNG TỰ ĐỘNG (M3 v3)
  * Sheet locale: Vietnamese → formulas dùng ; (không phải ,).
- * ⚠ Formulas thuế/Net TẠM trong Sheet — chờ Chung chuyển compute sang BQ.
  */
 
 const CFG = {
@@ -35,7 +34,9 @@ const BQ_SQL = [
   "  t.gmv_vnd AS gmv,",
   "  t.tro_cap_an_trua AS an_trua,",
   "  t.tro_cap_may_tinh AS may_tinh,",
-  "  COALESCE(t.tro_cap_xang_xe,0) + COALESCE(t.tro_cap_trach_nhiem,0) AS xe_pc,",
+  "  COALESCE(t.tro_cap_xe_trach_nhiem,0) AS xe_pc,",
+  "  t.an_ca_van,",
+  "  t.dien_thoai_van,",
   "  ARRAY_LENGTH(REGEXP_EXTRACT_ALL(COALESCE(s.dependent_information,''), r'(?:19|20)[0-9]{2}')) AS so_npt",
   "FROM `pf-salary.payroll.C_view_bang_luong_truoc_thue` t",
   "LEFT JOIN `pf-salary.payroll.C_view_bang_luong_co_ban_theo_ngay_cong` cb ON cb.code = t.code",
@@ -47,22 +48,28 @@ function colIndex(key){ for(let i=0;i<COLS.length;i++) if(COLS[i].key===key) ret
 function C(key){ return columnToLetter(colIndex(key)); }
 function columnToLetter(n){ let s=''; while(n>0){ const m=(n-1)%26; s=String.fromCharCode(65+m)+s; n=(n-m-1)/26; } return s; }
 
-// Thuế TNCN lũy tiến 5 bậc 2026 — y hệt chị Vân. Separator ; cho Vietnamese locale.
+// Thuế TNCN lũy tiến 5 bậc — returns formula body (no leading =).
 function thueTNCN(x){
-  return '=IF('+x+'<=10000000;'+x+'*5%;'
+  return 'IF('+x+'<=10000000;'+x+'*5%;'
        + 'IF('+x+'<=30000000;10000000*5%+('+x+'-10000000)*10%;'
        + 'IF('+x+'<=60000000;10000000*5%+20000000*10%+('+x+'-30000000)*20%;'
        + 'IF('+x+'<=100000000;10000000*5%+20000000*10%+30000000*20%+('+x+'-60000000)*30%;'
-       + '10000000*5%+20000000*10%+30000000*20%+30000000*20%+40000000*30%+('+x+'-100000000)*35%))))';
+       + '10000000*5%+20000000*10%+30000000*20%+40000000*30%+('+x+'-100000000)*35%))))';
 }
 
 const COLS = [
+  // --- Identity ---
   { key:'stt',           h:'STT',                              role:'auto'  },
+  { key:'code',          h:'Mã NV',                            role:'auto',  src:'code' },
   { key:'team',          h:'Team',                             role:'auto',  src:'team' },
   { key:'name',          h:'Name',                             role:'auto',  src:'full_name' },
   { key:'chuc_danh',     h:'Chức danh',                        role:'auto',  src:'title_job' },
-  { key:'tong_lt',       h:'Tổng lương + thưởng',              role:'calc',  f:r=>'='+C('tong_luong')+r+'+'+C('thuong_com')+r+'-'+C('khau_tru_thue')+r },
-  { key:'tong_luong',    h:'Tổng lương',                       role:'calc',  f:r=>'='+C('lcb_ngay_cong')+r+'+'+C('an_trua')+r+'+'+C('may_tinh')+r+'+'+C('xe_pc')+r+'-'+C('bao_hiem')+r+'+'+C('bu_tien')+r },
+  { key:'employee_type', h:'Loại NV',                           role:'auto',  src:'employee_type' },
+  // --- Summary ---
+  { key:'tong_lt',       h:'Tổng lương + thưởng (Net)',        role:'calc',  f:r=>'='+C('gross')+r+'-'+C('khau_tru_thue')+r },
+  { key:'gross',         h:'Tổng trước thuế',                   role:'calc',  f:r=>'='+C('tong_luong')+r+'+'+C('thuong_com')+r },
+  { key:'tong_luong',    h:'Tổng lương',                       role:'calc',  f:r=>'='+C('lcb_ngay_cong')+r+'+'+C('an_trua')+r+'+'+C('may_tinh')+r+'+'+C('xe_pc')+r+'+'+C('dien_thoai')+r+'-'+C('bao_hiem')+r+'+'+C('bu_tien')+r },
+  // --- Components ---
   { key:'luong_cb',      h:'Lương cơ bản',                     role:'auto',  src:'luong_co_ban' },
   { key:'cong',          h:'Công',                             role:'input', src:'cong' },
   { key:'lcb_ngay_cong', h:'LCB theo ngày công',               role:'auto',  src:'lcb_theo_ngay_cong' },
@@ -72,16 +79,25 @@ const COLS = [
   { key:'an_trua',       h:'Hỗ trợ ăn trưa',                   role:'auto',  src:'an_trua' },
   { key:'may_tinh',      h:'Tiền hỗ trợ máy tính',             role:'auto',  src:'may_tinh' },
   { key:'xe_pc',         h:'Hỗ trợ tiền xe + PC trách nhiệm',  role:'input', src:'xe_pc' },
+  { key:'dien_thoai',    h:'Phụ cấp điện thoại',                role:'auto',  src:'dien_thoai_van' },
   { key:'khau_tru_thue', h:'Khấu trừ thuế',                    role:'calc',  f:r=>'='+C('thue_tncn')+r },
   { key:'bu_tien',       h:'Bù tiền',                          role:'input', src:null },
   { key:'note',          h:'Note',                             role:'input', src:null },
+  // --- Tax computation ---
   { key:'npt',           h:'Số người phụ thuộc',               role:'input', src:'so_npt' },
-  { key:'tong_tn',       h:'Tổng thu nhập',                    role:'calc',  f:r=>'='+C('lcb_ngay_cong')+r+'+'+C('thuong_com')+r+'+'+C('an_trua')+r+'+'+C('may_tinh')+r+'+'+C('xe_pc')+r },
+  { key:'tong_tn',       h:'Tổng thu nhập',                    role:'calc',  f:r=>'='+C('lcb_ngay_cong')+r+'+'+C('thuong_com')+r+'+'+C('an_trua')+r+'+'+C('may_tinh')+r+'+'+C('xe_pc')+r+'+'+C('dien_thoai')+r },
+  { key:'income_col_u',  h:'TN trước thuế',                     role:'calc',  f:r=>'='+C('lcb_ngay_cong')+r+'+'+C('an_trua')+r+'+'+C('may_tinh')+r+'+'+C('xe_pc')+r+'+'+C('bu_tien')+r },
+  { key:'an_ca_van',     h:'Ăn ca (thuế)',                     role:'auto',  src:'an_ca_van' },
+  { key:'tnct',          h:'Thu nhập chịu thuế',               role:'calc',
+    f:r=>'=IF('+C('employee_type')+r+'="Chính thức";'+C('income_col_u')+r+'-'+C('an_ca_van')+r+'-'+C('dien_thoai')+r+';'+C('income_col_u')+r+')' },
   { key:'gt_ban_than',   h:'Giảm trừ bản thân',                role:'calc',  f:r=>'='+CFG.giamTruBanThan },
   { key:'gt_npt',        h:'Giảm trừ NPT',                     role:'calc',  f:r=>'='+C('npt')+r+'*'+CFG.giamTruMoiNPT },
-  { key:'tntt',          h:'Thu nhập tính thuế',               role:'calc',  f:r=>'=MAX(0;'+C('tong_tn')+r+'-'+C('bao_hiem')+r+'-'+C('gt_ban_than')+r+'-'+C('gt_npt')+r+')' },
-  { key:'thue_tncn',     h:'Thuế TNCN',                        role:'calc',  f:r=>thueTNCN(C('tntt')+r) },
+  { key:'tntt',          h:'Thu nhập tính thuế',               role:'calc',
+    f:r=>'=IF('+C('employee_type')+r+'="Chính thức";MAX(0;'+C('tnct')+r+'-'+C('bao_hiem')+r+'-'+C('gt_ban_than')+r+'-'+C('gt_npt')+r+');'+C('tnct')+r+')' },
+  { key:'thue_tncn',     h:'Thuế TNCN',                        role:'calc',
+    f:r=>'=IF(OR('+C('code')+r+'="HN0051";'+C('code')+r+'="HN0164");0;IF('+C('employee_type')+r+'="Chính thức";'+thueTNCN(C('tntt')+r)+';IF('+C('tntt')+r+'>=5000000;'+C('tntt')+r+'*10%;0)))' },
   { key:'net',           h:'Lương thực lãnh (Net)',            role:'calc',  f:r=>'='+C('tong_lt')+r },
+  // --- Status ---
   { key:'xn_tt',         h:'Xác nhận thông tin',               role:'status', kind:'check' },
   { key:'gui_phieu',     h:'Gửi phiếu',                        role:'status', kind:'check' },
   { key:'nv_xem',        h:'NV đã xem',                        role:'status', kind:'app' },
@@ -111,7 +127,7 @@ function capNhatTuBigQuery(){
       .setFontWeight('bold').setBackground('#0b5394').setFontColor('white')
       .setWrap(true).setHorizontalAlignment('center');
   main.setFrozenRows(1);
-  main.setFrozenColumns(4);
+  main.setFrozenColumns(colIndex('employee_type'));
 
   // Smart-merge: đọc snapshot cũ
   const snapMap = readSnap_(snap);
@@ -138,7 +154,7 @@ function capNhatTuBigQuery(){
     }
   }
 
-  // Xoá dòng thừa từ lần chạy trước (nếu lần trước nhiều NV hơn)
+  // Xoá dòng thừa từ lần chạy trước
   const lastRow = main.getLastRow();
   if(lastRow > rows.length+1){
     main.getRange(rows.length+2, 1, lastRow-rows.length-1, COLS.length).clear();
@@ -152,31 +168,26 @@ function capNhatTuBigQuery(){
 function formatSheet_(main, numRows){
   const numCols = COLS.length;
 
-  // Số tiền: #,##0
-  var moneyKeys = ['tong_lt','tong_luong','luong_cb','lcb_ngay_cong','thuong_com','bao_hiem','gmv',
-                   'an_trua','may_tinh','xe_pc','khau_tru_thue','bu_tien','tong_tn','gt_ban_than',
-                   'gt_npt','tntt','thue_tncn','net'];
+  var moneyKeys = ['tong_lt','gross','tong_luong','luong_cb','lcb_ngay_cong','thuong_com','bao_hiem','gmv',
+                   'an_trua','may_tinh','xe_pc','dien_thoai','khau_tru_thue','bu_tien','tong_tn',
+                   'income_col_u','an_ca_van','tnct','gt_ban_than','gt_npt','tntt','thue_tncn','net'];
   moneyKeys.forEach(function(k){ main.getRange(2, colIndex(k), numRows, 1).setNumberFormat('#,##0'); });
 
-  // Màu nền theo role
   COLS.forEach(function(col, i){
     var bg = null;
-    if(col.role==='input')  bg = '#FFF8E1';  // vàng nhạt = ô sửa được
-    if(col.role==='calc')   bg = '#EEF2FF';  // xanh nhạt = công thức
-    if(col.role==='status') bg = '#F3F4F6';  // xám nhạt  = trạng thái
+    if(col.role==='input')  bg = '#FFF8E1';
+    if(col.role==='calc')   bg = '#EEF2FF';
+    if(col.role==='status') bg = '#F3F4F6';
     if(bg) main.getRange(2, i+1, numRows, 1).setBackground(bg);
   });
 
-  // Headline + Net in đậm
-  ['tong_lt','net'].forEach(function(k){
+  ['tong_lt','gross','net'].forEach(function(k){
     main.getRange(2, colIndex(k), numRows, 1).setFontWeight('bold');
   });
 
-  // Viền
   main.getRange(1, 1, numRows+1, numCols)
     .setBorder(true, true, true, true, true, true, '#D1D5DB', SpreadsheetApp.BorderStyle.SOLID);
 
-  // Tự chỉnh độ rộng cột
   for(var i=1; i<=numCols; i++) main.autoResizeColumn(i);
 }
 
@@ -187,7 +198,8 @@ function queryBigQuery_(){
   var jobId = job.jobReference.jobId;
   while(!job.jobComplete){ Utilities.sleep(1000); job = BigQuery.Jobs.getQueryResults(CFG.bqProject, jobId); }
   var fields = job.schema.fields.map(function(f){ return f.name; });
-  var numericKeys = ['luong_co_ban','cong','lcb_theo_ngay_cong','thuong_com','bao_hiem','gmv','an_trua','may_tinh','xe_pc','so_npt'];
+  var numericKeys = ['luong_co_ban','cong','lcb_theo_ngay_cong','thuong_com','bao_hiem','gmv',
+                     'an_trua','may_tinh','xe_pc','so_npt','an_ca_van','dien_thoai_van'];
   var out = [];
   (job.rows||[]).forEach(function(row){
     var o = {};
