@@ -16,9 +16,10 @@ describe("content/help/index.ts", () => {
     expect(topic?.order).toBe(2);
     expect(topic?.audience).toEqual(["sale", "ke-toan"]);
     expect(topic?.body).toContain("## Tạo lần thanh toán mới");
-    // frontmatter fence (dòng "---" đứng riêng) phải bị strip khỏi body;
-    // KHÔNG dùng toContain("---") vì cú pháp bảng markdown (|---|) cũng chứa "---".
-    expect(topic?.body).not.toMatch(/^---$/m);
+    // frontmatter (khối "---...---") phải bị strip khỏi body — kiểm bằng cách
+    // body KHÔNG mở đầu bằng "---". KHÔNG cấm "---" giữa bài vì đó là kẻ ngang (hr)
+    // ngăn cách các mục, và cú pháp bảng markdown (|---|) cũng chứa "---".
+    expect(topic?.body.trimStart().startsWith("---")).toBe(false);
   });
 
   it("sorts topics within a module by order", () => {

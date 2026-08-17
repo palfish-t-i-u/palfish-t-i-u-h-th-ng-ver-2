@@ -24,6 +24,8 @@ audience: ["sale", "ke-toan"]
 
 > ⚠️ Nếu PR **đã nhận đủ tiền**, các nút Tạo lần thanh toán sẽ **không mở form** mà hiện thông báo "PR đã nhận đủ tiền". Muốn thu thêm, phải **tăng Tổng tiền dự kiến** của PR trước (bấm "Sửa thông tin PR ngay").
 
+---
+
 ### Chuyển khoản (QR) — mặc định
 
 Dùng khi: khách chuyển khoản ngân hàng. Hệ thống tự sinh **mã QR VietQR** + **nội dung chuyển khoản** để khách quét.
@@ -38,6 +40,8 @@ Dùng khi: khách chuyển khoản ngân hàng. Hệ thống tự sinh **mã QR 
 - Khi khách chuyển **đúng nội dung**, hệ thống **tự đối soát** lúc tiền về — thường không phải chờ kế toán ghép tay.
 - ⚠️ Nếu khách chuyển **sai nội dung** hoặc **chuyển ngoài** (không quét QR), tiền **không tự khớp** → **vẫn phải tải ảnh bill** lên dòng lần TT để kế toán đối soát tay. (Chỉ chuyển khoản đúng nội dung mới không cần bill.)
 
+---
+
 ### Tiền mặt
 
 Dùng khi: thu tiền mặt trực tiếp.
@@ -50,6 +54,8 @@ Dùng khi: thu tiền mặt trực tiếp.
 - Điền xong, bấm **Ghi nhận lần thanh toán** để lưu. Lần thu tiền mặt được **ghi nhận ngay** và cộng vào số đã nhận của PR — không phải chờ đối soát.
 - Ô **Mã đối soát** ghi "Tự động tạo bởi hệ thống" — bỏ qua, không cần nhập.
 
+---
+
 ### Quẹt thẻ
 
 Dùng khi: khách quẹt thẻ qua máy POS. Quẹt thẻ là hình thức **tín dụng** — **có phí** nên số thực nhận (NET) **nhỏ hơn** số quẹt (GROSS); kế toán ghép mPOS/Payoo xác nhận sau.
@@ -61,6 +67,8 @@ Dùng khi: khách quẹt thẻ qua máy POS. Quẹt thẻ là hình thức **tí
 
 - Điền xong, bấm **Ghi nhận lần thanh toán** để lưu.
 - Sau khi lưu, dòng lần TT nhắc **"Cần ảnh bill để kế toán xác nhận"** → bấm **Up bill** trên dòng đó để tải ảnh biên lai. Khi kế toán xác nhận, dòng hiện công thức **GROSS − phí = NET**.
+
+---
 
 ### Trả góp
 
