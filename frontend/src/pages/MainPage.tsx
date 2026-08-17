@@ -30,6 +30,7 @@ const ZaloOutboxTab = lazyRetry(() => import("../components/admin/ZaloOutboxTab"
 const DingTalkConfigTab = lazyRetry(() => import("../components/admin/DingTalkConfigTab"));
 const DingTalkGroupsTab = lazyRetry(() => import("../components/admin/DingTalkGroupsTab"));
 const DingTalkOutboxTab = lazyRetry(() => import("../components/admin/DingTalkOutboxTab"));
+const PayslipTab = lazyRetry(() => import("../components/payslip/PayslipTab"));
 
 const PRELOAD_MAP: Record<string, () => Promise<unknown>> = {
   paymentRequests: () => import("../components/PaymentRequestsTab"),
@@ -42,6 +43,7 @@ const PRELOAD_MAP: Record<string, () => Promise<unknown>> = {
   bc02: () => import("../components/reports/BC02KeyDataReport"),
   bc03: () => import("../components/ReportBC03Tab"),
   gatewaySync: () => import("../components/GatewaySyncTab"),
+  payslip: () => import("../components/payslip/PayslipTab"),
 };
 
 type ViewId =
@@ -66,7 +68,8 @@ type ViewId =
   | "zaloOutbox"
   | "dingtalkConfig"
   | "dingtalkGroups"
-  | "dingtalkOutbox";
+  | "dingtalkOutbox"
+  | "payslip";
 
 const FLOW_VIEW_MAP: Record<PaymentFlowView, ViewId> = {
   paymentRequests: "paymentRequests",
@@ -156,6 +159,14 @@ const I = {
       <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5" />
     </svg>
   ),
+  payslip: (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="5" y="3" width="14" height="18" rx="1" />
+      <line x1="9" y1="7" x2="15" y2="7" />
+      <line x1="9" y1="11" x2="15" y2="11" />
+      <line x1="9" y1="15" x2="13" y2="15" />
+    </svg>
+  ),
 };
 
 const TITLES: Record<ViewId, { title: string; subtitle?: string }> = {
@@ -222,6 +233,10 @@ const TITLES: Record<ViewId, { title: string; subtitle?: string }> = {
   dingtalkOutbox: {
     title: "DingTalk — Outbox",
     subtitle: "50 tin nhắn gần nhất — theo dõi trạng thái gửi & retry",
+  },
+  payslip: {
+    title: "Phiếu lương",
+    subtitle: "Xem phiếu trước thuế & sau thuế — xác nhận hàng tháng",
   },
 };
 
@@ -342,6 +357,10 @@ function MainPageInner({
     if (dingtalkChildren.length > 0)
       list.push({ id: "dingtalkHub", label: "DingTalk", icon: I.team, children: dingtalkChildren });
 
+    // ── Nhân sự ──
+    if (can("payslip"))
+      list.push({ id: "payslip", label: "Phiếu lương", icon: I.payslip, section: "Nhân sự" });
+
     // ── Tài khoản & Quyền ──
     const accountItems: NavItem[] = [];
     if (showAuthAccounts)
@@ -403,6 +422,7 @@ function MainPageInner({
       case "dingtalkConfig": return <DingTalkConfigTab />;
       case "dingtalkGroups": return <DingTalkGroupsTab />;
       case "dingtalkOutbox": return <DingTalkOutboxTab />;
+      case "payslip": return <PayslipTab />;
       default: return <PaymentRequestsTab />;
     }
   };

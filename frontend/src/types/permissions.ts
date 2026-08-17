@@ -61,6 +61,8 @@ export const MODULE_LIST: ModuleDef[] = [
   { key: "gatewaySync", label: "Đồng bộ mPOS/Payoo", description: "Kéo giao dịch mPOS & Payoo về app qua tiện ích", section: "Dữ liệu" },
   // ── Quản trị ──
   { key: "zalo", label: "Zalo OA", description: "Cấu hình OA, nhóm thông báo, outbox", section: "Quản trị" },
+  // ── Nhân sự ──
+  { key: "payslip", label: "Phiếu lương", description: "Xem phiếu lương cá nhân — xác nhận trước & sau thuế", section: "Nhân sự" },
   // ── Tài khoản & Quyền ──
   { key: "authAccounts", label: "Tài khoản Auth", description: "Quản lý tài khoản đăng nhập", section: "Tài khoản & Quyền" },
   { key: "profile", label: "Thông tin cá nhân", description: "Hồ sơ cá nhân người dùng", section: "Tài khoản & Quyền" },
@@ -85,6 +87,7 @@ export const DEFAULT_PERMISSIONS: Record<string, Record<string, AccessLevel>> = 
     revenueLedger: "read", bc01: "read", bc02: "read", bc03: "read",
     module5: "none", module6: "full", gatewaySync: "none",
     zalo: "none",
+    payslip: "full",
     authAccounts: "none", profile: "full",
   },
   hr: {
@@ -93,6 +96,7 @@ export const DEFAULT_PERMISSIONS: Record<string, Record<string, AccessLevel>> = 
     revenueLedger: "full", bc01: "full", bc02: "full", bc03: "full",
     module5: "full", module6: "full", gatewaySync: "full",
     zalo: "full",
+    payslip: "full",
     authAccounts: "full", profile: "full",
   },
   marketing: {
@@ -101,6 +105,7 @@ export const DEFAULT_PERMISSIONS: Record<string, Record<string, AccessLevel>> = 
     revenueLedger: "full", bc01: "read", bc02: "read", bc03: "read",
     module5: "none", module6: "none", gatewaySync: "none",
     zalo: "none",
+    payslip: "full",
     authAccounts: "none", profile: "full",
   },
   cs: {
@@ -109,6 +114,7 @@ export const DEFAULT_PERMISSIONS: Record<string, Record<string, AccessLevel>> = 
     revenueLedger: "none", bc01: "none", bc02: "none", bc03: "none",
     module5: "none", module6: "none", gatewaySync: "none",
     zalo: "none",
+    payslip: "full",
     authAccounts: "none", profile: "full",
   },
 };
