@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useAuth } from "../../hooks/useAuth";
 import Modal from "../ui/Modal";
 import Button from "../ui/Button";
@@ -17,6 +17,11 @@ export function markReauthValid(): void {
   sessionStorage.setItem(REAUTH_KEY, String(Date.now()));
 }
 
+function isOAuthProvider(session: { user?: { app_metadata?: { provider?: string } } } | null): boolean {
+  const provider = session?.user?.app_metadata?.provider;
+  return !!provider && provider !== "email";
+}
+
 interface Props {
   open: boolean;
   onSuccess: () => void;
@@ -28,6 +33,17 @@ export default function PayslipReauthModal({ open, onSuccess, onClose }: Props) 
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+
+  const isOAuth = isOAuthProvider(session);
+
+  useEffect(() => {
+    if (open && isOAuth) {
+      markReauthValid();
+      onSuccess();
+    }
+  }, [open, isOAuth, onSuccess]);
+
+  if (isOAuth) return null;
 
   const handleSubmit = async () => {
     setError("");
