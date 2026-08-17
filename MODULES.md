@@ -172,6 +172,23 @@ Kế hoạch đầy đủ: `docs/plans/HANDOFF_HDSD_DOCS_ROUTE_PIVOT_2026-07-27.
 - Sửa file chung: `AppShell.tsx` (link tĩnh `/docs` cuối sidebar, `HdsdLink` không điều kiện ở header), `MainPage.tsx` (không còn `"help"` ViewId/state/Provider gì cả — header luôn truyền `helpModuleSlug={activeView}`).
 - Phạm vi điểm chèn: đã phủ toàn bộ 21 module có docs (Payment Requests, Đối soát, Kích hoạt, Xuất hóa đơn, Sổ doanh thu, CRM sync, Dashboard Sale, Gateway Sync, Zalo×3, DingTalk×3, Auth Accounts, Permissions...) — 59 điểm `HdsdLink`. Nguồn sự thật: `grep -rn "<HdsdLink" frontend/src`.
 
+## 13. Phiếu lương (M4)
+
+> App = tầng hiển thị thuần (KHÔNG tính lại). Sheet HR tính → Gate POST → app lưu + hiển thị.
+
+- FE Tab: `frontend/src/components/payslip/PayslipTab.tsx` — list kỳ, group theo code, re-auth modal, mở detail
+- FE Detail: `frontend/src/components/payslip/PayslipDetail.tsx` — 6 block + fallback "Khác" + 2 nút hành động
+- FE Re-auth: `frontend/src/components/payslip/PayslipReauthModal.tsx` — xác thực mật khẩu trước khi xem (TTL 15 phút sessionStorage)
+- FE Types: `frontend/src/types/payroll.ts` — `PayslipStage`, `PayslipListItem`, `PayslipDetail`
+- FE API: `frontend/src/lib/api/payroll.ts` — `listPayslips`, `getPayslip`, `confirmPayslip`, `requestReview`
+- BE Routes: `backend/payroll_routes.py` — `POST /receive`, `GET /payslips`, `GET /payslips/{id}`, `PATCH /confirm`, `PATCH /review` (auto-khóa mùng 4)
+- BE RBAC: `backend/rbac.py` — `visible_payslip_codes`, `actor_ma_nv` (sale=mình / leader=team / manager=team / ops+system=hết)
+- Migration: `backend/migrations/2026-08-14-payslips-m4.sql` (bảng `payslips`), `2026-08-14-payslips-m4-rbac-audit.sql` (cột `nhan_su_sale.ma_nv` + bảng `payslip_views`)
+- Gate Script: `docs/apps-script/PhieuLuongGate.gs` — Sheet → POST `/receive` (chờ Trang bật)
+- Contract: `docs/PHIEU_LUONG_CONTRACT.md` — payload keys byte-exact, 6 block, 5 cột status
+- Tests: `backend/tests/test_payroll_receive.py` (6), `test_payroll_view.py` (9) — 15 pass
+- **HOLD**: nối Gate thật (điền appEndpoint+gateToken), ghi ngược cột "NV xác nhận", deploy prod
+
 ## ⚠️ Legacy — KHÔNG còn mount trong MainPage (chỉ test file tham chiếu)
 
 Đừng sửa các file này khi làm feature mới; kiểm tra trước khi xóa:

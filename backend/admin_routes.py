@@ -154,6 +154,7 @@ MODULE_LIST = [
     "gatewaySync",    # <-- Thêm mới phục vụ đồng bộ mPOS/Payoo
     "zalo",           # <-- Thêm mới phục vụ quản lý phân quyền Zalo OA
     "dingtalk",       # <-- Thêm mới phục vụ quản lý nhóm DingTalk
+    "payslip",        # <-- M4 phiếu lương
     "authAccounts",
     "profile",
     "permissions",
@@ -171,6 +172,7 @@ DEFAULT_DEPT_PERMISSIONS: dict[str, dict[str, str]] = {
         "module5": "none", "module6": "full",
         "authAccounts": "none", "profile": "full", "permissions": "none",
         "reconCard": "none", "gatewaySync": "none", "zalo": "none", "dingtalk": "none",
+        "payslip": "full",
     },
     "hr": {
         "dashboard": "full", "paymentRequests": "full",
@@ -179,6 +181,7 @@ DEFAULT_DEPT_PERMISSIONS: dict[str, dict[str, str]] = {
         "module5": "full", "module6": "full",
         "authAccounts": "full", "profile": "full", "permissions": "full",
         "reconCard": "full", "gatewaySync": "full", "zalo": "full", "dingtalk": "full",
+        "payslip": "full",
     },
     "marketing": {
         "dashboard": "read", "paymentRequests": "none",
@@ -187,6 +190,7 @@ DEFAULT_DEPT_PERMISSIONS: dict[str, dict[str, str]] = {
         "module5": "none", "module6": "none",
         "authAccounts": "none", "profile": "full", "permissions": "none",
         "reconCard": "none", "gatewaySync": "none", "zalo": "none", "dingtalk": "none",
+        "payslip": "full",
     },
     "cs": {
         "dashboard": "read", "paymentRequests": "none",
@@ -195,6 +199,7 @@ DEFAULT_DEPT_PERMISSIONS: dict[str, dict[str, str]] = {
         "module5": "none", "module6": "none",
         "authAccounts": "none", "profile": "full", "permissions": "none",
         "reconCard": "none", "gatewaySync": "none", "zalo": "none", "dingtalk": "none",
+        "payslip": "full",
     },
 }
 
