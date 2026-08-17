@@ -91,13 +91,13 @@ function PhieuBlocks({ phieu }: BlockProps) {
   const renderedKeys = new Set<string>();
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-2">
       {PAYSLIP_BLOCKS.map((block) => {
-        const rows: { label: string; dataKey: string }[] = [];
+        const rows: { key: string; dataKey: string }[] = [];
         for (const blockKey of block.keys) {
           for (const dk of Object.keys(normalized)) {
             if (matchesBlockKey(dk, blockKey) && normalized[dk] !== "" && normalized[dk] !== null) {
-              rows.push({ label: dk, dataKey: dk });
+              rows.push({ key: blockKey, dataKey: dk });
             }
           }
         }
@@ -105,12 +105,12 @@ function PhieuBlocks({ phieu }: BlockProps) {
         rows.forEach((r) => renderedKeys.add(r.dataKey));
         return (
           <Card key={block.title}>
-            <CardHeader className="py-3 text-base">{block.title}</CardHeader>
+            <CardHeader className="py-1.5 text-sm">{block.title}</CardHeader>
             <CardBody className="p-0">
               <dl className="divide-y divide-gmv-border">
                 {rows.map((r) => (
-                  <div key={r.dataKey} className="flex justify-between gap-4 px-4 py-2.5 text-sm">
-                    <dt className="text-gmv-muted">{r.label}</dt>
+                  <div key={r.dataKey} className="flex justify-between gap-4 px-3 py-1 text-[13px]">
+                    <dt className="text-gmv-muted">{r.dataKey}</dt>
                     <dd className="font-medium text-gmv-text-strong text-right">{formatValue(normalized[r.dataKey])}</dd>
                   </div>
                 ))}
@@ -127,11 +127,11 @@ function PhieuBlocks({ phieu }: BlockProps) {
         if (otherKeys.length === 0) return null;
         return (
           <Card key="khac">
-            <CardHeader className="py-3 text-base text-gmv-muted">Khác</CardHeader>
+            <CardHeader className="py-1.5 text-sm text-gmv-muted">Khác</CardHeader>
             <CardBody className="p-0">
               <dl className="divide-y divide-gmv-border">
                 {otherKeys.map((k) => (
-                  <div key={k} className="flex justify-between gap-4 px-4 py-2.5 text-sm">
+                  <div key={k} className="flex justify-between gap-4 px-3 py-1 text-[13px]">
                     <dt className="text-gmv-muted">{k}</dt>
                     <dd className="font-medium text-gmv-text-strong text-right">{formatValue(normalized[k])}</dd>
                   </div>
@@ -186,8 +186,8 @@ function ActionBar({ item, onUpdate }: ActionBarProps) {
   };
 
   return (
-    <div className="mt-4 space-y-2">
-      {actionError && <p className="text-sm text-gmv-danger">{actionError}</p>}
+    <div className="mt-2 space-y-1.5">
+      {actionError && <p className="text-xs text-gmv-danger">{actionError}</p>}
       <div className="flex flex-wrap gap-2">
         <Button
           variant="ok"
@@ -235,15 +235,15 @@ export default function PayslipDetail({ items, onUpdate }: Props) {
   const chucDanh = typeof normalized["Chức danh"] === "string" ? normalized["Chức danh"] : null;
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-2">
       {/* Header */}
-      <div className="rounded-gmv-lg border border-gmv-border bg-gmv-canvas p-4 shadow-gmv-1">
+      <div className="rounded-gmv-lg border border-gmv-border bg-gmv-canvas p-3 shadow-gmv-1">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
-            <p className="text-base font-semibold text-gmv-text-strong">{name}</p>
-            {chucDanh && <p className="text-sm text-gmv-muted">{String(chucDanh)}</p>}
+            <p className="text-sm font-semibold text-gmv-text-strong">{name}</p>
+            {chucDanh && <p className="text-xs text-gmv-muted">{String(chucDanh)}</p>}
           </div>
-          <div className="text-right text-sm text-gmv-muted">
+          <div className="text-right text-xs text-gmv-muted">
             <p>Mã NV: {current.code}</p>
             <p>Kỳ lương: {current.ky_luong}</p>
           </div>
