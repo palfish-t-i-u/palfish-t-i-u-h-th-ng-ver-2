@@ -13,10 +13,10 @@ export const PAYSLIP_BLOCKS: { title: string; keys: string[] }[] = [
     keys: ["Thưởng COM", "GMV", "GMV bán mới", "GMV giới thiệu", "GMV tái ký", "KPI", "Tỉ lệ đạt KPI", "% Com ≥100%"],
   },
   { title: "Phụ cấp", keys: ["Hỗ trợ ăn trưa", "Tiền hỗ trợ máy tính", "Hỗ trợ tiền xe + PC trách nhiệm"] },
-  { title: "Bảo hiểm", keys: ["Bảo hiểm + note", "Bảo hiểm"] },
+  { title: "Bảo hiểm", keys: ["Bảo hiểm", "Note"] },
   {
     title: "Thuế + Bù tiền",
-    keys: ["Khấu trừ thuế", "Thue_TNCN", "Thu_nhap_tinh_thue", "Giam_tru_ban_than", "Giam_tru_NPT", "Tong_thu_nhap", "Bù tiền", "Ghi chú", "Note"],
+    keys: ["Khấu trừ thuế", "Thue_TNCN", "Thu_nhap_tinh_thue", "Giam_tru_ban_than", "Giam_tru_NPT", "Tong_thu_nhap", "Bù tiền", "Ghi chú"],
   },
   { title: "Tổng tiền", keys: ["Tổng lương + thưởng", "Tổng lương", "Luong_thanh_toan (Net)"] },
 ];
@@ -32,6 +32,7 @@ const KEY_NORMALIZE: Record<string, string> = {
   "Ho tro tien xe + PC trach nhiem": "Hỗ trợ tiền xe + PC trách nhiệm",
   "Bao hiem + note": "Bảo hiểm + note",
   "Bao hiem": "Bảo hiểm",
+  "Luong_thanh_toan (Net)": "Tổng lương + thưởng",
   "Khau tru thue": "Khấu trừ thuế",
   "Bu tien": "Bù tiền",
   "Ghi chu": "Ghi chú",
@@ -45,7 +46,13 @@ const PREFIX_KEYS = ["Khấu trừ thuế"];
 function normalizePhieu(raw: Record<string, unknown>): Record<string, unknown> {
   const result: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(raw)) {
-    result[KEY_NORMALIZE[k] ?? k] = v;
+    const nk = KEY_NORMALIZE[k] ?? k;
+    if (nk === "Bảo hiểm + note") {
+      result["Bảo hiểm"] = v;
+      if (!("Note" in raw)) result["Note"] = "—";
+      continue;
+    }
+    result[nk] = v;
   }
   return result;
 }
