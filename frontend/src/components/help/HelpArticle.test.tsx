@@ -13,17 +13,17 @@ function renderArticle(moduleSlug: string, topicSlug: string) {
 
 describe("HelpArticle", () => {
   it("renders the pilot topic's title and body content", () => {
-    renderArticle("paymentRequests", "tao-lan-tt-chuan");
-    expect(screen.getByRole("heading", { name: "Tạo lần thanh toán (TT) chuẩn" })).toBeInTheDocument();
-    expect(screen.getByText(/khách đã chốt gói học/)).toBeInTheDocument();
+    renderArticle("paymentRequests", "quan-ly-lan-thanh-toan");
+    expect(screen.getByRole("heading", { name: "Cách tạo và quản lý lần TT (mọi trường hợp)" })).toBeInTheDocument();
+    expect(screen.getByText(/cần tạo một lần thanh toán/)).toBeInTheDocument();
   });
 
   it("renders a breadcrumb with the module label and topic title", () => {
-    renderArticle("paymentRequests", "tao-lan-tt-chuan");
+    renderArticle("paymentRequests", "quan-ly-lan-thanh-toan");
     const breadcrumb = screen.getByRole("navigation", { name: "breadcrumb" });
     expect(breadcrumb).toHaveTextContent("Hướng dẫn sử dụng");
     expect(breadcrumb).toHaveTextContent("Quản lý thanh toán");
-    expect(breadcrumb).toHaveTextContent("Tạo lần thanh toán (TT) chuẩn");
+    expect(breadcrumb).toHaveTextContent("Cách tạo và quản lý lần TT (mọi trường hợp)");
   });
 
   it("shows a friendly message instead of crashing for an unknown topic", () => {

@@ -11,7 +11,7 @@ describe("HelpModuleIndex", () => {
       </MemoryRouter>
     );
     expect(screen.getByText("Hướng dẫn — Quản lý thanh toán")).toBeInTheDocument();
-    expect(screen.getByText("Tạo lần thanh toán (TT) chuẩn")).toBeInTheDocument();
+    expect(screen.getByText("Cách tạo và quản lý lần TT (mọi trường hợp)")).toBeInTheDocument();
   });
 
   it("links each topic to its article route", () => {
@@ -20,9 +20,9 @@ describe("HelpModuleIndex", () => {
         <HelpModuleIndex moduleSlug="paymentRequests" />
       </MemoryRouter>
     );
-    expect(screen.getByText("Tạo lần thanh toán (TT) chuẩn").closest("a")).toHaveAttribute(
+    expect(screen.getByText("Cách tạo và quản lý lần TT (mọi trường hợp)").closest("a")).toHaveAttribute(
       "href",
-      "/docs/paymentRequests/tao-lan-tt-chuan"
+      "/docs/paymentRequests/quan-ly-lan-thanh-toan"
     );
   });
 

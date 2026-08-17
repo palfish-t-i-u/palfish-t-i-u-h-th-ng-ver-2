@@ -10,13 +10,15 @@ describe("content/help/index.ts", () => {
   });
 
   it("parses frontmatter title/order/audience correctly", () => {
-    const topic = getHelpTopic("paymentRequests", "tao-lan-tt-chuan");
+    const topic = getHelpTopic("paymentRequests", "quan-ly-lan-thanh-toan");
     expect(topic).toBeDefined();
-    expect(topic?.title).toBe("Tạo lần thanh toán (TT) chuẩn");
+    expect(topic?.title).toBe("Cách tạo và quản lý lần TT (mọi trường hợp)");
     expect(topic?.order).toBe(2);
-    expect(topic?.audience).toEqual(["sale"]);
-    expect(topic?.body).toContain("## Các bước");
-    expect(topic?.body).not.toContain("---");
+    expect(topic?.audience).toEqual(["sale", "ke-toan"]);
+    expect(topic?.body).toContain("## Tạo lần thanh toán mới");
+    // frontmatter fence (dòng "---" đứng riêng) phải bị strip khỏi body;
+    // KHÔNG dùng toContain("---") vì cú pháp bảng markdown (|---|) cũng chứa "---".
+    expect(topic?.body).not.toMatch(/^---$/m);
   });
 
   it("sorts topics within a module by order", () => {
