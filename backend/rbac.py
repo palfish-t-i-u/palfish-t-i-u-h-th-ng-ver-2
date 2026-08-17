@@ -280,3 +280,23 @@ def visible_creator_emails(sb, actor: Actor) -> list[str] | None:
     except Exception as exc:
         print(f"visible_emails: {exc}")
         return [actor.email.lower()]
+
+
+def actor_ma_nv(actor: Actor) -> str | None:
+    """Mã NV (HN0001) của chính actor — cầu nối tới payslips.code (M4/N2)."""
+    code = ((actor.staff or {}).get("ma_nv") or "").strip()
+    return code or None
+
+
+def visible_payslip_codes(sb, actor: Actor) -> list[str] | None:
+    """Mã NV mà actor được xem phiếu lương.
+
+    None = xem hết (chỉ admin/system).
+    Mọi role khác (kể cả leader/manager/ops) chỉ thấy phiếu của chính mình.
+    """
+    role = _normalize_role(actor.role)
+    if role == "system":
+        return None
+
+    own = actor_ma_nv(actor)
+    return [own] if own else []

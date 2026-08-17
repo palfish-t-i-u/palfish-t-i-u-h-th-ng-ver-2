@@ -23,6 +23,7 @@ from crm_routes import register_crm_routes
 from dashboard_routes import register_dashboard_routes
 from invoice_routes import register_invoice_routes
 from notification_routes import register_notification_routes
+from payroll_routes import register_payroll_routes
 from payment_request_routes import (
     reconcile_payment_line_webhook,
     register_payment_request_routes,
@@ -1356,6 +1357,7 @@ register_payment_request_routes(app, _supabase)
 register_revenue_routes(app, _supabase)
 register_activation_routes(app, _supabase)
 register_notification_routes(app, _supabase)
+register_payroll_routes(app, _supabase)
 register_crm_routes(app, _supabase)
 register_dashboard_routes(app, _supabase)
 register_report_routes(app, _supabase)
