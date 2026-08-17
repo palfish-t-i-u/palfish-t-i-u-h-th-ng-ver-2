@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useAuth } from "../../hooks/useAuth";
 import Modal from "../ui/Modal";
 import Button from "../ui/Button";
@@ -31,25 +31,28 @@ interface Props {
 export default function PayslipReauthModal({ open, onSuccess, onClose }: Props) {
   const { session, signInWithPassword } = useAuth();
   const [password, setPassword] = useState("");
+  const [emailInput, setEmailInput] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
   const isOAuth = isOAuthProvider(session);
+  const userEmail = session?.user?.email ?? "";
 
-  useEffect(() => {
-    if (open && isOAuth) {
-      markReauthValid();
-      onSuccess();
+  const handleOAuthConfirm = () => {
+    if (emailInput.trim().toLowerCase() !== userEmail.toLowerCase()) {
+      setError("Email không khớp.");
+      return;
     }
-  }, [open, isOAuth, onSuccess]);
+    markReauthValid();
+    setEmailInput("");
+    setError("");
+    onSuccess();
+  };
 
-  if (isOAuth) return null;
-
-  const handleSubmit = async () => {
+  const handlePasswordSubmit = async () => {
     setError("");
     setLoading(true);
-    const email = session?.user?.email ?? "";
-    const { error: authErr } = await signInWithPassword(email, password);
+    const { error: authErr } = await signInWithPassword(userEmail, password);
     setLoading(false);
     if (authErr) {
       setError(
@@ -65,6 +68,37 @@ export default function PayslipReauthModal({ open, onSuccess, onClose }: Props) 
     onSuccess();
   };
 
+  if (isOAuth) {
+    return (
+      <Modal open={open} onClose={onClose} title="Xác thực để xem phiếu lương">
+        <p className="mb-4 text-center text-sm text-gmv-muted">
+          Nhập email đăng nhập để xác nhận danh tính. Phiên hết hạn sau 15 phút.
+        </p>
+        <div className="space-y-3">
+          <Input
+            type="email"
+            placeholder="Email đăng nhập"
+            value={emailInput}
+            onChange={(e) => setEmailInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && emailInput) handleOAuthConfirm();
+            }}
+            autoFocus
+          />
+          {error && <p className="text-sm text-gmv-danger">{error}</p>}
+          <Button
+            variant="primary"
+            fullWidth
+            disabled={!emailInput}
+            onClick={handleOAuthConfirm}
+          >
+            Xác nhận
+          </Button>
+        </div>
+      </Modal>
+    );
+  }
+
   return (
     <Modal open={open} onClose={onClose} title="Xác thực để xem phiếu lương">
       <p className="mb-4 text-center text-sm text-gmv-muted">
@@ -77,7 +111,7 @@ export default function PayslipReauthModal({ open, onSuccess, onClose }: Props) 
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === "Enter" && !loading && password) void handleSubmit();
+            if (e.key === "Enter" && !loading && password) void handlePasswordSubmit();
           }}
           autoFocus
         />
@@ -86,7 +120,7 @@ export default function PayslipReauthModal({ open, onSuccess, onClose }: Props) 
           variant="primary"
           fullWidth
           disabled={loading || !password}
-          onClick={() => void handleSubmit()}
+          onClick={() => void handlePasswordSubmit()}
         >
           {loading ? "Đang xác thực..." : "Xác nhận"}
         </Button>

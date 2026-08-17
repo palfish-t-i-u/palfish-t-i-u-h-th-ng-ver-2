@@ -16,13 +16,45 @@ export const PAYSLIP_BLOCKS: { title: string; keys: string[] }[] = [
   { title: "Bảo hiểm", keys: ["Bảo hiểm + note", "Bảo hiểm"] },
   {
     title: "Thuế + Bù tiền",
-    keys: ["Khấu trừ thuế", "Thue_TNCN", "Thu_nhap_tinh_thue", "Giam_tru_ban_than", "Giam_tru_NPT", "Tong_thu_nhap", "Bù tiền", "Note"],
+    keys: ["Khấu trừ thuế", "Thue_TNCN", "Thu_nhap_tinh_thue", "Giam_tru_ban_than", "Giam_tru_NPT", "Tong_thu_nhap", "Bù tiền", "Ghi chú", "Note"],
   },
   { title: "Tổng tiền", keys: ["Tổng lương + thưởng", "Tổng lương", "Luong_thanh_toan (Net)"] },
 ];
 
 const HEADER_KEYS = new Set(["STT", "Name", "Chức danh"]);
-const ALL_BLOCK_KEYS = new Set(PAYSLIP_BLOCKS.flatMap((b) => b.keys));
+
+const KEY_NORMALIZE: Record<string, string> = {
+  "Luong co ban": "Lương cơ bản",
+  "LCB theo ngay cong": "LCB theo ngày công",
+  "Thuong COM": "Thưởng COM",
+  "Ho tro an trua": "Hỗ trợ ăn trưa",
+  "Tien ho tro may tinh": "Tiền hỗ trợ máy tính",
+  "Ho tro tien xe + PC trach nhiem": "Hỗ trợ tiền xe + PC trách nhiệm",
+  "Bao hiem + note": "Bảo hiểm + note",
+  "Bao hiem": "Bảo hiểm",
+  "Khau tru thue": "Khấu trừ thuế",
+  "Bu tien": "Bù tiền",
+  "Ghi chu": "Ghi chú",
+  "Tong luong + thuong": "Tổng lương + thưởng",
+  "Tong luong": "Tổng lương",
+  "Chuc danh": "Chức danh",
+};
+
+const PREFIX_KEYS = ["Khấu trừ thuế"];
+
+function normalizePhieu(raw: Record<string, unknown>): Record<string, unknown> {
+  const result: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(raw)) {
+    result[KEY_NORMALIZE[k] ?? k] = v;
+  }
+  return result;
+}
+
+function matchesBlockKey(dataKey: string, blockKey: string): boolean {
+  if (dataKey === blockKey) return true;
+  if (PREFIX_KEYS.includes(blockKey) && dataKey.startsWith(blockKey)) return true;
+  return false;
+}
 
 function formatValue(val: unknown): string {
   if (val === null || val === undefined || val === "") return "—";
@@ -55,23 +87,31 @@ interface BlockProps {
 }
 
 function PhieuBlocks({ phieu }: BlockProps) {
+  const normalized = normalizePhieu(phieu);
   const renderedKeys = new Set<string>();
 
   return (
     <div className="space-y-4">
       {PAYSLIP_BLOCKS.map((block) => {
-        const rows = block.keys.filter((k) => k in phieu && phieu[k] !== "" && phieu[k] !== null);
+        const rows: { label: string; dataKey: string }[] = [];
+        for (const blockKey of block.keys) {
+          for (const dk of Object.keys(normalized)) {
+            if (matchesBlockKey(dk, blockKey) && normalized[dk] !== "" && normalized[dk] !== null) {
+              rows.push({ label: dk, dataKey: dk });
+            }
+          }
+        }
         if (rows.length === 0) return null;
-        rows.forEach((k) => renderedKeys.add(k));
+        rows.forEach((r) => renderedKeys.add(r.dataKey));
         return (
           <Card key={block.title}>
             <CardHeader className="py-3 text-base">{block.title}</CardHeader>
             <CardBody className="p-0">
               <dl className="divide-y divide-gmv-border">
-                {rows.map((k) => (
-                  <div key={k} className="flex justify-between gap-4 px-4 py-2.5 text-sm">
-                    <dt className="text-gmv-muted">{k}</dt>
-                    <dd className="font-medium text-gmv-text-strong text-right">{formatValue(phieu[k])}</dd>
+                {rows.map((r) => (
+                  <div key={r.dataKey} className="flex justify-between gap-4 px-4 py-2.5 text-sm">
+                    <dt className="text-gmv-muted">{r.label}</dt>
+                    <dd className="font-medium text-gmv-text-strong text-right">{formatValue(normalized[r.dataKey])}</dd>
                   </div>
                 ))}
               </dl>
@@ -80,10 +120,9 @@ function PhieuBlocks({ phieu }: BlockProps) {
         );
       })}
 
-      {/* Fallback block "Khác" — mọi key lạ không bao giờ mất */}
       {(() => {
-        const otherKeys = Object.keys(phieu).filter(
-          (k) => !HEADER_KEYS.has(k) && !ALL_BLOCK_KEYS.has(k) && phieu[k] !== "" && phieu[k] !== null
+        const otherKeys = Object.keys(normalized).filter(
+          (k) => !HEADER_KEYS.has(k) && !renderedKeys.has(k) && normalized[k] !== "" && normalized[k] !== null
         );
         if (otherKeys.length === 0) return null;
         return (
@@ -94,7 +133,7 @@ function PhieuBlocks({ phieu }: BlockProps) {
                 {otherKeys.map((k) => (
                   <div key={k} className="flex justify-between gap-4 px-4 py-2.5 text-sm">
                     <dt className="text-gmv-muted">{k}</dt>
-                    <dd className="font-medium text-gmv-text-strong text-right">{formatValue(phieu[k])}</dd>
+                    <dd className="font-medium text-gmv-text-strong text-right">{formatValue(normalized[k])}</dd>
                   </div>
                 ))}
               </dl>
@@ -190,9 +229,10 @@ export default function PayslipDetail({ items, onUpdate }: Props) {
   const current = items.find((i) => i.stage === activeStage) ?? items[0];
   if (!current) return null;
 
+  const normalized = normalizePhieu(current.phieu);
   const hasMultiple = items.length > 1;
-  const name = String(current.phieu["Name"] ?? current.name ?? current.code);
-  const chucDanh = typeof current.phieu["Chức danh"] === "string" ? current.phieu["Chức danh"] : null;
+  const name = String(normalized["Name"] ?? current.name ?? current.code);
+  const chucDanh = typeof normalized["Chức danh"] === "string" ? normalized["Chức danh"] : null;
 
   return (
     <div className="space-y-4">
