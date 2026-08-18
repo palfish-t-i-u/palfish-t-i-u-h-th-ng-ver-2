@@ -1225,6 +1225,12 @@ def sync_ledger_from_ar_course(
             "created_by_email": actor_email,
             "updated_by_email": actor_email,
             "is_test": bool(pr.get("is_test")) if pr else False,
+            "sdt_goc": (pr or {}).get("sdt_goc"),
+            "lead_matched": (pr or {}).get("lead_matched"),
+            "lead_id": (pr or {}).get("lead_id"),
+            "lead_matched_by": (pr or {}).get("lead_matched_by"),
+            "ly_do_khong_ghep": (pr or {}).get("ly_do_khong_ghep"),
+            "lead_check_at": (pr or {}).get("lead_check_at"),
         }
 
         # Khoá ổn định: crm_order_id duy nhất per đơn. Ưu tiên để chống trùng
@@ -1254,6 +1260,12 @@ def sync_ledger_from_ar_course(
                     "don_hang_id": None,
                     "note": f"AR {ar_id}",
                     "updated_by_email": actor_email,
+                    "sdt_goc": (pr or {}).get("sdt_goc"),
+                    "lead_matched": (pr or {}).get("lead_matched"),
+                    "lead_id": (pr or {}).get("lead_id"),
+                    "lead_matched_by": (pr or {}).get("lead_matched_by"),
+                    "ly_do_khong_ghep": (pr or {}).get("ly_do_khong_ghep"),
+                    "lead_check_at": (pr or {}).get("lead_check_at"),
                 }
                 if loai_val and not match_row.get("loai"):
                     update_payload["loai"] = loai_val
@@ -1282,6 +1294,12 @@ def sync_ledger_from_ar_course(
                     "don_hang_id": None,
                     "note": f"AR {ar_id}",
                     "updated_by_email": actor_email,
+                    "sdt_goc": (pr or {}).get("sdt_goc"),
+                    "lead_matched": (pr or {}).get("lead_matched"),
+                    "lead_id": (pr or {}).get("lead_id"),
+                    "lead_matched_by": (pr or {}).get("lead_matched_by"),
+                    "ly_do_khong_ghep": (pr or {}).get("ly_do_khong_ghep"),
+                    "lead_check_at": (pr or {}).get("lead_check_at"),
                 }
                 if loai_val and not match_row.get("loai"):
                     update_payload["loai"] = loai_val

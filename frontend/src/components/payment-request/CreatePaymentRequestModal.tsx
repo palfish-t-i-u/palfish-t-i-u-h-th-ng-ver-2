@@ -2,12 +2,14 @@ import { useEffect, useState } from "react";
 import type { CreatePaymentRequestPayload, CustomerType, OwnerOption } from "../../types/paymentRequest";
 import { endpoints } from "../../lib/api";
 import { useMe } from "../../hooks/useMe";
-import { LEAD_SOURCES, defaultChannelForSource, findSourceByKey, sourceHasChannels } from "../../constants/leadSource";
+import { LEAD_SOURCES, NEW_CHECK_SOURCES, defaultChannelForSource, findSourceByKey, sourceHasChannels } from "../../constants/leadSource";
 import CountryCombo, { COUNTRIES, findCountry } from "./CountryCombo";
 import { applySmartPhoneInput, normalizeLocalPhone, crmPhoneFormat } from "./phoneUtils";
 import { Icons } from "./Icons";
 import VietnamAddressFields from "./VietnamAddressFields";
 import Combobox from "../ui/Combobox";
+import { useLeadCheck } from "./useLeadCheck";
+import LeadCheckBlock from "./LeadCheckBlock";
 import numberToVietnameseWords from "../../lib/numberToWords";
 import { MoneyInput } from "../ui/MoneyInput";
 import { HdsdLink } from "../help/HdsdLink";
@@ -81,13 +83,15 @@ export default function CreatePaymentRequestModal({
   const canPickOwner = profile?.role === "leader" || profile?.role === "manager" || profile?.role === "system";
   const [ownerEmail, setOwnerEmail] = useState("");
   const [ownerOptions, setOwnerOptions] = useState<OwnerOption[]>([]);
+  const lead = useLeadCheck();
   useEffect(() => {
     if (open) {
       setForm(INITIAL);
       setSubmitError(null);
       setOwnerEmail("");
+      lead.resetLeadCheck();
     }
-  }, [open]);
+  }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!open || !canPickOwner) return;
     let alive = true;
@@ -116,13 +120,26 @@ export default function CreatePaymentRequestModal({
     ? !!form.foreignCountry
     : true;
 
+  const isNewSource = NEW_CHECK_SOURCES.has(form.leadSource);
+  const leadS = lead.leadCheck.status;
+  const leadGateOk =
+    !isNewSource ||
+    leadS === "matched" ||
+    leadS === "error" ||
+    (leadS === "none" && (!!lead.leadCheck.sdtGoc.trim() || !!lead.leadCheck.reason));
+
   const canSubmit = !!(
     form.name && form.phone && targetNum > 0 &&
     form.leadSource && (!needsChannel || form.leadChannel) &&
-    emailValid && addressOk
+    emailValid && addressOk &&
+    leadGateOk
   );
 
   const handleSubmit = async () => {
+    if (isNewSource && (lead.leadCheck.status === "idle" || lead.leadCheck.status === "loading")) {
+      await lead.runCheck(crmPhoneFormat(form.phone, findCountry(form.country)), form.uid);
+      return;
+    }
     if (!canSubmit || submitting) return;
     const foreignCountryName = form.isForeign
       ? COUNTRIES.find((c) => c.code === form.foreignCountry)?.name ?? form.foreignCountry
@@ -150,6 +167,7 @@ export default function CreatePaymentRequestModal({
         lead_source: form.leadSource || undefined,
         lead_channel: form.leadChannel || undefined,
         wants_invoice: form.wantsInvoice || undefined,
+        ...lead.buildLeadPayload(),
       });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -220,7 +238,11 @@ export default function CreatePaymentRequestModal({
                       }}
                       onBlur={() => {
                         const n = normalizeLocalPhone(form.phone, findCountry(form.country));
+                        const finalPhone = n.value !== form.phone ? n.value : form.phone;
                         if (n.value !== form.phone) set("phone", n.value);
+                        if (NEW_CHECK_SOURCES.has(form.leadSource)) {
+                          lead.runCheck(crmPhoneFormat(finalPhone, findCountry(form.country)), form.uid);
+                        }
                       }}
                       type="tel"
                       inputMode="tel"
@@ -280,6 +302,11 @@ export default function CreatePaymentRequestModal({
                   const next = e.target.value;
                   set("leadSource", next);
                   set("leadChannel", defaultChannelForSource(next) ?? "");
+                  if (NEW_CHECK_SOURCES.has(next)) {
+                    if (form.phone) lead.runCheck(crmPhoneFormat(form.phone, findCountry(form.country)), form.uid);
+                  } else {
+                    lead.resetLeadCheck();
+                  }
                 }}
                 style={{ font: "inherit", fontSize: 13 }}
               >
@@ -307,6 +334,16 @@ export default function CreatePaymentRequestModal({
               </div>
             )}
           </div>
+
+          {NEW_CHECK_SOURCES.has(form.leadSource) && (
+            <LeadCheckBlock
+              state={lead.leadCheck}
+              onSelectLead={lead.selectLead}
+              onSdtGocInput={lead.setSdtGoc}
+              onSdtGocBlur={(v) => lead.runCheckSdtGoc(v)}
+              onReasonChange={lead.setReason}
+            />
+          )}
 
           <div className="field">
             <label>Tên con (học viên)</label>

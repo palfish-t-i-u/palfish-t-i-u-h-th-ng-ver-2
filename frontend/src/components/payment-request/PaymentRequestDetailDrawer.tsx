@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { LEAD_SOURCES, defaultChannelForSource, findSourceByKey, sourceHasChannels } from "../../constants/leadSource";
+import { LEAD_SOURCES, LY_DO_KHONG_GHEP, NEW_CHECK_SOURCES, defaultChannelForSource, findSourceByKey, sourceHasChannels } from "../../constants/leadSource";
 import type {
   ActiveRequest,
   AddPaymentAttemptPayload,
@@ -1553,6 +1553,9 @@ function useDeliveryLog(arId: string | null) {
   return { logs, latestLog: logs[0] || null };
 }
 
+const lyDoLabel = (code: string) =>
+  LY_DO_KHONG_GHEP.find((r) => r.value === code)?.label ?? code;
+
 export default function PaymentRequestDetailDrawer({
   request,
   open,
@@ -2080,6 +2083,24 @@ export default function PaymentRequestDetailDrawer({
                   <div className="info-cell">
                     <div className="info-label">Nguồn KH</div>
                     <div className="info-value">{findSourceByKey(request.leadSource)?.label || request.leadSource}</div>
+                  </div>
+                )}
+                {NEW_CHECK_SOURCES.has(request.leadSource ?? "") && (
+                  <div className="info-cell">
+                    <div className="info-label">Đối soát lead</div>
+                    <div className="info-value">
+                      {request.leadMatched === true ? (
+                        <span style={{ color: "var(--success, #059669)", fontWeight: 600 }}>
+                          ✓ Đã khớp lead{request.sdtGoc ? ` (số gốc ${request.sdtGoc})` : ""}
+                        </span>
+                      ) : request.leadMatched === false ? (
+                        <span style={{ color: "var(--warning-fg, #b45309)", fontWeight: 600 }}>
+                          ⚠ Chưa khớp{request.lyDoKhongGhep ? ` — ${lyDoLabel(request.lyDoKhongGhep)}` : ""}
+                        </span>
+                      ) : (
+                        <span style={{ color: "var(--muted)" }}>Chưa kiểm tra</span>
+                      )}
+                    </div>
                   </div>
                 )}
                 {request.leadChannel && (

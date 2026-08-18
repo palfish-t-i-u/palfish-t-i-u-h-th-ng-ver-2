@@ -595,6 +595,27 @@ export const endpoints = {
     list: (params: { target_type?: string; target_id?: string; action?: string; limit?: number }) =>
       api.get<{ data: AuditLogEntry[] }>("/audit-logs", { params }),
   },
+  leads: {
+    lookup: (params: { phone: string; order_date?: string; uid?: string; ec_sale?: string }) =>
+      api.get<{
+        matched: boolean;
+        count: number;
+        matched_by: string | null;
+        leads: {
+          lead_id: string;
+          name: string | null;
+          phone: string | null;
+          lead_date: string | null;
+          crm_code: string | null;
+          ec: string | null;
+          status: string | null;
+          status_2: string | null;
+          nation: string | null;
+          uid: string | null;
+          match_source: string | null;
+        }[];
+      }>("/api/v1/leads/lookup", { params }),
+  },
 };
 
 export type BankTransactionTeam = "HCM" | "HN";
