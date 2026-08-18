@@ -39,7 +39,7 @@ Khối chỉ hiện với các nguồn có thể đến từ marketing:
 
 > Hệ thống tự tra khi bạn **chọn Nguồn** (nếu đã điền SĐT) hoặc khi **bấm ra khỏi ô Số điện thoại**. Nếu đổi Nguồn sang nhóm "Không hiện", khối biến mất và xoá kết quả tra trước đó.
 
-![Khối khớp lead màu xanh — hiện SĐT gốc, ngày, kênh và tên sale phụ trách lead](/docs-images/paymentRequests/doi-soat-lead-1.png)
+![Modal Tạo PR — khối đối soát lead tự hiện ngay dưới ô Nguồn KH sau khi chọn Quảng cáo](/docs-images/paymentRequests/doi-soat-lead-3.png)
 
 ---
 
@@ -51,6 +51,8 @@ Số điện thoại khách **có** trong kho marketing. Khối xanh hiện đ�
 - **SĐT gốc** — số khách để lại lúc đăng ký
 - **Ngày lead xuất hiện** — ngày khách để lại số
 - **Kênh** + **Sale** phụ trách lead đó
+
+![Khối khớp lead màu xanh — hiện SĐT gốc, ngày, kênh và tên sale phụ trách lead](/docs-images/paymentRequests/doi-soat-lead-1.png)
 
 Việc cần làm: **kiểm tra đúng khách** rồi tạo PR bình thường.
 
