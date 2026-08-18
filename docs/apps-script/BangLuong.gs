@@ -135,40 +135,79 @@ function capNhatTuBigQuery(){
 
   writeRaw_(data, rows);
 
-  // Header
   const headers = COLS.map(c=>c.h);
+
+  // Detect column layout change → clear stale data
+  const existingHeaders = main.getLastColumn() > 0
+    ? main.getRange(1, 1, 1, main.getLastColumn()).getValues()[0].map(String)
+    : [];
+  const layoutChanged = existingHeaders.length !== headers.length ||
+    headers.some((h, i) => h !== (existingHeaders[i] || '').trim());
+  if (layoutChanged && main.getLastRow() > 1) {
+    main.getRange(2, 1, main.getLastRow() - 1, Math.max(existingHeaders.length, headers.length)).clear();
+    snap.clearContents();
+  }
+
+  // Header
   main.getRange(1,1,1,headers.length).setValues([headers])
       .setFontWeight('bold').setBackground('#0b5394').setFontColor('white')
       .setWrap(true).setHorizontalAlignment('center');
   main.setFrozenRows(1);
   main.setFrozenColumns(colIndex('employee_type'));
 
-  // Smart-merge: đọc snapshot cũ
+  // Batch read existing data + snapshot for smart-merge
   const snapMap = readSnap_(snap);
+  const existingData = (!layoutChanged && main.getLastRow() > 1)
+    ? main.getRange(2, 1, Math.min(main.getLastRow()-1, rows.length), COLS.length).getValues()
+    : [];
   const newSnap = {};
+
+  // Build all values + collect formula/checkbox columns
+  const allVals = [];
+  const formulaCols = {};
+  const checkboxCols = [];
 
   for(let i=0; i<rows.length; i++){
     const r = i+2, d = rows[i], code = d.code;
     newSnap[code] = {};
+    const rowVals = [];
+
     for(let c=0; c<COLS.length; c++){
-      const col = COLS[c], cell = main.getRange(r, c+1);
+      const col = COLS[c];
       if(col.role==='auto'){
-        cell.setValue(col.key==='stt' ? i+1 : d[col.src]);
+        rowVals.push(col.key==='stt' ? i+1 : (d[col.src]===null||d[col.src]===undefined ? '' : d[col.src]));
       } else if(col.role==='input'){
-        const autoVal = col.src ? (d[col.src]===null || d[col.src]===undefined ? '' : d[col.src]) : '';
-        const cur = cell.getValue();
+        const autoVal = col.src ? (d[col.src]===null||d[col.src]===undefined ? '' : d[col.src]) : '';
+        const cur = existingData[i] ? existingData[i][c] : '';
         const prevAuto = (snapMap[code]||{})[col.key];
-        if(cur==='' || cur===null || cur===prevAuto) cell.setValue(autoVal);
+        rowVals.push((cur===''||cur===null||cur===prevAuto||prevAuto===undefined) ? autoVal : cur);
         newSnap[code][col.key] = autoVal;
       } else if(col.role==='calc'){
-        cell.setFormula(col.f(r));
+        rowVals.push('');
+        if(!formulaCols[c]) formulaCols[c] = [];
+        formulaCols[c].push([col.f(r)]);
       } else if(col.role==='status' && col.kind==='check'){
-        cell.insertCheckboxes();
+        rowVals.push(false);
+        if(i===0) checkboxCols.push(c);
+      } else {
+        rowVals.push('');
       }
     }
+    allVals.push(rowVals);
   }
 
-  // Xoá dòng thừa từ lần chạy trước
+  // 1 batch write all values (~1 RPC instead of ~3600)
+  main.getRange(2, 1, allVals.length, COLS.length).setValues(allVals);
+
+  // Overlay formulas per column (~15 RPCs instead of ~1500)
+  for(const ci in formulaCols){
+    main.getRange(2, parseInt(ci)+1, formulaCols[ci].length, 1).setFormulas(formulaCols[ci]);
+  }
+
+  // Checkboxes per column (~5 RPCs instead of ~500)
+  checkboxCols.forEach(c => main.getRange(2, c+1, rows.length, 1).insertCheckboxes());
+
+  // Clear excess rows
   const lastRow = main.getLastRow();
   if(lastRow > rows.length+1){
     main.getRange(rows.length+2, 1, lastRow-rows.length-1, COLS.length).clear();

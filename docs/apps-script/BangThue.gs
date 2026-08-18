@@ -47,6 +47,8 @@ var SQL_THUE = [
   "  t.tro_cap_an_trua AS an_ca,",
   "  COALESCE(t.tro_cap_xe_trach_nhiem, 0) AS xang_xe,",
   "  COALESCE(t.dien_thoai_van, 0) AS dien_thoai,",
+  "  COALESCE(t.tro_cap_may_tinh, 0) AS may_tinh_val,",
+  "  COALESCE(t.an_ca_van, 0) AS an_ca_van_val,",
   "  t.luong_dong_bao_hiem AS luong_dong_bh,",
   "  ARRAY_LENGTH(REGEXP_EXTRACT_ALL(",
   "    COALESCE(s.dependent_information,''), r'(?:19|20)[0-9]{2}'",
@@ -89,8 +91,11 @@ var C_ = {
   luong_tt:24,
   luong_bh:25, bhxh:26, bhyt:27, bhtn:28, bh_tong:29,
   so_npt:30,
+  // Hidden columns — tax pipeline (Chung)
+  may_tinh_h:31, an_ca_van_h:32,
 };
 var NUM_COLS = 30;
+var TOTAL_COLS = 32;
 
 function cl_(n) {
   var s = '';
@@ -244,6 +249,15 @@ function fillData_t_(sh, rows) {
   }
   sh.getRange(SR, 1, n, NUM_COLS).setValues(vals);
 
+  // ---- Phase 1b: Write hidden tax columns (31-32) ----
+  var hiddenVals = [];
+  for (var i = 0; i < n; i++) {
+    var d = rows[i];
+    hiddenVals.push([n_(d.may_tinh_val), n_(d.an_ca_van_val)]);
+  }
+  sh.getRange(SR, C_.may_tinh_h, n, 2).setValues(hiddenVals).setNumberFormat('#,##0');
+  sh.hideColumns(C_.may_tinh_h, 2);
+
   // ---- Phase 2: Overlay formula columns ----
   var fc = function(col) { return cl_(col); };
 
@@ -276,9 +290,14 @@ function fillData_t_(sh, rows) {
     return '=' + fc(C_.gt_bt)+r + '+' + fc(C_.gt_npt)+r;
   });
 
-  // U: TN chịu thuế = Tổng TN − Ăn ca − Điện thoại (miễn thuế)
+  // U: TN chịu thuế — pipeline Chung
+  // income_col_u = luong_huong + an_ca + may_tinh + xang_xe
+  // Chính thức: income_col_u − an_ca_van − dien_thoai
+  // CTV/TTS: income_col_u (giữ nguyên)
   setFormulaCol_(sh, SR, n, C_.tn_ct, function(r) {
-    return '=' + fc(C_.tong_tn)+r + '-' + fc(C_.an_ca)+r + '-' + fc(C_.dien_thoai)+r;
+    var E = fc(C_.loai_nv)+r;
+    var income = fc(C_.luong_huong)+r+'+'+fc(C_.an_ca)+r+'+'+fc(C_.may_tinh_h)+r+'+'+fc(C_.xang_xe)+r;
+    return '=IF(OR('+E+'="CTV";'+E+'="TTS");'+income+';('+income+')-'+fc(C_.an_ca_van_h)+r+'-'+fc(C_.dien_thoai)+r+')';
   });
 
   // Z-AB: BH breakdown (0 cho CTV/TTS)
@@ -331,10 +350,10 @@ function fillData_t_(sh, rows) {
 function thueTNCN_v_(r) {
   var B = cl_(C_.code)+r;
   var E = cl_(C_.loai_nv)+r;
-  var Q = cl_(C_.tong_tn)+r;
+  var U = cl_(C_.tn_ct)+r;
   var V = cl_(C_.tn_tt)+r;
 
-  var flat10 = 'IF('+Q+'<5000000;0;'+Q+'*10%)';
+  var flat10 = 'IF('+U+'<5000000;0;'+U+'*10%)';
 
   var prog =
     'IF('+V+'<=0;0;' +
@@ -430,7 +449,7 @@ function queryBQ_thue_() {
     job = BigQuery.Jobs.getQueryResults(THUE_CFG.bqProject, jobId);
   }
   var fields = job.schema.fields.map(function(f) { return f.name; });
-  var numericKeys = ['luong_co_dinh','ngay_cong','thuong_ds','an_ca','xang_xe','dien_thoai','luong_dong_bh','so_npt'];
+  var numericKeys = ['luong_co_dinh','ngay_cong','thuong_ds','an_ca','xang_xe','dien_thoai','may_tinh_val','an_ca_van_val','luong_dong_bh','so_npt'];
   var out = [];
   (job.rows || []).forEach(function(row) {
     var o = {};
