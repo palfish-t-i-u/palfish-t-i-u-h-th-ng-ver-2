@@ -16,34 +16,28 @@ function formatLeadDate(iso: string | null): string {
   return m ? `${m[3]}/${m[2]}/${m[1]}` : iso;
 }
 
-/** Trạng thái đầy đủ (status_2 "L3.1 Có lịch học thử") ưu tiên hơn mã rút gọn (status "L3"). */
-function statusLabel(hit: LeadHit): string | null {
-  return hit.status2 || hit.status || null;
-}
-
-/** Khối chi tiết 1 lead, có nhãn — dùng cho trường hợp khớp đúng 1 lead. */
+/** Khối chi tiết 1 lead, có nhãn — dùng cho trường hợp khớp đúng 1 lead.
+ *  Nội dung theo chốt Hiếu: SĐT gốc + tên + kênh + tên sale (BỎ trạng thái L).
+ *  SĐT gốc + tên sale để phân biệt khách điền lead nhiều lần qua các năm. */
 function LeadDetail({ hit }: { hit: LeadHit }) {
-  const st = statusLabel(hit);
   return (
     <div style={{ marginTop: 4, display: "flex", flexDirection: "column", gap: 1, color: "var(--gmv-text, #1f2937)" }}>
+      <div><span style={{ color: "var(--muted)" }}>SĐT gốc:</span> {hit.phone || "?"}</div>
       <div><span style={{ color: "var(--muted)" }}>Ngày lead xuất hiện:</span> {formatLeadDate(hit.leadDate)}</div>
       <div>
         <span style={{ color: "var(--muted)" }}>Kênh:</span> {hit.crmCode || "?"}
         {hit.saleName ? <> · <span style={{ color: "var(--muted)" }}>Sale:</span> {hit.saleName}</> : null}
       </div>
-      {st ? <div><span style={{ color: "var(--muted)" }}>Trạng thái:</span> {st}</div> : null}
     </div>
   );
 }
 
-/** 1 dòng gọn cho danh sách radio (nhiều lead) — tên + ngày + kênh + sale + trạng thái. */
+/** 1 dòng gọn cho danh sách radio (nhiều lead) — tên · SĐT gốc · ngày · kênh · sale (BỎ trạng thái). */
 function LeadLineCompact({ hit }: { hit: LeadHit }) {
-  const st = statusLabel(hit);
   return (
     <span>
-      <b>{hit.name || "(không tên)"}</b> · {formatLeadDate(hit.leadDate)} · kênh {hit.crmCode || "?"}
+      <b>{hit.name || "(không tên)"}</b> · {hit.phone || "?"} · {formatLeadDate(hit.leadDate)} · kênh {hit.crmCode || "?"}
       {hit.saleName ? ` · ${hit.saleName}` : ""}
-      {st ? ` · ${st}` : ""}
     </span>
   );
 }
