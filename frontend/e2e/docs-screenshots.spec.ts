@@ -362,6 +362,11 @@ test("paymentRequests — doi-soat-lead (khớp + không khớp, KHÔNG submit)"
   await page.waitForTimeout(400);
   await matched.screenshot({ path: "public/docs-images/paymentRequests/doi-soat-lead-1.png" });
 
+  // Ảnh 3 — toàn modal (thấy khối nằm ngay dưới ô Nguồn KH) cho ngữ cảnh vị trí
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await page.waitForTimeout(200);
+  await screenshotViewport(page, "public/docs-images/paymentRequests/doi-soat-lead-3.png");
+
   // Ảnh 2 — đổi sang số lạ → khối VÀNG không khớp, dropdown lý do bị khoá
   await modal.locator(".phone-input").fill("911111111");
   await page.getByPlaceholder("Họ và tên").click(); // blur ô SĐT để tra lại số mới
