@@ -27,8 +27,8 @@ const BQ_SQL = [
   "    WHEN t.workplace LIKE 'Work from home%' THEN 'WFH'",
   "    ELSE COALESCE(t.workplace,'Khác') END AS team,",
   "  t.full_name, t.title_job, t.don_vi_cong,",
-  "  cb.employee_type,",
-  "  COALESCE(SAFE_CAST(t.basic_salary_updated AS INT64), SAFE_CAST(t.basic_salary AS INT64)) AS luong_co_ban,",
+  "  t.type_self AS employee_type,",
+  "  SAFE_CAST(t.basic_salary AS INT64) AS luong_co_ban,",
   "  cb.tong_cong AS cong,",
   "  t.luong_co_ban_theo_ngay_cong AS lcb_theo_ngay_cong,",
   "  t.bonus_com AS thuong_com,",
@@ -46,7 +46,7 @@ const BQ_SQL = [
   "LEFT JOIN `pf-salary.payroll.C_raw_staff_info_merged` s ON s.code = t.code",
   "ORDER BY",
   "  CASE team WHEN 'BOD' THEN 1 WHEN 'Inhouse 1' THEN 2 WHEN 'CSKH' THEN 3 WHEN 'Inhouse 2' THEN 4 WHEN 'Offline' THEN 5 WHEN 'Back office' THEN 6 WHEN 'MKT' THEN 7 WHEN 'Head quarter' THEN 8 ELSE 9 END,",
-  "  CASE WHEN t.title_job LIKE '%Giám đốc%' THEN 1 WHEN t.title_job LIKE '%Leader%' OR t.title_job LIKE '%leader%' THEN 2 WHEN COALESCE(cb.employee_type,'') IN ('CTV','TTS') THEN 4 ELSE 3 END,",
+  "  CASE WHEN t.title_job LIKE '%Giám đốc%' THEN 1 WHEN t.title_job LIKE '%Leader%' OR t.title_job LIKE '%leader%' THEN 2 WHEN COALESCE(t.type_self,'') IN ('CTV','TTS') THEN 4 ELSE 3 END,",
   "  t.full_name"
 ].join('\n');
 
@@ -93,7 +93,7 @@ const COLS = [
   // --- Tax computation ---
   { key:'npt',           h:'Số người phụ thuộc',               role:'input', src:'so_npt' },
   { key:'tong_tn',       h:'Tổng thu nhập',                    role:'calc',  f:r=>'='+C('lcb_ngay_cong')+r+'+'+C('thuong_com')+r+'+'+C('an_trua')+r+'+'+C('may_tinh')+r+'+'+C('xe_pc')+r+'+'+C('dien_thoai')+r },
-  { key:'income_col_u',  h:'TN trước thuế',                     role:'calc',  f:r=>'='+C('lcb_ngay_cong')+r+'+'+C('an_trua')+r+'+'+C('may_tinh')+r+'+'+C('xe_pc')+r+'+'+C('bu_tien')+r },
+  { key:'income_col_u',  h:'TN trước thuế',                     role:'calc',  f:r=>'='+C('lcb_ngay_cong')+r+'+'+C('thuong_com')+r+'+'+C('an_trua')+r+'+'+C('may_tinh')+r+'+'+C('xe_pc')+r+'+'+C('bu_tien')+r },
   { key:'an_ca_van',     h:'Ăn ca (thuế)',                     role:'auto',  src:'an_ca_van' },
   { key:'tnct',          h:'Thu nhập chịu thuế',               role:'calc',
     f:r=>'=IF('+C('employee_type')+r+'="Chính thức";'+C('income_col_u')+r+'-'+C('an_ca_van')+r+'-'+C('dien_thoai')+r+';'+C('income_col_u')+r+')' },

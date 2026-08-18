@@ -40,7 +40,7 @@ var SQL_THUE = [
   "    WHEN t.title_job LIKE '%@%' THEN 'Page admin'",
   "    ELSE t.title_job",
   "  END AS title_job,",
-  "  COALESCE(cb.employee_type, 'N/A') AS employee_type,",
+  "  COALESCE(t.type_self, 'N/A') AS employee_type,",
   "  COALESCE(",
   "    SAFE_CAST(t.basic_salary_updated AS INT64),",
   "    SAFE_CAST(REGEXP_REPLACE(t.basic_salary, r'[.,]','') AS INT64)",

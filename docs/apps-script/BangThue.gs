@@ -40,22 +40,21 @@ var SQL_THUE = [
   "    WHEN t.title_job LIKE '%@%' THEN 'Page admin'",
   "    ELSE t.title_job",
   "  END AS title_job,",
-  "  COALESCE(cb.employee_type, 'N/A') AS employee_type,",
-  "  COALESCE(SAFE_CAST(t.basic_salary AS INT64), SAFE_CAST(t.basic_salary_updated AS INT64), SAFE_CAST(t.luong_co_ban_theo_ngay_cong AS INT64)) AS luong_co_dinh,",
+  "  COALESCE(t.type_self, 'N/A') AS employee_type,",
+  "  COALESCE(t.luong_dong_bao_hiem, 0) AS luong_co_dinh,",
   "  cb.tong_cong AS ngay_cong,",
-  "  t.bonus_com AS thuong_ds,",
-  "  t.tro_cap_an_trua AS an_ca,",
-  "  COALESCE(t.tro_cap_xe_trach_nhiem, 0) AS xang_xe,",
+  "  COALESCE(t.income_col_u, 0) AS income_col_u_val,",
+  "  COALESCE(t.an_ca_van, 0) AS an_ca,",
+  "  COALESCE(t.xang_xe_van, 0) AS xang_xe,",
   "  COALESCE(t.dien_thoai_van, 0) AS dien_thoai,",
   "  COALESCE(t.tro_cap_may_tinh, 0) AS may_tinh_val,",
-  "  COALESCE(t.an_ca_van, 0) AS an_ca_van_val,",
   "  t.luong_dong_bao_hiem AS luong_dong_bh,",
   "  ARRAY_LENGTH(REGEXP_EXTRACT_ALL(",
   "    COALESCE(s.dependent_information,''), r'(?:19|20)[0-9]{2}'",
   "  )) AS so_npt",
   "FROM `pf-salary.payroll.C_view_bang_luong_truoc_thue` t",
   "LEFT JOIN (",
-  "  SELECT code, employee_type, tong_cong,",
+  "  SELECT code, tong_cong,",
   "    ROW_NUMBER() OVER (PARTITION BY code ORDER BY code) AS rn",
   "  FROM `pf-salary.payroll.C_view_bang_luong_co_ban_theo_ngay_cong`",
   ") cb ON cb.code = t.code AND cb.rn = 1",
@@ -75,7 +74,7 @@ var SQL_THUE = [
   "    WHEN t.title_job LIKE '%Teacher%' OR t.title_job LIKE '%Giáo viên%' THEN 8",
   "    WHEN UPPER(t.workplace) LIKE 'INHOUSE 1%' THEN 2",
   "    ELSE 9 END,",
-  "  CASE WHEN t.title_job LIKE '%Giám đốc%' THEN 1 WHEN t.title_job LIKE '%Leader%' OR t.title_job LIKE '%leader%' THEN 2 WHEN COALESCE(cb.employee_type,'') IN ('CTV','TTS') THEN 4 ELSE 3 END,",
+  "  CASE WHEN t.title_job LIKE '%Giám đốc%' THEN 1 WHEN t.title_job LIKE '%Leader%' OR t.title_job LIKE '%leader%' THEN 2 WHEN COALESCE(t.type_self,'') IN ('CTV','TTS') THEN 4 ELSE 3 END,",
   "  t.full_name"
 ].join('\n');
 
@@ -92,10 +91,10 @@ var C_ = {
   luong_bh:25, bhxh:26, bhyt:27, bhtn:28, bh_tong:29,
   so_npt:30,
   // Hidden columns — tax pipeline (Chung)
-  may_tinh_h:31, an_ca_van_h:32,
+  may_tinh_h:31,
 };
 var NUM_COLS = 30;
-var TOTAL_COLS = 32;
+var TOTAL_COLS = 31;
 
 function cl_(n) {
   var s = '';
@@ -239,7 +238,7 @@ function fillData_t_(sh, rows) {
     row[C_.luong_cd-1]  = n_(d.luong_co_dinh);
     row[C_.ngay_cong-1] = n_(d.ngay_cong);
     row[C_.nghi_tet-1]  = 0;
-    row[C_.thuong_ds-1] = n_(d.thuong_ds);
+    row[C_.tong_tn-1]   = n_(d.income_col_u_val);
     row[C_.an_ca-1]     = n_(d.an_ca);
     row[C_.xang_xe-1]   = n_(d.xang_xe);
     row[C_.dien_thoai-1]= n_(d.dien_thoai);
@@ -249,28 +248,27 @@ function fillData_t_(sh, rows) {
   }
   sh.getRange(SR, 1, n, NUM_COLS).setValues(vals);
 
-  // ---- Phase 1b: Write hidden tax columns (31-32) ----
+  // ---- Phase 1b: Write hidden tax column (31) ----
   var hiddenVals = [];
   for (var i = 0; i < n; i++) {
-    var d = rows[i];
-    hiddenVals.push([n_(d.may_tinh_val), n_(d.an_ca_van_val)]);
+    hiddenVals.push([n_(rows[i].may_tinh_val)]);
   }
-  sh.getRange(SR, C_.may_tinh_h, n, 2).setValues(hiddenVals).setNumberFormat('#,##0');
-  sh.hideColumns(C_.may_tinh_h, 2);
+  sh.getRange(SR, C_.may_tinh_h, n, 1).setValues(hiddenVals).setNumberFormat('#,##0');
+  sh.hideColumns(C_.may_tinh_h, 1);
 
   // ---- Phase 2: Overlay formula columns ----
   var fc = function(col) { return cl_(col); };
 
-  // I: LCĐ được hưởng = lương cố định × ngày công / 24
+  // I: LCĐ được hưởng = Lương cố định (= lương đóng BH, không nhân ngày công)
   setFormulaCol_(sh, SR, n, C_.luong_huong, function(r) {
-    return '=' + fc(C_.luong_cd)+r + '*' + fc(C_.ngay_cong)+r + '/24';
+    return '=' + fc(C_.luong_cd)+r;
   });
 
-  // Q: Tổng thu nhập = LCĐ hưởng + Thưởng DS + Thưởng tết + Khác + Ăn ca + Chuyên cần + Xăng xe + ĐT
-  setFormulaCol_(sh, SR, n, C_.tong_tn, function(r) {
-    var cols = [C_.luong_huong, C_.thuong_ds, C_.thuong_tet, C_.khac,
-               C_.an_ca, C_.chuyen_can, C_.xang_xe, C_.dien_thoai];
-    return '=' + cols.map(function(c) { return fc(c)+r; }).join('+');
+  // Q: Tổng thu nhập = income_col_u từ BQ (đã điền ở Phase 1, KHÔNG overlay formula)
+
+  // J: Thưởng doanh số = Tổng TN − LCĐ hưởng − Ăn ca − Xăng xe − ĐT (derived)
+  setFormulaCol_(sh, SR, n, C_.thuong_ds, function(r) {
+    return '=' + fc(C_.tong_tn)+r + '-' + fc(C_.luong_huong)+r + '-' + fc(C_.an_ca)+r + '-' + fc(C_.xang_xe)+r + '-' + fc(C_.dien_thoai)+r;
   });
 
   // R: GT bản thân (0 cho CTV/TTS)
@@ -290,14 +288,13 @@ function fillData_t_(sh, rows) {
     return '=' + fc(C_.gt_bt)+r + '+' + fc(C_.gt_npt)+r;
   });
 
-  // U: TN chịu thuế — pipeline Chung
-  // income_col_u = luong_huong + an_ca + may_tinh + xang_xe
+  // U: TN chịu thuế — pipeline Chung (Tổng TN = income_col_u = anchor)
   // Chính thức: income_col_u − an_ca_van − dien_thoai
   // CTV/TTS: income_col_u (giữ nguyên)
   setFormulaCol_(sh, SR, n, C_.tn_ct, function(r) {
     var E = fc(C_.loai_nv)+r;
-    var income = fc(C_.luong_huong)+r+'+'+fc(C_.an_ca)+r+'+'+fc(C_.may_tinh_h)+r+'+'+fc(C_.xang_xe)+r;
-    return '=IF(OR('+E+'="CTV";'+E+'="TTS");'+income+';('+income+')-'+fc(C_.an_ca_van_h)+r+'-'+fc(C_.dien_thoai)+r+')';
+    var Q = fc(C_.tong_tn)+r;
+    return '=IF(OR('+E+'="CTV";'+E+'="TTS");'+Q+';'+Q+'-'+fc(C_.an_ca)+r+'-'+fc(C_.dien_thoai)+r+')';
   });
 
   // Z-AB: BH breakdown (0 cho CTV/TTS)
@@ -449,7 +446,7 @@ function queryBQ_thue_() {
     job = BigQuery.Jobs.getQueryResults(THUE_CFG.bqProject, jobId);
   }
   var fields = job.schema.fields.map(function(f) { return f.name; });
-  var numericKeys = ['luong_co_dinh','ngay_cong','thuong_ds','an_ca','xang_xe','dien_thoai','may_tinh_val','an_ca_van_val','luong_dong_bh','so_npt'];
+  var numericKeys = ['luong_co_dinh','ngay_cong','income_col_u_val','an_ca','xang_xe','dien_thoai','may_tinh_val','luong_dong_bh','so_npt'];
   var out = [];
   (job.rows || []).forEach(function(row) {
     var o = {};

@@ -95,7 +95,8 @@
     "income_col_u": "INT64",
     "an_ca_van": "INT64",
     "xang_xe_van": "INT64",
-    "dien_thoai_van": "INT64"
+    "dien_thoai_van": "INT64",
+    "type_self": "STRING"
   },
   "payroll.C_view_bang_thuong_com": {
     "code": "STRING",
