@@ -4,9 +4,7 @@ order: 2
 audience: ["sale", "leader"]
 ---
 
-Áp dụng khi: tạo Payment Request cho đơn **mới (New)** đến từ **quảng cáo / offline / KOC / khác**. Hệ thống sẽ tự dò số điện thoại khách với kho dữ liệu marketing để xác nhận đơn có đúng từ quảng cáo không. Bài này hướng dẫn đọc & xử lý khối đối soát lead.
-
-![Khối khớp lead màu xanh — hiện SĐT gốc, ngày, kênh và tên sale phụ trách lead](/docs-images/paymentRequests/doi-soat-lead-1.png)
+Áp dụng khi: tạo Payment Request cho đơn **mới (New)** đến từ **quảng cáo / offline / KOC / khác**. Hệ thống sẽ tự dò số điện thoại khách với kho dữ liệu marketing để xác nhận đơn có đúng từ quảng cáo không. Bài này hướng dẫn tìm tính năng ở đâu, cách điền, và cách đọc kết quả.
 
 ## Mục lục
 
@@ -14,21 +12,34 @@ audience: ["sale", "leader"]
 
 ---
 
-## Khi nào khối đối soát lead hiện ra
+## Tính năng nằm ở đâu
 
-Khối này **chỉ hiện** khi bạn chọn **Nguồn KH** thuộc nhóm có thể đến từ marketing:
+Đây **không phải màn hình riêng** — nó tự hiện ngay trong lúc bạn điền đơn, ở 2 chỗ:
+
+1. **Khi tạo PR mới** — màn **Tạo Payment Request** (nút **+ Tạo Payment Request** ở tab Quản lý thanh toán).
+2. **Khi sửa PR đã có** — mở chi tiết một PR → bấm **Sửa thông tin**.
+
+Ở cả 2 chỗ, khối đối soát lead nằm **ngay dưới ô Nguồn KH**.
+
+---
+
+## Các bước điền để khối hiện ra
+
+1. Bấm **+ Tạo Payment Request** (hoặc mở PR → Sửa thông tin).
+2. Điền như bình thường: **Số điện thoại** khách · **Tên khách hàng** · **Tổng tiền dự kiến**.
+3. Ở ô **Nguồn KH**, chọn **Quảng cáo** (hoặc Offline / KOC / Khác) — chọn thêm **Kênh** nếu có.
+4. → Ngay khi chọn Nguồn, **khối đối soát lead tự hiện** ngay dưới ô Nguồn và tự tra số điện thoại đã nhập. Bạn **không phải bấm nút gì thêm**.
+
+Khối chỉ hiện với các nguồn có thể đến từ marketing:
 
 | Nguồn KH | Có hiện khối? |
 |---|---|
-| Quảng cáo | Có |
-| Offline | Có |
-| KOC | Có |
-| Khác | Có |
-| Giới thiệu / Gia hạn / Kho chung | Không |
+| Quảng cáo · Offline · KOC · Khác | Có |
+| Giới thiệu · Gia hạn · Kho chung | Không |
 
-Hệ thống **tự tra** ngay khi bạn chọn Nguồn (nếu đã điền số điện thoại), hoặc khi bạn **bấm ra khỏi ô Số điện thoại**. Bạn không phải bấm nút gì thêm.
+> Hệ thống tự tra khi bạn **chọn Nguồn** (nếu đã điền SĐT) hoặc khi **bấm ra khỏi ô Số điện thoại**. Nếu đổi Nguồn sang nhóm "Không hiện", khối biến mất và xoá kết quả tra trước đó.
 
-> Nếu đổi Nguồn sang nhóm "Không hiện" (VD: Giới thiệu), khối sẽ biến mất và xoá kết quả tra trước đó.
+![Khối khớp lead màu xanh — hiện SĐT gốc, ngày, kênh và tên sale phụ trách lead](/docs-images/paymentRequests/doi-soat-lead-1.png)
 
 ---
 
