@@ -11,7 +11,7 @@ afterEach(() => { lookup.mockReset(); });
 
 const IDLE_STATE: LeadCheckState = {
   status: "idle", matchedBy: null, leads: [], selectedLeadId: null,
-  sdtGoc: "", reason: "", checkedPhone: "",
+  sdtGoc: "", sdtGocNotFound: false, reason: "", checkedPhone: "",
 };
 
 describe("useLeadCheck", () => {
@@ -75,6 +75,38 @@ describe("useLeadCheck", () => {
     expect(result.current.leadCheck.status).toBe("none");
     act(() => { result.current.resetLeadCheck(); });
     expect(result.current.leadCheck.status).toBe("idle");
+  });
+
+  it("runCheckSdtGoc: số gốc không có trong kho → none + sdtGocNotFound=true", async () => {
+    lookup.mockResolvedValue({ data: { matched: false, matched_by: null, leads: [] } });
+    const { result } = renderHook(() => useLeadCheck());
+    await act(async () => { await result.current.runCheckSdtGoc("0900000000"); });
+    expect(result.current.leadCheck.status).toBe("none");
+    expect(result.current.leadCheck.sdtGoc).toBe("0900000000");
+    expect(result.current.leadCheck.sdtGocNotFound).toBe(true);
+  });
+
+  it("runCheckSdtGoc: số gốc có trong kho → matched qua số gốc, cờ notFound tắt", async () => {
+    lookup.mockResolvedValue({ data: {
+      matched: true, matched_by: "sdt",
+      leads: [{ lead_id: "L9", name: "Z", phone: "0977946651", lead_date: "2026-08-07",
+                crm_code: "300265", ec: "E", sale_name: "Pham Thuy Linh",
+                status: "L3", status_2: "L3.1", nation: null, uid: null, match_source: "phone" }],
+    } });
+    const { result } = renderHook(() => useLeadCheck());
+    await act(async () => { await result.current.runCheckSdtGoc("0977946651"); });
+    expect(result.current.leadCheck.status).toBe("matched");
+    expect(result.current.leadCheck.matchedBy).toBe("sdt_goc");
+    expect(result.current.leadCheck.sdtGocNotFound).toBe(false);
+  });
+
+  it("setSdtGoc: sửa lại ô → tắt cờ sdtGocNotFound", async () => {
+    lookup.mockResolvedValue({ data: { matched: false, matched_by: null, leads: [] } });
+    const { result } = renderHook(() => useLeadCheck());
+    await act(async () => { await result.current.runCheckSdtGoc("0900000000"); });
+    expect(result.current.leadCheck.sdtGocNotFound).toBe(true);
+    act(() => { result.current.setSdtGoc("09000000001"); });
+    expect(result.current.leadCheck.sdtGocNotFound).toBe(false);
   });
 });
 

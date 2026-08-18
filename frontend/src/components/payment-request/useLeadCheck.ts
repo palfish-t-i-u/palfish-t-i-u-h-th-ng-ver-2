@@ -25,6 +25,7 @@ export interface LeadCheckState {
   leads: LeadHit[];
   selectedLeadId: string | null;
   sdtGoc: string;
+  sdtGocNotFound: boolean;   // đã tra số gốc nhưng cũng không có trong kho
   reason: string;
   checkedPhone: string;
 }
@@ -35,6 +36,7 @@ const INITIAL_STATE: LeadCheckState = {
   leads: [],
   selectedLeadId: null,
   sdtGoc: "",
+  sdtGocNotFound: false,
   reason: "",
   checkedPhone: "",
 };
@@ -150,7 +152,7 @@ export function useLeadCheck() {
     const digits = sdtGocRaw.replace(/[^0-9]/g, "");
     if (digits.length < 9) return;
 
-    setState((s) => ({ ...s, status: "loading", sdtGoc: sdtGocRaw }));
+    setState((s) => ({ ...s, status: "loading", sdtGoc: sdtGocRaw, sdtGocNotFound: false }));
 
     try {
       const { data } = await endpoints.leads.lookup({
@@ -167,6 +169,7 @@ export function useLeadCheck() {
           matchedBy: "sdt_goc",
           leads: hits,
           selectedLeadId: hits[0]?.leadId ?? null,
+          sdtGocNotFound: false,
           reason: "",
         }));
       } else {
@@ -176,6 +179,7 @@ export function useLeadCheck() {
           matchedBy: null,
           leads: [],
           selectedLeadId: null,
+          sdtGocNotFound: true,
         }));
       }
     } catch {
@@ -188,7 +192,7 @@ export function useLeadCheck() {
   }, []);
 
   const setSdtGoc = useCallback((val: string) => {
-    setState((s) => ({ ...s, sdtGoc: val }));
+    setState((s) => ({ ...s, sdtGoc: val, sdtGocNotFound: false }));
   }, []);
 
   const setReason = useCallback((val: string) => {
