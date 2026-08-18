@@ -84,14 +84,18 @@ export default function LeadCheckBlock({
   }
 
   // status === "none"
+  // Chốt chặn (yêu cầu Hiếu): BẮT BUỘC sale tra SĐT gốc trước. Dropdown lý do chỉ mở
+  // sau khi đã tra 1 số gốc mà cũng không có trong kho (sdtGocNotFound=true) — chống
+  // sale lười, bỏ qua tra cứu để chọn thẳng lý do.
+  const reasonUnlocked = state.sdtGocNotFound;
   return (
     <div style={{ background: "var(--warning-bg, #fffbeb)", border: "1px solid var(--warning, #f59e0b)",
                   borderRadius: 8, padding: 8, fontSize: 12, display: "flex", flexDirection: "column", gap: 6 }}>
       <div style={{ fontWeight: 600, color: "var(--warning-fg, #b45309)" }}>
-        ⚠ Không tìm thấy số này trong dữ liệu marketing. Khách có dùng số khác khi đăng ký không?
+        ⚠ Không tìm thấy số này trong dữ liệu marketing. Nhập SĐT khách dùng lúc đăng ký để tra tiếp.
       </div>
       <label style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-        <span style={{ color: "var(--muted)" }}>SĐT khách dùng lúc đăng ký (nếu khác)</span>
+        <span style={{ color: "var(--muted)" }}>SĐT khách dùng lúc đăng ký (tra số này trước)</span>
         <input value={state.sdtGoc}
                onChange={(e) => onSdtGocInput(e.target.value)}
                onBlur={(e) => onSdtGocBlur(e.target.value)}
@@ -100,13 +104,19 @@ export default function LeadCheckBlock({
       </label>
       {state.sdtGocNotFound && state.sdtGoc.trim() ? (
         <div style={{ fontSize: 11, color: "var(--muted)", marginTop: -2 }}>
-          Đã tra số gốc — số này cũng không có trong kho. Đơn sẽ lưu số này kèm ghi chú.
+          Đã tra số gốc — số này cũng không có trong kho. Chọn lý do bên dưới để lưu.
         </div>
       ) : null}
-      <label style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-        <span style={{ color: "var(--muted)" }}>Hoặc chọn lý do</span>
+      <label style={{ display: "flex", flexDirection: "column", gap: 2, opacity: reasonUnlocked ? 1 : 0.55 }}>
+        <span style={{ color: "var(--muted)" }}>
+          {reasonUnlocked ? "Chọn lý do" : "Chọn lý do (tra SĐT gốc trước để mở khoá)"}
+        </span>
         <select value={state.reason} onChange={(e) => onReasonChange(e.target.value)}
-                style={{ padding: "4px 6px", border: "1px solid var(--border)", borderRadius: 6 }}>
+                disabled={!reasonUnlocked}
+                title={reasonUnlocked ? "" : "Nhập & tra SĐT gốc trước khi chọn lý do"}
+                style={{ padding: "4px 6px", border: "1px solid var(--border)", borderRadius: 6,
+                         cursor: reasonUnlocked ? "pointer" : "not-allowed",
+                         background: reasonUnlocked ? "var(--surface, #fff)" : "var(--gmv-bg, #f3f4f6)" }}>
           <option value="">— Chọn lý do —</option>
           {LY_DO_KHONG_GHEP.map((r) => (<option key={r.value} value={r.value}>{r.label}</option>))}
         </select>

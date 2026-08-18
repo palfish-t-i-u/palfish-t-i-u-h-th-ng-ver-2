@@ -122,11 +122,13 @@ export default function CreatePaymentRequestModal({
 
   const isNewSource = NEW_CHECK_SOURCES.has(form.leadSource);
   const leadS = lead.leadCheck.status;
+  // Chốt chặn (Hiếu): đơn không khớp phải chọn lý do — mà lý do chỉ mở sau khi sale
+  // đã tra SĐT gốc bất thành (khoá trong LeadCheckBlock). Nên submit "none" = bắt buộc có lý do.
   const leadGateOk =
     !isNewSource ||
     leadS === "matched" ||
     leadS === "error" ||
-    (leadS === "none" && (!!lead.leadCheck.sdtGoc.trim() || !!lead.leadCheck.reason));
+    (leadS === "none" && !!lead.leadCheck.reason);
 
   const canSubmit = !!(
     form.name && form.phone && targetNum > 0 &&
