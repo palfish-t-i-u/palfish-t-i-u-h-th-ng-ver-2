@@ -338,6 +338,43 @@ test("paymentRequests — tao-payment-request (4 ảnh, chỉ mở modal, KHÔNG
   await page.getByRole("button", { name: "Huỷ", exact: true }).click();
 });
 
+// doi-soat-lead — 2 ảnh: khối XANH (khớp lead) + khối VÀNG (không khớp, dropdown
+// lý do bị khoá). Thao tác THUẦN ĐỌC: chỉ điền form + đổi nguồn để kích hoạt tra
+// cứu (client-side), TUYỆT ĐỐI không submit. SĐT 977946651 có trong kho sandbox.
+test("paymentRequests — doi-soat-lead (khớp + không khớp, KHÔNG submit)", async ({ page }) => {
+  test.setTimeout(120_000);
+  await gotoModule(page, "Quản lý thanh toán");
+  await expect(page.getByRole("button", { name: "Tạo Payment Request" })).toBeVisible({ timeout: 15_000 });
+  await page.getByRole("button", { name: "Tạo Payment Request" }).click();
+  await expect(page.getByText("Tổng tiền dự kiến").first()).toBeVisible();
+  await page.waitForTimeout(300);
+
+  const modal = page.locator(".create-pr-modal");
+  await modal.locator(".phone-input").fill("977946651");
+  await page.getByPlaceholder("Họ và tên").fill("Nguyễn Thị Mai");
+  await page.getByPlaceholder("VD: 12.000.000").fill("12000000");
+  await modal.locator("select").first().selectOption({ index: 1 }); // Quảng cáo → kích hoạt tra lead
+
+  // Ảnh 1 — khối XANH khớp lead (SĐT gốc + tên + kênh + tên sale)
+  const matched = page.getByText(/Khớp lead/).locator("xpath=ancestor::div[1]");
+  await expect(matched).toBeVisible({ timeout: 15_000 });
+  await matched.scrollIntoViewIfNeeded();
+  await page.waitForTimeout(400);
+  await matched.screenshot({ path: "public/docs-images/paymentRequests/doi-soat-lead-1.png" });
+
+  // Ảnh 2 — đổi sang số lạ → khối VÀNG không khớp, dropdown lý do bị khoá
+  await modal.locator(".phone-input").fill("911111111");
+  await page.getByPlaceholder("Họ và tên").click(); // blur ô SĐT để tra lại số mới
+  const notfound = page.getByText(/Không tìm thấy số này/).locator("xpath=ancestor::div[1]");
+  await expect(notfound).toBeVisible({ timeout: 15_000 });
+  await notfound.scrollIntoViewIfNeeded();
+  await page.waitForTimeout(400);
+  await notfound.screenshot({ path: "public/docs-images/paymentRequests/doi-soat-lead-2.png" });
+
+  // Đóng — không submit
+  await page.getByRole("button", { name: "Huỷ", exact: true }).click();
+});
+
 // chuyen-giao-pr — 4 ảnh từng bước. AN TOÀN: thao tác THUẦN ĐỌC — mở PR, mở
 // modal, focus combobox, chọn 1 người nhận (chỉ đổi state client), mở Lịch sử.
 // TUYỆT ĐỐI không bấm "Xác nhận chuyển" (endpoint transfer chỉ chạy khi bấm nút
