@@ -110,6 +110,12 @@ export interface PaymentRequest {
   companyName?: string;
   leadSource?: string;
   leadChannel?: string;
+  sdtGoc?: string | null;
+  leadMatched?: boolean | null;
+  leadId?: string | null;
+  leadMatchedBy?: "sdt" | "sdt_goc" | "uid" | "manual" | null;
+  lyDoKhongGhep?: string | null;
+  leadCheckAt?: string | null;
   wantsInvoice?: boolean;
   target: number;
   source: string;
@@ -259,6 +265,12 @@ export type CreatePaymentRequestPayload = {
   wants_invoice?: boolean;
   /** Tạo hộ (Leader/Manager): email sale sở hữu PR. Bỏ qua = tự sở hữu. */
   owner_sale_email?: string;
+
+  sdt_goc?: string | null;
+  lead_matched?: boolean | null;
+  lead_id?: string | null;
+  lead_matched_by?: string | null;
+  ly_do_khong_ghep?: string | null;
 };
 
 /** 1 nhân sự trong dropdown "Sale sở hữu PR" / modal "Chuyển sale" */

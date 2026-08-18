@@ -1450,6 +1450,7 @@ def _enqueue_activation_request_created_dingtalk(
                     bill_urls.append(legacy)
 
         pr_target, pr_received = _pr_amounts(pr)
+        is_append = source_suffix.startswith(":append:")
         result = build_activation_request_created_message(
             {
                 "id": saved_ar.get("id"),
@@ -1472,6 +1473,7 @@ def _enqueue_activation_request_created_dingtalk(
                 "crm_name": (staff or {}).get("crm_name"),
                 "team": team,
             },
+            is_supplementary=is_append,
         )
 
         ar_id = str(saved_ar.get("id") or "")
@@ -1481,6 +1483,8 @@ def _enqueue_activation_request_created_dingtalk(
         outbox_message = result["message"]
         if source_suffix.startswith(":edit:"):
             outbox_message = "🔄 SALE VỪA CẬP NHẬT ĐƠN ĐÃ BÁO\n" + outbox_message
+        if is_append:
+            outbox_message = f"⬆️ ĐƠN BỔ SUNG · {pr.get('id') or '?'}\n" + outbox_message
         if hold_activation:
             hold_line = "\n⏸ PH CHƯA MUỐN TẠO GÓI HỌC"
             if hold_note:

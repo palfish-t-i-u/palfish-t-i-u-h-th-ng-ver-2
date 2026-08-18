@@ -252,20 +252,12 @@ test("module4 — tong-quan", async ({ page }) => {
   await screenshotViewport(page, "public/docs-images/module4/tong-quan-1.png");
 });
 
-test("paymentRequests — tong-quan + tao-lan-tt-chuan + xem-lich-su-pr + xem-qr-thanh-toan + thieu-anh-bill", async ({ page }) => {
+test("paymentRequests — tong-quan + xem-lich-su-pr + xem-qr-thanh-toan + thieu-anh-bill", async ({ page }) => {
   await gotoModule(page, "Quản lý thanh toán");
   await expect(page.getByRole("button", { name: "Tạo Payment Request" })).toBeVisible({ timeout: 15_000 });
   await page.waitForTimeout(500);
 
   await screenshotViewport(page, "public/docs-images/paymentRequests/tong-quan-1.png");
-
-  // Tạo Payment Request — chỉ mở modal xem giao diện, KHÔNG bấm submit.
-  await page.getByRole("button", { name: "Tạo Payment Request" }).click();
-  await expect(page.getByText("Tổng tiền dự kiến").first()).toBeVisible();
-  await page.waitForTimeout(300);
-  await screenshotViewport(page, "public/docs-images/paymentRequests/tao-lan-tt-chuan-1.png");
-  await page.getByRole("button", { name: "Huỷ" }).click();
-  await page.waitForTimeout(300);
 
   // Mở PR bất kỳ (đọc, không sửa) để chụp Lịch sử PR / QR / khu vực tải bill.
   const firstRow = page.locator('[data-testid="pr-row"]').first();

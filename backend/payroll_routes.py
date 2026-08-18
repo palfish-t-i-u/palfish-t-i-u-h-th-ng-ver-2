@@ -163,7 +163,7 @@ def register_payroll_routes(app, get_supabase) -> None:
         ky_luong: str | None = Query(None),
         authorization: str | None = Header(None),
     ):
-        """Danh sách phiếu actor được xem (RBAC: NV=mình, leader/manager=team, system=hết)."""
+        """Danh sách phiếu actor được xem (RBAC: mọi role=chỉ mình, admin/system=hết)."""
         sb = _sb_or_503(get_supabase)
         actor = resolve_actor(sb, authorization)
         codes = visible_payslip_codes(sb, actor)  # None = xem hết

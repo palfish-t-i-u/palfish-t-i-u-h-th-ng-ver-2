@@ -17,10 +17,10 @@ describe("HdsdLink", () => {
   });
 
   it("links to the specific article when topicSlug is given", () => {
-    render(<HdsdLink moduleSlug="paymentRequests" topicSlug="tao-lan-tt-chuan" />);
+    render(<HdsdLink moduleSlug="paymentRequests" topicSlug="quan-ly-lan-thanh-toan" />);
     expect(screen.getByRole("link", { name: "HDSD" })).toHaveAttribute(
       "href",
-      "/docs/paymentRequests/tao-lan-tt-chuan"
+      "/docs/paymentRequests/quan-ly-lan-thanh-toan"
     );
   });
 });

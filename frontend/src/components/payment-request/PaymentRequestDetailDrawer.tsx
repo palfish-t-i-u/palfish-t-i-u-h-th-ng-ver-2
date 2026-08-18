@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { LEAD_SOURCES, defaultChannelForSource, findSourceByKey, sourceHasChannels } from "../../constants/leadSource";
+import { LEAD_SOURCES, LY_DO_KHONG_GHEP, NEW_CHECK_SOURCES, defaultChannelForSource, findSourceByKey, sourceHasChannels } from "../../constants/leadSource";
 import type {
   ActiveRequest,
   AddPaymentAttemptPayload,
@@ -49,6 +49,8 @@ import { nextCourseCode } from "../payment-flow/paymentFlowUtils";
 import { endpoints } from "../../lib/api";
 import PrStaleContentWarning from "./PrStaleContentWarning";
 import TransferSaleModal from "./TransferSaleModal";
+import { useLeadCheck, buildLeadPayload } from "./useLeadCheck";
+import LeadCheckBlock from "./LeadCheckBlock";
 import PrHistoryModal from "./PrHistoryModal";
 import { MoneyInput } from "../ui/MoneyInput";
 import { findPaidLinesWithoutBill } from "./billGuardUtils";
@@ -645,6 +647,51 @@ interface DraftPr {
   leadChannel: string;
   isForeign: boolean;
   wantsInvoice: boolean;
+  sdtGoc: string;
+  leadMatched: boolean | null;
+  leadId: string | null;
+  leadMatchedBy: "sdt" | "sdt_goc" | "uid" | "manual" | null;
+  lyDoKhongGhep: string;
+}
+
+type LeadPatchSnake = {
+  sdt_goc: string | null;
+  lead_matched: boolean | null;
+  lead_id: string | null;
+  lead_matched_by: string | null;
+  ly_do_khong_ghep: string | null;
+};
+
+function seedDraft(request: PaymentRequest): DraftPr {
+  const isForeign = isForeignCustomer(request.country, request.province);
+  return {
+    uid: request.uid,
+    name: request.name,
+    childName: request.childName || "",
+    country: request.country || "VN",
+    phone: request.phone,
+    email: request.email || "",
+    province: isForeign ? "" : (request.province || ""),
+    ward: isForeign ? "" : (request.ward || ""),
+    address: isForeign ? "" : (request.address || ""),
+    foreignCountry: isForeign
+      ? (COUNTRIES.find((c) => c.name === request.province)?.code || "")
+      : "",
+    target: String(request.target),
+    note: request.note || "",
+    taxId: request.taxId || "",
+    customerType: request.customerType || "individual",
+    companyName: request.companyName || "",
+    leadSource: request.leadSource || "",
+    leadChannel: request.leadChannel || "",
+    isForeign,
+    wantsInvoice: request.wantsInvoice ?? false,
+    sdtGoc: request.sdtGoc ?? "",
+    leadMatched: request.leadMatched ?? null,
+    leadId: request.leadId ?? null,
+    leadMatchedBy: request.leadMatchedBy ?? null,
+    lyDoKhongGhep: request.lyDoKhongGhep ?? "",
+  };
 }
 
 const FOREIGN_COUNTRY_OPTIONS = COUNTRIES.filter((c) => c.code !== "VN")
@@ -1553,6 +1600,9 @@ function useDeliveryLog(arId: string | null) {
   return { logs, latestLog: logs[0] || null };
 }
 
+const lyDoLabel = (code: string) =>
+  LY_DO_KHONG_GHEP.find((r) => r.value === code)?.label ?? code;
+
 export default function PaymentRequestDetailDrawer({
   request,
   open,
@@ -1585,7 +1635,7 @@ export default function PaymentRequestDetailDrawer({
   request: PaymentRequest | null;
   open: boolean;
   onClose: () => void;
-  onUpdatePr: (next: PaymentRequest) => Promise<boolean>;
+  onUpdatePr: (next: PaymentRequest, leadPatch?: LeadPatchSnake) => Promise<boolean>;
   onAddPayment: (payload: AddPaymentAttemptPayload) => void;
   onCancelPayment: (qr: PaymentAttempt) => void;
   onMarkPaid: (qr: PaymentAttempt) => void;
@@ -1623,6 +1673,8 @@ export default function PaymentRequestDetailDrawer({
   const [editing, setEditing] = useState(false);
   const [savingEdit, setSavingEdit] = useState(false);
   const [draft, setDraft] = useState<DraftPr | null>(null);
+  const lead = useLeadCheck();
+  const [leadTouched, setLeadTouched] = useState(false);
   const drawerBodyRef = useRef<HTMLDivElement | null>(null);
   const addFormRef = useRef<HTMLDivElement | null>(null);
   // PR3 (1B-04): chặn tạo lần TT khi PR đã đủ + popup hướng dẫn sửa target
@@ -1714,30 +1766,9 @@ export default function PaymentRequestDetailDrawer({
   };
   const handleOpenEditForTarget = () => {
     if (!request) return;
-    const isForeign = isForeignCustomer(request.country, request.province);
-    setDraft({
-      uid: request.uid,
-      name: request.name,
-      childName: request.childName || "",
-      country: request.country || "VN",
-      phone: request.phone,
-      email: request.email || "",
-      province: isForeign ? "" : (request.province || ""),
-      ward: isForeign ? "" : (request.ward || ""),
-      address: isForeign ? "" : (request.address || ""),
-      foreignCountry: isForeign
-        ? (COUNTRIES.find((c) => c.name === request.province)?.code || "")
-        : "",
-      target: String(request.target),
-      note: request.note || "",
-      taxId: request.taxId || "",
-      customerType: request.customerType || "individual",
-      companyName: request.companyName || "",
-      leadSource: request.leadSource || "",
-      leadChannel: request.leadChannel || "",
-      isForeign,
-      wantsInvoice: request.wantsInvoice ?? false,
-    });
+    setDraft(seedDraft(request));
+    setLeadTouched(false);
+    lead.resetLeadCheck();
     setEditing(true);
     setPrFullModalOpen(false);
     // Sau khi render edit form xong → scroll vào ô "Tổng tiền dự kiến" + highlight 2s
@@ -1910,30 +1941,9 @@ export default function PaymentRequestDetailDrawer({
                 <button
                   className="btn btn-outline btn-sm"
                   onClick={() => {
-                    const isForeign = isForeignCustomer(request.country, request.province);
-                    setDraft({
-                      uid: request.uid,
-                      name: request.name,
-                      childName: request.childName || "",
-                      country: request.country || "VN",
-                      phone: request.phone,
-                      email: request.email || "",
-                      province: isForeign ? "" : (request.province || ""),
-                      ward: isForeign ? "" : (request.ward || ""),
-                      address: isForeign ? "" : (request.address || ""),
-                      foreignCountry: isForeign
-                        ? (COUNTRIES.find((c) => c.name === request.province)?.code || "")
-                        : "",
-                      target: String(request.target),
-                      note: request.note || "",
-                      taxId: request.taxId || "",
-                      customerType: request.customerType || "individual",
-                      companyName: request.companyName || "",
-                      leadSource: request.leadSource || "",
-                      leadChannel: request.leadChannel || "",
-                      isForeign,
-                      wantsInvoice: request.wantsInvoice ?? false,
-                    });
+                    setDraft(seedDraft(request));
+                    setLeadTouched(false);
+                    lead.resetLeadCheck();
                     setEditing(true);
                   }}
                 >
@@ -1964,6 +1974,17 @@ export default function PaymentRequestDetailDrawer({
                       const foreignCountryName = draft.isForeign
                         ? (COUNTRIES.find((c) => c.code === draft.foreignCountry)?.name ?? draft.foreignCountry)
                         : "";
+                      const wasNew = NEW_CHECK_SOURCES.has(request.leadSource ?? "");
+                      const isNew  = NEW_CHECK_SOURCES.has(draft.leadSource ?? "");
+                      let leadPatch: LeadPatchSnake | undefined;
+                      if (leadTouched) {
+                        if (isNew) {
+                          leadPatch = buildLeadPayload(lead.leadCheck);
+                        } else if (wasNew) {
+                          leadPatch = { sdt_goc: null, lead_matched: null, lead_id: null, lead_matched_by: null, ly_do_khong_ghep: null };
+                        }
+                        // non-New → non-New: không đụng (leadPatch = undefined)
+                      }
                       const ok = await onUpdatePr({
                         ...request,
                         uid: draft.uid,
@@ -1983,7 +2004,7 @@ export default function PaymentRequestDetailDrawer({
                         leadSource: draft.leadSource || undefined,
                         leadChannel: draft.leadChannel || undefined,
                         wantsInvoice: draft.wantsInvoice,
-                      });
+                      }, leadPatch);
                       setSavingEdit(false);
                       if (!ok) return;
                       setEditing(false);
@@ -2080,6 +2101,24 @@ export default function PaymentRequestDetailDrawer({
                   <div className="info-cell">
                     <div className="info-label">Nguồn KH</div>
                     <div className="info-value">{findSourceByKey(request.leadSource)?.label || request.leadSource}</div>
+                  </div>
+                )}
+                {NEW_CHECK_SOURCES.has(request.leadSource ?? "") && (
+                  <div className="info-cell">
+                    <div className="info-label">Đối soát lead</div>
+                    <div className="info-value">
+                      {request.leadMatched === true ? (
+                        <span style={{ color: "var(--success, #059669)", fontWeight: 600 }}>
+                          ✓ Đã khớp lead{request.sdtGoc ? ` (số gốc ${request.sdtGoc})` : ""}
+                        </span>
+                      ) : request.leadMatched === false ? (
+                        <span style={{ color: "var(--warning-fg, #b45309)", fontWeight: 600 }}>
+                          ⚠ Chưa khớp{request.lyDoKhongGhep ? ` — ${lyDoLabel(request.lyDoKhongGhep)}` : ""}
+                        </span>
+                      ) : (
+                        <span style={{ color: "var(--muted)" }}>Chưa kiểm tra</span>
+                      )}
+                    </div>
                   </div>
                 )}
                 {request.leadChannel && (
@@ -2188,6 +2227,10 @@ export default function PaymentRequestDetailDrawer({
                           onBlur={() => {
                             const n = normalizeLocalPhone(draft.phone, findCountry(draft.country));
                             if (n.value !== draft.phone) setDraft((prev) => (prev ? { ...prev, phone: n.value } : prev));
+                            if (NEW_CHECK_SOURCES.has(draft.leadSource ?? "")) {
+                              lead.runCheck(crmPhoneFormat(draft.phone, findCountry(draft.country)), draft.uid ?? undefined);
+                              setLeadTouched(true);
+                            }
                           }}
                           placeholder={country.exampleLocal}
                           style={{
@@ -2326,7 +2369,17 @@ export default function PaymentRequestDetailDrawer({
                   <div className="info-label">Nguồn KH</div>
                   <select
                     value={draft.leadSource}
-                    onChange={(e) => setDraft((prev) => (prev ? { ...prev, leadSource: e.target.value, leadChannel: "" } : prev))}
+                    onChange={(e) => {
+                      const nextSource = e.target.value;
+                      setDraft((prev) => (prev ? { ...prev, leadSource: nextSource, leadChannel: "" } : prev));
+                      if (NEW_CHECK_SOURCES.has(nextSource)) {
+                        if (draft.phone) lead.runCheck(crmPhoneFormat(draft.phone, findCountry(draft.country)), draft.uid ?? undefined);
+                        setLeadTouched(true);
+                      } else {
+                        lead.resetLeadCheck();
+                        setLeadTouched(true);
+                      }
+                    }}
                     style={{
                       border: "1px solid var(--border)",
                       borderRadius: 8,
@@ -2360,6 +2413,17 @@ export default function PaymentRequestDetailDrawer({
                         <option key={ch.code} value={ch.code}>{ch.code} - {ch.label}</option>
                       ))}
                     </select>
+                  </div>
+                )}
+                {NEW_CHECK_SOURCES.has(draft.leadSource ?? "") && (
+                  <div className="info-cell full">
+                    <LeadCheckBlock
+                      state={lead.leadCheck}
+                      onSelectLead={(id) => { lead.selectLead(id); setLeadTouched(true); }}
+                      onSdtGocInput={lead.setSdtGoc}
+                      onSdtGocBlur={(v) => { lead.runCheckSdtGoc(v); setLeadTouched(true); }}
+                      onReasonChange={(v) => { lead.setReason(v); setLeadTouched(true); }}
+                    />
                   </div>
                 )}
                 <div className="info-cell full">

@@ -242,7 +242,12 @@ export default function PaymentRequestsTab() {
     setDrawerOpen(true);
   };
 
-  const handleUpdatePr = async (next: PaymentRequest) => {
+  type LeadPatchSnake = {
+    sdt_goc: string | null; lead_matched: boolean | null; lead_id: string | null;
+    lead_matched_by: string | null; ly_do_khong_ghep: string | null;
+  };
+
+  const handleUpdatePr = async (next: PaymentRequest, leadPatch?: LeadPatchSnake) => {
     const previous = requests.find((r) => r.id === next.id) ?? null;
     // Bug 1A-08: cảnh báo nếu sửa target nhỏ hơn số đã thu — PR sẽ chuyển "Thừa"
     if (previous && next.target !== previous.target && next.target < previous.received) {
@@ -274,6 +279,7 @@ export default function PaymentRequestsTab() {
       lead_channel: next.leadChannel || undefined,
       wants_invoice: next.wantsInvoice ?? undefined,
     };
+    if (leadPatch) Object.assign(payload, leadPatch);
 
     try {
       const res = await endpoints.paymentRequests.update(next.id, payload);

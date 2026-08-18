@@ -94,3 +94,13 @@ export function defaultChannelForSource(sourceKey: string | undefined | null): s
   if (src && src.channels.length === 1) return src.channels[0].code;
   return undefined;
 }
+
+export const NEW_CHECK_SOURCES = new Set(["quang_cao", "offline", "koc", "khac"]);
+
+export const LY_DO_KHONG_GHEP = [
+  { value: "TU_TIM_DEN", label: "Khách tự tìm đến, không qua quảng cáo" },
+  { value: "NGUOI_QUEN_GT", label: "Người quen giới thiệu" },
+  { value: "KHACH_CU_MUA_LAI", label: "Khách cũ mua lại" },
+  { value: "SO_KHAC_KHONG_NHO", label: "Khách dùng số khác nhưng không nhớ" },
+  { value: "KHAC", label: "Khác (ghi chú vào ô Ghi chú)" },
+] as const;

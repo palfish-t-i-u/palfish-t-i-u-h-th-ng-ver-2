@@ -28,14 +28,14 @@ const COMPARE_COLS = [
   { key: 'Công',              bqHeader: 'Công',                             trangCol: 7,  type: 'number', tol: 0.01 },
   { key: 'LCB ngày công',    bqHeader: 'LCB theo ngày công',               trangCol: 8,  type: 'number' },
   { key: 'Thưởng COM',       bqHeader: 'Thưởng COM',                       trangCol: 9,  type: 'number' },
-  { key: 'Bảo hiểm',         bqHeader: 'Bảo hiểm',                         trangCol: 10, type: 'number', note: 'BQ = LCB×10.5% | Trang = mức đóng BH' },
+  { key: 'Bảo hiểm',         bqHeader: 'Bảo hiểm',                         trangCol: 10, type: 'number', note: 'BQ giờ = mức đóng BH×10.5% (Chung fix — nên khớp Trang)' },
   { key: 'Ăn trưa',          bqHeader: 'Hỗ trợ ăn trưa',                   trangCol: 12, type: 'number' },
   { key: 'Máy tính',         bqHeader: 'Tiền hỗ trợ máy tính',             trangCol: 13, type: 'number' },
   { key: 'Xe + PC',           bqHeader: 'Hỗ trợ tiền xe + PC trách nhiệm',  trangCol: 14, type: 'number' },
   { key: 'Bù tiền',          bqHeader: 'Bù tiền',                           trangCol: 16, type: 'number', note: 'Input-only, BQ = 0 nếu chưa điền' },
   { key: 'Tổng lương',       bqHeader: 'Tổng lương',                       trangCol: 5,  type: 'number' },
   { key: 'Khấu trừ thuế',    bqHeader: 'Khấu trừ thuế',                    trangCol: 15, type: 'number' },
-  { key: 'Tổng lương+thưởng',bqHeader: 'Tổng lương + thưởng',              trangCol: 4,  type: 'number' },
+  { key: 'Tổng lương+thưởng',bqHeader: 'Tổng lương + thưởng (Net)',        trangCol: 4,  type: 'number' },
 ];
 
 // Menu item đã thêm trong BangLuong.gs → onOpen() → '📊 Đối soát với bảng Trang'
@@ -349,14 +349,15 @@ function writeReport_(ss, result, trangMap, bqMap) {
     // Color diff cells
     for (var ci = 0; ci < row.cells.length; ci++) {
       var diffCol = 4 + ci * 3 + 3; // column of "Chênh lệch"
+      var fmt = (row.cells[ci] && row.cells[ci].key === 'Công') ? '0.#' : '#,##0';
       if (row.cells[ci] && !row.cells[ci].match) {
-        sh.getRange(r, diffCol).setBackground(RED).setNumberFormat('#,##0');
-        sh.getRange(r, diffCol - 2).setNumberFormat('#,##0');
-        sh.getRange(r, diffCol - 1).setNumberFormat('#,##0');
+        sh.getRange(r, diffCol).setBackground(RED).setNumberFormat(fmt);
+        sh.getRange(r, diffCol - 2).setNumberFormat(fmt);
+        sh.getRange(r, diffCol - 1).setNumberFormat(fmt);
       } else {
-        sh.getRange(r, diffCol).setNumberFormat('#,##0');
-        sh.getRange(r, diffCol - 2).setNumberFormat('#,##0');
-        sh.getRange(r, diffCol - 1).setNumberFormat('#,##0');
+        sh.getRange(r, diffCol).setNumberFormat(fmt);
+        sh.getRange(r, diffCol - 2).setNumberFormat(fmt);
+        sh.getRange(r, diffCol - 1).setNumberFormat(fmt);
       }
     }
 

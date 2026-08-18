@@ -37,6 +37,7 @@
 - BE test: `backend/tests/test_pr_ownership_transfer.py` — ma trận quyền tạo hộ/chuyển giao (trục sale ↔ leader); `test_refresh_content_endpoint.py` + `test_payment_line_stale_detection.py` — stale/refresh/dismiss
 - Types: `frontend/src/types/paymentRequest.ts`; API groups: `endpoints.paymentRequests`, `endpoints.bankTxns`
 - Data phụ trợ: `frontend/src/data/vnProvinces.ts`, `frontend/src/constants/` (bank, coursePackages, leadSource)
+- Lead check: `backend/leads_routes.py` (GET /api/v1/leads/lookup), `frontend/src/components/payment-request/useLeadCheck.ts`, migration `backend/migrations/2026-08-18-lead-phone-match.sql`
 
 ### B2 — Đối soát chuyển khoản
 - FE: `frontend/src/components/ReconciliationTab.tsx` + `frontend/src/components/reconciliation/` (ReconTxnCards, ReconBankCards — mobile)

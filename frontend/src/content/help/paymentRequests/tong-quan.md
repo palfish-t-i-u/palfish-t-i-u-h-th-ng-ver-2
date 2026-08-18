@@ -17,7 +17,7 @@ audience: ["sale", "ke-toan"]
 
 ## Quan hệ giữa các khái niệm
 
-- **1 PR** có thể có **nhiều lần thanh toán** (khách chuyển nhiều đợt) và **nhiều bé/gói học** (xem bài **Tạo lần thanh toán chuẩn**, mục ghi nhiều tên con).
+- **1 PR** có thể có **nhiều lần thanh toán** (khách chuyển nhiều đợt) và **nhiều bé/gói học** (xem bài **Tạo Payment Request — Hướng dẫn đầy đủ**, mục *PR cho nhiều con*).
 - **1 AR** (Active Request) chứa danh sách bé + gói học đã đăng ký, mỗi gói ra 1 **Course Code**.
 - **1 Course Code** = 1 hoá đơn (INV) ở bước B4.
 

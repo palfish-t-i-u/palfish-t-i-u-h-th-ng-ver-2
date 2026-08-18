@@ -138,6 +138,12 @@ class PaymentRequestCreate(BaseModel):
     dia_chi: str | None = None
     tong_tien_phai_thu: int | str | None = None
 
+    sdt_goc: str | None = None
+    lead_matched: bool | None = None
+    lead_id: str | None = None
+    lead_matched_by: str | None = None
+    ly_do_khong_ghep: str | None = None
+
 
 class PaymentRequestTransferBody(BaseModel):
     to_sale_email: str
@@ -169,6 +175,12 @@ class PaymentRequestPatch(BaseModel):
     sdt: str | None = None
     dia_chi: str | None = None
     tong_tien_phai_thu: int | str | None = None
+
+    sdt_goc: str | None = None
+    lead_matched: bool | None = None
+    lead_id: str | None = None
+    lead_matched_by: str | None = None
+    ly_do_khong_ghep: str | None = None
 
 
 class PaymentLineCreate(BaseModel):
@@ -1047,6 +1059,39 @@ def _child_rename_map(old_extra: list | None, new_extra: list | None) -> dict[st
     return renames
 
 
+_VALID_MATCHED_BY = {"sdt", "sdt_goc", "uid", "manual"}
+_LY_DO_CODES = {"TU_TIM_DEN", "NGUOI_QUEN_GT", "KHACH_CU_MUA_LAI", "SO_KHAC_KHONG_NHO", "KHAC"}
+
+
+def _apply_lead_fields(target: dict[str, Any], body, *, is_patch: bool) -> None:
+    """Ghi 5 field lead + stamp lead_check_at.
+    Create: chỉ ghi khi có ít nhất 1 field non-None (đơn New đã check).
+    Patch: chỉ ghi khi FE gửi tường minh ít nhất 1 field lead (model_fields_set) —
+           cho phép clear về null khi đổi source New→non-New.
+    """
+    lead_fields = ("sdt_goc", "lead_matched", "lead_id", "lead_matched_by", "ly_do_khong_ghep")
+
+    if is_patch:
+        sent = getattr(body, "model_fields_set", set())
+        if not any(f in sent for f in lead_fields):
+            return
+    else:
+        if not any(getattr(body, f, None) is not None for f in lead_fields):
+            return
+
+    if body.lead_matched_by is not None and body.lead_matched_by not in _VALID_MATCHED_BY:
+        raise HTTPException(422, f"lead_matched_by phải thuộc {_VALID_MATCHED_BY}")
+    if body.ly_do_khong_ghep is not None and body.ly_do_khong_ghep not in _LY_DO_CODES:
+        raise HTTPException(422, f"ly_do_khong_ghep phải thuộc {_LY_DO_CODES}")
+
+    target["sdt_goc"] = _clean_text(body.sdt_goc) or None
+    target["lead_matched"] = body.lead_matched
+    target["lead_id"] = _clean_text(body.lead_id) or None
+    target["lead_matched_by"] = body.lead_matched_by
+    target["ly_do_khong_ghep"] = body.ly_do_khong_ghep
+    target["lead_check_at"] = datetime.now(timezone.utc).isoformat()
+
+
 def _payment_request_insert_row(body: PaymentRequestCreate) -> dict[str, Any]:
     uid = _clean_text(body.uid or body.uid_khach_hang)
     name = _clean_text(body.name or body.ten_khach)
@@ -1107,6 +1152,8 @@ def _payment_request_insert_row(body: PaymentRequestCreate) -> dict[str, Any]:
         row["lead_channel"] = body.lead_channel
     if body.wants_invoice is not None:
         row["wants_invoice"] = body.wants_invoice
+
+    _apply_lead_fields(row, body, is_patch=False)
     return row
 
 
@@ -1188,6 +1235,8 @@ def _payment_request_patch_row(body: PaymentRequestPatch, current_row: dict[str,
         patch["lead_channel"] = body.lead_channel or None
     if body.wants_invoice is not None:
         patch["wants_invoice"] = body.wants_invoice
+
+    _apply_lead_fields(patch, body, is_patch=True)
 
     if not patch:
         return {}
