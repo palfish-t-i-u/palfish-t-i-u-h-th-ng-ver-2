@@ -11,6 +11,7 @@ export interface LeadHit {
   leadDate: string | null;
   crmCode: string | null;
   ec: string | null;
+  saleName: string | null;
   status: string | null;
   status2: string | null;
   nation: string | null;
@@ -39,13 +40,14 @@ const INITIAL_STATE: LeadCheckState = {
 };
 
 function toHits(raw: typeof endpoints.leads extends { lookup: (...a: never[]) => Promise<{ data: { leads: infer L } }> } ? L : never): LeadHit[] {
-  return (raw as { lead_id: string; name: string | null; phone: string | null; lead_date: string | null; crm_code: string | null; ec: string | null; status: string | null; status_2: string | null; nation: string | null; uid: string | null; match_source: string | null }[]).map((l) => ({
+  return (raw as { lead_id: string; name: string | null; phone: string | null; lead_date: string | null; crm_code: string | null; ec: string | null; sale_name: string | null; status: string | null; status_2: string | null; nation: string | null; uid: string | null; match_source: string | null }[]).map((l) => ({
     leadId: l.lead_id,
     name: l.name,
     phone: l.phone,
     leadDate: l.lead_date,
     crmCode: l.crm_code,
     ec: l.ec,
+    saleName: l.sale_name,
     status: l.status,
     status2: l.status_2,
     nation: l.nation,
