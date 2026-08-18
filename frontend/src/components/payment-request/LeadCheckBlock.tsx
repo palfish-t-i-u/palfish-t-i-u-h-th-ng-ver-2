@@ -98,6 +98,11 @@ export default function LeadCheckBlock({
                placeholder="VD 0912 345 678"
                style={{ padding: "4px 6px", border: "1px solid var(--border)", borderRadius: 6 }} />
       </label>
+      {state.sdtGocNotFound && state.sdtGoc.trim() ? (
+        <div style={{ fontSize: 11, color: "var(--muted)", marginTop: -2 }}>
+          Đã tra số gốc — số này cũng không có trong kho. Đơn sẽ lưu số này kèm ghi chú.
+        </div>
+      ) : null}
       <label style={{ display: "flex", flexDirection: "column", gap: 2 }}>
         <span style={{ color: "var(--muted)" }}>Hoặc chọn lý do</span>
         <select value={state.reason} onChange={(e) => onReasonChange(e.target.value)}
