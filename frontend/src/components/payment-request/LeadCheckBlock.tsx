@@ -9,11 +9,41 @@ interface Props {
   onReasonChange: (val: string) => void;
 }
 
-function LeadLine({ hit }: { hit: LeadHit }) {
+/** ISO "2024-08-26" → "26/08/2024". Trả nguyên bản nếu không parse được. */
+function formatLeadDate(iso: string | null): string {
+  if (!iso) return "?";
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso);
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : iso;
+}
+
+/** Trạng thái đầy đủ (status_2 "L3.1 Có lịch học thử") ưu tiên hơn mã rút gọn (status "L3"). */
+function statusLabel(hit: LeadHit): string | null {
+  return hit.status2 || hit.status || null;
+}
+
+/** Khối chi tiết 1 lead, có nhãn — dùng cho trường hợp khớp đúng 1 lead. */
+function LeadDetail({ hit }: { hit: LeadHit }) {
+  const st = statusLabel(hit);
+  return (
+    <div style={{ marginTop: 4, display: "flex", flexDirection: "column", gap: 1, color: "var(--gmv-text, #1f2937)" }}>
+      <div><span style={{ color: "var(--muted)" }}>Ngày lead xuất hiện:</span> {formatLeadDate(hit.leadDate)}</div>
+      <div>
+        <span style={{ color: "var(--muted)" }}>Kênh:</span> {hit.crmCode || "?"}
+        {hit.saleName ? <> · <span style={{ color: "var(--muted)" }}>Sale:</span> {hit.saleName}</> : null}
+      </div>
+      {st ? <div><span style={{ color: "var(--muted)" }}>Trạng thái:</span> {st}</div> : null}
+    </div>
+  );
+}
+
+/** 1 dòng gọn cho danh sách radio (nhiều lead) — tên + ngày + kênh + sale + trạng thái. */
+function LeadLineCompact({ hit }: { hit: LeadHit }) {
+  const st = statusLabel(hit);
   return (
     <span>
-      {hit.name || "(không tên)"} · {hit.leadDate || "?"} · kênh {hit.crmCode || "?"}
-      {hit.status ? ` · ${hit.status}` : ""}
+      <b>{hit.name || "(không tên)"}</b> · {formatLeadDate(hit.leadDate)} · kênh {hit.crmCode || "?"}
+      {hit.saleName ? ` · ${hit.saleName}` : ""}
+      {st ? ` · ${st}` : ""}
     </span>
   );
 }
@@ -33,18 +63,18 @@ export default function LeadCheckBlock({
       <div style={{ background: "var(--success-bg, #ecfdf5)", border: "1px solid var(--success, #10b981)",
                     borderRadius: 8, padding: 8, fontSize: 12 }}>
         <div style={{ fontWeight: 600, color: "var(--success, #059669)" }}>
-          ✓ Khớp lead{state.matchedBy === "sdt_goc" ? " qua số gốc" : ""}:
+          ✓ Khớp lead{state.matchedBy === "sdt_goc" ? " qua số gốc" : ""}: {!many ? (state.leads[0]?.name || "(không tên)") : ""}
         </div>
         {!many ? (
-          <div style={{ marginTop: 2 }}><LeadLine hit={state.leads[0]} /></div>
+          <LeadDetail hit={state.leads[0]} />
         ) : (
-          <div style={{ marginTop: 4, display: "flex", flexDirection: "column", gap: 2 }}>
+          <div style={{ marginTop: 4, display: "flex", flexDirection: "column", gap: 3 }}>
             <div style={{ color: "var(--muted)" }}>Có {state.leads.length} lead — chọn đúng khách:</div>
             {state.leads.map((h) => (
-              <label key={h.leadId} style={{ display: "flex", gap: 6, alignItems: "center", cursor: "pointer" }}>
+              <label key={h.leadId} style={{ display: "flex", gap: 6, alignItems: "flex-start", cursor: "pointer" }}>
                 <input type="radio" name="lead-pick" checked={state.selectedLeadId === h.leadId}
-                       onChange={() => onSelectLead(h.leadId)} />
-                <LeadLine hit={h} />
+                       onChange={() => onSelectLead(h.leadId)} style={{ marginTop: 2 }} />
+                <LeadLineCompact hit={h} />
               </label>
             ))}
           </div>

@@ -36,8 +36,12 @@ CREATE TABLE IF NOT EXISTS public.leads_lookup (
   status_2     TEXT,
   nation       TEXT,
   source_name  TEXT,
+  sale_name    TEXT,          -- tên đầy đủ sale phụ trách lead (join dim_sale lúc seed; ~91% khớp)
   synced_at    TIMESTAMPTZ DEFAULT now()
 );
+
+-- Idempotent: nếu bảng đã tồn tại từ lần chạy trước (chưa có sale_name)
+ALTER TABLE public.leads_lookup ADD COLUMN IF NOT EXISTS sale_name TEXT;
 
 CREATE INDEX IF NOT EXISTS idx_leads_lookup_phone9 ON public.leads_lookup (phone9);
 CREATE INDEX IF NOT EXISTS idx_leads_lookup_uid    ON public.leads_lookup (uid) WHERE uid IS NOT NULL AND uid <> '';

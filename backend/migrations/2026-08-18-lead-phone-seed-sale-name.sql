@@ -1,0 +1,41 @@
+-- ============================================================================
+-- Tham chiếu SEED cột sale_name cho leads_lookup (dùng khi seed prod — M5-N3)
+-- ============================================================================
+-- Bối cảnh: leads_lookup lưu `ec` = mã sale viết tắt của BQ (vd "HN - AnhLTL").
+-- Doc Hiếu §7 yêu cầu khối khớp lead hiện TÊN SALE. BQ lead_phone_lookup KHÔNG
+-- có tên đầy đủ — phải LEFT JOIN bảng danh bạ `crm_leads.dim_sale` (ec_code → full_name).
+--
+-- Đo trên toàn tập leads_all (65.891 dòng có ec):
+--   - Khớp chuẩn hoá (bỏ tiền tố vùng + lowercase): ~91%
+--   - Nhập nhằng (1 khoá → >1 tên): chỉ 2/174 khoá → LOẠI để tránh gắn nhầm tên
+--   - ~9% không khớp (sale đã nghỉ / mã gõ sai) → sale_name = NULL, khối ẩn dòng Sale
+--
+-- CHỈ đọc crm_leads + ghi app_lookup — KHÔNG sửa gì trong crm_leads (đúng ràng buộc Hiếu).
+--
+-- ── Cách A (khuyến nghị): thêm cột vào lúc EXPORT từ BQ để sinh INSERT seed ──
+-- Chạy trên BQ, thay phần SELECT nguồn của bộ seed hiện có bằng câu dưới
+-- (giữ nguyên logic sinh lead_id MD5 composite của bộ seed):
+--
+--   WITH ds AS (
+--     SELECT LOWER(TRIM(REGEXP_REPLACE(ec_code, r'^[A-Za-z0-9]+\s*-\s*',''))) AS k,
+--            ANY_VALUE(full_name) AS full_name
+--     FROM `daily-report-smai-to-openclaw.crm_leads.dim_sale`
+--     WHERE COALESCE(ec_code,'') != ''
+--     GROUP BY k
+--     HAVING COUNT(DISTINCT full_name_key) = 1     -- loại 2 khoá nhập nhằng
+--   )
+--   SELECT lk.phone9, lk.match_source, lk.phone_goc, lk.name, lk.uid, lk.lead_date,
+--          lk.crm_code, lk.ec, ds.full_name AS sale_name,
+--          lk.status, lk.status_2, lk.nation, lk.source_name
+--   FROM `daily-report-smai-to-openclaw.app_lookup.lead_phone_lookup` lk
+--   LEFT JOIN ds
+--     ON LOWER(TRIM(REGEXP_REPLACE(lk.ec, r'^[A-Za-z0-9]+\s*-\s*',''))) = ds.k;
+--
+-- ── Cách B: nếu leads_lookup đã seed sẵn (chỉ thiếu sale_name) → backfill tại chỗ ──
+-- Pull bảng map (k, full_name) từ BQ (câu `ds` ở trên), rồi UPDATE trong Supabase:
+--   UPDATE public.leads_lookup t SET sale_name = m.full_name
+--   FROM (VALUES (:k, :full_name), ...) AS m(k, full_name)
+--   WHERE t.ec IS NOT NULL AND t.ec <> ''
+--     AND lower(trim(regexp_replace(t.ec, '^[A-Za-z0-9]+\s*-\s*', ''))) = m.k;
+-- (chuẩn hoá Postgres phải KHỚP HỆT chuẩn hoá BQ ở trên — cùng regex bỏ tiền tố + lowercase)
+-- ============================================================================

@@ -19,7 +19,8 @@ describe("useLeadCheck", () => {
     lookup.mockResolvedValue({ data: {
       matched: true, matched_by: "sdt",
       leads: [{ lead_id: "L1", name: "A", phone: "0912345678", lead_date: "2026-07-01",
-                crm_code: "300265", ec: "E", status: "L4", status_2: null, nation: null,
+                crm_code: "300265", ec: "E", sale_name: "Le Thi Thanh Hien",
+                status: "L4", status_2: null, nation: null,
                 uid: null, match_source: "phone" }],
     } });
     const { result } = renderHook(() => useLeadCheck());
@@ -27,6 +28,7 @@ describe("useLeadCheck", () => {
     expect(result.current.leadCheck.status).toBe("matched");
     expect(result.current.leadCheck.selectedLeadId).toBe("L1");
     expect(result.current.leadCheck.matchedBy).toBe("sdt");
+    expect(result.current.leadCheck.leads[0].saleName).toBe("Le Thi Thanh Hien");
   });
 
   it("matched: nhiều lead → radio, selectedLeadId = dòng đầu", async () => {
@@ -97,7 +99,7 @@ describe("buildLeadPayload", () => {
     const p = buildLeadPayload({
       ...IDLE_STATE, status: "matched", matchedBy: "sdt",
       leads: [{ leadId: "L1", name: "A", phone: null, leadDate: null, crmCode: null,
-                ec: null, status: null, status2: null, nation: null, uid: null, matchSource: null }],
+                ec: null, saleName: null, status: null, status2: null, nation: null, uid: null, matchSource: null }],
       selectedLeadId: "L1",
     });
     expect(p.lead_matched).toBe(true);

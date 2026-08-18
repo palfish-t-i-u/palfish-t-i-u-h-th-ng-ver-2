@@ -85,6 +85,7 @@ def register_leads_routes(app: FastAPI, get_sb):
                 "lead_date": l.get("lead_date"),
                 "crm_code": l.get("crm_code"),
                 "ec": l.get("ec"),
+                "sale_name": l.get("sale_name"),
                 "status": l.get("status"),
                 "status_2": l.get("status_2"),
                 "nation": l.get("nation"),
