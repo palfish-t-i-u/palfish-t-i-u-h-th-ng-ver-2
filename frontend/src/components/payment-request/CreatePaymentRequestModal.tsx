@@ -123,9 +123,10 @@ export default function CreatePaymentRequestModal({
 
   const isNewSource = NEW_CHECK_SOURCES.has(form.leadSource);
   const leadS = lead.leadCheck.status;
-  // Chốt chặn (Hiếu): đơn không khớp phải chọn lý do — mà lý do chỉ mở sau khi sale
-  // đã tra SĐT gốc bất thành (khoá trong LeadCheckBlock). Nên submit "none" = bắt buộc có lý do.
+  // Lead check optional: kho lead chưa auto-sync (snapshot 18/8) nên chặn sale sẽ gây false block.
+  // Khi pipeline BQ→Supabase 1h/lần lên (PLAN_LEAD_SYNC_AUTO), bật lại gate bằng cách bỏ `|| true`.
   const leadGateOk =
+    true ||  // TẠM GỠ — bật lại khi kho lead auto-sync
     !isNewSource ||
     leadS === "matched" ||
     leadS === "error" ||
@@ -139,10 +140,12 @@ export default function CreatePaymentRequestModal({
   );
 
   const handleSubmit = async () => {
-    if (isNewSource && (lead.leadCheck.status === "idle" || lead.leadCheck.status === "loading")) {
-      await lead.runCheck(crmPhoneFormat(form.phone, findCountry(form.country)), form.uid);
-      return;
-    }
+    // TẠM GỠ — auto-check khi submit chặn sale tạo PR vì kho lead chưa sync.
+    // Bật lại khi pipeline auto-sync lên (PLAN_LEAD_SYNC_AUTO).
+    // if (isNewSource && (lead.leadCheck.status === "idle" || lead.leadCheck.status === "loading")) {
+    //   await lead.runCheck(crmPhoneFormat(form.phone, findCountry(form.country)), form.uid);
+    //   return;
+    // }
     if (!canSubmit || submitting) return;
     const foreignCountryName = form.isForeign
       ? COUNTRIES.find((c) => c.code === form.foreignCountry)?.name ?? form.foreignCountry
