@@ -270,7 +270,7 @@ function fillData_t_(sh, rows) {
   });
   setFormulaCol_(sh, SR, n, C_.bhyt, function(r) {
     var E = fc(C_.loai_nv)+r, Y = fc(C_.luong_bh)+r;
-    return '=IF(OR('+E+'="CTV";'+E+'="TTS");0;'+Y+'*1,5%)';
+    return '=IF(OR('+E+'="CTV";'+E+'="TTS");0;'+Y+'*15/1000)';
   });
   setFormulaCol_(sh, SR, n, C_.bhtn, function(r) {
     var E = fc(C_.loai_nv)+r, Y = fc(C_.luong_bh)+r;

@@ -14,9 +14,9 @@
  *
  * Thuế TNCN 2026 — 5 bậc lũy tiến (Luật TNCN 2025, hiệu lực 01/01/2026):
  *   ≤10tr=5% | 10-30tr=10% | 30-60tr=20% | 60-100tr=30% | >100tr=35%
- * CTV: 10% flat nếu ≥5tr, 0 nếu <5tr. TTS: 10% flat nếu ≥5tr, 0 nếu <5tr.
+ * KHÔNG phải Chính thức (Thử việc / TTS / CTV): 10% flat nếu ≥5tr, 0 nếu <5tr.
  *
- * Ngoại lệ: HN0051 Nguyễn Thị Sương Mai, HN0164 Nguyễn Thị Oanh → thuế = 0.
+ * Ngoại lệ: HN0051 Nguyễn Thị Sương Mai, HN0163 Nguyễn Thị Thắm, HN0164 Nguyễn Thị Oanh → thuế = 0.
  *
  * ⚠ FIX so với BangLuong.gs: nhánh >100tr bỏ cụm 30tr×20% thừa (dư 6tr thuế).
  */
@@ -40,7 +40,7 @@ var SQL_THUE = [
   "    WHEN t.title_job LIKE '%@%' THEN 'Page admin'",
   "    ELSE t.title_job",
   "  END AS title_job,",
-  "  COALESCE(t.type_self, 'N/A') AS employee_type,",
+  "  COALESCE(TRIM(t.type_self), 'N/A') AS employee_type,",
   "  COALESCE(t.luong_dong_bao_hiem, 0) AS luong_co_dinh,",
   "  cb.tong_cong AS ngay_cong,",
   "  COALESCE(t.income_col_u, 0) AS income_col_u_val,",
@@ -49,20 +49,13 @@ var SQL_THUE = [
   "  COALESCE(t.dien_thoai_van, 0) AS dien_thoai,",
   "  COALESCE(t.tro_cap_may_tinh, 0) AS may_tinh_val,",
   "  t.luong_dong_bao_hiem AS luong_dong_bh,",
-  "  ARRAY_LENGTH(REGEXP_EXTRACT_ALL(",
-  "    COALESCE(s.dependent_information,''), r'(?:19|20)[0-9]{2}'",
-  "  )) AS so_npt",
+  "  COALESCE(t.so_nguoi_phu_thuoc, 0) AS so_npt",
   "FROM `pf-salary.payroll.C_view_bang_luong_truoc_thue` t",
   "LEFT JOIN (",
   "  SELECT code, tong_cong,",
   "    ROW_NUMBER() OVER (PARTITION BY code ORDER BY code) AS rn",
   "  FROM `pf-salary.payroll.C_view_bang_luong_co_ban_theo_ngay_cong`",
   ") cb ON cb.code = t.code AND cb.rn = 1",
-  "LEFT JOIN (",
-  "  SELECT code, dependent_information,",
-  "    ROW_NUMBER() OVER (PARTITION BY code ORDER BY code) AS rn",
-  "  FROM `pf-salary.payroll.C_raw_staff_info_merged`",
-  ") s ON s.code = t.code AND s.rn = 1",
   "ORDER BY",
   "  CASE",
   "    WHEN t.title_job LIKE '%Giám đốc%' THEN 1",
@@ -74,7 +67,7 @@ var SQL_THUE = [
   "    WHEN t.title_job LIKE '%Teacher%' OR t.title_job LIKE '%Giáo viên%' THEN 8",
   "    WHEN UPPER(t.workplace) LIKE 'INHOUSE 1%' THEN 2",
   "    ELSE 9 END,",
-  "  CASE WHEN t.title_job LIKE '%Giám đốc%' THEN 1 WHEN t.title_job LIKE '%Leader%' OR t.title_job LIKE '%leader%' THEN 2 WHEN COALESCE(t.type_self,'') IN ('CTV','TTS') THEN 4 ELSE 3 END,",
+  "  CASE WHEN t.title_job LIKE '%Giám đốc%' THEN 1 WHEN t.title_job LIKE '%Leader%' OR t.title_job LIKE '%leader%' THEN 2 WHEN COALESCE(TRIM(t.type_self),'') NOT IN ('Chính thức','Thử việc','') THEN 4 ELSE 3 END,",
   "  t.full_name"
 ].join('\n');
 
@@ -207,7 +200,7 @@ function buildHeaders_t_(sh) {
   sh.getRange(3, C_.bhxh, 2, 4).setBackground('#7c3aed');
 
   // Row 5: note row
-  sh.getRange(5, C_.loai_nv).setValue('NV/CV + Leader + GĐ = lũy tiến · CTV = 10% flat · TTS = 10% flat');
+  sh.getRange(5, C_.loai_nv).setValue('Chính thức = lũy tiến · Thử việc / TTS / CTV = 10% flat');
   sh.getRange(5, 1, 1, NUM_COLS).setBackground('#F3F4F6')
     .setFontSize(9).setFontColor('#6b7280');
   // Merge note chỉ trong vùng không frozen (cột 4+)
@@ -271,16 +264,16 @@ function fillData_t_(sh, rows) {
     return '=' + fc(C_.tong_tn)+r + '-' + fc(C_.luong_huong)+r + '-' + fc(C_.an_ca)+r + '-' + fc(C_.xang_xe)+r + '-' + fc(C_.dien_thoai)+r;
   });
 
-  // R: GT bản thân (0 cho CTV/TTS)
+  // R: GT bản thân (chỉ Chính thức mới có giảm trừ; flat 10% = không giảm trừ)
   setFormulaCol_(sh, SR, n, C_.gt_bt, function(r) {
     var E = fc(C_.loai_nv)+r;
-    return '=IF(OR('+E+'="CTV";'+E+'="TTS");0;15500000)';
+    return '=IF('+E+'="Chính thức";15500000;0)';
   });
 
-  // S: GT phụ thuộc (0 cho CTV/TTS)
+  // S: GT phụ thuộc (chỉ Chính thức mới có giảm trừ)
   setFormulaCol_(sh, SR, n, C_.gt_npt, function(r) {
     var E = fc(C_.loai_nv)+r;
-    return '=IF(OR('+E+'="CTV";'+E+'="TTS");0;'+fc(C_.so_npt)+r+'*6200000)';
+    return '=IF('+E+'="Chính thức";'+fc(C_.so_npt)+r+'*6200000;0)';
   });
 
   // T: Tổng giảm trừ
@@ -289,26 +282,27 @@ function fillData_t_(sh, rows) {
   });
 
   // U: TN chịu thuế — pipeline Chung (Tổng TN = income_col_u = anchor)
-  // Chính thức: income_col_u − an_ca_van − dien_thoai
-  // CTV/TTS: income_col_u (giữ nguyên)
+  // Chính thức: income_col_u − an_ca_van − dien_thoai (→ lũy tiến)
+  // Thử việc / TTS / CTV: income_col_u (giữ nguyên → flat 10%)
   setFormulaCol_(sh, SR, n, C_.tn_ct, function(r) {
     var E = fc(C_.loai_nv)+r;
     var Q = fc(C_.tong_tn)+r;
-    return '=IF(OR('+E+'="CTV";'+E+'="TTS");'+Q+';'+Q+'-'+fc(C_.an_ca)+r+'-'+fc(C_.dien_thoai)+r+')';
+    return '=IF('+E+'="Chính thức";'+Q+'-'+fc(C_.an_ca)+r+'-'+fc(C_.dien_thoai)+r+';'+Q+')';
   });
 
-  // Z-AB: BH breakdown (0 cho CTV/TTS)
+  // Z-AB: BH breakdown — chỉ Chính thức + Thử việc đóng BH; CTV/TTS (mọi nhãn) = 0.
+  // Key theo 2 loại ỔN ĐỊNH → bền khi Chung đổi nhãn CTV/TTS.
   setFormulaCol_(sh, SR, n, C_.bhxh, function(r) {
     var E = fc(C_.loai_nv)+r, Y = fc(C_.luong_bh)+r;
-    return '=IF(OR('+E+'="CTV";'+E+'="TTS");0;'+Y+'*8%)';
+    return '=IF(OR('+E+'="Chính thức";'+E+'="Thử việc");'+Y+'*8%;0)';
   });
   setFormulaCol_(sh, SR, n, C_.bhyt, function(r) {
     var E = fc(C_.loai_nv)+r, Y = fc(C_.luong_bh)+r;
-    return '=IF(OR('+E+'="CTV";'+E+'="TTS");0;'+Y+'*1,5%)';
+    return '=IF(OR('+E+'="Chính thức";'+E+'="Thử việc");'+Y+'*15/1000;0)';
   });
   setFormulaCol_(sh, SR, n, C_.bhtn, function(r) {
     var E = fc(C_.loai_nv)+r, Y = fc(C_.luong_bh)+r;
-    return '=IF(OR('+E+'="CTV";'+E+'="TTS");0;'+Y+'*1%)';
+    return '=IF(OR('+E+'="Chính thức";'+E+'="Thử việc");'+Y+'*1%;0)';
   });
 
   // AC: Tổng BH
@@ -340,9 +334,9 @@ function fillData_t_(sh, rows) {
 
 /**
  * Thuế TNCN theo loại NV:
- * - CTV/TTS: 10% flat nếu tổng TN ≥ 5tr, 0 nếu < 5tr (KHÔNG trừ ăn ca)
- * - Còn lại: lũy tiến 5 bậc 2026 trên TN tính thuế
- * - Ngoại lệ: HN0051, HN0164 → thuế = 0
+ * - Chính thức: lũy tiến 5 bậc 2026 trên TN tính thuế
+ * - Thử việc / TTS / CTV: 10% flat nếu tổng TN ≥ 5tr, 0 nếu < 5tr (KHÔNG trừ ăn ca)
+ * - Ngoại lệ: HN0051, HN0163, HN0164 → thuế = 0
  */
 function thueTNCN_v_(r) {
   var B = cl_(C_.code)+r;
@@ -360,7 +354,7 @@ function thueTNCN_v_(r) {
     'IF('+V+'<=100000000;8500000+('+V+'-60000000)*30%;' +
     '20500000+('+V+'-100000000)*35%)))))';
 
-  return '=IF(OR('+B+'="HN0051";'+B+'="HN0164");0;IF(OR('+E+'="CTV";'+E+'="TTS");'+flat10+';'+prog+'))';
+  return '=IF(OR('+B+'="HN0051";'+B+'="HN0163";'+B+'="HN0164");0;IF('+E+'="Chính thức";'+prog+';'+flat10+'))';
 }
 
 /* ======== FORMAT ======== */

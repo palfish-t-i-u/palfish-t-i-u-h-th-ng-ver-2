@@ -27,26 +27,30 @@ const BQ_SQL = [
   "    WHEN t.workplace LIKE 'Work from home%' THEN 'WFH'",
   "    ELSE COALESCE(t.workplace,'Khác') END AS team,",
   "  t.full_name, t.title_job, t.don_vi_cong,",
-  "  t.type_self AS employee_type,",
+  "  TRIM(t.type_self) AS employee_type,",
   "  SAFE_CAST(t.basic_salary AS INT64) AS luong_co_ban,",
   "  cb.tong_cong AS cong,",
   "  t.luong_co_ban_theo_ngay_cong AS lcb_theo_ngay_cong,",
   "  t.bonus_com AS thuong_com,",
   "  t.bao_hiem_xa_hoi AS bao_hiem,",
   "  t.gmv_vnd AS gmv,",
+  "  COALESCE(t.gmv_ban_moi, 0) AS gmv_ban_moi,",
+  "  COALESCE(t.gmv_gioi_thieu, 0) AS gmv_gioi_thieu,",
+  "  COALESCE(t.gmv_tai_ky, 0) AS gmv_tai_ky,",
   "  t.tro_cap_an_trua AS an_trua,",
   "  t.tro_cap_may_tinh AS may_tinh,",
   "  COALESCE(t.tro_cap_xe_trach_nhiem,0) AS xe_pc,",
+  "  COALESCE(t.bu_tien, 0) AS bu_tien,",
+  "  COALESCE(t.thue_tncn, 0) AS thue_tncn,",
   "  t.an_ca_van,",
   "  t.dien_thoai_van,",
   "  t.ghi_chu_thuong_nong,",
-  "  ARRAY_LENGTH(REGEXP_EXTRACT_ALL(COALESCE(s.dependent_information,''), r'(?:19|20)[0-9]{2}')) AS so_npt",
+  "  COALESCE(t.so_nguoi_phu_thuoc, 0) AS so_npt",
   "FROM `pf-salary.payroll.C_view_bang_luong_truoc_thue` t",
   "LEFT JOIN `pf-salary.payroll.C_view_bang_luong_co_ban_theo_ngay_cong` cb ON cb.code = t.code",
-  "LEFT JOIN `pf-salary.payroll.C_raw_staff_info_merged` s ON s.code = t.code",
   "ORDER BY",
   "  CASE team WHEN 'BOD' THEN 1 WHEN 'Inhouse 1' THEN 2 WHEN 'CSKH' THEN 3 WHEN 'Inhouse 2' THEN 4 WHEN 'Offline' THEN 5 WHEN 'Back office' THEN 6 WHEN 'MKT' THEN 7 WHEN 'Head quarter' THEN 8 ELSE 9 END,",
-  "  CASE WHEN t.title_job LIKE '%Giám đốc%' THEN 1 WHEN t.title_job LIKE '%Leader%' OR t.title_job LIKE '%leader%' THEN 2 WHEN COALESCE(t.type_self,'') IN ('CTV','TTS') THEN 4 ELSE 3 END,",
+  "  CASE WHEN t.title_job LIKE '%Giám đốc%' THEN 1 WHEN t.title_job LIKE '%Leader%' OR t.title_job LIKE '%leader%' THEN 2 WHEN COALESCE(TRIM(t.type_self),'') NOT IN ('Chính thức','Thử việc','') THEN 4 ELSE 3 END,",
   "  t.full_name"
 ].join('\n');
 
@@ -54,14 +58,6 @@ function colIndex(key){ for(let i=0;i<COLS.length;i++) if(COLS[i].key===key) ret
 function C(key){ return columnToLetter(colIndex(key)); }
 function columnToLetter(n){ let s=''; while(n>0){ const m=(n-1)%26; s=String.fromCharCode(65+m)+s; n=(n-m-1)/26; } return s; }
 
-// Thuế TNCN lũy tiến 5 bậc — returns formula body (no leading =).
-function thueTNCN(x){
-  return 'IF('+x+'<=10000000;'+x+'*5%;'
-       + 'IF('+x+'<=30000000;10000000*5%+('+x+'-10000000)*10%;'
-       + 'IF('+x+'<=60000000;10000000*5%+20000000*10%+('+x+'-30000000)*20%;'
-       + 'IF('+x+'<=100000000;10000000*5%+20000000*10%+30000000*20%+('+x+'-60000000)*30%;'
-       + '10000000*5%+20000000*10%+30000000*20%+40000000*30%+('+x+'-100000000)*35%))))';
-}
 
 const COLS = [
   // --- Identity ---
@@ -72,38 +68,25 @@ const COLS = [
   { key:'chuc_danh',     h:'Chức danh',                        role:'auto',  src:'title_job' },
   { key:'employee_type', h:'Loại NV',                           role:'auto',  src:'employee_type' },
   // --- Summary ---
-  { key:'tong_lt',       h:'Tổng lương + thưởng (Net)',        role:'calc',  f:r=>'='+C('gross')+r+'-'+C('khau_tru_thue')+r },
-  { key:'gross',         h:'Tổng trước thuế',                   role:'calc',  f:r=>'='+C('tong_luong')+r+'+'+C('thuong_com')+r },
-  { key:'tong_luong',    h:'Tổng lương',                       role:'calc',  f:r=>'='+C('lcb_ngay_cong')+r+'+'+C('an_trua')+r+'+'+C('may_tinh')+r+'+'+C('xe_pc')+r+'-'+C('bao_hiem')+r+'+'+C('bu_tien')+r },
-  // --- Components ---
+  { key:'tong_lt',       h:'Tổng lương + thưởng (Net)',        role:'calc',  f:r=>'='+C('tong_luong')+r+'+'+C('thuong_com')+r },
+  { key:'tong_luong',    h:'Tổng lương',                       role:'calc',  f:r=>'='+C('lcb_ngay_cong')+r+'+'+C('an_trua')+r+'+'+C('may_tinh')+r+'+'+C('xe_pc')+r+'-'+C('bao_hiem')+r+'+'+C('bu_tien')+r+'-'+C('khau_tru_thue')+r },
+  // --- Components (khớp bảng lương chị Trang tab 202607) ---
   { key:'luong_cb',      h:'Lương cơ bản',                     role:'auto',  src:'luong_co_ban' },
-  { key:'cong',          h:'Công',                             role:'input', src:'cong' },
+  { key:'cong',          h:'Công',                             role:'auto',  src:'cong' },
   { key:'lcb_ngay_cong', h:'LCB theo ngày công',               role:'auto',  src:'lcb_theo_ngay_cong' },
   { key:'thuong_com',    h:'Thưởng COM',                       role:'input', src:'thuong_com' },
   { key:'bao_hiem',      h:'Bảo hiểm',                         role:'auto',  src:'bao_hiem' },
   { key:'gmv',           h:'GMV',                              role:'auto',  src:'gmv' },
+  { key:'gmv_ban_moi',   h:'GMV bán mới',                      role:'auto',  src:'gmv_ban_moi' },
+  { key:'gmv_gioi_thieu',h:'GMV giới thiệu',                   role:'auto',  src:'gmv_gioi_thieu' },
+  { key:'gmv_tai_ky',    h:'GMV tái ký',                        role:'auto',  src:'gmv_tai_ky' },
   { key:'an_trua',       h:'Hỗ trợ ăn trưa',                   role:'auto',  src:'an_trua' },
   { key:'may_tinh',      h:'Tiền hỗ trợ máy tính',             role:'auto',  src:'may_tinh' },
   { key:'xe_pc',         h:'Hỗ trợ tiền xe + PC trách nhiệm',  role:'input', src:'xe_pc' },
-  { key:'dien_thoai',    h:'Phụ cấp điện thoại',                role:'auto',  src:'dien_thoai_van' },
-  { key:'khau_tru_thue', h:'Khấu trừ thuế',                    role:'calc',  f:r=>'='+C('thue_tncn')+r },
-  { key:'bu_tien',       h:'Bù tiền',                          role:'input', src:null },
-  { key:'ghi_chu_thuong_nong', h:'Ghi chú thưởng nóng',         role:'auto',  src:'ghi_chu_thuong_nong' },
+  { key:'khau_tru_thue', h:'Khấu trừ thuế',                    role:'auto',  src:'thue_tncn' },
+  { key:'bu_tien',       h:'Bù tiền',                          role:'input', src:'bu_tien' },
   { key:'note',          h:'Note',                             role:'input', src:null },
-  // --- Tax computation ---
-  { key:'npt',           h:'Số người phụ thuộc',               role:'input', src:'so_npt' },
-  { key:'tong_tn',       h:'Tổng thu nhập',                    role:'calc',  f:r=>'='+C('lcb_ngay_cong')+r+'+'+C('thuong_com')+r+'+'+C('an_trua')+r+'+'+C('may_tinh')+r+'+'+C('xe_pc')+r+'+'+C('dien_thoai')+r },
-  { key:'income_col_u',  h:'TN trước thuế',                     role:'calc',  f:r=>'='+C('lcb_ngay_cong')+r+'+'+C('thuong_com')+r+'+'+C('an_trua')+r+'+'+C('may_tinh')+r+'+'+C('xe_pc')+r+'+'+C('bu_tien')+r },
-  { key:'an_ca_van',     h:'Ăn ca (thuế)',                     role:'auto',  src:'an_ca_van' },
-  { key:'tnct',          h:'Thu nhập chịu thuế',               role:'calc',
-    f:r=>'=IF('+C('employee_type')+r+'="Chính thức";'+C('income_col_u')+r+'-'+C('an_ca_van')+r+'-'+C('dien_thoai')+r+';'+C('income_col_u')+r+')' },
-  { key:'gt_ban_than',   h:'Giảm trừ bản thân',                role:'calc',  f:r=>'='+CFG.giamTruBanThan },
-  { key:'gt_npt',        h:'Giảm trừ NPT',                     role:'calc',  f:r=>'='+C('npt')+r+'*'+CFG.giamTruMoiNPT },
-  { key:'tntt',          h:'Thu nhập tính thuế',               role:'calc',
-    f:r=>'=IF('+C('employee_type')+r+'="Chính thức";MAX(0;'+C('tnct')+r+'-'+C('bao_hiem')+r+'-'+C('gt_ban_than')+r+'-'+C('gt_npt')+r+');'+C('tnct')+r+')' },
-  { key:'thue_tncn',     h:'Thuế TNCN',                        role:'calc',
-    f:r=>'=IF(OR('+C('code')+r+'="HN0051";'+C('code')+r+'="HN0164");0;IF('+C('employee_type')+r+'="Chính thức";'+thueTNCN(C('tntt')+r)+';IF('+C('tntt')+r+'>=5000000;'+C('tntt')+r+'*10%;0)))' },
-  { key:'net',           h:'Lương thực lãnh (Net)',            role:'calc',  f:r=>'='+C('tong_lt')+r },
+  { key:'gc_thuong_nong',h:'Ghi chú thưởng nóng',              role:'auto',  src:'ghi_chu_thuong_nong' },
   // --- Status (khớp GATE_COLS trong PhieuLuongGate.gs — 5 cột tuần tự) ---
   { key:'xn_tt',         h:'Xác nhận thông tin',               role:'status', kind:'check' },
   { key:'gui_truoc',     h:'Gửi BL trước thuế',                role:'status', kind:'check' },
@@ -114,14 +97,110 @@ const COLS = [
 
 function onOpen(){
   SpreadsheetApp.getUi().createMenu('⚙ Bảng lương')
-    .addItem('🔄 Cập nhật từ BigQuery', 'capNhatTuBigQuery')
-    .addItem('📊 Cập nhật bảng tính thuế', 'capNhatBangThue')
-    .addItem('📊 Đối soát với bảng Trang', 'doiSoatLuong')
+    .addItem('🔄 (1) Cập nhật bảng lương', 'capNhatTuBigQuery')
+    .addItem('📋 (2) Đối soát với bảng lương mẫu', 'doiSoatLuong')
+    .addSeparator()
+    .addItem('🎨 Định dạng lại (không cần BQ)', 'dinhDangBangLuong')
+    .addItem('📊 Cập nhật bảng tính thuế (tham chiếu)', 'capNhatBangThue')
+    .addSeparator()
+    .addItem('🧾 Tạo tab Nhập tay (input)', 'taoTabNhapTay')
+    .addItem('🗓️ Tạo tab Chấm công', 'taoTabChamCong')
     .addSeparator()
     .addItem('🔌 Cài đặt cổng gửi phiếu', 'installGateTriggers')
     .addItem('📤 Gửi phiếu đang chờ', 'flushOutbox')
     .addItem('📋 Mở hàng đợi', 'moHangDoi')
     .addToUi();
+}
+
+/* ================== TAB NHẬP TAY (kho input duy nhất) ==================
+ * Chung nới bảng BQ C_imput_bao_hiem_tro_cap để chứa mọi ô input.
+ * Nguồn hiện có = tab "Lương đóng BHXH" ở sheet HRIS.
+ * Ta tạo 1 tab "Nhập tay" TRÊN CHÍNH sheet Bảng lương tự động: import data hiện
+ * có + thêm cột input của app → 1 CHỖ DUY NHẤT để chị Trang điền tay.
+ * Sau đó Chung tự nối tab này ngược lên BQ.
+ */
+const INPUT_CFG = {
+  srcSheetId:  '168xXReeOhfsTB_9mhurmM-WgUElYf6TvLwb1n2P47Fc',
+  srcTabName:  'Lương đóng BHXH',
+  destTabName: 'Nhập tay',
+  // Cột input của app KHÔNG có sẵn ở tab nguồn (bù tiền + xe+PC đã có bên nguồn).
+  // NPT bỏ — Chung: lấy từ nguồn Vân (so_nguoi_phu_thuoc đã có trong BQ).
+  extraInputCols: ['Thưởng COM (nhập tay)', 'Khấu trừ thuế (nhập tay)', 'Note'],
+};
+
+function taoTabNhapTay(){
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const ui = SpreadsheetApp.getUi();
+
+  // Tab đã tồn tại: KHÔNG import đè (giữ data Trang đã điền), chỉ THÊM cột input còn thiếu.
+  const existing = ss.getSheetByName(INPUT_CFG.destTabName);
+  if(existing){
+    const lastCol = existing.getLastColumn();
+    const hdr = existing.getRange(1, 1, 1, lastCol).getValues()[0].map(function(x){ return String(x).trim(); });
+    const missing = INPUT_CFG.extraInputCols.filter(function(h){ return hdr.indexOf(h) < 0; });
+    if(!missing.length){ ui.alert('Tab "'+INPUT_CFG.destTabName+'" đã đủ cột — không cần làm gì.'); return; }
+    existing.getRange(1, lastCol+1, 1, missing.length).setValues([missing])
+      .setFontWeight('bold').setBackground('#0b5394').setFontColor('white')
+      .setWrap(true).setHorizontalAlignment('center');
+    const nRows = existing.getLastRow();
+    if(nRows > 1) existing.getRange(2, lastCol+1, nRows-1, missing.length).setBackground('#FFF8E1');
+    for(let k=lastCol+1; k<=lastCol+missing.length; k++) existing.autoResizeColumn(k);
+    ui.alert('Đã THÊM cột input còn thiếu vào "'+INPUT_CFG.destTabName+'": '+missing.join(', ')+'.\n\n(Không đụng data cũ.)');
+    return;
+  }
+
+  // 1. Đọc tab nguồn "Lương đóng BHXH" (live, cross-spreadsheet)
+  let srcSS;
+  try { srcSS = SpreadsheetApp.openById(INPUT_CFG.srcSheetId); }
+  catch(e){ ui.alert('Không mở được sheet HRIS nguồn. Kiểm tra quyền truy cập.\n\n'+e); return; }
+  const src = srcSS.getSheetByName(INPUT_CFG.srcTabName);
+  if(!src){ ui.alert('Không thấy tab "'+INPUT_CFG.srcTabName+'" trong sheet HRIS.'); return; }
+  const srcData = src.getDataRange().getValues();
+  if(srcData.length < 1){ ui.alert('Tab nguồn rỗng.'); return; }
+  const nCols = srcData[0].length;
+
+  // 2. Tạo tab đích + ghi data nguồn (import 1 lần)
+  const dest = ss.insertSheet(INPUT_CFG.destTabName);
+  dest.getRange(1, 1, srcData.length, nCols).setValues(srcData);
+
+  // 3. Thêm cột input của app (chỉ header, dữ liệu để trống cho Trang điền)
+  const extra = INPUT_CFG.extraInputCols;
+  if(extra.length) dest.getRange(1, nCols+1, 1, extra.length).setValues([extra]);
+
+  // 4. Format: freeze header, header xanh, cột input app tô vàng
+  dest.setFrozenRows(1);
+  dest.getRange(1, 1, 1, nCols + extra.length)
+      .setFontWeight('bold').setBackground('#0b5394').setFontColor('white')
+      .setWrap(true).setHorizontalAlignment('center');
+  if(srcData.length > 1 && extra.length){
+    dest.getRange(2, nCols+1, srcData.length-1, extra.length).setBackground('#FFF8E1');
+  }
+  for(let i=1; i<=nCols+extra.length; i++) dest.autoResizeColumn(i);
+
+  ui.alert('Đã tạo tab "'+INPUT_CFG.destTabName+'".\n\n'+
+    (srcData.length-1)+' dòng · '+nCols+' cột từ "'+INPUT_CFG.srcTabName+'" + '+
+    extra.length+' cột input app (tô vàng).\n\n'+
+    'Giờ nhờ Chung nối tab này ngược lên BQ (C_imput_bao_hiem_tro_cap nới rộng). '+
+    'Từ nay chị Trang chỉ điền input Ở ĐÂY.');
+}
+
+/* Tab CHẤM CÔNG — 1 nơi duy nhất chị Trang copy-paste bảng công tháng.
+ * Nguồn công của Trang là sheet riêng, đổi mỗi tháng → để trống cho Trang dán.
+ * Chung nối tab này lên BQ → script lấy ngày công (cong) từ BQ như hiện tại.
+ */
+function taoTabChamCong(){
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const ui = SpreadsheetApp.getUi();
+  const name = 'Chấm công';
+  if(ss.getSheetByName(name)){
+    ui.alert('Tab "'+name+'" đã tồn tại — KHÔNG tạo lại (tránh xoá bảng chị Trang đã dán).\n\n'+
+      'Hàng tháng chị Trang cứ dán chấm công tháng mới ĐÈ LÊN tab này.');
+    return;
+  }
+  ss.insertSheet(name);
+  ui.alert('Đã tạo tab trống "'+name+'".\n\n'+
+    'Hàng tháng chị Trang copy-paste bảng chấm công của chị vào đây (dán từ ô A1, kèm cả header của chị).\n\n'+
+    'Chung nối tab này lên BQ → script tự lấy ngày công từ đó. Chỉ cập nhật ở 1 nơi duy nhất.');
 }
 
 function capNhatTuBigQuery(){
@@ -130,22 +209,41 @@ function capNhatTuBigQuery(){
   if(!rows.length){ ss.toast('Không có dữ liệu từ BigQuery.','Lỗi',5); return; }
 
   const data = ensureSheet_(ss, CFG.dataSheet, true);
-  const snap = ensureSheet_(ss, CFG.snapSheet, true);
+  let snap = ss.getSheetByName(CFG.snapSheet);
+  if(!snap){ snap = ss.insertSheet(CFG.snapSheet); snap.hideSheet(); }
+  let snapMap = readSnap_(snap);
   const main = ensureSheet_(ss, CFG.mainSheet, false);
 
   writeRaw_(data, rows);
 
   const headers = COLS.map(c=>c.h);
 
-  // Detect column layout change → clear stale data
-  const existingHeaders = main.getLastColumn() > 0
-    ? main.getRange(1, 1, 1, main.getLastColumn()).getValues()[0].map(String)
-    : [];
-  const layoutChanged = existingHeaders.length !== headers.length ||
-    headers.some((h, i) => h !== (existingHeaders[i] || '').trim());
+  // Đọc dữ liệu cũ TRƯỚC khi clear — key theo Mã NV + TÊN cột (không theo vị trí dòng).
+  // Bền với đổi thứ tự dòng (ORDER BY) VÀ đổi layout cột → giá trị điền tay không lệch/mất.
+  const oldRange = main.getLastRow() > 1 ? main.getDataRange().getValues() : [];
+  const oldHdr = oldRange.length ? oldRange[0].map(function(x){ return String(x).trim(); }) : [];
+  const oldCodeIdx = oldHdr.indexOf('Mã NV');
+  const oldByCode = {};
+  if (oldRange.length > 1 && oldCodeIdx >= 0) {
+    for (let i = 1; i < oldRange.length; i++) {
+      const oc = String(oldRange[i][oldCodeIdx] || '').trim();
+      if (oc) oldByCode[oc] = oldRange[i];
+    }
+  }
+  const oldVal = function(code, headerName){
+    const row = oldByCode[code]; if (!row) return '';
+    const idx = oldHdr.indexOf(headerName);
+    return idx >= 0 ? row[idx] : '';
+  };
+
+  // Detect column layout change → clear stale data (snapshot cột src không còn tin được)
+  const layoutChanged = oldHdr.length !== headers.length ||
+    headers.some((h, i) => h !== (oldHdr[i] || ''));
   if (layoutChanged && main.getLastRow() > 1) {
-    main.getRange(2, 1, main.getLastRow() - 1, Math.max(existingHeaders.length, headers.length)).clear();
-    snap.clearContents();
+    const clearRange = main.getRange(2, 1, main.getLastRow() - 1, Math.max(oldHdr.length, headers.length));
+    clearRange.clear();
+    clearRange.clearDataValidations();
+    snapMap = {};
   }
 
   // Header
@@ -155,11 +253,6 @@ function capNhatTuBigQuery(){
   main.setFrozenRows(1);
   main.setFrozenColumns(colIndex('employee_type'));
 
-  // Batch read existing data + snapshot for smart-merge
-  const snapMap = readSnap_(snap);
-  const existingData = (!layoutChanged && main.getLastRow() > 1)
-    ? main.getRange(2, 1, Math.min(main.getLastRow()-1, rows.length), COLS.length).getValues()
-    : [];
   const newSnap = {};
 
   // Build all values + collect formula/checkbox columns
@@ -177,11 +270,17 @@ function capNhatTuBigQuery(){
       if(col.role==='auto'){
         rowVals.push(col.key==='stt' ? i+1 : (d[col.src]===null||d[col.src]===undefined ? '' : d[col.src]));
       } else if(col.role==='input'){
-        const autoVal = col.src ? (d[col.src]===null||d[col.src]===undefined ? '' : d[col.src]) : '';
-        const cur = existingData[i] ? existingData[i][c] : '';
-        const prevAuto = (snapMap[code]||{})[col.key];
-        rowVals.push((cur===''||cur===null||cur===prevAuto||prevAuto===undefined) ? autoVal : cur);
-        newSnap[code][col.key] = autoVal;
+        const cur = oldVal(code, col.h);
+        if(!col.src){
+          // Input-only (Bù tiền, Note): KHÔNG có nguồn BQ → LUÔN giữ giá trị điền tay
+          rowVals.push((cur===''||cur===null) ? '' : cur);
+          newSnap[code][col.key] = '';
+        } else {
+          const autoVal = d[col.src]===null||d[col.src]===undefined ? '' : d[col.src];
+          const prevAuto = (snapMap[code]||{})[col.key];
+          rowVals.push((cur===''||cur===null||cur===prevAuto||prevAuto===undefined) ? autoVal : cur);
+          newSnap[code][col.key] = autoVal;
+        }
       } else if(col.role==='calc'){
         rowVals.push('');
         if(!formulaCols[c]) formulaCols[c] = [];
@@ -204,7 +303,8 @@ function capNhatTuBigQuery(){
     main.getRange(2, parseInt(ci)+1, formulaCols[ci].length, 1).setFormulas(formulaCols[ci]);
   }
 
-  // Checkboxes per column (~5 RPCs instead of ~500)
+  // Clear stale data validations (checkbox cũ ở vị trí cũ) rồi gắn checkbox mới
+  main.getRange(2, 1, rows.length, COLS.length).clearDataValidations();
   checkboxCols.forEach(c => main.getRange(2, c+1, rows.length, 1).insertCheckboxes());
 
   // Clear excess rows
@@ -213,35 +313,72 @@ function capNhatTuBigQuery(){
     main.getRange(rows.length+2, 1, lastRow-rows.length-1, COLS.length).clear();
   }
 
+  // Clear excess columns (layout cũ rộng hơn → cột thừa còn nằm bên phải)
+  const maxCols = main.getMaxColumns();
+  if(maxCols > COLS.length){
+    const excessRange = main.getRange(1, COLS.length+1, main.getMaxRows(), maxCols - COLS.length);
+    excessRange.clear();
+    excessRange.clearDataValidations();
+  }
+
   writeSnap_(snap, newSnap);
   formatSheet_(main, rows.length);
   ss.toast('Đã cập nhật '+rows.length+' NV từ BigQuery.', 'Bảng lương', 5);
 }
 
+// Độ rộng cột cố định theo key (px) — hết cảnh autoResize làm dồn ứ / nhảy loạn.
+const COL_WIDTH = {
+  stt:38, code:72, team:80, name:150, chuc_danh:135, employee_type:80,
+  cong:52, note:150,
+};
+const MONEY_KEYS = ['tong_lt','tong_luong','luong_cb','lcb_ngay_cong','thuong_com','bao_hiem',
+                    'gmv','gmv_ban_moi','gmv_gioi_thieu','gmv_tai_ky',
+                    'an_trua','may_tinh','xe_pc','khau_tru_thue','bu_tien'];
+
 function formatSheet_(main, numRows){
   const numCols = COLS.length;
 
-  var moneyKeys = ['tong_lt','gross','tong_luong','luong_cb','lcb_ngay_cong','thuong_com','bao_hiem','gmv',
-                   'an_trua','may_tinh','xe_pc','dien_thoai','khau_tru_thue','bu_tien','tong_tn',
-                   'income_col_u','an_ca_van','tnct','gt_ban_than','gt_npt','tntt','thue_tncn','net'];
-  moneyKeys.forEach(function(k){ main.getRange(2, colIndex(k), numRows, 1).setNumberFormat('#,##0'); });
+  // Header: wrap + căn giữa + cao hàng để chữ dài không bị cắt
+  main.getRange(1, 1, 1, numCols)
+      .setWrap(true).setVerticalAlignment('middle').setHorizontalAlignment('center')
+      .setFontWeight('bold').setBackground('#0b5394').setFontColor('white');
+  main.setRowHeight(1, 42);
 
+  // Số tiền: #,##0 (âm hiện -X). Giá trị vẫn là SỐ → không ảnh hưởng lookup/BQ.
+  MONEY_KEYS.forEach(function(k){ main.getRange(2, colIndex(k), numRows, 1).setNumberFormat('#,##0'); });
+
+  // Màu theo role
   COLS.forEach(function(col, i){
     var bg = null;
-    if(col.role==='input')  bg = '#FFF8E1';
-    if(col.role==='calc')   bg = '#EEF2FF';
-    if(col.role==='status') bg = '#F3F4F6';
+    if(col.role==='input')  bg = '#FFF8E1';   // vàng = điền tay
+    if(col.role==='calc')   bg = '#EEF2FF';   // xanh nhạt = công thức
+    if(col.role==='status') bg = '#F3F4F6';   // xám = trạng thái
     if(bg) main.getRange(2, i+1, numRows, 1).setBackground(bg);
   });
 
-  ['tong_lt','gross','net'].forEach(function(k){
+  // 2 cột tổng in đậm
+  ['tong_lt','tong_luong'].forEach(function(k){
     main.getRange(2, colIndex(k), numRows, 1).setFontWeight('bold');
   });
 
   main.getRange(1, 1, numRows+1, numCols)
     .setBorder(true, true, true, true, true, true, '#D1D5DB', SpreadsheetApp.BorderStyle.SOLID);
 
-  for(var i=1; i<=numCols; i++) main.autoResizeColumn(i);
+  // Độ rộng cột cố định (money mặc định 105, còn lại theo COL_WIDTH)
+  COLS.forEach(function(col, i){
+    var w = COL_WIDTH[col.key] || (col.role==='status' ? 95 : 105);
+    main.setColumnWidth(i+1, w);
+  });
+}
+
+// Menu: chạy format riêng (không cần cập nhật BQ) — sửa layout mà không reset data.
+function dinhDangBangLuong(){
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const main = ss.getSheetByName(CFG.mainSheet);
+  if(!main){ ss.toast('Chưa có tab "'+CFG.mainSheet+'".','Lỗi',5); return; }
+  const numRows = Math.max(1, main.getLastRow()-1);
+  formatSheet_(main, numRows);
+  ss.toast('Đã định dạng lại Bảng lương (wrap, #,##0, độ rộng cột, màu).','✓',5);
 }
 
 // ---- BigQuery ----
@@ -252,7 +389,9 @@ function queryBigQuery_(){
   while(!job.jobComplete){ Utilities.sleep(1000); job = BigQuery.Jobs.getQueryResults(CFG.bqProject, jobId); }
   var fields = job.schema.fields.map(function(f){ return f.name; });
   var numericKeys = ['luong_co_ban','cong','lcb_theo_ngay_cong','thuong_com','bao_hiem','gmv',
-                     'an_trua','may_tinh','xe_pc','so_npt','an_ca_van','dien_thoai_van'];
+                     'an_trua','may_tinh','xe_pc','bu_tien','thue_tncn',
+                     'gmv_ban_moi','gmv_gioi_thieu','gmv_tai_ky',
+                     'so_npt','an_ca_van','dien_thoai_van'];
   var out = [];
   (job.rows||[]).forEach(function(row){
     var o = {};
@@ -286,6 +425,7 @@ function readSnap_(sh){
 }
 
 function writeSnap_(sh, snap){
+  sh.clearContents();
   var inputKeys = COLS.filter(function(c){ return c.role==='input'; }).map(function(c){ return c.key; });
   var codes = Object.keys(snap);
   var vals = [['code'].concat(inputKeys)];
