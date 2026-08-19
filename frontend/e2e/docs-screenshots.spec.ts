@@ -380,6 +380,46 @@ test("paymentRequests — doi-soat-lead (khớp + không khớp, KHÔNG submit)"
   await page.getByRole("button", { name: "Huỷ", exact: true }).click();
 });
 
+// doi-soat-lead vị trí #2 — bảng check lead khi SỬA PR (drawer). AN TOÀN: mở PR,
+// bấm Sửa, đổi Nguồn để kích hoạt tra (client-side), TUYỆT ĐỐI không bấm Lưu.
+test("paymentRequests — doi-soat-lead vi tri Sua (drawer, KHONG luu)", async ({ page }) => {
+  test.setTimeout(120_000);
+  await gotoModule(page, "Quản lý thanh toán");
+  await expect(page.getByRole("button", { name: "Tạo Payment Request" })).toBeVisible({ timeout: 15_000 });
+  await page.waitForLoadState("networkidle").catch(() => {});
+
+  const hideTest = page.getByLabel("Ẩn data test");
+  if (await hideTest.isChecked({ timeout: 5_000 }).catch(() => false)) {
+    await hideTest.uncheck();
+    await page.waitForTimeout(800);
+  }
+  await page.getByRole("button", { name: /→/ }).first().click();
+  await page.getByText("Toàn bộ", { exact: true }).click();
+  await page.waitForTimeout(1500);
+
+  const firstRow = page.locator('[data-testid="pr-row"]').first();
+  await firstRow.waitFor({ state: "visible", timeout: 45_000 });
+  await firstRow.click();
+  await page.waitForTimeout(1000);
+
+  // Vào chế độ Sửa (mục Thông tin khách hàng B1)
+  await page.getByRole("button", { name: "Sửa", exact: true }).first().click();
+  await page.waitForTimeout(500);
+
+  // Đổi Nguồn: Giới thiệu (reset) → Quảng cáo (new-source) để chắc chắn kích hoạt
+  // runCheck trên SĐT của PR → bảng check lead hiện ra.
+  const nguon = page.getByText("Nguồn KH", { exact: true }).locator("xpath=following-sibling::select").first();
+  await nguon.selectOption({ label: "Giới thiệu" });
+  await page.waitForTimeout(200);
+  await nguon.selectOption({ label: "Quảng cáo" });
+  await expect(page.getByText(/Khớp lead|Không tìm thấy số này/)).toBeVisible({ timeout: 15_000 });
+  await page.waitForTimeout(600);
+  await screenshotViewport(page, "public/docs-images/paymentRequests/doi-soat-lead-4.png");
+
+  // Huỷ — TUYỆT ĐỐI không lưu
+  await page.getByRole("button", { name: "Huỷ", exact: true }).first().click();
+});
+
 // chuyen-giao-pr — 4 ảnh từng bước. AN TOÀN: thao tác THUẦN ĐỌC — mở PR, mở
 // modal, focus combobox, chọn 1 người nhận (chỉ đổi state client), mở Lịch sử.
 // TUYỆT ĐỐI không bấm "Xác nhận chuyển" (endpoint transfer chỉ chạy khi bấm nút
