@@ -55,6 +55,7 @@ import PrHistoryModal from "./PrHistoryModal";
 import { MoneyInput } from "../ui/MoneyInput";
 import { findPaidLinesWithoutBill } from "./billGuardUtils";
 import { HdsdLink } from "../help/HdsdLink";
+import LeadCheckButton from "./LeadCheckButton";
 
 const METHOD_META: Record<PaymentMethod, { cls: string; label: string; icon: IconKey; sub: string }> = {
   qr: { cls: "method-qr", label: "Chuyển khoản", icon: "QrCode", sub: "QR / chuyển khoản" },
@@ -2244,6 +2245,17 @@ export default function PaymentRequestDetailDrawer({
                         />
                       );
                     })()}
+                    <LeadCheckButton
+                      onClick={() => {
+                        lead.runCheck(crmPhoneFormat(draft.phone, findCountry(draft.country)), draft.uid ?? undefined);
+                        setLeadTouched(true);
+                      }}
+                      disabled={!NEW_CHECK_SOURCES.has(draft.leadSource ?? "") || draft.phone.replace(/\D/g, "").length < 9}
+                      loading={lead.leadCheck.status === "loading"}
+                      tooltip={!NEW_CHECK_SOURCES.has(draft.leadSource ?? "")
+                        ? "Chọn nguồn Quảng cáo/Offline/KOC/Khác"
+                        : "Tra cứu lead trên hệ thống"}
+                    />
                   </div>
                   {(() => {
                     const country = findCountry(draft.country);

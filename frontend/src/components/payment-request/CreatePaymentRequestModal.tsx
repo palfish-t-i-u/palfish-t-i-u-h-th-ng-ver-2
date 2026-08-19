@@ -13,6 +13,7 @@ import LeadCheckBlock from "./LeadCheckBlock";
 import numberToVietnameseWords from "../../lib/numberToWords";
 import { MoneyInput } from "../ui/MoneyInput";
 import { HdsdLink } from "../help/HdsdLink";
+import LeadCheckButton from "./LeadCheckButton";
 
 interface FormState {
   uid: string;
@@ -254,6 +255,14 @@ export default function CreatePaymentRequestModal({
                     />
                   );
                 })()}
+                <LeadCheckButton
+                  onClick={() => lead.runCheck(crmPhoneFormat(form.phone, findCountry(form.country)), form.uid)}
+                  disabled={!isNewSource || form.phone.replace(/\D/g, "").length < 9}
+                  loading={lead.leadCheck.status === "loading"}
+                  tooltip={!isNewSource || form.phone.replace(/\D/g, "").length < 9
+                    ? "Chọn nguồn Quảng cáo/Offline/KOC/Khác & nhập đủ SĐT"
+                    : "Tra cứu lead trên hệ thống"}
+                />
               </div>
               {(() => {
                 const country = findCountry(form.country);

@@ -69,7 +69,7 @@ Số khách đang thanh toán **khác** với số đã đăng ký quảng cáo.
 ![Bảng check lead màu vàng — ô nhập SĐT gốc, ô Chọn lý do đang bị mờ khoá](/docs-images/paymentRequests/doi-soat-lead-2.png)
 
 1. Hỏi khách **"lúc đăng ký anh/chị để lại số nào?"** — nhập số đó vào ô **"SĐT khách dùng lúc đăng ký"**.
-2. **⚠️ Bấm chuột ra chỗ trống bên ngoài ô** — lúc đó hệ thống mới bắt đầu dò. Chỉ gõ số mà **không bấm ra ngoài** thì hệ thống **chưa dò** (bước này rất dễ quên).
+2. **Bấm nút 🔍 (kính lúp) ngay cạnh ô** để tra. Hoặc bấm chuột ra chỗ trống bên ngoài ô cũng được.
 3. Kết quả:
    - **Dò ra** → bảng chuyển **xanh** ("khớp qua số gốc") → xong, tạo PR bình thường.
    - **Dò không ra** → ô **"Chọn lý do"** lúc này **mới bấm được** → chọn 1 lý do.

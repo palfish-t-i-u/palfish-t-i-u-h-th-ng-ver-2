@@ -1,5 +1,6 @@
 import type { LeadCheckState, LeadHit } from "./useLeadCheck";
 import { LY_DO_KHONG_GHEP } from "../../constants/leadSource";
+import LeadCheckButton from "./LeadCheckButton";
 
 interface Props {
   state: LeadCheckState;
@@ -90,11 +91,17 @@ export default function LeadCheckBlock({
       </div>
       <label style={{ display: "flex", flexDirection: "column", gap: 2 }}>
         <span style={{ color: "var(--muted)" }}>SĐT khách dùng lúc đăng ký (tra số này trước)</span>
-        <input value={state.sdtGoc}
-               onChange={(e) => onSdtGocInput(e.target.value)}
-               onBlur={(e) => onSdtGocBlur(e.target.value)}
-               placeholder="VD 0912 345 678"
-               style={{ padding: "4px 6px", border: "1px solid var(--border)", borderRadius: 6 }} />
+        <div style={{ display: "flex", gap: 6 }}>
+          <input value={state.sdtGoc}
+                 onChange={(e) => onSdtGocInput(e.target.value)}
+                 onBlur={(e) => onSdtGocBlur(e.target.value)}
+                 placeholder="VD 0912 345 678"
+                 style={{ flex: 1, padding: "4px 6px", border: "1px solid var(--border)", borderRadius: 6 }} />
+          <LeadCheckButton
+            onClick={() => onSdtGocBlur(state.sdtGoc)}
+            disabled={state.sdtGoc.replace(/\D/g, "").length < 9}
+          />
+        </div>
       </label>
       {state.sdtGocNotFound && state.sdtGoc.trim() ? (
         <div style={{ fontSize: 11, color: "var(--muted)", marginTop: -2 }}>
