@@ -33,9 +33,9 @@ const COMPARE_COLS = [
   { key: 'Máy tính',         bqHeader: 'Tiền hỗ trợ máy tính',             trangCol: 13, type: 'number' },
   { key: 'Xe + PC',           bqHeader: 'Hỗ trợ tiền xe + PC trách nhiệm',  trangCol: 14, type: 'number' },
   { key: 'Bù tiền',          bqHeader: 'Bù tiền',                           trangCol: 16, type: 'number', note: 'Input-only, BQ = 0 nếu chưa điền' },
-  { key: 'Tổng lương',       bqHeader: 'Tổng lương',                       trangCol: 5,  type: 'number' },
-  { key: 'Khấu trừ thuế',    bqHeader: 'Khấu trừ thuế',                    trangCol: 15, type: 'number' },
-  { key: 'Tổng lương+thưởng',bqHeader: 'Tổng lương + thưởng (Net)',        trangCol: 4,  type: 'number' },
+  { key: 'Tổng lương',       bqHeader: 'Tổng lương',                       trangCol: 5,  type: 'number', note: 'Phụ thuộc thuế — lệch nếu thuế lệch' },
+  { key: 'Khấu trừ thuế',    bqHeader: 'Khấu trừ thuế',                    trangCol: 15, type: 'number', note: 'BQ=lũy tiến (đúng luật), Trang=flat 10% → Chính thức sẽ lệch' },
+  { key: 'Tổng lương+thưởng',bqHeader: 'Tổng lương + thưởng (Net)',        trangCol: 4,  type: 'number', note: 'Phụ thuộc thuế — lệch nếu thuế lệch' },
 ];
 
 // Menu item đã thêm trong BangLuong.gs → onOpen() → '📊 Đối soát với bảng Trang'
@@ -193,14 +193,17 @@ function compare_(bqMap, trangMap, bqHeaders) {
       var bqVal = bq.values[col.key] || 0;
       var trVal = tr.values[col.key] || 0;
 
-      // BH trên xlsx Trang là số âm (trừ vào lương)
+      // Trang ghi BH + Khấu trừ thuế là số âm (trừ vào lương)
       if (col.key === 'Bảo hiểm') trVal = Math.abs(trVal);
       if (col.key === 'Khấu trừ thuế') trVal = Math.abs(trVal);
 
+      var tol     = col.tol || 1;
+      // Cột tiền (tol >= 1): làm tròn cả 2 bên về đồng chẵn — khử nhiễu số lẻ (tntt×5%, LCB/ngày công).
+      // Cột Công (tol 0.01) KHÔNG làm tròn vì có thể là nửa ngày (23.5).
+      if (tol >= 1) { bqVal = Math.round(bqVal); trVal = Math.round(trVal); }
       var diff    = bqVal - trVal;
       var pctDiff = (trVal !== 0) ? Math.abs(diff / trVal * 100) : (bqVal !== 0 ? 100 : 0);
-      var tol     = col.tol || 1;
-      var isMatch = Math.abs(diff) < tol;
+      var isMatch = Math.abs(diff) <= tol;
 
       row.cells.push({
         key:     col.key,
@@ -215,16 +218,8 @@ function compare_(bqMap, trangMap, bqHeaders) {
       totalCells++;
       rowTotal++;
       colStats[col.key].total++;
-
-      if (isMatch) {
-        matchCount++;
-        rowMatch++;
-        colStats[col.key].match++;
-      } else {
-        diffCount++;
-        colStats[col.key].diff++;
-        colStats[col.key].totalDiff += Math.abs(diff);
-      }
+      if (isMatch) { matchCount++; rowMatch++; colStats[col.key].match++; }
+      else { diffCount++; colStats[col.key].diff++; colStats[col.key].totalDiff += Math.abs(diff); }
     }
 
     row.status = (rowMatch === rowTotal) ? 'KHỚP 100%' : 'LỆCH ' + (rowTotal - rowMatch) + '/' + rowTotal + ' cột';

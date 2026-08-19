@@ -4,6 +4,7 @@
     "code": "STRING",
     "phone": "STRING",
     "full_name": "STRING",
+    "loai_hinh": "STRING",
     "email": "STRING",
     "DOB": "DATETIME",
     "Giới tính": "STRING",
@@ -40,19 +41,20 @@
     "last_working_day": "DATETIME",
     "actual_working_days": "FLOAT64",
     "Đánh giá thử việc": "STRING",
-    "col_42": "STRING",
     "col_43": "STRING",
     "col_44": "STRING",
     "col_45": "STRING",
     "col_46": "STRING",
+    "col_47": "STRING",
     "note": "STRING",
     "Note_goc": "DATETIME",
-    "col_41": "STRING",
+    "col_42": "STRING",
     "phan_vung": "STRING",
     "col_40": "STRING",
+    "col_41": "STRING",
     "Name": "STRING",
-    "title_job_luong_co_ban": "STRING",
-    "basic_salary": "STRING"
+    "basic_salary": "STRING",
+    "so_nguoi_phu_thuoc": "INT64"
   },
   "payroll.C_view_bang_luong_co_ban_theo_ngay_cong": {
     "code": "STRING",
@@ -76,7 +78,10 @@
     "departments": "STRING",
     "basic_salary": "INT64",
     "basic_salary_updated": "INT64",
+    "type_self": "STRING",
     "don_vi_cong": "STRING",
+    "cong_chuan": "INT64",
+    "tong_cong": "FLOAT64",
     "luong_co_ban_theo_ngay_cong": "INT64",
     "gmv_vnd": "INT64",
     "gmv_ban_moi": "INT64",
@@ -96,7 +101,12 @@
     "an_ca_van": "INT64",
     "xang_xe_van": "INT64",
     "dien_thoai_van": "INT64",
-    "type_self": "STRING"
+    "so_nguoi_phu_thuoc": "INT64",
+    "giam_tru_gia_canh": "INT64",
+    "taxable_income": "INT64",
+    "assessable_income": "INT64",
+    "thue_tncn": "INT64",
+    "ghi_chu_thuong_nong": "STRING"
   },
   "payroll.C_view_bang_thuong_com": {
     "code": "STRING",
@@ -120,6 +130,7 @@
     "thuong_nong_refer_in1": "INT64",
     "ngay_dat_kpi_tong_gmv": "STRING",
     "thuong_nong_dat_kpi_som": "INT64",
+    "ghi_chu_thuong_nong": "STRING",
     "employee_type": "STRING"
   },
   "payroll.C_view_bang_tro_cap_bao_hiem": {
