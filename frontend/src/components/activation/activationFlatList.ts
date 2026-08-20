@@ -35,6 +35,8 @@ export interface CourseRow {
   /** Ngày tiền về sớm/muộn nhất của AR (Sổ doanh thu) — ISO "YYYY-MM-DD" hoặc null. */
   tienVeSom: string | null;
   tienVeMuon: string | null;
+  isCreditOrder: boolean;
+  creditSettlementPending: boolean;
 }
 
 export interface CourseRowGroup {
@@ -82,6 +84,8 @@ export function flatCourseRows(ars: ActiveRequest[]): CourseRow[] {
           holdNote: ar.holdNote ?? null,
           tienVeSom: ar.tienVeSom ?? null,
           tienVeMuon: ar.tienVeMuon ?? null,
+          isCreditOrder: Boolean(ar.isCreditOrder),
+          creditSettlementPending: Boolean(ar.creditSettlementPending),
         });
       });
     });

@@ -125,11 +125,15 @@ def _flag_by_id(payload):
     return {row["id"]: row.get("credit_settlement_pending") for row in payload}
 
 
+def _credit_order_by_id(payload):
+    return {row["id"]: row.get("is_credit_order") for row in payload}
+
+
 def test_credit_hold_map_direct():
     sb = FakeSB()
     m = activation_routes._credit_hold_map(sb, ["PR-CARD", "PR-DONE", "PR-QR"])
-    assert m.get("PR-CARD") is True
-    assert "PR-DONE" not in m   # matched → không pending
+    assert m.get("PR-CARD") == "pending"
+    assert m.get("PR-DONE") == "matched"
     assert "PR-QR" not in m     # không phải card → vắng mặt
 
 
@@ -148,3 +152,9 @@ def test_list_endpoint_sets_flag_per_ar():
     assert flags["AR-DONE"] is False    # hiện
     assert flags["AR-QR"] is False      # hiện
     assert flags["AR-NONE"] is False    # hiện
+
+    co = _credit_order_by_id(resp.json())
+    assert co["AR-CARD"] is True      # card chưa matched → credit order
+    assert co["AR-DONE"] is True      # card đã matched → vẫn credit order
+    assert co["AR-QR"] is False       # thuần qr → không phải credit order
+    assert co["AR-NONE"] is False     # không pr

@@ -2108,7 +2108,7 @@ export default function ActivationTab() {
   const [createOpen, setCreateOpen] = useState(false);
   // 1.5 — filter "Thưởng giới thiệu"
   const [referralFilter, setReferralFilter] = useState<ReferralFilter>("all");
-  const [holdFilter, setHoldFilter] = useState<HoldFilter>("all");
+  const [holdFilter, setHoldFilter] = useState<HoldFilter>("now");
   // A-T6 — lọc theo trạng thái xuất hoá đơn cấp AR.
   const [invoiceFilter, setInvoiceFilter] = useState<InvoiceStatusFilter>("all");
 
@@ -2724,6 +2724,11 @@ export default function ActivationTab() {
             {row.holdActivation && !row.activated && (
               <span className="badge badge-warning" style={{ fontSize: 11 }} title={row.holdNote ? `Chưa muốn tạo gói học — "${row.holdNote}"` : "Chưa muốn tạo gói học"}>
                 ⏸ KH chưa muốn tạo gói
+              </span>
+            )}
+            {row.isCreditOrder && !row.creditSettlementPending && (
+              <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 6, background: "var(--info-bg, #dbeafe)", color: "var(--info-text, #1d4ed8)", fontWeight: 600, whiteSpace: "nowrap" }}>
+                Đã ghép TD
               </span>
             )}
           </div>
