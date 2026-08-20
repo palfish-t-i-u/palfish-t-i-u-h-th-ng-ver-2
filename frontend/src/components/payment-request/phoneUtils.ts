@@ -43,10 +43,15 @@ export function crmPhoneFormat(local: string, country: Country): string {
 export function formatPhoneIntl(countryCode: string | null | undefined, raw: string | null | undefined): string {
   const digitsAll = (raw || "").replace(/\D/g, "");
   if (!digitsAll) return "";
-  const dial = findCountry(countryCode).dial.replace("+", "");
+  const country = findCountry(countryCode);
+  const dial = country.dial.replace("+", "");
+  const expectedLocal = country.exampleLocal.replace(/\D/g, "").length;
   let digits = digitsAll.replace(/^0+/, "");
-  if (digits.startsWith(dial) && digits.length > dial.length + 5) {
-    digits = digits.slice(dial.length);
+  if (digits.startsWith(dial) && digits.length > expectedLocal) {
+    const afterDial = digits.slice(dial.length);
+    if (Math.abs(afterDial.length - expectedLocal) <= 1) {
+      digits = afterDial;
+    }
   }
   return `${dial}-${digits}`;
 }

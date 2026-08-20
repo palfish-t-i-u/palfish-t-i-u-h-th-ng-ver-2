@@ -75,6 +75,22 @@ COUNTRY_DIAL: dict[str, str] = {
 
 DEFAULT_DIAL = "84"  # country trống → coi như VN (đa số khách trong nước)
 
+# Độ dài phần thuê bao (sau country code, bỏ trunk-prefix 0).
+# Dùng bởi format_phone_intl để phân biệt số local bắt đầu trùng dial code
+# (VD: Vinaphone 084xxx = local 9 số bắt đầu "84") vs số quốc tế dính dial.
+# Nước thiếu → DEFAULT_LOCAL_LEN (9, đúng cho VN + đa số châu Á).
+COUNTRY_LOCAL_LEN: dict[str, int] = {
+    "AU": 9, "CN": 11, "DE": 10, "FR": 9, "GB": 10, "ID": 10, "IN": 10,
+    "JP": 10, "KH": 8, "KR": 9, "LA": 8, "MY": 9, "PH": 10, "SG": 8,
+    "TH": 9, "TW": 9, "US": 10, "VN": 9,
+}
+DEFAULT_LOCAL_LEN = 9
+
+
+def local_len_for(country: str | None) -> int:
+    key = (str(country).strip().upper() if country else "VN") or "VN"
+    return COUNTRY_LOCAL_LEN.get(key, DEFAULT_LOCAL_LEN)
+
 
 def dial_for(country: str | None) -> str:
     """Calling code (chỉ số) cho ISO alpha-2.

@@ -19,7 +19,7 @@ try:
 except ImportError:
     from backports.zoneinfo import ZoneInfo  # type: ignore[no-redef]
 
-from utils.country_dial import dial_for
+from utils.country_dial import dial_for, local_len_for
 from utils.lead_source_map import resolve_lead_label
 from utils.team_mapper import get_canonical_team
 
@@ -99,9 +99,12 @@ def format_phone_intl(phone: Any, country: Any = None) -> str | None:
         return raw
     cc_key = (str(country).strip().upper() if country else "VN") or "VN"
     dial = dial_for(cc_key)
+    expected_local = local_len_for(cc_key)
     digits = digits.lstrip("0")
-    if digits.startswith(dial) and len(digits) > len(dial) + 5:
-        digits = digits[len(dial):]
+    if digits.startswith(dial) and len(digits) > expected_local:
+        after_dial = digits[len(dial):]
+        if abs(len(after_dial) - expected_local) <= 1:
+            digits = after_dial
     return f"{dial}-{digits}"
 
 
