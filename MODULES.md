@@ -185,10 +185,15 @@ Kế hoạch đầy đủ: `docs/plans/HANDOFF_HDSD_DOCS_ROUTE_PIVOT_2026-07-27.
 - BE Routes: `backend/payroll_routes.py` — `POST /receive`, `GET /payslips`, `GET /payslips/{id}`, `PATCH /confirm`, `PATCH /review` (auto-khóa mùng 4)
 - BE RBAC: `backend/rbac.py` — `visible_payslip_codes`, `actor_ma_nv` (sale=mình / leader=team / manager=team / ops+system=hết)
 - Migration: `backend/migrations/2026-08-14-payslips-m4.sql` (bảng `payslips`), `2026-08-14-payslips-m4-rbac-audit.sql` (cột `nhan_su_sale.ma_nv` + bảng `payslip_views`)
-- Gate Script: `docs/apps-script/PhieuLuongGate.gs` — Sheet → POST `/receive` (chờ Trang bật)
+- Gate Script: `docs/apps-script/PhieuLuongGate.gs` — Sheet → POST `/receive` (đã nối prod, chờ Trang bật)
 - Contract: `docs/PHIEU_LUONG_CONTRACT.md` — payload keys byte-exact, 6 block, 5 cột status
 - Tests: `backend/tests/test_payroll_receive.py` (6), `test_payroll_view.py` (9) — 15 pass
-- **HOLD**: nối Gate thật (điền appEndpoint+gateToken), ghi ngược cột "NV xác nhận", deploy prod
+- M3 Apps Script: `docs/apps-script/BangLuong.gs` (bảng lương), `DoiSoatLuong.gs` (đối soát), `BangTinhThue.gs` (tham chiếu thuế)
+- Preview phiếu: `docs/apps-script/PhieuLuongXem.gs` (server: `pvNapDuLieu`, `pvDocTags_`, `pvDungPhieu_`, `pvBanDaGui`) · `docs/apps-script/PhieuLuongXem.html` (client: modal preview 900×640, 0 RPC khi đổi người)
+- Xuất Excel: `docs/apps-script/PhongBanXuat.gs` (server: `xlGomNhom_`, `xlKiemTeam_`, `xlTaiZip`, `xlTaiMotFile`) · `docs/apps-script/PhongBanXuat.html` (client: dialog xuất Excel, ZIP download)
+- Test harness: `docs/apps-script/PhieuLuongTest.gs` (`chayTestThuan`, `chayTestDocThat`, `test_chupBaseline`, `test_soSanhBaseline`)
+- Backfill: `backend/migrations/2026-08-17-backfill-ma-nv.sql` — 57 NV có `ma_nv` (đã chạy prod 18/8)
+- **Trạng thái (19/8):** M3 đối soát 99% Chung xác nhận ✅ · M4 FE+BE deployed prod ✅ · Gate đã nối (appEndpoint+gateToken trong Apps Script) ✅ · Backfill ma_nv 57 NV ✅ · **CÒN:** chờ Trang confirm sheet OK → bấm gửi phiếu · ghi ngược cột "NV xác nhận" (G1-T11) · lọc+export theo phòng ban (G1-T12)
 
 ## ⚠️ Legacy — KHÔNG còn mount trong MainPage (chỉ test file tham chiếu)
 

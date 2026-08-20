@@ -1,0 +1,797 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<title>Xem trước phiếu lương</title>
+<script>var initialCode = '<?= initialCode ?>';</script>
+<style>
+/* ===== RESET & BASE ===== */
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body {
+  font-family: 'Google Sans', Roboto, Arial, sans-serif;
+  font-size: 13px;
+  color: #202124;
+  background: #f1f3f4;
+  height: 640px;
+  overflow: hidden;
+}
+
+/* ===== TOPBAR ===== */
+#topbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  background: #fff;
+  border-bottom: 1px solid #dadce0;
+  flex-wrap: nowrap;
+  height: 50px;
+}
+#dropdownNV {
+  flex: 1 1 0;
+  min-width: 0;
+  font-size: 13px;
+  padding: 5px 8px;
+  border: 1px solid #dadce0;
+  border-radius: 4px;
+  background: #fff;
+  color: #202124;
+  cursor: pointer;
+  max-width: 380px;
+}
+.nav-btn {
+  flex-shrink: 0;
+  width: 30px;
+  height: 30px;
+  border: 1px solid #dadce0;
+  border-radius: 4px;
+  background: #fff;
+  cursor: pointer;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.1s;
+}
+.nav-btn:hover:not(:disabled) { background: #f1f3f4; }
+.nav-btn:disabled { opacity: 0.4; cursor: default; }
+
+/* Source buttons */
+#sourceBtns {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+.src-btn {
+  font-size: 12px;
+  padding: 5px 10px;
+  border: 1px solid #dadce0;
+  border-radius: 4px;
+  background: #fff;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.1s, border-color 0.1s;
+}
+.src-btn:hover:not(:disabled) { background: #f1f3f4; }
+.src-btn:disabled { opacity: 0.45; cursor: default; background: #f8f9fa; }
+.src-btn.active {
+  background: #e8f0fe;
+  border-color: #1a73e8;
+  color: #1a73e8;
+  font-weight: 600;
+}
+
+/* ===== SCROLL AREA ===== */
+#scrollArea {
+  height: calc(640px - 50px);
+  overflow-y: auto;
+  padding: 12px;
+  display: none;
+}
+
+/* ===== SPINNER ===== */
+#spinner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: calc(640px - 50px);
+  color: #5f6368;
+  gap: 12px;
+  font-size: 14px;
+}
+.spin-ring {
+  width: 36px; height: 36px;
+  border: 3px solid #dadce0;
+  border-top-color: #1a73e8;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ===== ALERT BANNERS ===== */
+#alertArea { margin-bottom: 8px; }
+.alert {
+  padding: 8px 12px;
+  border-radius: 4px;
+  margin-bottom: 6px;
+  font-size: 13px;
+}
+.alert-warn { background: #fef7e0; border: 1px solid #f9ab00; color: #7a5000; }
+.alert-err  { background: #fce8e6; border: 1px solid #d93025; color: #841b12; }
+
+/* ===== BADGES ROW ===== */
+#badgesRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 600;
+}
+.badge-blue   { background: #e8f0fe; color: #1a73e8; }
+.badge-orange { background: #fef0e1; color: #e37400; }
+.badge-red    { background: #fce8e6; color: #d93025; }
+.badge-gray   { background: #f1f3f4; color: #5f6368; }
+.sent-info {
+  font-size: 12px;
+  color: #5f6368;
+  margin-left: 4px;
+}
+
+/* ===== CARDS ===== */
+.card {
+  background: #fff;
+  border: 1px solid #dadce0;
+  border-radius: 6px;
+  margin-bottom: 10px;
+  overflow: hidden;
+}
+
+/* Part A */
+#partAHeader {
+  padding: 6px 14px;
+  background: #f8f9fa;
+  border-bottom: 1px solid #dadce0;
+  font-size: 12px;
+  font-weight: 600;
+  color: #5f6368;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+#partABody { padding: 14px 16px; }
+#phieuTitle {
+  font-size: 15px;
+  font-weight: 600;
+  color: #202124;
+  margin-bottom: 6px;
+  text-align: center;
+}
+#phieuSalutation {
+  font-size: 13px;
+  color: #202124;
+  margin-bottom: 10px;
+}
+#phieuFooter {
+  font-size: 12px;
+  color: #5f6368;
+  margin-top: 12px;
+  padding-top: 8px;
+  border-top: 1px solid #dadce0;
+}
+
+/* Part B */
+#partBWrap { border: 1px solid #f28b82; border-radius: 6px; margin-bottom: 10px; overflow: hidden; }
+#partBHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 14px;
+  background: #fce8e6;
+  border-bottom: 1px solid #f28b82;
+  cursor: default;
+}
+#partBTitle {
+  font-size: 13px;
+  font-weight: 600;
+  color: #d93025;
+}
+#btnToggleB {
+  font-size: 12px;
+  padding: 3px 10px;
+  border: 1px solid #f28b82;
+  border-radius: 4px;
+  background: #fff;
+  color: #d93025;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+#btnToggleB:hover { background: #fce8e6; }
+#partBBody { background: #fff5f5; }
+#partBEmpty {
+  padding: 10px 16px;
+  font-size: 13px;
+  color: #5f6368;
+  font-style: italic;
+}
+
+/* ===== ORPHAN WARNING ===== */
+#orphanWarn {
+  padding: 6px 14px;
+  font-size: 12px;
+  color: #d93025;
+  border-top: 1px solid #f28b82;
+}
+
+/* ===== TABLES ===== */
+.phieu-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.phieu-table th {
+  background: #f8f9fa;
+  padding: 6px 10px;
+  text-align: left;
+  font-weight: 600;
+  color: #5f6368;
+  font-size: 12px;
+  border-bottom: 1px solid #dadce0;
+}
+.phieu-table td {
+  padding: 6px 10px;
+  border-bottom: 1px solid #f1f3f4;
+  vertical-align: top;
+}
+.phieu-table tr:last-child td { border-bottom: none; }
+.phieu-table tr:nth-child(even) td { background: #f8f9fa; }
+.phieu-table tr.row-changed td {
+  background: #fef7e0 !important;
+}
+.phieu-table td.val-col {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.phieu-table td.label-col { color: #3c4043; }
+
+/* ===== ERROR STATE ===== */
+#errorState {
+  display: none;
+  padding: 30px 20px;
+  text-align: center;
+  color: #d93025;
+}
+
+/* ===== PDF BUTTON ===== */
+#btnPDF {
+  flex-shrink: 0;
+  font-size: 12px;
+  padding: 5px 10px;
+  border: 1px solid #188038;
+  border-radius: 4px;
+  background: #fff;
+  color: #188038;
+  cursor: pointer;
+  white-space: nowrap;
+  font-weight: 600;
+  transition: background 0.1s;
+}
+#btnPDF:hover:not(:disabled) { background: #e6f4ea; }
+#btnPDF:disabled { opacity: 0.45; cursor: default; }
+</style>
+</head>
+<body>
+
+<!-- TOP BAR -->
+<div id="topbar">
+  <select id="dropdownNV" title="Chọn nhân viên"></select>
+  <button class="nav-btn" id="btnPrev" title="Người trước" disabled>&#9664;</button>
+  <button class="nav-btn" id="btnNext" title="Người sau"  disabled>&#9654;</button>
+  <div id="sourceBtns">
+    <button class="src-btn active" id="btnLive">Bản trên bảng hiện tại</button>
+    <button class="src-btn" id="btnTruoc" disabled>Bản đã gửi — trước thuế</button>
+    <button class="src-btn" id="btnSau"   disabled>Bản đã gửi — sau thuế</button>
+  </div>
+  <button id="btnPDF" disabled>📄 Tải PDF</button>
+</div>
+
+<!-- SPINNER (loading state) -->
+<div id="spinner">
+  <div class="spin-ring"></div>
+  <span>Đang nạp dữ liệu…</span>
+</div>
+
+<!-- ERROR STATE -->
+<div id="errorState">
+  <strong>Lỗi khi tải dữ liệu</strong>
+  <div id="errorMsg" style="margin-top:6px;font-size:12px;color:#5f6368;"></div>
+</div>
+
+<!-- SCROLL AREA (hidden until data loads) -->
+<div id="scrollArea">
+
+  <!-- Alert banners (tagsOk warning, etc.) -->
+  <div id="alertArea"></div>
+
+  <!-- Badges: tax tier + diff -->
+  <div id="badgesRow"></div>
+
+  <!-- PART A: Thư theo phiếu mẫu -->
+  <div class="card" id="partACard">
+    <div id="partAHeader">Phần A — Thư theo phiếu mẫu</div>
+    <div id="partABody">
+      <div id="phieuTitle"></div>
+      <div id="phieuSalutation"></div>
+      <table class="phieu-table" id="tableA">
+        <colgroup>
+          <col style="width:55%">
+          <col style="width:45%">
+        </colgroup>
+      </table>
+      <div id="phieuFooter">Ms. Thu Trang – 0988.934.163 / palfishrecruitment@gmail.com</div>
+    </div>
+  </div>
+
+  <!-- PART B: Extra columns (open by default) -->
+  <div id="partBWrap">
+    <div id="partBHeader">
+      <span id="partBTitle">⚠ 0 cột NỮA sẽ gửi sang app mà phiếu mẫu không hiện</span>
+      <button id="btnToggleB">Thu gọn</button>
+    </div>
+    <div id="partBBody">
+      <div id="partBEmpty" style="display:none">Không có cột phụ.</div>
+      <table class="phieu-table" id="tableB">
+        <colgroup>
+          <col style="width:55%">
+          <col style="width:45%">
+        </colgroup>
+      </table>
+    </div>
+    <div id="orphanWarn" style="display:none"></div>
+  </div>
+
+</div><!-- /scrollArea -->
+
+<script>
+/* ===== STATE ===== */
+var gData          = null;   // full data from pvNapDuLieu()
+var gCurrentCode   = '';     // selected Mã NV
+var gViewMode      = 'live'; // 'live' | 'truoc_thue' | 'sau_thue'
+var gSentCache     = {};     // lazy cache: id → sentData from pvBanDaGui()
+var gPartBCollapsed = false; // Part B toggle state
+
+/* ===== DOM HELPERS ===== */
+function $(id) { return document.getElementById(id); }
+
+/** Remove all children from a node WITHOUT using innerHTML */
+function clearNode(el) {
+  while (el.firstChild) el.removeChild(el.firstChild);
+}
+
+/** Create element with optional class and textContent */
+function el(tag, text, cls) {
+  var node = document.createElement(tag);
+  if (text !== undefined && text !== null) node.textContent = text;
+  if (cls) node.className = cls;
+  return node;
+}
+
+/* ===== INIT ===== */
+window.addEventListener('DOMContentLoaded', function () {
+  // Wire up controls (before data arrives)
+  $('dropdownNV').addEventListener('change', function () {
+    gViewMode = 'live';
+    renderPhieu(this.value);
+    setActiveSrc('live');
+  });
+  $('btnPrev').addEventListener('click', function () { navigateDelta(-1); });
+  $('btnNext').addEventListener('click', function () { navigateDelta(+1); });
+  $('btnLive').addEventListener('click', function () { switchToLive(); });
+  $('btnTruoc').addEventListener('click', function () { switchToSent('truoc_thue'); });
+  $('btnSau').addEventListener('click',   function () { switchToSent('sau_thue'); });
+  $('btnToggleB').addEventListener('click', togglePartB);
+  $('btnPDF').addEventListener('click', taiPDF);
+
+  // Load data
+  google.script.run
+    .withSuccessHandler(onDataLoad)
+    .withFailureHandler(onLoadError)
+    .pvNapDuLieu();
+});
+
+/* ===== DATA LOAD ===== */
+function onDataLoad(data) {
+  gData = data;
+
+  populateDropdown();
+
+  // Select initial code (from template var) or first in list
+  var startCode = (initialCode && gData.duLieu[initialCode]) ? initialCode
+    : (gData.danhSach.length > 0 ? gData.danhSach[0].code : '');
+
+  $('spinner').style.display = 'none';
+  $('scrollArea').style.display = 'block';
+
+  // tagsOk warning
+  if (!gData.tagsOk) {
+    showAlert('warn', 'Không đọc được phiếu mẫu, đang hiện toàn bộ cột theo thứ tự bảng');
+  }
+
+  if (startCode) {
+    $('dropdownNV').value = startCode;
+    gCurrentCode = startCode;
+    renderPhieu(startCode);
+    $('btnPDF').disabled = false;
+    setActiveSrc('live');
+  }
+}
+
+function onLoadError(e) {
+  $('spinner').style.display = 'none';
+  $('errorState').style.display = 'block';
+  $('errorMsg').textContent = (e && e.message) ? e.message : String(e);
+}
+
+/* ===== DROPDOWN ===== */
+function populateDropdown() {
+  var sel = $('dropdownNV');
+  clearNode(sel);
+  gData.danhSach.forEach(function (nv) {
+    var opt = document.createElement('option');
+    opt.value = nv.code;
+    opt.textContent = nv.code + ' — ' + nv.name;
+    sel.appendChild(opt);
+  });
+
+  // Enable nav buttons
+  $('btnPrev').disabled = (gData.danhSach.length <= 1);
+  $('btnNext').disabled = (gData.danhSach.length <= 1);
+}
+
+/* ===== NAVIGATION ===== */
+function navigateDelta(delta) {
+  if (!gData || gData.danhSach.length === 0) return;
+  var idx = -1;
+  for (var i = 0; i < gData.danhSach.length; i++) {
+    if (gData.danhSach[i].code === gCurrentCode) { idx = i; break; }
+  }
+  var newIdx = (idx + delta + gData.danhSach.length) % gData.danhSach.length;
+  var newCode = gData.danhSach[newIdx].code;
+  $('dropdownNV').value = newCode;
+  gViewMode = 'live';
+  setActiveSrc('live');
+  renderPhieu(newCode);
+}
+
+/* ===== SOURCE SWITCHING ===== */
+function switchToLive() {
+  if (gViewMode === 'live') return;
+  gViewMode = 'live';
+  setActiveSrc('live');
+  renderPhieuDisplay(gData.duLieu[gCurrentCode], null);
+}
+
+function switchToSent(stage) {
+  if (!gCurrentCode) return;
+  var id = gCurrentCode + '|' + gData.ky + '|' + stage;
+
+  // Check if the outbox entry exists at all
+  if (!gData.daGuiIndex[id]) return;
+
+  // Use cache if available
+  if (gSentCache[id]) {
+    gViewMode = stage;
+    setActiveSrc(stage);
+    renderPhieuDisplay(gData.duLieu[gCurrentCode], gSentCache[id]);
+    return;
+  }
+
+  // Show loading state on button
+  var btn = (stage === 'truoc_thue') ? $('btnTruoc') : $('btnSau');
+  var origText = btn.textContent;
+  btn.textContent = 'Đang tải…';
+  btn.disabled = true;
+
+  google.script.run
+    .withSuccessHandler(function (sentData) {
+      btn.textContent = origText;
+      // Re-enable based on current state
+      updateSourceButtons(gCurrentCode);
+      if (!sentData) return;
+      gSentCache[id] = sentData;
+      gViewMode = stage;
+      setActiveSrc(stage);
+      renderPhieuDisplay(gData.duLieu[gCurrentCode], sentData);
+    })
+    .withFailureHandler(function (e) {
+      btn.textContent = origText;
+      updateSourceButtons(gCurrentCode);
+      showAlert('err', 'Lỗi tải bản đã gửi: ' + ((e && e.message) ? e.message : String(e)));
+    })
+    .pvBanDaGui(id);
+}
+
+function setActiveSrc(mode) {
+  $('btnLive').classList.remove('active');
+  $('btnTruoc').classList.remove('active');
+  $('btnSau').classList.remove('active');
+  if (mode === 'live')       $('btnLive').classList.add('active');
+  if (mode === 'truoc_thue') $('btnTruoc').classList.add('active');
+  if (mode === 'sau_thue')   $('btnSau').classList.add('active');
+}
+
+/* ===== MAIN RENDER ===== */
+/**
+ * Called when switching people (dropdown / ◀▶).
+ * Pure client-side — zero RPC.
+ */
+function renderPhieu(code) {
+  if (!gData || !code) return;
+  gCurrentCode = code;
+
+  updateSourceButtons(code);
+  renderPhieuDisplay(gData.duLieu[code], null);
+}
+
+/**
+ * Render the actual preview (called both from renderPhieu and source switches).
+ * @param {Object} phieu    - live phieu from gData.duLieu
+ * @param {Object|null} sentData - from pvBanDaGui() or null for live view
+ */
+function renderPhieuDisplay(phieu, sentData) {
+  if (!phieu) return;
+
+  var name = '';
+  for (var i = 0; i < gData.danhSach.length; i++) {
+    if (gData.danhSach[i].code === gCurrentCode) { name = gData.danhSach[i].name; break; }
+  }
+
+  // --- Build live dict (key → formatted val) for diff ---
+  var liveDict = {};
+  phieu.dong.forEach(function (r) { liveDict[r.key] = r.val; });
+  phieu.conLai.forEach(function (r) { liveDict[r.key] = r.val; });
+
+  // --- Compute changed keys when viewing sent version ---
+  var sentDict = (sentData && sentData.phieu) ? sentData.phieu : null;
+  var changedKeys = {};
+  var changeCount = 0;
+  if (sentDict) {
+    var allKeys = {};
+    Object.keys(liveDict).forEach(function (k) { allKeys[k] = true; });
+    Object.keys(sentDict).forEach(function (k) { allKeys[k] = true; });
+    Object.keys(allKeys).forEach(function (k) {
+      var lv = liveDict[k] !== undefined ? String(liveDict[k]) : '';
+      var sv = sentDict[k] !== undefined ? String(sentDict[k]) : '';
+      if (lv !== sv) { changedKeys[k] = true; changeCount++; }
+    });
+  }
+
+  // --- Badges ---
+  renderBadges(phieu, sentData, changeCount);
+
+  // --- Part A ---
+  renderPartA(name, phieu.dong, sentDict, changedKeys);
+
+  // --- Part B ---
+  renderPartB(phieu.conLai, sentDict, changedKeys);
+
+  // --- Orphan tags ---
+  renderOrphan(phieu.moCoi);
+}
+
+/* ===== SOURCE BUTTONS ENABLE/DISABLE ===== */
+function updateSourceButtons(code) {
+  if (!gData) return;
+  var ky = gData.ky;
+  var idTruoc = code + '|' + ky + '|truoc_thue';
+  var idSau   = code + '|' + ky + '|sau_thue';
+
+  var hasTruoc = !!gData.daGuiIndex[idTruoc];
+  var hasSau   = !!gData.daGuiIndex[idSau];
+
+  $('btnTruoc').disabled = !hasTruoc;
+  $('btnSau').disabled   = !hasSau;
+}
+
+/* ===== BADGES ===== */
+function renderBadges(phieu, sentData, changeCount) {
+  var row = $('badgesRow');
+  clearNode(row);
+
+  // Tax tier badge: find 'Khấu trừ thuế' in dong + conLai
+  var taxVal = null;
+  var taxFound = false;
+  phieu.dong.concat(phieu.conLai).forEach(function (r) {
+    if (!taxFound && (r.key === 'Khấu trừ thuế' || r.label === 'Khấu trừ thuế')) {
+      taxVal = r.val;
+      taxFound = true;
+    }
+  });
+  var isTruocThue = !taxFound || taxVal === '0' || taxVal === '' || taxVal === null;
+  var taxBadge = el('span',
+    isTruocThue ? 'Bản này đang là TRƯỚC THUẾ' : 'SAU THUẾ',
+    'badge ' + (isTruocThue ? 'badge-blue' : 'badge-orange')
+  );
+  row.appendChild(taxBadge);
+
+  // Diff badge
+  if (sentData && changeCount > 0) {
+    row.appendChild(el('span', '⚠ ' + changeCount + ' ô đã đổi sau khi gửi', 'badge badge-red'));
+  }
+
+  // Sent-at info
+  if (sentData) {
+    var infoText = 'Xem bản đã gửi';
+    if (sentData.sentAt) infoText += ' · lúc ' + String(sentData.sentAt);
+    if (sentData.status) infoText += ' · ' + sentData.status;
+    row.appendChild(el('span', infoText, 'sent-info'));
+  }
+}
+
+/* ===== PART A ===== */
+function renderPartA(name, dongRows, sentDict, changedKeys) {
+  // Title
+  $('phieuTitle').textContent = 'Bảng lương tháng ' + gData.ky;
+
+  // Salutation
+  $('phieuSalutation').textContent = 'Kính gửi Anh/Chị ' + name + ',';
+
+  // Table A
+  var tbl = $('tableA');
+  clearNode(tbl);
+
+  if (dongRows.length === 0) {
+    var empty = el('tr');
+    var tdE = el('td', '(Không có khoản mục nào theo phiếu mẫu)');
+    tdE.colSpan = 2;
+    tdE.style.color = '#5f6368';
+    tdE.style.fontStyle = 'italic';
+    tdE.style.padding = '10px';
+    empty.appendChild(tdE);
+    tbl.appendChild(empty);
+    return;
+  }
+
+  dongRows.forEach(function (r) {
+    var tr = document.createElement('tr');
+    if (changedKeys[r.key]) tr.className = 'row-changed';
+
+    var tdLabel = el('td', r.label, 'label-col');
+    // Value: if viewing sent version, use sent value; else use live value
+    var displayVal = (sentDict !== null && sentDict[r.key] !== undefined)
+      ? String(sentDict[r.key]) : r.val;
+    var tdVal = el('td', displayVal, 'val-col');
+
+    tr.appendChild(tdLabel);
+    tr.appendChild(tdVal);
+    tbl.appendChild(tr);
+  });
+}
+
+/* ===== PART B ===== */
+function renderPartB(conLaiRows, sentDict, changedKeys) {
+  // Badge
+  $('partBTitle').textContent = '⚠ ' + conLaiRows.length + ' cột NỮA sẽ gửi sang app mà phiếu mẫu không hiện';
+
+  var tbl = $('tableB');
+  var emptyMsg = $('partBEmpty');
+  clearNode(tbl);
+
+  if (conLaiRows.length === 0) {
+    emptyMsg.style.display = 'block';
+    tbl.style.display = 'none';
+  } else {
+    emptyMsg.style.display = 'none';
+    tbl.style.display = '';
+
+    conLaiRows.forEach(function (r) {
+      var tr = document.createElement('tr');
+      if (changedKeys[r.key]) tr.className = 'row-changed';
+
+      var tdLabel = el('td', r.label, 'label-col');
+      var displayVal = (sentDict !== null && sentDict[r.key] !== undefined)
+        ? String(sentDict[r.key]) : r.val;
+      var tdVal = el('td', displayVal, 'val-col');
+
+      tr.appendChild(tdLabel);
+      tr.appendChild(tdVal);
+      tbl.appendChild(tr);
+    });
+  }
+
+  // Respect collapse state (default: open)
+  applyPartBCollapse();
+}
+
+/* ===== PART B TOGGLE ===== */
+function togglePartB() {
+  gPartBCollapsed = !gPartBCollapsed;
+  applyPartBCollapse();
+}
+
+function applyPartBCollapse() {
+  var body = $('partBBody');
+  var btn  = $('btnToggleB');
+  if (gPartBCollapsed) {
+    body.style.display = 'none';
+    btn.textContent = 'Mở rộng';
+  } else {
+    body.style.display = '';
+    btn.textContent = 'Thu gọn';
+  }
+}
+
+/* ===== ORPHAN TAGS ===== */
+function renderOrphan(moCoi) {
+  var warn = $('orphanWarn');
+  if (!moCoi || moCoi.length === 0) {
+    warn.style.display = 'none';
+    clearNode(warn);
+    return;
+  }
+  warn.style.display = 'block';
+  clearNode(warn);
+
+  // Build: "{N} mục trong phiếu mẫu không khớp cột nào: <<tag1>>, <<tag2>>"
+  var prefix = moCoi.length + ' mục trong phiếu mẫu không khớp cột nào: ';
+  warn.appendChild(document.createTextNode(prefix));
+  moCoi.forEach(function (tag, idx) {
+    warn.appendChild(document.createTextNode('<<'));
+    warn.appendChild(el('strong', tag));
+    warn.appendChild(document.createTextNode('>>'));
+    if (idx < moCoi.length - 1) warn.appendChild(document.createTextNode(', '));
+  });
+}
+
+/* ===== ALERTS ===== */
+function showAlert(type, msg) {
+  var area = $('alertArea');
+  var div = el('div', msg, 'alert alert-' + (type === 'err' ? 'err' : 'warn'));
+  area.appendChild(div);
+}
+
+/* ===== PDF DOWNLOAD ===== */
+function taiPDF() {
+  if (!gCurrentCode) return;
+  var btn = $('btnPDF');
+  var origText = btn.textContent;
+  btn.textContent = 'Đang xuất…';
+  btn.disabled = true;
+
+  google.script.run
+    .withSuccessHandler(function(res) {
+      btn.textContent = origText;
+      btn.disabled = false;
+
+      if (!res || res.error) {
+        showAlert('err', 'Lỗi xuất PDF: ' + (res ? res.error : 'không rõ'));
+        return;
+      }
+
+      // Render download link
+      var link = document.createElement('a');
+      link.href = res.dataUri;
+      link.setAttribute('download', res.filename);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    })
+    .withFailureHandler(function(err) {
+      btn.textContent = origText;
+      btn.disabled = false;
+      showAlert('err', 'Lỗi xuất PDF: ' + ((err && err.message) ? err.message : String(err)));
+    })
+    .pvTaiPDF(gCurrentCode);
+}
+</script>
+</body>
+</html>

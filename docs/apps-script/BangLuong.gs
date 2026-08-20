@@ -28,6 +28,7 @@ const BQ_SQL = [
   "    ELSE COALESCE(t.workplace,'Khác') END AS team,",
   "  t.full_name, t.title_job, t.don_vi_cong,",
   "  TRIM(t.type_self) AS employee_type,",
+  "  t.departments,",
   "  SAFE_CAST(t.basic_salary AS INT64) AS luong_co_ban,",
   "  cb.tong_cong AS cong,",
   "  t.luong_co_ban_theo_ngay_cong AS lcb_theo_ngay_cong,",
@@ -67,6 +68,7 @@ const COLS = [
   { key:'name',          h:'Name',                             role:'auto',  src:'full_name' },
   { key:'chuc_danh',     h:'Chức danh',                        role:'auto',  src:'title_job' },
   { key:'employee_type', h:'Loại NV',                           role:'auto',  src:'employee_type' },
+  { key:'phong_ban',     h:'Phòng ban (HRIS)',                   role:'auto',  src:'departments' },
   // --- Summary ---
   { key:'tong_lt',       h:'Tổng lương + thưởng (Net)',        role:'calc',  f:r=>'='+C('tong_luong')+r+'+'+C('thuong_com')+r },
   { key:'tong_luong',    h:'Tổng lương',                       role:'calc',  f:r=>'='+C('lcb_ngay_cong')+r+'+'+C('an_trua')+r+'+'+C('may_tinh')+r+'+'+C('xe_pc')+r+'-'+C('bao_hiem')+r+'+'+C('bu_tien')+r+'-'+C('khau_tru_thue')+r },
@@ -96,9 +98,13 @@ const COLS = [
 ];
 
 function onOpen(){
-  SpreadsheetApp.getUi().createMenu('⚙ Bảng lương')
+  var ui = SpreadsheetApp.getUi();
+  ui.createMenu('⚙ Bảng lương')
     .addItem('🔄 (1) Cập nhật bảng lương', 'capNhatTuBigQuery')
     .addItem('📋 (2) Đối soát với bảng lương mẫu', 'doiSoatLuong')
+    .addSeparator()
+    .addItem('👁 Xem trước phiếu lương (dòng đang chọn)', 'xemTruocPhieuLuong')
+    .addItem('📥 Xuất Excel theo Team', 'xuatExcelTheoTeam')
     .addSeparator()
     .addItem('🎨 Định dạng lại (không cần BQ)', 'dinhDangBangLuong')
     .addItem('📊 Cập nhật bảng tính thuế (tham chiếu)', 'capNhatBangThue')
@@ -110,6 +116,15 @@ function onOpen(){
     .addItem('📤 Gửi phiếu đang chờ', 'flushOutbox')
     .addItem('📋 Mở hàng đợi', 'moHangDoi')
     .addToUi();
+
+  if (PropertiesService.getScriptProperties().getProperty('PL_DEV') === '1') {
+    ui.createMenu('🧪 Chạy test')
+      .addItem('chayTestThuan', 'chayTestThuan')
+      .addItem('chayTestDocThat', 'chayTestDocThat')
+      .addItem('Chụp baseline', 'test_chupBaseline')
+      .addItem('So sánh baseline', 'test_soSanhBaseline')
+      .addToUi();
+  }
 }
 
 /* ================== TAB NHẬP TAY (kho input duy nhất) ==================
@@ -205,6 +220,9 @@ function taoTabChamCong(){
 
 function capNhatTuBigQuery(){
   const ss = SpreadsheetApp.getActiveSpreadsheet();
+  var lk = LockService.getDocumentLock();
+  if(!lk.tryLock(0)){ ss.toast('Đang có thao tác khác chạy, chờ chút.','Bảng lương',5); return; }
+  try{
   const rows = queryBigQuery_();
   if(!rows.length){ ss.toast('Không có dữ liệu từ BigQuery.','Lỗi',5); return; }
 
@@ -217,6 +235,9 @@ function capNhatTuBigQuery(){
   writeRaw_(data, rows);
 
   const headers = COLS.map(c=>c.h);
+  plAssertHeadersUnique_(headers);
+  plAssertCodesUnique_(rows);
+  ensureGridWidth_(main, headers.length);
 
   // Đọc dữ liệu cũ TRƯỚC khi clear — key theo Mã NV + TÊN cột (không theo vị trí dòng).
   // Bền với đổi thứ tự dòng (ORDER BY) VÀ đổi layout cột → giá trị điền tay không lệch/mất.
@@ -243,7 +264,7 @@ function capNhatTuBigQuery(){
     const clearRange = main.getRange(2, 1, main.getLastRow() - 1, Math.max(oldHdr.length, headers.length));
     clearRange.clear();
     clearRange.clearDataValidations();
-    snapMap = {};
+    // KHÔNG reset snapMap — readSnap_ map theo code + TÊN key, độc lập vị trí cột. Reset = nuốt Thưởng COM / Xe+PC / Bù tiền.
   }
 
   // Header
@@ -261,7 +282,7 @@ function capNhatTuBigQuery(){
   const checkboxCols = [];
 
   for(let i=0; i<rows.length; i++){
-    const r = i+2, d = rows[i], code = d.code;
+    const r = i+2, d = rows[i], code = String(d.code||'').trim();
     newSnap[code] = {};
     const rowVals = [];
 
@@ -310,7 +331,9 @@ function capNhatTuBigQuery(){
   // Clear excess rows
   const lastRow = main.getLastRow();
   if(lastRow > rows.length+1){
-    main.getRange(rows.length+2, 1, lastRow-rows.length-1, COLS.length).clear();
+    var clearRange = main.getRange(rows.length+2, 1, lastRow-rows.length-1, COLS.length);
+    clearRange.clear();
+    clearRange.clearDataValidations();
   }
 
   // Clear excess columns (layout cũ rộng hơn → cột thừa còn nằm bên phải)
@@ -324,11 +347,12 @@ function capNhatTuBigQuery(){
   writeSnap_(snap, newSnap);
   formatSheet_(main, rows.length);
   ss.toast('Đã cập nhật '+rows.length+' NV từ BigQuery.', 'Bảng lương', 5);
+  } finally { lk.releaseLock(); }
 }
 
 // Độ rộng cột cố định theo key (px) — hết cảnh autoResize làm dồn ứ / nhảy loạn.
 const COL_WIDTH = {
-  stt:38, code:72, team:80, name:150, chuc_danh:135, employee_type:80,
+  stt:38, code:72, team:80, name:150, chuc_danh:135, employee_type:80, phong_ban:110,
   cong:52, note:150,
 };
 const MONEY_KEYS = ['tong_lt','tong_luong','luong_cb','lcb_ngay_cong','thuong_com','bao_hiem',
@@ -374,11 +398,15 @@ function formatSheet_(main, numRows){
 // Menu: chạy format riêng (không cần cập nhật BQ) — sửa layout mà không reset data.
 function dinhDangBangLuong(){
   const ss = SpreadsheetApp.getActiveSpreadsheet();
+  var lk = LockService.getDocumentLock();
+  if(!lk.tryLock(0)){ ss.toast('Đang có thao tác khác chạy, chờ chút.','Bảng lương',5); return; }
+  try{
   const main = ss.getSheetByName(CFG.mainSheet);
   if(!main){ ss.toast('Chưa có tab "'+CFG.mainSheet+'".','Lỗi',5); return; }
   const numRows = Math.max(1, main.getLastRow()-1);
   formatSheet_(main, numRows);
   ss.toast('Đã định dạng lại Bảng lương (wrap, #,##0, độ rộng cột, màu).','✓',5);
+  } finally { lk.releaseLock(); }
 }
 
 // ---- BigQuery ----
@@ -412,7 +440,7 @@ function ensureSheet_(ss, name, hide){
 
 function writeRaw_(sh, rows){
   if(!rows.length) return;
-  var keys = Object.keys(rows[0]);
+  var keys = Object.keys(rows[0]); ensureGridWidth_(sh, keys.length);
   var vals = [keys].concat(rows.map(function(r){ return keys.map(function(k){ return r[k]; }); }));
   sh.getRange(1,1,vals.length,keys.length).setValues(vals);
 }
@@ -431,4 +459,33 @@ function writeSnap_(sh, snap){
   var vals = [['code'].concat(inputKeys)];
   codes.forEach(function(code){ vals.push([code].concat(inputKeys.map(function(k){ return snap[code][k]; }))); });
   sh.getRange(1,1,vals.length,vals[0].length).setValues(vals);
+}
+
+function ensureGridWidth_(sh, n){ var m = sh.getMaxColumns(); if(m < n) sh.insertColumnsAfter(m, n - m); }
+
+function plAssertHeadersUnique_(headers){
+  var seen = {}, dupes = [];
+  for (var i = 0; i < headers.length; i++){
+    var h = String(headers[i]||'').trim();
+    if (!h) throw 'Nhãn cột ở vị trí ' + (i+1) + ' bị rỗng';
+    if (seen[h]) dupes.push(h);
+    seen[h] = true;
+  }
+  if (dupes.length) throw 'Nhãn cột trùng: ' + dupes.join(', ');
+}
+
+function plAssertCodesUnique_(rows){
+  var seen = {}, dupes = [];
+  for (var i = 0; i < rows.length; i++){
+    var c = String(rows[i].code||'').trim();
+    if (c && seen[c]) dupes.push(c);
+    if (c) seen[c] = true;
+  }
+  if (dupes.length) throw 'Mã NV trùng: ' + dupes.join(', ');
+}
+
+function xuatExcelTheoTeam(){
+  var html = HtmlService.createHtmlOutputFromFile('Xuất file phòng ban')
+    .setWidth(620).setHeight(720).setTitle('Xuất Excel theo Team');
+  SpreadsheetApp.getActiveSpreadsheet().show(html);
 }
