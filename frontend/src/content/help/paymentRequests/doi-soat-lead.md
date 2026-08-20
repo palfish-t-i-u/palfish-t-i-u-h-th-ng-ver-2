@@ -18,7 +18,7 @@ audience: ["sale", "leader"]
 
 **1. Khi tạo PR mới** — trong màn **Tạo Payment Request**:
 
-![Màn Tạo Payment Request — bảng check lead hiện ngay dưới ô Nguồn KH](/docs-images/paymentRequests/doi-soat-lead-3.png)
+![Màn Tạo Payment Request — bảng check lead hiện ngay dưới ô Nguồn KH](/docs-images/paymentRequests/doi-soat-lead-1.png)
 
 **2. Khi sửa PR đã có** — mở chi tiết một PR → bấm **Sửa** (mục Thông tin khách hàng):
 
@@ -49,7 +49,7 @@ Bảng chỉ hiện với các nguồn có thể đến từ marketing:
 Số điện thoại khách **có** trong dữ liệu quảng cáo. Bảng màu xanh hiện đủ:
 
 - **Tên** khách
-- **SĐT gốc** — số khách để lại lúc đăng ký
+- **SĐT gốc** — số khách để lại qua quảng cáo (có thể khác số đang dùng để thanh toán)
 - **Ngày lead xuất hiện** — ngày khách để lại số
 - **Kênh** và **tên sale** phụ trách lead đó
 
@@ -68,11 +68,13 @@ Số khách đang thanh toán **khác** với số đã đăng ký quảng cáo.
 
 ![Bảng check lead màu vàng — ô nhập SĐT gốc, ô Chọn lý do đang bị mờ khoá](/docs-images/paymentRequests/doi-soat-lead-2.png)
 
-1. Hỏi khách **"lúc đăng ký anh/chị để lại số nào?"** — nhập số đó vào ô **"SĐT khách dùng lúc đăng ký"**.
+1. Hỏi khách **"anh/chị đã điền số nào lúc để lại thông tin qua quảng cáo?"** — nhập số đó vào ô **"SĐT khách để lại qua quảng cáo"**.
 2. **Bấm nút 🔍 (kính lúp) ngay cạnh ô** để tra. Hoặc bấm chuột ra chỗ trống bên ngoài ô cũng được.
 3. Kết quả:
    - **Dò ra** → bảng chuyển **xanh** ("khớp qua số gốc") → xong, tạo PR bình thường.
    - **Dò không ra** → ô **"Chọn lý do"** lúc này **mới bấm được** → chọn 1 lý do.
+
+![Đã tra số gốc — ô Chọn lý do mở khoá, chọn lý do rồi lưu bình thường](/docs-images/paymentRequests/doi-soat-lead-3.png)
 
 > Ô **"Chọn lý do" bị mờ, không bấm được** cho tới khi bạn đã thử dò ít nhất 1 số. Đây là cố ý — để mọi người chịu khó tìm số cũ trước, không chọn thẳng lý do.
 
@@ -90,6 +92,6 @@ Số khách đang thanh toán **khác** với số đã đăng ký quảng cáo.
 
 ## Vì sao phải làm bước này
 
-Mỗi tháng có khoảng **175 đơn New** không quy được về kênh quảng cáo, chỉ vì số thanh toán khác số đã để lại lúc đăng ký. Việc bạn nhập số gốc hoặc chọn lý do giúp công ty **đo đúng hiệu quả quảng cáo** — biết đơn nào thật sự từ quảng cáo, đơn nào là giới thiệu / khách cũ bị khai nhầm thành New.
+Mỗi tháng có khoảng **175 đơn New** không quy được về kênh quảng cáo, chỉ vì số thanh toán khác số đã để lại qua quảng cáo. Việc bạn nhập số gốc hoặc chọn lý do giúp công ty **đo đúng hiệu quả quảng cáo** — biết đơn nào thật sự từ quảng cáo, đơn nào là giới thiệu / khách cũ bị khai nhầm thành New.
 
 > Yên tâm: kể cả khi không tìm thấy, bạn **vẫn tạo được PR và thu tiền khách bình thường** — chỉ cần làm xong 1 trong 2 việc: nhập số gốc, hoặc chọn lý do.
