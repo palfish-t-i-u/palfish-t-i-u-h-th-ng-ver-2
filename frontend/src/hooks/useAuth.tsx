@@ -145,9 +145,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   async function mfaEnroll(): Promise<{ qr: string | null; secret: string | null; factorId: string | null; error: Error | null }> {
     if (IS_DEV_MODE) return { qr: null, secret: null, factorId: null, error: null };
+    const isSandbox = import.meta.env.VITE_APP_ENV === "sandbox" || import.meta.env.VITE_SANDBOX === "true";
     const { data, error } = await supabase.auth.mfa.enroll({
       factorType: "totp",
-      issuer: "PalFish GMV",
+      issuer: isSandbox ? "PalFish GMV (Sandbox)" : "PalFish GMV",
     });
     if (error) return { qr: null, secret: null, factorId: null, error: new Error(error.message) };
     return {
