@@ -298,6 +298,10 @@ export default function ProfilePage() {
                 onClick={async () => {
                   setTotpBusy(true);
                   setTotpError("");
+                  const { totp } = await mfaListFactors();
+                  for (const f of totp.filter((t) => t.status === "unverified")) {
+                    await mfaUnenroll(f.id);
+                  }
                   const { qr, secret, factorId, error: err } = await mfaEnroll();
                   setTotpBusy(false);
                   if (err || !qr) { setTotpError(err?.message ?? "Không tạo được mã QR."); return; }
