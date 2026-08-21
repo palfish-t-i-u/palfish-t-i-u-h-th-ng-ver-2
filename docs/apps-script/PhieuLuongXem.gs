@@ -21,6 +21,8 @@ var PV_TAG_ALIAS = {
   'Họ tên': 'Name',
   'Bảo hiểm + note': 'Bảo hiểm',
   'Tổng lương + thưởng': 'Tổng lương + thưởng (Net)',
+  'Khấu trừ thuế tháng 05': 'Khấu trừ thuế',
+  'Khấu trừ thuế tháng 07': 'Khấu trừ thuế',
 };
 
 // Keys to keep decimal (sync with formatValue in PayslipDetail.tsx)
@@ -143,7 +145,7 @@ function pvDungPhieu_(tags, alias, headers, vals) {
     for (var ci = 0; ci < COLS.length; ci++) { if (COLS[ci].h === colLabel) { col2 = COLS[ci]; break; } }
     var v2 = vals[colIdx];
     if (v2 === '' || v2 === null || v2 === undefined) { boTrong++; usedCols[colLabel] = true; continue; }
-    dong.push({ key: (col2 ? col2.key : colLabel), label: colLabel, val: v2 });
+    dong.push({ key: (col2 ? col2.key : colLabel), label: tag, val: v2 });
     usedCols[colLabel] = true;
   }
 

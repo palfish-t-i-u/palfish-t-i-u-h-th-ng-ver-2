@@ -177,6 +177,11 @@ html, body {
 #phieuSalutation {
   font-size: 13px;
   color: #202124;
+  margin-bottom: 4px;
+}
+#phieuIntro {
+  font-size: 13px;
+  color: #202124;
   margin-bottom: 10px;
 }
 #phieuFooter {
@@ -185,6 +190,7 @@ html, body {
   margin-top: 12px;
   padding-top: 8px;
   border-top: 1px solid #dadce0;
+  line-height: 1.6;
 }
 
 /* Part B */
@@ -331,13 +337,14 @@ html, body {
     <div id="partABody">
       <div id="phieuTitle"></div>
       <div id="phieuSalutation"></div>
+      <div id="phieuIntro"></div>
       <table class="phieu-table" id="tableA">
         <colgroup>
           <col style="width:55%">
           <col style="width:45%">
         </colgroup>
       </table>
-      <div id="phieuFooter">Ms. Thu Trang – 0988.934.163 / palfishrecruitment@gmail.com</div>
+      <div id="phieuFooter">Nếu Anh/Chị có thắc mắc, vui lòng liên hệ Phòng Nhân sự <strong>(Ms. Thu Trang - 0988.934.163)</strong><br>Email: <strong>palfishrecruitment@gmail.com</strong> để được hỗ trợ.<br><br>Trân trọng,<br>Phòng Nhân sự</div>
     </div>
   </div>
 
@@ -645,9 +652,15 @@ function renderPartA(name, dongRows, sentDict, changedKeys) {
   // Salutation
   $('phieuSalutation').textContent = 'Kính gửi Anh/Chị ' + name + ',';
 
-  // Table A
+  // Intro
+  var intro = $('phieuIntro');
+  intro.innerHTML = 'Phòng Nhân sự gửi Anh/Chị thông tin bảng lương trong kỳ <strong>đã bao gồm thuế</strong> như sau:';
+
+  // Table A — skip Name row (already in salutation)
   var tbl = $('tableA');
   clearNode(tbl);
+
+  dongRows = dongRows.filter(function(r){ return r.key !== 'Name'; });
 
   if (dongRows.length === 0) {
     var empty = el('tr');

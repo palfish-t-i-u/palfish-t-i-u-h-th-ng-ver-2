@@ -14,10 +14,7 @@ var PB_CFG = {
   docId:     '1Jd0TvdJvh7EwsqvPXKyEoLdCDQHXXC_hjmS0TzIN3hs',
 };
 
-// 9 giá trị chuẩn của CASE ... AS team (BangLuong.gs:19-28)
-var TEAM_KNOWN_ = [
-  'bod','inhouse 1','inhouse 2','offline','cskh','back office','mkt','head quarter','wfh','khac'
-];
+// TEAM_KNOWN_ bỏ — nhóm bây giờ lấy từ cột Phòng ban (HRIS), giá trị tự do từ HRIS
 
 /* --- HAI hàm lọc cột RIÊNG BIỆT — cấm dùng chung (Q4f / I23) --- */
 
@@ -95,11 +92,12 @@ function xlMauSo_(bang){
   return bang.rows.length;
 }
 
-/* ======== GOM NHÓM THEO team ======== */
+/* ======== GOM NHÓM THEO PHÒNG BAN ======== */
 
 function xlGomNhom_(bang){
-  var teamIdx = bang.headers.indexOf('Team');
-  if(teamIdx < 0) throw 'Không tìm thấy cột "Team" trên bảng lương.';
+  var teamIdx = bang.headers.indexOf('Phòng ban (HRIS)');
+  if(teamIdx < 0) teamIdx = bang.headers.indexOf('Team');
+  if(teamIdx < 0) throw 'Không tìm thấy cột "Phòng ban (HRIS)" hoặc "Team" trên bảng lương.';
 
   var groups = [];     // [{ten, canon, rows, variants:{}}]
   var canonMap = {};    // canon → index in groups
@@ -145,23 +143,21 @@ function xlGomNhom_(bang){
   return groups;
 }
 
-/* ======== KIỂM TEAM LẠ ======== */
+/* ======== KIỂM NHÓM LẠ (Phòng ban trống hoặc không nhận ra) ======== */
 
 function xlKiemTeam_(bang){
-  var teamIdx = bang.headers.indexOf('Team');
-  if(teamIdx < 0) return [];
+  var pbIdx = bang.headers.indexOf('Phòng ban (HRIS)');
+  if(pbIdx < 0) pbIdx = bang.headers.indexOf('Team');
+  if(pbIdx < 0) return [];
   var counts = {};
   for(var r=0; r<bang.rows.length; r++){
-    var raw = pbNorm_(bang.rows[r][teamIdx]) || PB_CFG.khac;
+    var raw = pbNorm_(bang.rows[r][pbIdx]) || PB_CFG.khac;
     counts[raw] = (counts[raw]||0) + 1;
   }
   var result = [];
   for(var val in counts){
     var canon = pbCanon_(val);
-    var known = false;
-    for(var k=0; k<TEAM_KNOWN_.length; k++){
-      if(TEAM_KNOWN_[k] === canon){ known = true; break; }
-    }
+    var known = (canon !== pbCanon_(PB_CFG.khac) && val !== '(trống)');
     result.push({ giaTri:val, soNguoi:counts[val], known:known });
   }
   result.sort(function(a,b){ return b.soNguoi - a.soNguoi; });
@@ -366,16 +362,16 @@ function xlThongKe(){
   var ky   = typeof kyLuongHienTai_ === 'function' ? kyLuongHienTai_() : '';
   var tong = xlMauSo_(bang);
 
-  // Bảng chéo team × Phòng ban (HRIS)
-  var pbIdx = bang.headers.indexOf('Phòng ban (HRIS)');
+  // Bảng chéo: nhóm chính = Phòng ban (HRIS), chéo = Team
+  var cheoIdx = bang.headers.indexOf('Team');
   var nhomOut = [];
   for(var g=0; g<nhom.length; g++){
     var gr = nhom[g];
     var cheo = {};
-    if(pbIdx >= 0){
+    if(cheoIdx >= 0){
       for(var r=0; r<gr.rows.length; r++){
-        var pb = pbNorm_(gr.rows[r][pbIdx]) || '(trống)';
-        cheo[pb] = (cheo[pb]||0) + 1;
+        var tv = pbNorm_(gr.rows[r][cheoIdx]) || '(trống)';
+        cheo[tv] = (cheo[tv]||0) + 1;
       }
     }
     var canhBaoGop = [];
@@ -402,7 +398,7 @@ function xlThongKe(){
     soNhom:  nhom.length,
     nhom:    nhomOut,
     teamLa:  teamLa,
-    canhBao: nhom.length <= 2 ? 'Chỉ có '+nhom.length+' nhóm — kiểm tra cột team.' :
+    canhBao: nhom.length <= 2 ? 'Chỉ có '+nhom.length+' nhóm — kiểm tra cột Phòng ban (HRIS).' :
              (nhomOut[0] && nhomOut[0].so/tong > 0.6) ? 'Nhóm "'+nhomOut[0].ten+'" chiếm '+(nhomOut[0].so/tong*100).toFixed(0)+'% dân số.' : '',
   });
 }
@@ -434,11 +430,11 @@ function xlTaiZip(ky, danhSachTeam){
     // Guard: quá ít nhóm hoặc 1 nhóm chiếm >60% (chỉ khi KHÔNG lọc)
     if(!dangLoc){
       if(nhom.length <= 2){
-        return plSerialize_({ error:'Chỉ có '+nhom.length+' nhóm team — có thể cột team bị lệch. Kiểm tra lại trước khi xuất.' });
+        return plSerialize_({ error:'Chỉ có '+nhom.length+' nhóm phòng ban — có thể cột Phòng ban (HRIS) bị lệch. Kiểm tra lại trước khi xuất.' });
       }
       var max = nhom[0].rows.length;
       if(max / tong > 0.6){
-        return plSerialize_({ error:'Nhóm "'+nhom[0].ten+'" chiếm '+(max/tong*100).toFixed(0)+'% ('+max+'/'+tong+') — kiểm tra cột team trước khi xuất.' });
+        return plSerialize_({ error:'Nhóm "'+nhom[0].ten+'" chiếm '+(max/tong*100).toFixed(0)+'% ('+max+'/'+tong+') — kiểm tra cột Phòng ban (HRIS) trước khi xuất.' });
       }
     }
 

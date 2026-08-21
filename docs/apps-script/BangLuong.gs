@@ -104,7 +104,7 @@ function onOpen(){
     .addItem('📋 (2) Đối soát với bảng lương mẫu', 'doiSoatLuong')
     .addSeparator()
     .addItem('👁 Xem trước phiếu lương (dòng đang chọn)', 'xemTruocPhieuLuong')
-    .addItem('📥 Xuất Excel theo Team', 'xuatExcelTheoTeam')
+    .addItem('📥 Xuất Excel theo Phòng ban', 'xuatExcelTheoTeam')
     .addSeparator()
     .addItem('🎨 Định dạng lại (không cần BQ)', 'dinhDangBangLuong')
     .addItem('📊 Cập nhật bảng tính thuế (tham chiếu)', 'capNhatBangThue')
@@ -115,6 +115,7 @@ function onOpen(){
     .addItem('🔌 Cài đặt cổng gửi phiếu', 'installGateTriggers')
     .addItem('📤 Gửi phiếu đang chờ', 'flushOutbox')
     .addItem('📋 Mở hàng đợi', 'moHangDoi')
+    .addItem('🧪 Test kết nối Gate', 'testGateKetNoi')
     .addToUi();
 
   if (PropertiesService.getScriptProperties().getProperty('PL_DEV') === '1') {
@@ -486,6 +487,6 @@ function plAssertCodesUnique_(rows){
 
 function xuatExcelTheoTeam(){
   var html = HtmlService.createHtmlOutputFromFile('Xuất file phòng ban')
-    .setWidth(620).setHeight(720).setTitle('Xuất Excel theo Team');
+    .setWidth(620).setHeight(720).setTitle('Xuất Excel theo Phòng ban');
   SpreadsheetApp.getActiveSpreadsheet().show(html);
 }

@@ -174,7 +174,7 @@
   </style>
 </head>
 <body>
-  <h2>📥 Xuất Excel theo Team</h2>
+  <h2>📥 Xuất Excel theo Phòng ban</h2>
 
   <div class="box" id="kyBox-wrap">
     <div id="kyBox">
@@ -276,12 +276,12 @@
         coNoiDung = true;
         var tieuDe = document.createElement('div');
         tieuDe.className = 'tieuDe';
-        tieuDe.textContent = '⚠ Team lạ — không thuộc 9 nhánh đã biết:';
+        tieuDe.textContent = '⚠ Phòng ban lạ — giá trị không nhận ra:';
         box.appendChild(tieuDe);
         teamLa.forEach(function(t){
           var d = document.createElement('div');
           d.className = 'dong';
-          d.textContent = "Team lạ: '" + t.giaTri + "' (" + t.soNguoi + ' người) — Chung có sửa CASE?';
+          d.textContent = "Phòng ban lạ: '" + t.giaTri + "' (" + t.soNguoi + ' người) — kiểm tra dữ liệu HRIS.';
           box.appendChild(d);
         });
       }
@@ -366,7 +366,7 @@
         dong1.appendChild(spanSo);
         infoDiv.appendChild(dong1);
 
-        // Bảng chéo Phòng ban (HRIS)
+        // Bảng chéo Team (tham chiếu)
         var cheoKeys = g.cheo ? Object.keys(g.cheo) : [];
         if (cheoKeys.length){
           cheoKeys.sort(function(a, b){ return g.cheo[b] - g.cheo[a]; });
