@@ -53,7 +53,7 @@ export function pickReauthMethod(
   const providers = meta?.providers ?? [];
   const provider = meta?.provider ?? "";
   const isGoogle = providers.includes("google") || provider === "google";
-  if (isGoogle && hasTotp) return "totp";
+  if (hasTotp) return "totp";
   if (isGoogle) return "google";
   return "password";
 }
