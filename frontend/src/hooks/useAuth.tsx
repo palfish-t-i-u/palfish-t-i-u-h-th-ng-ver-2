@@ -28,6 +28,13 @@ export interface SignUpMeta {
   team: string;
 }
 
+export interface MfaFactor {
+  id: string;
+  factor_type: string;
+  friendly_name?: string | null;
+  status: string;
+}
+
 interface AuthContextValue {
   user: User | null;
   session: Session | null;
@@ -48,6 +55,10 @@ interface AuthContextValue {
   updatePassword: (newPassword: string) => Promise<{ error: Error | null }>;
   clearPasswordRecovery: () => void;
   signOut: () => Promise<void>;
+  mfaEnroll: () => Promise<{ qr: string | null; secret: string | null; factorId: string | null; error: Error | null }>;
+  mfaVerify: (factorId: string, code: string) => Promise<{ error: Error | null }>;
+  mfaUnenroll: (factorId: string) => Promise<{ error: Error | null }>;
+  mfaListFactors: () => Promise<{ totp: MfaFactor[] }>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -130,6 +141,48 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       },
     });
     return { error: error ? new Error(error.message) : null };
+  }
+
+  async function mfaEnroll(): Promise<{ qr: string | null; secret: string | null; factorId: string | null; error: Error | null }> {
+    if (IS_DEV_MODE) return { qr: null, secret: null, factorId: null, error: null };
+    const { data, error } = await supabase.auth.mfa.enroll({
+      factorType: "totp",
+      issuer: "PalFish GMV",
+    });
+    if (error) return { qr: null, secret: null, factorId: null, error: new Error(error.message) };
+    return {
+      qr: data.totp.qr_code,
+      secret: data.totp.secret,
+      factorId: data.id,
+      error: null,
+    };
+  }
+
+  async function mfaVerify(factorId: string, code: string): Promise<{ error: Error | null }> {
+    if (IS_DEV_MODE) return { error: null };
+    const { data: challenge, error: challengeErr } = await supabase.auth.mfa.challenge({ factorId });
+    if (challengeErr) return { error: new Error(challengeErr.message) };
+    const { error: verifyErr } = await supabase.auth.mfa.verify({
+      factorId,
+      challengeId: challenge.id,
+      code,
+    });
+    if (verifyErr) return { error: new Error(verifyErr.message) };
+    return { error: null };
+  }
+
+  async function mfaUnenroll(factorId: string): Promise<{ error: Error | null }> {
+    if (IS_DEV_MODE) return { error: null };
+    const { error } = await supabase.auth.mfa.unenroll({ factorId });
+    if (error) return { error: new Error(error.message) };
+    return { error: null };
+  }
+
+  async function mfaListFactors(): Promise<{ totp: MfaFactor[] }> {
+    if (IS_DEV_MODE) return { totp: [] };
+    const { data, error } = await supabase.auth.mfa.listFactors();
+    if (error) return { totp: [] };
+    return { totp: (data.totp ?? []) as MfaFactor[] };
   }
 
   async function signUpWithPassword(
@@ -222,6 +275,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         updatePassword,
         clearPasswordRecovery,
         signOut,
+        mfaEnroll,
+        mfaVerify,
+        mfaUnenroll,
+        mfaListFactors,
       }}
     >
       {children}

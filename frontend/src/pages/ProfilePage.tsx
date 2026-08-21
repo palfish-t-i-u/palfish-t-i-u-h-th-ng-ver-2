@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useMe } from "../hooks/useMe";
+import { useAuth, type MfaFactor } from "../hooks/useAuth";
 import { endpoints } from "../lib/api";
 import { subTeamLabel } from "../lib/subTeamLabels";
 import { Button, Input } from "../components/ui";
@@ -8,9 +9,32 @@ import PageSection from "../components/ui/PageSection";
 
 export default function ProfilePage() {
   const { profile, loading, error, refresh } = useMe();
+  const { mfaEnroll, mfaVerify, mfaUnenroll, mfaListFactors } = useAuth();
   const [displayName, setDisplayName] = useState("");
   const [phone, setPhone] = useState("");
   const [crmName, setCrmName] = useState("");
+
+  // TOTP enrollment state
+  const [totpFactor, setTotpFactor] = useState<MfaFactor | null>(null);
+  const [totpLoading, setTotpLoading] = useState(true);
+  const [enrollQr, setEnrollQr] = useState<string | null>(null);
+  const [enrollSecret, setEnrollSecret] = useState<string | null>(null);
+  const [enrollFactorId, setEnrollFactorId] = useState<string | null>(null);
+  const [totpCode, setTotpCode] = useState("");
+  const [totpError, setTotpError] = useState("");
+  const [totpBusy, setTotpBusy] = useState(false);
+
+  const loadTotpStatus = useCallback(async () => {
+    setTotpLoading(true);
+    const { totp } = await mfaListFactors();
+    const verified = totp.find((f) => f.status === "verified") ?? null;
+    setTotpFactor(verified);
+    setTotpLoading(false);
+  }, [mfaListFactors]);
+
+  useEffect(() => {
+    void loadTotpStatus();
+  }, [loadTotpStatus]);
 
   useEffect(() => {
     if (!profile) return;
@@ -157,6 +181,128 @@ export default function ProfilePage() {
           </form>
         </CardBody>
       </Card>
+
+      {/* TOTP Enrollment */}
+      <div className="mt-8">
+        <PageSection title="Bảo mật" subtitle="Xác thực 2 bước bằng Google Authenticator." />
+      </div>
+      <Card>
+        <CardBody>
+          {totpLoading ? (
+            <p className="text-sm text-gmv-muted animate-pulse">Đang kiểm tra...</p>
+          ) : totpFactor ? (
+            <div className="space-y-3">
+              <p className="text-sm font-medium text-gmv-ok">Google Authenticator đã bật.</p>
+              <Button
+                variant="danger"
+                size="sm"
+                disabled={totpBusy}
+                onClick={async () => {
+                  if (!confirm("Tắt Google Authenticator? Bạn sẽ cần thiết lập lại nếu muốn bật.")) return;
+                  setTotpBusy(true);
+                  setTotpError("");
+                  const { error: err } = await mfaUnenroll(totpFactor.id);
+                  setTotpBusy(false);
+                  if (err) { setTotpError(err.message); return; }
+                  setTotpFactor(null);
+                  setEnrollQr(null);
+                  setEnrollSecret(null);
+                  setEnrollFactorId(null);
+                }}
+              >
+                {totpBusy ? "Đang tắt..." : "Tắt Authenticator"}
+              </Button>
+              {totpError && <p className="text-sm text-gmv-danger">{totpError}</p>}
+            </div>
+          ) : enrollQr ? (
+            <div className="space-y-4">
+              <p className="text-sm text-gmv-text">
+                Quét mã QR bằng Google Authenticator (hoặc app tương thích), rồi nhập mã 6 số để xác nhận.
+              </p>
+              <div className="flex justify-center">
+                <img src={enrollQr} alt="TOTP QR Code" className="h-48 w-48" />
+              </div>
+              <details className="text-xs text-gmv-muted">
+                <summary className="cursor-pointer">Không quét được? Nhập mã thủ công</summary>
+                <code className="mt-1 block break-all rounded bg-gmv-bg p-2 font-mono text-xs">{enrollSecret}</code>
+              </details>
+              <div className="flex items-center gap-2">
+                <Input
+                  type="text"
+                  inputMode="numeric"
+                  maxLength={6}
+                  placeholder="Mã 6 số"
+                  value={totpCode}
+                  onChange={(e) => setTotpCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && totpCode.length === 6 && !totpBusy) {
+                      void handleTotpConfirm();
+                    }
+                  }}
+                  className="max-w-[120px]"
+                  autoFocus
+                />
+                <Button
+                  variant="primary"
+                  size="sm"
+                  disabled={totpBusy || totpCode.length !== 6}
+                  onClick={() => void handleTotpConfirm()}
+                >
+                  {totpBusy ? "Đang xác nhận..." : "Xác nhận"}
+                </Button>
+              </div>
+              {totpError && <p className="text-sm text-gmv-danger">{totpError}</p>}
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => { setEnrollQr(null); setEnrollSecret(null); setEnrollFactorId(null); setTotpCode(""); setTotpError(""); }}
+              >
+                Hủy
+              </Button>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <p className="text-sm text-gmv-muted">
+                Bật Google Authenticator để xác thực nhanh khi xem phiếu lương (thay vì đăng nhập lại Google).
+              </p>
+              <Button
+                variant="secondary"
+                disabled={totpBusy}
+                onClick={async () => {
+                  setTotpBusy(true);
+                  setTotpError("");
+                  const { qr, secret, factorId, error: err } = await mfaEnroll();
+                  setTotpBusy(false);
+                  if (err || !qr) { setTotpError(err?.message ?? "Không tạo được mã QR."); return; }
+                  setEnrollQr(qr);
+                  setEnrollSecret(secret);
+                  setEnrollFactorId(factorId);
+                }}
+              >
+                {totpBusy ? "Đang tạo..." : "Thiết lập Google Authenticator"}
+              </Button>
+              {totpError && <p className="text-sm text-gmv-danger">{totpError}</p>}
+            </div>
+          )}
+        </CardBody>
+      </Card>
     </div>
   );
+
+  async function handleTotpConfirm() {
+    if (!enrollFactorId) return;
+    setTotpBusy(true);
+    setTotpError("");
+    const { error: err } = await mfaVerify(enrollFactorId, totpCode);
+    setTotpBusy(false);
+    if (err) {
+      setTotpError(/invalid/i.test(err.message) ? "Mã không đúng, thử lại." : err.message);
+      return;
+    }
+    setEnrollQr(null);
+    setEnrollSecret(null);
+    setEnrollFactorId(null);
+    setTotpCode("");
+    await loadTotpStatus();
+  }
 }
