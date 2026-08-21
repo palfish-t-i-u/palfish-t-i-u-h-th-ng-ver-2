@@ -23,6 +23,7 @@ export default function ProfilePage() {
   const [totpCode, setTotpCode] = useState("");
   const [totpError, setTotpError] = useState("");
   const [totpBusy, setTotpBusy] = useState(false);
+  const [unenrollPending, setUnenrollPending] = useState(false);
 
   const loadTotpStatus = useCallback(async () => {
     setTotpLoading(true);
@@ -193,25 +194,51 @@ export default function ProfilePage() {
           ) : totpFactor ? (
             <div className="space-y-3">
               <p className="text-sm font-medium text-gmv-ok">Google Authenticator đã bật.</p>
-              <Button
-                variant="danger"
-                size="sm"
-                disabled={totpBusy}
-                onClick={async () => {
-                  if (!confirm("Tắt Google Authenticator? Bạn sẽ cần thiết lập lại nếu muốn bật.")) return;
-                  setTotpBusy(true);
-                  setTotpError("");
-                  const { error: err } = await mfaUnenroll(totpFactor.id);
-                  setTotpBusy(false);
-                  if (err) { setTotpError(err.message); return; }
-                  setTotpFactor(null);
-                  setEnrollQr(null);
-                  setEnrollSecret(null);
-                  setEnrollFactorId(null);
-                }}
-              >
-                {totpBusy ? "Đang tắt..." : "Tắt Authenticator"}
-              </Button>
+              {unenrollPending ? (
+                <>
+                  <p className="text-sm text-gmv-muted">Nhập mã 6 số từ Authenticator để xác nhận tắt:</p>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      type="text"
+                      inputMode="numeric"
+                      maxLength={6}
+                      placeholder="Mã 6 số"
+                      value={totpCode}
+                      onChange={(e) => setTotpCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && totpCode.length === 6 && !totpBusy) {
+                          void handleUnenroll();
+                        }
+                      }}
+                      className="max-w-[120px]"
+                      autoFocus
+                    />
+                    <Button
+                      variant="danger"
+                      size="sm"
+                      disabled={totpBusy || totpCode.length !== 6}
+                      onClick={() => void handleUnenroll()}
+                    >
+                      {totpBusy ? "Đang tắt..." : "Xác nhận tắt"}
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => { setUnenrollPending(false); setTotpCode(""); setTotpError(""); }}
+                    >
+                      Hủy
+                    </Button>
+                  </div>
+                </>
+              ) : (
+                <Button
+                  variant="danger"
+                  size="sm"
+                  onClick={() => setUnenrollPending(true)}
+                >
+                  Tắt Authenticator
+                </Button>
+              )}
               {totpError && <p className="text-sm text-gmv-danger">{totpError}</p>}
             </div>
           ) : enrollQr ? (
@@ -304,5 +331,23 @@ export default function ProfilePage() {
     setEnrollFactorId(null);
     setTotpCode("");
     await loadTotpStatus();
+  }
+
+  async function handleUnenroll() {
+    if (!totpFactor) return;
+    setTotpBusy(true);
+    setTotpError("");
+    const { error: verifyErr } = await mfaVerify(totpFactor.id, totpCode);
+    if (verifyErr) {
+      setTotpBusy(false);
+      setTotpError(/invalid/i.test(verifyErr.message) ? "Mã không đúng, thử lại." : verifyErr.message);
+      return;
+    }
+    const { error: err } = await mfaUnenroll(totpFactor.id);
+    setTotpBusy(false);
+    if (err) { setTotpError(err.message); return; }
+    setTotpFactor(null);
+    setUnenrollPending(false);
+    setTotpCode("");
   }
 }
