@@ -52,12 +52,24 @@ function groupPayslips(items: PayslipListItem[]): GroupedPayslip[] {
 export default function PayslipTab() {
   const { canView, loading: permLoading } = usePermission("payslip");
   const { profile } = useMe();
-  const { session } = useAuth();
+  const { session, mfaListFactors } = useAuth();
   const isMobile = useIsMobile();
 
   const [payslips, setPayslips] = useState<PayslipListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+
+  // TOTP factor status
+  const [hasTotp, setHasTotp] = useState(false);
+  const [totpFactorId, setTotpFactorId] = useState<string | null>(null);
+
+  useEffect(() => {
+    void mfaListFactors().then(({ totp }) => {
+      const verified = totp.find((f) => f.status === "verified");
+      setHasTotp(!!verified);
+      setTotpFactorId(verified?.id ?? null);
+    });
+  }, [mfaListFactors]);
 
   const [selectedKy, setSelectedKy] = useState<string>("");
 
@@ -225,6 +237,8 @@ export default function PayslipTab() {
         open={reauthOpen}
         pendingCode={pendingCode}
         pendingKy={pendingKy}
+        hasTotp={hasTotp}
+        totpFactorId={totpFactorId}
         onSuccess={handleReauthSuccess}
         onClose={() => {
           setReauthOpen(false);

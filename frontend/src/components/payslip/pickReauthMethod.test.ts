@@ -6,11 +6,12 @@ function session(provider?: string, providers?: string[]) {
 }
 
 describe("pickReauthMethod", () => {
-  it("returns google when providers includes google", () => {
+  // Existing cases (hasTotp defaults to false)
+  it("returns google when providers includes google (no totp)", () => {
     expect(pickReauthMethod(session("google", ["google"]))).toBe("google");
   });
 
-  it("returns google when providers has both email and google", () => {
+  it("returns google when providers has both email and google (no totp)", () => {
     expect(pickReauthMethod(session("email", ["email", "google"]))).toBe("google");
   });
 
@@ -36,5 +37,22 @@ describe("pickReauthMethod", () => {
 
   it("returns password when user has no app_metadata", () => {
     expect(pickReauthMethod({ user: {} })).toBe("password");
+  });
+
+  // TOTP cases
+  it("returns totp when google user has totp enrolled", () => {
+    expect(pickReauthMethod(session("google", ["google"]), true)).toBe("totp");
+  });
+
+  it("returns totp when email+google user has totp enrolled", () => {
+    expect(pickReauthMethod(session("email", ["email", "google"]), true)).toBe("totp");
+  });
+
+  it("returns password when email user has totp enrolled (totp only for google)", () => {
+    expect(pickReauthMethod(session("email", ["email"]), true)).toBe("password");
+  });
+
+  it("returns password for null session even with hasTotp=true", () => {
+    expect(pickReauthMethod(null, true)).toBe("password");
   });
 });

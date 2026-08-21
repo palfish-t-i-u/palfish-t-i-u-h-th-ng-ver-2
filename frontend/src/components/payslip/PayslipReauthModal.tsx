@@ -43,15 +43,18 @@ export function clearReauthReturn(): void {
   sessionStorage.removeItem(REAUTH_RETURN_KEY);
 }
 
-type ReauthMethod = "google" | "password";
+type ReauthMethod = "totp" | "google" | "password";
 
 export function pickReauthMethod(
-  session: { user?: { app_metadata?: { provider?: string; providers?: string[] } } } | null
+  session: { user?: { app_metadata?: { provider?: string; providers?: string[] } } } | null,
+  hasTotp = false,
 ): ReauthMethod {
   const meta = session?.user?.app_metadata;
   const providers = meta?.providers ?? [];
   const provider = meta?.provider ?? "";
-  if (providers.includes("google") || provider === "google") return "google";
+  const isGoogle = providers.includes("google") || provider === "google";
+  if (isGoogle && hasTotp) return "totp";
+  if (isGoogle) return "google";
   return "password";
 }
 
@@ -59,17 +62,20 @@ interface Props {
   open: boolean;
   pendingCode: string | null;
   pendingKy: string | null;
+  hasTotp: boolean;
+  totpFactorId: string | null;
   onSuccess: () => void;
   onClose: () => void;
 }
 
-export default function PayslipReauthModal({ open, pendingCode, pendingKy, onSuccess, onClose }: Props) {
-  const { session, signInWithPassword, reauthWithGoogle } = useAuth();
+export default function PayslipReauthModal({ open, pendingCode, pendingKy, hasTotp, totpFactorId, onSuccess, onClose }: Props) {
+  const { session, signInWithPassword, reauthWithGoogle, mfaVerify } = useAuth();
   const [password, setPassword] = useState("");
+  const [totpCode, setTotpCode] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const method = pickReauthMethod(session);
+  const method = pickReauthMethod(session, hasTotp);
   const userEmail = session?.user?.email ?? "";
 
   const handleGoogleReauth = async () => {
@@ -104,6 +110,57 @@ export default function PayslipReauthModal({ open, pendingCode, pendingKy, onSuc
     onSuccess();
   };
 
+  const handleTotpSubmit = async () => {
+    if (!totpFactorId) return;
+    setError("");
+    setLoading(true);
+    const { error: verifyErr } = await mfaVerify(totpFactorId, totpCode);
+    setLoading(false);
+    if (verifyErr) {
+      setError(
+        /invalid/i.test(verifyErr.message) ? "Mã không đúng, thử lại." : verifyErr.message
+      );
+      return;
+    }
+    markReauthValid();
+    setTotpCode("");
+    setError("");
+    onSuccess();
+  };
+
+  if (method === "totp") {
+    return (
+      <Modal open={open} onClose={onClose} title="Xác thực để xem phiếu lương">
+        <p className="mb-4 text-center text-sm text-gmv-muted">
+          Nhập mã 6 số từ Google Authenticator. Phiên hết hạn sau 15 phút.
+        </p>
+        <div className="space-y-3">
+          <Input
+            type="text"
+            inputMode="numeric"
+            maxLength={6}
+            placeholder="Mã 6 số"
+            value={totpCode}
+            onChange={(e) => setTotpCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !loading && totpCode.length === 6) void handleTotpSubmit();
+            }}
+            autoFocus
+          />
+          {error && <p className="text-sm text-gmv-danger">{error}</p>}
+          <Button
+            variant="primary"
+            fullWidth
+            disabled={loading || totpCode.length !== 6}
+            onClick={() => void handleTotpSubmit()}
+          >
+            {loading ? "Đang xác thực..." : "Xác nhận"}
+          </Button>
+        </div>
+      </Modal>
+    );
+  }
+
   if (method === "google") {
     return (
       <Modal open={open} onClose={onClose} title="Xác thực để xem phiếu lương">
@@ -119,6 +176,9 @@ export default function PayslipReauthModal({ open, pendingCode, pendingKy, onSuc
           >
             Xác thực với Google
           </Button>
+          <p className="mt-2 text-center text-xs text-gmv-muted">
+            Thiết lập Google Authenticator trong Thông tin cá nhân để xác thực nhanh hơn.
+          </p>
         </div>
       </Modal>
     );
