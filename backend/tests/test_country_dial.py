@@ -5,7 +5,7 @@ Regression cho PR-2026-0578: khách nước ngoài phải ra đúng mã vùng, k
 
 from __future__ import annotations
 
-from utils.country_dial import COUNTRY_DIAL, dial_for
+from utils.country_dial import COUNTRY_DIAL, dial_for, local_len_for
 
 
 class TestDialFor:
@@ -56,3 +56,28 @@ class TestConsumersUseSharedMap:
         # trunk 0 bị bỏ, mã vùng 420 (không phải 84)
         assert format_phone_intl("0777737388", "CZ") == "420-777737388"
         assert format_phone_intl("777737388", "VN") == "84-777737388"
+
+    def test_vinaphone_084_not_double_stripped(self):
+        """SĐT Vinaphone 084xxx bắt đầu bằng 84 — KHÔNG strip dial."""
+        from utils.zalo_message_builder import format_phone_intl
+
+        assert format_phone_intl("0844976431", "VN") == "84-844976431"
+        assert format_phone_intl("844976431", "VN") == "84-844976431"
+
+    def test_intl_number_with_dial_still_stripped(self):
+        """Số quốc tế dính dial 84 (11 digits) vẫn strip đúng."""
+        from utils.zalo_message_builder import format_phone_intl
+
+        assert format_phone_intl("84904769355", "VN") == "84-904769355"
+
+
+class TestLocalLenFor:
+    def test_vn(self):
+        assert local_len_for("VN") == 9
+
+    def test_us(self):
+        assert local_len_for("US") == 10
+
+    def test_default(self):
+        assert local_len_for("ZZ") == 9
+        assert local_len_for(None) == 9

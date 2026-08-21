@@ -72,6 +72,11 @@ export default function ActivationRowCards({
                     ⏸ KH chưa muốn tạo gói
                   </span>
                 )}
+                {a.isCreditOrder && !a.creditSettlementPending && (
+                  <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 6, background: "var(--info-bg, #dbeafe)", color: "var(--info-text, #1d4ed8)", fontWeight: 600, whiteSpace: "nowrap" }}>
+                    Đã ghép TD
+                  </span>
+                )}
               </>
             }
             meta={[

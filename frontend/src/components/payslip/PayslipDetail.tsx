@@ -21,7 +21,7 @@ export const PAYSLIP_BLOCKS: { title: string; keys: string[] }[] = [
   { title: "Tổng tiền", keys: ["Tổng lương + thưởng", "Tổng lương", "Luong_thanh_toan (Net)"] },
 ];
 
-const HEADER_KEYS = new Set(["STT", "Name", "Chức danh"]);
+const HEADER_KEYS = new Set(["STT", "Name", "Chức danh", "Mã NV", "Team", "Loại NV"]);
 
 const KEY_NORMALIZE: Record<string, string> = {
   "Luong co ban": "Lương cơ bản",
@@ -33,6 +33,7 @@ const KEY_NORMALIZE: Record<string, string> = {
   "Bao hiem + note": "Bảo hiểm + note",
   "Bao hiem": "Bảo hiểm",
   "Luong_thanh_toan (Net)": "Tổng lương + thưởng",
+  "Tổng lương + thưởng (Net)": "Tổng lương + thưởng",
   "Khau tru thue": "Khấu trừ thuế",
   "Bu tien": "Bù tiền",
   "Ghi chu": "Ghi chú",
@@ -41,7 +42,7 @@ const KEY_NORMALIZE: Record<string, string> = {
   "Chuc danh": "Chức danh",
 };
 
-const PREFIX_KEYS = ["Khấu trừ thuế"];
+const PREFIX_KEYS = ["Khấu trừ thuế", "Ghi chú"];
 
 function normalizePhieu(raw: Record<string, unknown>): Record<string, unknown> {
   const result: Record<string, unknown> = {};
@@ -63,9 +64,14 @@ function matchesBlockKey(dataKey: string, blockKey: string): boolean {
   return false;
 }
 
-function formatValue(val: unknown): string {
+const KEEP_DECIMAL = new Set(["Công", "Tỉ lệ đạt KPI", "% Com ≥100%"]);
+
+function formatValue(val: unknown, key?: string): string {
   if (val === null || val === undefined || val === "") return "—";
-  if (typeof val === "number") return formatVndNumber(val) || String(val);
+  if (typeof val === "number") {
+    if (key && KEEP_DECIMAL.has(key)) return val.toLocaleString("vi-VN");
+    return formatVndNumber(val) || String(val);
+  }
   return String(val);
 }
 
@@ -118,7 +124,7 @@ function PhieuBlocks({ phieu }: BlockProps) {
                 {rows.map((r) => (
                   <div key={r.dataKey} className="flex justify-between gap-4 px-3 py-1 text-[13px]">
                     <dt className="text-gmv-muted">{r.dataKey}</dt>
-                    <dd className="font-medium text-gmv-text-strong text-right">{formatValue(normalized[r.dataKey])}</dd>
+                    <dd className="font-medium text-gmv-text-strong text-right">{formatValue(normalized[r.dataKey], r.dataKey)}</dd>
                   </div>
                 ))}
               </dl>
@@ -140,7 +146,7 @@ function PhieuBlocks({ phieu }: BlockProps) {
                 {otherKeys.map((k) => (
                   <div key={k} className="flex justify-between gap-4 px-3 py-1 text-[13px]">
                     <dt className="text-gmv-muted">{k}</dt>
-                    <dd className="font-medium text-gmv-text-strong text-right">{formatValue(normalized[k])}</dd>
+                    <dd className="font-medium text-gmv-text-strong text-right">{formatValue(normalized[k], k)}</dd>
                   </div>
                 ))}
               </dl>

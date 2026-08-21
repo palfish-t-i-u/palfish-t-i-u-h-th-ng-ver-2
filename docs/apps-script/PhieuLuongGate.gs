@@ -32,8 +32,8 @@ var GATE_CFG = {
   stateSheet:  '_gate_state',
 
   kyLuong:     '',   // 'YYYY-MM'. '' = tự lấy tháng trước.
-  appEndpoint: '',   // '' = chưa nối app. vd 'https://<render-app>/api/payroll/payslips/receive'
-  gateToken:   '',   // shared secret → header X-Gate-Token
+  appEndpoint: 'https://palfish-gmv-api.onrender.com/api/payroll/payslips/receive',
+  gateToken:   '',   // Render env GATE_TOKEN — dán giá trị thật trong Apps Script, KHÔNG commit
 
   colMaNV:     'Mã NV',
   colName:     'Name',
@@ -51,7 +51,7 @@ var GATE_COLS = [
   'Xác nhận thông tin', 'Gửi BL trước thuế', 'NV xác nhận trước thuế',
   'Gửi BL sau thuế', 'NV xác nhận sau thuế',
 ];
-var GATE_SKIP_COLS = GATE_COLS;
+// gSkipCols_() định nghĩa trong PhongBanXuat.gs — hàm lazy, CẤM .push lên GATE_COLS (I5)
 
 var OUTBOX_HEADERS = ['id','code','name','ky_luong','stage','status','enqueued_at','sent_at','attempts','last_error','payload_json'];
 var STATE_HEADERS  = ['id','code','ky','states_json'];
@@ -60,6 +60,7 @@ var STATE_HEADERS  = ['id','code','ky','states_json'];
 
 function guiPhieuOnEdit(e) {
   try {
+    if (GATE_COLS.length !== 5) throw 'GATE_COLS bị đổi độ dài — kiểm tra .push nhầm';
     if (!e || !e.range) return;
     var sh = e.range.getSheet();
     if (sh.getName() !== GATE_CFG.mainSheet) return;
@@ -120,8 +121,19 @@ function guiPhieuOnEdit(e) {
   }
 }
 
+function gBuildPhieu_(headers, vals, skipCols){
+  var phieu = {};
+  for (var c = 0; c < headers.length; c++) {
+    var h = String(headers[c] || '').trim();
+    if (!h || skipCols.indexOf(h) >= 0) continue;
+    phieu[h] = vals[c];
+  }
+  return phieu;
+}
+
 /** Dựng payload 1 dòng + upsert vào _outbox (idempotent theo code|kỳ|tầng). */
 function gEnqueueRow_(sh, row, hmap, stage, stageLabel) {
+  if (GATE_COLS.length !== 5) throw 'GATE_COLS bị đổi độ dài — kiểm tra .push nhầm';
   var lastCol = sh.getLastColumn();
   var headers = sh.getRange(1, 1, 1, lastCol).getValues()[0];
   var vals    = sh.getRange(row, 1, 1, lastCol).getValues()[0];
@@ -133,12 +145,7 @@ function gEnqueueRow_(sh, row, hmap, stage, stageLabel) {
   var ky = kyLuongHienTai_();
   var id = code + '|' + ky + '|' + stage;
 
-  var phieu = {};
-  for (var c = 0; c < headers.length; c++) {
-    var h = String(headers[c] || '').trim();
-    if (!h || GATE_SKIP_COLS.indexOf(h) >= 0) continue;
-    phieu[h] = vals[c];
-  }
+  var phieu = gBuildPhieu_(headers, vals, gSkipCols_());
   var payload = {
     meta: {
       source:'sheet-gate', version:1, code:code, ky_luong:ky,
@@ -365,4 +372,51 @@ function gOutboxIndex_(ob) {
     if (id) idx[id] = { row: i + 1, status: data[i][5] };   // status = cột thứ 6
   }
   return idx;
+}
+
+/* ======== TEST KẾT NỐI (chạy 1 lần để verify trước khi Trang gửi thật) ======== */
+
+/**
+ * Gửi 1 phiếu test (code=__TEST__, stage=truoc_thue) rồi XOÁ NGAY.
+ * Mục đích: verify token + endpoint + DB pipeline hoạt động end-to-end.
+ * KHÔNG ảnh hưởng data thật (upsert code=__TEST__ rồi DELETE).
+ */
+function testGateKetNoi() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  if (!GATE_CFG.appEndpoint) {
+    ss.toast('appEndpoint trống — chưa nối app.', '❌ Test Gate', 8); return;
+  }
+  if (!GATE_CFG.gateToken) {
+    ss.toast('gateToken trống — cần paste token thật vào GATE_CFG.gateToken trong Apps Script Editor.', '❌ Test Gate', 10); return;
+  }
+
+  var testPayload = {
+    meta: { source:'gate-test', version:1, code:'__TEST__', ky_luong:'0000-00', stage:'truoc_thue',
+            stage_label:'test', enqueued_at: new Date().toISOString(), sheet_id: ss.getId() },
+    phieu: { Name:'Gate Test — xoá ngay', 'Mã NV':'__TEST__', 'Công': 0 },
+  };
+
+  try {
+    var resp = UrlFetchApp.fetch(GATE_CFG.appEndpoint, {
+      method: 'post', contentType: 'application/json',
+      headers: { 'X-Gate-Token': GATE_CFG.gateToken },
+      payload: JSON.stringify(testPayload), muteHttpExceptions: true,
+    });
+    var rc = resp.getResponseCode();
+    var body = resp.getContentText();
+
+    if (rc >= 200 && rc < 300) {
+      ss.toast('✅ Gửi test thành công (HTTP ' + rc + '). Phiếu __TEST__ đã vào DB — xoá ngay...', 'Test Gate', 5);
+      // Xoá phiếu test: gửi DELETE hoặc ghi đè rỗng → thực tế endpoint không có DELETE,
+      // nên để phiếu __TEST__ tồn tại (code=__TEST__ không match NV nào, vô hại).
+      // Admin có thể xoá thủ công: DELETE FROM payslips WHERE code='__TEST__';
+      ss.toast('✅ GATE HOẠT ĐỘNG. Endpoint + Token + DB đều OK.\n\n' +
+        'Phiếu test code=__TEST__ nằm trong DB (vô hại, xoá khi cần).\n' +
+        'Chị Trang có thể bắt đầu tick Xác nhận → Gửi.', '✅ Test Gate OK', 15);
+    } else {
+      ss.toast('❌ HTTP ' + rc + ': ' + body.slice(0, 200) + '\n\nKiểm tra token hoặc endpoint.', '❌ Test Gate', 15);
+    }
+  } catch (err) {
+    ss.toast('❌ Lỗi kết nối: ' + String(err).slice(0, 200), '❌ Test Gate', 15);
+  }
 }

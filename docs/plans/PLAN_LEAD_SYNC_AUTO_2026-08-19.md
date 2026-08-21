@@ -1,6 +1,6 @@
 # PLAN — Đồng bộ kho lead tự động (BQ → Supabase, 1h/lần)
 
-**Ngày:** 2026-08-19 · **Owner:** Minh (= "IT" trong spec Hiếu) · **Status:** CHỜ DUYỆT
+**Ngày:** 2026-08-19 · **Owner:** Minh (= "IT" trong spec Hiếu) · **Status:** G1-G3 ✅ DONE (19/8) · G4 đang verify
 
 ---
 
@@ -26,34 +26,31 @@ Supabase leads_lookup (app đọc)
 
 ## 1. Milestones
 
-### G1 — Setup BQ (spec Hiếu §4.1–4.3) — ⚠️ HIẾU LÀM, Minh không có quyền
-**Blocker confirmed:** Minh không có `bigquery.datasets.create` trên project `daily-report-smai-to-openclaw` (Access Denied, tested 19/8). G1 phải nhờ Hiếu (hoặc ai có quyền trên project đó).
+### G1 — Setup BQ (spec Hiếu §4.1–4.3) — ✅ DONE 19/8
+- **G1-T1** ✅ Dataset `app_lookup` tạo xong
+- **G1-T2** ✅ Bảng `lead_phone_lookup` tạo xong (SQL mở rộng Phụ lục A + sale_name + lead_id)
+- **G1-T3** ✅ BQ scheduled query `lead_phone_lookup refresh` — cron 1h, owner Minh
+- **G1-T4** ✅ SA `palfish-lead-app-sync@pf-salary.iam` có dataViewer trên `app_lookup`
+- **G1-T5** ✅ Verify: 67.931 dòng, max_lead_date = 2026-08-18
 
-- **G1-T1 · Tạo dataset `app_lookup`** — `CREATE SCHEMA IF NOT EXISTS` (SQL §4.1, location US)
-- **G1-T2 · Tạo bảng `lead_phone_lookup`** — chạy SQL mở rộng Phụ lục A (§2 plan này). Bổ sung 2 cột: `sale_name` (LEFT JOIN `dim_sale`) + `lead_id` (MD5 composite — PK cho Supabase upsert)
-- **G1-T3 · Tạo BQ scheduled query** — cron mỗi 1h, dùng SQL G1-T2, owner = tài khoản quản trị dữ liệu (Hiếu, đúng spec §4.3)
-- **G1-T4 · Cấp quyền SA** — cấp `bigquery.dataViewer` trên dataset `app_lookup` cho SA `gmv-bq-sync@pf-salary.iam` (để Cloud Function đọc được). Minh tạo SA trên `pf-salary`, Hiếu cấp quyền trên `daily-report-smai-to-openclaw`
-- **G1-T5 · Verify** — `SELECT COUNT(*), MAX(lead_date) FROM app_lookup.lead_phone_lookup` phải ra ≥67k dòng, lead_date tới gần ngày hiện tại
+### G2 — Cloud Function sync BQ→Supabase — ✅ DONE 19/8
+- **G2-T1** ✅ `bq-sync/lead-sync/` — main.py + requirements.txt
+- **G2-T2** ✅ HTTP trigger, urllib (không dùng supabase SDK — tiết kiệm ~200MB RAM), TRUNCATE + batch INSERT 500/batch
+- **G2-T3** ✅ Test local + sandbox OK
+- **G2-T4** ✅ Deploy gen2, revision 00007-lap (6 revision cũ đã xoá)
 
-**Minh gửi Hiếu:** SQL đầy đủ (§2) + hướng dẫn tạo scheduled query (§4.3 spec). Hiếu chỉ cần copy-paste chạy.
+### G3 — Cloud Scheduler + SA — ✅ DONE 19/8
+- **G3-T1** ✅ SA `palfish-lead-app-sync@pf-salary.iam` — dataViewer + jobUser (job chạy trên pf-salary, không phải project Hiếu)
+- **G3-T2** ✅ Secret Manager: `supabase-gmv-url` v1, `supabase-gmv-service-key` v2
+- **G3-T3** ✅ Scheduler `lead-sync-hourly` — cron `15 * * * *`
+- **G3-T4** ✅ Trigger thủ công OK — 67.931 rows sync
 
-### G2 — Cloud Function sync BQ→Supabase (code, ~2h)
-- **G2-T1 · Thư mục `bq-sync/lead-sync/`** — `main.py`, `requirements.txt`, `README.md`
-- **G2-T2 · `main.py`** — HTTP trigger: SELECT từ `app_lookup.lead_phone_lookup` → TRUNCATE + batch INSERT vào Supabase `leads_lookup` (service-role key). Chi tiết §2
-- **G2-T3 · Test local** — `functions-framework` chạy local, trỏ sandbox Supabase, verify dòng count khớp BQ
-- **G2-T4 · Deploy** — `gcloud functions deploy lead-sync --gen2 --region=asia-southeast1 --runtime=python312 --trigger-http --service-account=gmv-bq-sync@pf-salary.iam.gserviceaccount.com`
-
-### G3 — Cloud Scheduler + SA (thao tác tay, ~15')
-- **G3-T1 · Service account** — tạo/dùng lại `gmv-bq-sync@pf-salary.iam` (cùng SA với plan Fivetran migration). Cấp: `bigquery.dataViewer` trên dataset `app_lookup` + `bigquery.jobUser` trên project
-- **G3-T2 · Supabase DSN** — lưu service-role key prod vào Secret Manager `supabase-gmv-service-role`. SA cấp `secretAccessor`
-- **G3-T3 · Tạo Scheduler job** — cron `15 * * * *` (phút 15 mỗi giờ — lệch 15' so với BQ scheduled query chạy đầu giờ, đủ thời gian BQ query xong)
-- **G3-T4 · Chạy 1 lần thủ công** — trigger function → verify Supabase `leads_lookup` count khớp BQ
-
-### G4 — Verify end-to-end + dọn dẹp (~30')
-- **G4-T1 · Test trên sandbox** — mở app sandbox, tra SĐT mới (sau 18/8) → phải ra kết quả
-- **G4-T2 · Test trên prod** — deploy prod, tra SĐT `1089367529` (khách An Nhà Thành Thoi, ảnh anh gửi) → phải khớp
-- **G4-T3 · Monitoring** — Cloud Logging alert khi function fail; thêm `synced_at` check endpoint để biết data cũ bao lâu
-- **G4-T4 · Xoá cam kết seed tay** — bỏ lịch re-seed thủ công (§6 SHIP plan); cập nhật MODULES.md
+### G4 — Verify end-to-end + bật gate — ⏳ ĐANG VERIFY
+- **G4-T1** ✅ Test sandbox — tra SĐT OK
+- **G4-T2** ✅ Test prod — SĐT `1089367529` khớp
+- **G4-T3** ⏳ Monitoring: Cloud Function sync đều (last_sync 20/8 02:15 UTC). Chờ lead ngày mới xuất hiện (bottleneck = tầng 1 Hiếu ETL)
+- **G4-T4** ⏳ Chưa bật gate — điều kiện: data sync ổn ≥ 3 ngày + lead ngày mới có đều đặn
+- **G4-T5** ⏳ Xoá cam kết seed tay — chờ gate bật xong
 
 ---
 
@@ -207,27 +204,36 @@ supabase==2.*
 
 ## 3. Guardrails
 
-1. **Không đụng `crm_leads`** — chỉ ĐỌC `crm_leads.leads_all` + `crm_leads.dim_sale` qua scheduled query (đúng quyền Data Viewer). Cloud Function chỉ đọc `app_lookup`
-2. **SA chỉ có Data Viewer** — không Editor/Owner/admin (đúng ràng buộc spec Hiếu §3)
-3. **Không log SĐT** — Cloud Function log count, không log phone/phone9
-4. **Data freshness ≤ 1h15'** — BQ scheduled query chạy đầu giờ, Cloud Function chạy phút 15 → worst case data cũ 1h15' (< 2h, thoả spec "không cache >1h" vì đây không phải cache mà là replica)
-5. **Phụ lục A giữ nguyên logic** — WHERE, dedup, LENGTH=9 không đổi; chỉ thêm 2 cột output
-6. **Không tạo dataset `app_write`** — chưa cần (write-back defer, chặn Hiếu)
-7. **Scheduled query owner** — dùng tài khoản cá nhân Minh; spec Hiếu nói "quản trị dữ liệu" nhưng context PalFish Minh = IT = data admin. Nếu Hiếu muốn đổi → transfer ownership sau
+### Quyền & phạm vi (Hiếu cấp Editor 19/8, kèm điều kiện)
+
+> **"đừng có sờ vào bất kỳ file cũ và logic nào của anh, vì nó liên quan nhiều thứ lắm"** — Hiếu, 19/8
+
+1. **CHỈ tạo mới dataset `app_lookup`** — không sửa/xoá/đổi tên bất kỳ object nào trong dataset `crm_leads`, `ad_raw`, `report`
+2. **Chỉ SELECT từ object Hiếu** — scheduled query ĐỌC `crm_leads.leads_all` + `crm_leads.dim_sale`, KHÔNG INSERT/UPDATE/DELETE/ALTER
+3. **Không sửa scheduled query / view / table có sẵn** — kể cả "sửa cho tốt hơn"
+4. **Không đổi quyền user khác** — chỉ grant quyền cho SA của Minh trên dataset `app_lookup` (Minh tạo)
+5. **SA `palfish-lead-app-sync` chỉ có Data Viewer trên `app_lookup`** — không cấp Editor/Owner/admin
+
+### Kỹ thuật
+
+6. **Không log SĐT** — Cloud Function log count, không log phone/phone9
+7. **Data freshness ≤ 1h15'** — BQ scheduled query chạy đầu giờ, Cloud Function chạy phút 15
+8. **Phụ lục A giữ nguyên logic** — WHERE, dedup, LENGTH=9 không đổi; chỉ thêm 2 cột output
+9. **Scheduled query owner = Minh** (anhminhcv0512@gmail.com) — transfer cho Hiếu nếu cần sau
 
 ---
 
-## 4. Phân công & blockers (confirmed 19/8)
+## 4. Phân công & blockers (updated 19/8 — Hiếu cấp Editor)
 
 | # | Việc | Ai làm | Project | Status |
 |---|---|---|---|---|
-| 1 | Tạo dataset `app_lookup` + bảng + scheduled query (G1) | **Hiếu** | `daily-report-smai-to-openclaw` | ⛔ Minh không có quyền tạo dataset |
-| 2 | Cấp `dataViewer` trên `app_lookup` cho SA Minh (G1-T4) | **Hiếu** | `daily-report-smai-to-openclaw` | Chờ G1-T1 |
-| 3 | Tạo SA `gmv-bq-sync@pf-salary.iam` | **Minh** | `pf-salary` | Minh sở hữu project |
+| 1 | Tạo dataset `app_lookup` + bảng + scheduled query (G1) | **Minh** | `daily-report-smai-to-openclaw` | ✅ Có Editor (19/8) |
+| 2 | Cấp `dataViewer` trên `app_lookup` cho SA (G1-T4) | **Minh** | `daily-report-smai-to-openclaw` | Tự làm (Editor) |
+| 3 | ~~Tạo SA~~ `palfish-lead-app-sync@pf-salary.iam.gserviceaccount.com` | **Minh** | `pf-salary` | ✅ DONE 19/8 |
 | 4 | Bật API + deploy Cloud Function + Scheduler (G2-G3) | **Minh** | `pf-salary` | Minh sở hữu project |
 | 5 | Lưu Supabase service-role key vào Secret Manager | **Minh** | `pf-salary` | Key đã có trên Render |
 
-**Luồng giao việc:** Minh soạn SQL + hướng dẫn (xong, §2 plan này) → gửi Hiếu chạy G1 → Hiếu xong → Minh làm G2-G4.
+**Không còn blocker.** Minh tự làm toàn bộ G1-G4.
 
 ---
 

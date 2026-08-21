@@ -42,6 +42,7 @@ interface AuthContextValue {
     password: string,
     meta: SignUpMeta
   ) => Promise<{ error: Error | null }>;
+  reauthWithGoogle: () => Promise<{ error: Error | null } | void>;
   sendPasswordReset: (email: string) => Promise<{ error: Error | null }>;
   verifyOtp: (email: string, token: string) => Promise<{ error: Error | null }>;
   updatePassword: (newPassword: string) => Promise<{ error: Error | null }>;
@@ -114,6 +115,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       options: {
         redirectTo: authRedirectUrl(),
         queryParams: GOOGLE_OAUTH_QUERY_PARAMS,
+      },
+    });
+    return { error: error ? new Error(error.message) : null };
+  }
+
+  async function reauthWithGoogle() {
+    if (IS_DEV_MODE) return { error: null };
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: {
+        redirectTo: authRedirectUrl(),
+        queryParams: { prompt: "login" },
       },
     });
     return { error: error ? new Error(error.message) : null };
@@ -202,6 +215,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         passwordRecovery,
         signInWithPassword,
         signInWithGoogle,
+        reauthWithGoogle,
         signUpWithPassword,
         sendPasswordReset,
         verifyOtp,

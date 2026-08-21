@@ -455,12 +455,12 @@ def _is_credit_pending(credit_line_ids: list[str], matched_line_ids: set[str]) -
     return any(lid not in matched_line_ids for lid in credit_line_ids)
 
 
-def _credit_hold_map(sb, pr_ids: list[str]) -> dict[str, bool]:
-    """Map pr_id → True nếu còn lần TT quẹt thẻ (card/installment) CHƯA matched.
+def _credit_hold_map(sb, pr_ids: list[str]) -> dict[str, str]:
+    """Map pr_id → "pending" | "matched" cho các PR có lần TT quẹt thẻ.
 
-    Đơn tín dụng bị ẩn khỏi tab Kích hoạt tới khi mọi lần quẹt thẻ đã ghép
-    (gateway_transactions.match_status='matched', trỏ payment_line_id).
-    PR không có lần quẹt thẻ → VẮNG MẶT trong map (coi như không chờ → hiện).
+    "pending" = còn ≥1 lần quẹt thẻ chưa ghép gateway_transactions.
+    "matched" = mọi lần quẹt thẻ đã ghép.
+    PR không có lần quẹt thẻ → VẮNG MẶT (không phải đơn tín dụng).
     Batch, KHÔNG N+1 (mirror _tien_ve_map).
     """
     ids = [str(p) for p in pr_ids if p]
@@ -478,6 +478,7 @@ def _credit_hold_map(sb, pr_ids: list[str]) -> dict[str, bool]:
                 .select("id, payment_request_id")
                 .in_("payment_request_id", ids[i : i + CHUNK])
                 .in_("method", list(CREDIT_METHODS))
+                .in_("status", ["pending", "paid"])
                 .execute()
             )
         except Exception:
@@ -510,11 +511,10 @@ def _credit_hold_map(sb, pr_ids: list[str]) -> dict[str, bool]:
             if plid:
                 matched.add(plid)
 
-    # 3) PR nào còn lần quẹt thẻ chưa matched → pending.
+    # 3) PR nào pending vs matched.
     return {
-        prid: True
+        prid: "pending" if _is_credit_pending(line_ids, matched) else "matched"
         for prid, line_ids in credit_lines_by_pr.items()
-        if _is_credit_pending(line_ids, matched)
     }
 
 
@@ -524,6 +524,7 @@ def _serialize_ar(
     sale_name_map: dict[str, str] | None = None,
     tien_ve: tuple[str | None, str | None] | None = None,
     credit_settlement_pending: bool = False,
+    is_credit_order: bool = False,
 ) -> dict[str, Any]:
     raw_uids_data = row.get("uids_data") or []
     uids_data: list[dict[str, Any]] = []
@@ -561,6 +562,7 @@ def _serialize_ar(
         "hold_activation": bool(row.get("hold_activation")),
         "hold_note": row.get("hold_note") or None,
         "credit_settlement_pending": bool(credit_settlement_pending),
+        "is_credit_order": bool(is_credit_order),
     }
     if tien_ve is not None:
         out["tien_ve_som"], out["tien_ve_muon"] = tien_ve
@@ -593,10 +595,9 @@ def _serialize_ar_with_hold(sb, row: dict[str, Any], *args, **kwargs) -> dict[st
     Chi phí: 2 query nhỏ có index/mutation → không đáng kể (mutation tần suất thấp).
     """
     pr_id = str(row.get("pr_id") or "")
-    kwargs.setdefault(
-        "credit_settlement_pending",
-        _credit_hold_map(sb, [pr_id]).get(pr_id, False) if pr_id else False,
-    )
+    credit_status = _credit_hold_map(sb, [pr_id]).get(pr_id) if pr_id else None
+    kwargs.setdefault("credit_settlement_pending", credit_status == "pending")
+    kwargs.setdefault("is_credit_order", credit_status is not None)
     return _serialize_ar(row, *args, **kwargs)
 
 
@@ -2054,14 +2055,15 @@ def register_activation_routes(app, supabase_factory):
         except Exception:
             snm = {}
         tv_map = _tien_ve_map(sb, [str(r.get("id")) for r in rows if r.get("id")])
-        hold_map = _credit_hold_map(sb, pr_ids)
+        credit_map = _credit_hold_map(sb, pr_ids)
         return [
             _serialize_ar(
                 r,
                 pr_map.get(str(r.get("pr_id") or "")),
                 snm,
                 tien_ve=tv_map.get(str(r.get("id") or ""), (None, None)),
-                credit_settlement_pending=hold_map.get(str(r.get("pr_id") or ""), False),
+                credit_settlement_pending=credit_map.get(str(r.get("pr_id") or "")) == "pending",
+                is_credit_order=str(r.get("pr_id") or "") in credit_map,
             )
             for r in rows
         ]

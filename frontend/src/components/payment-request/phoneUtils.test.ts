@@ -88,6 +88,10 @@ describe("formatPhoneIntl — format công ty đầu số-đuôi số (20/7)", (
   it("KHÔNG cắt dial khi phần còn lại quá ngắn (≤5)", () => {
     expect(formatPhoneIntl("VN", "84846")).toBe("84-84846");
   });
+  it("SĐT local bắt đầu 84 (Vinaphone 084) — KHÔNG strip dial", () => {
+    expect(formatPhoneIntl("VN", "0844976431")).toBe("84-844976431");
+    expect(formatPhoneIntl("VN", "844976431")).toBe("84-844976431");
+  });
 });
 
 describe("applySmartPhoneInput", () => {

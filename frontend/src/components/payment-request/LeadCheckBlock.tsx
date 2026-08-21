@@ -87,10 +87,10 @@ export default function LeadCheckBlock({
     <div style={{ background: "var(--warning-bg, #fffbeb)", border: "1px solid var(--warning, #f59e0b)",
                   borderRadius: 8, padding: 8, fontSize: 12, display: "flex", flexDirection: "column", gap: 6 }}>
       <div style={{ fontWeight: 600, color: "var(--warning-fg, #b45309)" }}>
-        ⚠ Không tìm thấy số này trong dữ liệu marketing. Nhập SĐT khách dùng lúc đăng ký để tra tiếp.
+        ⚠ Không tìm thấy số này trong dữ liệu marketing. Nhập SĐT khách đã để lại qua quảng cáo để tra tiếp.
       </div>
       <label style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-        <span style={{ color: "var(--muted)" }}>SĐT khách dùng lúc đăng ký (tra số này trước)</span>
+        <span style={{ color: "var(--muted)" }}>SĐT khách để lại qua quảng cáo (tra số này trước)</span>
         <div style={{ display: "flex", gap: 6 }}>
           <input value={state.sdtGoc}
                  onChange={(e) => onSdtGocInput(e.target.value)}

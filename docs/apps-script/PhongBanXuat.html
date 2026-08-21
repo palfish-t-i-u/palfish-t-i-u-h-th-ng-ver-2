@@ -1,0 +1,582 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <meta charset="utf-8">
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: 'Google Sans', Roboto, Arial, sans-serif;
+      font-size: 13px;
+      color: #202124;
+      margin: 0;
+      padding: 14px 16px 18px;
+      width: 100%;
+      box-sizing: border-box;
+    }
+    h2 {
+      font-size: 15px;
+      margin: 0 0 10px;
+      color: #0b5394;
+    }
+    .box {
+      border: 1px solid #dadce0;
+      border-radius: 6px;
+      padding: 10px 12px;
+      margin-bottom: 12px;
+    }
+
+    /* ---- Kỳ lương ---- */
+    #kyBox { display: flex; align-items: center; gap: 8px; }
+    #kyInput {
+      flex: 1;
+      font-size: 18px;
+      font-weight: 700;
+      padding: 8px 10px;
+      border: 2px solid #4285f4;
+      border-radius: 5px;
+      letter-spacing: 0.5px;
+      text-align: center;
+    }
+    #kyInput.confirmed { border-color: #34a853; background: #e6f4ea; }
+    .btn {
+      cursor: pointer;
+      border: none;
+      border-radius: 5px;
+      padding: 9px 14px;
+      font-size: 13px;
+      font-weight: 600;
+    }
+    .btn-primary { background: #0b5394; color: #fff; }
+    .btn-primary:hover { background: #073763; }
+    .btn-primary:disabled { background: #c6c6c6; cursor: not-allowed; }
+    #kyStatus { font-size: 11px; margin-top: 6px; color: #5f6368; }
+    #kyStatus.ok { color: #188038; font-weight: 600; }
+
+    /* ---- Khối đỏ ---- */
+    #boxDo {
+      border: 1px solid #d93025;
+      background: #fce8e6;
+      border-radius: 6px;
+      padding: 10px 12px;
+      margin-bottom: 12px;
+      display: none;
+    }
+    #boxDo .tieuDe { color: #d93025; font-weight: 700; margin-bottom: 6px; }
+    #boxDo .dong { color: #b31412; margin: 3px 0; }
+
+    /* ---- Cảnh báo vàng ---- */
+    #boxVang {
+      background: #fef7e0;
+      border: 1px solid #f9ab00;
+      border-radius: 6px;
+      padding: 8px 12px;
+      margin-bottom: 12px;
+      color: #7a5b00;
+      display: none;
+    }
+
+    /* ---- Danh sách nhóm ---- */
+    #dsHeader { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; gap: 6px; }
+    #dsHeader b { font-size: 13px; }
+    #dsActions { display: flex; gap: 6px; align-items: center; }
+    .btn-sm {
+      background: #f1f3f4;
+      border: 1px solid #dadce0;
+      border-radius: 5px;
+      padding: 5px 10px;
+      font-size: 11px;
+      cursor: pointer;
+    }
+    #dsNhom { max-height: 190px; overflow-y: auto; border: 1px solid #e0e0e0; border-radius: 5px; }
+    .nhomRow { padding: 6px 10px; border-bottom: 1px solid #eee; display: flex; align-items: flex-start; gap: 8px; }
+    .nhomRow:last-child { border-bottom: none; }
+    .nhomRow input[type=checkbox] { margin-top: 3px; flex-shrink: 0; }
+    .nhomInfo { flex: 1; }
+    .nhomTen { font-weight: 700; }
+    .nhomSo { color: #444; font-weight: 400; }
+    #chonInfo { font-size: 11px; color: #5f6368; margin-top: 4px; }
+    .nhomCheo { font-size: 11px; color: #666; margin-top: 2px; }
+    .nhomCanhBao { font-size: 11px; color: #b06000; margin-top: 2px; }
+    .nhomKhac .nhomTen { color: #d93025; }
+    .nhomKhac .nhomSo { color: #d93025; }
+
+    #tongDong { margin-top: 6px; font-weight: 700; text-align: right; }
+
+    /* ---- Nút tải ---- */
+    .taiRow { margin-top: 12px; }
+    #btnZip {
+      width: 100%;
+      background: #188038;
+      color: #fff;
+      padding: 13px;
+      font-size: 14.5px;
+      border-radius: 6px;
+    }
+    #btnZip:hover { background: #0f6b2c; }
+    #btnZip:disabled { background: #c6c6c6; cursor: not-allowed; }
+    #btnMotFile {
+      width: 100%;
+      background: #fff;
+      color: #444;
+      border: 1px solid #c6c6c6;
+      padding: 9px;
+      font-size: 12.5px;
+      border-radius: 6px;
+      margin-top: 6px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 3px;
+    }
+    #btnMotFile:hover { background: #f5f5f5; }
+    #btnMotFile:disabled { color: #aaa; cursor: not-allowed; }
+    #canhBaoMotFile {
+      color: #d93025;
+      font-size: 10.5px;
+      font-weight: 400;
+    }
+
+    /* ---- Tiến trình ---- */
+    #tienTrinh { display: none; margin-top: 12px; }
+    #tienTrinhBarNgoai {
+      background: #e0e0e0;
+      border-radius: 5px;
+      height: 8px;
+      overflow: hidden;
+    }
+    #tienTrinhBarTrong {
+      background: #4285f4;
+      height: 100%;
+      width: 4%;
+      transition: width 0.4s linear;
+    }
+    #tienTrinhChu { font-size: 11.5px; color: #5f6368; margin-top: 5px; text-align: center; }
+
+    /* ---- Kết quả tải ---- */
+    #ketQua { display: none; margin-top: 12px; }
+    #lienKetTai {
+      display: block;
+      background: #34a853;
+      color: #fff !important;
+      text-align: center;
+      text-decoration: none;
+      font-weight: 700;
+      font-size: 14px;
+      padding: 13px;
+      border-radius: 6px;
+    }
+    #lienKetTai:hover { background: #1e8e3e; }
+    #ghiChuTai { font-size: 11.5px; color: #5f6368; text-align: center; margin-top: 6px; }
+    #meRow { font-size: 11.5px; color: #b06000; text-align: center; margin-top: 6px; }
+
+    #loiChu { color: #d93025; font-size: 12px; margin-top: 8px; display: none; }
+  </style>
+</head>
+<body>
+  <h2>📥 Xuất Excel theo Phòng ban</h2>
+
+  <div class="box" id="kyBox-wrap">
+    <div id="kyBox">
+      <input id="kyInput" type="month" disabled>
+      <button class="btn btn-primary" id="btnXacNhanKy" disabled>Xác nhận kỳ</button>
+    </div>
+    <div id="kyStatus">Đang tải dữ liệu…</div>
+  </div>
+
+  <div id="boxDo"></div>
+  <div id="boxVang"></div>
+
+  <div class="box">
+    <div id="dsHeader">
+      <b>Danh sách nhóm</b>
+      <div id="dsActions">
+        <button class="btn-sm" id="btnChonTatCa">☑ Chọn tất cả</button>
+        <button class="btn-sm" id="btnSort">Đổi sang A-Z</button>
+      </div>
+    </div>
+    <div id="dsNhom"><div class="nhomRow">Đang tải…</div></div>
+    <div id="chonInfo"></div>
+    <div id="tongDong"></div>
+  </div>
+
+  <div class="taiRow">
+    <button class="btn" id="btnZip" disabled>📦 Tải ZIP: Mỗi phòng ban 1 file → gộp vào 1 file ZIP</button>
+    <button class="btn" id="btnMotFile" disabled>
+      <span>📄 Tải 1 file Excel duy nhất — mỗi phòng ban 1 tab riêng</span>
+      <span id="canhBaoMotFile">⚠ File này chứa lương TẤT CẢ các nhóm được chọn.</span>
+    </button>
+  </div>
+
+  <div id="tienTrinh">
+    <div id="tienTrinhBarNgoai"><div id="tienTrinhBarTrong"></div></div>
+    <div id="tienTrinhChu">Đang dựng file… 0s (thường mất 60–170 giây)</div>
+  </div>
+
+  <div id="ketQua">
+    <a id="lienKetTai" href="#" download target="_blank">Tải file</a>
+    <div id="ghiChuTai">File nằm trong thư mục Tải xuống của máy.</div>
+    <div id="meRow"></div>
+  </div>
+
+  <div id="loiChu"></div>
+
+  <script>
+    var thongKe = null;
+    var sortAZ = false;
+    var kyConfirmed = false;
+    var kyDaXacNhan = '';
+    var dangChay = false;
+    var tienTrinhTimer = null;
+    var tienTrinhGiay = 0;
+
+    /* ======== KHỞI TẠO ======== */
+
+    google.script.run
+      .withSuccessHandler(onThongKe)
+      .withFailureHandler(function(err){ onErr(err, true); })
+      .xlThongKe();
+
+    function onThongKe(data){
+      thongKe = data;
+      var kyInput = document.getElementById('kyInput');
+      kyInput.disabled = false;
+      kyInput.placeholder = '';
+      if (!kyInput.value) kyInput.value = data.ky || '';
+      document.getElementById('btnXacNhanKy').disabled = false;
+      document.getElementById('kyStatus').textContent = 'Chưa xác nhận kỳ — bấm "Xác nhận kỳ" để mở khoá nút tải.';
+
+      renderBoxDo(data);
+      renderBoxVang(data);
+      renderDanhSach(data);
+      capNhatChonInfo();
+    }
+
+    function onErr(err, laLoadDauTien){
+      var msg = (err && err.message) ? err.message : String(err);
+      var loi = document.getElementById('loiChu');
+      loi.style.display = 'block';
+      loi.textContent = '⚠ Lỗi: ' + msg;
+      if (laLoadDauTien){
+        document.getElementById('kyStatus').textContent = 'Không tải được dữ liệu — thử đóng và mở lại.';
+      }
+      dungTienTrinh();
+      capNhatKhoaNut();
+    }
+
+    /* ======== KHỐI ĐỎ ======== */
+
+    function renderBoxDo(data){
+      var box = document.getElementById('boxDo');
+      box.textContent = '';
+      var coNoiDung = false;
+
+      var teamLa = data.teamLa || [];
+      if (teamLa.length){
+        coNoiDung = true;
+        var tieuDe = document.createElement('div');
+        tieuDe.className = 'tieuDe';
+        tieuDe.textContent = '⚠ Phòng ban lạ — giá trị không nhận ra:';
+        box.appendChild(tieuDe);
+        teamLa.forEach(function(t){
+          var d = document.createElement('div');
+          d.className = 'dong';
+          d.textContent = "Phòng ban lạ: '" + t.giaTri + "' (" + t.soNguoi + ' người) — kiểm tra dữ liệu HRIS.';
+          box.appendChild(d);
+        });
+      }
+
+      // Người mới (NV tháng đầu) — chỉ hiển thị nếu server có trả field này.
+      // Không chặn nút, chỉ in đỏ.
+      var nguoiMoi = data.nguoiMoi || [];
+      if (nguoiMoi.length){
+        coNoiDung = true;
+        var tieuDe2 = document.createElement('div');
+        tieuDe2.className = 'tieuDe';
+        tieuDe2.style.marginTop = coNoiDung ? '8px' : '0';
+        tieuDe2.textContent = '⚠ Nhân viên tháng đầu (điểm rò lương xác suất cao):';
+        box.appendChild(tieuDe2);
+        nguoiMoi.forEach(function(n){
+          var d = document.createElement('div');
+          d.className = 'dong';
+          var ten = n.ten || n.hoTen || n.maNV || JSON.stringify(n);
+          d.textContent = '• ' + ten;
+          box.appendChild(d);
+        });
+      }
+
+      box.style.display = coNoiDung ? 'block' : 'none';
+    }
+
+    /* ======== CẢNH BÁO VÀNG ======== */
+
+    function renderBoxVang(data){
+      var box = document.getElementById('boxVang');
+      if (data.canhBao){
+        box.textContent = '⚠ ' + data.canhBao;
+        box.style.display = 'block';
+      } else {
+        box.style.display = 'none';
+      }
+    }
+
+    /* ======== DANH SÁCH NHÓM ======== */
+
+    function sapXep(nhom){
+      var list = nhom.slice();
+      var khac = [];
+      var thuong = [];
+      list.forEach(function(g){
+        if (g.ten === 'Khác' || g.ten === '(Chưa phân nhóm)') khac.push(g);
+        else thuong.push(g);
+      });
+      if (sortAZ){
+        thuong.sort(function(a, b){ return a.ten.localeCompare(b.ten, 'vi'); });
+      }
+      return thuong.concat(khac);
+    }
+
+    function renderDanhSach(data){
+      var cont = document.getElementById('dsNhom');
+      cont.textContent = '';
+      var nhom = sapXep(data.nhom || []);
+
+      nhom.forEach(function(g){
+        var row = document.createElement('div');
+        row.className = 'nhomRow' + ((g.ten === 'Khác') ? ' nhomKhac' : '');
+
+        var cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.checked = true;
+        cb.dataset.ten = g.ten;
+        cb.addEventListener('change', capNhatChonInfo);
+        row.appendChild(cb);
+
+        var infoDiv = document.createElement('div');
+        infoDiv.className = 'nhomInfo';
+
+        var dong1 = document.createElement('div');
+        var spanTen = document.createElement('span');
+        spanTen.className = 'nhomTen';
+        spanTen.textContent = (g.ten === 'Khác') ? '(Chưa phân nhóm)' : g.ten;
+        var spanSo = document.createElement('span');
+        spanSo.className = 'nhomSo';
+        spanSo.textContent = '  —  ' + g.so + ' người' + (g.ten === 'Khác' ? ' (kỳ vọng 0)' : '');
+        dong1.appendChild(spanTen);
+        dong1.appendChild(spanSo);
+        infoDiv.appendChild(dong1);
+
+        // Bảng chéo Team (tham chiếu)
+        var cheoKeys = g.cheo ? Object.keys(g.cheo) : [];
+        if (cheoKeys.length){
+          cheoKeys.sort(function(a, b){ return g.cheo[b] - g.cheo[a]; });
+          var parts = cheoKeys.map(function(k){
+            var nhan = (k === '(trống)') ? 'trống' : k;
+            return nhan + ' ' + g.cheo[k];
+          });
+          var dongCheo = document.createElement('div');
+          dongCheo.className = 'nhomCheo';
+          dongCheo.textContent = '(' + parts.join(' · ') + ')';
+          infoDiv.appendChild(dongCheo);
+        }
+
+        // Cảnh báo gộp canonical
+        (g.canhBao || []).forEach(function(cb2){
+          var dongCB = document.createElement('div');
+          dongCB.className = 'nhomCanhBao';
+          dongCB.textContent = 'ℹ ' + cb2;
+          infoDiv.appendChild(dongCB);
+        });
+
+        row.appendChild(infoDiv);
+        cont.appendChild(row);
+      });
+
+      document.getElementById('tongDong').textContent =
+        'Tổng: ' + data.tong + ' người / ' + data.soNhom + ' nhóm';
+    }
+
+    function capNhatChonInfo(){
+      var cbs = document.querySelectorAll('#dsNhom input[type=checkbox]');
+      var tong = cbs.length;
+      var chon = 0;
+      var soNguoi = 0;
+      for(var i = 0; i < cbs.length; i++){
+        if(cbs[i].checked){
+          chon++;
+          var ten = cbs[i].dataset.ten;
+          var nhom = (thongKe && thongKe.nhom) || [];
+          for(var j = 0; j < nhom.length; j++){
+            if(nhom[j].ten === ten){ soNguoi += nhom[j].so; break; }
+          }
+        }
+      }
+      var el = document.getElementById('chonInfo');
+      if(chon === tong){
+        el.textContent = '';
+      } else {
+        el.textContent = 'Đã chọn ' + chon + '/' + tong + ' nhóm (' + soNguoi + ' người)';
+      }
+    }
+
+    document.getElementById('btnChonTatCa').addEventListener('click', function(){
+      var cbs = document.querySelectorAll('#dsNhom input[type=checkbox]');
+      var tatCaDaChon = true;
+      for(var i = 0; i < cbs.length; i++){
+        if(!cbs[i].checked){ tatCaDaChon = false; break; }
+      }
+      var giaTri = !tatCaDaChon;
+      for(var j = 0; j < cbs.length; j++) cbs[j].checked = giaTri;
+      this.textContent = giaTri ? '☐ Bỏ chọn tất cả' : '☑ Chọn tất cả';
+      capNhatChonInfo();
+    });
+
+    document.getElementById('btnSort').addEventListener('click', function(){
+      sortAZ = !sortAZ;
+      this.textContent = sortAZ ? 'Đổi về thứ hạng' : 'Đổi sang A-Z';
+      if (thongKe) renderDanhSach(thongKe);
+    });
+
+    /* ======== XÁC NHẬN KỲ ======== */
+
+    var kyInputEl = document.getElementById('kyInput');
+    kyInputEl.addEventListener('input', function(){
+      if (kyConfirmed){
+        kyConfirmed = false;
+        kyInputEl.classList.remove('confirmed');
+        document.getElementById('kyStatus').classList.remove('ok');
+        document.getElementById('kyStatus').textContent =
+          'Kỳ vừa sửa — bấm "Xác nhận kỳ" lại để mở khoá nút tải.';
+        capNhatKhoaNut();
+      }
+    });
+
+    document.getElementById('btnXacNhanKy').addEventListener('click', function(){
+      var v = kyInputEl.value.trim();
+      if (!v){
+        alert('Chọn kỳ lương trước khi xác nhận.');
+        return;
+      }
+      kyDaXacNhan = v;
+      kyConfirmed = true;
+      kyInputEl.classList.add('confirmed');
+      var st = document.getElementById('kyStatus');
+      st.classList.add('ok');
+      st.textContent = '✓ Đã xác nhận kỳ: ' + v + ' — kỳ này sẽ nằm trong tên file VÀ ô A1 mỗi tab.';
+      capNhatKhoaNut();
+    });
+
+    function capNhatKhoaNut(){
+      var khoa = !kyConfirmed || dangChay;
+      document.getElementById('btnZip').disabled = khoa;
+      document.getElementById('btnMotFile').disabled = khoa;
+    }
+
+    /* ======== TẢI ZIP / 1 FILE ======== */
+
+    document.getElementById('btnZip').addEventListener('click', function(){
+      batDauTai('zip');
+    });
+    document.getElementById('btnMotFile').addEventListener('click', function(){
+      batDauTai('motfile');
+    });
+
+    function layDanhSachChon(){
+      var cbs = document.querySelectorAll('#dsNhom input[type=checkbox]');
+      var tong = cbs.length;
+      var chon = [];
+      for(var i = 0; i < cbs.length; i++){
+        if(cbs[i].checked) chon.push(cbs[i].dataset.ten);
+      }
+      if(chon.length === tong) return null;
+      return chon;
+    }
+
+    function batDauTai(loai){
+      if (!kyConfirmed || dangChay) return;
+
+      var danhSachChon = layDanhSachChon();
+      if(danhSachChon && danhSachChon.length === 0){
+        alert('Chưa chọn nhóm nào — tick ít nhất 1 nhóm để xuất.');
+        return;
+      }
+
+      dangChay = true;
+      capNhatKhoaNut();
+      document.getElementById('ketQua').style.display = 'none';
+      document.getElementById('loiChu').style.display = 'none';
+      batDauTienTrinh();
+
+      var handler = google.script.run
+        .withSuccessHandler(function(res){ onTaiXong(res, loai); })
+        .withFailureHandler(function(err){
+          dangChay = false;
+          onErr(err, false);
+        });
+
+      if (loai === 'zip') handler.xlTaiZip(kyDaXacNhan, danhSachChon);
+      else handler.xlTaiMotFile(kyDaXacNhan, danhSachChon);
+    }
+
+    function batDauTienTrinh(){
+      tienTrinhGiay = 0;
+      document.getElementById('tienTrinh').style.display = 'block';
+      var barTrong = document.getElementById('tienTrinhBarTrong');
+      barTrong.style.width = '4%';
+      var chu = document.getElementById('tienTrinhChu');
+      chu.textContent = 'Đang dựng file… 0s (thường mất 60–170 giây)';
+      tienTrinhTimer = setInterval(function(){
+        tienTrinhGiay++;
+        var pct = Math.min(96, 4 + tienTrinhGiay * (92 / 170));
+        barTrong.style.width = pct + '%';
+        chu.textContent = 'Đang dựng file… ' + tienTrinhGiay + 's (thường mất 60–170 giây)';
+      }, 1000);
+    }
+
+    function dungTienTrinh(){
+      if (tienTrinhTimer){ clearInterval(tienTrinhTimer); tienTrinhTimer = null; }
+      document.getElementById('tienTrinh').style.display = 'none';
+    }
+
+    function onTaiXong(res, loai){
+      dangChay = false;
+      dungTienTrinh();
+      capNhatKhoaNut();
+
+      if (!res || res.error){
+        var loi = document.getElementById('loiChu');
+        loi.style.display = 'block';
+        loi.textContent = '⚠ ' + (res && res.error ? res.error : 'Không xuất được file — thử lại.');
+        return;
+      }
+
+      var a = document.getElementById('lienKetTai');
+      a.href = res.dataUri;
+      a.setAttribute('download', res.filename);
+      var kichThuoc = ocLuongKichThuoc(res.dataUri);
+      a.textContent = '⬇ Tải file (' + kichThuoc + ')';
+
+      var meRow = document.getElementById('meRow');
+      if (res.daXong != null && res.conLai != null && res.conLai > 0){
+        meRow.style.display = 'block';
+        meRow.textContent = 'Đã xuất ' + res.daXong + '/' + (res.daXong + res.conLai) +
+          ' nhóm. Bấm lần nữa để lấy ' + res.conLai + ' nhóm còn lại.';
+      } else {
+        meRow.style.display = 'none';
+        meRow.textContent = '';
+      }
+
+      document.getElementById('ketQua').style.display = 'block';
+    }
+
+    function ocLuongKichThuoc(dataUri){
+      var i = dataUri.indexOf('base64,');
+      if (i < 0) return '?';
+      var b64 = dataUri.substring(i + 7);
+      var bytes = Math.floor(b64.length * 3 / 4);
+      if (bytes > 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+      return Math.max(1, Math.round(bytes / 1024)) + ' KB';
+    }
+  </script>
+</body>
+</html>

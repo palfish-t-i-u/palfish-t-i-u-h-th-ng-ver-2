@@ -15,15 +15,19 @@
 | # | Cột (nhãn chị Trang) | Nguồn | Pre-fill/Chốt |
 |---|---|---|---|
 | 1 | STT | tự đánh | auto |
+| 1a | Mã NV | BQ `code` | auto |
+| 1b | Team | BQ CASE WHEN từ `workplace`/`title_job` | auto |
 | 2 | Name | BQ `full_name` | auto |
 | 3 | Chức danh | BQ `title_job` | auto |
-| 4 | **Tổng lương + thưởng** | công thức (headline) | auto |
+| 3a | Loại NV | BQ `employee_type` (TRIM `type_self`) | auto |
+| 3b | **Phòng ban (HRIS)** | BQ `t.departments` trong `C_view_bang_luong_truoc_thue` | auto — CHỈ ĐỌC, không vào payload |
+| 4 | **Tổng lương + thưởng (Net)** | công thức (headline) | auto |
 | 5 | Tổng lương | công thức | auto |
 | 6 | Lương cơ bản | BQ `basic_salary` | auto |
 | 7 | Công | BQ `tong_cong` | **Trang chốt** |
 | 8 | LCB theo ngày công | BQ `luong_co_ban_theo_ngay_cong` | auto (theo Công chốt) |
 | 9 | Thưởng COM | BQ `bonus_com` | **Trang chốt** |
-| 10 | Bảo hiểm + note | BQ `bao_hiem_xa_hoi` + note | auto |
+| 10 | Bảo hiểm | BQ `bao_hiem_xa_hoi` | auto |
 | 11 | GMV | BQ `gmv_vnd` | auto |
 | 11a | GMV bán mới | BQ `gmv_ban_moi` | auto *(Chung bổ sung BQ 12/8)* |
 | 11b | GMV giới thiệu | BQ `gmv_gioi_thieu` | auto |
@@ -34,6 +38,7 @@
 | 15 | Khấu trừ thuế | tính (mục Thuế dưới) | **Vân chốt** |
 | 16 | Bù tiền | — | **Trang nhập** |
 | 17 | Note | — | Trang |
+| 17a | Ghi chú thưởng nóng | BQ `ghi_chu_thuong_nong` | auto |
 | 18 | KPI | cơ chế level→KPI | auto |
 | 19 | Tỉ lệ đạt KPI | GMV thực đạt / KPI | auto |
 | 20 | % Com ≥100% | cơ chế level→COM% | auto |
@@ -89,7 +94,7 @@ Bảng cơ chế (từ 01/04/2026): Level 1–6 → Salary {8;9;10;11;12;15}tr �
 - **Đã BỎ "NV đã xem"** — quy trình thật không track "đã mở", chỉ cần **confirm**.
 - ⚠ Lệch spec gốc 06/08 ("tick đủ ô → TỰ bắn"): giữ **nút bấm tay** cho an toàn — báo lại Trang/Vân feedback thứ 5.
 
-Nút "Gửi BL ..." tick → xếp phiếu vào `_outbox` (tag `truoc_thue`/`sau_thue`) → `flushOutbox` POST sang app (payload cuối doc). ⚠ `appEndpoint=''` → dry-run tới khi M4 có endpoint. App M4 render phiếu theo mẫu Doc `1Jd0…`.
+Nút "Gửi BL ..." tick → xếp phiếu vào `_outbox` (tag `truoc_thue`/`sau_thue`) → `flushOutbox` POST sang app (payload cuối doc). `appEndpoint` trỏ production Render. `gateToken` đọc từ ScriptProperties (KHÔNG commit git). App M4 render phiếu theo mẫu Doc `1Jd0…`.
 
 ## Lớp máy (tab helper ẩn)
 BQ đổ `C_view_bang_luong_truoc_thue` (+ NPT từ `C_raw_staff_info_merged`) vào tab ẩn `_data` (tên cột máy, khoá `code`). Bảng chính tham chiếu `_data` + cột chốt tay qua `COALESCE(chốt, auto)`. Refresh chỉ ghi tab `_data`, KHÔNG đè ô người nhập.
@@ -118,7 +123,7 @@ Xây SẴN cổng, **chưa nối** (app M4 chưa có). Pattern = OUTBOX (giống
 
 **Luồng:** Trang tick `Xác nhận thông tin` → tick `Gửi phiếu` → installable `onEdit` (handler `guiPhieuOnEdit`) enqueue 1 dòng vào tab ẩn `_outbox` (idempotent theo `code|kỳ`) → `flushOutbox()` POST sang `GATE_CFG.appEndpoint`.
 
-**Trạng thái CHƯA NỐI:** `GATE_CFG.appEndpoint=''` → flush chạy **dry-run** (giữ `pending`, không gọi mạng). Khi M4 xong: điền `appEndpoint` + `gateToken` → flush bắn thật, **không đổi gì khác**.
+**Trạng thái ĐÃ NỐI:** `GATE_CFG.appEndpoint` trỏ production Render; `gateToken` đọc từ ScriptProperties (KHÔNG commit git) → flush bắn thật khi Trang bấm nút.
 
 **Cài/vận hành:** menu ⚙ Bảng lương → `🔌 Cài đặt cổng gửi phiếu` (1 lần) · `📤 Gửi phiếu đang chờ` (flush) · `📋 Xem hàng đợi gửi`. Mỗi kỳ đặt `GATE_CFG.kyLuong='YYYY-MM'` (trống = tháng trước).
 
@@ -127,7 +132,7 @@ Xây SẴN cổng, **chưa nối** (app M4 chưa có). Pattern = OUTBOX (giống
 {
   "meta": { "source":"sheet-gate", "version":1, "code":"HN0001", "ky_luong":"2026-07",
             "stage":"truoc_thue", "stage_label":"trước thuế", "enqueued_at":"<ISO>", "sheet_id":"<id>" },
-  "phieu": { "<Nhãn cột chị Trang>": <giá trị>, "...": "... (toàn bộ cột bảng chính, TRỪ 5 cột trạng thái)" }
+  "phieu": { "<Nhãn cột chị Trang>": <giá trị>, "...": "... (toàn bộ cột bảng chính, TRỪ 5 cột trạng thái và 1 cột vận hành nội bộ (`Phòng ban (HRIS)`))" }
 }
 ```
 - `meta.stage` = `truoc_thue` | `sau_thue` (2 tầng phiếu). M4 render view theo tầng.
@@ -140,5 +145,14 @@ Xây SẴN cổng, **chưa nối** (app M4 chưa có). Pattern = OUTBOX (giống
 1. Endpoint `POST /api/payroll/payslips/receive` (hoặc URL bất kỳ, khớp `appEndpoint`) nhận contract trên, verify token, upsert theo key idempotent, render phiếu theo mẫu Doc `1Jd0…`.
 2. (G1-T11) Ghi ngược `NV đã xem` / `NV phản hồi` lên Sheet — chiều app→sheet, chưa làm.
 
+## Ghi chú bổ sung (G3-T13)
+
+> **Nguồn sự thật bố cục phiếu** = Doc `1Jd0TvdJvh7EwsqvPXKyEoLdCDQHXXC_hjmS0TzIN3hs`. Preview và PDF đều đọc tag từ Doc lúc chạy — không hardcode nhãn.
+
+**Cột `Phòng ban (HRIS)` (`key:'phong_ban'`, `role:'auto'`):**
+- Nguồn: `t.departments` trong `payroll.C_view_bang_luong_truoc_thue`
+- CHỈ ĐỌC — không tham gia biểu thức chia file nào (khoá gom file là cột `team`, `role:'auto'`, `src:'team'` — đã có sẵn)
+- KHÔNG vào payload POST (bị `gSkipCols_()` loại trước khi build phiếu)
+
 ---
-*v3 — thêm cổng gửi phiếu G1-T8 (outbox, chưa nối app). v2: bám mẫu thật chị Trang/Vân.*
+*v4 — G3-T13: sửa nhãn stale (Net/Bảo hiểm), bổ sung cột thiếu, cập nhật trạng thái Gate, ghi nguồn bố cục phiếu. v3: thêm cổng gửi phiếu G1-T8. v2: bám mẫu thật chị Trang/Vân.*
