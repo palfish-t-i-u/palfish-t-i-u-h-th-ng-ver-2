@@ -12,6 +12,7 @@ import AppShell, { type NavChildItem, type NavItem } from "../layouts/AppShell";
 import Badge from "../components/ui/Badge";
 import { DEPARTMENT_LIST } from "../types/permissions";
 import NotificationBell from "../components/NotificationBell";
+import { getReauthReturn } from "../components/payslip/PayslipReauthModal";
 import { lazyRetry } from "../lib/lazyRetry";
 
 const BC01SalesPerformance = lazyRetry(() => import("../components/reports/BC01SalesPerformance"));
@@ -264,6 +265,11 @@ function MainPageInner({
   useEffect(() => {
     flowNavRef.current = (view) => setActiveView(FLOW_VIEW_MAP[view]);
   }, [flowNavRef]);
+
+  // Restore payslip tab after Google re-auth redirect
+  useEffect(() => {
+    if (getReauthReturn()) setActiveView("payslip");
+  }, []);
 
   const perms = profile?.permissions ?? {};
   const can = (key: string) => {

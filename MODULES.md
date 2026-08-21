@@ -179,7 +179,8 @@ Kế hoạch đầy đủ: `docs/plans/HANDOFF_HDSD_DOCS_ROUTE_PIVOT_2026-07-27.
 
 - FE Tab: `frontend/src/components/payslip/PayslipTab.tsx` — list kỳ, group theo code, re-auth modal, mở detail
 - FE Detail: `frontend/src/components/payslip/PayslipDetail.tsx` — 6 block + fallback "Khác" + 2 nút hành động
-- FE Re-auth: `frontend/src/components/payslip/PayslipReauthModal.tsx` — xác thực mật khẩu trước khi xem (TTL 15 phút sessionStorage)
+- FE Re-auth: `frontend/src/components/payslip/PayslipReauthModal.tsx` — xác thực Google re-auth / mật khẩu trước khi xem (TTL 15 phút sessionStorage, Google redirect marker)
+- FE Re-auth Test: `frontend/src/components/payslip/pickReauthMethod.test.ts` — unit test hàm pickReauthMethod
 - FE Types: `frontend/src/types/payroll.ts` — `PayslipStage`, `PayslipListItem`, `PayslipDetail`
 - FE API: `frontend/src/lib/api/payroll.ts` — `listPayslips`, `getPayslip`, `confirmPayslip`, `requestReview`
 - BE Routes: `backend/payroll_routes.py` — `POST /receive`, `GET /payslips`, `GET /payslips/{id}`, `PATCH /confirm`, `PATCH /review` (auto-khóa mùng 4)

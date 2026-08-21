@@ -11,7 +11,13 @@ import { Select } from "../ui/Input";
 import { Table, TableScrollWrap, Td, Th, Tr, stickyTableHead, stickyTableHeadTop } from "../ui/Table";
 import { RowCard, RowCardList } from "../ui/RowCard";
 import Modal from "../ui/Modal";
-import PayslipReauthModal, { isReauthValid } from "./PayslipReauthModal";
+import PayslipReauthModal, {
+  isReauthValid,
+  markReauthValid,
+  getReauthReturn,
+  clearReauthReturn,
+} from "./PayslipReauthModal";
+import { useAuth } from "../../hooks/useAuth";
 import PayslipDetail from "./PayslipDetail";
 
 type GroupedPayslip = {
@@ -46,6 +52,7 @@ function groupPayslips(items: PayslipListItem[]): GroupedPayslip[] {
 export default function PayslipTab() {
   const { canView, loading: permLoading } = usePermission("payslip");
   const { profile } = useMe();
+  const { session } = useAuth();
   const isMobile = useIsMobile();
 
   const [payslips, setPayslips] = useState<PayslipListItem[]>([]);
@@ -80,6 +87,23 @@ export default function PayslipTab() {
   useEffect(() => {
     if (canView) void fetchList();
   }, [canView, fetchList]);
+
+  // Handle return from Google re-auth redirect
+  const [returnHandled, setReturnHandled] = useState(false);
+  useEffect(() => {
+    if (returnHandled || !session || payslips.length === 0) return;
+    const marker = getReauthReturn();
+    if (!marker) return;
+    setReturnHandled(true);
+    clearReauthReturn();
+    const tokenChanged = session.access_token !== marker.prevToken;
+    const emailMatch =
+      (session.user?.email ?? "").toLowerCase() === marker.email.toLowerCase();
+    if (tokenChanged && emailMatch) {
+      markReauthValid();
+      void fetchDetail(marker.code, marker.ky);
+    }
+  }, [session, payslips, returnHandled]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Derive kỳ options from all payslips
   const kyOptions = useMemo(() => {
@@ -199,6 +223,8 @@ export default function PayslipTab() {
       {/* Re-auth modal */}
       <PayslipReauthModal
         open={reauthOpen}
+        pendingCode={pendingCode}
+        pendingKy={pendingKy}
         onSuccess={handleReauthSuccess}
         onClose={() => {
           setReauthOpen(false);

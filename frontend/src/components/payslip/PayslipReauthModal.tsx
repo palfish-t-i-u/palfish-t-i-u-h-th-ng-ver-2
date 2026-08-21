@@ -6,6 +6,7 @@ import { Input } from "../ui/Input";
 
 const REAUTH_KEY = "payslip_reauth";
 const REAUTH_TTL = 15 * 60 * 1000;
+const REAUTH_RETURN_KEY = "payslip_reauth_return";
 
 export function isReauthValid(): boolean {
   const ts = sessionStorage.getItem(REAUTH_KEY);
@@ -17,36 +18,71 @@ export function markReauthValid(): void {
   sessionStorage.setItem(REAUTH_KEY, String(Date.now()));
 }
 
-function isOAuthProvider(session: { user?: { app_metadata?: { provider?: string } } } | null): boolean {
-  const provider = session?.user?.app_metadata?.provider;
-  return !!provider && provider !== "email";
+export interface ReauthReturn {
+  code: string;
+  ky: string;
+  email: string;
+  prevToken: string;
+}
+
+export function setReauthReturn(data: ReauthReturn): void {
+  sessionStorage.setItem(REAUTH_RETURN_KEY, JSON.stringify(data));
+}
+
+export function getReauthReturn(): ReauthReturn | null {
+  const raw = sessionStorage.getItem(REAUTH_RETURN_KEY);
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as ReauthReturn;
+  } catch {
+    return null;
+  }
+}
+
+export function clearReauthReturn(): void {
+  sessionStorage.removeItem(REAUTH_RETURN_KEY);
+}
+
+type ReauthMethod = "google" | "password";
+
+export function pickReauthMethod(
+  session: { user?: { app_metadata?: { provider?: string; providers?: string[] } } } | null
+): ReauthMethod {
+  const meta = session?.user?.app_metadata;
+  const providers = meta?.providers ?? [];
+  const provider = meta?.provider ?? "";
+  if (providers.includes("google") || provider === "google") return "google";
+  return "password";
 }
 
 interface Props {
   open: boolean;
+  pendingCode: string | null;
+  pendingKy: string | null;
   onSuccess: () => void;
   onClose: () => void;
 }
 
-export default function PayslipReauthModal({ open, onSuccess, onClose }: Props) {
-  const { session, signInWithPassword } = useAuth();
+export default function PayslipReauthModal({ open, pendingCode, pendingKy, onSuccess, onClose }: Props) {
+  const { session, signInWithPassword, reauthWithGoogle } = useAuth();
   const [password, setPassword] = useState("");
-  const [emailInput, setEmailInput] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const isOAuth = isOAuthProvider(session);
+  const method = pickReauthMethod(session);
   const userEmail = session?.user?.email ?? "";
 
-  const handleOAuthConfirm = () => {
-    if (emailInput.trim().toLowerCase() !== userEmail.toLowerCase()) {
-      setError("Email không khớp.");
-      return;
+  const handleGoogleReauth = async () => {
+    if (!session?.access_token) return;
+    if (pendingCode && pendingKy) {
+      setReauthReturn({
+        code: pendingCode,
+        ky: pendingKy,
+        email: userEmail,
+        prevToken: session.access_token,
+      });
     }
-    markReauthValid();
-    setEmailInput("");
-    setError("");
-    onSuccess();
+    await reauthWithGoogle();
   };
 
   const handlePasswordSubmit = async () => {
@@ -68,31 +104,20 @@ export default function PayslipReauthModal({ open, onSuccess, onClose }: Props) 
     onSuccess();
   };
 
-  if (isOAuth) {
+  if (method === "google") {
     return (
       <Modal open={open} onClose={onClose} title="Xác thực để xem phiếu lương">
         <p className="mb-4 text-center text-sm text-gmv-muted">
-          Nhập email đăng nhập để xác nhận danh tính. Phiên hết hạn sau 15 phút.
+          Đăng nhập lại bằng Google để xác nhận danh tính. Phiên hết hạn sau 15 phút.
         </p>
         <div className="space-y-3">
-          <Input
-            type="email"
-            placeholder="Email đăng nhập"
-            value={emailInput}
-            onChange={(e) => setEmailInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && emailInput) handleOAuthConfirm();
-            }}
-            autoFocus
-          />
           {error && <p className="text-sm text-gmv-danger">{error}</p>}
           <Button
             variant="primary"
             fullWidth
-            disabled={!emailInput}
-            onClick={handleOAuthConfirm}
+            onClick={() => void handleGoogleReauth()}
           >
-            Xác nhận
+            Xác thực với Google
           </Button>
         </div>
       </Modal>
