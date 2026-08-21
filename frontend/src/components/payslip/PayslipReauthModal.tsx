@@ -128,7 +128,7 @@ export default function PayslipReauthModal({ open, pendingCode, pendingKy, hasTo
     return (
       <Modal open={open} onClose={onClose} title="Xác thực để xem phiếu lương">
         <p className="mb-4 text-center text-sm text-gmv-muted">
-          Nhập mã 6 số từ Google Authenticator. Phiên hết hạn sau 15 phút.
+          Nhập mã 6 số từ Google Authenticator.
         </p>
         <div className="space-y-3">
           <Input
@@ -161,7 +161,7 @@ export default function PayslipReauthModal({ open, pendingCode, pendingKy, hasTo
     return (
       <Modal open={open} onClose={onClose} title="Xác thực để xem phiếu lương">
         <p className="mb-4 text-center text-sm text-gmv-muted">
-          Đăng nhập lại bằng Google để xác nhận danh tính. Phiên hết hạn sau 15 phút.
+          Đăng nhập lại bằng Google để xác nhận danh tính.
         </p>
         <div className="space-y-3">
           {error && <p className="text-sm text-gmv-danger">{error}</p>}
@@ -183,7 +183,7 @@ export default function PayslipReauthModal({ open, pendingCode, pendingKy, hasTo
   return (
     <Modal open={open} onClose={onClose} title="Xác thực để xem phiếu lương">
       <p className="mb-4 text-center text-sm text-gmv-muted">
-        Nhập mật khẩu để mở phiếu lương. Phiên xác thực hết hạn sau 15 phút.
+        Nhập mật khẩu để mở phiếu lương.
       </p>
       <div className="space-y-3">
         <Input
