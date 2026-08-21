@@ -135,18 +135,15 @@ export default function PayslipTab() {
   );
   const grouped = useMemo(() => groupPayslips(filtered), [filtered]);
 
-  const openDetail = useCallback(
-    async (code: string, ky: string) => {
-      if (!isReauthValid()) {
-        setPendingCode(code);
-        setPendingKy(ky);
-        setReauthOpen(true);
-        return;
-      }
-      await fetchDetail(code, ky);
-    },
-    [] // eslint-disable-line react-hooks/exhaustive-deps
-  );
+  const openDetail = async (code: string, ky: string) => {
+    if (!isReauthValid()) {
+      setPendingCode(code);
+      setPendingKy(ky);
+      setReauthOpen(true);
+      return;
+    }
+    await fetchDetail(code, ky);
+  };
 
   const fetchDetail = async (code: string, ky: string) => {
     const targets = payslips.filter((p) => p.code === code && p.ky_luong === ky);
