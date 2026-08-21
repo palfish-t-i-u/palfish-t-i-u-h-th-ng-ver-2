@@ -48,11 +48,11 @@ describe("pickReauthMethod", () => {
     expect(pickReauthMethod(session("email", ["email", "google"]), true)).toBe("totp");
   });
 
-  it("returns password when email user has totp enrolled (totp only for google)", () => {
-    expect(pickReauthMethod(session("email", ["email"]), true)).toBe("password");
+  it("returns totp when email user has totp enrolled", () => {
+    expect(pickReauthMethod(session("email", ["email"]), true)).toBe("totp");
   });
 
-  it("returns password for null session even with hasTotp=true", () => {
-    expect(pickReauthMethod(null, true)).toBe("password");
+  it("returns totp for null session when hasTotp=true", () => {
+    expect(pickReauthMethod(null, true)).toBe("totp");
   });
 });
