@@ -135,8 +135,10 @@ export default function PayslipTab() {
   );
   const grouped = useMemo(() => groupPayslips(filtered), [filtered]);
 
+  const isAdminRole = profile?.role === "system" || profile?.role === "manager";
+
   const openDetail = async (code: string, ky: string) => {
-    if (!isReauthValid()) {
+    if (!isAdminRole && !isReauthValid()) {
       setPendingCode(code);
       setPendingKy(ky);
       setReauthOpen(true);
