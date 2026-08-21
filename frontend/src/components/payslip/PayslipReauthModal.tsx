@@ -4,18 +4,14 @@ import Modal from "../ui/Modal";
 import Button from "../ui/Button";
 import { Input } from "../ui/Input";
 
-const REAUTH_KEY = "payslip_reauth";
-const REAUTH_TTL = 15 * 60 * 1000;
 const REAUTH_RETURN_KEY = "payslip_reauth_return";
 
 export function isReauthValid(): boolean {
-  const ts = sessionStorage.getItem(REAUTH_KEY);
-  if (!ts) return false;
-  return Date.now() - parseInt(ts, 10) < REAUTH_TTL;
+  return false;
 }
 
 export function markReauthValid(): void {
-  sessionStorage.setItem(REAUTH_KEY, String(Date.now()));
+  // no-op: mỗi lần xem phiếu đều yêu cầu xác thực lại
 }
 
 export interface ReauthReturn {
