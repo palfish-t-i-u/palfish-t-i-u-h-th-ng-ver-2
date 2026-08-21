@@ -478,6 +478,7 @@ def _credit_hold_map(sb, pr_ids: list[str]) -> dict[str, str]:
                 .select("id, payment_request_id")
                 .in_("payment_request_id", ids[i : i + CHUNK])
                 .in_("method", list(CREDIT_METHODS))
+                .neq("status", "cancelled")
                 .execute()
             )
         except Exception:
