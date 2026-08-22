@@ -1689,6 +1689,7 @@ export default function PaymentRequestDetailDrawer({
   const [holdActivation, setHoldActivation] = useState(false);
   const [holdNote, setHoldNote] = useState("");
   const [crmAddressConfirmed, setCrmAddressConfirmed] = useState(false);
+  const [crmShakeError, setCrmShakeError] = useState(false);
   // bill guard — chặn tạo AR khi còn line paid thiếu ảnh bill
   const [missingBillsPopupOpen, setMissingBillsPopupOpen] = useState(false);
   const [missingBillLines, setMissingBillLines] = useState<{ line_id: string; idx: number; amount: number }[]>([]);
@@ -2763,6 +2764,7 @@ export default function PaymentRequestDetailDrawer({
                 setHoldActivation(false);
                 setHoldNote("");
                 setCrmAddressConfirmed(false);
+                setCrmShakeError(false);
                 setArPackageModalOpen(true);
               }}
             >
@@ -2864,18 +2866,30 @@ export default function PaymentRequestDetailDrawer({
                 )}
               </div>
               {needConfirm && (
-                <div style={{ marginBottom: 12, padding: "10px 12px", border: "1px solid var(--border)", borderRadius: 8, background: "var(--bg-2)" }}>
+                <div
+                  style={{
+                    marginBottom: 12, padding: "10px 12px", borderRadius: 8, background: "var(--bg-2)",
+                    border: crmShakeError ? "1px solid var(--danger)" : "1px solid var(--border)",
+                    animation: crmShakeError ? "crm-shake 0.4s ease" : undefined,
+                    transition: "border-color 0.2s",
+                  }}
+                >
                   <label style={{ display: "flex", alignItems: "flex-start", gap: 8, cursor: "pointer", fontSize: 13 }}>
                     <input
                       type="checkbox"
                       checked={crmAddressConfirmed}
-                      onChange={(e) => setCrmAddressConfirmed(e.target.checked)}
+                      onChange={(e) => { setCrmAddressConfirmed(e.target.checked); setCrmShakeError(false); }}
                       style={{ marginTop: 2, flexShrink: 0 }}
                     />
                     <span>
                       Tôi đã điền địa chỉ khách (Tỉnh/TP · Phường/Xã · Số nhà) trên <strong>CRM</strong> để tạo gói học.
                     </span>
                   </label>
+                  {crmShakeError && (
+                    <div style={{ fontSize: 12, color: "var(--danger)", marginTop: 6, paddingLeft: 24 }}>
+                      Vui lòng xác nhận đã điền địa chỉ trên CRM để báo đơn.
+                    </div>
+                  )}
                 </div>
               )}
               {arDraftRows.map((row, i) => (
@@ -3119,10 +3133,16 @@ export default function PaymentRequestDetailDrawer({
               <button
                 type="button"
                 className="btn btn-success"
-                disabled={!arValid || arSubmitting || (needConfirm && !crmAddressConfirmed)}
+                disabled={!arValid || arSubmitting}
+                title={needConfirm && !crmAddressConfirmed ? "Chưa xác nhận đã điền địa chỉ CRM — vui lòng tích ô xác nhận phía trên" : undefined}
                 style={!arValid || arSubmitting || (needConfirm && !crmAddressConfirmed) ? { opacity: 0.4, cursor: "not-allowed" } : undefined}
                 onClick={async () => {
-                  if (!arValid || arSubmitting || (needConfirm && !crmAddressConfirmed)) return;
+                  if (needConfirm && !crmAddressConfirmed) {
+                    setCrmShakeError(false);
+                    requestAnimationFrame(() => setCrmShakeError(true));
+                    return;
+                  }
+                  if (!arValid || arSubmitting) return;
                   setArSubmitting(true);
                   const rows = arDraftRows.map((r) => ({ ...r, childName: r.childName.trim() }));
                   const holdOpts = {
