@@ -89,7 +89,7 @@ ActivationTab.tsx:2454      persistActiveRequest              — 4 caller: save
 
 ## 5. Tasks (nguyên tử, có checklist)
 
-- [ ] **T1 — Plumbing `updated_at` xuyên FE (mở đường mang timestamp)**
+- [x] **T1 — Plumbing `updated_at` xuyên FE (mở đường mang timestamp)**
   - File & đổi chính xác:
     - `types/paymentRequest.ts` (trong `ActiveRequestApiRow`, sau `created_at?`): thêm `updated_at?: string;`
     - `types/paymentRequest.ts` (trong `interface ActiveRequest`, trước `}` dòng 227): thêm `updatedAt?: string;`
@@ -99,7 +99,7 @@ ActivationTab.tsx:2454      persistActiveRequest              — 4 caller: save
   - Verify: `npx tsc -b` xanh.
   - Ai làm: **inline / Sonnet** (cơ học).
 
-- [ ] **T2 — Helper dùng chung: build payload guarded + parse 409 conflict**
+- [x] **T2 — Helper dùng chung: build payload guarded + parse 409 conflict**
   - File: `frontend/src/lib/arConcurrency.ts` (MỚI, pure fns, no React).
     - `withExpectedUpdatedAt<T>(body: T, currentAr: ActiveRequest): T & {expected_updated_at?: string}` — chèn `expected_updated_at: currentAr.updatedAt` nếu có.
     - `parseArConflict(err): { conflict: boolean; current?: ActiveRequestApiRow }` — đọc `err.response?.status===409 && err.response.data?.detail?.detail === "Active Request da duoc cap nhat boi nguoi khac"`; trả `current = err.response.data.detail.current`.
@@ -107,7 +107,7 @@ ActivationTab.tsx:2454      persistActiveRequest              — 4 caller: save
   - Verify: unit test T4 xanh.
   - Ai làm: **⚠️ ESCALATE OPUS** — logic dùng chung nhiều site, phải giữ TC2 + G5 (shape lồng dễ sai).
 
-- [ ] **T3 — Wire 4 call site qua helper + xử 409**
+- [x] **T3 — Wire 4 call site qua helper + xử 409**
   - Mẫu xử 409 (mọi site): gọi `parseArConflict(err)`; nếu conflict → `updateActiveRequest(arId, () => fromApiActiveRequest(current))` (nạp bản mới vào state) + `setApiNote("AR vừa được người khác cập nhật — đã tải lại bản mới, vui lòng kiểm tra và thao tác lại.")` + return `{ok:false, conflict:true}`. KHÔNG retry (G6).
   - Site 4 `ActivationTab.tsx:2454 persistActiveRequest`: dùng `withExpectedUpdatedAt(body, next)` trước `endpoints.activeRequests.update`; bọc catch bằng `parseArConflict`.
   - Site 2 `PaymentFlowContext.tsx:550 saveActiveRequest`: tương tự, `currentAr = next`.
@@ -117,7 +117,7 @@ ActivationTab.tsx:2454      persistActiveRequest              — 4 caller: save
   - Verify: `tsc -b` + test T4.
   - Ai làm: **Sonnet effort cao** hoặc subagent `cavecrew-builder` (path chính xác ở trên). Opus review diff.
 
-- [ ] **T4 — Test**
+- [x] **T4 — Test**
   - File: `frontend/src/lib/arConcurrency.test.ts`
     - `parseArConflict`: (a) 409 shape lồng đúng → `{conflict:true, current}`; (b) 409 khác string → `{conflict:false}`; (c) lỗi order_id "ton tai" (per-course) → `{conflict:false}` (G1/G5 không nhầm lớp); (d) network err non-409 → `{conflict:false}`.
     - `withExpectedUpdatedAt`: có `updatedAt` → chèn; không có → không chèn field (không gửi `expected_updated_at: undefined` gây 400).

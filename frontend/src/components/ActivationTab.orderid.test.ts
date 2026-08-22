@@ -7,7 +7,7 @@
 // Guard: applyCourseOrderId VẪN hoạt động đúng (chỉ bị bỏ import khỏi ActivationTab)
 import { describe, it, expect } from "vitest";
 import { applyCourseOrderId } from "./activation/activationFlatList";
-import type { ActiveRequest } from "../types/activation";
+import type { ActiveRequest } from "../types/paymentRequest";
 
 function makeAr(overrides: Partial<ActiveRequest> = {}): ActiveRequest {
   return {

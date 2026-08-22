@@ -8,6 +8,7 @@ import ActivationRowCards from "./activation/ActivationRowCards";
 import FilterSelect from "./activation/FilterSelect";
 import { endpoints } from "../lib/api";
 import { notifyLedgerChanged } from "../lib/ledgerEvents";
+import { withExpectedUpdatedAt, parseArConflict, AR_CONFLICT_MESSAGE } from "../lib/arConcurrency";
 import type { ActiveRequest, ActiveCourse, ActiveUidGroup, PaymentRequest } from "../types/paymentRequest";
 import type { ActiveRequestStatus } from "../types/paymentRequest";
 import {
@@ -2451,9 +2452,9 @@ export default function ActivationTab() {
   const persistActiveRequest = async (next: ActiveRequest) => {
     try {
       markPersisted();
-      const res = await endpoints.activeRequests.update(next.id, {
-        uids_data: toActiveRequestPatchUidsData(next),
-      });
+      const res = await endpoints.activeRequests.update(next.id,
+        withExpectedUpdatedAt({ uids_data: toActiveRequestPatchUidsData(next) }, next),
+      );
       const saved = fromApiActiveRequest(res.data);
       updateActiveRequest(next.id, () => saved);
       markPersisted();
@@ -2464,8 +2465,14 @@ export default function ActivationTab() {
       loadReminders();
       return { ok: true as const, saved };
     } catch (err) {
+      const conflict = parseArConflict(err);
+      if (conflict.conflict) {
+        const fresh = fromApiActiveRequest(conflict.current);
+        updateActiveRequest(next.id, () => fresh);
+        setApiNote(AR_CONFLICT_MESSAGE);
+        return { ok: false as const, error: AR_CONFLICT_MESSAGE };
+      }
       const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-      // BE 409: "order_id 'X' da ton tai o AR/course khac" → show modal in-app rõ ràng
       if (typeof detail === "string" && detail.includes("order_id") && detail.includes("ton tai")) {
         setOrderIdConflictMessage(detail);
         const m = /order_id '([^']+)'/.exec(detail);

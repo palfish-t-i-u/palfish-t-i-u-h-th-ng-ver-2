@@ -375,6 +375,7 @@ export function fromApiActiveRequest(raw: ActiveRequestApiRow): ActiveRequest {
     customerName: raw.customer_name || prSnippet?.name || "",
     saleName: prSnippet?.sale_name || undefined,
     createdAt: raw.created_at ?? "",
+    updatedAt: raw.updated_at ?? undefined,
     createdBy: "",
     holdActivation: raw.hold_activation ?? false,
     holdNote: raw.hold_note ?? null,

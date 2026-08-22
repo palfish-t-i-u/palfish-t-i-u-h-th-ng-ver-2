@@ -224,6 +224,7 @@ export interface ActiveRequest {
    * tới khi tiền về. BE tính ở list + mọi endpoint đơn-AR (batch gateway match). */
   creditSettlementPending?: boolean;
   isCreditOrder?: boolean;
+  updatedAt?: string;
 }
 
 export interface PaymentRequestsListResponse {
@@ -396,6 +397,7 @@ export type ActiveRequestApiRow = {
   }>;
   status?: string;
   created_at?: string;
+  updated_at?: string;
   hold_activation?: boolean;
   hold_note?: string | null;
   crm_address_confirmed?: boolean;
@@ -434,6 +436,7 @@ export type PatchActiveRequestPayload = {
   customer_name?: string;
   info_confirmed?: boolean;
   uids_data?: ActiveRequestPatchUidPayload[];
+  expected_updated_at?: string;
 };
 
 export type CreateStandaloneActiveRequestPayload = {

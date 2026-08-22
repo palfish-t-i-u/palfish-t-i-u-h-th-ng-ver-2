@@ -11,6 +11,7 @@ import {
 } from "react";
 import { endpoints } from "../lib/api";
 import { notifyLedgerChanged } from "../lib/ledgerEvents";
+import { withExpectedUpdatedAt, parseArConflict, AR_CONFLICT_MESSAGE } from "../lib/arConcurrency";
 import {
   fetchAllPaymentRequests,
   PR_TOTAL_WARN_THRESHOLD,
@@ -529,15 +530,22 @@ export function PaymentFlowProvider({
 
       markPersisted();
       try {
-        const res = await endpoints.activeRequests.update(arId, {
-          uids_data: toActiveRequestPatchUidsData(optimistic),
-        });
+        const res = await endpoints.activeRequests.update(arId,
+          withExpectedUpdatedAt({ uids_data: toActiveRequestPatchUidsData(optimistic) }, optimistic),
+        );
         const ar = fromApiActiveRequest(res.data);
         setActiveRequests((prev) => prev.map((x) => (x.id === arId ? ar : x)));
         markPersisted();
         setApiNote("");
-      } catch {
-        setApiNote("Đã đổi gói tạm trên giao diện; máy chủ chưa lưu được thay đổi gói học.");
+      } catch (err) {
+        const conflict = parseArConflict(err);
+        if (conflict.conflict) {
+          const fresh = fromApiActiveRequest(conflict.current);
+          setActiveRequests((prev) => prev.map((x) => (x.id === arId ? fresh : x)));
+          setApiNote(AR_CONFLICT_MESSAGE);
+        } else {
+          setApiNote("Đã đổi gói tạm trên giao diện; máy chủ chưa lưu được thay đổi gói học.");
+        }
       }
     },
     [updateActiveRequest, markPersisted]
@@ -547,9 +555,9 @@ export function PaymentFlowProvider({
     updateActiveRequest(next.id, () => next);
     markPersisted();
     try {
-      const res = await endpoints.activeRequests.update(next.id, {
-        uids_data: toActiveRequestPatchUidsData(next),
-      });
+      const res = await endpoints.activeRequests.update(next.id,
+        withExpectedUpdatedAt({ uids_data: toActiveRequestPatchUidsData(next) }, next),
+      );
       const saved = fromApiActiveRequest(res.data);
       setActiveRequests((prev) => prev.map((x) => (x.id === next.id ? saved : x)));
       markPersisted();
@@ -557,8 +565,15 @@ export function PaymentFlowProvider({
       if (saved.uids.some((u) => u.courses.some((c) => c.orderId?.trim()))) {
         notifyLedgerChanged();
       }
-    } catch {
-      setApiNote("Đã đổi tạm trên giao diện; máy chủ chưa lưu được thay đổi Tạo gói học.");
+    } catch (err) {
+      const conflict = parseArConflict(err);
+      if (conflict.conflict) {
+        const fresh = fromApiActiveRequest(conflict.current);
+        setActiveRequests((prev) => prev.map((x) => (x.id === next.id ? fresh : x)));
+        setApiNote(AR_CONFLICT_MESSAGE);
+      } else {
+        setApiNote("Đã đổi tạm trên giao diện; máy chủ chưa lưu được thay đổi Tạo gói học.");
+      }
     }
   }, [updateActiveRequest]);
 
@@ -642,14 +657,21 @@ export function PaymentFlowProvider({
       };
       updateActiveRequest(arId, () => next);
       try {
-        const res = await endpoints.activeRequests.update(arId, {
-          uids_data: toActiveRequestPatchUidsData(next),
-        });
+        const res = await endpoints.activeRequests.update(arId,
+          withExpectedUpdatedAt({ uids_data: toActiveRequestPatchUidsData(next) }, currentAr),
+        );
         const saved = fromApiActiveRequest(res.data);
         setActiveRequests((prev) => prev.map((x) => (x.id === arId ? saved : x)));
         setApiNote("");
-      } catch {
-        setApiNote("Đã chuyển tạm sang B4 trên giao diện; máy chủ chưa lưu được trạng thái Xuất HĐ.");
+      } catch (err) {
+        const conflict = parseArConflict(err);
+        if (conflict.conflict) {
+          const fresh = fromApiActiveRequest(conflict.current);
+          setActiveRequests((prev) => prev.map((x) => (x.id === arId ? fresh : x)));
+          setApiNote(AR_CONFLICT_MESSAGE);
+        } else {
+          setApiNote("Đã chuyển tạm sang B4 trên giao diện; máy chủ chưa lưu được trạng thái Xuất HĐ.");
+        }
       }
     },
     [activeRequests, updateActiveRequest]
