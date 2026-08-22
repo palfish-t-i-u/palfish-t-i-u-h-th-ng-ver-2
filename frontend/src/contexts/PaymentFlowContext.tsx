@@ -11,6 +11,7 @@ import {
 } from "react";
 import { endpoints } from "../lib/api";
 import { notifyLedgerChanged } from "../lib/ledgerEvents";
+import { withExpectedUpdatedAt, parseArConflict, AR_CONFLICT_MESSAGE } from "../lib/arConcurrency";
 import {
   fetchAllPaymentRequests,
   PR_TOTAL_WARN_THRESHOLD,
@@ -417,7 +418,7 @@ export function PaymentFlowProvider({
   );
 
   const handleCreateActiveRequest = useCallback(
-    async (pr: PaymentRequest, rows: ArDraftRow[], opts?: { holdActivation?: boolean; holdNote?: string }) => {
+    async (pr: PaymentRequest, rows: ArDraftRow[], opts?: { holdActivation?: boolean; holdNote?: string; crmAddressConfirmed?: boolean }) => {
       try {
         const res = await endpoints.paymentRequests.createActiveRequest(
           pr.id,
@@ -441,7 +442,7 @@ export function PaymentFlowProvider({
   );
 
   const handleAppendActiveRequest = useCallback(
-    async (pr: PaymentRequest, arId: string, rows: ArDraftRow[], opts?: { holdActivation?: boolean; holdNote?: string }) => {
+    async (pr: PaymentRequest, arId: string, rows: ArDraftRow[], opts?: { holdActivation?: boolean; holdNote?: string; crmAddressConfirmed?: boolean }) => {
       try {
         const res = await endpoints.activeRequests.append(
           arId,
@@ -529,15 +530,22 @@ export function PaymentFlowProvider({
 
       markPersisted();
       try {
-        const res = await endpoints.activeRequests.update(arId, {
-          uids_data: toActiveRequestPatchUidsData(optimistic),
-        });
+        const res = await endpoints.activeRequests.update(arId,
+          withExpectedUpdatedAt({ uids_data: toActiveRequestPatchUidsData(optimistic) }, optimistic),
+        );
         const ar = fromApiActiveRequest(res.data);
         setActiveRequests((prev) => prev.map((x) => (x.id === arId ? ar : x)));
         markPersisted();
         setApiNote("");
-      } catch {
-        setApiNote("Đã đổi gói tạm trên giao diện; máy chủ chưa lưu được thay đổi gói học.");
+      } catch (err) {
+        const conflict = parseArConflict(err);
+        if (conflict.conflict) {
+          const fresh = fromApiActiveRequest(conflict.current);
+          setActiveRequests((prev) => prev.map((x) => (x.id === arId ? fresh : x)));
+          setApiNote(AR_CONFLICT_MESSAGE);
+        } else {
+          setApiNote("Đã đổi gói tạm trên giao diện; máy chủ chưa lưu được thay đổi gói học.");
+        }
       }
     },
     [updateActiveRequest, markPersisted]
@@ -547,9 +555,9 @@ export function PaymentFlowProvider({
     updateActiveRequest(next.id, () => next);
     markPersisted();
     try {
-      const res = await endpoints.activeRequests.update(next.id, {
-        uids_data: toActiveRequestPatchUidsData(next),
-      });
+      const res = await endpoints.activeRequests.update(next.id,
+        withExpectedUpdatedAt({ uids_data: toActiveRequestPatchUidsData(next) }, next),
+      );
       const saved = fromApiActiveRequest(res.data);
       setActiveRequests((prev) => prev.map((x) => (x.id === next.id ? saved : x)));
       markPersisted();
@@ -557,8 +565,15 @@ export function PaymentFlowProvider({
       if (saved.uids.some((u) => u.courses.some((c) => c.orderId?.trim()))) {
         notifyLedgerChanged();
       }
-    } catch {
-      setApiNote("Đã đổi tạm trên giao diện; máy chủ chưa lưu được thay đổi Tạo gói học.");
+    } catch (err) {
+      const conflict = parseArConflict(err);
+      if (conflict.conflict) {
+        const fresh = fromApiActiveRequest(conflict.current);
+        setActiveRequests((prev) => prev.map((x) => (x.id === next.id ? fresh : x)));
+        setApiNote(AR_CONFLICT_MESSAGE);
+      } else {
+        setApiNote("Đã đổi tạm trên giao diện; máy chủ chưa lưu được thay đổi Tạo gói học.");
+      }
     }
   }, [updateActiveRequest]);
 
@@ -593,17 +608,6 @@ export function PaymentFlowProvider({
         setApiNote(error);
         return { ok: false, error };
       }
-      const optimistic: ActiveRequest = {
-        ...currentAr,
-        uids: currentAr.uids.map((u) => ({
-          ...u,
-          courses: u.courses.map((c) =>
-            c.courseCode === courseCode ? { ...c, orderId: trimmed } : c
-          ),
-        })),
-      };
-
-      // Helper: parse axios error detail
       const extractDetail = (err: unknown): string => {
         const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
         return typeof detail === "string" ? detail : "";
@@ -624,38 +628,14 @@ export function PaymentFlowProvider({
         return { ok: true };
       } catch (err1) {
         const detail1 = extractDetail(err1);
-        // BE trả 409 "order_id 'X' da ton tai o AR/course khac" → conflict, không retry full update.
         if (detail1.includes("order_id") && detail1.includes("ton tai")) {
           setOrderIdConflictMessage(detail1);
           setApiNote(`Order ID '${trimmed}' đã được dùng ở Active Request khác — không lưu được.`);
           return { ok: false, error: detail1 };
         }
-        try {
-          const res = await endpoints.activeRequests.update(arId, {
-            uids_data: toActiveRequestPatchUidsData(optimistic),
-          });
-          if (courseOrderPatchSeqRef.current[seqKey] !== seq) {
-            return { ok: false, error: "Yeu cau cu da bi ghi de boi thao tac moi hon." };
-          }
-          const ar = fromApiActiveRequest(res.data);
-          if (readOrderId(ar) !== trimmed) {
-            throw new Error("Full update returned stale order_id");
-          }
-          setActiveRequests((prev) => prev.map((x) => (x.id === arId ? ar : x)));
-          setApiNote("");
-          if (trimmed) notifyLedgerChanged();
-          return { ok: true };
-        } catch (err2) {
-          const detail2 = extractDetail(err2);
-          if (detail2.includes("order_id") && detail2.includes("ton tai")) {
-            setOrderIdConflictMessage(detail2);
-            setApiNote(`Order ID '${trimmed}' đã được dùng ở Active Request khác — không lưu được.`);
-            return { ok: false, error: detail2 };
-          }
-          const error = detail2 || detail1 || "Khong luu duoc Order ID len may chu.";
-          setApiNote(error);
-          return { ok: false, error };
-        }
+        const error = detail1 || "Khong luu duoc Order ID len may chu.";
+        setApiNote(error);
+        return { ok: false, error };
       }
     },
     [activeRequests]
@@ -677,14 +657,21 @@ export function PaymentFlowProvider({
       };
       updateActiveRequest(arId, () => next);
       try {
-        const res = await endpoints.activeRequests.update(arId, {
-          uids_data: toActiveRequestPatchUidsData(next),
-        });
+        const res = await endpoints.activeRequests.update(arId,
+          withExpectedUpdatedAt({ uids_data: toActiveRequestPatchUidsData(next) }, currentAr),
+        );
         const saved = fromApiActiveRequest(res.data);
         setActiveRequests((prev) => prev.map((x) => (x.id === arId ? saved : x)));
         setApiNote("");
-      } catch {
-        setApiNote("Đã chuyển tạm sang B4 trên giao diện; máy chủ chưa lưu được trạng thái Xuất HĐ.");
+      } catch (err) {
+        const conflict = parseArConflict(err);
+        if (conflict.conflict) {
+          const fresh = fromApiActiveRequest(conflict.current);
+          setActiveRequests((prev) => prev.map((x) => (x.id === arId ? fresh : x)));
+          setApiNote(AR_CONFLICT_MESSAGE);
+        } else {
+          setApiNote("Đã chuyển tạm sang B4 trên giao diện; máy chủ chưa lưu được trạng thái Xuất HĐ.");
+        }
       }
     },
     [activeRequests, updateActiveRequest]
