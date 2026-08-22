@@ -2874,7 +2874,6 @@ export default function PaymentRequestDetailDrawer({
                     />
                     <span>
                       Tôi đã điền địa chỉ khách (Tỉnh/TP · Phường/Xã · Số nhà) trên <strong>CRM</strong> để tạo gói học.
-                      <span style={{ display: "block", fontSize: 11.5, color: "var(--text-3)", marginTop: 2 }}>CRM bắt buộc địa chỉ cho số Việt Nam. GMV không còn giữ ô này.</span>
                     </span>
                   </label>
                 </div>
