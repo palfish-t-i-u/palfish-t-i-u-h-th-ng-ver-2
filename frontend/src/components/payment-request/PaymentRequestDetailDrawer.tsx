@@ -34,7 +34,6 @@ import {
   parsePaymentDate,
   paymentAttemptLabel,
   paymentConfirmationText,
-  activationAddressComplete,
   isForeignCustomer,
   REFERRAL_STATUS_HEADER,
   REFERRAL_STATUS_PANEL_STYLE,
@@ -1809,20 +1808,6 @@ export default function PaymentRequestDetailDrawer({
     unallocated: arUnallocated,
     arLabel: activeSummary.buttonLabel,
   });
-  // Địa chỉ để Ops tạo gói học trên CRM (số VN 84-): cần Tỉnh/TP + Phường/Xã.
-  // Thiếu → chặn NGAY ở nút "Báo đơn & Kích hoạt" (trước khi vào form) nên cả
-  // "Kích hoạt ngay" lẫn "Chưa kích hoạt" đều phải có địa chỉ. Khách nước ngoài luôn đủ.
-  const activationAddrMissingParts = activationAddressComplete({
-    country: request.country,
-    province: request.province,
-    ward: request.ward,
-  })
-    ? []
-    : ([
-        !(request.province || "").trim() ? "Tỉnh/TP" : null,
-        !(request.ward || "").trim() ? "Phường/Xã" : null,
-      ].filter(Boolean) as string[]);
-  const activationAddrMissing = activationAddrMissingParts.length > 0;
   const copyPrId = async () => {
     const id = request.id;
     const fallbackCopy = () => {
@@ -2764,7 +2749,7 @@ export default function PaymentRequestDetailDrawer({
               title={reportBtn.title}
               onClick={() => {
                 const missingLines = findPaidLinesWithoutBill(request.payments ?? []);
-                if (missingLines.length > 0 || activationAddrMissing) {
+                if (missingLines.length > 0) {
                   setMissingBillLines(missingLines.map((l) => ({ line_id: l.id, idx: l.idx, amount: l.amount ?? 0 })));
                   setMissingBillsPopupOpen(true);
                   return;
@@ -3186,19 +3171,6 @@ export default function PaymentRequestDetailDrawer({
                       </li>
                     ))}
                   </ul>
-                </div>
-              )}
-              {activationAddrMissing && (
-                <div>
-                  <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 6, display: "flex", alignItems: "center", gap: 6, color: "var(--danger, #ef4444)" }}>
-                    <Icons.AlertCircle size={15} /> Thiếu địa chỉ khách (số Việt Nam)
-                  </div>
-                  <div style={{ fontSize: 12.5, lineHeight: 1.55, color: "var(--text-2)" }}>
-                    CRM cần <strong>Tỉnh/TP + Phường/Xã</strong> để tạo gói học cho khách.{" "}
-                    Phiếu đang thiếu: <strong>{activationAddrMissingParts.join(" + ")}</strong>.
-                    <br />
-                    👉 Bấm <strong>Sửa</strong> thông tin khách trong phiếu → điền địa chỉ → báo đơn lại.
-                  </div>
                 </div>
               )}
             </div>
