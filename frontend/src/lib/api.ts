@@ -207,6 +207,8 @@ export const endpoints = {
   activeRequests: {
     list: (params?: { status?: string }) =>
       api.get<ActiveRequestApiRow[]>("/api/v1/active-requests", { params }),
+    get: (arId: string) =>
+      api.get<ActiveRequestApiRow>(`/api/v1/active-requests/${arId}`),
     create: (body: CreateStandaloneActiveRequestPayload) =>
       api.post<ActiveRequestApiRow>("/api/v1/active-requests", body),
     update: (arId: string, body: PatchActiveRequestPayload) =>

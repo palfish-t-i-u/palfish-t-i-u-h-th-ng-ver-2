@@ -29,7 +29,7 @@ import type { InvoiceRow } from "./payment-flow/paymentFlowUtils";
 import { getUidSyncState } from "./ActivationTab.uidSync";
 import { HdsdLink } from "./help/HdsdLink";
 import "../styles/prototype-payments.css";
-import { AR_PER_PAGE, applyCourseOrderId, countCourseTabs, courseRowMatchesSearch, courseRowMatchesTab, flatCourseRows, groupRowsByAr, isArInvoiceActionable, summarizeArInvoiceAction, visibleActiveRequests, type ArInvoiceAction, type CourseRow } from "./activation/activationFlatList";
+import { AR_PER_PAGE, countCourseTabs, courseRowMatchesSearch, courseRowMatchesTab, flatCourseRows, groupRowsByAr, isArInvoiceActionable, summarizeArInvoiceAction, visibleActiveRequests, type ArInvoiceAction, type CourseRow } from "./activation/activationFlatList";
 import { normVi } from "../lib/textUtils";
 import { useColumnVisibility } from "../hooks/useColumnVisibility";
 import ColumnVisibilityMenu, { type ColumnOption } from "./ui/ColumnVisibilityMenu";
@@ -1156,9 +1156,22 @@ function ActivationDetailDrawer({
               <div>
                 <strong style={{ color: "#f57f17" }}>PH chưa muốn tạo gói học</strong>
                 <div style={{ marginTop: 2, color: "var(--text-2)" }}>
-                  {enriched.holdNote ? `“${enriched.holdNote}”` : "(sale không ghi lý do)"}
+                  {enriched.holdNote ? `"${enriched.holdNote}"` : "(sale không ghi lý do)"}
                 </div>
               </div>
+            </div>
+          )}
+          {enriched.crmAddressConfirmed === true && (
+            <div style={{ fontSize: 12, color: "#2e7d32", marginBottom: 10 }}>
+              {"✓"} Sale đã xác nhận điền địa chỉ trên CRM
+            </div>
+          )}
+          {enriched.crmAddressConfirmed === false && (
+            <div style={{
+              fontSize: 12.5, marginBottom: 10, padding: "6px 10px", borderRadius: 8,
+              border: "1px solid #ffd54f", background: "#fffde7", color: "#f57f17",
+            }}>
+              {"⚠"} Sale chưa xác nhận địa chỉ CRM
             </div>
           )}
           <div className="summary-row" style={{ gridTemplateColumns: pr ? "repeat(5, 1fr)" : "repeat(4, 1fr)" }}>
@@ -2135,6 +2148,13 @@ export default function ActivationTab() {
     }
   }, [nav.openArId, setNav]);
 
+  useEffect(() => {
+    if (!openArId) return;
+    endpoints.activeRequests.get(openArId)
+      .then(res => updateActiveRequest(openArId, () => fromApiActiveRequest(res.data)))
+      .catch(() => {});
+  }, [openArId, updateActiveRequest]);
+
   const rows = useMemo(
     () => visibleActiveRequests(activeRequests).map(enrichActiveRequest),
     [activeRequests]
@@ -2343,7 +2363,7 @@ export default function ActivationTab() {
     const ok = await requestInvoiceForAr(arId);
     setApiNote(
       ok
-        ? `Đã đưa ${arId} sang B4 (Xuất hoá đơn) — mở tab “Xuất hóa đơn” để xuất file.`
+        ? `Đã đưa ${arId} sang B4 (Xuất hoá đơn) — mở tab "Xuất hóa đơn" để xuất file.`
         : "Không đưa được sang B4, thử lại sau."
     );
     setSelectedArIds((prev) => {
@@ -2500,27 +2520,43 @@ export default function ActivationTab() {
     copyResetRef.current = window.setTimeout(() => setCopiedRowKey(null), 1400);
   };
 
-  // Lưu Order ID inline. Đọc AR tươi từ activeRequests (không dùng snapshot dòng),
-  // khoá theo AR để 2 lần lưu cùng AR không ghi đè full uids_data của nhau.
+  // Lưu Order ID inline qua endpoint per-course — chỉ gửi order_id, không mang uids_data tên gói.
   const saveOrderIdInline = async (row: CourseRow) => {
     const draft = (orderIdDrafts[row.key] ?? row.orderId).trim();
     if (!draft || draft === row.orderId.trim()) return;
     if (savingArIds.has(row.arId)) return;
-    const freshAr = activeRequests.find((a) => a.id === row.arId);
-    if (!freshAr) return;
-    const next = applyCourseOrderId(freshAr, row.courseCode, draft);
     setSavingArIds((prev) => {
       const s = new Set(prev);
       s.add(row.arId);
       return s;
     });
-    const result = await persistActiveRequest(next);
+    let ok = false;
+    try {
+      const res = await endpoints.activeRequests.patchCourseOrderId(row.arId, row.courseCode, draft);
+      updateActiveRequest(row.arId, () => fromApiActiveRequest(res.data));
+      notifyLedgerChanged();
+      loadReminders();
+      setApiNote("");
+      ok = true;
+    } catch (err) {
+      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      if (typeof detail === "string" && detail.includes("order_id") && detail.includes("ton tai")) {
+        setOrderIdConflictMessage(detail);
+        const m = /order_id '([^']+)'/.exec(detail);
+        const orderId = m ? m[1] : "";
+        setApiNote(orderId
+          ? `Order ID '${orderId}' đã được dùng ở Active Request khác — không lưu được.`
+          : "Order ID đã được dùng ở Active Request khác — không lưu được.");
+      } else {
+        setApiNote((typeof detail === "string" && detail) || "Không lưu được Order ID lên máy chủ.");
+      }
+    }
     setSavingArIds((prev) => {
       const s = new Set(prev);
       s.delete(row.arId);
       return s;
     });
-    if (result.ok) {
+    if (ok) {
       setOrderIdDrafts((prev) => {
         const n = { ...prev };
         delete n[row.key];

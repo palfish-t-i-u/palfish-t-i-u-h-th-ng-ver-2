@@ -417,7 +417,7 @@ export function PaymentFlowProvider({
   );
 
   const handleCreateActiveRequest = useCallback(
-    async (pr: PaymentRequest, rows: ArDraftRow[], opts?: { holdActivation?: boolean; holdNote?: string }) => {
+    async (pr: PaymentRequest, rows: ArDraftRow[], opts?: { holdActivation?: boolean; holdNote?: string; crmAddressConfirmed?: boolean }) => {
       try {
         const res = await endpoints.paymentRequests.createActiveRequest(
           pr.id,
@@ -441,7 +441,7 @@ export function PaymentFlowProvider({
   );
 
   const handleAppendActiveRequest = useCallback(
-    async (pr: PaymentRequest, arId: string, rows: ArDraftRow[], opts?: { holdActivation?: boolean; holdNote?: string }) => {
+    async (pr: PaymentRequest, arId: string, rows: ArDraftRow[], opts?: { holdActivation?: boolean; holdNote?: string; crmAddressConfirmed?: boolean }) => {
       try {
         const res = await endpoints.activeRequests.append(
           arId,
@@ -593,17 +593,6 @@ export function PaymentFlowProvider({
         setApiNote(error);
         return { ok: false, error };
       }
-      const optimistic: ActiveRequest = {
-        ...currentAr,
-        uids: currentAr.uids.map((u) => ({
-          ...u,
-          courses: u.courses.map((c) =>
-            c.courseCode === courseCode ? { ...c, orderId: trimmed } : c
-          ),
-        })),
-      };
-
-      // Helper: parse axios error detail
       const extractDetail = (err: unknown): string => {
         const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
         return typeof detail === "string" ? detail : "";
@@ -624,38 +613,14 @@ export function PaymentFlowProvider({
         return { ok: true };
       } catch (err1) {
         const detail1 = extractDetail(err1);
-        // BE trả 409 "order_id 'X' da ton tai o AR/course khac" → conflict, không retry full update.
         if (detail1.includes("order_id") && detail1.includes("ton tai")) {
           setOrderIdConflictMessage(detail1);
           setApiNote(`Order ID '${trimmed}' đã được dùng ở Active Request khác — không lưu được.`);
           return { ok: false, error: detail1 };
         }
-        try {
-          const res = await endpoints.activeRequests.update(arId, {
-            uids_data: toActiveRequestPatchUidsData(optimistic),
-          });
-          if (courseOrderPatchSeqRef.current[seqKey] !== seq) {
-            return { ok: false, error: "Yeu cau cu da bi ghi de boi thao tac moi hon." };
-          }
-          const ar = fromApiActiveRequest(res.data);
-          if (readOrderId(ar) !== trimmed) {
-            throw new Error("Full update returned stale order_id");
-          }
-          setActiveRequests((prev) => prev.map((x) => (x.id === arId ? ar : x)));
-          setApiNote("");
-          if (trimmed) notifyLedgerChanged();
-          return { ok: true };
-        } catch (err2) {
-          const detail2 = extractDetail(err2);
-          if (detail2.includes("order_id") && detail2.includes("ton tai")) {
-            setOrderIdConflictMessage(detail2);
-            setApiNote(`Order ID '${trimmed}' đã được dùng ở Active Request khác — không lưu được.`);
-            return { ok: false, error: detail2 };
-          }
-          const error = detail2 || detail1 || "Khong luu duoc Order ID len may chu.";
-          setApiNote(error);
-          return { ok: false, error };
-        }
+        const error = detail1 || "Khong luu duoc Order ID len may chu.";
+        setApiNote(error);
+        return { ok: false, error };
       }
     },
     [activeRequests]

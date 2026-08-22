@@ -1642,9 +1642,9 @@ export default function PaymentRequestDetailDrawer({
   onEditAmount?: (qr: PaymentAttempt, newAmount: number) => Promise<void>;
   onBillFile: (qr: PaymentAttempt, file: File) => void | Promise<void>;
   onBillView: (qr: PaymentAttempt) => void;
-  onCreateActiveRequest: (rows: ArDraftRow[], opts?: { holdActivation?: boolean; holdNote?: string }) => void;
+  onCreateActiveRequest: (rows: ArDraftRow[], opts?: { holdActivation?: boolean; holdNote?: string; crmAddressConfirmed?: boolean }) => void;
   /** Báo đơn bổ sung (lần 2+): cộng bé/gói mới vào AR có sẵn + tin DingTalk lần 2 */
-  onAppendActiveRequest: (rows: ArDraftRow[], opts?: { holdActivation?: boolean; holdNote?: string }) => Promise<void>;
+  onAppendActiveRequest: (rows: ArDraftRow[], opts?: { holdActivation?: boolean; holdNote?: string; crmAddressConfirmed?: boolean }) => Promise<void>;
   onCancelRequest: () => void;
   activeRequestId?: string | null;
   activeRequest?: ActiveRequest | null;
@@ -1688,6 +1688,7 @@ export default function PaymentRequestDetailDrawer({
   const [arDraftRows, setArDraftRows] = useState<ArDraftRow[]>([]);
   const [holdActivation, setHoldActivation] = useState(false);
   const [holdNote, setHoldNote] = useState("");
+  const [crmAddressConfirmed, setCrmAddressConfirmed] = useState(false);
   // bill guard — chặn tạo AR khi còn line paid thiếu ảnh bill
   const [missingBillsPopupOpen, setMissingBillsPopupOpen] = useState(false);
   const [missingBillLines, setMissingBillLines] = useState<{ line_id: string; idx: number; amount: number }[]>([]);
@@ -2761,6 +2762,7 @@ export default function PaymentRequestDetailDrawer({
                 ]);
                 setHoldActivation(false);
                 setHoldNote("");
+                setCrmAddressConfirmed(false);
                 setArPackageModalOpen(true);
               }}
             >
@@ -2804,6 +2806,10 @@ export default function PaymentRequestDetailDrawer({
         })();
         const setArRow = (i: number, patch: Partial<ArDraftRow>) =>
           setArDraftRows((rows) => rows.map((r, j) => (j === i ? { ...r, ...patch } : r)));
+        // G1: số Việt ≠ khách ở VN — dùng isForeignCustomer, không dùng country !== "VN"
+        const isVNCustomer = !isForeignCustomer(request.country, request.province);
+        // needConfirm: VN + (create hoặc append vào AR chưa confirmed)
+        const needConfirm = isVNCustomer && !(reportBtn.isAppend && activeRequest?.crmAddressConfirmed === true);
         return (
         <div
           className="gmv-prototype-modal-scrim"
@@ -2857,6 +2863,22 @@ export default function PaymentRequestDetailDrawer({
                   </div>
                 )}
               </div>
+              {needConfirm && (
+                <div style={{ marginBottom: 12, padding: "10px 12px", border: "1px solid var(--border)", borderRadius: 8, background: "var(--bg-2)" }}>
+                  <label style={{ display: "flex", alignItems: "flex-start", gap: 8, cursor: "pointer", fontSize: 13 }}>
+                    <input
+                      type="checkbox"
+                      checked={crmAddressConfirmed}
+                      onChange={(e) => setCrmAddressConfirmed(e.target.checked)}
+                      style={{ marginTop: 2, flexShrink: 0 }}
+                    />
+                    <span>
+                      Tôi đã điền địa chỉ khách (Tỉnh/TP · Phường/Xã · Số nhà) trên <strong>CRM</strong> để tạo gói học.
+                      <span style={{ display: "block", fontSize: 11.5, color: "var(--text-3)", marginTop: 2 }}>CRM bắt buộc địa chỉ cho số Việt Nam. GMV không còn giữ ô này.</span>
+                    </span>
+                  </label>
+                </div>
+              )}
               {arDraftRows.map((row, i) => (
                 <div key={i} style={{ border: "1px solid var(--border)", borderRadius: 8, padding: "10px 12px", marginBottom: 10 }}>
                   {/* Row 1: Tên bé | SĐT kích hoạt (số kích hoạt gói cho từng bé — khác SĐT lead/phụ huynh) */}
@@ -3098,13 +3120,18 @@ export default function PaymentRequestDetailDrawer({
               <button
                 type="button"
                 className="btn btn-success"
-                disabled={!arValid || arSubmitting}
-                style={!arValid || arSubmitting ? { opacity: 0.4, cursor: "not-allowed" } : undefined}
+                disabled={!arValid || arSubmitting || (needConfirm && !crmAddressConfirmed)}
+                style={!arValid || arSubmitting || (needConfirm && !crmAddressConfirmed) ? { opacity: 0.4, cursor: "not-allowed" } : undefined}
                 onClick={async () => {
-                  if (!arValid || arSubmitting) return;
+                  if (!arValid || arSubmitting || (needConfirm && !crmAddressConfirmed)) return;
                   setArSubmitting(true);
                   const rows = arDraftRows.map((r) => ({ ...r, childName: r.childName.trim() }));
-                  const holdOpts = { holdActivation, holdNote: holdNote.trim() || undefined };
+                  const holdOpts = {
+                    holdActivation,
+                    holdNote: holdNote.trim() || undefined,
+                    // OV hoặc append-đã-confirmed gửi true; VN chưa confirmed gửi false (cũng không được click)
+                    crmAddressConfirmed: needConfirm ? crmAddressConfirmed : true,
+                  };
                   try {
                     if (reportBtn.isAppend) {
                       await onAppendActiveRequest(rows, holdOpts);

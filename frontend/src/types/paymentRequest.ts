@@ -215,6 +215,7 @@ export interface ActiveRequest {
   uids: ActiveUidGroup[];
   holdActivation?: boolean;
   holdNote?: string | null;
+  crmAddressConfirmed?: boolean;
   /** Ngày tiền về sớm nhất (min) trong Sổ doanh thu của AR — ISO "YYYY-MM-DD". null = chưa có tiền về. */
   tienVeSom?: string | null;
   /** Ngày tiền về muộn nhất (max) trong Sổ doanh thu của AR — ISO "YYYY-MM-DD". */
@@ -353,6 +354,7 @@ export type CreateActiveRequestPayload = {
   uids: CreateActiveRequestUidPayload[];
   hold_activation?: boolean;
   hold_note?: string | null;
+  crm_address_confirmed?: boolean;
 };
 
 /** Raw row from GET/POST /api/v1/active-requests (snake_case) */
@@ -396,6 +398,7 @@ export type ActiveRequestApiRow = {
   created_at?: string;
   hold_activation?: boolean;
   hold_note?: string | null;
+  crm_address_confirmed?: boolean;
   tien_ve_som?: string | null;
   tien_ve_muon?: string | null;
   credit_settlement_pending?: boolean;

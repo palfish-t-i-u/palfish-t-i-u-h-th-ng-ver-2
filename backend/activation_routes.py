@@ -561,6 +561,7 @@ def _serialize_ar(
         "referral_status": _compute_referral_status(courses),
         "hold_activation": bool(row.get("hold_activation")),
         "hold_note": row.get("hold_note") or None,
+        "crm_address_confirmed": bool(row.get("crm_address_confirmed", True)),
         "credit_settlement_pending": bool(credit_settlement_pending),
         "is_credit_order": bool(is_credit_order),
     }
@@ -1619,6 +1620,7 @@ def _save_active_request(
     require_paid_pr: bool = False,
     hold_activation: bool = False,
     hold_note: str | None = None,
+    crm_address_confirmed: bool = False,
 ) -> tuple[dict[str, Any], dict[str, Any] | None]:
     pr: dict[str, Any] | None = None
     if pr_id:
@@ -1652,6 +1654,7 @@ def _save_active_request(
         "status": status,
         "is_test": bool(pr.get("is_test")) if pr else False,
         "hold_activation": hold_activation,
+        "crm_address_confirmed": crm_address_confirmed,
     }
     if _hold_note:
         row["hold_note"] = _hold_note
@@ -2432,6 +2435,7 @@ def register_activation_routes(app, supabase_factory):
         hold_activation = bool(payload.get("hold_activation")) if isinstance(payload, dict) else False
         hold_note_raw = str(payload.get("hold_note") or "").strip()[:500] if isinstance(payload, dict) else ""
         hold_note = hold_note_raw if hold_activation and hold_note_raw else None
+        crm_address_confirmed = bool(payload.get("crm_address_confirmed")) if isinstance(payload, dict) else False
         saved, pr = _save_active_request(
             sb,
             pr_id=pr_id,
@@ -2440,6 +2444,7 @@ def register_activation_routes(app, supabase_factory):
             require_paid_pr=bool(pr_id),
             hold_activation=hold_activation,
             hold_note=hold_note,
+            crm_address_confirmed=crm_address_confirmed,
         )
         return _serialize_ar_with_hold(sb, saved, pr)
 
@@ -2466,6 +2471,7 @@ def register_activation_routes(app, supabase_factory):
         hold_activation = bool(payload.get("hold_activation")) if isinstance(payload, dict) else False
         hold_note_raw = str(payload.get("hold_note") or "").strip()[:500] if isinstance(payload, dict) else ""
         hold_note = hold_note_raw if hold_activation and hold_note_raw else None
+        crm_address_confirmed = bool(payload.get("crm_address_confirmed")) if isinstance(payload, dict) else False
         saved, pr = _save_active_request(
             sb,
             pr_id=pr_id,
@@ -2474,6 +2480,7 @@ def register_activation_routes(app, supabase_factory):
             require_paid_pr=True,
             hold_activation=hold_activation,
             hold_note=hold_note,
+            crm_address_confirmed=crm_address_confirmed,
         )
         return _serialize_ar_with_hold(sb, saved, pr)
 
@@ -2529,6 +2536,9 @@ def register_activation_routes(app, supabase_factory):
                 patch["hold_note"] = raw_note if raw_note else None
             else:
                 patch["hold_note"] = None
+        # G4: chỉ patch crm_address_confirmed khi payload gửi lên — không hạ true→false
+        if isinstance(payload, dict) and "crm_address_confirmed" in payload:
+            patch["crm_address_confirmed"] = bool(payload.get("crm_address_confirmed"))
         try:
             upd = sb.table("active_requests").update(patch).eq("id", ar_id).execute()
         except Exception as exc:
