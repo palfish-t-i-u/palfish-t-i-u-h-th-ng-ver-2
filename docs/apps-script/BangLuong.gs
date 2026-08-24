@@ -108,6 +108,7 @@ function onOpen(){
     .addSeparator()
     .addItem('🎨 Định dạng lại (không cần BQ)', 'dinhDangBangLuong')
     .addItem('📊 Cập nhật bảng tính thuế (tham chiếu)', 'capNhatBangThue')
+    .addItem('💾 Lưu dữ liệu lương tháng này', 'luuArchiveBangLuong')
     .addSeparator()
     .addItem('🧾 Tạo tab Nhập tay (input)', 'taoTabNhapTay')
     .addItem('🗓️ Tạo tab Chấm công', 'taoTabChamCong')
@@ -483,6 +484,174 @@ function plAssertCodesUnique_(rows){
     if (c) seen[c] = true;
   }
   if (dupes.length) throw 'Mã NV trùng: ' + dupes.join(', ');
+}
+
+// Helper: chạy BQ query job, trả về rows (array). Tự lấy location từ response.
+function bqRunJob_(config) {
+  var insertResp = BigQuery.Jobs.insert({ configuration: config }, CFG.bqProject);
+  var jobId = insertResp.jobReference.jobId;
+  var loc = (insertResp.jobReference && insertResp.jobReference.location) || undefined;
+  var opts = loc ? { location: loc } : {};
+  var status = BigQuery.Jobs.get(CFG.bqProject, jobId, opts);
+  while (status.status.state !== 'DONE') {
+    Utilities.sleep(1000);
+    status = BigQuery.Jobs.get(CFG.bqProject, jobId, opts);
+  }
+  if (status.status.errorResult) throw new Error(status.status.errorResult.message);
+  var res = BigQuery.Jobs.getQueryResults(CFG.bqProject, jobId, opts);
+  return res.rows || [];
+}
+
+function bqQueryCount_(sql) {
+  var rows = bqRunJob_({ query: { query: sql, useLegacySql: false } });
+  return parseInt((rows[0] && rows[0].f[0].v) || '0', 10);
+}
+
+function bqRunDml_(sql) {
+  bqRunJob_({ query: { query: sql, useLegacySql: false } });
+}
+
+function luuArchiveBangLuong() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var ui = SpreadsheetApp.getUi();
+  var lk = LockService.getDocumentLock();
+  if (!lk.tryLock(0)) { ss.toast('Đang có thao tác khác chạy, chờ chút.', 'Bảng lương', 5); return; }
+  try {
+    var main = ss.getSheetByName(CFG.mainSheet);
+    if (!main) { ss.toast('Chưa có tab "' + CFG.mainSheet + '".', 'Lỗi', 5); return; }
+
+    var allVals = main.getDataRange().getValues();
+    if (allVals.length < 2) { ss.toast('Bảng lương chưa có dữ liệu.', 'Lỗi', 5); return; }
+
+    var hdr = allVals[0].map(function(h) { return String(h).trim(); });
+    var ky = kyLuongHienTai_();
+
+    // Check duplicate — table chưa tồn tại lần đầu → bỏ qua, ghi thẳng
+    // Dùng Jobs.insert (thay Jobs.query) để lấy location từ response → poll đúng region
+    var cnt = 0;
+    try {
+      cnt = bqQueryCount_('SELECT COUNT(*) AS cnt FROM `pf-salary.payroll.M_bang_luong_archive` WHERE ky_luong = "' + ky + '"');
+    } catch (e) {
+      if (String(e).indexOf('Not found') < 0) throw e;
+    }
+    if (cnt > 0) {
+      var resp = ui.alert('Kỳ lương ' + ky + ' đã có ' + cnt + ' dòng trong BigQuery.\nGhi đè?', ui.ButtonSet.YES_NO);
+      if (resp !== ui.Button.YES) return;
+      bqRunDml_('DELETE FROM `pf-salary.payroll.M_bang_luong_archive` WHERE ky_luong = "' + ky + '"');
+    }
+
+    // Map header thực của sheet → BQ field (xác định từ debugArchiveHeaders 2026-08-24)
+    // COLS đã thay đổi (35 entries) trong khi sheet vẫn dùng layout 30 cột cũ
+    // → không dùng positional COLS, match bằng header string thực tế
+    var ARCHIVE_FIELD_MAP = [
+      { h: 'STT',                              key: 'stt',            type: 'INTEGER' },
+      { h: 'Mã NV',                            key: 'code',           type: 'STRING'  },
+      { h: 'Khối',                             key: 'team',           type: 'STRING'  },
+      { h: 'Name',                             key: 'name',           type: 'STRING'  },
+      { h: 'Chức danh',                        key: 'chuc_danh',      type: 'STRING'  },
+      { h: 'Loại NV',                          key: 'employee_type',  type: 'STRING'  },
+      { h: 'Phòng ban (HRIS)',                 key: 'phong_ban',      type: 'STRING'  },
+      { h: 'Tổng lương + thưởng (Net)',        key: 'tong_lt',        type: 'INTEGER' },
+      { h: 'Tổng lương',                       key: 'tong_luong',     type: 'INTEGER' },
+      { h: 'Lương cơ bản',                     key: 'luong_cb',       type: 'INTEGER' },
+      { h: 'Công',                             key: 'cong',           type: 'FLOAT'   },
+      { h: 'LCB theo ngày công',               key: 'lcb_ngay_cong',  type: 'INTEGER' },
+      { h: 'Thưởng COM',                       key: 'thuong_com',     type: 'INTEGER' },
+      { h: 'Bảo hiểm',                         key: 'bao_hiem',       type: 'INTEGER' },
+      { h: 'GMV',                              key: 'gmv',            type: 'INTEGER' },
+      { h: 'GMV bán mới',                      key: 'gmv_ban_moi',    type: 'INTEGER' },
+      { h: 'GMV giới thiệu',                   key: 'gmv_gioi_thieu', type: 'INTEGER' },
+      { h: 'GMV tái ký',                       key: 'gmv_tai_ky',     type: 'INTEGER' },
+      { h: 'Hỗ trợ ăn trưa',                  key: 'an_trua',        type: 'INTEGER' },
+      { h: 'Tiền hỗ trợ máy tính',            key: 'may_tinh',       type: 'INTEGER' },
+      { h: 'Hỗ trợ tiền xe + PC trách nhiệm', key: 'xe_pc',          type: 'INTEGER' },
+      { h: 'Khấu trừ thuế',                    key: 'khau_tru_thue',  type: 'INTEGER' },
+      { h: 'Bù tiền',                          key: 'bu_tien',        type: 'INTEGER' },
+      { h: 'Note',                             key: 'note',           type: 'STRING'  },
+      { h: 'Ghi chú thưởng nóng',             key: 'gc_thuong_nong', type: 'STRING'  },
+      { h: 'Xác nhận thông tin',               key: 'xn_tt',          type: 'BOOLEAN' },
+      { h: 'Gửi BL trước thuế',               key: 'gui_truoc',      type: 'BOOLEAN' },
+      { h: 'NV xác nhận trước thuế',          key: 'nv_xn_truoc',    type: 'BOOLEAN' },
+      { h: 'Gửi BL sau thuế',                 key: 'gui_sau',        type: 'BOOLEAN' },
+      { h: 'NV xác nhận sau thuế',            key: 'nv_xn_sau',      type: 'BOOLEAN' },
+    ];
+
+    var colIdx = {};
+    for (var f = 0; f < ARCHIVE_FIELD_MAP.length; f++) {
+      var fi = ARCHIVE_FIELD_MAP[f];
+      var pos = -1;
+      for (var hi = 0; hi < hdr.length; hi++) {
+        if (hdr[hi] === fi.h) { pos = hi; break; }
+      }
+      colIdx[fi.key] = pos;
+    }
+
+    var rows = [];
+    for (var i = 1; i < allVals.length; i++) {
+      var row = allVals[i];
+      var code = String(row[colIdx['code']] || '').trim();
+      if (!code) continue;
+
+      var obj = { ky_luong: ky };
+      for (var f = 0; f < ARCHIVE_FIELD_MAP.length; f++) {
+        var fi = ARCHIVE_FIELD_MAP[f];
+        var pos = colIdx[fi.key];
+        var val = (pos >= 0 && pos < row.length) ? row[pos] : '';
+        if (fi.type === 'INTEGER') {
+          obj[fi.key] = (val === '' || val === null || val === undefined) ? null : parseInt(String(val).replace(/[^0-9\-]/g, ''), 10) || 0;
+        } else if (fi.type === 'FLOAT') {
+          obj[fi.key] = (val === '' || val === null || val === undefined) ? null : parseFloat(String(val)) || 0;
+        } else if (fi.type === 'BOOLEAN') {
+          obj[fi.key] = val === true || val === 'TRUE' || val === 'true';
+        } else {
+          obj[fi.key] = val === null || val === undefined ? '' : String(val);
+        }
+      }
+      rows.push(obj);
+    }
+
+    if (!rows.length) { ss.toast('Không có dòng hợp lệ để lưu.', 'Lỗi', 5); return; }
+
+    // Build schema from ARCHIVE_FIELD_MAP
+    var schemaFields = [{ name: 'ky_luong', type: 'STRING', mode: 'NULLABLE' }];
+    ARCHIVE_FIELD_MAP.forEach(function(fi) {
+      schemaFields.push({ name: fi.key, type: fi.type, mode: 'NULLABLE' });
+    });
+
+    // JSON Lines blob
+    var jsonLines = rows.map(function(r) { return JSON.stringify(r); }).join('\n');
+    var blob = Utilities.newBlob(jsonLines, 'application/octet-stream');
+
+    var job = {
+      configuration: {
+        load: {
+          destinationTable: { projectId: CFG.bqProject, datasetId: 'payroll', tableId: 'M_bang_luong_archive' },
+          sourceFormat: 'NEWLINE_DELIMITED_JSON',
+          writeDisposition: 'WRITE_APPEND',
+          createDisposition: 'CREATE_IF_NEEDED',
+          schema: { fields: schemaFields }
+        }
+      }
+    };
+
+    var loadJob = BigQuery.Jobs.insert(job, CFG.bqProject, blob);
+    var jobId = loadJob.jobReference.jobId;
+    var jobLocation = (loadJob.jobReference && loadJob.jobReference.location) || undefined;
+    var getOpts = jobLocation ? { location: jobLocation } : {};
+    var status = BigQuery.Jobs.get(CFG.bqProject, jobId, getOpts);
+    while (status.status.state !== 'DONE') {
+      Utilities.sleep(1500);
+      status = BigQuery.Jobs.get(CFG.bqProject, jobId, getOpts);
+    }
+    if (status.status.errorResult) {
+      ui.alert('Lỗi BigQuery: ' + status.status.errorResult.message);
+      return;
+    }
+
+    ss.toast('Đã lưu ' + rows.length + ' dòng kỳ ' + ky + ' vào BigQuery.', '✓', 6);
+  } finally {
+    lk.releaseLock();
+  }
 }
 
 function xuatExcelTheoTeam(){

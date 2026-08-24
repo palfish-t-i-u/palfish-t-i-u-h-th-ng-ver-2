@@ -191,6 +191,7 @@ Kế hoạch đầy đủ: `docs/plans/HANDOFF_HDSD_DOCS_ROUTE_PIVOT_2026-07-27.
 - Contract: `docs/PHIEU_LUONG_CONTRACT.md` — payload keys byte-exact, 6 block, 5 cột status
 - Tests: `backend/tests/test_payroll_receive.py` (6), `test_payroll_view.py` (9) — 15 pass
 - M3 Apps Script: `docs/apps-script/BangLuong.gs` (bảng lương), `DoiSoatLuong.gs` (đối soát), `BangTinhThue.gs` (tham chiếu thuế)
+- Archive: `luuArchiveBangLuong()` trong `BangLuong.gs` → ghi `pf-salary.payroll.M_bang_luong_archive` (append theo `ky_luong`, hỏi xác nhận nếu kỳ đã tồn tại)
 - Preview phiếu: `docs/apps-script/PhieuLuongXem.gs` (server: `pvNapDuLieu`, `pvDocTags_`, `pvDungPhieu_`, `pvBanDaGui`) · `docs/apps-script/PhieuLuongXem.html` (client: modal preview 900×640, 0 RPC khi đổi người)
 - Xuất Excel: `docs/apps-script/PhongBanXuat.gs` (server: `xlGomNhom_`, `xlKiemTeam_`, `xlTaiZip`, `xlTaiMotFile`) · `docs/apps-script/PhongBanXuat.html` (client: dialog xuất Excel, ZIP download)
 - Test harness: `docs/apps-script/PhieuLuongTest.gs` (`chayTestThuan`, `chayTestDocThat`, `test_chupBaseline`, `test_soSanhBaseline`)
