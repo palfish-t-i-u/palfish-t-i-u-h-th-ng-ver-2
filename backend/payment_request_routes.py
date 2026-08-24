@@ -2835,6 +2835,9 @@ def register_payment_request_routes(app, _get_supabase) -> None:
                     }
                 )
 
+        if method == "cash":
+            insert_row["paid_at"] = _iso_now()
+
         try:
             line_res = sb.table("payment_lines").insert(insert_row).execute()
             totals = recompute_payment_request_totals(sb, payment_request_id)

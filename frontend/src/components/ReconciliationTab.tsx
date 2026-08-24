@@ -643,7 +643,7 @@ export default function ReconciliationTab() {
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return transactions.filter((t) => {
+    const result = transactions.filter((t) => {
       const st = txnDisplayStatus(t);
       if (tab === "awaiting" && st !== "awaiting") return false;
       // Tab Chờ xác nhận chỉ phục vụ tiền mặt. Non-cash tạo TỪ ngày fix (14/7) không
@@ -658,12 +658,17 @@ export default function ReconciliationTab() {
       if (tab === "confirmed" && st !== "confirmed") return false;
       if (tab === "cancelled" && st !== "cancelled" && st !== "rejected") return false;
       if (methodFilter !== "all" && t.method !== methodFilter) return false;
-      if (!inDateRange(t.createdAt, dateRange)) return false;
+      const dateField = tab === "confirmed" ? (t.paidAt || t.createdAt) : t.createdAt;
+      if (!inDateRange(dateField, dateRange)) return false;
       if (!q) return true;
       return [t.code, t.prId, t.prName, t.pr.uid, t.bank || ""].some((v) =>
         v.toLowerCase().includes(q)
       );
     });
+    if (tab === "confirmed") {
+      result.sort((a, b) => (b.paidAt || "").localeCompare(a.paidAt || ""));
+    }
+    return result;
   }, [transactions, tab, search, methodFilter, dateRange]);
 
   useEffect(() => {
@@ -1015,7 +1020,7 @@ export default function ReconciliationTab() {
               <table className="tbl">
                 <thead>
                   <tr>
-                    <th style={{ width: 140 }}>Thời gian</th>
+                    <th style={{ width: 140 }}>Tiền về lúc</th>
                     <th style={{ width: 140, textAlign: "right" }}>Số tiền</th>
                     <th style={{ minWidth: 240 }}>Nội dung CK</th>
                     <th style={{ width: 140 }}>Tài khoản nhận</th>
@@ -1149,7 +1154,8 @@ export default function ReconciliationTab() {
                       />
                     )}
                   </th>
-                  <th style={{ width: 140 }}>Thời gian</th>
+                  <th style={{ width: 115 }}>Tạo lệnh lúc</th>
+                  <th style={{ width: 115 }}>Tiền về lúc</th>
                   <th style={{ width: 145 }}>Mã GD</th>
                   <th style={{ minWidth: 200 }}>Payment Request</th>
                   <th style={{ width: 150 }}>Phương thức</th>
@@ -1163,7 +1169,7 @@ export default function ReconciliationTab() {
               <tbody>
                 {filtered.length === 0 && (
                   <tr>
-                    <td colSpan={10}>
+                    <td colSpan={11}>
                       <div className="empty">
                         <Icons.CheckCircle size={20} />
                         <div>Không có giao dịch nào khớp với điều kiện lọc.</div>
@@ -1176,6 +1182,7 @@ export default function ReconciliationTab() {
                   const method = METHOD_META[t.method || "qr"];
                   const MIco = Icons[method.icon];
                   const created = formatPaymentDateTime(t.createdAt);
+                  const paid = t.paidAt ? formatPaymentDateTime(t.paidAt) : null;
                   const txnBills = getBillsForTxn(t);
                   const hasBill = txnBills.length > 0 || !!t.bill;
                   return (
@@ -1205,6 +1212,16 @@ export default function ReconciliationTab() {
                       <td>
                         <div className="cell-time">{created.date}</div>
                         <div className="time-relative">{created.time}</div>
+                      </td>
+                      <td>
+                        {paid ? (
+                          <>
+                            <div className="cell-time">{paid.date}</div>
+                            <div className="time-relative">{paid.time}</div>
+                          </>
+                        ) : (
+                          <span style={{ color: "var(--text-3)", fontSize: 12 }}>—</span>
+                        )}
                       </td>
                       <td>
                         <span className="cell-mono">{t.code}</span>
