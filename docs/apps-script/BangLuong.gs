@@ -46,11 +46,13 @@ const BQ_SQL = [
   "  t.an_ca_van,",
   "  t.dien_thoai_van,",
   "  t.ghi_chu_thuong_nong,",
-  "  COALESCE(t.so_nguoi_phu_thuoc, 0) AS so_npt",
+  "  COALESCE(t.so_nguoi_phu_thuoc, 0) AS so_npt,",
+  "  t.phan_vung",
   "FROM `pf-salary.payroll.C_view_bang_luong_truoc_thue` t",
   "LEFT JOIN `pf-salary.payroll.C_view_bang_luong_co_ban_theo_ngay_cong` cb ON cb.code = t.code",
   "ORDER BY",
-  "  CASE team WHEN 'BOD' THEN 1 WHEN 'Inhouse 1' THEN 2 WHEN 'CSKH' THEN 3 WHEN 'Inhouse 2' THEN 4 WHEN 'Offline' THEN 5 WHEN 'Back office' THEN 6 WHEN 'MKT' THEN 7 WHEN 'Head quarter' THEN 8 ELSE 9 END,",
+  "  CASE t.phan_vung WHEN 'BOD' THEN 1 WHEN 'INHOUSE 1' THEN 2 WHEN 'CS TEAM' THEN 3 WHEN 'INHOUSE 2' THEN 4 WHEN 'OFFLINE' THEN 5 WHEN 'HR, ACCOUTANT +HR' THEN 6 WHEN 'MARKETING' THEN 7 WHEN 'Head quarter' THEN 8 ELSE 9 END,",
+  "  t.departments,",
   "  CASE WHEN t.title_job LIKE '%Giám đốc%' THEN 1 WHEN t.title_job LIKE '%Leader%' OR t.title_job LIKE '%leader%' THEN 2 WHEN COALESCE(TRIM(t.type_self),'') NOT IN ('Chính thức','Thử việc','') THEN 4 ELSE 3 END,",
   "  t.full_name"
 ].join('\n');
@@ -64,7 +66,7 @@ const COLS = [
   // --- Identity ---
   { key:'stt',           h:'STT',                              role:'auto'  },
   { key:'code',          h:'Mã NV',                            role:'auto',  src:'code' },
-  { key:'team',          h:'Team',                             role:'auto',  src:'team' },
+  { key:'phan_vung',     h:'Khối',                             role:'auto',  src:'phan_vung' },
   { key:'name',          h:'Name',                             role:'auto',  src:'full_name' },
   { key:'chuc_danh',     h:'Chức danh',                        role:'auto',  src:'title_job' },
   { key:'employee_type', h:'Loại NV',                           role:'auto',  src:'employee_type' },
@@ -282,15 +284,18 @@ function capNhatTuBigQuery(){
   const formulaCols = {};
   const checkboxCols = [];
 
+  let sttCounter = 0, currentPhanVung = null;
   for(let i=0; i<rows.length; i++){
     const r = i+2, d = rows[i], code = String(d.code||'').trim();
+    if(d.phan_vung !== currentPhanVung){ currentPhanVung = d.phan_vung; sttCounter = 0; }
+    sttCounter++;
     newSnap[code] = {};
     const rowVals = [];
 
     for(let c=0; c<COLS.length; c++){
       const col = COLS[c];
       if(col.role==='auto'){
-        rowVals.push(col.key==='stt' ? i+1 : (d[col.src]===null||d[col.src]===undefined ? '' : d[col.src]));
+        rowVals.push(col.key==='stt' ? sttCounter : (d[col.src]===null||d[col.src]===undefined ? '' : d[col.src]));
       } else if(col.role==='input'){
         const cur = oldVal(code, col.h);
         if(!col.src){
@@ -353,7 +358,7 @@ function capNhatTuBigQuery(){
 
 // Độ rộng cột cố định theo key (px) — hết cảnh autoResize làm dồn ứ / nhảy loạn.
 const COL_WIDTH = {
-  stt:38, code:72, team:80, name:150, chuc_danh:135, employee_type:80, phong_ban:110,
+  stt:38, code:72, phan_vung:135, name:150, chuc_danh:135, employee_type:80, phong_ban:110,
   cong:52, note:150,
 };
 const MONEY_KEYS = ['tong_lt','tong_luong','luong_cb','lcb_ngay_cong','thuong_com','bao_hiem',
