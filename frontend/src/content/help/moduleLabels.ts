@@ -25,6 +25,7 @@ export const HELP_MODULE_LABELS: Record<string, string> = {
   authAccounts: "Tài khoản Auth",
   permissions: "Phân quyền sử dụng",
   profile: "Thông tin cá nhân",
+  payslip: "Phiếu lương",
 };
 
 export function getModuleLabel(slug: string): string {
@@ -44,6 +45,7 @@ export const HELP_MODULE_GROUPS: { label: string; moduleSlugs: string[] }[] = [
     label: "Quản trị",
     moduleSlugs: ["zaloConfig", "zaloGroups", "zaloOutbox", "dingtalkConfig", "dingtalkGroups", "dingtalkOutbox"],
   },
+  { label: "Nhân sự", moduleSlugs: ["payslip"] },
   { label: "Tài khoản & Quyền", moduleSlugs: ["authAccounts", "permissions", "profile"] },
 ];
 

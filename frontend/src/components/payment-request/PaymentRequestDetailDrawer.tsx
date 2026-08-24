@@ -34,7 +34,6 @@ import {
   parsePaymentDate,
   paymentAttemptLabel,
   paymentConfirmationText,
-  activationAddressComplete,
   isForeignCustomer,
   REFERRAL_STATUS_HEADER,
   REFERRAL_STATUS_PANEL_STYLE,
@@ -1643,9 +1642,9 @@ export default function PaymentRequestDetailDrawer({
   onEditAmount?: (qr: PaymentAttempt, newAmount: number) => Promise<void>;
   onBillFile: (qr: PaymentAttempt, file: File) => void | Promise<void>;
   onBillView: (qr: PaymentAttempt) => void;
-  onCreateActiveRequest: (rows: ArDraftRow[], opts?: { holdActivation?: boolean; holdNote?: string }) => void;
+  onCreateActiveRequest: (rows: ArDraftRow[], opts?: { holdActivation?: boolean; holdNote?: string; crmAddressConfirmed?: boolean }) => void;
   /** Báo đơn bổ sung (lần 2+): cộng bé/gói mới vào AR có sẵn + tin DingTalk lần 2 */
-  onAppendActiveRequest: (rows: ArDraftRow[], opts?: { holdActivation?: boolean; holdNote?: string }) => Promise<void>;
+  onAppendActiveRequest: (rows: ArDraftRow[], opts?: { holdActivation?: boolean; holdNote?: string; crmAddressConfirmed?: boolean }) => Promise<void>;
   onCancelRequest: () => void;
   activeRequestId?: string | null;
   activeRequest?: ActiveRequest | null;
@@ -1689,6 +1688,8 @@ export default function PaymentRequestDetailDrawer({
   const [arDraftRows, setArDraftRows] = useState<ArDraftRow[]>([]);
   const [holdActivation, setHoldActivation] = useState(false);
   const [holdNote, setHoldNote] = useState("");
+  const [crmAddressConfirmed, setCrmAddressConfirmed] = useState(false);
+  const [crmShakeError, setCrmShakeError] = useState(false);
   // bill guard — chặn tạo AR khi còn line paid thiếu ảnh bill
   const [missingBillsPopupOpen, setMissingBillsPopupOpen] = useState(false);
   const [missingBillLines, setMissingBillLines] = useState<{ line_id: string; idx: number; amount: number }[]>([]);
@@ -1809,20 +1810,6 @@ export default function PaymentRequestDetailDrawer({
     unallocated: arUnallocated,
     arLabel: activeSummary.buttonLabel,
   });
-  // Địa chỉ để Ops tạo gói học trên CRM (số VN 84-): cần Tỉnh/TP + Phường/Xã.
-  // Thiếu → chặn NGAY ở nút "Báo đơn & Kích hoạt" (trước khi vào form) nên cả
-  // "Kích hoạt ngay" lẫn "Chưa kích hoạt" đều phải có địa chỉ. Khách nước ngoài luôn đủ.
-  const activationAddrMissingParts = activationAddressComplete({
-    country: request.country,
-    province: request.province,
-    ward: request.ward,
-  })
-    ? []
-    : ([
-        !(request.province || "").trim() ? "Tỉnh/TP" : null,
-        !(request.ward || "").trim() ? "Phường/Xã" : null,
-      ].filter(Boolean) as string[]);
-  const activationAddrMissing = activationAddrMissingParts.length > 0;
   const copyPrId = async () => {
     const id = request.id;
     const fallbackCopy = () => {
@@ -2764,7 +2751,7 @@ export default function PaymentRequestDetailDrawer({
               title={reportBtn.title}
               onClick={() => {
                 const missingLines = findPaidLinesWithoutBill(request.payments ?? []);
-                if (missingLines.length > 0 || activationAddrMissing) {
+                if (missingLines.length > 0) {
                   setMissingBillLines(missingLines.map((l) => ({ line_id: l.id, idx: l.idx, amount: l.amount ?? 0 })));
                   setMissingBillsPopupOpen(true);
                   return;
@@ -2776,6 +2763,8 @@ export default function PaymentRequestDetailDrawer({
                 ]);
                 setHoldActivation(false);
                 setHoldNote("");
+                setCrmAddressConfirmed(false);
+                setCrmShakeError(false);
                 setArPackageModalOpen(true);
               }}
             >
@@ -2819,6 +2808,10 @@ export default function PaymentRequestDetailDrawer({
         })();
         const setArRow = (i: number, patch: Partial<ArDraftRow>) =>
           setArDraftRows((rows) => rows.map((r, j) => (j === i ? { ...r, ...patch } : r)));
+        // G1: số Việt ≠ khách ở VN — dùng isForeignCustomer, không dùng country !== "VN"
+        const isVNCustomer = !isForeignCustomer(request.country, request.province);
+        // needConfirm: VN + (create hoặc append vào AR chưa confirmed)
+        const needConfirm = isVNCustomer && !(reportBtn.isAppend && activeRequest?.crmAddressConfirmed === true);
         return (
         <div
           className="gmv-prototype-modal-scrim"
@@ -2872,6 +2865,33 @@ export default function PaymentRequestDetailDrawer({
                   </div>
                 )}
               </div>
+              {needConfirm && (
+                <div
+                  style={{
+                    marginBottom: 12, padding: "10px 12px", borderRadius: 8, background: "var(--bg-2)",
+                    border: crmShakeError ? "1px solid var(--danger)" : "1px solid var(--border)",
+                    animation: crmShakeError ? "crm-shake 0.4s ease" : undefined,
+                    transition: "border-color 0.2s",
+                  }}
+                >
+                  <label style={{ display: "flex", alignItems: "flex-start", gap: 8, cursor: "pointer", fontSize: 13 }}>
+                    <input
+                      type="checkbox"
+                      checked={crmAddressConfirmed}
+                      onChange={(e) => { setCrmAddressConfirmed(e.target.checked); setCrmShakeError(false); }}
+                      style={{ marginTop: 2, flexShrink: 0 }}
+                    />
+                    <span>
+                      Tôi đã điền địa chỉ khách (Tỉnh/TP · Phường/Xã · Số nhà) trên <strong>CRM</strong> để tạo gói học.
+                    </span>
+                  </label>
+                  {crmShakeError && (
+                    <div style={{ fontSize: 12, color: "var(--danger)", marginTop: 6, paddingLeft: 24 }}>
+                      Vui lòng xác nhận đã điền địa chỉ trên CRM để báo đơn.
+                    </div>
+                  )}
+                </div>
+              )}
               {arDraftRows.map((row, i) => (
                 <div key={i} style={{ border: "1px solid var(--border)", borderRadius: 8, padding: "10px 12px", marginBottom: 10 }}>
                   {/* Row 1: Tên bé | SĐT kích hoạt (số kích hoạt gói cho từng bé — khác SĐT lead/phụ huynh) */}
@@ -3114,12 +3134,23 @@ export default function PaymentRequestDetailDrawer({
                 type="button"
                 className="btn btn-success"
                 disabled={!arValid || arSubmitting}
-                style={!arValid || arSubmitting ? { opacity: 0.4, cursor: "not-allowed" } : undefined}
+                title={needConfirm && !crmAddressConfirmed ? "Chưa xác nhận đã điền địa chỉ CRM — vui lòng tích ô xác nhận phía trên" : undefined}
+                style={!arValid || arSubmitting || (needConfirm && !crmAddressConfirmed) ? { opacity: 0.4, cursor: "not-allowed" } : undefined}
                 onClick={async () => {
+                  if (needConfirm && !crmAddressConfirmed) {
+                    setCrmShakeError(false);
+                    requestAnimationFrame(() => setCrmShakeError(true));
+                    return;
+                  }
                   if (!arValid || arSubmitting) return;
                   setArSubmitting(true);
                   const rows = arDraftRows.map((r) => ({ ...r, childName: r.childName.trim() }));
-                  const holdOpts = { holdActivation, holdNote: holdNote.trim() || undefined };
+                  const holdOpts = {
+                    holdActivation,
+                    holdNote: holdNote.trim() || undefined,
+                    // OV hoặc append-đã-confirmed gửi true; VN chưa confirmed gửi false (cũng không được click)
+                    crmAddressConfirmed: needConfirm ? crmAddressConfirmed : true,
+                  };
                   try {
                     if (reportBtn.isAppend) {
                       await onAppendActiveRequest(rows, holdOpts);
@@ -3186,19 +3217,6 @@ export default function PaymentRequestDetailDrawer({
                       </li>
                     ))}
                   </ul>
-                </div>
-              )}
-              {activationAddrMissing && (
-                <div>
-                  <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 6, display: "flex", alignItems: "center", gap: 6, color: "var(--danger, #ef4444)" }}>
-                    <Icons.AlertCircle size={15} /> Thiếu địa chỉ khách (số Việt Nam)
-                  </div>
-                  <div style={{ fontSize: 12.5, lineHeight: 1.55, color: "var(--text-2)" }}>
-                    CRM cần <strong>Tỉnh/TP + Phường/Xã</strong> để tạo gói học cho khách.{" "}
-                    Phiếu đang thiếu: <strong>{activationAddrMissingParts.join(" + ")}</strong>.
-                    <br />
-                    👉 Bấm <strong>Sửa</strong> thông tin khách trong phiếu → điền địa chỉ → báo đơn lại.
-                  </div>
                 </div>
               )}
             </div>

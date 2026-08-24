@@ -55,6 +55,7 @@ export default function ReconTxnCards({
         const status = txnDisplayStatus(t);
         const method = METHOD_META[t.method || "qr"];
         const created = formatPaymentDateTime(t.createdAt);
+        const paid = t.paidAt ? formatPaymentDateTime(t.paidAt) : null;
         return (
           <RowCard
             key={t.key}
@@ -77,7 +78,8 @@ export default function ReconTxnCards({
             }
             meta={[
               { label: "Mã GD", value: t.code },
-              { label: "Thời gian", value: `${created.date} ${created.time || ""}`.trim() },
+              { label: "Tạo lệnh lúc", value: `${created.date} ${created.time || ""}`.trim() },
+              { label: "Tiền về lúc", value: paid ? `${paid.date} ${paid.time || ""}`.trim() : "—" },
               { label: "Chi tiết", value: t.bank || t.cashier || "—" },
             ]}
             onClick={() => onSelect(t)}

@@ -320,6 +320,12 @@ def _serialize_payment_request(row: dict[str, Any], completion_reports: list[dic
         "company_name": row.get("company_name") or None,
         "lead_source": row.get("lead_source") or None,
         "lead_channel": row.get("lead_channel") or None,
+        "lead_matched": row.get("lead_matched"),
+        "lead_id": row.get("lead_id"),
+        "lead_matched_by": row.get("lead_matched_by"),
+        "sdt_goc": row.get("sdt_goc"),
+        "ly_do_khong_ghep": row.get("ly_do_khong_ghep"),
+        "lead_check_at": row.get("lead_check_at"),
         "target": target,
         "received": received,
         "state": row.get("state") or "pending",
@@ -2828,6 +2834,9 @@ def register_payment_request_routes(app, _get_supabase) -> None:
                         "name_for_transfer": body.name_for_transfer,
                     }
                 )
+
+        if method == "cash":
+            insert_row["paid_at"] = _iso_now()
 
         try:
             line_res = sb.table("payment_lines").insert(insert_row).execute()

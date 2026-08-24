@@ -375,9 +375,11 @@ export function fromApiActiveRequest(raw: ActiveRequestApiRow): ActiveRequest {
     customerName: raw.customer_name || prSnippet?.name || "",
     saleName: prSnippet?.sale_name || undefined,
     createdAt: raw.created_at ?? "",
+    updatedAt: raw.updated_at ?? undefined,
     createdBy: "",
     holdActivation: raw.hold_activation ?? false,
     holdNote: raw.hold_note ?? null,
+    crmAddressConfirmed: raw.crm_address_confirmed ?? true,
     // undefined khi API không trả (route mutation chưa wire) — tránh xoá giá trị cũ nếu có merge.
     tienVeSom: "tien_ve_som" in raw ? (raw.tien_ve_som ?? null) : undefined,
     tienVeMuon: "tien_ve_muon" in raw ? (raw.tien_ve_muon ?? null) : undefined,
@@ -429,7 +431,7 @@ export function buildArByPrId(ars: ActiveRequest[]): Record<string, ActiveReques
 export function buildCreateActiveRequestPayload(
   pr: PaymentRequest,
   rows: ArDraftRow[],
-  opts?: { holdActivation?: boolean; holdNote?: string }
+  opts?: { holdActivation?: boolean; holdNote?: string; crmAddressConfirmed?: boolean }
 ): CreateActiveRequestPayload {
   const blocks = new Map<string, CreateActiveRequestUidPayload>();
   for (const row of rows) {
@@ -469,6 +471,9 @@ export function buildCreateActiveRequestPayload(
   if (opts?.holdActivation) {
     payload.hold_activation = true;
     if (opts.holdNote?.trim()) payload.hold_note = opts.holdNote.trim();
+  }
+  if (opts?.crmAddressConfirmed) {
+    payload.crm_address_confirmed = true;
   }
   return payload;
 }
