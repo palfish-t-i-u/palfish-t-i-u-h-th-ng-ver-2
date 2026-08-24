@@ -1368,6 +1368,32 @@ def _maybe_enqueue_ar_edit_dingtalk(
         print(f"[dingtalk] edit-resend enqueue failed (non-fatal): {exc}")
 
 
+def _maybe_enqueue_ar_edit_on_pr_change(
+    sb, pr_id: str, old_pr: dict[str, Any], new_pr: dict[str, Any],
+) -> None:
+    """Sale sửa PR (PATCH /payment-requests) → bắn tin DingTalk 'cập nhật' NẾU
+    trường hiển thị trong tin thay đổi (nguồn, tên bé, SĐT...).
+    Best-effort — không bao giờ raise (không ảnh hưởng PATCH response).
+    """
+    try:
+        ar_res = sb.table("active_requests").select("*").eq("pr_id", pr_id).limit(1).execute()
+        if not ar_res.data:
+            return
+        ar = ar_res.data[0]
+        key_before = _ar_dingtalk_content_key(ar, old_pr)
+        key_after = _ar_dingtalk_content_key(ar, new_pr)
+        if key_before == key_after:
+            return
+        source_suffix = ":edit:" + hashlib.md5(key_after.encode()).hexdigest()[:12]
+        _enqueue_activation_request_created_dingtalk(
+            sb, ar, new_pr, source_suffix=source_suffix,
+            hold_activation=bool(ar.get("hold_activation")),
+            hold_note=ar.get("hold_note"),
+        )
+    except Exception as exc:
+        print(f"[dingtalk] pr-edit resend enqueue failed (non-fatal): {exc}")
+
+
 def _enqueue_activation_request_created_dingtalk(
     sb, saved_ar: dict[str, Any], pr: dict[str, Any] | None, source_suffix: str = "",
     hold_activation: bool = False, hold_note: str | None = None,

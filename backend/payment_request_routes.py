@@ -23,7 +23,7 @@ from pydantic import BaseModel, Field
 
 from rbac import resolve_actor, visible_creator_emails, can_confirm_payment
 from admin_routes import require_module_access, require_module_write
-from activation_routes import _compute_referral_status
+from activation_routes import _compute_referral_status, _maybe_enqueue_ar_edit_on_pr_change
 
 from payos_qr import create_payos_payment_link, fetch_payos_payment, payos_payment_is_paid
 from audit import log_audit
@@ -2052,6 +2052,10 @@ def register_payment_request_routes(app, _get_supabase) -> None:
             refreshed = totals.get("payment_request")
             if isinstance(refreshed, dict):
                 updated_row = {**updated_row, **refreshed}
+
+        # Nguồn/tên bé/SĐT đổi → bắn tin DingTalk cập nhật cho AR đã báo (best-effort).
+        if {"lead_source", "lead_channel", "child_name", "name", "phone"} & set(patch.keys()):
+            _maybe_enqueue_ar_edit_on_pr_change(sb, payment_request_id, current_row, updated_row)
 
         line_res = (
             sb.table("payment_lines")
