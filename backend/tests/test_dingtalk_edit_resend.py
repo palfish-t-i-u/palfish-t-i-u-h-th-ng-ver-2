@@ -14,7 +14,7 @@ from unittest.mock import MagicMock, patch
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from activation_routes import _ar_dingtalk_content_key, register_activation_routes
+from activation_routes import _ar_dingtalk_content_key, _maybe_enqueue_ar_edit_on_pr_change, register_activation_routes
 
 
 # ---------------------------------------------------------------------------
@@ -386,3 +386,85 @@ def test_append_suffix_prepends_supplementary_header_and_uses_pr_total():
     assert "Tiền: 7.740.000 VND" in msg
     assert "Tổng: 17.320.000 VND" in msg
     assert "Tổng: 7.740.000 VND" not in msg
+
+
+# ---------------------------------------------------------------------------
+# G2-T6 — _ar_dingtalk_content_key: đổi lead_source/channel cấp PR → key đổi
+# ---------------------------------------------------------------------------
+
+class TestArDingtalkContentKeySourceChange:
+    def test_lead_source_change_alters_key(self):
+        ar = _make_ar_row()
+        pr_before = _sample_pr(lead_source="kho_chung", lead_channel=None)
+        pr_after = _sample_pr(lead_source="quang_cao", lead_channel=None)
+        assert _ar_dingtalk_content_key(ar, pr_before) != _ar_dingtalk_content_key(ar, pr_after)
+
+    def test_lead_channel_change_alters_key(self):
+        ar = _make_ar_row()
+        pr_before = _sample_pr(lead_source="quang_cao", lead_channel="300265")
+        pr_after = _sample_pr(lead_source="quang_cao", lead_channel="300281")
+        assert _ar_dingtalk_content_key(ar, pr_before) != _ar_dingtalk_content_key(ar, pr_after)
+
+
+# ---------------------------------------------------------------------------
+# G2-T7 — _maybe_enqueue_ar_edit_on_pr_change: wiring qua PR PATCH
+# ---------------------------------------------------------------------------
+
+class TestMaybeEnqueueArEditOnPrChange:
+    def _make_sb_with_ar(self, ar_row):
+        """Supabase mock trả AR khi query theo pr_id."""
+        enqueued = []
+
+        def table_side(name):
+            m = MagicMock()
+            if name == "active_requests":
+                m.select.return_value.eq.return_value.limit.return_value.execute.return_value = MagicMock(data=[ar_row])
+            elif name == "dingtalk_outbox":
+                def insert_capture(data):
+                    enqueued.append(data)
+                    r = MagicMock()
+                    r.execute.return_value = None
+                    return r
+                m.insert = insert_capture
+            return m
+
+        sb = MagicMock()
+        sb.table.side_effect = table_side
+        return sb, enqueued
+
+    def test_source_change_enqueues_resend(self):
+        """PR.lead_source đổi + AR tồn tại → gọi enqueue dingtalk."""
+        ar = _make_ar_row()
+        old_pr = _sample_pr(lead_source="kho_chung", lead_channel=None)
+        new_pr = _sample_pr(lead_source="quang_cao", lead_channel="300281")
+
+        with patch("activation_routes._enqueue_activation_request_created_dingtalk") as mock_enq, \
+             patch("activation_routes.dingtalk_event_enabled", return_value=True):
+            sb = MagicMock()
+            sb.table.return_value.select.return_value.eq.return_value.limit.return_value.execute.return_value = MagicMock(data=[ar])
+            _maybe_enqueue_ar_edit_on_pr_change(sb, "PR-2026-9101", old_pr, new_pr)
+            mock_enq.assert_called_once()
+            _, kwargs = mock_enq.call_args
+            assert kwargs.get("source_suffix", "").startswith(":edit:")
+
+    def test_no_ar_skips_resend(self):
+        """PR không có AR đã báo → không enqueue."""
+        old_pr = _sample_pr(lead_source="kho_chung")
+        new_pr = _sample_pr(lead_source="quang_cao")
+
+        with patch("activation_routes._enqueue_activation_request_created_dingtalk") as mock_enq:
+            sb = MagicMock()
+            sb.table.return_value.select.return_value.eq.return_value.limit.return_value.execute.return_value = MagicMock(data=[])
+            _maybe_enqueue_ar_edit_on_pr_change(sb, "PR-2026-9101", old_pr, new_pr)
+            mock_enq.assert_not_called()
+
+    def test_same_source_no_resend(self):
+        """PR source không đổi → không enqueue."""
+        ar = _make_ar_row()
+        pr = _sample_pr(lead_source="quang_cao", lead_channel="300281")
+
+        with patch("activation_routes._enqueue_activation_request_created_dingtalk") as mock_enq:
+            sb = MagicMock()
+            sb.table.return_value.select.return_value.eq.return_value.limit.return_value.execute.return_value = MagicMock(data=[ar])
+            _maybe_enqueue_ar_edit_on_pr_change(sb, "PR-2026-9101", pr, pr)
+            mock_enq.assert_not_called()
