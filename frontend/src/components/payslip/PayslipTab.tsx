@@ -250,7 +250,13 @@ export default function PayslipTab() {
       <Modal
         open={detailItems !== null || detailLoading}
         onClose={() => { setDetailItems(null); setDetailError(""); }}
-        title="Phiếu lương"
+        title={
+          detailItems && detailItems.length === 1
+            ? detailItems[0].stage === "truoc_thue"
+              ? "Phiếu lương trước thuế"
+              : "Phiếu lương sau thuế"
+            : "Phiếu lương"
+        }
         wide
       >
         {detailLoading && (
