@@ -21,8 +21,6 @@ export const PAYSLIP_BLOCKS: { title: string; keys: string[] }[] = [
   { title: "Tổng tiền", keys: ["Tổng lương + thưởng", "Tổng lương", "Luong_thanh_toan (Net)"] },
 ];
 
-const HEADER_KEYS = new Set(["STT", "Name", "Chức danh", "Mã NV", "Team", "Loại NV"]);
-
 const KEY_NORMALIZE: Record<string, string> = {
   "Luong co ban": "Lương cơ bản",
   "LCB theo ngay cong": "LCB theo ngày công",
@@ -101,7 +99,6 @@ interface BlockProps {
 
 function PhieuBlocks({ phieu }: BlockProps) {
   const normalized = normalizePhieu(phieu);
-  const renderedKeys = new Set<string>();
 
   return (
     <div className="space-y-2">
@@ -115,7 +112,6 @@ function PhieuBlocks({ phieu }: BlockProps) {
           }
         }
         if (rows.length === 0) return null;
-        rows.forEach((r) => renderedKeys.add(r.dataKey));
         return (
           <Card key={block.title}>
             <CardHeader className="py-1.5 text-sm">{block.title}</CardHeader>
@@ -133,27 +129,6 @@ function PhieuBlocks({ phieu }: BlockProps) {
         );
       })}
 
-      {(() => {
-        const otherKeys = Object.keys(normalized).filter(
-          (k) => !HEADER_KEYS.has(k) && !renderedKeys.has(k) && normalized[k] !== "" && normalized[k] !== null
-        );
-        if (otherKeys.length === 0) return null;
-        return (
-          <Card key="khac">
-            <CardHeader className="py-1.5 text-sm text-gmv-muted">Khác</CardHeader>
-            <CardBody className="p-0">
-              <dl className="divide-y divide-gmv-border">
-                {otherKeys.map((k) => (
-                  <div key={k} className="flex justify-between gap-4 px-3 py-1 text-[13px]">
-                    <dt className="text-gmv-muted">{k}</dt>
-                    <dd className="font-medium text-gmv-text-strong text-right">{formatValue(normalized[k], k)}</dd>
-                  </div>
-                ))}
-              </dl>
-            </CardBody>
-          </Card>
-        );
-      })()}
     </div>
   );
 }
