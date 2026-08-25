@@ -530,3 +530,121 @@ function testGateKetNoi() {
     ss.toast('❌ Lỗi kết nối: ' + String(err).slice(0, 200), '❌ Test Gate', 15);
   }
 }
+
+/* ======== GHI NGƯỢC XÁC NHẬN (app → sheet) — G1-T11 ========
+ *
+ * Chiều app→sheet: khi NV bấm "Xác nhận" phiếu in-app, backend POST tới Web App này
+ * (doPost) → tick ô 'NV xác nhận trước thuế' / 'NV xác nhận sau thuế' theo stage,
+ * ĐỒNG THỜI ghi _gate_state (nguồn chân lý — sống qua refresh BQ). setValue KHÔNG
+ * kích trigger guiPhieuOnEdit (giống restoreGateTicks_) → không enqueue lại.
+ *
+ * CÀI 1 LẦN: Deploy → New deployment → type "Web app" → Execute as: Me,
+ *   Who has access: Anyone → copy URL → dán vào Render env PAYSLIP_GATE_WEBAPP_URL.
+ * Secret = GATE_CFG.gateToken (ScriptProperties GATE_TOKEN) — cùng token cổng receive.
+ * Lưới an toàn: menu '🔃 Đồng bộ xác nhận từ app' (pullConfirmsFromApp) nếu 1 push rớt.
+ */
+
+var CONFIRM_COL_BY_STAGE = {
+  truoc_thue: 'NV xác nhận trước thuế',
+  sau_thue:   'NV xác nhận sau thuế',
+};
+
+function _gateJsonOut_(obj) {
+  return ContentService.createTextOutput(JSON.stringify(obj))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
+/** Web App endpoint: backend báo NV đã confirm → tick ô + ghi _gate_state. */
+function doPost(e) {
+  try {
+    var body = {};
+    try { body = JSON.parse((e && e.postData && e.postData.contents) || '{}'); } catch (_) {}
+    var expected = String(GATE_CFG.gateToken || '').trim();
+    if (!expected || String(body.secret || '') !== expected) {
+      return _gateJsonOut_({ ok:false, error:'unauthorized' });
+    }
+    var code  = String(body.code || '').trim();
+    var stage = String(body.stage || '').trim();
+    var ky    = String(body.ky_luong || '').trim() || kyLuongHienTai_();
+    var col   = CONFIRM_COL_BY_STAGE[stage];
+    if (!code || !col) return _gateJsonOut_({ ok:false, error:'bad_request' });
+
+    var lk = LockService.getDocumentLock();
+    lk.waitLock(20000);
+    try {
+      gSaveState_(code, ky, col, true);              // 1) nguồn chân lý (sống qua refresh)
+      var ticked = gTickConfirmCell_(code, ky, col);  // 2) tick ô nếu đang hiển thị đúng kỳ
+      return _gateJsonOut_({ ok:true, code:code, stage:stage, ticked:ticked });
+    } finally {
+      lk.releaseLock();
+    }
+  } catch (err) {
+    return _gateJsonOut_({ ok:false, error:String(err).slice(0, 200) });
+  }
+}
+
+/** Tick ô 'NV xác nhận ...' cho 1 mã NV trên bảng chính. Chỉ tick nếu sheet đang ở đúng kỳ. */
+function gTickConfirmCell_(code, ky, header) {
+  if (ky && ky !== kyLuongHienTai_()) return false;   // bảng chính chỉ hiển thị 1 kỳ
+  var main = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(GATE_CFG.mainSheet);
+  if (!main) return false;
+  var hmap = gHeaderMap_(main);
+  var cMa = hmap[GATE_CFG.colMaNV], cCol = hmap[header];
+  if (!cMa || !cCol) return false;
+  var last = main.getLastRow();
+  if (last < 2) return false;
+  var codes = main.getRange(2, cMa, last - 1, 1).getValues();
+  for (var r = 0; r < codes.length; r++) {
+    if (String(codes[r][0]).trim() === code) {
+      main.getRange(r + 2, cCol).setValue(true);   // setValue KHÔNG kích trigger
+      return true;
+    }
+  }
+  return false;
+}
+
+/** Suy URL /confirmations từ appEndpoint (.../payslips/receive → .../payslips/confirmations). */
+function gConfirmationsUrl_() {
+  var base = String(GATE_CFG.appEndpoint || '');
+  var m = base.match(/^(.*\/payslips)\//);
+  return m ? m[1] + '/confirmations' : '';
+}
+
+/** LƯỚI AN TOÀN (menu): kéo mọi phiếu đã confirm của kỳ hiện tại từ app → tick + ghi state. */
+function pullConfirmsFromApp() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var url = gConfirmationsUrl_();
+  if (!url) { ss.toast('Chưa suy được URL confirmations từ appEndpoint.', '🔃 Đồng bộ', 8); return; }
+  var ky = kyLuongHienTai_();
+  var secret = String(GATE_CFG.gateToken || '').trim();
+  try {
+    var resp = UrlFetchApp.fetch(url + '?ky_luong=' + encodeURIComponent(ky), {
+      method:'get',
+      headers: secret ? { 'X-Gate-Token': secret } : {},
+      muteHttpExceptions:true,
+    });
+    var rc = resp.getResponseCode();
+    if (rc < 200 || rc >= 300) {
+      ss.toast('HTTP ' + rc + ': ' + resp.getContentText().slice(0, 150), '❌ Đồng bộ', 10);
+      return;
+    }
+    var list = (JSON.parse(resp.getContentText() || '{}').confirmations) || [];
+    var lk = LockService.getDocumentLock();
+    lk.waitLock(20000);
+    var n = 0;
+    try {
+      for (var i = 0; i < list.length; i++) {
+        var code  = String(list[i].code || '').trim();
+        var stage = String(list[i].stage || '').trim();
+        var rky   = String(list[i].ky_luong || ky).trim();
+        var col   = CONFIRM_COL_BY_STAGE[stage];
+        if (!code || !col) continue;
+        gSaveState_(code, rky, col, true);
+        if (gTickConfirmCell_(code, rky, col)) n++;
+      }
+    } finally { lk.releaseLock(); }
+    ss.toast('Đã đồng bộ ' + n + ' xác nhận (kỳ ' + ky + ').', '🔃 Đồng bộ xác nhận', 6);
+  } catch (err) {
+    ss.toast('Lỗi đồng bộ: ' + String(err).slice(0, 150), '❌ Đồng bộ', 10);
+  }
+}

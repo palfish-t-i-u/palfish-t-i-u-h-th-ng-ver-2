@@ -189,6 +189,61 @@ def test_confirm_non_owner_403():
     assert r.status_code == 403
 
 
+def test_confirm_fires_gate_push():
+    """Confirm thành công → xếp task push ghi ngược sheet với đúng code/ky/stage."""
+    store = _seed()
+    client = _client(store)
+    calls = []
+    with patch.object(payroll_routes, "resolve_actor", lambda *_a, **_k: _actor("HN0001")), \
+         patch.object(payroll_routes, "_push_confirm_to_gate",
+                      lambda code, ky, stage: calls.append((code, ky, stage))):
+        r = client.patch("/api/payroll/payslips/id-1/confirm", headers={"Authorization": "Bearer x"})
+    assert r.status_code == 200, r.text
+    assert calls == [("HN0001", "2026-07", "truoc_thue")]
+
+
+def test_confirmations_lists_confirmed_only():
+    store = _seed()
+    store["payslips"][0]["confirm_status"] = "confirmed"
+    store["payslips"][0]["confirmed_at"] = "2026-07-05T00:00:00Z"
+    client = _client(store)
+    with patch.dict(os.environ, {"GATE_TOKEN": "secret"}):
+        r = client.get(
+            "/api/payroll/payslips/confirmations",
+            headers={"X-Gate-Token": "secret"},
+        )
+    assert r.status_code == 200, r.text
+    confs = r.json()["confirmations"]
+    assert [c["code"] for c in confs] == ["HN0001"]  # chỉ phiếu confirmed
+    assert confs[0]["stage"] == "truoc_thue"
+
+
+def test_confirmations_filter_by_ky():
+    store = _seed()
+    store["payslips"][0]["confirm_status"] = "confirmed"
+    store["payslips"][1]["confirm_status"] = "confirmed"
+    store["payslips"][1]["ky_luong"] = "2026-06"
+    client = _client(store)
+    with patch.dict(os.environ, {"GATE_TOKEN": "secret"}):
+        r = client.get(
+            "/api/payroll/payslips/confirmations?ky_luong=2026-07",
+            headers={"X-Gate-Token": "secret"},
+        )
+    assert r.status_code == 200, r.text
+    assert [c["code"] for c in r.json()["confirmations"]] == ["HN0001"]  # HN0002 kỳ khác → lọc
+
+
+def test_confirmations_bad_token_401():
+    store = _seed()
+    client = _client(store)
+    with patch.dict(os.environ, {"GATE_TOKEN": "secret"}):
+        r = client.get(
+            "/api/payroll/payslips/confirmations",
+            headers={"X-Gate-Token": "wrong"},
+        )
+    assert r.status_code == 401
+
+
 def test_review_locked_for_past_period():
     store = _seed()
     store["payslips"][0]["ky_luong"] = "2020-01"  # đã quá mùng 4/2020-02

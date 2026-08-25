@@ -139,11 +139,11 @@ Xây SẴN cổng, **chưa nối** (app M4 chưa có). Pattern = OUTBOX (giống
 - Header `X-Gate-Token: <gateToken>` để endpoint verify.
 - **Idempotency key = `meta.code + meta.ky_luong + meta.stage`** → M4 phải **upsert** (gửi lại không tạo trùng; mỗi NV/kỳ có 2 bản: trước & sau thuế).
 - Trả **2xx** = nhận thành công (outbox → `sent`); khác 2xx = `failed` (retry tối đa 5 lần).
-- **Chiều ngược (M4 → sheet, chưa build):** khi NV bấm confirm in-app, app ghi ngược cột `NV xác nhận trước thuế` / `NV xác nhận sau thuế` theo `stage`.
+- **Chiều ngược (M4 → sheet — ĐÃ BUILD, G1-T11):** khi NV bấm confirm in-app, BE (`confirm_payslip`) bắn `BackgroundTasks` POST tới **Apps Script Web App** (`PhieuLuongGate.gs doPost`), secret = `GATE_TOKEN`, URL = env `PAYSLIP_GATE_WEBAPP_URL`. `doPost` tick ô `NV xác nhận trước thuế`/`NV xác nhận sau thuế` theo `stage` **và** ghi `_gate_state` (sống qua refresh). Push best-effort — lỗi không chặn confirm. Lưới an toàn: `GET /payslips/confirmations` + menu `🔃 Đồng bộ xác nhận từ app` (`pullConfirmsFromApp`). Refresh BQ giờ gọi `restoreGateTicks_` để tick sống qua rebuild.
 
 **Việc M4 (app) phải làm khi build:**
 1. Endpoint `POST /api/payroll/payslips/receive` (hoặc URL bất kỳ, khớp `appEndpoint`) nhận contract trên, verify token, upsert theo key idempotent, render phiếu theo mẫu Doc `1Jd0…`.
-2. (G1-T11) Ghi ngược `NV đã xem` / `NV phản hồi` lên Sheet — chiều app→sheet, chưa làm.
+2. (G1-T11) Ghi ngược `NV xác nhận trước/sau thuế` lên Sheet — chiều app→sheet, **ĐÃ LÀM** (Web App push + `restoreGateTicks_` sống qua refresh). Xem đoạn "Chiều ngược" ở trên.
 
 ## Ghi chú bổ sung (G3-T13)
 

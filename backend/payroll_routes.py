@@ -20,7 +20,8 @@ import os
 from datetime import date, datetime, timedelta, timezone
 from typing import Any, Callable
 
-from fastapi import APIRouter, Header, HTTPException, Query
+import httpx
+from fastapi import APIRouter, BackgroundTasks, Header, HTTPException, Query
 from pydantic import BaseModel
 
 from rbac import actor_ma_nv, resolve_actor, visible_payslip_codes
@@ -30,6 +31,10 @@ _PAYSLIP_LIST_COLS = (
     "id,code,name,ky_luong,stage,review_status,confirm_status,"
     "reviewed_at,confirmed_at,received_at,updated_at"
 )
+
+# Singleton httpx client — KHÔNG tạo per-request (xem docs/learnings/oom-per-request-supabase-clients.md).
+# follow_redirects=True cần cho Apps Script Web App /exec (trả 302 sang googleusercontent).
+_gate_http = httpx.Client(timeout=8.0, follow_redirects=True)
 
 
 def _sb_or_503(get_supabase: Callable[[], Any]):
@@ -45,6 +50,29 @@ def _require_gate_token(token: str | None) -> None:
         raise HTTPException(503, "GATE_TOKEN chua cau hinh")
     if not token or not hmac.compare_digest(token.strip(), expected):
         raise HTTPException(401, "Invalid gate token")
+
+
+def _push_confirm_to_gate(code: str, ky_luong: str, stage: str) -> None:
+    """Báo Apps Script Web App tick ô 'NV xác nhận <stage>' NGAY sau khi NV confirm.
+
+    Best-effort — chạy trong BackgroundTasks (sau response), KHÔNG raise:
+    lỗi push tuyệt đối không được làm hỏng thao tác confirm của user.
+    - URL Web App: env ``PAYSLIP_GATE_WEBAPP_URL`` (chưa cấu hình → no-op;
+      nút '🔃 Đồng bộ xác nhận' trên sheet là lưới an toàn).
+    - Secret: tái dùng ``GATE_TOKEN`` (cùng cổng receive) — KHÔNG secret mới.
+    - Web App phía sheet mới là nơi cập nhật _gate_state + tick ô (single-writer).
+    """
+    url = (os.getenv("PAYSLIP_GATE_WEBAPP_URL") or "").strip()
+    token = (os.getenv("GATE_TOKEN") or "").strip()
+    if not url or not token or not code or not stage:
+        return
+    try:
+        _gate_http.post(
+            url,
+            json={"secret": token, "code": code, "ky_luong": ky_luong, "stage": stage},
+        )
+    except Exception:
+        pass  # best-effort — bỏ qua mọi lỗi mạng / Web App
 
 
 def _now_iso() -> str:
@@ -180,6 +208,32 @@ def register_payroll_routes(app, get_supabase) -> None:
             raise HTTPException(500, f"Khong doc duoc payslips: {exc}") from exc
         return {"payslips": [_serialize_payslip(r) for r in (res.data or [])]}
 
+    @router.get("/payslips/confirmations")
+    def list_confirmations(
+        ky_luong: str | None = Query(None),
+        x_gate_token: str | None = Header(None, alias="X-Gate-Token"),
+    ):
+        """Gate (Apps Script) poll cho nút '🔃 Đồng bộ xác nhận' + lưới an toàn nếu 1 push rớt.
+
+        Trả danh sách phiếu ĐÃ được NV xác nhận — CHỈ cờ (code/stage/ky/confirmed_at),
+        KHÔNG kèm payload lương. Auth = cùng ``X-Gate-Token`` như receive.
+        Khai báo TRƯỚC route ``/payslips/{payslip_id}`` để không bị bắt làm id.
+        """
+        _require_gate_token(x_gate_token)
+        sb = _sb_or_503(get_supabase)
+        q = (
+            sb.table("payslips")
+            .select("code,stage,ky_luong,confirmed_at")
+            .eq("confirm_status", "confirmed")
+        )
+        if ky_luong:
+            q = q.eq("ky_luong", ky_luong)
+        try:
+            res = q.execute()
+        except Exception as exc:
+            raise HTTPException(500, f"Khong doc duoc xac nhan: {exc}") from exc
+        return {"confirmations": res.data or []}
+
     @router.get("/payslips/{payslip_id}")
     def get_payslip(payslip_id: str, authorization: str | None = Header(None)):
         """Chi tiết 1 phiếu (kèm payload). Ghi audit ai xem lúc nào."""
@@ -198,7 +252,11 @@ def register_payroll_routes(app, get_supabase) -> None:
         return {"payslip": _serialize_payslip(row, include_payload=True)}
 
     @router.patch("/payslips/{payslip_id}/confirm")
-    def confirm_payslip(payslip_id: str, authorization: str | None = Header(None)):
+    def confirm_payslip(
+        payslip_id: str,
+        background_tasks: BackgroundTasks,
+        authorization: str | None = Header(None),
+    ):
         """NV sở hữu bấm 'Xác nhận' phiếu."""
         sb = _sb_or_503(get_supabase)
         actor = resolve_actor(sb, authorization)
@@ -219,7 +277,16 @@ def register_payroll_routes(app, get_supabase) -> None:
             )
         except Exception as exc:
             raise HTTPException(500, f"Khong xac nhan duoc: {exc}") from exc
-        return {"ok": True, "payslip": _serialize_payslip((res.data or [row])[0])}
+        updated = (res.data or [row])[0]
+        # Ghi ngược sheet TỨC THÌ (best-effort, chạy sau response — không chặn user):
+        # Apps Script Web App tự tick ô 'NV xác nhận <stage>' + cập nhật _gate_state.
+        background_tasks.add_task(
+            _push_confirm_to_gate,
+            str(updated.get("code") or row.get("code") or ""),
+            str(updated.get("ky_luong") or row.get("ky_luong") or ""),
+            str(updated.get("stage") or row.get("stage") or ""),
+        )
+        return {"ok": True, "payslip": _serialize_payslip(updated)}
 
     @router.patch("/payslips/{payslip_id}/review")
     def request_review(payslip_id: str, authorization: str | None = Header(None)):

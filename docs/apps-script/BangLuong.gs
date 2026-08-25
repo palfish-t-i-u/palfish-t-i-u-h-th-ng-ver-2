@@ -116,6 +116,7 @@ function onOpen(){
     .addItem('🔌 Cài đặt cổng gửi phiếu', 'installGateTriggers')
     .addItem('📤 Gửi phiếu đang chờ', 'flushOutbox')
     .addItem('📋 Mở hàng đợi', 'moHangDoi')
+    .addItem('🔃 Đồng bộ xác nhận từ app', 'pullConfirmsFromApp')
     .addItem('🧪 Test kết nối Gate', 'testGateKetNoi')
     .addToUi();
 
@@ -348,6 +349,7 @@ function capNhatTuBigQuery(){
 
   writeSnap_(snap, newSnap);
   formatSheet_(main, rows.length);
+  restoreGateTicks_(main);   // tick lại 5 cột trạng thái từ _gate_state (sống qua refresh BQ)
   ss.toast('Đã cập nhật '+rows.length+' NV từ BigQuery.', 'Bảng lương', 5);
   } finally { lk.releaseLock(); }
 }
