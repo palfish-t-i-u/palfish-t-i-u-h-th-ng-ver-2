@@ -29,7 +29,7 @@ export default function Modal({ open, onClose, title, headerExtra, children, cla
 
   return (
     <div
-      className={cn("fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4 max-md:items-end max-md:p-0", overlayClassName)}
+      className={cn("fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4 max-md:items-end max-md:p-0", overlayClassName)}
       onClick={onClose}
       role="presentation"
     >
