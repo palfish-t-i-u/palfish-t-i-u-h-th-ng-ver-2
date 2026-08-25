@@ -113,7 +113,8 @@ function onOpen(){
     .addItem('(3) Lưu dữ liệu lương tháng này', 'luuArchiveBangLuong')
     .addItem('(3.1) Lưu dữ liệu thuế tháng này', 'luuArchiveBangThue')
     .addItem('(3.2) Xuất Excel + PDF lên Drive', 'xuatLuuDrive')
-    .addItem('(3.3) Xuất Excel theo Phòng ban', 'xuatExcelTheoTeam')
+    .addItem('(3.3) Tải Excel bảng lương + thuế', 'taiBangLuongThue')
+    .addItem('(3.4) Xuất Excel theo Phòng ban', 'xuatExcelTheoTeam')
     .addSeparator()
     .addItem('🎨 Định dạng lại (không cần BQ)', 'dinhDangBangLuong')
     .addItem('🧾 Tạo tab Nhập tay (input)', 'taoTabNhapTay')
@@ -711,6 +712,41 @@ function xuatLuuDrive() {
   }
 
   ui.alert('Xuất file kỳ ' + ky + ' thành công!\n\n' + results.join('\n') + '\n\nFolder: ' + folder.getUrl());
+}
+
+function taiBangLuongThue() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var ssId = ss.getId();
+
+  var tabs = [
+    { name: CFG.mainSheet,      label: 'Bảng lương' },
+    { name: THUE_CFG.sheetName, label: 'Bảng tính thuế' },
+  ];
+
+  var links = [];
+  for (var i = 0; i < tabs.length; i++) {
+    var sheet = ss.getSheetByName(tabs[i].name);
+    if (!sheet) continue;
+    var gid = sheet.getSheetId();
+    var url = 'https://docs.google.com/spreadsheets/d/' + ssId + '/export?format=xlsx&gid=' + gid;
+    links.push({ label: tabs[i].label, url: url });
+  }
+
+  var html = '<style>'
+    + 'body{font-family:Arial,sans-serif;padding:20px}'
+    + 'a{display:block;margin:12px 0;padding:12px 20px;background:#1a73e8;color:white;'
+    + 'text-decoration:none;border-radius:8px;text-align:center;font-size:14px}'
+    + 'a:hover{background:#1557b0}'
+    + '</style>'
+    + '<p>Click để tải file Excel:</p>';
+  for (var i = 0; i < links.length; i++) {
+    html += '<a href="' + links[i].url + '" target="_blank">\u{1F4E5} ' + links[i].label + '</a>';
+  }
+  html += '<p style="color:#666;font-size:12px;margin-top:20px">File tải về chứa đúng 1 tab, dữ liệu tháng hiện tại.</p>';
+
+  var output = HtmlService.createHtmlOutput(html)
+    .setWidth(350).setHeight(250).setTitle('Tải Excel');
+  SpreadsheetApp.getUi().showModalDialog(output, 'Tải Excel bảng lương + thuế');
 }
 
 function xuatExcelTheoTeam(){
