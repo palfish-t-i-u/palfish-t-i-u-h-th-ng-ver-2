@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { useEffect } from "react";
+import { createPortal } from "react-dom";
 import { cn } from "../../lib/cn";
 
 interface Props {
@@ -27,9 +28,9 @@ export default function Modal({ open, onClose, title, headerExtra, children, cla
 
   if (!open) return null;
 
-  return (
+  return createPortal(
     <div
-      className={cn("fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4 max-md:items-end max-md:p-0", overlayClassName)}
+      className={cn("fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4 max-md:items-end max-md:p-0", overlayClassName)}
       onClick={onClose}
       role="presentation"
     >
@@ -53,6 +54,7 @@ export default function Modal({ open, onClose, title, headerExtra, children, cla
         )}
         {children}
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
