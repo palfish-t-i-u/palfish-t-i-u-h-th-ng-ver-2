@@ -473,3 +473,126 @@ function writeRaw_t_(sh, rows) {
   });
   sh.getRange(1, 1, vals.length, keys.length).setValues(vals);
 }
+
+function luuArchiveBangThue() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var ui = SpreadsheetApp.getUi();
+  var lk = LockService.getDocumentLock();
+  if (!lk.tryLock(0)) { ss.toast('Đang có thao tác khác chạy, chờ chút.', 'Bảng tính thuế', 5); return; }
+  try {
+    var sh = ss.getSheetByName(THUE_CFG.sheetName);
+    if (!sh) { ss.toast('Chưa có tab "' + THUE_CFG.sheetName + '".', 'Lỗi', 5); return; }
+
+    var allVals = sh.getDataRange().getValues();
+    var SR = 6;
+    if (allVals.length < SR) { ss.toast('Bảng tính thuế chưa có dữ liệu.', 'Lỗi', 5); return; }
+
+    var ky = kyLuongHienTai_();
+
+    var cnt = 0;
+    try {
+      cnt = bqQueryCount_('SELECT COUNT(*) AS cnt FROM `pf-salary.payroll.M_bang_thue_archive` WHERE ky_luong = "' + ky + '"');
+    } catch (e) {
+      if (String(e).indexOf('Not found') < 0) throw e;
+    }
+    if (cnt > 0) {
+      var resp = ui.alert('Kỳ thuế ' + ky + ' đã có ' + cnt + ' dòng trong BigQuery.\nGhi đè?', ui.ButtonSet.YES_NO);
+      if (resp !== ui.Button.YES) return;
+      bqRunDml_('DELETE FROM `pf-salary.payroll.M_bang_thue_archive` WHERE ky_luong = "' + ky + '"');
+    }
+
+    var ARCHIVE_FIELD_MAP_THUE = [
+      { col: C_.stt,        key: 'stt',         type: 'INTEGER' },
+      { col: C_.code,       key: 'code',        type: 'STRING'  },
+      { col: C_.name,       key: 'name',        type: 'STRING'  },
+      { col: C_.chuc_vu,    key: 'chuc_vu',     type: 'STRING'  },
+      { col: C_.loai_nv,    key: 'loai_nv',     type: 'STRING'  },
+      { col: C_.luong_cd,   key: 'luong_cd',    type: 'INTEGER' },
+      { col: C_.ngay_cong,  key: 'ngay_cong',   type: 'FLOAT'   },
+      { col: C_.nghi_tet,   key: 'nghi_tet',    type: 'FLOAT'   },
+      { col: C_.luong_huong,key: 'luong_huong',  type: 'INTEGER' },
+      { col: C_.thuong_ds,  key: 'thuong_ds',   type: 'INTEGER' },
+      { col: C_.thuong_tet, key: 'thuong_tet',  type: 'INTEGER' },
+      { col: C_.khac,       key: 'khac',        type: 'INTEGER' },
+      { col: C_.an_ca,      key: 'an_ca',       type: 'INTEGER' },
+      { col: C_.chuyen_can, key: 'chuyen_can',  type: 'INTEGER' },
+      { col: C_.xang_xe,    key: 'xang_xe',     type: 'INTEGER' },
+      { col: C_.dien_thoai, key: 'dien_thoai',  type: 'INTEGER' },
+      { col: C_.tong_tn,    key: 'tong_tn',     type: 'INTEGER' },
+      { col: C_.gt_bt,      key: 'gt_bt',       type: 'INTEGER' },
+      { col: C_.gt_npt,     key: 'gt_npt',      type: 'INTEGER' },
+      { col: C_.tong_gt,    key: 'tong_gt',     type: 'INTEGER' },
+      { col: C_.tn_ct,      key: 'tn_ct',       type: 'INTEGER' },
+      { col: C_.tn_tt,      key: 'tn_tt',       type: 'INTEGER' },
+      { col: C_.thue_tncn,  key: 'thue_tncn',   type: 'INTEGER' },
+      { col: C_.luong_tt,   key: 'luong_tt',    type: 'INTEGER' },
+      { col: C_.luong_bh,   key: 'luong_bh',    type: 'INTEGER' },
+      { col: C_.bhxh,       key: 'bhxh',        type: 'INTEGER' },
+      { col: C_.bhyt,       key: 'bhyt',        type: 'INTEGER' },
+      { col: C_.bhtn,       key: 'bhtn',        type: 'INTEGER' },
+      { col: C_.bh_tong,    key: 'bh_tong',     type: 'INTEGER' },
+      { col: C_.so_npt,     key: 'so_npt',      type: 'INTEGER' },
+    ];
+
+    var rows = [];
+    for (var i = SR - 1; i < allVals.length; i++) {
+      var row = allVals[i];
+      var code = String(row[C_.code - 1] || '').trim();
+      if (!code) continue;
+
+      var obj = { ky_luong: ky };
+      for (var f = 0; f < ARCHIVE_FIELD_MAP_THUE.length; f++) {
+        var fi = ARCHIVE_FIELD_MAP_THUE[f];
+        var val = row[fi.col - 1];
+        if (fi.type === 'INTEGER') {
+          obj[fi.key] = (val === '' || val === null || val === undefined) ? null : parseInt(String(val).replace(/[^0-9\-]/g, ''), 10) || 0;
+        } else if (fi.type === 'FLOAT') {
+          obj[fi.key] = (val === '' || val === null || val === undefined) ? null : parseFloat(String(val)) || 0;
+        } else {
+          obj[fi.key] = val === null || val === undefined ? '' : String(val);
+        }
+      }
+      rows.push(obj);
+    }
+
+    if (!rows.length) { ss.toast('Không có dòng hợp lệ để lưu.', 'Lỗi', 5); return; }
+
+    var schemaFields = [{ name: 'ky_luong', type: 'STRING', mode: 'NULLABLE' }];
+    ARCHIVE_FIELD_MAP_THUE.forEach(function(fi) {
+      schemaFields.push({ name: fi.key, type: fi.type, mode: 'NULLABLE' });
+    });
+
+    var jsonLines = rows.map(function(r) { return JSON.stringify(r); }).join('\n');
+    var blob = Utilities.newBlob(jsonLines, 'application/octet-stream');
+
+    var job = {
+      configuration: {
+        load: {
+          destinationTable: { projectId: CFG.bqProject, datasetId: 'payroll', tableId: 'M_bang_thue_archive' },
+          sourceFormat: 'NEWLINE_DELIMITED_JSON',
+          writeDisposition: 'WRITE_APPEND',
+          createDisposition: 'CREATE_IF_NEEDED',
+          schema: { fields: schemaFields }
+        }
+      }
+    };
+
+    var loadJob = BigQuery.Jobs.insert(job, CFG.bqProject, blob);
+    var jobId = loadJob.jobReference.jobId;
+    var jobLocation = (loadJob.jobReference && loadJob.jobReference.location) || undefined;
+    var getOpts = jobLocation ? { location: jobLocation } : {};
+    var status = BigQuery.Jobs.get(CFG.bqProject, jobId, getOpts);
+    while (status.status.state !== 'DONE') {
+      Utilities.sleep(1500);
+      status = BigQuery.Jobs.get(CFG.bqProject, jobId, getOpts);
+    }
+    if (status.status.errorResult) {
+      ui.alert('Lỗi BigQuery: ' + status.status.errorResult.message);
+      return;
+    }
+
+    ss.toast('Đã lưu ' + rows.length + ' dòng thuế kỳ ' + ky + ' vào BigQuery.', '✓', 6);
+  } finally {
+    lk.releaseLock();
+  }
+}
