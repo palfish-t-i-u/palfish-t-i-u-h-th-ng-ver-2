@@ -5,6 +5,7 @@ import { confirmPayslip, requestReview } from "../../lib/api/payroll";
 import type { PayslipDetail as PayslipDetailType, PayslipListItem, PayslipStage } from "../../types/payroll";
 import { Card, CardBody, CardHeader } from "../ui/Card";
 import Button from "../ui/Button";
+import { printPayslip } from "./payslipPrint";
 
 export const PAYSLIP_BLOCKS: { title: string; keys: string[] }[] = [
   { title: "Lương cơ bản", keys: ["Lương cơ bản", "Công", "LCB theo ngày công"] },
@@ -42,7 +43,7 @@ const KEY_NORMALIZE: Record<string, string> = {
 
 const PREFIX_KEYS = ["Khấu trừ thuế", "Ghi chú"];
 
-function normalizePhieu(raw: Record<string, unknown>): Record<string, unknown> {
+export function normalizePhieu(raw: Record<string, unknown>): Record<string, unknown> {
   const result: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(raw)) {
     const nk = KEY_NORMALIZE[k] ?? k;
@@ -56,7 +57,7 @@ function normalizePhieu(raw: Record<string, unknown>): Record<string, unknown> {
   return result;
 }
 
-function matchesBlockKey(dataKey: string, blockKey: string): boolean {
+export function matchesBlockKey(dataKey: string, blockKey: string): boolean {
   if (dataKey === blockKey) return true;
   if (PREFIX_KEYS.includes(blockKey) && dataKey.startsWith(blockKey)) return true;
   return false;
@@ -64,7 +65,7 @@ function matchesBlockKey(dataKey: string, blockKey: string): boolean {
 
 const KEEP_DECIMAL = new Set(["Công", "Tỉ lệ đạt KPI", "% Com ≥100%"]);
 
-function formatValue(val: unknown, key?: string): string {
+export function formatValue(val: unknown, key?: string): string {
   if (val === null || val === undefined || val === "") return "—";
   if (typeof val === "number") {
     if (key && KEEP_DECIMAL.has(key)) return val.toLocaleString("vi-VN");
@@ -89,7 +90,7 @@ function isReviewLocked(kyLuong: string): boolean {
   return false;
 }
 
-function stageLabel(stage: PayslipStage) {
+export function stageLabel(stage: PayslipStage) {
   return stage === "truoc_thue" ? "Trước thuế" : "Sau thuế";
 }
 
@@ -195,6 +196,9 @@ function ActionBar({ item, onUpdate }: ActionBarProps) {
             : reviewRequested
             ? "Đã yêu cầu xem lại"
             : "Yêu cầu xem xét lại"}
+        </Button>
+        <Button variant="ghost" onClick={() => printPayslip(item)}>
+          Tải PDF
         </Button>
       </div>
       {locked && (
