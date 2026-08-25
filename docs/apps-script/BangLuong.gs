@@ -112,7 +112,8 @@ function onOpen(){
     .addSeparator()
     .addItem('(3) Lưu dữ liệu lương tháng này', 'luuArchiveBangLuong')
     .addItem('(3.1) Lưu dữ liệu thuế tháng này', 'luuArchiveBangThue')
-    .addItem('(3.2) Xuất Excel theo Phòng ban', 'xuatExcelTheoTeam')
+    .addItem('(3.2) Xuất Excel + PDF lên Drive', 'xuatLuuDrive')
+    .addItem('(3.3) Xuất Excel theo Phòng ban', 'xuatExcelTheoTeam')
     .addSeparator()
     .addItem('🎨 Định dạng lại (không cần BQ)', 'dinhDangBangLuong')
     .addItem('🧾 Tạo tab Nhập tay (input)', 'taoTabNhapTay')
@@ -650,6 +651,66 @@ function luuArchiveBangLuong() {
   } finally {
     lk.releaseLock();
   }
+}
+
+function xuatLuuDrive() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var ui = SpreadsheetApp.getUi();
+  var ky = kyLuongHienTai_();
+
+  var DRIVE_FOLDER = 'PalFish Bảng lương Archive';
+  var SHARE_EMAIL  = 'palfishrecruitment@gmail.com';
+
+  var folders = DriveApp.getFoldersByName(DRIVE_FOLDER);
+  var folder;
+  if (folders.hasNext()) {
+    folder = folders.next();
+  } else {
+    folder = DriveApp.createFolder(DRIVE_FOLDER);
+    folder.addEditor(SHARE_EMAIL);
+  }
+
+  var tabs = [
+    { name: CFG.mainSheet,      prefix: 'BangLuong' },
+    { name: THUE_CFG.sheetName, prefix: 'BangThue'  },
+  ];
+
+  var results = [];
+  for (var t = 0; t < tabs.length; t++) {
+    var tab = tabs[t];
+    var sheet = ss.getSheetByName(tab.name);
+    if (!sheet) { results.push(tab.prefix + ': ⚠ không tìm thấy tab'); continue; }
+
+    var tempSS = SpreadsheetApp.create('_temp_' + ky + '_' + tab.prefix);
+    sheet.copyTo(tempSS).setName(tab.name);
+    var defSheet = tempSS.getSheetByName('Sheet1');
+    if (defSheet) tempSS.deleteSheet(defSheet);
+    SpreadsheetApp.flush();
+
+    var tempId  = tempSS.getId();
+    var token   = ScriptApp.getOAuthToken();
+    var headers = { Authorization: 'Bearer ' + token };
+
+    var formats = ['xlsx', 'pdf'];
+    for (var fi = 0; fi < formats.length; fi++) {
+      var fmt = formats[fi];
+      var url = 'https://docs.google.com/spreadsheets/d/' + tempId + '/export?format=' + fmt;
+      if (fmt === 'pdf') url += '&portrait=false&fitw=true&gridlines=false&printtitle=false';
+
+      var fileName = ky + '_' + tab.prefix + '.' + fmt;
+
+      var existing = folder.getFilesByName(fileName);
+      while (existing.hasNext()) existing.next().setTrashed(true);
+
+      var blob = UrlFetchApp.fetch(url, { headers: headers }).getBlob().setName(fileName);
+      folder.createFile(blob);
+    }
+
+    DriveApp.getFileById(tempId).setTrashed(true);
+    results.push(tab.prefix + ': xlsx + pdf ✓');
+  }
+
+  ui.alert('Xuất file kỳ ' + ky + ' thành công!\n\n' + results.join('\n') + '\n\nFolder: ' + folder.getUrl());
 }
 
 function xuatExcelTheoTeam(){
