@@ -116,11 +116,11 @@ function onOpen(){
     .addItem('(3.3) Tải Excel bảng lương + thuế', 'taiBangLuongThue')
     .addItem('(3.4) Xuất Excel theo Phòng ban', 'xuatExcelTheoTeam')
     .addSeparator()
-    .addItem('🎨 Định dạng lại (không cần BQ)', 'dinhDangBangLuong')
-    .addItem('🧾 Tạo tab Nhập tay (input)', 'taoTabNhapTay')
-    .addItem('🗓️ Tạo tab Chấm công', 'taoTabChamCong')
-    .addItem('🔌 Cài đặt cổng gửi phiếu', 'installGateTriggers')
-    .addItem('🧪 Test kết nối Gate', 'testGateKetNoi')
+    .addItem('(4) Định dạng lại bảng lương', 'dinhDangBangLuong')
+    .addItem('(4.1) Tạo tab Nhập tay (input)', 'taoTabNhapTay')
+    .addItem('(4.2) Tạo tab Chấm công', 'taoTabChamCong')
+    .addItem('(4.3) Cài đặt cổng gửi phiếu', 'installGateTriggers')
+    .addItem('(4.4) Test kết nối Gate', 'testGateKetNoi')
     .addToUi();
 
   if (PropertiesService.getScriptProperties().getProperty('PL_DEV') === '1') {
@@ -368,26 +368,53 @@ const MONEY_KEYS = ['tong_lt','tong_luong','luong_cb','lcb_ngay_cong','thuong_co
                     'gmv','gmv_ban_moi','gmv_gioi_thieu','gmv_tai_ky',
                     'an_trua','may_tinh','xe_pc','khau_tru_thue','bu_tien'];
 
+// Màu khớp Excel bảng lương tổng chị Trang (đọc bằng COM, tab 202607)
+const COL_FMT = {
+  stt:        { hdr:'#ED7D31', hdrFont:'black', data:'#F2C150', dataFont:'black' },
+  identity:   { hdr:'#ED7D31', hdrFont:'black', data:'#D9EAD3', dataFont:'black' },
+  chuc_danh:  { hdr:'#ED7D31', hdrFont:'black', data:'#F9CB9C', dataFont:'black' },
+  tong_lt:    { hdr:'#FFFF00', hdrFont:'black', data:'#FFD966', dataFont:'black' },
+  tong_luong: { hdr:'#04B0F1', hdrFont:'black', data:'#04B0F1', dataFont:'black' },
+  orange:     { hdr:'#ED7D31', hdrFont:'black', data:'#F6B26B', dataFont:'black' },
+  green:      { hdr:'#B6D7A8', hdrFont:'black', data:'#B6D7A8', dataFont:'black' },
+  note:       { hdr:'#FFFFFF', hdrFont:'black', data:'#FFFFFF', dataFont:'black' },
+  status:     { hdr:'#A6A6A6', hdrFont:'white', data:'#F3F4F6', dataFont:'black' },
+};
+const COL_GROUP = {
+  stt:'stt', code:'identity', phan_vung:'identity', name:'identity',
+  chuc_danh:'chuc_danh', employee_type:'identity', phong_ban:'identity',
+  tong_lt:'tong_lt', tong_luong:'tong_luong',
+  luong_cb:'orange', cong:'orange',
+  lcb_ngay_cong:'green', thuong_com:'green', bao_hiem:'green',
+  gmv:'orange', gmv_ban_moi:'orange', gmv_gioi_thieu:'orange', gmv_tai_ky:'orange',
+  an_trua:'orange', may_tinh:'orange', xe_pc:'orange',
+  khau_tru_thue:'orange', bu_tien:'orange',
+  note:'note', gc_thuong_nong:'note',
+  xn_tt:'status', gui_truoc:'status', nv_xn_truoc:'status',
+  gui_sau:'status', nv_xn_sau:'status',
+};
+
 function formatSheet_(main, numRows){
   const numCols = COLS.length;
 
-  // Header: wrap + căn giữa + cao hàng để chữ dài không bị cắt
+  // Header: wrap + căn giữa + bold + cao hàng
   main.getRange(1, 1, 1, numCols)
       .setWrap(true).setVerticalAlignment('middle').setHorizontalAlignment('center')
-      .setFontWeight('bold').setBackground('#0b5394').setFontColor('white');
+      .setFontWeight('bold');
   main.setRowHeight(1, 42);
 
-  // Số tiền: #,##0 (âm hiện -X). Giá trị vẫn là SỐ → không ảnh hưởng lookup/BQ.
-  MONEY_KEYS.forEach(function(k){ main.getRange(2, colIndex(k), numRows, 1).setNumberFormat('#,##0'); });
-
-  // Màu theo role
+  // Header + data: màu theo nhóm cột (khớp bảng lương tổng Excel)
   COLS.forEach(function(col, i){
-    var bg = null;
-    if(col.role==='input')  bg = '#FFF8E1';   // vàng = điền tay
-    if(col.role==='calc')   bg = '#EEF2FF';   // xanh nhạt = công thức
-    if(col.role==='status') bg = '#F3F4F6';   // xám = trạng thái
-    if(bg) main.getRange(2, i+1, numRows, 1).setBackground(bg);
+    var grp = COL_FMT[COL_GROUP[col.key]] || COL_FMT.identity;
+    main.getRange(1, i+1).setBackground(grp.hdr).setFontColor(grp.hdrFont);
+    if(numRows > 0){
+      var dataRange = main.getRange(2, i+1, numRows, 1);
+      dataRange.setBackground(grp.data || 'white').setFontColor(grp.dataFont || 'black');
+    }
   });
+
+  // Số tiền: #,##0
+  MONEY_KEYS.forEach(function(k){ main.getRange(2, colIndex(k), numRows, 1).setNumberFormat('#,##0'); });
 
   // 2 cột tổng in đậm
   ['tong_lt','tong_luong'].forEach(function(k){
