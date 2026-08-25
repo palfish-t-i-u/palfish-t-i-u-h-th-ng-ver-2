@@ -19,6 +19,8 @@ export interface ReauthReturn {
   ky: string;
   email: string;
   prevToken: string;
+  action?: "view" | "download";
+  stages?: ("truoc_thue" | "sau_thue")[];
 }
 
 export function setReauthReturn(data: ReauthReturn): void {
@@ -58,13 +60,15 @@ interface Props {
   open: boolean;
   pendingCode: string | null;
   pendingKy: string | null;
+  pendingAction: "view" | "download";
+  pendingStages: ("truoc_thue" | "sau_thue")[];
   hasTotp: boolean;
   totpFactorId: string | null;
   onSuccess: () => void;
   onClose: () => void;
 }
 
-export default function PayslipReauthModal({ open, pendingCode, pendingKy, hasTotp, totpFactorId, onSuccess, onClose }: Props) {
+export default function PayslipReauthModal({ open, pendingCode, pendingKy, pendingAction, pendingStages, hasTotp, totpFactorId, onSuccess, onClose }: Props) {
   const { session, signInWithPassword, reauthWithGoogle, mfaVerify } = useAuth();
   const [password, setPassword] = useState("");
   const [totpCode, setTotpCode] = useState("");
@@ -82,6 +86,8 @@ export default function PayslipReauthModal({ open, pendingCode, pendingKy, hasTo
         ky: pendingKy,
         email: userEmail,
         prevToken: session.access_token,
+        action: pendingAction,
+        stages: pendingStages,
       });
     }
     await reauthWithGoogle();

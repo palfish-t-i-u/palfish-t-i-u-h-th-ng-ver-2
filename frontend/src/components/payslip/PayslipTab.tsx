@@ -77,11 +77,16 @@ export default function PayslipTab() {
   const [reauthOpen, setReauthOpen] = useState(false);
   const [pendingCode, setPendingCode] = useState<string | null>(null);
   const [pendingKy, setPendingKy] = useState<string | null>(null);
+  const [pendingAction, setPendingAction] = useState<"view" | "download">("view");
+  const [pendingStages, setPendingStages] = useState<PayslipStage[]>([]);
 
   // Detail modal
   const [detailItems, setDetailItems] = useState<PayslipDetailData[] | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState("");
+  const [downloadingKey, setDownloadingKey] = useState<string | null>(null);
+  const [downloadError, setDownloadError] = useState("");
+  const [pickerRow, setPickerRow] = useState<{ code: string; ky: string } | null>(null);
 
   const fetchList = useCallback(async () => {
     setLoading(true);
@@ -113,7 +118,8 @@ export default function PayslipTab() {
       (session.user?.email ?? "").toLowerCase() === marker.email.toLowerCase();
     if (tokenChanged && emailMatch) {
       markReauthValid();
-      void fetchDetail(marker.code, marker.ky);
+      if (marker.action === "download") void fetchAndDownload(marker.code, marker.ky, marker.stages ?? []);
+      else void fetchDetail(marker.code, marker.ky);
     }
   }, [session, payslips, returnHandled]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -141,6 +147,7 @@ export default function PayslipTab() {
     if (!isAdminRole && !isReauthValid()) {
       setPendingCode(code);
       setPendingKy(ky);
+      setPendingAction("view");
       setReauthOpen(true);
       return;
     }
@@ -173,14 +180,66 @@ export default function PayslipTab() {
     }
   };
 
+  // Bấm "Tải PDF" ở list: 1 bản → tải thẳng; 2 bản → mở modal chọn.
+  const openDownload = (code: string, ky: string) => {
+    setDownloadError("");
+    const stages = payslips
+      .filter((p) => p.code === code && p.ky_luong === ky)
+      .map((p) => p.stage);
+    if (stages.length <= 1) {
+      void startDownload(code, ky, stages);
+    } else {
+      setPickerRow({ code, ky });
+    }
+  };
+
+  // Sau khi chọn bản (hoặc dòng chỉ 1 bản): qua cổng re-auth rồi tải.
+  const startDownload = async (code: string, ky: string, stages: PayslipStage[]) => {
+    setPickerRow(null);
+    setDownloadError("");
+    if (stages.length === 0) return;
+    if (!isAdminRole && !isReauthValid()) {
+      setPendingCode(code);
+      setPendingKy(ky);
+      setPendingAction("download");
+      setPendingStages(stages);
+      setReauthOpen(true);
+      return;
+    }
+    await fetchAndDownload(code, ky, stages);
+  };
+
+  const fetchAndDownload = async (code: string, ky: string, stages: PayslipStage[]) => {
+    const targets = payslips.filter(
+      (p) => p.code === code && p.ky_luong === ky && stages.includes(p.stage)
+    );
+    if (targets.length === 0) return;
+    setDownloadError("");
+    setDownloadingKey(`${code}__${ky}`);
+    try {
+      const results = await Promise.all(targets.map((t) => getPayslip(t.id)));
+      results.sort((a, b) => {
+        const order: Record<PayslipStage, number> = { truoc_thue: 0, sau_thue: 1 };
+        return order[a.stage] - order[b.stage];
+      });
+      const { downloadPayslipPdf } = await import("./payslipPdf");
+      await downloadPayslipPdf(results);
+    } catch (e) {
+      setDownloadError(formatApiError(e, "Không tải được PDF phiếu lương"));
+    } finally {
+      setDownloadingKey(null);
+    }
+  };
+
   const handleReauthSuccess = useCallback(() => {
     setReauthOpen(false);
     if (pendingCode && pendingKy) {
-      void fetchDetail(pendingCode, pendingKy);
+      if (pendingAction === "download") void fetchAndDownload(pendingCode, pendingKy, pendingStages);
+      else void fetchDetail(pendingCode, pendingKy);
       setPendingCode(null);
       setPendingKy(null);
     }
-  }, [pendingCode, pendingKy]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [pendingCode, pendingKy, pendingAction, pendingStages]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Update a single item in payslips list (after action)
   const handleUpdate = useCallback((updated: PayslipListItem) => {
@@ -231,11 +290,47 @@ export default function PayslipTab() {
         </div>
       )}
 
+      {downloadError && <p className="text-sm text-gmv-danger">{downloadError}</p>}
+
+      {/* Modal chọn bản để tải PDF (chỉ hiện khi dòng có cả 2 bản) */}
+      <Modal
+        open={pickerRow !== null}
+        onClose={() => setPickerRow(null)}
+        title="Tải PDF phiếu lương"
+      >
+        <p className="mb-4 text-sm text-gmv-muted">Chọn bản muốn tải về:</p>
+        <div className="flex flex-col gap-2">
+          <Button
+            variant="secondary"
+            fullWidth
+            onClick={() => pickerRow && void startDownload(pickerRow.code, pickerRow.ky, ["truoc_thue"])}
+          >
+            Trước thuế
+          </Button>
+          <Button
+            variant="secondary"
+            fullWidth
+            onClick={() => pickerRow && void startDownload(pickerRow.code, pickerRow.ky, ["sau_thue"])}
+          >
+            Sau thuế
+          </Button>
+          <Button
+            variant="primary"
+            fullWidth
+            onClick={() => pickerRow && void startDownload(pickerRow.code, pickerRow.ky, ["truoc_thue", "sau_thue"])}
+          >
+            Cả hai (1 file 2 trang)
+          </Button>
+        </div>
+      </Modal>
+
       {/* Re-auth modal */}
       <PayslipReauthModal
         open={reauthOpen}
         pendingCode={pendingCode}
         pendingKy={pendingKy}
+        pendingAction={pendingAction}
+        pendingStages={pendingStages}
         hasTotp={hasTotp}
         totpFactorId={totpFactorId}
         onSuccess={handleReauthSuccess}
@@ -299,13 +394,23 @@ export default function PayslipTab() {
                     <Td>{statusBadge(g.truoc_thue)}</Td>
                     <Td>{statusBadge(g.sau_thue)}</Td>
                     <Td>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => void openDetail(g.code, g.ky_luong)}
-                      >
-                        Xem
-                      </Button>
+                      <div className="flex items-center justify-end gap-1">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => void openDetail(g.code, g.ky_luong)}
+                        >
+                          Xem
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          disabled={downloadingKey === `${g.code}__${g.ky_luong}`}
+                          onClick={() => openDownload(g.code, g.ky_luong)}
+                        >
+                          {downloadingKey === `${g.code}__${g.ky_luong}` ? "Đang tạo..." : "Tải PDF"}
+                        </Button>
+                      </div>
                     </Td>
                   </Tr>
                 ))
@@ -328,9 +433,19 @@ export default function PayslipTab() {
               }
               meta={[{ label: "Kỳ lương", value: g.ky_luong }]}
               actions={
-                <Button size="sm" variant="ghost" onClick={() => void openDetail(g.code, g.ky_luong)}>
-                  Xem phiếu
-                </Button>
+                <div className="flex items-center gap-1">
+                  <Button size="sm" variant="ghost" onClick={() => void openDetail(g.code, g.ky_luong)}>
+                    Xem phiếu
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    disabled={downloadingKey === `${g.code}__${g.ky_luong}`}
+                    onClick={() => openDownload(g.code, g.ky_luong)}
+                  >
+                    {downloadingKey === `${g.code}__${g.ky_luong}` ? "Đang tạo..." : "Tải PDF"}
+                  </Button>
+                </div>
               }
             />
           ))}

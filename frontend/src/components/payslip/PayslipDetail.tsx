@@ -108,7 +108,7 @@ function ActionBar({ item, onUpdate }: ActionBarProps) {
     setLoadingPdf(true);
     try {
       const { downloadPayslipPdf } = await import("./payslipPdf");
-      await downloadPayslipPdf(item);
+      await downloadPayslipPdf([item]);
     } catch {
       setActionError("Không tạo được PDF — thử lại hoặc báo IT.");
     } finally {
