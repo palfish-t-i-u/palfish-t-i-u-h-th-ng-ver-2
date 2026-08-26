@@ -362,6 +362,20 @@ def _storage_public_url(bucket, object_path: str) -> str:
     return str(public.get("publicURL") or public.get("publicUrl") or "")
 
 
+def _storage_path_from_public_url(url: str, bucket: str = "bills") -> str:
+    """Suy object path (tương đối bucket) từ Supabase public URL.
+    .../object/public/bills/payment-lines/ID/bill-x.jpg -> payment-lines/ID/bill-x.jpg
+    Trả '' nếu URL không chứa segment bucket. Cache-independent — dùng khi
+    Storage-listing cache stale không tra được path (bug xoá bill 404, 26/8)."""
+    if not url:
+        return ""
+    marker = f"/{bucket}/"
+    idx = url.find(marker)
+    if idx < 0:
+        return ""
+    return url[idx + len(marker):].split("?", 1)[0].strip().lstrip("/")
+
+
 def _bill_object_path(line_id: str, ext: str = "jpg") -> str:
     ts = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S%f")
     return f"payment-lines/{line_id}/bill-{ts}.{ext}"
@@ -3425,13 +3439,22 @@ def register_payment_request_routes(app, _get_supabase) -> None:
                     paths_to_remove = [matched_path]
         elif (body.bill_url or "").strip():
             url_to_remove = (body.bill_url or "").strip()
+            # Nguồn sự thật = bill_images DB (URL user bấm xoá), KHÔNG phải cache
+            # Storage assets — cache có thể stale/thiếu line do bị evict bởi upload
+            # line khác (bug 404 "khong tim thay bill_url", 26/8). Ưu tiên asset-match
+            # để lấy path; miss thì suy path thẳng từ URL (cache-independent).
             matched = next((a for a in assets if (a.get("url") or "").strip() == url_to_remove), None)
-            if not matched:
+            matched_path = (matched.get("path") or "").strip() if matched else ""
+            if not matched_path:
+                derived = _storage_path_from_public_url(url_to_remove)
+                if derived.startswith(f"payment-lines/{line_id}/"):
+                    matched_path = derived
+            in_db = url_to_remove in bill_images
+            if not matched_path and not in_db:
                 raise HTTPException(404, "Khong tim thay bill tuong ung bill_url")
-            matched_path = (matched.get("path") or "").strip()
             if matched_path:
                 paths_to_remove = [matched_path]
-            if url_to_remove in bill_images:
+            if in_db:
                 bill_images.remove(url_to_remove)
         else:
             if bill_images:
