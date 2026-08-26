@@ -35,6 +35,7 @@ import {
   paymentAttemptLabel,
   paymentConfirmationText,
   isForeignCustomer,
+  prCreatedBeforeCccdLive,
   REFERRAL_STATUS_HEADER,
   REFERRAL_STATUS_PANEL_STYLE,
   reportButtonState,
@@ -2014,9 +2015,12 @@ export default function PaymentRequestDetailDrawer({
               // CCCD/hộ chiếu + email (+ Tỉnh + Phường/Xã với khách VN — số nhà không bắt buộc).
               const foreign = isForeignCustomer(request.country, request.province);
               const missing: string[] = [];
-              if (!request.invoiceCustomerName?.trim()) missing.push("họ tên đầy đủ trên HĐ");
-              if (!request.taxId?.trim()) missing.push(foreign ? "số Hộ chiếu/CCCD" : "số CCCD");
-              if (!request.email?.trim()) missing.push("email nhận HĐ");
+              // Đơn tạo trước khi live gate CCCD (27/8 VN) — grandfather 3 mục mới (mirror BE).
+              if (!prCreatedBeforeCccdLive(request.createdAt)) {
+                if (!request.invoiceCustomerName?.trim()) missing.push("họ tên đầy đủ trên HĐ");
+                if (!request.taxId?.trim()) missing.push(foreign ? "số Hộ chiếu/CCCD" : "số CCCD");
+                if (!request.email?.trim()) missing.push("email nhận HĐ");
+              }
               if (!foreign) {
                 if (!request.province?.trim()) missing.push("Tỉnh/Thành");
                 if (!request.ward?.trim()) missing.push("Phường/Xã");

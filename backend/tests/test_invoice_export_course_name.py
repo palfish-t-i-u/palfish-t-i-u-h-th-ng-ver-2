@@ -242,6 +242,17 @@ def test_build_invoice_course_patch_non_taker_khong_gate():
     assert patch["invoice_customer_name"] == "Chị Hằng"
 
 
+def test_build_invoice_course_patch_grandfather_don_cu_khong_chan():
+    """Đơn taker tạo trước live CCCD (27/8 VN) — phát hành HĐ không bị 400 dù thiếu CCCD/email."""
+    pr = {
+        **FULL_PR,
+        "wants_invoice": True,
+        "created_at": "2026-08-22T10:00:00+00:00",
+    }
+    patch = ar._build_invoice_course_patch(_course(), pr, None)
+    assert patch["invoice_customer_name"] == "Nguyễn Văn A"  # fallback hiển thị pr["name"]
+
+
 def test_build_invoice_course_patch_taker_so_nha_khong_bat_buoc():
     pr = {
         "name": "Chị Hằng",

@@ -138,6 +138,41 @@ def test_non_taker_ov_khong_blocker():
     assert ar._course_invoice_blockers(_course(), {"province": "Japan", "ward": "", "address": ""}) == []
 
 
+# ── Grandfather đơn tạo trước live CCCD (27/8 VN) ────────────────────────────
+
+def test_grandfather_don_cu_khong_gate_cccd():
+    pr = {
+        **TAKER_PR,
+        "invoice_customer_name": "",
+        "tax_id": "",
+        "email": "",
+        "created_at": "2026-08-22T10:00:00+00:00",
+    }
+    assert ar._course_invoice_blockers(_course(), pr) == []
+
+
+def test_grandfather_dia_chi_van_gate():
+    """Địa chỉ KHÔNG grandfather — đơn cũ thiếu Phường/Xã vẫn chặn."""
+    pr = {**TAKER_PR, "tax_id": "", "ward": "", "created_at": "2026-08-22T10:00:00+00:00"}
+    blockers = ar._course_invoice_blockers(_course(), pr)
+    assert any("địa chỉ" in b for b in blockers)
+    assert not any("CCCD" in b for b in blockers)
+
+
+def test_grandfather_cutoff_bien():
+    """Mốc = 17:00 26/8 UTC (00:00 27/8 VN): trước → miễn, từ mốc → gate."""
+    before = {**TAKER_PR, "tax_id": "", "created_at": "2026-08-26T16:59:59+00:00"}
+    assert not any("CCCD" in b for b in ar._course_invoice_blockers(_course(), before))
+    at_cutoff = {**TAKER_PR, "tax_id": "", "created_at": "2026-08-26T17:00:00+00:00"}
+    assert any("CCCD" in b for b in ar._course_invoice_blockers(_course(), at_cutoff))
+
+
+def test_grandfather_created_at_thieu_hoac_hong_coi_la_moi():
+    assert any("CCCD" in b for b in ar._course_invoice_blockers(_course(), {**TAKER_PR, "tax_id": ""}))
+    hong = {**TAKER_PR, "tax_id": "", "created_at": "not-a-date"}
+    assert any("CCCD" in b for b in ar._course_invoice_blockers(_course(), hong))
+
+
 # ── Doanh nghiệp ─────────────────────────────────────────────────────────────
 
 def test_business_taker_khong_doi_thong_tin_ca_nhan():

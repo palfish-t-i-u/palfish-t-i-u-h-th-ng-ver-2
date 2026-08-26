@@ -974,6 +974,26 @@ def _invoice_addr_parts(course: dict[str, Any], pr: dict[str, Any] | None) -> tu
     return province, ward, street, country
 
 
+# Live gate CCCD = hết ngày 26/8/2026 VN (chốt anh Minh 26/8): đơn tạo TRƯỚC mốc này
+# được grandfather — không bắt họ tên/CCCD/email (sale chưa từng thấy form mới).
+# Chỉ đơn tạo từ 27/8 VN (17:00 26/8 UTC) trở đi mới bị gate. Địa chỉ KHÔNG grandfather
+# (rule mới Tỉnh+Xã lỏng hơn rule cũ — đơn cũ chỉ được lợi).
+_CCCD_GATE_LIVE_UTC = datetime(2026, 8, 26, 17, 0, 0, tzinfo=timezone.utc)
+
+
+def _pr_created_before_cccd_live(pr: dict[str, Any] | None) -> bool:
+    raw = _clean_text((pr or {}).get("created_at"))
+    if not raw:
+        return False
+    try:
+        created = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except ValueError:
+        return False
+    if created.tzinfo is None:
+        created = created.replace(tzinfo=timezone.utc)
+    return created < _CCCD_GATE_LIVE_UTC
+
+
 def _is_foreign_invoice_buyer(province: str, country: str) -> bool:
     """Khách OV cho mục đích hóa đơn: country != VN, hoặc province là tên quốc gia
     (learning: foreign-customer-detected-by-dial-not-province — đừng chỉ dựa province)."""
@@ -1032,7 +1052,7 @@ def _course_invoice_blockers(course: dict[str, Any], pr: dict[str, Any] | None) 
         or (_clean_text(pr.get("customer_type")) if pr else "")
         or "individual"
     )
-    if customer_type != "business":
+    if customer_type != "business" and not _pr_created_before_cccd_live(pr):
         # Họ tên đầy đủ: CHỈ nguồn tường minh (course/PR.invoice_customer_name) —
         # KHÔNG fallback pr["name"] ("Chị Hằng" không phải tên pháp lý).
         if not (
@@ -1128,7 +1148,7 @@ def _build_invoice_course_patch(
     # Gate thông tin khách CHỈ khi khách lấy HĐ (chuẩn Sương Mai 26/8).
     country = _clean_text(preview.get("country"))
     if pr and pr.get("wants_invoice"):
-        if _clean_text(preview.get("customer_type")) != "business":
+        if _clean_text(preview.get("customer_type")) != "business" and not _pr_created_before_cccd_live(pr):
             missing_info: list[str] = []
             if not explicit_invoice_name:
                 missing_info.append("họ tên đầy đủ trên HĐ")

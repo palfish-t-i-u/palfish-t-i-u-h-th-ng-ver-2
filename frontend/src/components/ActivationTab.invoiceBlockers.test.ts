@@ -134,6 +134,36 @@ describe("getInvoiceBlockers — khách OV lấy HĐ", () => {
   });
 });
 
+describe("getInvoiceBlockers — grandfather đơn tạo trước live CCCD (27/8 VN)", () => {
+  const oldTakerMissingInfo = {
+    ...takerPr,
+    invoiceCustomerName: "",
+    taxId: "",
+    email: "",
+    createdAt: "2026-08-22T10:00:00+00:00",
+  };
+
+  it("đơn cũ thiếu họ tên/CCCD/email → KHÔNG chặn (địa chỉ đủ Tỉnh+Xã)", () => {
+    expect(getInvoiceBlockers(fullCourse, oldTakerMissingInfo)).toEqual([]);
+  });
+
+  it("địa chỉ KHÔNG grandfather — đơn cũ thiếu Phường/Xã vẫn chặn", () => {
+    expect(keys(fullCourse, { ...oldTakerMissingInfo, ward: "" })).toContain("address");
+  });
+
+  it("mốc cutoff: đúng 17:00 26/8 UTC (00:00 27/8 VN) trở đi → bắt đầu gate", () => {
+    const atCutoff = { ...oldTakerMissingInfo, createdAt: "2026-08-26T17:00:00+00:00" };
+    expect(keys(fullCourse, atCutoff)).toContain("taxCode");
+    const justBefore = { ...oldTakerMissingInfo, createdAt: "2026-08-26T16:59:59+00:00" };
+    expect(getInvoiceBlockers(fullCourse, justBefore)).toEqual([]);
+  });
+
+  it("createdAt thiếu/không parse được → coi là đơn mới, gate bình thường", () => {
+    expect(keys(fullCourse, { ...oldTakerMissingInfo, createdAt: undefined })).toContain("taxCode");
+    expect(keys(fullCourse, { ...oldTakerMissingInfo, createdAt: "not-a-date" })).toContain("taxCode");
+  });
+});
+
 describe("getInvoiceBlockers — doanh nghiệp ('vẫn thế' — không blocker cá nhân mới)", () => {
   it("business taker: không đòi họ tên/CCCD/email; vẫn cần địa chỉ Tỉnh + Xã", () => {
     const bizPr = {

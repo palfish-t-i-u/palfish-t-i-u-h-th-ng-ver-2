@@ -24,7 +24,7 @@ import CountryCombo, { COUNTRIES, findCountry } from "./payment-request/CountryC
 import DateRangeFilter, { EMPTY_RANGE, type DateRange, inDateRange } from "./payment-request/DateRangeFilter";
 import { Icons } from "./payment-request/Icons";
 import { useNoticeCardCollapse } from "../hooks/useNoticeCardCollapse";
-import { activationAuditText, formatPaymentDateFull, formatPaymentDateTime, fromApiActiveRequest, getArReferralStatus, getReferralStatus, pageItems, paginate, REFERRAL_STATUS_HEADER, REFERRAL_STATUS_PANEL_STYLE, toActiveRequestPatchUidsData } from "./payment-request/paymentRequestUtils";
+import { activationAuditText, formatPaymentDateFull, formatPaymentDateTime, fromApiActiveRequest, getArReferralStatus, getReferralStatus, pageItems, paginate, prCreatedBeforeCccdLive, REFERRAL_STATUS_HEADER, REFERRAL_STATUS_PANEL_STYLE, toActiveRequestPatchUidsData } from "./payment-request/paymentRequestUtils";
 import { downloadTaxInvoiceZip } from "../utils/taxInvoiceXlsxExport";
 import type { InvoiceRow } from "./payment-flow/paymentFlowUtils";
 import { getUidSyncState } from "./ActivationTab.uidSync";
@@ -490,6 +490,7 @@ export function getInvoiceBlockers(
     taxId?: string;
     invoiceCustomerName?: string;
     email?: string;
+    createdAt?: string;
   } | null
 ): InvoiceBlocker[] {
   const blockers: InvoiceBlocker[] = [];
@@ -518,7 +519,8 @@ export function getInvoiceBlockers(
   }
 
   const customerType = (course.customerType ?? pr.customerType ?? "individual").trim();
-  if (customerType !== "business") {
+  // Đơn tạo trước khi live gate CCCD (27/8 VN) — grandfather 3 check mới (mirror BE).
+  if (customerType !== "business" && !prCreatedBeforeCccdLive(pr.createdAt)) {
     // Họ tên đầy đủ: CHỈ nguồn tường minh (course.name = invoice_customer_name per-course,
     // hoặc PR.invoiceCustomerName) — KHÔNG fallback pr.name ("Chị Hằng" không phải tên pháp lý).
     if (!(course.name?.trim() || pr.invoiceCustomerName?.trim())) {
