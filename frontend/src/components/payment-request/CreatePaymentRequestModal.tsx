@@ -30,13 +30,16 @@ interface FormState {
   taxId: string;
   customerType: CustomerType;
   companyName: string;
+  /** Họ tên đầy đủ in trên hóa đơn (khách lấy HĐ) — tách khỏi `name` (tên gọi hằng ngày). */
+  invoiceCustomerName: string;
   leadSource: string;
   leadChannel: string;
   /** Khách là người Việt sống ở nước ngoài → địa chỉ chỉ chọn quốc gia. */
   isForeign: boolean;
   /** Mã quốc gia khi isForeign (vd "US"). */
   foreignCountry: string;
-  /** Khách cần xuất hóa đơn → bắt buộc đủ Phường/Xã + Số nhà. */
+  /** Khách cần xuất hóa đơn → B4 bắt họ tên đầy đủ + CCCD/hộ chiếu + email
+   * (+ Tỉnh + Phường/Xã với khách VN — số nhà không bắt buộc). Không tick = không bắt gì. */
   wantsInvoice: boolean;
 }
 
@@ -55,6 +58,7 @@ const INITIAL: FormState = {
   taxId: "",
   customerType: "individual",
   companyName: "",
+  invoiceCustomerName: "",
   leadSource: "",
   leadChannel: "",
   isForeign: false,
@@ -170,6 +174,7 @@ export default function CreatePaymentRequestModal({
         tax_id: form.taxId.trim() || undefined,
         customer_type: form.customerType,
         company_name: form.customerType === "business" ? form.companyName.trim() || undefined : undefined,
+        invoice_customer_name: form.invoiceCustomerName.trim() || undefined,
         lead_source: form.leadSource || undefined,
         lead_channel: form.leadChannel || undefined,
         wants_invoice: form.wantsInvoice || undefined,
@@ -405,23 +410,22 @@ export default function CreatePaymentRequestModal({
               </button>
             </div>
 
-            {!form.isForeign && (
-              <div
-                style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6, cursor: "pointer" }}
-                onClick={() => set("wantsInvoice", !form.wantsInvoice)}
-              >
-                <input
-                  type="checkbox"
-                  checked={form.wantsInvoice}
-                  onChange={(e) => set("wantsInvoice", e.target.checked)}
-                  onClick={(e) => e.stopPropagation()}
-                  style={{ accentColor: "var(--danger)", margin: 0 }}
-                />
-                <span style={{ fontSize: 12, color: "var(--text-2)", fontWeight: 500 }}>
-                  Khách hàng cần xuất hoá đơn?
-                </span>
-              </div>
-            )}
+            {/* Khách OV cũng lấy HĐ được (chốt kế toán 26/8) — checkbox hiện cho cả VN + OV */}
+            <div
+              style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6, cursor: "pointer" }}
+              onClick={() => set("wantsInvoice", !form.wantsInvoice)}
+            >
+              <input
+                type="checkbox"
+                checked={form.wantsInvoice}
+                onChange={(e) => set("wantsInvoice", e.target.checked)}
+                onClick={(e) => e.stopPropagation()}
+                style={{ accentColor: "var(--danger)", margin: 0 }}
+              />
+              <span style={{ fontSize: 12, color: "var(--text-2)", fontWeight: 500 }}>
+                Khách hàng cần xuất hoá đơn?
+              </span>
+            </div>
 
             {form.isForeign ? (
               <Combobox
@@ -448,9 +452,24 @@ export default function CreatePaymentRequestModal({
                 Bắt buộc chọn quốc gia khách đang ở.
               </div>
             )}
-            {form.wantsInvoice && !form.isForeign && (
+            {form.wantsInvoice && (
               <div style={{ fontSize: 11.5, lineHeight: 1.45, marginTop: 6, color: "var(--warning-text, #92400e)" }}>
-                Cần bổ sung đầy đủ địa chỉ (Tỉnh/TP, Phường/Xã, Số nhà) trước 15h ngày N+1 để xuất HĐ.
+                {form.isForeign
+                  ? "Khách lấy HĐ — cần bổ sung họ tên đầy đủ + số Hộ chiếu/CCCD + email trước 15h ngày N+1 để xuất HĐ."
+                  : "Khách lấy HĐ — cần bổ sung họ tên đầy đủ + số CCCD + email + địa chỉ (Tỉnh/TP, Phường/Xã — số nhà nếu có) trước 15h ngày N+1 để xuất HĐ."}
+              </div>
+            )}
+            {form.wantsInvoice && (
+              <div className="field" style={{ marginTop: 8 }}>
+                <label>Họ tên đầy đủ (in trên hoá đơn)</label>
+                <input
+                  placeholder="VD: Nguyễn Thị Hằng"
+                  value={form.invoiceCustomerName}
+                  onChange={(e) => set("invoiceCustomerName", e.target.value)}
+                />
+                <div style={{ fontSize: 11.5, color: "var(--text-3)", lineHeight: 1.45, marginTop: 4 }}>
+                  Tên pháp lý trên giấy tờ — khác với tên gọi hằng ngày ở ô &quot;Tên khách hàng&quot;.
+                </div>
               </div>
             )}
           </div>
@@ -508,22 +527,24 @@ export default function CreatePaymentRequestModal({
           </div>
 
           <div className="field">
-            <label>{form.customerType === "business" ? "Mã số thuế doanh nghiệp" : "Mã số thuế cá nhân"}</label>
+            <label>{form.customerType === "business" ? "Mã số thuế doanh nghiệp" : "Số CCCD / Hộ chiếu"}</label>
             <input
-              placeholder={form.customerType === "business" ? "VD: 0123456789" : "VD: 0123456789-001"}
+              placeholder={form.customerType === "business" ? "VD: 0123456789" : "VD: 001204012345 hoặc C1234567"}
               value={form.taxId}
               onChange={(e) =>
-                // MST cá nhân có thể có dấu "-" (vd 0123456789-001). MST doanh nghiệp chỉ chứa số.
+                // CCCD = 12 số; hộ chiếu có chữ (vd C1234567); MST doanh nghiệp chỉ chứa số.
                 set(
                   "taxId",
                   form.customerType === "individual"
-                    ? e.target.value.replace(/[^\d-]/g, "")
+                    ? e.target.value.replace(/[^\dA-Za-z-]/g, "").toUpperCase()
                     : e.target.value.replace(/[^\d]/g, "")
                 )
               }
             />
             <div style={{ fontSize: 11.5, color: "var(--text-3)", lineHeight: 1.45, marginTop: 4 }}>
-              Không bắt buộc — dùng khi khách cần xuất hóa đơn
+              {form.customerType === "business"
+                ? "Không bắt buộc — dùng khi doanh nghiệp cần xuất hóa đơn"
+                : "Bắt buộc khi khách lấy hóa đơn (yêu cầu thuế) — bổ sung sau được, cần đủ trước khi xuất HĐ"}
             </div>
           </div>
 

@@ -45,10 +45,11 @@ Dùng khi: đã có sẵn đầy đủ thông tin khách, muốn điền 1 lần
 |---|---|---|
 | **Tên con (học viên)** | Tên bé đăng ký khoá học | Nếu để trống, nội dung chuyển khoản dùng tên PH |
 | **UID CRM** | Mã khách hàng trên hệ thống CRM | Bổ sung sau được, nhưng **bắt buộc** trước khi tạo gói học (B3) |
-| **Địa chỉ** | Tỉnh/TP, Phường/Xã, Số nhà (khách VN) | Bổ sung sau được; cần đủ trước khi xuất hoá đơn |
-| **Email** | Email khách | Dùng khi khách cần nhận hoá đơn điện tử |
+| **Địa chỉ** | Tỉnh/TP, Phường/Xã, Số nhà (khách VN) | Chỉ cần khi khách lấy hoá đơn — khi đó điền tối thiểu Tỉnh/TP + Phường/Xã (số nhà có thì điền) |
+| **Email** | Email khách | **Bắt buộc khi khách lấy hoá đơn** (hoá đơn điện tử gửi qua email) |
 | **Loại khách hàng** | Cá nhân hoặc Doanh nghiệp | Xem mục [Khách doanh nghiệp](#khach-doanh-nghiep-can-xuat-hoa-don) |
-| **Mã số thuế** | MST cá nhân hoặc doanh nghiệp | Chỉ cần khi khách yêu cầu xuất hoá đơn |
+| **Họ tên đầy đủ (in trên HĐ)** | Tên pháp lý trên giấy tờ của khách | Hiện khi tick "Cần xuất hoá đơn" — khác với ô Tên khách hàng (tên gọi hằng ngày như "Chị Hằng") |
+| **Số CCCD / Hộ chiếu** | CCCD (khách VN) hoặc hộ chiếu (khách nước ngoài) | **Bắt buộc khi khách lấy hoá đơn** (yêu cầu của thuế); doanh nghiệp thì điền MST |
 | **Ghi chú** | Ghi chú nội bộ | Chỉ sale & kế toán thấy, khách không thấy |
 
 4. Bấm **+ Tạo PR-ID & mở chi tiết**.
@@ -83,7 +84,7 @@ Dùng khi: khách đang sống ở nước ngoài, SĐT quốc tế.
 
 ![Mục Địa chỉ khách hàng với nút Khách nước ngoài được chọn](/docs-images/paymentRequests/tao-payment-request-3.png)
 
-> Lưu ý: khách nước ngoài không hiện checkbox "Khách hàng cần xuất hoá đơn?" — chức năng xuất HĐ chỉ áp dụng cho khách VN.
+> Khách nước ngoài **vẫn lấy hoá đơn được**: tick ☑ "Khách hàng cần xuất hoá đơn?" rồi điền **Họ tên đầy đủ** + **Số hộ chiếu** + **Email** — địa chỉ chỉ cần chọn đúng quốc gia, không cần chi tiết.
 
 ---
 
@@ -98,11 +99,11 @@ Dùng khi: khách là công ty, cần xuất hoá đơn GTGT.
 3. Nhập **Mã số thuế doanh nghiệp** (chỉ chứa số, VD: 0123456789).
 4. Tick ☑ **Khách hàng cần xuất hoá đơn?** (mục Địa chỉ).
 5. Nhập **Email** khách để gửi hoá đơn điện tử.
-6. Điền đầy đủ **Địa chỉ** (Tỉnh/TP, Phường/Xã, Số nhà) — cần điền xong **trước 15h ngày hôm sau, kể từ ngày tiền vào tài khoản**, để kế toán kịp xuất hoá đơn.
+6. Điền **Địa chỉ** (Tỉnh/TP + Phường/Xã — số nhà có thì điền) — cần điền xong **trước 15h ngày hôm sau, kể từ ngày tiền vào tài khoản**, để kế toán kịp xuất hoá đơn.
 
 ![Mục Loại khách hàng — Doanh nghiệp được chọn, kèm ô Tên công ty và MST](/docs-images/paymentRequests/tao-payment-request-4.png)
 
-> Khách cá nhân cũng có thể tick "Cần xuất hoá đơn" — khi đó MST là MST cá nhân (có thể có dấu `-`, VD: 0123456789-001).
+> Khách cá nhân cũng có thể tick "Cần xuất hoá đơn" — khi đó điền **Họ tên đầy đủ** + **Số CCCD/Hộ chiếu** + **Email** (yêu cầu bắt buộc của thuế từ 2025).
 
 ---
 

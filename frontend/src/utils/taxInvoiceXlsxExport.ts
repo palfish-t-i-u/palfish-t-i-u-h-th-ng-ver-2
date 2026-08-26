@@ -15,6 +15,10 @@ export type TaxExportOrder = {
   tongTien: number;
   invDate: string;
   email?: string;
+  /** Thuế NĐ 70/2025: CCCD/hộ chiếu (cá nhân) hoặc MST + tên đơn vị (doanh nghiệp) */
+  soCccd?: string;
+  maSoThue?: string;
+  tenDonVi?: string;
 };
 
 function fmtSdt(raw: string): string {
@@ -45,13 +49,22 @@ function batchDateKey(d = new Date()): string {
 export function mapInvoiceRowsToTaxOrders(rows: InvoiceRow[]): TaxExportOrder[] {
   const dateKey = batchDateKey();
   return rows.map((row, i) => {
-    const name = row.course.name ?? row.ar.customerName;
+    // Chain tên khách mirror BE _course_display_name: course (invoice name/company) →
+    // PR.invoiceCustomerName (tên pháp lý sale khai) → AR.customerName.
+    const name =
+      row.course.name ??
+      row.course.companyName ??
+      row.pr?.invoiceCustomerName ??
+      row.ar.customerName;
     const phone = row.course.phone ?? row.uidObj.phone ?? row.pr?.phone ?? "";
     const productName = row.course.packageName?.trim() || row.course.courseCode;
     const taxInvoiceCode =
       row.course.taxInvoiceCode ||
       (row.course.invoiceId?.startsWith("M") ? row.course.invoiceId : `M${dateKey}${String(i + 1).padStart(3, "0")}`);
     const taxProductCode = row.course.taxProductCode || `PF${String(i + 1).padStart(6, "0")}`;
+    const customerType = row.course.customerType ?? row.pr?.customerType ?? "individual";
+    const taxCode = row.course.taxCode || row.pr?.taxId || "";
+    const companyName = row.course.companyName || row.pr?.companyName || "";
 
     return {
       taxInvoiceCode,
@@ -62,6 +75,9 @@ export function mapInvoiceRowsToTaxOrders(rows: InvoiceRow[]): TaxExportOrder[] 
       tongTien: Math.round(row.course.amount || 0),
       invDate: parseInvDate(row.course.invoicedAt || row.ar.createdAt),
       email: row.course.email || row.pr?.email || "",
+      soCccd: customerType !== "business" ? taxCode : "",
+      maSoThue: customerType === "business" ? taxCode : "",
+      tenDonVi: customerType === "business" ? companyName : "",
     };
   });
 }
@@ -165,7 +181,24 @@ function buildCustomersSheet(orders: TaxExportOrder[]): XLSX.WorkSheet {
     const maKh = fmtSdt(o.sdt);
     if (seen.has(maKh)) continue;
     seen.add(maKh);
-    rows.push([maKh, "", o.tenKhach, "Khách hàng", "", "", "", "", "", o.email || "", "", "", "", ""]);
+    // Cột: 1 Mã KH, 2 Tên đơn vị (DN), 3 Tên người mua, 4 Loại, 5 Địa chỉ, 6 SĐT,
+    // 7 Ngày sinh, 8 Số CCCD, 9 MST (DN), 10 Email, 11-14 trống — khớp BE _build_excel_customers.
+    rows.push([
+      maKh,
+      o.tenDonVi || "",
+      o.tenKhach,
+      "Khách hàng",
+      "",
+      "",
+      "",
+      o.soCccd || "",
+      o.maSoThue || "",
+      o.email || "",
+      "",
+      "",
+      "",
+      "",
+    ]);
   }
 
   return XLSX.utils.aoa_to_sheet([headers, ...rows]);

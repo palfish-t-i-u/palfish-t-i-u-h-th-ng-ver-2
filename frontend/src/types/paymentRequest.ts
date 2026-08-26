@@ -108,6 +108,8 @@ export interface PaymentRequest {
   taxId?: string;
   customerType?: CustomerType;
   companyName?: string;
+  /** Họ tên đầy đủ in trên hóa đơn (khách lấy HĐ) — tách khỏi `name` (tên gọi hằng ngày) */
+  invoiceCustomerName?: string;
   leadSource?: string;
   leadChannel?: string;
   sdtGoc?: string | null;
@@ -263,6 +265,7 @@ export type CreatePaymentRequestPayload = {
   tax_id?: string;
   customer_type?: string;
   company_name?: string;
+  invoice_customer_name?: string;
   lead_source?: string;
   lead_channel?: string;
   wants_invoice?: boolean;
@@ -380,6 +383,14 @@ export type ActiveRequestApiRow = {
       invoice_requested_at?: string;
       tax_invoice_code?: string;
       tax_product_code?: string;
+      /* Thông tin xuất HĐ per-course (kế toán điền ở form Xuất HĐ — BE lưu snake) */
+      invoice_customer_name?: string;
+      tax_code?: string;
+      taxCode?: string;
+      customer_type?: string;
+      company_name?: string;
+      email?: string;
+      phone?: string;
       lead_source?: string;
       leadSource?: string;
       lead_channel?: string;

@@ -12,7 +12,10 @@ audience: ["ke-toan"]
 
 - Mỗi **Course Code** (1 gói học đã đăng ký ở Tạo gói học) → **1 hoá đơn (INV)**.
 - Xuất hoá đơn **không phụ thuộc Order ID CRM** — vẫn xuất được kể cả khi Order ID chưa điền, chỉ cần đủ thông tin khách hàng.
-- Điều kiện đủ để xuất: có **Tên khách**, **SĐT**, và **Địa chỉ** (hoặc Phường/Xã, hoặc Tỉnh/Thành) đầy đủ.
+- Điều kiện xuất phụ thuộc khách **có lấy hoá đơn hay không** (tick "Khách hàng cần xuất hoá đơn?" trên PR):
+  - **Khách KHÔNG lấy hoá đơn**: chỉ cần tên khách + SĐT — không cần địa chỉ hay giấy tờ gì thêm.
+  - **Khách VN lấy hoá đơn**: cần **Họ tên đầy đủ** + **Số CCCD** + **Email nhận hoá đơn** + địa chỉ **Tỉnh/TP + Phường/Xã** (số nhà có thì điền, không bắt buộc).
+  - **Khách nước ngoài lấy hoá đơn**: cần **Họ tên đầy đủ** + **Số hộ chiếu** + **Email** — địa chỉ chỉ cần tên nước (Đức, Pháp...).
 
 ## 2 tab chính
 
@@ -25,4 +28,4 @@ audience: ["ke-toan"]
 2. Bấm **Xuất hoá đơn** (xem bài **Xuất hóa đơn theo Course Code**).
 3. Dòng chuyển sang tab **Đã xuất**, tải file thuế khi cần đối soát kê khai.
 
-> ⚠️ Lưu ý: dòng thiếu thông tin khách (chưa đủ tên/SĐT/địa chỉ) sẽ không xuất được — bổ sung thông tin ở PR hoặc AR liên quan trước khi quay lại xuất hoá đơn.
+> ⚠️ Lưu ý: với khách **lấy hoá đơn**, dòng thiếu thông tin (họ tên đầy đủ / CCCD / email / địa chỉ) sẽ không xuất được — nhờ sale bổ sung ở PR, hoặc kế toán điền trực tiếp trong form xuất hoá đơn.

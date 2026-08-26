@@ -643,6 +643,7 @@ interface DraftPr {
   taxId: string;
   customerType: CustomerType;
   companyName: string;
+  invoiceCustomerName: string;
   leadSource: string;
   leadChannel: string;
   isForeign: boolean;
@@ -682,6 +683,7 @@ function seedDraft(request: PaymentRequest): DraftPr {
     taxId: request.taxId || "",
     customerType: request.customerType || "individual",
     companyName: request.companyName || "",
+    invoiceCustomerName: request.invoiceCustomerName || "",
     leadSource: request.leadSource || "",
     leadChannel: request.leadChannel || "",
     isForeign,
@@ -1989,6 +1991,7 @@ export default function PaymentRequestDetailDrawer({
                         taxId: draft.taxId || undefined,
                         customerType: draft.customerType,
                         companyName: draft.customerType === "business" ? draft.companyName || undefined : undefined,
+                        invoiceCustomerName: draft.invoiceCustomerName || undefined,
                         leadSource: draft.leadSource || undefined,
                         leadChannel: draft.leadChannel || undefined,
                         wantsInvoice: draft.wantsInvoice,
@@ -2006,7 +2009,19 @@ export default function PaymentRequestDetailDrawer({
               </div>
             </div>
 
-            {!editing && !detailLoading && request.wantsInvoice && (!request.ward || !request.address?.trim()) && (() => {
+            {!editing && !detailLoading && request.wantsInvoice && (() => {
+              // Chuẩn kế toán 26/8 (thuế NĐ 70/2025): khách lấy HĐ cần họ tên đầy đủ +
+              // CCCD/hộ chiếu + email (+ Tỉnh + Phường/Xã với khách VN — số nhà không bắt buộc).
+              const foreign = isForeignCustomer(request.country, request.province);
+              const missing: string[] = [];
+              if (!request.invoiceCustomerName?.trim()) missing.push("họ tên đầy đủ trên HĐ");
+              if (!request.taxId?.trim()) missing.push(foreign ? "số Hộ chiếu/CCCD" : "số CCCD");
+              if (!request.email?.trim()) missing.push("email nhận HĐ");
+              if (!foreign) {
+                if (!request.province?.trim()) missing.push("Tỉnh/Thành");
+                if (!request.ward?.trim()) missing.push("Phường/Xã");
+              }
+              if (missing.length === 0) return null;
               const firstPaid = request.payments
                 .filter((p) => p.status === "paid" && p.paidAt)
                 .map((p) => parsePaymentDate(p.paidAt!))
@@ -2019,8 +2034,8 @@ export default function PaymentRequestDetailDrawer({
                 <div className="match-warning" style={{ marginBottom: 10, background: "var(--warning-bg, #fffbeb)", border: "1px solid var(--warning, #f59e0b)", borderRadius: 8, padding: "10px 12px" }}>
                   <Icons.AlertCircle size={14} stroke="var(--warning, #f59e0b)" />
                   <span style={{ fontSize: 12.5, color: "var(--warning-text, #92400e)", lineHeight: 1.5 }}>
-                    Khách cần xuất HĐ — cần bổ sung đầy đủ địa chỉ (Phường/Xã + Số nhà)
-                    {deadline ? ` trước 15h ngày ${deadline}.` : " trước 15h ngày N+1 (N = ngày tiền vào)."}
+                    Khách cần xuất HĐ — còn thiếu: {missing.join(", ")}
+                    {deadline ? ` — bổ sung trước 15h ngày ${deadline}.` : " — bổ sung trước 15h ngày N+1 (N = ngày tiền vào)."}
                   </span>
                 </div>
               );
@@ -2079,9 +2094,15 @@ export default function PaymentRequestDetailDrawer({
                     <div className="info-value">{request.companyName}</div>
                   </div>
                 )}
+                {request.invoiceCustomerName && (
+                  <div className="info-cell">
+                    <div className="info-label">Họ tên trên HĐ</div>
+                    <div className="info-value">{request.invoiceCustomerName}</div>
+                  </div>
+                )}
                 {request.taxId && (
                   <div className="info-cell">
-                    <div className="info-label">{request.customerType === "business" ? "MST doanh nghiệp" : "MST cá nhân"}</div>
+                    <div className="info-label">{request.customerType === "business" ? "MST doanh nghiệp" : "Số CCCD / Hộ chiếu"}</div>
                     <div className="info-value mono">{request.taxId}</div>
                   </div>
                 )}
@@ -2287,31 +2308,30 @@ export default function PaymentRequestDetailDrawer({
                     <button
                       type="button"
                       className={`btn btn-sm ${draft.isForeign ? "btn-primary" : "btn-outline"}`}
-                      onClick={() => setDraft((prev) => (prev ? { ...prev, isForeign: true, wantsInvoice: false } : prev))}
+                      onClick={() => setDraft((prev) => (prev ? { ...prev, isForeign: true } : prev))}
                     >
                       Khách nước ngoài
                     </button>
                   </div>
                 </div>
-                {!draft.isForeign && (
-                  <div className="info-cell">
-                    <div
-                      style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer" }}
-                      onClick={() => setDraft((prev) => (prev ? { ...prev, wantsInvoice: !prev.wantsInvoice } : prev))}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={draft.wantsInvoice}
-                        onChange={(e) => setDraft((prev) => (prev ? { ...prev, wantsInvoice: e.target.checked } : prev))}
-                        onClick={(e) => e.stopPropagation()}
-                        style={{ accentColor: "var(--danger)", margin: 0 }}
-                      />
-                      <span style={{ fontSize: 12, color: "var(--text-2)", fontWeight: 500 }}>
-                        Khách hàng cần xuất hoá đơn?
-                      </span>
-                    </div>
+                {/* Khách OV cũng lấy HĐ được (chốt kế toán 26/8) — checkbox hiện cho cả VN + OV */}
+                <div className="info-cell">
+                  <div
+                    style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer" }}
+                    onClick={() => setDraft((prev) => (prev ? { ...prev, wantsInvoice: !prev.wantsInvoice } : prev))}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={draft.wantsInvoice}
+                      onChange={(e) => setDraft((prev) => (prev ? { ...prev, wantsInvoice: e.target.checked } : prev))}
+                      onClick={(e) => e.stopPropagation()}
+                      style={{ accentColor: "var(--danger)", margin: 0 }}
+                    />
+                    <span style={{ fontSize: 12, color: "var(--text-2)", fontWeight: 500 }}>
+                      Khách hàng cần xuất hoá đơn?
+                    </span>
                   </div>
-                )}
+                </div>
                 <div className="info-cell">
                   <div className="info-label">Loại KH</div>
                   <div style={{ display: "flex", gap: 8 }}>
@@ -2348,12 +2368,39 @@ export default function PaymentRequestDetailDrawer({
                     />
                   </div>
                 )}
+                {(draft.wantsInvoice || draft.invoiceCustomerName) && (
+                  <div className="info-cell">
+                    <div className="info-label">Họ tên đầy đủ (in trên HĐ)</div>
+                    <input
+                      value={draft.invoiceCustomerName}
+                      onChange={(e) => setDraft((prev) => (prev ? { ...prev, invoiceCustomerName: e.target.value } : prev))}
+                      placeholder="VD: Nguyễn Thị Hằng"
+                      style={{
+                        border: "1px solid var(--border)",
+                        borderRadius: 8,
+                        padding: "8px 10px",
+                        font: "inherit",
+                        fontSize: 13,
+                      }}
+                    />
+                  </div>
+                )}
                 <div className="info-cell">
-                  <div className="info-label">{draft.customerType === "business" ? "MST doanh nghiệp" : "MST cá nhân"}</div>
+                  <div className="info-label">{draft.customerType === "business" ? "MST doanh nghiệp" : "Số CCCD / Hộ chiếu"}</div>
                   <input
                     value={draft.taxId}
-                    onChange={(e) => setDraft((prev) => (prev ? { ...prev, taxId: e.target.value.replace(/[^\d]/g, "") } : prev))}
-                    placeholder="VD: 0123456789"
+                    onChange={(e) =>
+                      // CCCD = 12 số; hộ chiếu có chữ (vd C1234567); MST doanh nghiệp chỉ số.
+                      setDraft((prev) => (prev
+                        ? {
+                            ...prev,
+                            taxId: prev.customerType === "business"
+                              ? e.target.value.replace(/[^\d]/g, "")
+                              : e.target.value.replace(/[^\dA-Za-z-]/g, "").toUpperCase(),
+                          }
+                        : prev))
+                    }
+                    placeholder={draft.customerType === "business" ? "VD: 0123456789" : "VD: 001204012345 hoặc C1234567"}
                     style={{
                       border: "1px solid var(--border)",
                       borderRadius: 8,

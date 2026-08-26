@@ -24,4 +24,4 @@ audience: ["ke-toan"]
 
 - Với dòng đã xuất (tab **Đã xuất**), bấm **Tải file thuế** để tải ZIP gồm 3 file Excel (đơn hàng, khách hàng, sản phẩm) dùng cho kê khai.
 
-> ⚠️ Lưu ý: nếu xuất hàng loạt báo lỗi 1 phần, chỉ những dòng lỗi cần sửa lại — các dòng thành công đã chuyển sang **Đã xuất**, không cần xuất lại. Dòng thiếu thông tin khách (chưa đủ tên/SĐT/địa chỉ) sẽ không xuất được — bổ sung thông tin ở PR hoặc AR liên quan trước khi quay lại.
+> ⚠️ Lưu ý: nếu xuất hàng loạt báo lỗi 1 phần, chỉ những dòng lỗi cần sửa lại — các dòng thành công đã chuyển sang **Đã xuất**, không cần xuất lại. Với khách **lấy hoá đơn**, dòng thiếu họ tên đầy đủ / số CCCD / email / địa chỉ (Tỉnh + Phường/Xã) sẽ không xuất được — nhờ sale bổ sung ở PR hoặc điền trực tiếp trong form xuất. Khách **không lấy hoá đơn** thì không bị chặn gì.

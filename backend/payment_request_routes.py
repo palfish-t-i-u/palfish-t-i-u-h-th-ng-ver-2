@@ -125,6 +125,7 @@ class PaymentRequestCreate(BaseModel):
     tax_id: str | None = None
     customer_type: str | None = "individual"
     company_name: str | None = None
+    invoice_customer_name: str | None = None  # họ tên đầy đủ in trên HĐ (khách lấy HĐ)
     lead_source: str | None = None
     lead_channel: str | None = None
     wants_invoice: bool | None = None
@@ -165,6 +166,7 @@ class PaymentRequestPatch(BaseModel):
     tax_id: str | None = None
     customer_type: str | None = None
     company_name: str | None = None
+    invoice_customer_name: str | None = None
     lead_source: str | None = None
     lead_channel: str | None = None
     wants_invoice: bool | None = None
@@ -318,6 +320,7 @@ def _serialize_payment_request(row: dict[str, Any], completion_reports: list[dic
         "tax_id": row.get("tax_id") or None,
         "customer_type": row.get("customer_type") or "individual",
         "company_name": row.get("company_name") or None,
+        "invoice_customer_name": row.get("invoice_customer_name") or None,
         "lead_source": row.get("lead_source") or None,
         "lead_channel": row.get("lead_channel") or None,
         "lead_matched": row.get("lead_matched"),
@@ -1130,6 +1133,7 @@ def _payment_request_insert_row(body: PaymentRequestCreate) -> dict[str, Any]:
         "note": _clean_text(body.note),
         "email": _clean_text(body.email),
         "tax_id": _clean_text(body.tax_id) or None,
+        "invoice_customer_name": _clean_text(body.invoice_customer_name) or None,
         "target": target,
         "received": 0,
         "state": "pending",
@@ -1230,6 +1234,8 @@ def _payment_request_patch_row(body: PaymentRequestPatch, current_row: dict[str,
         patch["customer_type"] = ct
     if body.company_name is not None:
         patch["company_name"] = _clean_text(body.company_name) or None
+    if body.invoice_customer_name is not None:
+        patch["invoice_customer_name"] = _clean_text(body.invoice_customer_name) or None
 
     final_ct = patch.get("customer_type", current_row.get("customer_type") or "individual")
     if final_ct == "individual":

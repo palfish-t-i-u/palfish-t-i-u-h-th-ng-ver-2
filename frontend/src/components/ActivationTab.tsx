@@ -152,6 +152,9 @@ const HARD_BLOCKER_LABEL: Record<string, string> = {
   package: "tên gói học",
   amount: "số tiền",
   address: "địa chỉ",
+  invoiceName: "họ tên trên HĐ",
+  taxCode: "số CCCD/Hộ chiếu",
+  email: "email nhận HĐ",
 };
 
 function PrSearchCombo({
@@ -463,12 +466,31 @@ const FOREIGN_COUNTRY_NAMES = new Set(
 /**
  * Điều kiện bắt buộc để Yêu cầu xuất hoá đơn (B4) cho 1 gói học.
  * Trả về danh sách thứ còn thiếu — rỗng nghĩa là đủ điều kiện.
- * Địa chỉ lấy theo chain course → PR (khớp cách invoice ghép địa chỉ ở paymentFlowUtils),
- * nên AR do kế toán tạo tay (có địa chỉ trên course) hay AR gắn PR đều check đúng.
+ * MIRROR của BE `_course_invoice_blockers` (activation_routes.py) — sửa rule thì sửa CẢ HAI.
+ *
+ * Chuẩn kế toán Sương Mai 26/8 (thuế NĐ 70/2025), rẽ nhánh theo wants_invoice:
+ * - Khách KHÔNG lấy HĐ: không cần thông tin khách (kể cả địa chỉ).
+ * - Khách VN lấy HĐ: họ tên đầy đủ + số CCCD + email + địa chỉ Tỉnh + Phường/Xã
+ *   (số nhà KHÔNG bắt buộc — "điền từ cấp xã trở lên là được").
+ * - Khách OV lấy HĐ: họ tên + CCCD/hộ chiếu + email + tên nước.
+ * - Doanh nghiệp: giữ như cũ — không blocker thông tin cá nhân mới.
+ *
+ * Thông tin lấy theo chain course → PR (khớp cách invoice ghép địa chỉ ở paymentFlowUtils),
+ * nên AR do kế toán tạo tay (điền trên course) hay AR gắn PR đều check đúng.
  */
 export function getInvoiceBlockers(
   course: ActiveCourse,
-  pr: { province?: string; ward?: string; address?: string } | null
+  pr: {
+    province?: string;
+    ward?: string;
+    address?: string;
+    country?: string;
+    wantsInvoice?: boolean;
+    customerType?: string;
+    taxId?: string;
+    invoiceCustomerName?: string;
+    email?: string;
+  } | null
 ): InvoiceBlocker[] {
   const blockers: InvoiceBlocker[] = [];
 
@@ -490,24 +512,52 @@ export function getInvoiceBlockers(
     blockers.push({ key: "amount", text: "Còn thiếu số tiền gói học (> 0) — điền & lưu để xuất được hoá đơn." });
   }
 
+  // Khách KHÔNG lấy HĐ: không cần thông tin khách — xuất HĐ kê khai với dữ liệu tối giản.
+  if (!pr?.wantsInvoice) {
+    return blockers;
+  }
+
+  const customerType = (course.customerType ?? pr.customerType ?? "individual").trim();
+  if (customerType !== "business") {
+    // Họ tên đầy đủ: CHỈ nguồn tường minh (course.name = invoice_customer_name per-course,
+    // hoặc PR.invoiceCustomerName) — KHÔNG fallback pr.name ("Chị Hằng" không phải tên pháp lý).
+    if (!(course.name?.trim() || pr.invoiceCustomerName?.trim())) {
+      blockers.push({
+        key: "invoiceName",
+        text: "Khách lấy HĐ — còn thiếu họ tên đầy đủ in trên hoá đơn. Bổ sung ở PR để xuất được hoá đơn.",
+      });
+    }
+    if (!(course.taxCode?.trim() || pr.taxId?.trim())) {
+      blockers.push({
+        key: "taxCode",
+        text: "Khách lấy HĐ — còn thiếu số CCCD/Hộ chiếu (thuế bắt buộc). Bổ sung ở PR để xuất được hoá đơn.",
+      });
+    }
+    if (!(course.email?.trim() || pr.email?.trim())) {
+      blockers.push({
+        key: "email",
+        text: "Khách lấy HĐ — còn thiếu email nhận hoá đơn. Bổ sung ở PR để xuất được hoá đơn.",
+      });
+    }
+  }
+
   const province = (course.province ?? pr?.province ?? "").trim();
   const ward = (course.ward ?? pr?.ward ?? "").trim();
-  const street = (course.address ?? pr?.address ?? "").trim();
+  const country = (course.country ?? pr?.country ?? "").trim().toUpperCase();
 
-  // Khách nước ngoài (OV): `province` là tên quốc gia → quy luật riêng,
-  // chỉ cần có quốc gia là đủ, không bắt Phường/Xã + Số nhà.
-  if (FOREIGN_COUNTRY_NAMES.has(province)) {
+  // Khách nước ngoài (OV): country != VN, hoặc `province` là tên quốc gia →
+  // địa chỉ chỉ cần tên nước (learning: foreign-customer-detected-by-dial-not-province).
+  if ((country && country !== "VN") || FOREIGN_COUNTRY_NAMES.has(province)) {
     return blockers;
   }
 
   const missingAddr: string[] = [];
   if (!province) missingAddr.push("Tỉnh/Thành");
   if (!ward) missingAddr.push("Phường/Xã");
-  if (!street) missingAddr.push("Số nhà, đường");
   if (missingAddr.length) {
     blockers.push({
       key: "address",
-      text: `PR khách hàng này chưa đủ địa chỉ — thiếu: ${missingAddr.join(", ")}. Bổ sung ở PR để xuất được hoá đơn.`,
+      text: `PR khách hàng này chưa đủ địa chỉ — thiếu: ${missingAddr.join(", ")}. Bổ sung ở PR để xuất được hoá đơn (số nhà không bắt buộc).`,
     });
   }
 
