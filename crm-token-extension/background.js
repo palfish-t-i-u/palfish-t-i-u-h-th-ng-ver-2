@@ -153,6 +153,19 @@ function _bytesFromBase64(base64) {
   return bytes;
 }
 
+// Rút message lỗi rõ nhất từ response backend (FastAPI trả {"detail":"..."}) — vd "chưa đăng nhập mpos.vn"
+function _extractErrDetail(txt) {
+  if (!txt) return null;
+  try {
+    const j = JSON.parse(txt);
+    if (j && typeof j.detail === "string" && j.detail.trim()) return j.detail.trim();
+  } catch (_) {
+    /* không phải JSON — dùng text thô */
+  }
+  const t = String(txt).trim();
+  return t ? t.slice(0, 300) : null;
+}
+
 async function _pushGatewayFile({ source, kind, filename, contentBase64, contentType }) {
   const ingestToken = await _getGatewayIngestToken();
   if (!ingestToken) {
@@ -179,11 +192,12 @@ async function _pushGatewayFile({ source, kind, filename, contentBase64, content
         headers: { "X-GATEWAY-EXT-TOKEN": ingestToken },
         body: form,
       }).then(async (res) => {
-        if (!res.ok) {
-          const txt = await res.text().catch(() => "");
-          console.warn("[PalFish Sync] gateway ingest status:", url, res.status, txt);
+        if (res.ok) {
+          return { url, ok: true, data: await res.json().catch(() => null), errDetail: null };
         }
-        return { url, ok: res.ok, data: res.ok ? await res.json().catch(() => null) : null };
+        const txt = await res.text().catch(() => "");
+        console.warn("[PalFish Sync] gateway ingest status:", url, res.status, txt);
+        return { url, ok: false, data: null, errDetail: _extractErrDetail(txt) };
       });
     })
   );
@@ -192,7 +206,11 @@ async function _pushGatewayFile({ source, kind, filename, contentBase64, content
   if (oks.length > 0) {
     return { ok: true, results: oks.map((r) => r.value), data: oks[0].value.data };
   }
-  return { ok: false, error: "Khong gui duoc file gateway ve backend nao" };
+  // Không backend nào nhận — nhả message rõ nhất từ backend (vd "chưa đăng nhập mpos.vn") thay vì lỗi generic
+  const detail = results
+    .map((r) => (r.status === "fulfilled" ? r.value.errDetail : String(r.reason || "")))
+    .find((d) => d);
+  return { ok: false, error: detail || "Không gửi được file lên hệ thống" };
 }
 
 async function _sendIfChanged() {
@@ -403,11 +421,12 @@ async function _pushGatewayOrders(orders, source, kind) {
         headers: { "Content-Type": "application/json", "X-GATEWAY-EXT-TOKEN": ingestToken },
         body: JSON.stringify({ orders }),
       }).then(async (res) => {
-        if (!res.ok) {
-          const txt = await res.text().catch(() => "");
-          console.warn("[PalFish Sync] payoo ingest status:", url, res.status, txt);
+        if (res.ok) {
+          return { url, ok: true, data: await res.json().catch(() => null), errDetail: null };
         }
-        return { url, ok: res.ok, data: res.ok ? await res.json().catch(() => null) : null };
+        const txt = await res.text().catch(() => "");
+        console.warn("[PalFish Sync] payoo ingest status:", url, res.status, txt);
+        return { url, ok: false, data: null, errDetail: _extractErrDetail(txt) };
       });
     }),
   );
@@ -416,7 +435,10 @@ async function _pushGatewayOrders(orders, source, kind) {
   if (oks.length > 0) {
     return { ok: true, data: oks[0].value.data, results: oks.map((r) => r.value) };
   }
-  return { ok: false, error: "Không gửi được orders về backend nào" };
+  const detail = results
+    .map((r) => (r.status === "fulfilled" ? r.value.errDetail : String(r.reason || "")))
+    .find((d) => d);
+  return { ok: false, error: detail || "Không gửi được orders về hệ thống" };
 }
 
 // Payoo: crawl backwards từ hôm nay về watermark (lần sync thành công gần nhất).
@@ -558,9 +580,21 @@ async function runGatewaySync(trigger = "alarm") {
   const allOk = payooOk && mposOk;
   const summaryStr = summary.join(" · ");
   _saveState(allOk ? "ok" : "error", `Đồng bộ ${new Date().toLocaleTimeString("vi-VN")} — ${summaryStr}`);
+  // Backend báo file HTML = phiên hết hạn → dịch thành hướng dẫn rõ, không để "xem chi tiết" cụt (không bấm được)
+  const mposNeedsLogin = !mposOk && /HTML|đăng nhập/i.test(summaryStr);
+  let error;
+  if (allOk) {
+    error = undefined;
+  } else if (mposNeedsLogin) {
+    error = "Chưa đăng nhập mpos.vn (hoặc phiên đã hết hạn). Mở mpos.vn đăng nhập lại rồi bấm Đồng bộ ngay.";
+  } else if (payooOk || mposOk) {
+    error = "Một phần đồng bộ thất bại — xem mục Chi tiết bên dưới.";
+  } else {
+    error = "Đồng bộ thất bại — xem mục Chi tiết bên dưới.";
+  }
   return {
     ok: allOk,
-    error: allOk ? undefined : (payooOk || mposOk ? "Một phần đồng bộ thất bại — xem chi tiết" : "Đồng bộ thất bại — xem chi tiết"),
+    error,
     inserted, mposInserted, payooInserted, payooPulled, mposOk, summary, summaryStr,
     extVersion: EXT_VERSION,
   };
