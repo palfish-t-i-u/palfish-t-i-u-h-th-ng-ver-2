@@ -46,7 +46,7 @@ afterEach(() => server.resetHandlers());
 describe("BC04CashInReport", () => {
   it("tải và hiện đúng dòng + tổng thu vào/RMB/số dư", async () => {
     server.use(
-      http.get(`${BASE}/api/v1/reports/cash-in`, () => HttpResponse.json(_rawReport()))
+      http.get(`${BASE}/reports/cash-in`, () => HttpResponse.json(_rawReport()))
     );
 
     render(<BC04CashInReport />);
@@ -60,13 +60,13 @@ describe("BC04CashInReport", () => {
 
   it("chọn phân loại cho dòng lạ (rut_tiktok) gọi đúng PUT annotation", async () => {
     server.use(
-      http.get(`${BASE}/api/v1/reports/cash-in`, () => HttpResponse.json(_rawReport()))
+      http.get(`${BASE}/reports/cash-in`, () => HttpResponse.json(_rawReport()))
     );
 
     let putBody: unknown = null;
     let putUrl = "";
     server.use(
-      http.put(`${BASE}/api/v1/reports/cash-in/:source/:txnId/annotation`, async ({ request, params }) => {
+      http.put(`${BASE}/reports/cash-in/:source/:txnId/annotation`, async ({ request, params }) => {
         putUrl = `${params.source}/${params.txnId}`;
         putBody = await request.json();
         return HttpResponse.json({ ok: true });
@@ -92,7 +92,7 @@ describe("BC04CashInReport", () => {
 
   it("báo lỗi khi BE trả lỗi, không crash trang", async () => {
     server.use(
-      http.get(`${BASE}/api/v1/reports/cash-in`, () => HttpResponse.json({ detail: "Lỗi BC04" }, { status: 500 }))
+      http.get(`${BASE}/reports/cash-in`, () => HttpResponse.json({ detail: "Lỗi BC04" }, { status: 500 }))
     );
 
     render(<BC04CashInReport />);

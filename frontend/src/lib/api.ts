@@ -459,12 +459,12 @@ export const endpoints = {
       kpi_rows: { sale_name: string; b2_orders: number; b4_gmv_vnd: number }[];
     }) => api.put<Bc03MonthlySettings>("/reports/bc03/monthly", body),
     cashIn: (params: { from: string; to: string; opening_balance: number; team?: string }) =>
-      api.get<CashInReportRaw>("/api/v1/reports/cash-in", { params }),
+      api.get<CashInReportRaw>("/reports/cash-in", { params }),
     cashInAnnotation: (
       source: string,
       txnId: string,
       body: { business_line?: string; main_cat?: string; detail?: string; note?: string }
-    ) => api.put(`/api/v1/reports/cash-in/${source}/${txnId}/annotation`, body),
+    ) => api.put(`/reports/cash-in/${source}/${txnId}/annotation`, body),
   },
   me: {
     get: () => api.get("/me"),
