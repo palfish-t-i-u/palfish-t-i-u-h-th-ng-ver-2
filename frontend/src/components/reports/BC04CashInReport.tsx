@@ -257,10 +257,7 @@ export default function BC04CashInReport() {
                   <Tr key={key}>
                     <Td className="whitespace-nowrap">{fmtDate(row.date)}</Td>
                     <Td>
-                      <div className="flex items-center gap-1.5">
-                        <Badge tone={GROUP_BADGE_TONE[row.group]}>{CASH_IN_GROUP_LABELS[row.group]}</Badge>
-                        <span className="text-xs text-gmv-muted">{row.details}</span>
-                      </div>
+                      <Badge tone={GROUP_BADGE_TONE[row.group]}>{CASH_IN_GROUP_LABELS[row.group]}</Badge>
                     </Td>
                     <Td className="text-right tabular-nums">{fmtVnd(row.input)}</Td>
                     <Td className="text-right tabular-nums">{fmtVnd(row.balance)}</Td>
