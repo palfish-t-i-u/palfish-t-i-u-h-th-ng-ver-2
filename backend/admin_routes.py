@@ -149,6 +149,7 @@ MODULE_LIST = [
     "bc01",
     "bc02",
     "bc03",
+    "bc04",
     "module5",
     "module6",
     "gatewaySync",    # <-- Thêm mới phục vụ đồng bộ mPOS/Payoo
@@ -168,7 +169,7 @@ DEFAULT_DEPT_PERMISSIONS: dict[str, dict[str, str]] = {
     "sale": {
         "dashboard": "full", "paymentRequests": "full",
         "reconciliation": "full", "module3": "full", "module4": "read",
-        "revenueLedger": "read", "bc01": "read", "bc02": "read", "bc03": "read",
+        "revenueLedger": "read", "bc01": "read", "bc02": "read", "bc03": "read", "bc04": "none",
         "module5": "none", "module6": "full",
         "authAccounts": "none", "profile": "full", "permissions": "none",
         "reconCard": "none", "gatewaySync": "none", "zalo": "none", "dingtalk": "none",
@@ -177,7 +178,7 @@ DEFAULT_DEPT_PERMISSIONS: dict[str, dict[str, str]] = {
     "hr": {
         "dashboard": "full", "paymentRequests": "full",
         "reconciliation": "full", "module3": "full", "module4": "full",
-        "revenueLedger": "full", "bc01": "full", "bc02": "full", "bc03": "full",
+        "revenueLedger": "full", "bc01": "full", "bc02": "full", "bc03": "full", "bc04": "full",
         "module5": "full", "module6": "full",
         "authAccounts": "full", "profile": "full", "permissions": "full",
         "reconCard": "full", "gatewaySync": "full", "zalo": "full", "dingtalk": "full",
@@ -186,7 +187,7 @@ DEFAULT_DEPT_PERMISSIONS: dict[str, dict[str, str]] = {
     "marketing": {
         "dashboard": "read", "paymentRequests": "none",
         "reconciliation": "none", "module3": "none", "module4": "none",
-        "revenueLedger": "full", "bc01": "read", "bc02": "read", "bc03": "read",
+        "revenueLedger": "full", "bc01": "read", "bc02": "read", "bc03": "read", "bc04": "none",
         "module5": "none", "module6": "none",
         "authAccounts": "none", "profile": "full", "permissions": "none",
         "reconCard": "none", "gatewaySync": "none", "zalo": "none", "dingtalk": "none",
@@ -195,7 +196,7 @@ DEFAULT_DEPT_PERMISSIONS: dict[str, dict[str, str]] = {
     "cs": {
         "dashboard": "read", "paymentRequests": "none",
         "reconciliation": "none", "module3": "full", "module4": "none",
-        "revenueLedger": "none", "bc01": "none", "bc02": "none", "bc03": "none",
+        "revenueLedger": "none", "bc01": "none", "bc02": "none", "bc03": "none", "bc04": "none",
         "module5": "none", "module6": "none",
         "authAccounts": "none", "profile": "full", "permissions": "none",
         "reconCard": "none", "gatewaySync": "none", "zalo": "none", "dingtalk": "none",

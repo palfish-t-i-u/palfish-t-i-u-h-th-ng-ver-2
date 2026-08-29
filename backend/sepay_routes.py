@@ -269,6 +269,37 @@ def _is_mpos_settlement(content: str) -> bool:
     return False
 
 
+# Số phiếu chi trong nội dung CK settle mPOS/Payoo, VD "...TT PC 79492392 CT tu..."
+_PC_PATTERN = re.compile(r"\bPC\s+(\d+)\b", re.IGNORECASE)
+
+
+def extract_settlement_code(content: str) -> str | None:
+    """Trích số phiếu chi (PC) từ nội dung CK — dùng để nối cục bank với
+    gateway_transactions.settlement_code (BC04 dedup hybrid)."""
+    m = _PC_PATTERN.search(content or "")
+    return m.group(1) if m else None
+
+
+def classify_cash_in(*, content: str, payment_line_id: str | None, is_card: bool = False) -> str:
+    """Nhóm nội bộ cho BC04 (Dòng tiền về): khach_tra | the | the_gop | rut_tiktok | khac.
+    Chỉ dùng để auto-gán nhãn hiển thị + phân loại quản báo — KHÔNG đổi match_status.
+
+    Thứ tự kiểm tra quan trọng: TikTok phải kiểm TRƯỚC _is_mpos_settlement, vì
+    _is_mpos_settlement() nội bộ cũng match luôn pattern rút TikTok (dùng chung
+    _PLATFORM_WITHDRAWAL_PATTERNS) — kiểm ngược thứ tự sẽ gán nhầm TikTok thành "the_gop".
+    """
+    content = content or ""
+    if is_card:
+        return "the"
+    if any(p.search(content) for p in _PLATFORM_WITHDRAWAL_PATTERNS):
+        return "rut_tiktok"
+    if _is_mpos_settlement(content):
+        return "the_gop"
+    if payment_line_id:
+        return "khach_tra"
+    return "khac"
+
+
 # ---------------------------------------------------------------------------
 # Security: IP Whitelisting
 # ---------------------------------------------------------------------------
