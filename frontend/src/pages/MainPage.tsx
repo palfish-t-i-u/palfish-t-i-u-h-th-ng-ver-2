@@ -18,6 +18,7 @@ import { lazyRetry } from "../lib/lazyRetry";
 const BC01SalesPerformance = lazyRetry(() => import("../components/reports/BC01SalesPerformance"));
 const BC02KeyDataReport = lazyRetry(() => import("../components/reports/BC02KeyDataReport"));
 const ReportBC03Tab = lazyRetry(() => import("../components/ReportBC03Tab"));
+const BC04CashInReport = lazyRetry(() => import("../components/reports/BC04CashInReport"));
 const PaymentRequestsTab = lazyRetry(() => import("../components/PaymentRequestsTab"));
 const ReconciliationTab = lazyRetry(() => import("../components/ReconciliationTab"));
 const CardReconciliationTab = lazyRetry(() => import("../components/CardReconciliationTab"));
@@ -43,6 +44,7 @@ const PRELOAD_MAP: Record<string, () => Promise<unknown>> = {
   bc01: () => import("../components/reports/BC01SalesPerformance"),
   bc02: () => import("../components/reports/BC02KeyDataReport"),
   bc03: () => import("../components/ReportBC03Tab"),
+  bc04: () => import("../components/reports/BC04CashInReport"),
   gatewaySync: () => import("../components/GatewaySyncTab"),
   payslip: () => import("../components/payslip/PayslipTab"),
 };
@@ -59,6 +61,7 @@ type ViewId =
   | "bc01"
   | "bc02"
   | "bc03"
+  | "bc04"
   | "module5"
   | "module6"
   | "gatewaySync"
@@ -200,6 +203,7 @@ const TITLES: Record<ViewId, { title: string; subtitle?: string }> = {
   bc01: { title: "BC01: Sales performance", subtitle: "Tổng GMV theo team × sale × tháng" },
   bc02: { title: "BC02: Key Data", subtitle: "Dữ liệu then chốt quy trình bán hàng" },
   bc03: { title: "BC03 — Báo cáo tổng bộ", subtitle: "KPI thủ công + doanh thu / trial / referral tự động" },
+  bc04: { title: "BC04 — Dòng tiền về", subtitle: "Tiền thực về TK ngân hàng hàng ngày, kèm số dư — xuất Excel HN BANK 26" },
   module5: { title: "Đồng bộ CRM", subtitle: "M5 — 1-Click sync & xuất Master Data CRM PalFish" },
   module6: { title: "Dashboard Sale", subtitle: "M6 — Tổng quan hiệu suất theo team & cá nhân" },
   gatewaySync: { title: "Đồng bộ mPOS / Payoo", subtitle: "Cài tiện ích kéo giao dịch mPOS & Payoo về app" },
@@ -328,6 +332,7 @@ function MainPageInner({
     if (can("bc01")) reportChildren.push({ id: "bc01", label: "BC01: Sales performance", subtitle: "GMV theo team × sale × tháng" });
     if (can("bc02")) reportChildren.push({ id: "bc02", label: "BC02: Key Data", subtitle: "Then chốt quy trình bán" });
     if (can("bc03")) reportChildren.push({ id: "bc03", label: "BC03 — Báo cáo tổng bộ", subtitle: "KPI + doanh thu / trial / referral" });
+    if (can("bc04")) reportChildren.push({ id: "bc04", label: "BC04 — Dòng tiền về", subtitle: "Tiền về TK ngân hàng hàng ngày" });
     if (reportChildren.length > 0)
       list.push({ id: "reports", label: "Báo cáo", icon: I.chart, children: reportChildren,
         ...(!can("revenueLedger") ? { section: "Báo cáo" } : {}) });
@@ -395,6 +400,7 @@ function MainPageInner({
     activeView === "bc01" ||
     activeView === "bc02" ||
     activeView === "bc03" ||
+    activeView === "bc04" ||
     activeView === "permissions" ||
     activeView === "zaloConfig" ||
     activeView === "zaloGroups" ||
@@ -417,6 +423,7 @@ function MainPageInner({
       case "bc01": return <BC01SalesPerformance />;
       case "bc02": return <BC02KeyDataReport />;
       case "bc03": return <ReportBC03Tab />;
+      case "bc04": return <BC04CashInReport />;
       case "module5": return <Module5Tab />;
       case "module6": return <Module6Tab />;
       case "gatewaySync": return <GatewaySyncTab />;
