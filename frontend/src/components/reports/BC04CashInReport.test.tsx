@@ -54,8 +54,8 @@ describe("BC04CashInReport", () => {
     await waitFor(() => expect(screen.getByText(/Thu vào: 5\.000\.000 đ/)).toBeInTheDocument());
     expect(screen.getByText(/Thu RMB: ¥1,351\.35/)).toBeInTheDocument();
     expect(screen.getByText(/Số dư cuối kỳ: 9\.584\.473\.038 đ/)).toBeInTheDocument();
-    expect(screen.getByText("用户付款")).toBeInTheDocument();
-    expect(screen.getByText("TK TikTok rút về")).toBeInTheDocument();
+    expect(screen.getByText("Khách trả")).toBeInTheDocument();
+    expect(screen.getByText("Rút TikTok")).toBeInTheDocument();
   });
 
   it("chọn phân loại cho dòng lạ (rut_tiktok) gọi đúng PUT annotation", async () => {
@@ -74,9 +74,9 @@ describe("BC04CashInReport", () => {
     );
 
     render(<BC04CashInReport />);
-    await waitFor(() => expect(screen.getByText("TK TikTok rút về")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("Rút TikTok")).toBeInTheDocument());
 
-    const row = screen.getByText("TK TikTok rút về").closest("tr");
+    const row = screen.getByText("Rút TikTok").closest("tr");
     expect(row).not.toBeNull();
     const select = within(row as HTMLElement).getByRole("combobox");
 
