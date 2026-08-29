@@ -32,7 +32,7 @@
 - FE tab: `frontend/src/components/PaymentRequestsTab.tsx`
 - FE chi tiết: `frontend/src/components/payment-request/` — CreatePaymentRequestModal, PaymentRequestTable, PaymentRequestDetailDrawer, QrViewModal, Toolbar, KpiCards, StatusBadge, Progress, PrRowCards (mobile), PrStaleContentWarning, BillUploadZone, CountryCombo, VietnamAddressFields, DateRangeFilter, TvtsFilterDropdown, **TransferSaleModal** (chuyển sale), **OwnershipLogSection** (nhật ký lưu chuyển), paymentRequestUtils.ts, `phoneUtils.ts` (smart-paste, format, normalize SĐT)
 - BE: `backend/payment_request_routes.py` — PR CRUD, payment lines, stale content, confirm/reject, bill storage; **tạo hộ + chuyển giao PR** (`owner_sale_email` trong create, `POST /{id}/transfer`, `GET /{id}/ownership-log`, `GET /payment-requests/owner-options`)
-- Migration: `backend/migrations/2026-07-23-pr-ownership-log.sql` — bảng `pr_ownership_log` + backfill; `backend/migrations/2026-07-25-payment-line-stale-dismiss.sql` — cột `content_stale_dismissed_at` (persist "Huỷ/giữ QR cũ" cảnh báo stale)
+- Migration: `backend/migrations/2026-07-23-pr-ownership-log.sql` — bảng `pr_ownership_log` + backfill; `backend/migrations/2026-07-25-payment-line-stale-dismiss.sql` — cột `content_stale_dismissed_at` (persist "Huỷ/giữ QR cũ" cảnh báo stale); `backend/migrations/2026-08-26-pr-invoice-customer-name.sql` — cột `invoice_customer_name` (họ tên đầy đủ in trên HĐ, chuẩn CCCD 26/8)
 - Stale content QR: `_is_payment_line_content_stale` + `POST /payment-lines/{id}/refresh-content` (Cập nhật QR) + `POST /payment-lines/{id}/dismiss-stale` (Huỷ) → BE `payment_request_routes.py`; FE `PrStaleContentWarning.tsx`
 - BE test: `backend/tests/test_pr_ownership_transfer.py` — ma trận quyền tạo hộ/chuyển giao (trục sale ↔ leader); `test_refresh_content_endpoint.py` + `test_payment_line_stale_detection.py` — stale/refresh/dismiss
 - Types: `frontend/src/types/paymentRequest.ts`; API groups: `endpoints.paymentRequests`, `endpoints.bankTxns`
@@ -103,12 +103,13 @@
 - E2E: `frontend/e2e/crm-sync.spec.ts`, `frontend/e2e/journeys/crm-dashboard.spec.ts`
 - Docs: `docs/M5_DOI_CHIEU.md`, `docs/M5_GSHEET_IMPORT.md`, `docs/M5_OPERATIONS.md`
 
-## 7. Báo cáo (BC01 / BC02 / BC03)
+## 7. Báo cáo (BC01 / BC02 / BC03 / BC04)
 
 - FE hub: `frontend/src/components/ReportsHub.tsx`
 - BC01: `frontend/src/components/reports/BC01SalesPerformance.tsx` — BE trong `backend/revenue_routes.py`
 - BC02: `frontend/src/components/reports/BC02KeyDataReport.tsx` + `frontend/src/lib/bc02TypeMap.ts` — BE trong `backend/revenue_routes.py`
 - BC03: `frontend/src/components/ReportBC03Tab.tsx` (+ `reports/BC03Placeholder.tsx`) — BE `backend/report_routes.py` (daily backfill + monthly, KPI/tỷ giá)
+- BC04 — Dòng tiền về hàng ngày (thay báo cáo tay chị Vân, xuất Excel clone sheet `HN BANK 26`): FE `frontend/src/components/reports/BC04CashInReport.tsx` + `BC04CashInRowCards.tsx` (mobile), types `frontend/src/types/cashIn.ts`, export `frontend/src/utils/cashInXlsxExport.ts` — BE `backend/report_routes.py` (`GET /reports/cash-in`, `PUT .../annotation` — không có prefix `/api/v1/`, khớp convention bc01-03; migration `backend/migrations/2026-08-29-cash-in-annotations.sql`; hybrid bank+gateway dedup theo phiếu chi). Plan: `docs/plans/PLAN_BC04_DONG_TIEN_VE_2026-08-27.md`.
 - API group: `endpoints.reports`
 - Docs: `docs/BC01_DOI_CHIEU_THU_HIEN.md`
 
@@ -191,6 +192,7 @@ Kế hoạch đầy đủ: `docs/plans/HANDOFF_HDSD_DOCS_ROUTE_PIVOT_2026-07-27.
 - Contract: `docs/PHIEU_LUONG_CONTRACT.md` — payload keys byte-exact, 6 block, 5 cột status
 - Tests: `backend/tests/test_payroll_receive.py` (6), `test_payroll_view.py` (9) — 15 pass
 - M3 Apps Script: `docs/apps-script/BangLuong.gs` (bảng lương), `DoiSoatLuong.gs` (đối soát), `BangTinhThue.gs` (tham chiếu thuế)
+- Archive: `luuArchiveBangLuong()` trong `BangLuong.gs` → ghi `pf-salary.payroll.M_bang_luong_archive` (append theo `ky_luong`, hỏi xác nhận nếu kỳ đã tồn tại)
 - Preview phiếu: `docs/apps-script/PhieuLuongXem.gs` (server: `pvNapDuLieu`, `pvDocTags_`, `pvDungPhieu_`, `pvBanDaGui`) · `docs/apps-script/PhieuLuongXem.html` (client: modal preview 900×640, 0 RPC khi đổi người)
 - Xuất Excel: `docs/apps-script/PhongBanXuat.gs` (server: `xlGomNhom_`, `xlKiemTeam_`, `xlTaiZip`, `xlTaiMotFile`) · `docs/apps-script/PhongBanXuat.html` (client: dialog xuất Excel, ZIP download)
 - Test harness: `docs/apps-script/PhieuLuongTest.gs` (`chayTestThuan`, `chayTestDocThat`, `test_chupBaseline`, `test_soSanhBaseline`)

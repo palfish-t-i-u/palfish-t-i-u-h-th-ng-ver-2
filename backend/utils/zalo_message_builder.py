@@ -371,39 +371,6 @@ def build_course_activated_message(
     return {"message": "\n".join(lines), "canonical_team_code": canonical_team}
 
 
-def _referral_lines(course: dict[str, Any], child_label: str) -> list[str]:
-    """Dòng 'Thưởng giới thiệu' cho 1 course REFER. [] nếu không phải REFER.
-
-    Flush-left (markdown DingTalk nuốt space đầu dòng). Trống hết → dòng ⚠ nhắc,
-    KHÔNG bịa số. Vế = 0 buổi thì ẩn (anh Minh chốt 24/7).
-    """
-    name = str(course.get("name") or "")
-    lead = str(course.get("lead_source") or "")
-    is_ref = "REFER" in name.upper() or lead == "gioi_thieu"
-    if not is_ref:
-        return []
-    ref_uid = str(course.get("referrer_uid") or "").strip()
-    try:
-        ref_e = int(course.get("bonus_sessions_referee") or 0)
-    except (TypeError, ValueError):
-        ref_e = 0
-    try:
-        ref_r = int(course.get("bonus_sessions_referrer") or 0)
-    except (TypeError, ValueError):
-        ref_r = 0
-    # Trống hết → 1 dòng nhắc (lưới an toàn).
-    if not ref_uid and ref_e <= 0 and ref_r <= 0:
-        return ["⚠ Gói giới thiệu — chưa nhập UID & số buổi cộng"]
-    lines = ["🎁 Thưởng giới thiệu:"]
-    if ref_e > 0:
-        lines.append(f"• Bé được giới thiệu ({child_label}): +{ref_e} buổi")
-    if ref_uid or ref_r > 0:
-        uid_part = f"UID {ref_uid}" if ref_uid else "chưa rõ UID"
-        buoi_part = f"+{ref_r} buổi" if ref_r > 0 else "chưa ghi số buổi"
-        lines.append(f"• Người giới thiệu — {uid_part}: {buoi_part}")
-    return lines
-
-
 def build_activation_request_created_message(
     ar_data: dict[str, Any],
     pr_data: dict[str, Any],
@@ -500,7 +467,7 @@ def build_activation_request_created_message(
                 continue
             course_name = _first_nonempty(course.get("name"), default="(chưa có tên gói)")
             course_lines.append(f"{block_child}, {course_name}")
-            course_lines.extend(_referral_lines(course, block_child))
+            # Referral lines removed per chị Hiền 27/8 — thông tin refer giữ trong DB, không hiển thị trên tin DingTalk
             block_leads.append(_course_lead(course))
             amount = course.get("amount")
             if amount not in (None, ""):

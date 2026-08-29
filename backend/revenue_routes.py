@@ -1253,6 +1253,11 @@ def sync_ledger_from_ar_course(
                 match_row = order_match.data[0]
                 match_id = str(match_row["id"])
                 if match_row.get("loai_nhap") in ("tay", "hoan"):
+                    sb.table("so_doanh_thu").update({
+                        "note": f"AR {ar_id}",
+                        "crm_order_id": order_id,
+                        "updated_by_email": actor_email,
+                    }).eq("id", match_id).execute()
                     return match_id
                 update_payload: dict[str, Any] = {
                     "ma_don_hang": course_code,
@@ -1286,6 +1291,13 @@ def sync_ledger_from_ar_course(
                 match_row = loose_match.data[0]
                 match_id = str(match_row["id"])
                 if match_row.get("loai_nhap") in ("tay", "hoan"):
+                    link_patch: dict[str, Any] = {
+                        "note": f"AR {ar_id}",
+                        "updated_by_email": actor_email,
+                    }
+                    if not match_row.get("crm_order_id"):
+                        link_patch["crm_order_id"] = order_id
+                    sb.table("so_doanh_thu").update(link_patch).eq("id", match_id).execute()
                     return match_id
                 update_payload = {
                     "crm_order_id": order_id,

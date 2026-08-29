@@ -125,6 +125,7 @@ class PaymentRequestCreate(BaseModel):
     tax_id: str | None = None
     customer_type: str | None = "individual"
     company_name: str | None = None
+    invoice_customer_name: str | None = None  # họ tên đầy đủ in trên HĐ (khách lấy HĐ)
     lead_source: str | None = None
     lead_channel: str | None = None
     wants_invoice: bool | None = None
@@ -165,6 +166,7 @@ class PaymentRequestPatch(BaseModel):
     tax_id: str | None = None
     customer_type: str | None = None
     company_name: str | None = None
+    invoice_customer_name: str | None = None
     lead_source: str | None = None
     lead_channel: str | None = None
     wants_invoice: bool | None = None
@@ -318,6 +320,7 @@ def _serialize_payment_request(row: dict[str, Any], completion_reports: list[dic
         "tax_id": row.get("tax_id") or None,
         "customer_type": row.get("customer_type") or "individual",
         "company_name": row.get("company_name") or None,
+        "invoice_customer_name": row.get("invoice_customer_name") or None,
         "lead_source": row.get("lead_source") or None,
         "lead_channel": row.get("lead_channel") or None,
         "lead_matched": row.get("lead_matched"),
@@ -357,6 +360,20 @@ def _storage_public_url(bucket, object_path: str) -> str:
     if isinstance(public, str):
         return public
     return str(public.get("publicURL") or public.get("publicUrl") or "")
+
+
+def _storage_path_from_public_url(url: str, bucket: str = "bills") -> str:
+    """Suy object path (tương đối bucket) từ Supabase public URL.
+    .../object/public/bills/payment-lines/ID/bill-x.jpg -> payment-lines/ID/bill-x.jpg
+    Trả '' nếu URL không chứa segment bucket. Cache-independent — dùng khi
+    Storage-listing cache stale không tra được path (bug xoá bill 404, 26/8)."""
+    if not url:
+        return ""
+    marker = f"/{bucket}/"
+    idx = url.find(marker)
+    if idx < 0:
+        return ""
+    return url[idx + len(marker):].split("?", 1)[0].strip().lstrip("/")
 
 
 def _bill_object_path(line_id: str, ext: str = "jpg") -> str:
@@ -1130,6 +1147,7 @@ def _payment_request_insert_row(body: PaymentRequestCreate) -> dict[str, Any]:
         "note": _clean_text(body.note),
         "email": _clean_text(body.email),
         "tax_id": _clean_text(body.tax_id) or None,
+        "invoice_customer_name": _clean_text(body.invoice_customer_name) or None,
         "target": target,
         "received": 0,
         "state": "pending",
@@ -1230,6 +1248,8 @@ def _payment_request_patch_row(body: PaymentRequestPatch, current_row: dict[str,
         patch["customer_type"] = ct
     if body.company_name is not None:
         patch["company_name"] = _clean_text(body.company_name) or None
+    if body.invoice_customer_name is not None:
+        patch["invoice_customer_name"] = _clean_text(body.invoice_customer_name) or None
 
     final_ct = patch.get("customer_type", current_row.get("customer_type") or "individual")
     if final_ct == "individual":
@@ -3419,13 +3439,22 @@ def register_payment_request_routes(app, _get_supabase) -> None:
                     paths_to_remove = [matched_path]
         elif (body.bill_url or "").strip():
             url_to_remove = (body.bill_url or "").strip()
+            # Nguồn sự thật = bill_images DB (URL user bấm xoá), KHÔNG phải cache
+            # Storage assets — cache có thể stale/thiếu line do bị evict bởi upload
+            # line khác (bug 404 "khong tim thay bill_url", 26/8). Ưu tiên asset-match
+            # để lấy path; miss thì suy path thẳng từ URL (cache-independent).
             matched = next((a for a in assets if (a.get("url") or "").strip() == url_to_remove), None)
-            if not matched:
+            matched_path = (matched.get("path") or "").strip() if matched else ""
+            if not matched_path:
+                derived = _storage_path_from_public_url(url_to_remove)
+                if derived.startswith(f"payment-lines/{line_id}/"):
+                    matched_path = derived
+            in_db = url_to_remove in bill_images
+            if not matched_path and not in_db:
                 raise HTTPException(404, "Khong tim thay bill tuong ung bill_url")
-            matched_path = (matched.get("path") or "").strip()
             if matched_path:
                 paths_to_remove = [matched_path]
-            if url_to_remove in bill_images:
+            if in_db:
                 bill_images.remove(url_to_remove)
         else:
             if bill_images:

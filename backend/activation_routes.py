@@ -974,32 +974,62 @@ def _invoice_addr_parts(course: dict[str, Any], pr: dict[str, Any] | None) -> tu
     return province, ward, street, country
 
 
-def _invoice_address_complete(province: str, ward: str, street: str, country: str = "") -> bool:
-    """Đủ địa chỉ để xuất HĐ: Tỉnh + Phường + Số nhà. Khách OV chỉ cần quốc gia."""
+# Live gate CCCD = hết ngày 26/8/2026 VN (chốt anh Minh 26/8): đơn tạo TRƯỚC mốc này
+# được grandfather — không bắt họ tên/CCCD/email (sale chưa từng thấy form mới).
+# Chỉ đơn tạo từ 27/8 VN (17:00 26/8 UTC) trở đi mới bị gate. Địa chỉ KHÔNG grandfather
+# (rule mới Tỉnh+Xã lỏng hơn rule cũ — đơn cũ chỉ được lợi).
+_CCCD_GATE_LIVE_UTC = datetime(2026, 8, 26, 17, 0, 0, tzinfo=timezone.utc)
+
+
+def _pr_created_before_cccd_live(pr: dict[str, Any] | None) -> bool:
+    raw = _clean_text((pr or {}).get("created_at"))
+    if not raw:
+        return False
+    try:
+        created = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except ValueError:
+        return False
+    if created.tzinfo is None:
+        created = created.replace(tzinfo=timezone.utc)
+    return created < _CCCD_GATE_LIVE_UTC
+
+
+def _is_foreign_invoice_buyer(province: str, country: str) -> bool:
+    """Khách OV cho mục đích hóa đơn: country != VN, hoặc province là tên quốc gia
+    (learning: foreign-customer-detected-by-dial-not-province — đừng chỉ dựa province)."""
     country = (country or "").strip().upper()
     if country and country != "VN":
         return True
-    province = (province or "").strip()
-    if province in FOREIGN_COUNTRY_NAMES:
+    return (province or "").strip() in FOREIGN_COUNTRY_NAMES
+
+
+def _invoice_address_complete(province: str, ward: str, street: str, country: str = "") -> bool:
+    """Đủ địa chỉ để xuất HĐ (khách LẤY HĐ): Tỉnh + Phường/Xã — SỐ NHÀ KHÔNG bắt buộc
+    (chốt kế toán Sương Mai 26/8: "điền từ cấp xã trở lên là được").
+    Khách OV chỉ cần quốc gia. Tham số street giữ lại cho chữ ký ổn định."""
+    if _is_foreign_invoice_buyer(province, country):
         return True
-    return bool(province) and bool((ward or "").strip()) and bool((street or "").strip())
+    return bool((province or "").strip()) and bool((ward or "").strip())
 
 
-def _missing_address_parts(province: str, ward: str, street: str) -> list[str]:
+def _missing_address_parts(province: str, ward: str, street: str = "") -> list[str]:
     missing: list[str] = []
     if not (province or "").strip():
         missing.append("Tỉnh/Thành")
     if not (ward or "").strip():
         missing.append("Phường/Xã")
-    if not (street or "").strip():
-        missing.append("Số nhà, đường")
     return missing
 
 
 def _course_invoice_blockers(course: dict[str, Any], pr: dict[str, Any] | None) -> list[str]:
     """Điều kiện còn thiếu để Yêu cầu/Xuất HĐ cho 1 course. Rỗng = đủ điều kiện.
 
-    Khớp logic FE getInvoiceBlockers (ActivationTab.tsx): Order ID + tên gói + số tiền + địa chỉ.
+    Khớp logic FE getInvoiceBlockers (ActivationTab.tsx) — sửa rule thì sửa CẢ HAI.
+    Chuẩn kế toán Sương Mai 26/8 (thuế NĐ 70/2025), rẽ nhánh theo wants_invoice:
+    - Khách KHÔNG lấy HĐ: không cần thông tin khách (kể cả địa chỉ).
+    - Khách VN lấy HĐ: họ tên đầy đủ + số CCCD + email + địa chỉ Tỉnh + Phường/Xã.
+    - Khách OV lấy HĐ: họ tên + CCCD/hộ chiếu + email + tên nước.
+    - Doanh nghiệp: giữ như cũ — không blocker thông tin cá nhân mới.
     """
     blockers: list[str] = []
     order_id = _clean_text(course.get("order_id")) or _clean_text(course.get("orderId"))
@@ -1013,9 +1043,31 @@ def _course_invoice_blockers(course: dict[str, Any], pr: dict[str, Any] | None) 
         amount = 0.0
     if amount <= 0:
         blockers.append("số tiền")
+
+    if not (pr and pr.get("wants_invoice")):
+        return blockers
+
+    customer_type = (
+        _clean_text(course.get("customer_type"))
+        or (_clean_text(pr.get("customer_type")) if pr else "")
+        or "individual"
+    )
+    if customer_type != "business" and not _pr_created_before_cccd_live(pr):
+        # Họ tên đầy đủ: CHỈ nguồn tường minh (course/PR.invoice_customer_name) —
+        # KHÔNG fallback pr["name"] ("Chị Hằng" không phải tên pháp lý).
+        if not (
+            _clean_text(course.get("invoice_customer_name"))
+            or _clean_text(pr.get("invoice_customer_name"))
+        ):
+            blockers.append("họ tên đầy đủ trên HĐ")
+        if not (_clean_text(course.get("tax_code")) or _clean_text(pr.get("tax_id"))):
+            blockers.append("số CCCD/Hộ chiếu")
+        if not (_clean_text(course.get("email")) or _clean_text(pr.get("email"))):
+            blockers.append("email nhận HĐ")
+
     province, ward, street, country = _invoice_addr_parts(course, pr)
     if not _invoice_address_complete(province, ward, street, country):
-        blockers.append("địa chỉ (" + ", ".join(_missing_address_parts(province, ward, street)) + ")")
+        blockers.append("địa chỉ (" + ", ".join(_missing_address_parts(province, ward)) + ")")
     return blockers
 
 
@@ -1047,8 +1099,23 @@ def _build_invoice_course_patch(
             if cleaned:
                 patch[key] = cleaned
 
-    if not patch.get("invoice_customer_name") and pr:
-        patch.setdefault("invoice_customer_name", _clean_text(pr.get("name")))
+    # Fallback từ PR: CHỈ set khi có giá trị thật — setdefault("") sẽ chặn fallback
+    # kế tiếp và che mất giá trị sẵn có trên course trong preview bên dưới.
+    def _fill_from_pr(key: str, pr_key: str) -> None:
+        if patch.get(key) or not pr:
+            return
+        val = _clean_text(pr.get(pr_key))
+        if val:
+            patch[key] = val
+
+    # Họ tên trên HĐ: nguồn tường minh (form kế toán / course / PR.invoice_customer_name)
+    # ghi nhận TRƯỚC khi fallback pr["name"] — pr["name"] chỉ là tên hiển thị
+    # ("Chị Hằng"), đủ cho HĐ khách không lấy nhưng KHÔNG tính là "họ tên đầy đủ".
+    _fill_from_pr("invoice_customer_name", "invoice_customer_name")
+    explicit_invoice_name = _clean_text({**course, **patch}.get("invoice_customer_name"))
+    _fill_from_pr("invoice_customer_name", "name")
+    _fill_from_pr("tax_code", "tax_id")
+    _fill_from_pr("email", "email")
     if not patch.get("phone") and pr:
         patch.setdefault("phone", _clean_text(pr.get("phone")))
     if not patch.get("country") and pr:
@@ -1059,7 +1126,12 @@ def _build_invoice_course_patch(
         patch.setdefault("ward", _clean_text(pr.get("ward")))
     if not patch.get("province") and pr:
         patch.setdefault("province", _clean_text(pr.get("province")))
-    patch.setdefault("customer_type", _clean_text(course.get("customer_type")) or "individual")
+    patch.setdefault(
+        "customer_type",
+        _clean_text(course.get("customer_type"))
+        or (_clean_text(pr.get("customer_type")) if pr else "")
+        or "individual",
+    )
 
     preview = {**course, **patch}
     name = _clean_text(preview.get("invoice_customer_name"))
@@ -1072,14 +1144,31 @@ def _build_invoice_course_patch(
             400,
             "Thiếu thông tin xuất hoá đơn — cần tên và SĐT khách hàng",
         )
+
+    # Gate thông tin khách CHỈ khi khách lấy HĐ (chuẩn Sương Mai 26/8).
     country = _clean_text(preview.get("country"))
-    if not _invoice_address_complete(province, ward, address, country):
-        missing = _missing_address_parts(province, ward, address)
-        raise HTTPException(
-            400,
-            f"Chưa đủ địa chỉ để xuất hoá đơn — thiếu: {', '.join(missing)}. "
-            "Bổ sung địa chỉ ở PR (khách nước ngoài chỉ cần chọn quốc gia).",
-        )
+    if pr and pr.get("wants_invoice"):
+        if _clean_text(preview.get("customer_type")) != "business" and not _pr_created_before_cccd_live(pr):
+            missing_info: list[str] = []
+            if not explicit_invoice_name:
+                missing_info.append("họ tên đầy đủ trên HĐ")
+            if not _clean_text(preview.get("tax_code")):
+                missing_info.append("số CCCD/Hộ chiếu")
+            if not _clean_text(preview.get("email")):
+                missing_info.append("email nhận HĐ")
+            if missing_info:
+                raise HTTPException(
+                    400,
+                    f"Khách lấy hoá đơn — còn thiếu: {', '.join(missing_info)}. "
+                    "Bổ sung ở PR hoặc điền trong form xuất HĐ.",
+                )
+        if not _invoice_address_complete(province, ward, address, country):
+            missing = _missing_address_parts(province, ward)
+            raise HTTPException(
+                400,
+                f"Chưa đủ địa chỉ để xuất hoá đơn — thiếu: {', '.join(missing)}. "
+                "Bổ sung địa chỉ ở PR (khách nước ngoài chỉ cần chọn quốc gia).",
+            )
 
     return {k: v for k, v in patch.items() if v not in (None, "")}
 
@@ -1719,6 +1808,11 @@ def _course_display_name(course: dict[str, Any], ar_row: dict[str, Any], pr: dic
         val = _clean_text(course.get(key))
         if val:
             return val
+    # Họ tên pháp lý sale khai trên PR (khách lấy HĐ) ưu tiên hơn tên gọi hằng ngày.
+    if pr:
+        val = _clean_text(pr.get("invoice_customer_name"))
+        if val:
+            return val
     val = _clean_text(ar_row.get("customer_name"))
     if val:
         return val
@@ -1755,6 +1849,15 @@ def _course_to_tax_order(
     tax_product_code: str,
 ) -> dict[str, Any]:
     product_name = _clean_text(course.get("name")) or _clean_text(course.get("code"))
+    customer_type = (
+        _clean_text(course.get("customer_type"))
+        or (_clean_text(pr.get("customer_type")) if pr else "")
+        or "individual"
+    )
+    tax_code = _clean_text(course.get("tax_code")) or (_clean_text(pr.get("tax_id")) if pr else "")
+    company_name = _clean_text(course.get("company_name")) or (
+        _clean_text(pr.get("company_name")) if pr else ""
+    )
     return {
         "taxInvoiceCode": tax_invoice_code,
         "taxProductCode": tax_product_code,
@@ -1766,6 +1869,11 @@ def _course_to_tax_order(
         "tongTien": int(float(course.get("amount") or 0)),
         "m3ApprovedAt": course.get("invoiced_at") or ar_row.get("created_at") or "",
         "email": _clean_text(course.get("email") or (pr.get("email") if pr else "")),
+        # Thuế NĐ 70/2025: CCCD/hộ chiếu (cá nhân) hoặc MST (doanh nghiệp) trên file 02.
+        "customerType": customer_type,
+        "soCccd": tax_code if customer_type != "business" else "",
+        "maSoThue": tax_code if customer_type == "business" else "",
+        "tenDonVi": company_name if customer_type == "business" else "",
     }
 
 

@@ -275,6 +275,7 @@ export default function PaymentRequestsTab() {
       tax_id: (next.taxId || "").trim() || undefined,
       customer_type: next.customerType || "individual",
       company_name: next.customerType === "business" ? (next.companyName || "").trim() || undefined : undefined,
+      invoice_customer_name: (next.invoiceCustomerName || "").trim() || undefined,
       lead_source: next.leadSource || undefined,
       lead_channel: next.leadChannel || undefined,
       wants_invoice: next.wantsInvoice ?? undefined,

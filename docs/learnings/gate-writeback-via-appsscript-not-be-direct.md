@@ -1,0 +1,13 @@
+# Ghi ngược trạng thái vào sheet gate: đi qua Apps Script, KHÔNG cho BE ghi cell thẳng
+
+**Related files:** `backend/payroll_routes.py`, `docs/apps-script/PhieuLuongGate.gs`, `docs/apps-script/BangLuong.gs`, `docs/PHIEU_LUONG_CONTRACT.md`
+
+**Problem:** NV bấm "Xác nhận" phiếu lương in-app → chỉ ghi Supabase, không tick ngược ô "NV xác nhận trước/sau thuế" trên sheet Bảng lương. Cần **tức thì** (10 phút pull = coi như không hoạt động với user).
+
+**Trap:** Hai bẫy nối nhau. (1) Đề xuất pull định kỳ vì nó đơn giản về cơ học (không phải deploy Web App) — nhưng UX tồi. (2) Tưởng hướng tức thì = "BE ghi cell thẳng + tạo service account mới", và tưởng chỗ khó là tạo SA. **SA không phải chỗ khó.** Chỗ khó: sheet gate dùng tab ẩn `_gate_state` (key `code|ky`) làm **nguồn chân lý**; mỗi refresh BQ (`capNhatTuBigQuery`) **dựng lại bảng và đẩy `false` cho mọi checkbox** ([BangLuong.gs](../apps-script/BangLuong.gs)); và `restoreGateTicks_` — hàm tick lại từ `_gate_state` — là **DEAD CODE, không nơi nào gọi**. Nếu BE ghi cell thẳng, BE buộc phải re-implement merge JSON `_gate_state` bằng Python + tự dò dòng/cột theo tên header → nhân đôi logic Apps Script + coupling cứng vào layout sheet, gãy khi đổi cột.
+
+**Insight:** Mọi thao tác chạm sheet phải nằm trong Apps Script (single-writer). Hướng tức thì đúng = **BE push → Apps Script Web App `doPost`**: BE bắn `BackgroundTasks` POST (best-effort, secret tái dùng `GATE_TOKEN`), Web App chạy TRONG ngữ cảnh sheet nên tái dùng chính `gSaveState_` / `gHeaderMap_` / `kyLuongHienTai_`, tick ô + ghi `_gate_state` bằng `LockService` — tức ~1s, không SA/scope/share mới. Bắt buộc **wire `restoreGateTicks_(main)` vào cuối `capNhatTuBigQuery`** để tick sống qua refresh (đây cũng là bug có sẵn: tick tay cũng đang mất). `setValue` KHÔNG kích `guiPhieuOnEdit` (installable onEdit) → không enqueue lại.
+
+**Rule:** Ghi ngược trạng thái vào sheet có gate `_gate_state`: đi qua Apps Script (Web App `doPost` cho tức thì, hoặc menu pull `GET /confirmations` làm lưới an toàn), **luôn ghi `_gate_state` trước rồi mới tick cell**, và xác minh `restoreGateTicks_` được gọi ở cuối hàm refresh. TUYỆT ĐỐI không cho BE ghi cell trực tiếp — dù tạo SA ghi rất dễ, cái giá thật là re-implement `_gate_state` + coupling layout.
+
+**Verify:** `grep -n "restoreGateTicks_" docs/apps-script/BangLuong.gs` — phải có 1 call trong `capNhatTuBigQuery` (không chỉ định nghĩa ở PhieuLuongGate.gs). Route đọc `/payslips/confirmations` phải khai báo TRƯỚC `/payslips/{payslip_id}` (FastAPI match theo thứ tự). httpx client push phải là singleton module-level (xem [oom-per-request-supabase-clients](oom-per-request-supabase-clients.md)).

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { createPortal } from "react-dom";
 import { cn } from "../lib/cn";
 import type { NavItem } from "./AppShell";
 
@@ -33,7 +34,7 @@ export default function MobileNavSheet({ open, onClose, items, activeId, onSelec
     onClose();
   }
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-[70] bg-black/40 md:hidden" onClick={onClose} role="presentation">
       <div
         className="absolute inset-x-0 bottom-0 flex max-h-[85vh] flex-col rounded-t-gmv-lg bg-gmv-canvas shadow-gmv-2"
@@ -122,6 +123,7 @@ export default function MobileNavSheet({ open, onClose, items, activeId, onSelec
           </ul>
         </nav>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

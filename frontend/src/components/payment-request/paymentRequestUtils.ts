@@ -29,6 +29,20 @@ export function isReferralPackage(name?: string | null): boolean {
 }
 
 /**
+ * Live gate CCCD = hết ngày 26/8/2026 VN (17:00 26/8 UTC). Đơn tạo TRƯỚC mốc này
+ * được grandfather — không bắt họ tên/CCCD/email khi xuất HĐ (sale chưa từng thấy
+ * form mới). Khớp BE `_pr_created_before_cccd_live` (activation_routes.py) — đừng lệch.
+ * Địa chỉ KHÔNG grandfather (rule mới Tỉnh+Xã lỏng hơn cũ).
+ */
+const CCCD_GATE_LIVE_MS = Date.UTC(2026, 7, 26, 17, 0, 0);
+
+export function prCreatedBeforeCccdLive(createdAt?: string | null): boolean {
+  if (!createdAt) return false;
+  const t = Date.parse(createdAt);
+  return Number.isFinite(t) && t < CCCD_GATE_LIVE_MS;
+}
+
+/**
  * So khớp 1 PR với chuỗi search của user — accent- & case-insensitive (normVi).
  * Fields tìm: PR-ID, tên khách, UID, SĐT, và tên con — cả bé 1 (childName) lẫn
  * các bé phụ (children[].name; children = bé 1 + extra_children từ BE).
@@ -192,6 +206,7 @@ export function fromApiPaymentRequest(raw: any): PaymentRequest {
     taxId: raw.tax_id ?? raw.taxId ?? undefined,
     customerType: raw.customer_type ?? raw.customerType ?? "individual",
     companyName: raw.company_name ?? raw.companyName ?? undefined,
+    invoiceCustomerName: raw.invoice_customer_name ?? raw.invoiceCustomerName ?? undefined,
     leadSource: raw.lead_source ?? raw.leadSource ?? undefined,
     leadChannel: raw.lead_channel ?? raw.leadChannel ?? undefined,
     sdtGoc: raw.sdt_goc ?? raw.sdtGoc ?? undefined,
@@ -401,6 +416,13 @@ export function fromApiActiveRequest(raw: ActiveRequestApiRow): ActiveRequest {
         invoiceRequestedAt: c.invoice_requested_at ?? null,
         taxInvoiceCode: c.tax_invoice_code,
         taxProductCode: c.tax_product_code,
+        // Thông tin xuất HĐ per-course (BE lưu khi kế toán điền form Xuất HĐ)
+        name: c.invoice_customer_name ?? undefined,
+        taxCode: c.tax_code ?? c.taxCode ?? undefined,
+        customerType: (c.customer_type as "individual" | "business" | undefined) ?? undefined,
+        companyName: c.company_name ?? undefined,
+        email: c.email ?? undefined,
+        phone: c.phone ?? undefined,
         leadSource: c.lead_source ?? c.leadSource ?? undefined,
         leadChannel: c.lead_channel ?? c.leadChannel ?? undefined,
         referrerUid: c.referrer_uid ?? undefined,

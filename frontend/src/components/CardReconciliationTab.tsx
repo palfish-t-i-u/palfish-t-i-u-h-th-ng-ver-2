@@ -411,7 +411,7 @@ export default function CardReconciliationTab({
     }
   };
 
-  const [syncToast, setSyncToast] = useState<{ kind: "success" | "error"; msg: string } | null>(null);
+  const [syncToast, setSyncToast] = useState<{ kind: "success" | "error"; msg: string; detail?: string | null } | null>(null);
 
   // Trigger extension sync (mPOS + Payoo) qua window.postMessage — cùng cơ chế
   // với GatewaySyncTab. Bấm ở tab mPOS hay Payoo đều sync CẢ 2 nguồn.
@@ -431,7 +431,7 @@ export default function CardReconciliationTab({
       window.removeEventListener("message", onResult);
       setSyncing(false);
       if (errMsg) {
-        setSyncToast({ kind: "error", msg: errMsg });
+        setSyncToast({ kind: "error", msg: errMsg, detail });
       } else {
         const text = detail || (inserted != null ? `Đồng bộ xong: thêm ${inserted} giao dịch` : "Đồng bộ xong");
         setSyncToast({ kind: "success", msg: text });
@@ -460,9 +460,9 @@ export default function CardReconciliationTab({
     );
   };
 
-  // Auto-dismiss toast sau 5s
+  // Auto-dismiss toast THÀNH CÔNG sau 5s; toast LỖI giữ lại đến khi người dùng bấm đóng (đọc kịp + làm theo hướng dẫn)
   useEffect(() => {
-    if (!syncToast) return;
+    if (!syncToast || syncToast.kind === "error") return;
     const t = setTimeout(() => setSyncToast(null), 5000);
     return () => clearTimeout(t);
   }, [syncToast]);
@@ -484,10 +484,28 @@ export default function CardReconciliationTab({
             background: syncToast.kind === "success" ? "var(--success-bg)" : "var(--danger-bg, #fee2e2)",
             color: syncToast.kind === "success" ? "var(--success-text)" : "var(--danger-text, #991b1b)",
             border: `1px solid ${syncToast.kind === "success" ? "var(--success, #10b981)" : "var(--danger, #ef4444)"}`,
-            fontSize: 13, fontWeight: 500, maxWidth: 380, boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
+            fontSize: 13, fontWeight: 500, maxWidth: 420, boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
+            display: "flex", alignItems: "flex-start", gap: 10,
           }}
         >
-          {syncToast.msg}
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div>{syncToast.msg}</div>
+            {syncToast.detail && syncToast.detail !== syncToast.msg && (
+              <div style={{ marginTop: 4, fontSize: 11.5, fontWeight: 400, opacity: 0.85, fontFamily: "ui-monospace, monospace", wordBreak: "break-word" }}>
+                {syncToast.detail}
+              </div>
+            )}
+          </div>
+          {syncToast.kind === "error" && (
+            <button
+              type="button"
+              onClick={() => setSyncToast(null)}
+              aria-label="Đóng thông báo"
+              style={{ flexShrink: 0, background: "transparent", border: "none", color: "inherit", cursor: "pointer", fontSize: 16, lineHeight: 1, padding: 0, opacity: 0.7 }}
+            >
+              ×
+            </button>
+          )}
         </div>
       )}
       <div className="page page--fit">

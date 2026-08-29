@@ -317,14 +317,19 @@ def _build_excel_customers(orders: list[dict[str, Any]]) -> bytes:
 
     data_font = Font(size=10)
     for ri, row in enumerate(unique_rows, 2):
-        # 14 cột; điền 1, 3, 4, 5 — còn lại rỗng
+        # 14 cột; điền 1, 2 (DN), 3, 4, 5, 8 (CCCD), 9 (MST DN), 10 — còn lại rỗng
         row_vals = [
-            row["_maKH"],           # 1  Mã KH/NCC = 84-SĐT
-            "",                     # 2  Tên đơn vị
-            row.get("tenKhach", ""),# 3  Tên người mua = họ tên khách
-            "Khách hàng",           # 4  Loại
-            row.get("diaChi", ""),  # 5  Địa chỉ
-            "", "", "", "", "", "", "", "", "",  # 6–14
+            row["_maKH"],               # 1  Mã KH/NCC = 84-SĐT
+            row.get("tenDonVi", ""),    # 2  Tên đơn vị (doanh nghiệp)
+            row.get("tenKhach", ""),    # 3  Tên người mua = họ tên khách
+            "Khách hàng",               # 4  Loại
+            row.get("diaChi", ""),      # 5  Địa chỉ
+            "",                         # 6  Số điện thoại
+            "",                         # 7  Ngày sinh
+            row.get("soCccd", ""),      # 8  Số CCCD/Hộ chiếu (cá nhân — thuế NĐ 70/2025)
+            row.get("maSoThue", ""),    # 9  Mã số thuế (doanh nghiệp)
+            row.get("email", ""),       # 10 Email nhận HĐ
+            "", "", "", "",             # 11–14
         ]
         for ci, val in enumerate(row_vals, 1):
             cell = ws.cell(row=ri, column=ci, value=val)

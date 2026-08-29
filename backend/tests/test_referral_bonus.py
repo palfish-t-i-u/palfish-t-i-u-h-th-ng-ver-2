@@ -123,27 +123,21 @@ def _ref_msg(course_over):
     )["message"]
 
 
-def test_referral_line_full():
+def test_referral_lines_removed_from_message():
+    """27/8: chị Hiền yêu cầu bỏ khối thưởng giới thiệu khỏi tin DingTalk."""
     m = _ref_msg({"referrer_uid": "3312345678", "bonus_sessions_referee": 2, "bonus_sessions_referrer": 3})
-    assert "🎁 Thưởng giới thiệu:" in m
-    assert "Bé được giới thiệu (Minh Phương): +2 buổi" in m
-    assert "Người giới thiệu — UID 3312345678: +3 buổi" in m
-
-
-def test_referral_line_referee_only():
-    m = _ref_msg({"bonus_sessions_referee": 2})
-    assert "Bé được giới thiệu (Minh Phương): +2 buổi" in m
+    assert "🎁" not in m
+    assert "Thưởng giới thiệu" not in m
     assert "Người giới thiệu" not in m
+    assert "⚠ Gói giới thiệu" not in m
+    # Đơn REFER vẫn hiện đúng info gói (tên gói, tiền, nguồn) — chỉ bỏ khối thưởng
+    assert "REFER" in m
 
 
-def test_referral_line_uid_but_no_sessions():
-    m = _ref_msg({"referrer_uid": "3312345678"})
-    assert "Người giới thiệu — UID 3312345678: chưa ghi số buổi" in m
-
-
-def test_referral_line_empty_shows_warning():
+def test_referral_empty_no_warning_line():
+    """Đơn REFER trống field referral cũng không hiện dòng ⚠ nữa."""
     m = _ref_msg({})
-    assert "⚠ Gói giới thiệu — chưa nhập UID & số buổi cộng" in m
+    assert "⚠ Gói giới thiệu" not in m
     assert "🎁" not in m
 
 

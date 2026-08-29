@@ -33,7 +33,7 @@ var GATE_CFG = {
 
   kyLuong:     '',   // 'YYYY-MM'. '' = tự lấy tháng trước.
   appEndpoint: 'https://palfish-gmv-api.onrender.com/api/payroll/payslips/receive',
-  gateToken:   '',   // Render env GATE_TOKEN — dán giá trị thật trong Apps Script, KHÔNG commit
+  gateToken:   PropertiesService.getScriptProperties().getProperty('GATE_TOKEN') || '',
 
   colMaNV:     'Mã NV',
   colName:     'Name',
@@ -64,58 +64,168 @@ function guiPhieuOnEdit(e) {
     if (!e || !e.range) return;
     var sh = e.range.getSheet();
     if (sh.getName() !== GATE_CFG.mainSheet) return;
-    if (e.range.getNumRows() !== 1 || e.range.getNumColumns() !== 1) return; // bỏ paste vùng
-    var row = e.range.getRow();
-    if (row < 2) return;
+    if (e.range.getNumColumns() !== 1) return;
+    var startRow = e.range.getRow();
+    var numRows  = e.range.getNumRows();
+    if (startRow < 2) { startRow = 2; numRows = numRows - (2 - e.range.getRow()); }
+    if (numRows < 1) return;
 
     var hmap   = gHeaderMap_(sh);
     var header = gHeaderAt_(hmap, e.range.getColumn());
-    if (!header || GATE_COLS.indexOf(header) < 0) return;   // chỉ 5 cột gate
+    if (!header || GATE_COLS.indexOf(header) < 0) return;
 
-    var ss   = SpreadsheetApp.getActiveSpreadsheet();
-    var val  = e.range.getValue() === true;
-    var code = gCode_(sh, row, hmap);
-    var ky   = kyLuongHienTai_();
-
-    // (A) Cột là NÚT GỬI
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var ky = kyLuongHienTai_();
     var sendStep = gStepBySend_(header);
-    if (sendStep) {
-      if (!val) { gSaveState_(code, ky, header, false); return; }   // bỏ tick
-      var cReq = hmap[sendStep.require];
-      if (cReq && sh.getRange(row, cReq).getValue() !== true) {     // CHẶN CỨNG
-        e.range.setValue(false);
-        gSaveState_(code, ky, header, false);
-        ss.toast('Phải tick "' + sendStep.require + '" trước khi ' + sendStep.send.toLowerCase() + '.',
-          '⛔ Chưa đủ điều kiện', 6);
-        return;
-      }
-      var res = gEnqueueRow_(sh, row, hmap, sendStep.stage, sendStep.label);
-      gSaveState_(code, ky, header, true);
-      ss.toast(res.msg, res.title, 6);
-      return;
+    var reqStep  = gStepByRequire_(header);
+
+    // ═══ BATCH READ: tất cả data 1 lần ═══
+    var lastCol = sh.getLastColumn();
+    var headers = sh.getRange(1, 1, 1, lastCol).getValues()[0];
+    var allData = sh.getRange(startRow, 1, numRows, lastCol).getValues();
+    var cMa   = hmap[GATE_CFG.colMaNV];
+    var cName = hmap[GATE_CFG.colName];
+    var cReq  = sendStep ? hmap[sendStep.require] : 0;
+    var cSend = reqStep  ? hmap[reqStep.send]     : 0;
+    var editCol = e.range.getColumn();
+    var skipCols = gSkipCols_();
+
+    // Đọc outbox + state 1 lần
+    var ob = gOutbox_();
+    var obAll = ob.getDataRange().getValues();
+    var obIdx = {};
+    for (var oi = 1; oi < obAll.length; oi++) {
+      var oid = String(obAll[oi][0] || '');
+      if (oid) obIdx[oid] = { row: oi + 1, status: String(obAll[oi][5]) };
     }
 
-    // (B) Cột là ĐIỀU KIỆN cho một nút gửi
-    var reqStep = gStepByRequire_(header);
-    if (reqStep) {
-      gSaveState_(code, ky, header, val);
-      if (!val) {   // bỏ điều kiện → thu hồi nút gửi phụ thuộc
-        var cSend = hmap[reqStep.send];
-        if (cSend && sh.getRange(row, cSend).getValue() === true) {
-          sh.getRange(row, cSend).setValue(false);
-          gSaveState_(code, ky, reqStep.send, false);
-          ss.toast('Bỏ "' + header + '" → thu hồi "' + reqStep.send + '" (' + gTenDong_(sh,row,hmap) + ').',
-            '↩ Thu hồi', 6);
+    var st = gGateState_();
+    var stAll = st.getDataRange().getValues();
+    var stIdx = {};
+    for (var si = 1; si < stAll.length; si++) {
+      var sid = String(stAll[si][0] || '');
+      if (sid) {
+        var parsed = {};
+        try { parsed = JSON.parse(stAll[si][3] || '{}'); } catch(_){}
+        stIdx[sid] = { row: si + 1, states: parsed };
+      }
+    }
+
+    // ═══ PROCESS IN MEMORY ═══
+    var obAppends = [];           // dòng mới append vào outbox
+    var obUpdates = {};           // { sheetRow: rowArr }
+    var stUpdates = {};           // { id: { row, code, ky, states } }
+    var cellFalse = [];           // [sheetRow] — setValue(false) trên bảng chính
+    var enqueued = 0, blocked = 0, revoked = 0, confirmed = 0;
+
+    for (var ri = 0; ri < numRows; ri++) {
+      var rowData = allData[ri];
+      var row = startRow + ri;
+      var val  = rowData[editCol - 1] === true;
+      var code = cMa ? String(rowData[cMa - 1] || '').trim() : '';
+      if (!code) continue;
+      var name = cName ? String(rowData[cName - 1] || '').trim() : '';
+      var stKey = code + '|' + ky;
+
+      // Lấy/tạo state entry trong bộ nhớ
+      if (!stIdx[stKey]) stIdx[stKey] = { row: 0, states: {} };
+
+      // (A) Cột là NÚT GỬI
+      if (sendStep) {
+        if (!val) { stIdx[stKey].states[header] = false; continue; }
+        if (cReq && rowData[cReq - 1] !== true) {
+          cellFalse.push(row);
+          stIdx[stKey].states[header] = false;
+          blocked++;
+          continue;
         }
-      } else {
-        ss.toast('✓ ' + header + ': ' + gTenDong_(sh,row,hmap) + '. Mở "' + reqStep.send + '".', 'Trạng thái', 5);
+        // Build payload in memory
+        var phieu = gBuildPhieu_(headers, rowData, skipCols);
+        var obId = code + '|' + ky + '|' + sendStep.stage;
+        if (obIdx[obId] && obIdx[obId].status === 'sent') { continue; }
+        var payload = {
+          meta: { source:'sheet-gate', version:1, code:code, ky_luong:ky,
+                  stage:sendStep.stage, stage_label:sendStep.label,
+                  enqueued_at:new Date().toISOString(), sheet_id:ss.getId() },
+          phieu: phieu,
+        };
+        var rowArr = [obId, code, name, ky, sendStep.stage, 'pending',
+                      new Date().toISOString(), '', 0, '', JSON.stringify(payload)];
+        if (obIdx[obId]) obUpdates[obIdx[obId].row] = rowArr;
+        else { obAppends.push(rowArr); obIdx[obId] = { row: -1, status:'pending' }; }
+        stIdx[stKey].states[header] = true;
+        enqueued++;
+        continue;
       }
-      return;
+
+      // (B) Cột là ĐIỀU KIỆN cho một nút gửi
+      if (reqStep) {
+        stIdx[stKey].states[header] = val;
+        if (!val && cSend && rowData[cSend - 1] === true) {
+          cellFalse.push(row);
+          stIdx[stKey].states[reqStep.send] = false;
+          revoked++;
+        } else if (val) { confirmed++; }
+        continue;
+      }
+
+      // (C) Cột xác nhận cuối
+      stIdx[stKey].states[header] = val;
+      if (val) confirmed++;
     }
 
-    // (C) Cột xác nhận cuối (NV xác nhận sau thuế)
-    gSaveState_(code, ky, header, val);
-    if (val) ss.toast('✓ ' + header + ': ' + gTenDong_(sh,row,hmap) + '. Sẵn sàng đi lệnh ngân hàng.', 'Hoàn tất', 5);
+    // ═══ BATCH WRITE ═══
+
+    // 1. Outbox updates (overwrite existing rows)
+    for (var ur in obUpdates) {
+      ob.getRange(Number(ur), 1, 1, OUTBOX_HEADERS.length).setValues([obUpdates[ur]]);
+    }
+    // 2. Outbox appends (new rows — batch)
+    if (obAppends.length) {
+      ob.getRange(ob.getLastRow() + 1, 1, obAppends.length, OUTBOX_HEADERS.length).setValues(obAppends);
+    }
+
+    // 3. State writes (batch: collect updates + appends)
+    var stAppendArr = [];
+    for (var sk in stIdx) {
+      var entry = stIdx[sk];
+      if (!entry.states || !Object.keys(entry.states).length) continue;
+      var parts2 = sk.split('|');
+      var arr = [sk, parts2[0], parts2[1], JSON.stringify(entry.states)];
+      if (entry.row > 0) st.getRange(entry.row, 1, 1, STATE_HEADERS.length).setValues([arr]);
+      else stAppendArr.push(arr);
+    }
+    if (stAppendArr.length) {
+      st.getRange(st.getLastRow() + 1, 1, stAppendArr.length, STATE_HEADERS.length).setValues(stAppendArr);
+    }
+
+    // 4. setValue(false) trên bảng chính (blocked/revoked)
+    var targetCol = sendStep ? editCol : (cSend || editCol);
+    for (var fi = 0; fi < cellFalse.length; fi++) {
+      sh.getRange(cellFalse[fi], targetCol).setValue(false);
+    }
+
+    // ═══ TOAST ═══
+    if (numRows === 1) {
+      var singleName = (cName ? String(allData[0][cName-1]||'') : '') +
+                        (cMa ? ' (' + String(allData[0][cMa-1]||'') + ')' : '');
+      if (sendStep) {
+        if (blocked) ss.toast('Phải tick "' + sendStep.require + '" trước.', '⛔ Chưa đủ điều kiện', 6);
+        else if (enqueued) ss.toast(singleName + ' kỳ ' + ky + '.', '✓ Đã xếp hàng gửi (' + sendStep.label + ')', 6);
+      } else if (reqStep) {
+        if (revoked) ss.toast('Bỏ "' + header + '" → thu hồi "' + reqStep.send + '" (' + singleName + ').', '↩ Thu hồi', 6);
+        else if (allData[0][editCol-1]===true) ss.toast('✓ ' + header + ': ' + singleName + '. Mở "' + reqStep.send + '".', 'Trạng thái', 5);
+      } else {
+        if (allData[0][editCol-1]===true) ss.toast('✓ ' + header + ': ' + singleName + '. Sẵn sàng đi lệnh ngân hàng.', 'Hoàn tất', 5);
+      }
+    } else {
+      var summary = [];
+      if (enqueued) summary.push(enqueued + ' xếp hàng');
+      if (blocked)  summary.push(blocked + ' chặn (thiếu điều kiện)');
+      if (revoked)  summary.push(revoked + ' thu hồi');
+      if (confirmed) summary.push(confirmed + ' xác nhận');
+      ss.toast(summary.join(' · ') || numRows + ' dòng.', '⚡ ' + header + ' (' + numRows + ' dòng)', 8);
+    }
   } catch (err) {
     SpreadsheetApp.getActiveSpreadsheet().toast('Lỗi cổng gửi phiếu: ' + err, 'Cổng gửi phiếu', 8);
   }
@@ -418,5 +528,123 @@ function testGateKetNoi() {
     }
   } catch (err) {
     ss.toast('❌ Lỗi kết nối: ' + String(err).slice(0, 200), '❌ Test Gate', 15);
+  }
+}
+
+/* ======== GHI NGƯỢC XÁC NHẬN (app → sheet) — G1-T11 ========
+ *
+ * Chiều app→sheet: khi NV bấm "Xác nhận" phiếu in-app, backend POST tới Web App này
+ * (doPost) → tick ô 'NV xác nhận trước thuế' / 'NV xác nhận sau thuế' theo stage,
+ * ĐỒNG THỜI ghi _gate_state (nguồn chân lý — sống qua refresh BQ). setValue KHÔNG
+ * kích trigger guiPhieuOnEdit (giống restoreGateTicks_) → không enqueue lại.
+ *
+ * CÀI 1 LẦN: Deploy → New deployment → type "Web app" → Execute as: Me,
+ *   Who has access: Anyone → copy URL → dán vào Render env PAYSLIP_GATE_WEBAPP_URL.
+ * Secret = GATE_CFG.gateToken (ScriptProperties GATE_TOKEN) — cùng token cổng receive.
+ * Lưới an toàn: menu '🔃 Đồng bộ xác nhận từ app' (pullConfirmsFromApp) nếu 1 push rớt.
+ */
+
+var CONFIRM_COL_BY_STAGE = {
+  truoc_thue: 'NV xác nhận trước thuế',
+  sau_thue:   'NV xác nhận sau thuế',
+};
+
+function _gateJsonOut_(obj) {
+  return ContentService.createTextOutput(JSON.stringify(obj))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
+/** Web App endpoint: backend báo NV đã confirm → tick ô + ghi _gate_state. */
+function doPost(e) {
+  try {
+    var body = {};
+    try { body = JSON.parse((e && e.postData && e.postData.contents) || '{}'); } catch (_) {}
+    var expected = String(GATE_CFG.gateToken || '').trim();
+    if (!expected || String(body.secret || '') !== expected) {
+      return _gateJsonOut_({ ok:false, error:'unauthorized' });
+    }
+    var code  = String(body.code || '').trim();
+    var stage = String(body.stage || '').trim();
+    var ky    = String(body.ky_luong || '').trim() || kyLuongHienTai_();
+    var col   = CONFIRM_COL_BY_STAGE[stage];
+    if (!code || !col) return _gateJsonOut_({ ok:false, error:'bad_request' });
+
+    var lk = LockService.getDocumentLock();
+    lk.waitLock(20000);
+    try {
+      gSaveState_(code, ky, col, true);              // 1) nguồn chân lý (sống qua refresh)
+      var ticked = gTickConfirmCell_(code, ky, col);  // 2) tick ô nếu đang hiển thị đúng kỳ
+      return _gateJsonOut_({ ok:true, code:code, stage:stage, ticked:ticked });
+    } finally {
+      lk.releaseLock();
+    }
+  } catch (err) {
+    return _gateJsonOut_({ ok:false, error:String(err).slice(0, 200) });
+  }
+}
+
+/** Tick ô 'NV xác nhận ...' cho 1 mã NV trên bảng chính. Chỉ tick nếu sheet đang ở đúng kỳ. */
+function gTickConfirmCell_(code, ky, header) {
+  if (ky && ky !== kyLuongHienTai_()) return false;   // bảng chính chỉ hiển thị 1 kỳ
+  var main = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(GATE_CFG.mainSheet);
+  if (!main) return false;
+  var hmap = gHeaderMap_(main);
+  var cMa = hmap[GATE_CFG.colMaNV], cCol = hmap[header];
+  if (!cMa || !cCol) return false;
+  var last = main.getLastRow();
+  if (last < 2) return false;
+  var codes = main.getRange(2, cMa, last - 1, 1).getValues();
+  for (var r = 0; r < codes.length; r++) {
+    if (String(codes[r][0]).trim() === code) {
+      main.getRange(r + 2, cCol).setValue(true);   // setValue KHÔNG kích trigger
+      return true;
+    }
+  }
+  return false;
+}
+
+/** Suy URL /confirmations từ appEndpoint (.../payslips/receive → .../payslips/confirmations). */
+function gConfirmationsUrl_() {
+  var base = String(GATE_CFG.appEndpoint || '');
+  var m = base.match(/^(.*\/payslips)\//);
+  return m ? m[1] + '/confirmations' : '';
+}
+
+/** LƯỚI AN TOÀN (menu): kéo mọi phiếu đã confirm của kỳ hiện tại từ app → tick + ghi state. */
+function pullConfirmsFromApp() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var url = gConfirmationsUrl_();
+  if (!url) { ss.toast('Chưa suy được URL confirmations từ appEndpoint.', '🔃 Đồng bộ', 8); return; }
+  var ky = kyLuongHienTai_();
+  var secret = String(GATE_CFG.gateToken || '').trim();
+  try {
+    var resp = UrlFetchApp.fetch(url + '?ky_luong=' + encodeURIComponent(ky), {
+      method:'get',
+      headers: secret ? { 'X-Gate-Token': secret } : {},
+      muteHttpExceptions:true,
+    });
+    var rc = resp.getResponseCode();
+    if (rc < 200 || rc >= 300) {
+      ss.toast('HTTP ' + rc + ': ' + resp.getContentText().slice(0, 150), '❌ Đồng bộ', 10);
+      return;
+    }
+    var list = (JSON.parse(resp.getContentText() || '{}').confirmations) || [];
+    var lk = LockService.getDocumentLock();
+    lk.waitLock(20000);
+    var n = 0;
+    try {
+      for (var i = 0; i < list.length; i++) {
+        var code  = String(list[i].code || '').trim();
+        var stage = String(list[i].stage || '').trim();
+        var rky   = String(list[i].ky_luong || ky).trim();
+        var col   = CONFIRM_COL_BY_STAGE[stage];
+        if (!code || !col) continue;
+        gSaveState_(code, rky, col, true);
+        if (gTickConfirmCell_(code, rky, col)) n++;
+      }
+    } finally { lk.releaseLock(); }
+    ss.toast('Đã đồng bộ ' + n + ' xác nhận (kỳ ' + ky + ').', '🔃 Đồng bộ xác nhận', 6);
+  } catch (err) {
+    ss.toast('Lỗi đồng bộ: ' + String(err).slice(0, 150), '❌ Đồng bộ', 10);
   }
 }

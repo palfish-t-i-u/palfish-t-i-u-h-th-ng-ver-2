@@ -1,79 +1,10 @@
 import { useState } from "react";
 import { formatApiError } from "../../lib/apiErrors";
-import { formatVndNumber } from "../../lib/vndFormat";
 import { confirmPayslip, requestReview } from "../../lib/api/payroll";
 import type { PayslipDetail as PayslipDetailType, PayslipListItem, PayslipStage } from "../../types/payroll";
 import { Card, CardBody, CardHeader } from "../ui/Card";
 import Button from "../ui/Button";
-
-export const PAYSLIP_BLOCKS: { title: string; keys: string[] }[] = [
-  { title: "Lương cơ bản", keys: ["Lương cơ bản", "Công", "LCB theo ngày công"] },
-  {
-    title: "Thưởng + COM",
-    keys: ["Thưởng COM", "GMV", "GMV bán mới", "GMV giới thiệu", "GMV tái ký", "KPI", "Tỉ lệ đạt KPI", "% Com ≥100%"],
-  },
-  { title: "Phụ cấp", keys: ["Hỗ trợ ăn trưa", "Tiền hỗ trợ máy tính", "Hỗ trợ tiền xe + PC trách nhiệm"] },
-  { title: "Bảo hiểm", keys: ["Bảo hiểm", "Note"] },
-  {
-    title: "Thuế + Bù tiền",
-    keys: ["Khấu trừ thuế", "Thue_TNCN", "Thu_nhap_tinh_thue", "Giam_tru_ban_than", "Giam_tru_NPT", "Tong_thu_nhap", "Bù tiền", "Ghi chú"],
-  },
-  { title: "Tổng tiền", keys: ["Tổng lương + thưởng", "Tổng lương", "Luong_thanh_toan (Net)"] },
-];
-
-const HEADER_KEYS = new Set(["STT", "Name", "Chức danh", "Mã NV", "Team", "Loại NV"]);
-
-const KEY_NORMALIZE: Record<string, string> = {
-  "Luong co ban": "Lương cơ bản",
-  "LCB theo ngay cong": "LCB theo ngày công",
-  "Thuong COM": "Thưởng COM",
-  "Ho tro an trua": "Hỗ trợ ăn trưa",
-  "Tien ho tro may tinh": "Tiền hỗ trợ máy tính",
-  "Ho tro tien xe + PC trach nhiem": "Hỗ trợ tiền xe + PC trách nhiệm",
-  "Bao hiem + note": "Bảo hiểm + note",
-  "Bao hiem": "Bảo hiểm",
-  "Luong_thanh_toan (Net)": "Tổng lương + thưởng",
-  "Tổng lương + thưởng (Net)": "Tổng lương + thưởng",
-  "Khau tru thue": "Khấu trừ thuế",
-  "Bu tien": "Bù tiền",
-  "Ghi chu": "Ghi chú",
-  "Tong luong + thuong": "Tổng lương + thưởng",
-  "Tong luong": "Tổng lương",
-  "Chuc danh": "Chức danh",
-};
-
-const PREFIX_KEYS = ["Khấu trừ thuế", "Ghi chú"];
-
-function normalizePhieu(raw: Record<string, unknown>): Record<string, unknown> {
-  const result: Record<string, unknown> = {};
-  for (const [k, v] of Object.entries(raw)) {
-    const nk = KEY_NORMALIZE[k] ?? k;
-    if (nk === "Bảo hiểm + note") {
-      result["Bảo hiểm"] = v;
-      if (!("Note" in raw)) result["Note"] = "—";
-      continue;
-    }
-    result[nk] = v;
-  }
-  return result;
-}
-
-function matchesBlockKey(dataKey: string, blockKey: string): boolean {
-  if (dataKey === blockKey) return true;
-  if (PREFIX_KEYS.includes(blockKey) && dataKey.startsWith(blockKey)) return true;
-  return false;
-}
-
-const KEEP_DECIMAL = new Set(["Công", "Tỉ lệ đạt KPI", "% Com ≥100%"]);
-
-function formatValue(val: unknown, key?: string): string {
-  if (val === null || val === undefined || val === "") return "—";
-  if (typeof val === "number") {
-    if (key && KEEP_DECIMAL.has(key)) return val.toLocaleString("vi-VN");
-    return formatVndNumber(val) || String(val);
-  }
-  return String(val);
-}
+import { PAYSLIP_BLOCKS, normalizePhieu, matchesBlockKey, formatValue, stageLabel } from "./payslipFormat";
 
 function isReviewLocked(kyLuong: string): boolean {
   const parts = kyLuong.split("-").map(Number);
@@ -91,17 +22,12 @@ function isReviewLocked(kyLuong: string): boolean {
   return false;
 }
 
-function stageLabel(stage: PayslipStage) {
-  return stage === "truoc_thue" ? "Trước thuế" : "Sau thuế";
-}
-
 interface BlockProps {
   phieu: Record<string, unknown>;
 }
 
 function PhieuBlocks({ phieu }: BlockProps) {
   const normalized = normalizePhieu(phieu);
-  const renderedKeys = new Set<string>();
 
   return (
     <div className="space-y-2">
@@ -115,7 +41,6 @@ function PhieuBlocks({ phieu }: BlockProps) {
           }
         }
         if (rows.length === 0) return null;
-        rows.forEach((r) => renderedKeys.add(r.dataKey));
         return (
           <Card key={block.title}>
             <CardHeader className="py-1.5 text-sm">{block.title}</CardHeader>
@@ -133,27 +58,6 @@ function PhieuBlocks({ phieu }: BlockProps) {
         );
       })}
 
-      {(() => {
-        const otherKeys = Object.keys(normalized).filter(
-          (k) => !HEADER_KEYS.has(k) && !renderedKeys.has(k) && normalized[k] !== "" && normalized[k] !== null
-        );
-        if (otherKeys.length === 0) return null;
-        return (
-          <Card key="khac">
-            <CardHeader className="py-1.5 text-sm text-gmv-muted">Khác</CardHeader>
-            <CardBody className="p-0">
-              <dl className="divide-y divide-gmv-border">
-                {otherKeys.map((k) => (
-                  <div key={k} className="flex justify-between gap-4 px-3 py-1 text-[13px]">
-                    <dt className="text-gmv-muted">{k}</dt>
-                    <dd className="font-medium text-gmv-text-strong text-right">{formatValue(normalized[k], k)}</dd>
-                  </div>
-                ))}
-              </dl>
-            </CardBody>
-          </Card>
-        );
-      })()}
     </div>
   );
 }
@@ -167,6 +71,7 @@ function ActionBar({ item, onUpdate }: ActionBarProps) {
   const [loadingConfirm, setLoadingConfirm] = useState(false);
   const [loadingReview, setLoadingReview] = useState(false);
   const [actionError, setActionError] = useState("");
+  const [loadingPdf, setLoadingPdf] = useState(false);
 
   const locked = isReviewLocked(item.ky_luong);
   const confirmed = item.confirm_status === "confirmed";
@@ -198,6 +103,19 @@ function ActionBar({ item, onUpdate }: ActionBarProps) {
     }
   };
 
+  const handlePdf = async () => {
+    setActionError("");
+    setLoadingPdf(true);
+    try {
+      const { downloadPayslipPdf } = await import("./payslipPdf");
+      await downloadPayslipPdf([item]);
+    } catch {
+      setActionError("Không tạo được PDF — thử lại hoặc báo IT.");
+    } finally {
+      setLoadingPdf(false);
+    }
+  };
+
   return (
     <div className="mt-2 space-y-1.5">
       {actionError && <p className="text-xs text-gmv-danger">{actionError}</p>}
@@ -220,6 +138,9 @@ function ActionBar({ item, onUpdate }: ActionBarProps) {
             : reviewRequested
             ? "Đã yêu cầu xem lại"
             : "Yêu cầu xem xét lại"}
+        </Button>
+        <Button variant="ghost" disabled={loadingPdf} onClick={() => void handlePdf()}>
+          {loadingPdf ? "Đang tạo PDF..." : "Tải PDF"}
         </Button>
       </div>
       {locked && (
