@@ -145,10 +145,7 @@ export default function BC04CashInReport() {
     <div className="min-w-0 space-y-4 overflow-x-hidden">
       {!isMobile && (
         <p className="text-sm text-gmv-muted">
-          BC04 — mọi khoản tiền thực về TK MB Hà Nội mỗi ngày (CK khách, cọc, tiền thẻ, rút TikTok, khoản khác), kèm số
-          dư cộng dồn — thay báo cáo tiền về thủ công. Xuất Excel đúng layout sheet <strong>HN BANK 26</strong> để gửi
-          Trung Quốc. Thiếu khoản tiền thẻ trong ngày? Vào "Đối soát giao dịch mPOS/Payoo" đồng bộ trước rồi bấm Làm
-          mới ở đây.
+          BC04 — thống kê mọi khoản tiền thực về TK MB Hà Nội mỗi ngày (CK khách, cọc, tiền thẻ, rút TikTok, khoản khác).
         </p>
       )}
 
@@ -193,7 +190,7 @@ export default function BC04CashInReport() {
           onClick={() => data && downloadCashInXlsx(data, { from, to })}
           disabled={!data || rows.length === 0}
         >
-          Xuất Excel (HN BANK 26)
+          Xuất Excel
         </Button>
       </div>
 
