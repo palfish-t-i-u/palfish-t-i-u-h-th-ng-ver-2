@@ -394,6 +394,84 @@ class TestBc04BankRowTeamResolution:
         assert result["rows"][0]["team"] == ""
 
 
+class TestBc04TeamFilterDoesNotAffectBalance:
+    """Xác nhận từ leader: Số dư (cột E) là khái niệm TOÀN TÀI KHOẢN — phải cộng dồn
+    trên TOÀN BỘ dataset (mọi team + khoản chưa khớp) trước, filter team chỉ quyết
+    định dòng nào được TRẢ VỀ, tuyệt đối không tính lại balance trên tập con đã lọc."""
+
+    def _fixture_two_teams_one_day(self):
+        # 3 khoản cùng ngày: Inhouse 1 (2tr), Inhouse 2 (3tr), chưa khớp/team rỗng (1tr)
+        gateway_rows = [
+            # g1 co y dat CUOI ngay (12:00 VN, sau ca b1 09:00 VN va b2 10:00 VN) — de
+            # phan biet ro "balance dung" (cong don het b1+b2+g1) voi "balance sai" neu
+            # lo tinh lai tren rieng tap da loc theo team (chi opening+g1).
+            {"id": "g1", "source": "mpos", "settlement_code": None, "net_amount": 2_000_000.0,
+             "funded_date": "2026-08-26 12:00:00", "match_status": "pending",
+             "payment_line_id": "line-ih1"},
+        ]
+        bank_rows = [
+            {"txn_id": "b1", "amount": 3_000_000.0, "account_number": "1680011668899",
+             "match_status": "auto_matched", "content": "CK hoc phi ih2",
+             "transaction_date": "2026-08-26T02:00:00+00:00", "payment_line_id": "line-ih2", "team": None},
+            {"txn_id": "b2", "amount": 1_000_000.0, "account_number": "1680011668899",
+             "match_status": "pending", "content": "chuyen nham",
+             "transaction_date": "2026-08-26T03:00:00+00:00", "payment_line_id": None, "team": None},
+        ]
+        sb = _make_fake_sb(
+            gateway_transactions=gateway_rows,
+            bank_transactions=bank_rows,
+            payment_lines=[
+                {"id": "line-ih1", "payment_request_id": "PR-1"},
+                {"id": "line-ih2", "payment_request_id": "PR-2"},
+            ],
+            payment_requests=[
+                {"id": "PR-1", "sale_email": "sale1@palfish.vn"},
+                {"id": "PR-2", "sale_email": "sale2@palfish.vn"},
+            ],
+            nhan_su_sale=[
+                {"email": "sale1@palfish.vn", "team": "Inhouse 1", "sub_team": None},
+                {"email": "sale2@palfish.vn", "team": "Inhouse 2", "sub_team": None},
+            ],
+        )
+        return sb
+
+    def test_unfiltered_balance_sums_all_teams_in_date_order(self):
+        sb = self._fixture_two_teams_one_day()
+        result = rr._build_bc04_rows(sb, "2026-08-26", "2026-08-26", 1_000_000, None)
+        # Thu tu theo gio VN thuc: b1 (02:00 UTC = 09:00 VN) < b2 (03:00 UTC = 10:00 VN)
+        # < gateway g1 (funded_date naive da la 12:00 VN san, khong convert them)
+        balances = [r["balance"] for r in result["rows"]]
+        assert balances == [4_000_000.0, 5_000_000.0, 7_000_000.0]
+        assert result["summary"]["closing_balance"] == pytest.approx(7_000_000.0)
+
+    def test_filtered_by_team_returns_subset_but_balance_stays_whole_account(self):
+        """Lọc team=Inhouse 1 chỉ được trả về 1 dòng (gateway g1), nhưng giá trị balance
+        của dòng đó PHẢI VẪN LÀ 7.000.000 (đã cộng cả b1+b2+g1) — không phải 3.000.000
+        (opening 1tr + chỉ input của riêng g1 2tr) nếu tính sai trên tập con đã lọc."""
+        sb = self._fixture_two_teams_one_day()
+        result = rr._build_bc04_rows(sb, "2026-08-26", "2026-08-26", 1_000_000, "Inhouse 1")
+        assert len(result["rows"]) == 1
+        assert result["rows"][0]["team"] == "Inhouse 1"
+        assert result["rows"][0]["balance"] == pytest.approx(7_000_000.0)
+        # closing_balance toan tai khoan khong doi du co filter
+        assert result["summary"]["closing_balance"] == pytest.approx(7_000_000.0)
+        # total_input trong summary chi phan anh dong da loc (dung y nghia "tong hien thi")
+        assert result["summary"]["total_input"] == pytest.approx(2_000_000.0)
+
+    def test_days_ending_balance_reflects_whole_account_even_when_filtered(self):
+        sb = self._fixture_two_teams_one_day()
+        result = rr._build_bc04_rows(sb, "2026-08-26", "2026-08-26", 1_000_000, "Inhouse 1")
+        assert len(result["days"]) == 1
+        assert result["days"][0]["ending_balance"] == pytest.approx(7_000_000.0)
+        assert result["days"][0]["total_input"] == pytest.approx(2_000_000.0)
+
+    def test_unmatched_row_team_empty_excluded_when_team_filter_active(self):
+        sb = self._fixture_two_teams_one_day()
+        result = rr._build_bc04_rows(sb, "2026-08-26", "2026-08-26", 1_000_000, "Inhouse 2")
+        assert len(result["rows"]) == 1
+        assert result["rows"][0]["txn_id"] == "b1"
+
+
 class TestBc04AnnotationOverride:
     def test_manual_annotation_overrides_auto_classification(self):
         sb = _make_fake_sb(cash_in_annotations=[

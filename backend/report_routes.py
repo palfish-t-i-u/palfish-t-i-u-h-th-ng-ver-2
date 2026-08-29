@@ -643,16 +643,22 @@ def _load_bc04_annotations(sb, keys: list[tuple[str, str]]) -> dict[tuple[str, s
 
 
 def _build_bc04_rows(sb, d_start: str, d_end: str, opening_balance: float, team: str | None) -> dict:
+    """Số dư (cột E) là khái niệm TOÀN TÀI KHOẢN — PHẢI cộng dồn trên TOÀN BỘ dataset
+    (mọi team + khoản chưa khớp), đúng thứ tự ngày, TRƯỚC khi áp filter `team`. Filter
+    `team` chỉ là bước SAU CÙNG quyết định dòng nào được trả về — không được lọc trước
+    rồi tính lại balance trên tập con, vì sẽ mất các khoản team khác đóng góp giữa chừng,
+    số dư lệch khỏi số dư ngân hàng thật. (Xác nhận từ leader — cùng convention BC03:
+    report_routes.py so trực tiếp chuỗi raw team, không canonical hoá; dòng chưa khớp
+    sale nào → team rỗng → tự động bị loại khi filter active, hiện đủ khi không filter.)
+    """
     card_rows, settlement_codes = _load_bc04_card_rows(sb, d_start, d_end)
     bank_rows = _load_bc04_bank_rows(sb, d_start, d_end, settlement_codes)
     all_rows = card_rows + bank_rows
-    if team:
-        all_rows = [r for r in all_rows if (r.get("team") or "").strip().lower() == team.strip().lower()]
-
     all_rows.sort(key=lambda r: (r["date"], r["sort_ts"], r["source"], str(r["txn_id"])))
 
     annotations = _load_bc04_annotations(sb, [(r["source"], str(r["txn_id"])) for r in all_rows])
 
+    team_norm = (team or "").strip().lower()
     balance = float(opening_balance or 0)
     total_input = 0.0
     total_rmb = 0.0
@@ -663,18 +669,25 @@ def _build_bc04_rows(sb, d_start: str, d_end: str, opening_balance: float, team:
         if r["date"] not in rate_cache:
             rate_cache[r["date"]] = get_rate_for_date(sb, date.fromisoformat(r["date"]))
         rate = rate_cache[r["date"]]
+        rmb_value = round(r["input"] / float(rate), 2) if rate else 0
+
+        # Cộng dồn balance + ending_balance mỗi ngày trên TOÀN BỘ dataset, không phụ
+        # thuộc filter team (all_rows đã sắp theo date+sort_ts nên dòng cuối = đúng).
+        balance += r["input"]
+        day_bucket = days.setdefault(r["date"], {"total_input": 0.0, "total_rmb": 0.0, "ending_balance": 0.0})
+        day_bucket["ending_balance"] = balance
+
+        row_team = (r.get("team") or "").strip().lower()
+        if team_norm and row_team != team_norm:
+            continue  # filter team — chỉ ảnh hưởng dòng nào được TRẢ VỀ, không đụng balance
+
         auto_business_line, auto_main_cat = _BC04_AUTO_CLASSIFY.get(r["group"], ("", ""))
         ann = annotations.get((r["source"], str(r["txn_id"]))) or {}
 
-        balance += r["input"]
         total_input += r["input"]
-        rmb_value = round(r["input"] / float(rate), 2) if rate else 0
         total_rmb += rmb_value
-
-        day_bucket = days.setdefault(r["date"], {"total_input": 0.0, "total_rmb": 0.0, "ending_balance": 0.0})
         day_bucket["total_input"] += r["input"]
         day_bucket["total_rmb"] += rmb_value
-        day_bucket["ending_balance"] = balance  # all_rows đã sắp theo (date, sort_ts) — dòng cuối cùng trong ngày là đúng
 
         out_rows.append({
             "source": r["source"],
