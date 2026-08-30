@@ -103,12 +103,13 @@
 - E2E: `frontend/e2e/crm-sync.spec.ts`, `frontend/e2e/journeys/crm-dashboard.spec.ts`
 - Docs: `docs/M5_DOI_CHIEU.md`, `docs/M5_GSHEET_IMPORT.md`, `docs/M5_OPERATIONS.md`
 
-## 7. Báo cáo (BC01 / BC02 / BC03)
+## 7. Báo cáo (BC01 / BC02 / BC03 / BC04)
 
 - FE hub: `frontend/src/components/ReportsHub.tsx`
 - BC01: `frontend/src/components/reports/BC01SalesPerformance.tsx` — BE trong `backend/revenue_routes.py`
 - BC02: `frontend/src/components/reports/BC02KeyDataReport.tsx` + `frontend/src/lib/bc02TypeMap.ts` — BE trong `backend/revenue_routes.py`
 - BC03: `frontend/src/components/ReportBC03Tab.tsx` (+ `reports/BC03Placeholder.tsx`) — BE `backend/report_routes.py` (daily backfill + monthly, KPI/tỷ giá)
+- BC04 — Dòng tiền về hàng ngày (thay báo cáo tay chị Vân, xuất Excel clone sheet `HN BANK 26`): FE `frontend/src/components/reports/BC04CashInReport.tsx` + `BC04CashInRowCards.tsx` (mobile), types `frontend/src/types/cashIn.ts`, export `frontend/src/utils/cashInXlsxExport.ts` — BE `backend/report_routes.py` (`GET /reports/cash-in`, `PUT .../annotation` — không có prefix `/api/v1/`, khớp convention bc01-03; migration `backend/migrations/2026-08-29-cash-in-annotations.sql`; hybrid bank+gateway dedup theo phiếu chi). Plan: `docs/plans/PLAN_BC04_DONG_TIEN_VE_2026-08-27.md`.
 - API group: `endpoints.reports`
 - Docs: `docs/BC01_DOI_CHIEU_THU_HIEN.md`
 

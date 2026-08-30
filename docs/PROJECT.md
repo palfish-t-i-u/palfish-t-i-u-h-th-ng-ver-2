@@ -147,8 +147,9 @@ pf-gmv-reconciliation/
 | `zalo_outbox` | Queue tin nhắn Zalo: event_type, message, sent_at, retries |
 | `don_hang_seq` / `invoice_code_seq` / `payment_request_seq` | Postgres sequences — chống trùng mã (DB audit) |
 | `pr_ownership_log` | Nhật ký lưu chuyển PR (tạo / tạo hộ / chuyển giao) — đối soát ai giữ PR từ mốc nào (22/07) |
+| `cash_in_annotations` | BC04 — phân loại quản báo + ghi chú tay theo `(source, txn_id)` cho từng khoản tiền vào (29/08) |
 
-Patch (SQL Editor, thứ tự): **v1** → … → **v8** → **payment_requests** → **active_requests** → **crm_\*** → **bc03_monthly** → **db_audit_20260603** → **2026-06-09-top1-02** → **2026-06-10-top1-02** → **2026-06-18-bank-transactions-discrepancy** → **2026-06-23-zalo-oa-tables** (credentials + groups + outbox + triggers) → **backend/migrations/2026-07-23-pr-ownership-log** (bảng nhật ký + backfill). Cuối mỗi patch: `NOTIFY pgrst, 'reload schema'`.
+Patch (SQL Editor, thứ tự): **v1** → … → **v8** → **payment_requests** → **active_requests** → **crm_\*** → **bc03_monthly** → **db_audit_20260603** → **2026-06-09-top1-02** → **2026-06-10-top1-02** → **2026-06-18-bank-transactions-discrepancy** → **2026-06-23-zalo-oa-tables** (credentials + groups + outbox + triggers) → **backend/migrations/2026-07-23-pr-ownership-log** (bảng nhật ký + backfill) → **backend/migrations/2026-08-29-cash-in-annotations** (BC04 — bảng lưu phân loại quản báo/ghi chú tay). Cuối mỗi patch: `NOTIFY pgrst, 'reload schema'`.
 
 ---
 

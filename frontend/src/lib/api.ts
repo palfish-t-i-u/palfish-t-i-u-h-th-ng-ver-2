@@ -2,6 +2,7 @@ import axios from "axios";
 import { resolveApiBaseUrl } from "./apiBaseUrl";
 import { supabase } from "./supabase";
 import type { Bc03Report, Bc03MonthlySettings, Bc03StaffOption, CreateOrderPayload, DashboardDailyTrends, DashboardLiveSummary, DashboardSummary, InvoiceOrder, Order } from "../types/order";
+import type { CashInReportRaw } from "../types/cashIn";
 import type { GamificationDashboardSummary } from "../types/dashboard";
 import type {
   ActiveRequestApiRow,
@@ -457,6 +458,13 @@ export const endpoints = {
       exchange_rate: number;
       kpi_rows: { sale_name: string; b2_orders: number; b4_gmv_vnd: number }[];
     }) => api.put<Bc03MonthlySettings>("/reports/bc03/monthly", body),
+    cashIn: (params: { from: string; to: string; opening_balance: number; team?: string }) =>
+      api.get<CashInReportRaw>("/reports/cash-in", { params }),
+    cashInAnnotation: (
+      source: string,
+      txnId: string,
+      body: { business_line?: string; main_cat?: string; detail?: string; note?: string }
+    ) => api.put(`/reports/cash-in/${source}/${txnId}/annotation`, body),
   },
   me: {
     get: () => api.get("/me"),

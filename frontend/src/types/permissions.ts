@@ -55,6 +55,7 @@ export const MODULE_LIST: ModuleDef[] = [
   { key: "bc01", label: "BC01: Sales performance", description: "GMV theo team × sale × tháng", section: "Báo cáo" },
   { key: "bc02", label: "BC02: Key Data", description: "Dữ liệu then chốt quy trình bán", section: "Báo cáo" },
   { key: "bc03", label: "BC03: Báo cáo tổng bộ", description: "KPI + doanh thu / trial / referral", section: "Báo cáo" },
+  { key: "bc04", label: "BC04: Dòng tiền về", description: "Tiền thực về TK ngân hàng hàng ngày, kèm số dư", section: "Báo cáo" },
   // ── Dữ liệu ──
   { key: "module5", label: "Đồng bộ CRM", description: "Sync & xuất Master Data CRM PalFish", section: "Dữ liệu" },
   { key: "module6", label: "Dashboard Sale", description: "Tổng quan hiệu suất theo team & cá nhân", section: "Dữ liệu" },
@@ -84,7 +85,7 @@ export const DEFAULT_PERMISSIONS: Record<string, Record<string, AccessLevel>> = 
   sale: {
     dashboard: "full", paymentRequests: "full",
     reconciliation: "full", reconCard: "none", module3: "full", module4: "read",
-    revenueLedger: "read", bc01: "read", bc02: "read", bc03: "read",
+    revenueLedger: "read", bc01: "read", bc02: "read", bc03: "read", bc04: "none",
     module5: "none", module6: "full", gatewaySync: "none",
     zalo: "none",
     payslip: "full",
@@ -93,7 +94,7 @@ export const DEFAULT_PERMISSIONS: Record<string, Record<string, AccessLevel>> = 
   hr: {
     dashboard: "full", paymentRequests: "full",
     reconciliation: "full", reconCard: "full", module3: "full", module4: "full",
-    revenueLedger: "full", bc01: "full", bc02: "full", bc03: "full",
+    revenueLedger: "full", bc01: "full", bc02: "full", bc03: "full", bc04: "full",
     module5: "full", module6: "full", gatewaySync: "full",
     zalo: "full",
     payslip: "full",
@@ -102,7 +103,7 @@ export const DEFAULT_PERMISSIONS: Record<string, Record<string, AccessLevel>> = 
   marketing: {
     dashboard: "read", paymentRequests: "none",
     reconciliation: "none", reconCard: "none", module3: "none", module4: "none",
-    revenueLedger: "full", bc01: "read", bc02: "read", bc03: "read",
+    revenueLedger: "full", bc01: "read", bc02: "read", bc03: "read", bc04: "none",
     module5: "none", module6: "none", gatewaySync: "none",
     zalo: "none",
     payslip: "full",
@@ -111,7 +112,7 @@ export const DEFAULT_PERMISSIONS: Record<string, Record<string, AccessLevel>> = 
   cs: {
     dashboard: "read", paymentRequests: "none",
     reconciliation: "none", reconCard: "none", module3: "full", module4: "none",
-    revenueLedger: "none", bc01: "none", bc02: "none", bc03: "none",
+    revenueLedger: "none", bc01: "none", bc02: "none", bc03: "none", bc04: "none",
     module5: "none", module6: "none", gatewaySync: "none",
     zalo: "none",
     payslip: "full",

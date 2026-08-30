@@ -363,7 +363,7 @@ function xlThongKe(){
   var tong = xlMauSo_(bang);
 
   // Bảng chéo: nhóm chính = Phòng ban (HRIS), chéo = Team
-  var cheoIdx = bang.headers.indexOf('Team');
+  var cheoIdx = bang.headers.indexOf('Khối');
   var nhomOut = [];
   for(var g=0; g<nhom.length; g++){
     var gr = nhom[g];

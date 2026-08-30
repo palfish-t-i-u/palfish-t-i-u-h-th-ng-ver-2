@@ -20,9 +20,11 @@ from crm_metrics import (
     sync_coverage_meta,
     team_label,
 )
-from admin_routes import require_module_access
+from admin_routes import require_module_access, require_module_write
+from audit import log_audit
 from rbac import enforce_report_scope, resolve_actor, scope_sale_names
-from revenue_routes import load_team_map
+from revenue_routes import DEFAULT_TY_GIA, get_rate_for_date, load_team_map
+from sepay_routes import classify_cash_in, extract_settlement_code
 from vn_staff import is_vn_sale_row
 
 _MONTH_RE = re.compile(r"^\d{4}-\d{2}$")
@@ -411,6 +413,334 @@ def _finalize_metric_rows(metric_map: dict[str, dict], field: str, dates: list[s
     return sorted(rows, key=lambda x: x[field], reverse=True)
 
 
+# ---------------------------------------------------------------------------
+# BC04 — Báo cáo Dòng tiền về hàng ngày (thay báo cáo thủ công của chị Vân)
+# ---------------------------------------------------------------------------
+_BC04_ACCOUNT_HN_MB = "1680011668899"
+_BC04_VN_TZ = timezone(timedelta(hours=7))
+
+# Auto phân loại quản báo cho nhóm rõ ràng (§5 spec) — nhóm còn lại để trống,
+# chị Vân chọn tay qua dropdown FE (lưu vào cash_in_annotations).
+_BC04_AUTO_CLASSIFY = {
+    "khach_tra": ("Giáo dục / 教育", "Doanh thu / 收入"),
+    "the": ("Giáo dục / 教育", "Doanh thu / 收入"),
+    "the_gop": ("Giáo dục / 教育", "Doanh thu / 收入"),
+}
+_BC04_LABEL_BY_GROUP = {
+    "khach_tra": "Khách trả / 用户付款",
+    "the": "Quẹt thẻ",
+    "the_gop": "Quẹt thẻ (chưa tách)",
+    "rut_tiktok": "Rút TikTok",
+    "khac": "Khoản khác",
+}
+
+
+def _bc04_bank_vn_date(transaction_date: Any) -> str | None:
+    """bank_transactions.transaction_date là timestamptz (lưu đúng UTC) — PHẢI quy
+    đổi sang giờ VN (+7) trước khi lấy ngày. Không được lấy .date() thẳng từ UTC,
+    sẽ lệch ngày quanh nửa đêm (xem docs/learnings/2026-08-08-ct1-ngay-tien-ve-don-the-paid-at-utc.md)."""
+    text = str(transaction_date or "").strip()
+    if not text:
+        return None
+    try:
+        dt = datetime.fromisoformat(text.replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(_BC04_VN_TZ).date().isoformat()
+    except ValueError:
+        return None
+
+
+def _bc04_bank_vn_datetime_str(transaction_date: Any) -> str:
+    """Chuỗi giờ VN naive (VD '2026-08-25 10:26:00') dùng để sort cùng thang đo với
+    gateway.funded_date (đã naive VN sẵn) — không dùng để tính ngày (dùng
+    _bc04_bank_vn_date cho việc đó)."""
+    text = str(transaction_date or "").strip()
+    if not text:
+        return ""
+    try:
+        dt = datetime.fromisoformat(text.replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(_BC04_VN_TZ).replace(tzinfo=None).isoformat(sep=" ")
+    except ValueError:
+        return text
+
+
+def _bc04_gateway_vn_date(funded_date: Any) -> str | None:
+    """gateway_transactions.funded_date là timestamp WITHOUT time zone — đã là giờ VN
+    naive sẵn (xem docs/learnings/timestamp-vs-date-funded-date-gateway.md). TUYỆT ĐỐI
+    không gắn/convert timezone ở đây — sẽ lệch ngày ngược lại với bank."""
+    text = str(funded_date or "").strip()
+    if not text:
+        return None
+    return text[:10] or None
+
+
+def _bc04_sale_team_maps(sb, sale_emails: list[str]) -> tuple[dict[str, str], dict[str, str]]:
+    emails = sorted({e.strip().lower() for e in sale_emails if e and e.strip()})
+    if not emails:
+        return {}, {}
+    sale_name_map: dict[str, str] = {}
+    team_by_email: dict[str, str] = {}
+    try:
+        from payment_request_routes import _sale_name_map
+
+        sale_name_map = _sale_name_map(sb)
+    except Exception as exc:
+        print(f"[BC04] sale name lookup failed: {exc}")
+    try:
+        res = (
+            sb.table("nhan_su_sale")
+            .select("email, team, sub_team")
+            .in_("email", emails)
+            .execute()
+        )
+        team_by_email = {
+            (row.get("email") or "").strip().lower(): (row.get("team") or row.get("sub_team") or "").strip()
+            for row in (res.data or [])
+            if (row.get("email") or "").strip()
+        }
+    except Exception as exc:
+        print(f"[BC04] team lookup failed: {exc}")
+    return sale_name_map, team_by_email
+
+
+def _bc04_join_payment_lines(sb, payment_line_ids: list) -> tuple[dict, dict, dict, dict]:
+    """(lines_by_id, prs_by_id, sale_name_map, team_by_email) cho tập payment_line_id.
+    Dùng chung cho CẢ dòng thẻ (gateway) LẪN dòng bank non-card đã match — spec §6 bước 3
+    ('Non-card → join payment_line_id lấy sale/team') áp dụng như nhau cho cả 2 nguồn,
+    KHÔNG dùng cột bank_transactions.team (đó là tag chi nhánh HCM/HN thủ công, khác hẳn
+    khái niệm team sale — xem docs/learnings/... nếu có ghi chú, hoặc hỏi lại nếu chưa)."""
+    line_ids = sorted({pid for pid in payment_line_ids if pid})
+    lines_by_id: dict[str, dict] = {}
+    prs_by_id: dict[str, dict] = {}
+    if line_ids:
+        try:
+            line_res = sb.table("payment_lines").select("*").in_("id", line_ids).execute()
+            lines_by_id = {row["id"]: row for row in (line_res.data or [])}
+            pr_ids = sorted({row.get("payment_request_id") for row in lines_by_id.values() if row.get("payment_request_id")})
+            if pr_ids:
+                pr_res = sb.table("payment_requests").select("*").in_("id", pr_ids).execute()
+                prs_by_id = {row["id"]: row for row in (pr_res.data or [])}
+        except Exception as exc:
+            print(f"[BC04] payment_line/PR lookup failed: {exc}")
+    sale_emails = [
+        (prs_by_id.get(line.get("payment_request_id")) or {}).get("sale_email")
+        for line in lines_by_id.values()
+    ]
+    sale_name_map, team_by_email = _bc04_sale_team_maps(sb, sale_emails)
+    return lines_by_id, prs_by_id, sale_name_map, team_by_email
+
+
+def _load_bc04_card_rows(sb, d_start: str, d_end: str) -> tuple[list[dict], set[str]]:
+    """Per-đơn thẻ đã đồng bộ trong kỳ (funded_date, giờ VN naive). Trả kèm tập
+    settlement_code để M1-T3b dùng loại cục bank trùng (dedup hybrid §3)."""
+    res = (
+        sb.table("gateway_transactions")
+        .select("*")
+        .gte("funded_date", d_start)
+        .lte("funded_date", f"{d_end} 23:59:59")
+        .neq("match_status", "ignored")
+        .execute()
+    )
+    txns = res.data or []
+    settlement_codes = {str(t.get("settlement_code")) for t in txns if t.get("settlement_code")}
+
+    lines_by_id, prs_by_id, sale_name_map, team_by_email = _bc04_join_payment_lines(
+        sb, [t.get("payment_line_id") for t in txns]
+    )
+
+    rows: list[dict] = []
+    for t in txns:
+        vn_date = _bc04_gateway_vn_date(t.get("funded_date"))
+        if not vn_date:
+            continue
+        line = lines_by_id.get(t.get("payment_line_id")) or {}
+        pr = prs_by_id.get(line.get("payment_request_id")) or {}
+        sale_email = (pr.get("sale_email") or "").strip().lower()
+        group = classify_cash_in(content="", payment_line_id=t.get("payment_line_id"), is_card=True)
+        rows.append({
+            "source": "gateway",
+            "txn_id": t.get("id"),
+            "date": vn_date,
+            "sort_ts": str(t.get("funded_date") or vn_date),  # đã là giờ VN naive, so sánh chuỗi trực tiếp được
+            "group": group,
+            "label": _BC04_LABEL_BY_GROUP[group],
+            "input": float(t.get("net_amount") or 0),
+            "team": team_by_email.get(sale_email, ""),
+            "sale_name": sale_name_map.get(sale_email, ""),
+            "data_source": "mPOS" if t.get("source") == "mpos" else "Payoo",
+            "settlement_code": t.get("settlement_code"),
+        })
+    return rows, settlement_codes
+
+
+def _load_bc04_bank_rows(sb, d_start: str, d_end: str, known_settlement_codes: set[str]) -> list[dict]:
+    """CK khách + cọc + rút TikTok/nội bộ/lạ + cục thẻ CHƯA đồng bộ. Cố ý KHÔNG lọc
+    match_status — cục settle thẻ luôn ở match_status='ignored' nhưng vẫn là tiền
+    thật về TK, phải hiện (đúng §3/§6.2 spec)."""
+    res = (
+        sb.table("bank_transactions")
+        .select("*")
+        .gt("amount", 0)
+        .eq("account_number", _BC04_ACCOUNT_HN_MB)
+        .gte("transaction_date", f"{d_start}T00:00:00+07:00")
+        .lte("transaction_date", f"{d_end}T23:59:59+07:00")
+        .execute()
+    )
+    bank_txns = res.data or []
+    lines_by_id, prs_by_id, sale_name_map, team_by_email = _bc04_join_payment_lines(
+        sb, [r.get("payment_line_id") for r in bank_txns]
+    )
+
+    rows: list[dict] = []
+    for r in bank_txns:
+        vn_date = _bc04_bank_vn_date(r.get("transaction_date"))
+        if not vn_date or vn_date < d_start or vn_date > d_end:
+            continue
+        content = r.get("content") or r.get("transfer_content") or ""
+        pc = extract_settlement_code(content)
+        if pc and pc in known_settlement_codes:
+            continue  # đã tách per-đơn ở gateway — bỏ cục, tránh đếm 2 lần (G3)
+        group = classify_cash_in(content=content, payment_line_id=r.get("payment_line_id"))
+        line = lines_by_id.get(r.get("payment_line_id")) or {}
+        pr = prs_by_id.get(line.get("payment_request_id")) or {}
+        sale_email = (pr.get("sale_email") or "").strip().lower()
+        rows.append({
+            "source": "bank",
+            "txn_id": r.get("txn_id"),
+            "date": vn_date,
+            "sort_ts": _bc04_bank_vn_datetime_str(r.get("transaction_date")),
+            "group": group,
+            "label": _BC04_LABEL_BY_GROUP[group],
+            "input": float(r.get("amount") or 0),
+            "team": team_by_email.get(sale_email, ""),
+            "sale_name": sale_name_map.get(sale_email, ""),
+            "data_source": "HN BANK",
+            "settlement_code": pc,
+        })
+    return rows
+
+
+def _load_bc04_annotations(sb, keys: list[tuple[str, str]]) -> dict[tuple[str, str], dict]:
+    if not keys:
+        return {}
+    try:
+        sources = sorted({k[0] for k in keys})
+        txn_ids = sorted({k[1] for k in keys})
+        res = (
+            sb.table("cash_in_annotations")
+            .select("*")
+            .in_("source", sources)
+            .in_("txn_id", txn_ids)
+            .execute()
+        )
+        return {(row.get("source"), str(row.get("txn_id"))): row for row in (res.data or [])}
+    except Exception as exc:
+        print(f"[BC04] annotations lookup failed: {exc}")
+        return {}
+
+
+def _build_bc04_rows(sb, d_start: str, d_end: str, opening_balance: float, team: str | None) -> dict:
+    """Số dư (cột E) là khái niệm TOÀN TÀI KHOẢN — PHẢI cộng dồn trên TOÀN BỘ dataset
+    (mọi team + khoản chưa khớp), đúng thứ tự ngày, TRƯỚC khi áp filter `team`. Filter
+    `team` chỉ là bước SAU CÙNG quyết định dòng nào được trả về — không được lọc trước
+    rồi tính lại balance trên tập con, vì sẽ mất các khoản team khác đóng góp giữa chừng,
+    số dư lệch khỏi số dư ngân hàng thật. (Xác nhận từ leader — cùng convention BC03:
+    report_routes.py so trực tiếp chuỗi raw team, không canonical hoá; dòng chưa khớp
+    sale nào → team rỗng → tự động bị loại khi filter active, hiện đủ khi không filter.)
+    """
+    card_rows, settlement_codes = _load_bc04_card_rows(sb, d_start, d_end)
+    bank_rows = _load_bc04_bank_rows(sb, d_start, d_end, settlement_codes)
+    all_rows = card_rows + bank_rows
+    all_rows.sort(key=lambda r: (r["date"], r["sort_ts"], r["source"], str(r["txn_id"])))
+
+    annotations = _load_bc04_annotations(sb, [(r["source"], str(r["txn_id"])) for r in all_rows])
+
+    team_norm = (team or "").strip().lower()
+    balance = float(opening_balance or 0)
+    total_input = 0.0
+    total_rmb = 0.0
+    days: dict[str, dict] = {}
+    out_rows: list[dict] = []
+    rate_cache: dict[str, Any] = {}
+    for r in all_rows:
+        if r["date"] not in rate_cache:
+            rate_cache[r["date"]] = get_rate_for_date(sb, date.fromisoformat(r["date"]))
+        rate = rate_cache[r["date"]]
+        rmb_value = round(r["input"] / float(rate), 2) if rate else 0
+
+        # Cộng dồn balance + ending_balance mỗi ngày trên TOÀN BỘ dataset, không phụ
+        # thuộc filter team (all_rows đã sắp theo date+sort_ts nên dòng cuối = đúng).
+        balance += r["input"]
+        day_bucket = days.setdefault(r["date"], {"total_input": 0.0, "total_rmb": 0.0, "ending_balance": 0.0})
+        day_bucket["ending_balance"] = balance
+
+        row_team = (r.get("team") or "").strip().lower()
+        if team_norm and row_team != team_norm:
+            continue  # filter team — chỉ ảnh hưởng dòng nào được TRẢ VỀ, không đụng balance
+
+        auto_business_line, auto_main_cat = _BC04_AUTO_CLASSIFY.get(r["group"], ("", ""))
+        ann = annotations.get((r["source"], str(r["txn_id"]))) or {}
+
+        total_input += r["input"]
+        total_rmb += rmb_value
+        day_bucket["total_input"] += r["input"]
+        day_bucket["total_rmb"] += rmb_value
+
+        out_rows.append({
+            "source": r["source"],
+            "txn_id": r["txn_id"],
+            "date": r["date"],
+            "details": r["label"],
+            "group": r["group"],
+            "output": 0,
+            "input": r["input"],
+            "balance": round(balance, 2),
+            "income": r["input"],
+            "expenditure": 0,
+            "business_line": ann.get("business_line") or auto_business_line,
+            "team": r["team"],
+            "note": ann.get("note") or "",
+            "rmb": rmb_value,
+            "data_source": r["data_source"],
+            "main_cat": ann.get("main_cat") or auto_main_cat,
+            "detail": ann.get("detail") or "",
+        })
+
+    summary_rate = float(get_rate_for_date(sb, date.fromisoformat(d_start)))
+
+    return {
+        "period": {"start": d_start, "end": d_end},
+        "summary": {
+            "total_input": round(total_input, 2),
+            "total_rmb": round(total_rmb, 2),
+            "opening_balance": float(opening_balance or 0),
+            "closing_balance": round(balance, 2),
+            "rate": summary_rate,
+            "row_count": len(out_rows),
+        },
+        "days": [
+            {
+                "date": d,
+                "total_input": round(v["total_input"], 2),
+                "total_rmb": round(v["total_rmb"], 2),
+                "ending_balance": round(v["ending_balance"], 2),
+            }
+            for d, v in sorted(days.items())
+        ],
+        "rows": out_rows,
+    }
+
+
+class CashInAnnotationBody(BaseModel):
+    business_line: str | None = None
+    main_cat: str | None = None
+    detail: str | None = None
+    note: str | None = None
+
+
 def register_report_routes(app, supabase_factory):
 
     @app.get("/reports/bc03", tags=["Reports"])
@@ -589,3 +919,85 @@ def register_report_routes(app, supabase_factory):
                     "Chưa có bảng bc03_month_settings — chạy docs/supabase_schema_patch_bc03_monthly.sql",
                 ) from exc
             raise HTTPException(500, f"Lưu KPI tháng thất bại: {exc}") from exc
+
+    @app.get("/reports/cash-in", tags=["Reports"])
+    def report_cash_in(
+        from_: str = Query(..., alias="from", description="YYYY-MM-DD"),
+        to: str = Query(..., description="YYYY-MM-DD"),
+        opening_balance: float = Query(0),
+        team: str | None = Query(None),
+        authorization: str | None = Header(None),
+    ):
+        sb = supabase_factory()
+        if not sb:
+            raise HTTPException(503, "Supabase chưa cấu hình")
+
+        actor = resolve_actor(sb, authorization)
+        require_module_access(sb, actor, "bc04")
+
+        try:
+            date.fromisoformat(from_)
+            date.fromisoformat(to)
+        except ValueError as exc:
+            raise HTTPException(400, "from/to phải có dạng YYYY-MM-DD") from exc
+        if from_ > to:
+            raise HTTPException(400, "from phải <= to")
+
+        try:
+            return _build_bc04_rows(sb, from_, to, opening_balance, team)
+        except HTTPException:
+            raise
+        except Exception as exc:
+            err = str(exc).lower()
+            if "cash_in_annotations" in err or "does not exist" in err or "pgrst205" in err:
+                raise HTTPException(
+                    503,
+                    "Chưa có bảng cash_in_annotations — chạy migration 2026-08-29-cash-in-annotations.sql",
+                ) from exc
+            raise HTTPException(500, f"Query Dòng tiền về thất bại: {exc}") from exc
+
+    @app.put("/reports/cash-in/{source}/{txn_id}/annotation", tags=["Reports"])
+    def save_cash_in_annotation(
+        source: str,
+        txn_id: str,
+        body: CashInAnnotationBody,
+        authorization: str | None = Header(None),
+    ):
+        sb = supabase_factory()
+        if not sb:
+            raise HTTPException(503, "Supabase chưa cấu hình")
+
+        actor = resolve_actor(sb, authorization)
+        require_module_write(sb, actor, "bc04")
+
+        if source not in ("bank", "gateway"):
+            raise HTTPException(400, "source phải là 'bank' hoặc 'gateway'")
+
+        payload = {
+            "source": source,
+            "txn_id": txn_id,
+            "business_line": body.business_line,
+            "main_cat": body.main_cat,
+            "detail": body.detail,
+            "note": body.note,
+            "updated_by_email": actor.email,
+        }
+        try:
+            sb.table("cash_in_annotations").upsert(payload, on_conflict="source,txn_id").execute()
+            log_audit(
+                sb,
+                actor.email,
+                "cash_in_annotation_update",
+                target_type=source,
+                target_id=txn_id,
+                payload=payload,
+            )
+            return {"ok": True}
+        except Exception as exc:
+            err = str(exc).lower()
+            if "cash_in_annotations" in err or "does not exist" in err or "pgrst205" in err:
+                raise HTTPException(
+                    503,
+                    "Chưa có bảng cash_in_annotations — chạy migration 2026-08-29-cash-in-annotations.sql",
+                ) from exc
+            raise HTTPException(500, f"Lưu phân loại thất bại: {exc}") from exc
