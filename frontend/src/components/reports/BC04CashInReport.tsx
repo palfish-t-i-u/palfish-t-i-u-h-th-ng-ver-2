@@ -56,7 +56,7 @@ export default function BC04CashInReport() {
   const [data, setData] = useState<CashInReport | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [from, setFrom] = useState(monthStartIso());
+  const [from, setFrom] = useState(todayIso());
   const [to, setTo] = useState(todayIso());
   const [team, setTeam] = useState(defaultTeam);
   const [openingBalance, setOpeningBalance] = useState("");
