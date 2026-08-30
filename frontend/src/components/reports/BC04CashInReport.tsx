@@ -32,10 +32,6 @@ function fmtDate(iso: string): string {
   return `${d}/${m}/${y}`;
 }
 
-function monthStartIso(): string {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;
-}
 
 function todayIso(): string {
   const d = new Date();
