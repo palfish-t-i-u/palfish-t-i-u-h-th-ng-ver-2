@@ -195,6 +195,28 @@ class TestBuildActivationRequestCreatedMessage:
         assert message.count("Nguồn:") == 1  # đồng nhất → footer 1 dòng
         assert "Nguồn: Kho Chung" in message
 
+    def test_single_course_source_differs_from_pr_prints_per_course(self):
+        # PR-2026-1445 (30/8): sale đổi nguồn 1 gói Kho Chung → Gia hạn nhưng PR vẫn
+        # Kho Chung. Đơn 1 gói ⇒ trước đây footer lấy nguồn cấp PR = "Kho Chung" (SAI).
+        # Nay in "Nguồn: Gia hạn" per-con NGAY SAU Tiền, footer KHÔNG có dòng Nguồn.
+        ar_data = {
+            "id": "AR-2026-0700",
+            "uids_data": [
+                {"uid": "3298497046", "name": "Lưu Hoàng An Nhiên", "phone": "934862365",
+                 "country": "VN",
+                 "courses": [{"name": "2/W- NEW 96 PHI+10 HN", "amount": 16_520_000,
+                              "lead_source": "gia_han", "lead_channel": None}]},
+            ],
+        }
+        pr_data = {"lead_source": "kho_chung", "lead_channel": None}  # PR chưa đổi
+        message = build_activation_request_created_message(
+            ar_data, pr_data, {"team": "Inhouse 1"})["message"]
+
+        assert message.count("Nguồn:") == 1  # per-con, footer KHÔNG có
+        assert "Nguồn: Gia hạn" in message
+        assert "Nguồn: Kho Chung" not in message
+        assert message.index("Tiền: 16.520.000 VND") < message.index("Nguồn: Gia hạn")
+
     def test_missing_phone_uid_lead_falls_back_to_question_mark(self):
         ar_data = {
             "id": "AR-2026-0003",

@@ -1402,7 +1402,9 @@ def _ar_dingtalk_content_key(ar: dict[str, Any], pr: dict[str, Any] | None) -> s
             except (TypeError, ValueError):
                 amount = 0.0
             grand_total += amount
-            entry: list[Any] = [name, amount]
+            # Nguồn cấp gói (sale đổi Kho Chung → Gia hạn trên 1 gói mà PR chưa đổi)
+            # phải nằm trong key — nếu không, đổi nguồn gói sẽ không kích hoạt re-notify.
+            entry: list[Any] = [name, amount, _s(course.get("lead_source")), _s(course.get("lead_channel"))]
             if is_ref:
                 entry.extend([
                     _s(course.get("referrer_uid")),

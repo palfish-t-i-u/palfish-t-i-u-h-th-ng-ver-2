@@ -131,6 +131,20 @@ class TestArDingtalkContentKey:
         ))
         assert _ar_dingtalk_content_key(ar, pr) != _ar_dingtalk_content_key(ar2, pr)
 
+    def test_course_lead_source_change_alters_key(self):
+        # PR-2026-1445 (30/8): sale đổi nguồn cấp GÓI (Kho Chung → Gia hạn) mà PR chưa
+        # đổi → phải đổi key để kích hoạt re-notify.
+        ar = _make_ar_row(uids_data=_uids_payload(lead_source="kho_chung"))
+        pr = _sample_pr()
+        ar2 = _make_ar_row(uids_data=_uids_payload(lead_source="gia_han"))
+        assert _ar_dingtalk_content_key(ar, pr) != _ar_dingtalk_content_key(ar2, pr)
+
+    def test_course_lead_channel_change_alters_key(self):
+        ar = _make_ar_row(uids_data=_uids_payload(lead_source="quang_cao", lead_channel="300265"))
+        pr = _sample_pr()
+        ar2 = _make_ar_row(uids_data=_uids_payload(lead_source="quang_cao", lead_channel="300281"))
+        assert _ar_dingtalk_content_key(ar, pr) != _ar_dingtalk_content_key(ar2, pr)
+
     def test_order_id_change_does_not_alter_key(self):
         ar = _make_ar_row()
         pr = _sample_pr()

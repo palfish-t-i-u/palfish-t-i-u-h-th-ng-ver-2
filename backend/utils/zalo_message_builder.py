@@ -438,7 +438,12 @@ def build_activation_request_created_message(
         for c in (ub.get("courses") if isinstance(ub.get("courses"), list) else [])
         if isinstance(c, dict)
     ]
-    per_course_source = len({lbl for lbl in _course_leads if lbl and lbl != "?"}) >= 2
+    _distinct_course_leads = {lbl for lbl in _course_leads if lbl and lbl != "?"}
+    # In "Nguồn" per-con khi nguồn gói KHÁC nguồn footer cấp PR — hoặc nhiều gói lệch
+    # nhau (ca chị Kim Chi 17/8), HOẶC 1 gói mà sale đổi nguồn riêng (VD Kho Chung →
+    # Gia hạn) mà PR chưa đổi (PR-2026-1445 30/8). Mọi gói trùng đúng nguồn PR → footer
+    # 1 dòng như cũ (không đổi hành vi đơn thường).
+    per_course_source = bool(_distinct_course_leads) and _distinct_course_leads != {lead}
 
     blocks: list[str] = []
     grand_total = 0.0
