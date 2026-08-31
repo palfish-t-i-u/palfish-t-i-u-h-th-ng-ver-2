@@ -8,6 +8,7 @@
       "Team 5": [
         {
           "sale": "Le Thi Lan Anh",
+          "role": "leader",
           "team": "Inhouse 1",
           "sub_team": "Team 5",
           "depart6": [
@@ -115,6 +116,7 @@
       "Team 3": [
         {
           "sale": "Ta Thuy Van",
+          "role": "leader",
           "team": "Inhouse 1",
           "sub_team": "Team 3",
           "depart6": [
@@ -267,6 +269,7 @@
       "Team 2": [
         {
           "sale": "Tran Thi Son",
+          "role": "leader",
           "team": "Inhouse 1",
           "sub_team": "Team 2",
           "depart6": [
@@ -389,6 +392,7 @@
       "Team 4": [
         {
           "sale": "Bui Thi Hong Van",
+          "role": "leader",
           "team": "Inhouse 1",
           "sub_team": "Team 4",
           "depart6": [
@@ -556,6 +560,7 @@
         },
         {
           "sale": "Phan Thi Huong",
+          "role": "leader",
           "team": "Inhouse 1",
           "sub_team": "Team 1",
           "depart6": [
@@ -890,6 +895,7 @@
       "": [
         {
           "sale": "Dao Thi Trang",
+          "role": "manager",
           "team": "Inhouse 1",
           "sub_team": "",
           "depart6": [
@@ -1063,6 +1069,7 @@
         },
         {
           "sale": "Bui Thi Nga",
+          "role": "manager",
           "team": "Inhouse 2",
           "sub_team": "",
           "depart6": [
@@ -1815,6 +1822,7 @@
       "": [
         {
           "sale": "Pham Thuy Linh",
+          "role": "manager",
           "team": "HN Offline Store",
           "sub_team": "",
           "depart6": [

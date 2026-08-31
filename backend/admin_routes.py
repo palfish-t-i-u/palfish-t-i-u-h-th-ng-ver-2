@@ -416,7 +416,7 @@ def _hierarchy_member_to_row(m: dict[str, Any]) -> dict[str, Any]:
         "depart8_name": d8,
         "team": team_val,
         "sub_team": sub_team_val,
-        "role": "sale",
+        "role": (m.get("role") or "sale").strip().lower(),
         "is_active": True,
         "synced_at": datetime.now(timezone.utc).isoformat(),
     }
@@ -889,6 +889,17 @@ def register_admin_routes(app, get_supabase):
             updated_metadata["is_activated"] = False
         elif crm_name:
             updated_metadata["crmName"] = crm_name
+            if role_value is None:
+                staff_row = sb.table("nhan_su_sale").select("role,team,sub_team").eq(
+                    "crm_name", crm_name
+                ).limit(1).execute()
+                if staff_row.data:
+                    sr = staff_row.data[0]
+                    updated_metadata["role"] = sr["role"] or "sale"
+                    if sr.get("team") and body.team is None:
+                        updated_metadata["team"] = sr["team"]
+                    if sr.get("sub_team") and body.sub_team is None:
+                        updated_metadata["sub_team"] = sr["sub_team"]
         if body.is_activated is not None and not unlink_crm:
             updated_metadata["is_activated"] = body.is_activated
         if body.full_name is not None:
