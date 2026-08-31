@@ -1229,6 +1229,19 @@
           ],
           "depart8": [],
           "order_count_2y": 1
+        },
+        {
+          "sale": "Trinh Thi Huong",
+          "team": "Inhouse 2",
+          "sub_team": "",
+          "depart6": [
+            "HN Inhouse"
+          ],
+          "depart7": [
+            "Inhouse 2"
+          ],
+          "depart8": [],
+          "order_count_2y": 0
         }
       ]
     },
