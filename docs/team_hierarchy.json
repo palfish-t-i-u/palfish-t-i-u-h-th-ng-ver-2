@@ -1242,6 +1242,19 @@
           ],
           "depart8": [],
           "order_count_2y": 0
+        },
+        {
+          "sale": "Le Thi Le",
+          "team": "Inhouse 2",
+          "sub_team": "",
+          "depart6": [
+            "HN Inhouse"
+          ],
+          "depart7": [
+            "Inhouse 2"
+          ],
+          "depart8": [],
+          "order_count_2y": 0
         }
       ]
     },
