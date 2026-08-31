@@ -887,6 +887,22 @@ export function activationSummary(ar: ActiveRequest | null | undefined) {
   };
 }
 
+/**
+ * Mô phỏng CHÍNH XÁC _derive_status bên BE (backend/activation_routes.py) — chỉ phần
+ * quyết định có chặn sửa hold_activation hay không (status in "activated"/"invoiced").
+ *
+ * KHÔNG dùng "mọi course có orderId" làm điều kiện khoá (khác activationSummary.allActivated
+ * ở trên) — vì BE ưu tiên kiểm tra invoiceRequestedAt TRƯỚC: nếu có ≥1 course đã yêu cầu
+ * xuất HĐ thì status luôn là "ready_invoice" dù mọi course đã có orderId, và "ready_invoice"
+ * KHÔNG bị BE chặn PATCH hold_activation.
+ */
+export function isHoldActivationLocked(courses: ActiveCourse[]): boolean {
+  if (courses.length === 0) return false; // pending_order
+  if (courses.every((c) => c.invoiced)) return true; // invoiced
+  if (courses.some((c) => c.invoiceRequestedAt)) return false; // ready_invoice — ưu tiên trước activated
+  return courses.every((c) => !!c.orderId?.trim()); // true = activated; false = partial/pending
+}
+
 export function createdAtDate(createdAt: string) {
   return formatPaymentDateTime(createdAt);
 }

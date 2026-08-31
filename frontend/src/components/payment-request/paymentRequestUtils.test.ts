@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { ActiveRequest, ActiveRequestApiRow, PaymentAttempt, PaymentRequest } from "../../types/paymentRequest";
+import type { ActiveCourse, ActiveRequest, ActiveRequestApiRow, PaymentAttempt, PaymentRequest } from "../../types/paymentRequest";
 import {
   activationSummary,
   activeRequestAllocation,
@@ -13,6 +13,7 @@ import {
   getReferralStatus,
   grossReceived,
   hasUnverifiedFeeLine,
+  isHoldActivationLocked,
   lineNet,
   normalizeRequest,
   pageItems,
@@ -1135,5 +1136,61 @@ describe("buildCreateActiveRequestPayload — opts.holdActivation", () => {
     const payload = buildCreateActiveRequestPayload(minPr, rows);
     expect(payload.hold_activation).toBeUndefined();
     expect(payload.hold_note).toBeUndefined();
+  });
+});
+
+describe("isHoldActivationLocked — mô phỏng _derive_status bên BE cho gate hold_activation", () => {
+  const course = (overrides: Partial<ActiveCourse> = {}): ActiveCourse => ({
+    courseCode: "CC-1",
+    packageName: "Goi A",
+    amount: 100000,
+    orderId: "",
+    invoiced: false,
+    ...overrides,
+  });
+
+  it("chưa có course nào (pending_order) → không khoá", () => {
+    expect(isHoldActivationLocked([])).toBe(false);
+  });
+
+  it("chưa course nào có orderId (pending_order) → không khoá", () => {
+    expect(isHoldActivationLocked([course(), course()])).toBe(false);
+  });
+
+  it("một phần course có orderId (partial_order) → không khoá", () => {
+    expect(isHoldActivationLocked([course({ orderId: "ORD-1" }), course()])).toBe(false);
+  });
+
+  it("mọi course có orderId, không ai yêu cầu xuất HĐ (activated) → KHOÁ", () => {
+    expect(
+      isHoldActivationLocked([course({ orderId: "ORD-1" }), course({ orderId: "ORD-2" })])
+    ).toBe(true);
+  });
+
+  it("mọi course đã invoiced (invoiced) → KHOÁ", () => {
+    expect(
+      isHoldActivationLocked([
+        course({ orderId: "ORD-1", invoiced: true }),
+        course({ orderId: "ORD-2", invoiced: true }),
+      ])
+    ).toBe(true);
+  });
+
+  it("BUG DA SUA: mọi course có orderId NHƯNG có course đã invoiceRequestedAt (ready_invoice) " +
+    "→ KHÔNG khoá — BE ưu tiên ready_invoice trước activated, PATCH hold_activation vẫn được chấp nhận", () => {
+    const locked = isHoldActivationLocked([
+      course({ orderId: "ORD-1", invoiceRequestedAt: "2026-08-29T10:00:00Z" }),
+      course({ orderId: "ORD-2" }),
+    ]);
+    expect(locked).toBe(false);
+  });
+
+  it("có invoiceRequestedAt nhưng chưa mọi course có orderId (vẫn ready_invoice) → không khoá", () => {
+    expect(
+      isHoldActivationLocked([
+        course({ orderId: "", invoiceRequestedAt: "2026-08-29T10:00:00Z" }),
+        course({ orderId: "" }),
+      ])
+    ).toBe(false);
   });
 });
