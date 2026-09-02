@@ -94,6 +94,7 @@ class ActiveRequestPatchBody(BaseModel):
     info_confirmed: bool | None = None
     uids_data: list[ActiveRequestPatchUidPayload] | None = None
     expected_updated_at: str | None = None
+    hold_activation: bool | None = None
 
 
 class IssueCourseInvoiceBody(BaseModel):
@@ -2318,6 +2319,7 @@ def register_activation_routes(app, supabase_factory):
         - customer_name
         - info_confirmed (writes info_confirmed_at timestamp / clear)
         - uids_data (replace full JSONB block, recompute status)
+        - hold_activation (blocked once status is activated/invoiced; always clears hold_note)
         """
         sb = supabase_factory()
         if not sb:
@@ -2453,6 +2455,13 @@ def register_activation_routes(app, supabase_factory):
             patch["info_confirmed_at"] = (
                 datetime.now(timezone.utc).isoformat() if body.info_confirmed else None
             )
+
+        if body.hold_activation is not None:
+            cur_status = current.get("status", "")
+            if cur_status in ("activated", "invoiced"):
+                raise HTTPException(400, "Don da kich hoat/xuat HD, khong doi duoc")
+            patch["hold_activation"] = body.hold_activation
+            patch["hold_note"] = None
 
         if not patch:
             raise HTTPException(400, "Khong co du lieu de cap nhat")

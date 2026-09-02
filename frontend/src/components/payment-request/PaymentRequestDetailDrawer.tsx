@@ -35,6 +35,7 @@ import {
   paymentAttemptLabel,
   paymentConfirmationText,
   isForeignCustomer,
+  isHoldActivationLocked,
   prCreatedBeforeCccdLive,
   REFERRAL_STATUS_HEADER,
   REFERRAL_STATUS_PANEL_STYLE,
@@ -729,6 +730,7 @@ function ActiveRequestMiniCardV2({
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [allocationError, setAllocationError] = useState("");
+  const [holdSaving, setHoldSaving] = useState(false);
 
   useEffect(() => {
     onEditingChange?.(editing ? ar.id : null);
@@ -760,6 +762,7 @@ function ActiveRequestMiniCardV2({
   const allCourses = ar.uids.flatMap((u) => u.courses);
   const allCoursesLocked = allCourses.length > 0 && allCourses.every((c) => !!(c.orderId?.trim()) || !!c.invoiced);
   const editFullyLocked = allCoursesLocked && allocation.remaining <= 0;
+  const holdActivationLocked = isHoldActivationLocked(allCourses);
   const hasUnfilledCourse = allCourses.some((c) => {
     const locked = !!(c.orderId?.trim()) || !!c.invoiced;
     return !locked && (c.amount || 0) <= 0;
@@ -809,6 +812,24 @@ function ActiveRequestMiniCardV2({
     setDeleting(true);
     await onActiveRequestDelete(ar.id);
     setDeleting(false);
+  };
+
+  const toggleHold = async (nextHold: boolean) => {
+    if (holdSaving || nextHold === !!ar.holdActivation) return;
+    setHoldSaving(true);
+    try {
+      await endpoints.activeRequests.update(ar.id, { hold_activation: nextHold });
+      mutate((next) => ({ ...next, holdActivation: nextHold, holdNote: null }));
+    } catch (err) {
+      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      window.alert(
+        typeof detail === "string" && detail
+          ? detail
+          : "Không đổi được trạng thái tạo gói học. Vui lòng thử lại."
+      );
+    } finally {
+      setHoldSaving(false);
+    }
   };
 
   const commitUid = (uidIdx: number) => {
@@ -1025,6 +1046,40 @@ function ActiveRequestMiniCardV2({
           </button>
         </div>
       </div>
+      {!holdActivationLocked && (
+        <div
+          style={{
+            display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap",
+            padding: "8px 10px", borderRadius: 8, marginBottom: 10,
+            background: ar.holdActivation ? "#fffde7" : "transparent",
+            border: ar.holdActivation ? "1px solid #ffd54f" : "1px solid transparent",
+          }}
+        >
+          <span style={{ fontSize: 12.5, fontWeight: 500, color: "var(--text-1)", whiteSpace: "nowrap" }}>
+            Tạo gói học:
+          </span>
+          <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", fontSize: 12.5 }}>
+            <input
+              type="radio"
+              name={`arHoldActivation-${ar.id}`}
+              checked={!ar.holdActivation}
+              disabled={holdSaving}
+              onChange={() => void toggleHold(false)}
+            />
+            Tạo gói học ngay
+          </label>
+          <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", fontSize: 12.5 }}>
+            <input
+              type="radio"
+              name={`arHoldActivation-${ar.id}`}
+              checked={!!ar.holdActivation}
+              disabled={holdSaving}
+              onChange={() => void toggleHold(true)}
+            />
+            Chưa tạo gói học
+          </label>
+        </div>
+      )}
       {missingRequiredCount > 0 && (
         <div className="match-warning" style={{ marginBottom: 10 }}>
           <Icons.AlertCircle size={14} />

@@ -448,6 +448,7 @@ export type PatchActiveRequestPayload = {
   info_confirmed?: boolean;
   uids_data?: ActiveRequestPatchUidPayload[];
   expected_updated_at?: string;
+  hold_activation?: boolean;
 };
 
 export type CreateStandaloneActiveRequestPayload = {
