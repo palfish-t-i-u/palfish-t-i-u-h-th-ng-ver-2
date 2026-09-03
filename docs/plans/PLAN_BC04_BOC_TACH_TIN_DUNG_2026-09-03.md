@@ -33,35 +33,49 @@ Cả 2 dòng gateway của PC 79523736 đều có **`payment_line_id = null`, `m
 
 ---
 
-## 2. Việc cần làm — chia nhỏ theo ngày (Đạt + Đức)
+## 2. Việc cần làm — chia theo người (không chia theo ngày)
 
-### Ngày 1 — Khảo sát & chốt phương án (song song, ai xong trước làm tiếp mục sau)
+**Nguyên tắc tránh đụng nhau:** Đạt chỉ sửa file `backend/*.py` + `backend/tests/*`; Đức chỉ sửa file `frontend/src/*` + test FE. Hai bên **không đụng chung file nào** → làm song song thoải mái, không lo conflict khi merge. Điểm nối duy nhất giữa 2 bên là **tên field JSON trả về** (`is_split`, `unmatched`, `unsynced_settlement_count`, `unsynced_settlement_amount`) — đã chốt sẵn tên ở dưới, Đức có thể code FE với field giả lập (mock) song song mà **không cần chờ** Đạt code xong BE, miễn giữ đúng tên field khi ráp lại (**bước A0 dưới đây phải đọc trước khi bắt đầu** để cả 2 dùng chung 1 tên).
 
-- **N1-T1 (Đạt, ~1h)** — Đối chiếu lại phát hiện ở mục 1 bằng SQL trên sandbox (không tin lại theo doc, tự query), xác nhận số lượng `gateway_transactions` có `payment_line_id is null` trong 30 ngày gần nhất (query mẫu: `select settlement_code, count(*) from gateway_transactions where payment_line_id is null and funded_date >= now() - interval '30 days' group by 1`). Ghi số liệu thật vào doc này (mục 4).
-- **N1-T2 (Đạt, ~0.5h)** — Đọc lại `match_gateway_txn` ([gateway_routes.py:549](../../backend/gateway_routes.py)) + `gateway_match_candidates` ([:440](../../backend/gateway_routes.py)) để xác nhận có sẵn API match thủ công (KHÔNG cần xây API mới cho việc khớp — chỉ cần đẩy user thao tác đúng chỗ).
-- **N1-T3 (Đức, ~1h)** — Đọc `CardReconciliationTab` (FE của "Đối soát giao dịch") để xác nhận UI khớp giao dịch hiện có filter theo ngày/PC được không (dùng cho việc dồn khớp nhanh các giao dịch tồn đọng của phiếu chi cũ).
-- **N1-T4 (Đạt, ~0.5h)** — Chốt trong doc này: badge "Đã tách"/"Chưa tách" hiển thị dựa theo cột nào (đề xuất: `data_source` — `mPOS`/`Payoo` = đã tách, `HN BANK` với `settlement_code` khác null = cục fallback do PC chưa có gateway).
+### A0 — Chốt hợp đồng field (đọc trước, không phải code — cả 2 đọc 1 lần, ~5 phút)
 
-### Ngày 2 — Backend (Đạt)
+Response `GET /reports/cash-in`, mỗi row thêm 2 field mới, `summary` thêm 2 field mới:
+- `row.is_split: boolean` — `true` nếu `row.source == "gateway"` (đã tách từ Đối soát quẹt thẻ); `false` nếu `row.source == "bank"` và có `settlement_code` (cục PC còn nguyên vì phiếu chi đó chưa có trong gateway).
+- `row.unmatched: boolean` — chỉ có ý nghĩa khi `is_split=true`; `true` nếu `payment_line_id is null` (đã tách nhưng chưa rõ Team/Sale).
+- `summary.unsynced_settlement_count: number` — số cục PC còn nguyên (chưa đồng bộ) trong kỳ đang xem.
+- `summary.unsynced_settlement_amount: number` — tổng tiền của các cục đó.
 
-- **N2-T1 (~1.5h)** — Thêm cờ `is_split: bool` vào từng row trả về của `GET /reports/cash-in` ([report_routes.py:536-623](../../backend/report_routes.py)): `true` nếu `source == "gateway"`, `false` nếu `source == "bank"` mà có `settlement_code` khớp pattern PC (cục thẻ chưa đồng bộ — phân biệt với CK khách thường không có PC).
-- **N2-T2 (~1h)** — Thêm vào `summary` của response: `unsynced_settlement_count` + `unsynced_settlement_amount` (đếm số cục PC còn nguyên trong kỳ đang xem, tổng tiền) — để FE hiển thị cảnh báo tổng quan kiểu "còn N phiếu chi (x đồng) chưa đồng bộ thẻ".
-- **N2-T3 (~1.5h)** — Thêm vào row (khi `source == "gateway"` và `payment_line_id is null`): field `unmatched: true` — để FE tô cảnh báo nhẹ "chưa khớp đơn" trên dòng đó (khác với chưa tách — dòng NÀY đã tách nhưng thiếu Team).
-- **N2-T4 (~1h)** — Unit test (`backend/tests/test_cash_in_report.py`): case PC có gateway nhưng `payment_line_id is null` → row có `is_split=true`, `unmatched=true`, `team=""`. Case PC chưa có gateway → row `is_split=false`. Dùng lại số liệu thật PC 79523736 (2 dòng 15.697.500 + 22.446.240) làm fixture cho test này.
+---
 
-### Ngày 3 — Frontend (Đức)
+### A. Việc của Đạt (BE) — chỉ đụng `backend/*`
 
-- **N3-T1 (~1h)** — Thêm badge nhỏ cạnh cột Nội dung trong `BC04CashInReport.tsx`/`BC04CashInRowCards.tsx`: "Đã tách" (dựa `is_split`) / "Cục — chưa đồng bộ" (khi `is_split=false` và có `settlement_code`).
-- **N3-T2 (~1h)** — Dòng nào `unmatched=true` (đã tách nhưng chưa rõ Team): hiện chữ "Chưa khớp đơn" màu nhạt ở cột Đội thay vì để trống trơn (giúp chị Vân phân biệt "trống vì loại tiền không cần Team" và "trống vì sale chưa khớp").
-- **N3-T3 (~1h)** — Thêm dòng cảnh báo tổng ở đầu bảng khi `unsynced_settlement_count > 0`: "Còn {n} phiếu chi ({tổng đồng}) chưa đồng bộ thẻ — nhắc sale chạy Đồng bộ mPOS/Payoo". Tái dùng style cảnh báo đã có sẵn trong trang (không tự vẽ mới).
-- **N3-T4 (~0.5h)** — Cập nhật test `BC04CashInReport.test.tsx` cho 2 badge mới + dòng cảnh báo tổng.
+1. **B1 (~0.5h)** — Tự chạy lại SQL khảo sát ở mục 4 trên sandbox để xác nhận số liệu (không tin theo doc cũ, tự tay chạy lại 1 lần cho chắc).
+2. **B2 (~0.5h)** — Đọc `match_gateway_txn` ([gateway_routes.py:549](../../backend/gateway_routes.py)) + `gateway_match_candidates` ([:440](../../backend/gateway_routes.py)) — chỉ để xác nhận API khớp thủ công đã có sẵn, không viết code ở bước này.
+3. **B3 (~1h)** — Trong `_load_bc04_card_rows` ([report_routes.py:536](../../backend/report_routes.py)): thêm `is_split=True` cho mọi row (source luôn là gateway ở hàm này), thêm `unmatched = not t.get("payment_line_id")`.
+4. **B4 (~1h)** — Trong `_load_bc04_bank_rows` ([report_routes.py:579](../../backend/report_routes.py)): thêm `is_split = not bool(pc)` (có `settlement_code` PC mà tới được đây nghĩa là PC đó **chưa** có trong `known_settlement_codes` → cục thật chưa đồng bộ); `unmatched=False` cho row nguồn bank (field này chỉ áp dụng cho gateway).
+5. **B5 (~1h)** — Trong hàm build summary (chỗ gọi cả 2 hàm trên, ~[report_routes.py:654](../../backend/report_routes.py)): cộng dồn `unsynced_settlement_count` (đếm số PC distinct có `is_split=False`) và `unsynced_settlement_amount` (tổng `input` của các row đó) vào object `summary` trả về.
+6. **B6 (~1h)** — Unit test mới trong `backend/tests/test_cash_in_report.py`, dùng đúng số liệu thật đã verify (PC 79523736 = 2 dòng gateway 15.697.500 + 22.446.240, `payment_line_id=null` cả 2):
+   - Case gateway có `payment_line_id null` → row `is_split=True, unmatched=True`.
+   - Case gateway có `payment_line_id` → `unmatched=False`.
+   - Case bank có PC chưa nằm trong `known_settlement_codes` → row `is_split=False`, có mặt trong `unsynced_settlement_count`.
+7. **B7 (~0.5h)** — Xác nhận role nào đang có quyền module `bc04` thật trong RBAC (không phải `test.admin@dev` — tài khoản này không thấy menu Báo cáo khi thử) để bước verify cuối (D2) dùng đúng tài khoản, tránh mất thời gian đăng nhập lại.
 
-### Ngày 4 (thứ 2) — Dọn tồn đọng + verify cuối
+### B. Việc của Đức (FE) — chỉ đụng `frontend/src/*`
 
-- **N4-T1 (Đạt hoặc Đức, ~1-2h, tùy khối lượng thật ở N1-T1)** — Vào "Đối soát giao dịch" khớp thủ công các giao dịch `payment_line_id is null` còn tồn đọng gần đây (ưu tiên các PC trong tháng hiện tại vì ảnh hưởng trực tiếp báo cáo tháng chị Vân đang xem).
-- **N4-T2 (Đạt, ~1h)** — Chạy lại BC04 trên sandbox cho đúng khoảng ngày có PC 79523736 (3/9) bằng tài khoản có quyền `bc04` thật (không phải test.admin — cần xác nhận role nào đang có quyền `bc04` theo RBAC ở [PLAN_BC04...§7](PLAN_BC04_DONG_TIEN_VE_2026-08-27.md)), chụp lại 2 dòng đã tách + badge, đối chiếu đúng 38.143.740đ.
-- **N4-T3 (Đức, ~1h)** — Test cột Excel xuất ra ([utils/cashInXlsxExport.ts](../../frontend/src/utils/cashInXlsxExport.ts)) có giữ đúng 2 dòng tách (không tự gộp lại khi export).
-- **N4-T4 (cả hai, ~0.5h)** — Merge `feature/bo-sung-bc04` → `sandbox`, báo anh Minh + chị Vân kiểm tra trên sandbox trước khi lên prod.
+1. **F1 (~0.5h)** — Đọc `CardReconciliationTab` (Đối soát giao dịch) để biết UI khớp giao dịch hiện tại filter theo ngày/PC ra sao — chỉ đọc, dùng để hiểu chỗ chị Vân/sale sẽ vào khớp tay các giao dịch tồn đọng, không sửa gì ở đây.
+2. **F2 (~0.5h)** — Thêm 2 field mới vào type `CashInRow` và `CashInReport.summary` trong `frontend/src/types/cashIn.ts` (`isSplit`, `unmatched`, `unsyncedSettlementCount`, `unsyncedSettlementAmount` — map đúng theo tên JSON ở mục A0), cập nhật `mapCashInReport`.
+3. **F3 (~1h)** — Badge cạnh cột Nội dung trong `BC04CashInReport.tsx` (bảng desktop) + `BC04CashInRowCards.tsx` (mobile): `isSplit=true` → không cần badge thêm (đã hiện đúng nhãn nhóm rồi); `isSplit=false` (cục PC còn nguyên) → badge "Cục — chưa đồng bộ" tông màu warn.
+4. **F4 (~1h)** — Row có `unmatched=true`: hiện chữ nhỏ màu nhạt "Chưa khớp đơn" ở cột Đội (I) thay vì để trống — phân biệt "trống vì loại tiền không cần Team" (VD rút TikTok) với "trống vì sale chưa khớp".
+5. **F5 (~1h)** — Thêm 1 dòng cảnh báo tổng phía trên bảng khi `summary.unsyncedSettlementCount > 0`: "Còn {n} phiếu chi ({tổng đồng}) chưa đồng bộ thẻ — nhắc sale chạy Đồng bộ mPOS/Payoo". Tái dùng component cảnh báo/alert đã có trong trang, không tự vẽ mới.
+6. **F6 (~0.5h)** — Cập nhật `BC04CashInReport.test.tsx` cho badge mới + dòng cảnh báo tổng (dùng mock response theo đúng field ở mục A0).
+7. **F7 (~0.5h)** — Kiểm tra `utils/cashInXlsxExport.ts` xuất Excel giữ đúng từng dòng đã tách (không tự gộp lại theo PC khi export) — nếu code export hiện tại chỉ lặp qua mảng `rows` như bảng thì không cần sửa, chỉ cần viết test xác nhận.
+
+### C. Việc chung (làm sau khi A + B đều xong, phối hợp trực tiếp — không phải code song song)
+
+1. **C1** — Ráp FE + BE thật (bỏ mock ở F2), chạy thử trên local/sandbox, đối chiếu đúng field.
+2. **C2** — Vào "Đối soát giao dịch" khớp thủ công các giao dịch `payment_line_id is null` tồn đọng của tháng hiện tại (ưu tiên các PC gần đây nhất trước, xem số liệu thật ở mục 4) — ai rảnh trước làm, không cần chia cứng.
+3. **C3** — Verify cuối trên sandbox bằng tài khoản có quyền `bc04` thật (theo B7): mở đúng khoảng ngày có PC 79523736, xác nhận 2 dòng tách hiện đúng + badge + Team (nếu đã khớp ở C2) + tổng Input khớp 38.143.740đ.
+4. **C4** — Merge `feature/bo-sung-bc04` → `sandbox`, báo anh Minh + chị Vân kiểm tra trước khi lên prod.
 
 ---
 
@@ -79,7 +93,7 @@ Toàn bộ `gateway_transactions` có `funded_date` trong 30 ngày gần nhất:
 
 ## 5. Test / Done criteria
 
-- Unit test BE mục N2-T4 pass.
-- Unit test FE mục N3-T4 pass.
+- Unit test BE mục B6 pass.
+- Unit test FE mục F6 pass.
 - Trên sandbox: mở BC04 khoảng ngày chứa PC 79523736 → thấy đúng 2 dòng "Quẹt thẻ" 15.697.500 + "Trả góp" 22.446.240, không còn dòng cục 38.143.740, badge đúng, tổng Input ngày đó khớp.
 - Excel xuất ra giữ nguyên 2 dòng tách.
