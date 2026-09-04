@@ -351,7 +351,13 @@ function restoreGateTicks_(main) {
 
     var byCode = {};
     for (var i = 1; i < data.length; i++) {
-      if (String(data[i][2]) !== ky) continue;
+      // Cột 'ky' có thể bị Google Sheets auto-parse "YYYY-MM" thành Date → chuẩn hoá lại
+      // rồi mới so, nếu không String(Date) không bao giờ khớp "YYYY-MM" → mất hết tick.
+      var rowKy = data[i][2];
+      rowKy = (rowKy instanceof Date)
+        ? rowKy.getFullYear() + '-' + ('0' + (rowKy.getMonth() + 1)).slice(-2)
+        : String(rowKy).slice(0, 7);
+      if (rowKy !== ky) continue;
       var states = {};
       try { states = JSON.parse(data[i][3] || '{}'); } catch (e) { states = {}; }
       byCode[String(data[i][1])] = states;
