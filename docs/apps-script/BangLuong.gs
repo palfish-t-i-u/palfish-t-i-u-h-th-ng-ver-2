@@ -46,13 +46,11 @@ const BQ_SQL = [
   "  t.an_ca_van,",
   "  t.dien_thoai_van,",
   "  t.ghi_chu_thuong_nong,",
-  "  COALESCE(t.so_nguoi_phu_thuoc, 0) AS so_npt,",
-  "  t.phan_vung",
+  "  COALESCE(t.so_nguoi_phu_thuoc, 0) AS so_npt",
   "FROM `pf-salary.payroll.C_view_bang_luong_truoc_thue` t",
   "LEFT JOIN `pf-salary.payroll.C_view_bang_luong_co_ban_theo_ngay_cong` cb ON cb.code = t.code",
   "ORDER BY",
-  "  CASE t.phan_vung WHEN 'BOD' THEN 1 WHEN 'INHOUSE 1' THEN 2 WHEN 'CS TEAM' THEN 3 WHEN 'INHOUSE 2' THEN 4 WHEN 'OFFLINE' THEN 5 WHEN 'HR, ACCOUTANT +HR' THEN 6 WHEN 'MARKETING' THEN 7 WHEN 'Head quarter' THEN 8 ELSE 9 END,",
-  "  t.departments,",
+  "  CASE team WHEN 'BOD' THEN 1 WHEN 'Inhouse 1' THEN 2 WHEN 'CSKH' THEN 3 WHEN 'Inhouse 2' THEN 4 WHEN 'Offline' THEN 5 WHEN 'Back office' THEN 6 WHEN 'MKT' THEN 7 WHEN 'Head quarter' THEN 8 ELSE 9 END,",
   "  CASE WHEN t.title_job LIKE '%Giám đốc%' THEN 1 WHEN t.title_job LIKE '%Leader%' OR t.title_job LIKE '%leader%' THEN 2 WHEN COALESCE(TRIM(t.type_self),'') NOT IN ('Chính thức','Thử việc','') THEN 4 ELSE 3 END,",
   "  t.full_name"
 ].join('\n');
@@ -66,7 +64,7 @@ const COLS = [
   // --- Identity ---
   { key:'stt',           h:'STT',                              role:'auto'  },
   { key:'code',          h:'Mã NV',                            role:'auto',  src:'code' },
-  { key:'phan_vung',     h:'Khối',                             role:'auto',  src:'phan_vung' },
+  { key:'team',          h:'Team',                             role:'auto',  src:'team' },
   { key:'name',          h:'Name',                             role:'auto',  src:'full_name' },
   { key:'chuc_danh',     h:'Chức danh',                        role:'auto',  src:'title_job' },
   { key:'employee_type', h:'Loại NV',                           role:'auto',  src:'employee_type' },
@@ -102,25 +100,24 @@ const COLS = [
 function onOpen(){
   var ui = SpreadsheetApp.getUi();
   ui.createMenu('⚙ Bảng lương')
-    .addItem('(1) Cập nhật bảng lương', 'capNhatTuBigQuery')
-    .addItem('(1.1) Đối soát với bảng lương mẫu', 'doiSoatLuong')
-    .addItem('(1.2) Cập nhật bảng tính thuế', 'capNhatBangThue')
+    .addItem('🔄 (1) Cập nhật bảng lương', 'capNhatTuBigQuery')
+    .addItem('📋 (2) Đối soát với bảng lương mẫu', 'doiSoatLuong')
     .addSeparator()
-    .addItem('(2) Xem trước phiếu lương', 'xemTruocPhieuLuong')
-    .addItem('(2.1) Gửi phiếu đang chờ', 'flushOutbox')
-    .addItem('(2.2) Mở hàng đợi', 'moHangDoi')
+    .addItem('👁 Xem trước phiếu lương (dòng đang chọn)', 'xemTruocPhieuLuong')
+    .addItem('📥 Xuất Excel theo Phòng ban', 'xuatExcelTheoTeam')
     .addSeparator()
-    .addItem('(3) Lưu dữ liệu lương tháng này', 'luuArchiveBangLuong')
-    .addItem('(3.1) Lưu dữ liệu thuế tháng này', 'luuArchiveBangThue')
-    .addItem('(3.2) Xuất Excel + PDF lên Drive', 'xuatLuuDrive')
-    .addItem('(3.3) Tải Excel bảng lương + thuế', 'taiBangLuongThue')
-    .addItem('(3.4) Xuất Excel theo Phòng ban', 'xuatExcelTheoTeam')
+    .addItem('🎨 Định dạng lại (không cần BQ)', 'dinhDangBangLuong')
+    .addItem('📊 Cập nhật bảng tính thuế (tham chiếu)', 'capNhatBangThue')
+    .addItem('💾 Lưu dữ liệu lương tháng này', 'luuArchiveBangLuong')
     .addSeparator()
-    .addItem('(4) Định dạng lại bảng lương', 'dinhDangBangLuong')
-    .addItem('(4.1) Tạo tab Nhập tay (input)', 'taoTabNhapTay')
-    .addItem('(4.2) Tạo tab Chấm công', 'taoTabChamCong')
-    .addItem('(4.3) Cài đặt cổng gửi phiếu', 'installGateTriggers')
-    .addItem('(4.4) Test kết nối Gate', 'testGateKetNoi')
+    .addItem('🧾 Tạo tab Nhập tay (input)', 'taoTabNhapTay')
+    .addItem('🗓️ Tạo tab Chấm công', 'taoTabChamCong')
+    .addSeparator()
+    .addItem('🔌 Cài đặt cổng gửi phiếu', 'installGateTriggers')
+    .addItem('📤 Gửi phiếu đang chờ', 'flushOutbox')
+    .addItem('📋 Mở hàng đợi', 'moHangDoi')
+    .addItem('🔃 Đồng bộ xác nhận từ app', 'pullConfirmsFromApp')
+    .addItem('🧪 Test kết nối Gate', 'testGateKetNoi')
     .addToUi();
 
   if (PropertiesService.getScriptProperties().getProperty('PL_DEV') === '1') {
@@ -287,18 +284,15 @@ function capNhatTuBigQuery(){
   const formulaCols = {};
   const checkboxCols = [];
 
-  let sttCounter = 0, currentPhanVung = null;
   for(let i=0; i<rows.length; i++){
     const r = i+2, d = rows[i], code = String(d.code||'').trim();
-    if(d.phan_vung !== currentPhanVung){ currentPhanVung = d.phan_vung; sttCounter = 0; }
-    sttCounter++;
     newSnap[code] = {};
     const rowVals = [];
 
     for(let c=0; c<COLS.length; c++){
       const col = COLS[c];
       if(col.role==='auto'){
-        rowVals.push(col.key==='stt' ? sttCounter : (d[col.src]===null||d[col.src]===undefined ? '' : d[col.src]));
+        rowVals.push(col.key==='stt' ? i+1 : (d[col.src]===null||d[col.src]===undefined ? '' : d[col.src]));
       } else if(col.role==='input'){
         const cur = oldVal(code, col.h);
         if(!col.src){
@@ -355,66 +349,40 @@ function capNhatTuBigQuery(){
 
   writeSnap_(snap, newSnap);
   formatSheet_(main, rows.length);
+  restoreGateTicks_(main);   // tick lại 5 cột trạng thái từ _gate_state (sống qua refresh BQ)
   ss.toast('Đã cập nhật '+rows.length+' NV từ BigQuery.', 'Bảng lương', 5);
   } finally { lk.releaseLock(); }
 }
 
 // Độ rộng cột cố định theo key (px) — hết cảnh autoResize làm dồn ứ / nhảy loạn.
 const COL_WIDTH = {
-  stt:38, code:72, phan_vung:135, name:150, chuc_danh:135, employee_type:80, phong_ban:110,
+  stt:38, code:72, team:80, name:150, chuc_danh:135, employee_type:80, phong_ban:110,
   cong:52, note:150,
 };
 const MONEY_KEYS = ['tong_lt','tong_luong','luong_cb','lcb_ngay_cong','thuong_com','bao_hiem',
                     'gmv','gmv_ban_moi','gmv_gioi_thieu','gmv_tai_ky',
                     'an_trua','may_tinh','xe_pc','khau_tru_thue','bu_tien'];
 
-// Màu khớp Excel bảng lương tổng chị Trang (đọc bằng COM, tab 202607)
-const COL_FMT = {
-  stt:        { hdr:'#ED7D31', hdrFont:'black', data:'#F2C150', dataFont:'black' },
-  identity:   { hdr:'#ED7D31', hdrFont:'black', data:'#D9EAD3', dataFont:'black' },
-  chuc_danh:  { hdr:'#ED7D31', hdrFont:'black', data:'#F9CB9C', dataFont:'black' },
-  tong_lt:    { hdr:'#FFFF00', hdrFont:'black', data:'#FFD966', dataFont:'black' },
-  tong_luong: { hdr:'#04B0F1', hdrFont:'black', data:'#04B0F1', dataFont:'black' },
-  orange:     { hdr:'#ED7D31', hdrFont:'black', data:'#F6B26B', dataFont:'black' },
-  green:      { hdr:'#B6D7A8', hdrFont:'black', data:'#B6D7A8', dataFont:'black' },
-  note:       { hdr:'#FFFFFF', hdrFont:'black', data:'#FFFFFF', dataFont:'black' },
-  status:     { hdr:'#A6A6A6', hdrFont:'white', data:'#F3F4F6', dataFont:'black' },
-};
-const COL_GROUP = {
-  stt:'stt', code:'identity', phan_vung:'identity', name:'identity',
-  chuc_danh:'chuc_danh', employee_type:'identity', phong_ban:'identity',
-  tong_lt:'tong_lt', tong_luong:'tong_luong',
-  luong_cb:'orange', cong:'orange',
-  lcb_ngay_cong:'green', thuong_com:'green', bao_hiem:'green',
-  gmv:'orange', gmv_ban_moi:'orange', gmv_gioi_thieu:'orange', gmv_tai_ky:'orange',
-  an_trua:'orange', may_tinh:'orange', xe_pc:'orange',
-  khau_tru_thue:'orange', bu_tien:'orange',
-  note:'note', gc_thuong_nong:'note',
-  xn_tt:'status', gui_truoc:'status', nv_xn_truoc:'status',
-  gui_sau:'status', nv_xn_sau:'status',
-};
-
 function formatSheet_(main, numRows){
   const numCols = COLS.length;
 
-  // Header: wrap + căn giữa + bold + cao hàng
+  // Header: wrap + căn giữa + cao hàng để chữ dài không bị cắt
   main.getRange(1, 1, 1, numCols)
       .setWrap(true).setVerticalAlignment('middle').setHorizontalAlignment('center')
-      .setFontWeight('bold');
+      .setFontWeight('bold').setBackground('#0b5394').setFontColor('white');
   main.setRowHeight(1, 42);
 
-  // Header + data: màu theo nhóm cột (khớp bảng lương tổng Excel)
-  COLS.forEach(function(col, i){
-    var grp = COL_FMT[COL_GROUP[col.key]] || COL_FMT.identity;
-    main.getRange(1, i+1).setBackground(grp.hdr).setFontColor(grp.hdrFont);
-    if(numRows > 0){
-      var dataRange = main.getRange(2, i+1, numRows, 1);
-      dataRange.setBackground(grp.data || 'white').setFontColor(grp.dataFont || 'black');
-    }
-  });
-
-  // Số tiền: #,##0
+  // Số tiền: #,##0 (âm hiện -X). Giá trị vẫn là SỐ → không ảnh hưởng lookup/BQ.
   MONEY_KEYS.forEach(function(k){ main.getRange(2, colIndex(k), numRows, 1).setNumberFormat('#,##0'); });
+
+  // Màu theo role
+  COLS.forEach(function(col, i){
+    var bg = null;
+    if(col.role==='input')  bg = '#FFF8E1';   // vàng = điền tay
+    if(col.role==='calc')   bg = '#EEF2FF';   // xanh nhạt = công thức
+    if(col.role==='status') bg = '#F3F4F6';   // xám = trạng thái
+    if(bg) main.getRange(2, i+1, numRows, 1).setBackground(bg);
+  });
 
   // 2 cột tổng in đậm
   ['tong_lt','tong_luong'].forEach(function(k){
@@ -445,12 +413,9 @@ function dinhDangBangLuong(){
   } finally { lk.releaseLock(); }
 }
 
-// ---- BigQuery ----
+// ---- BigQuery (qua Service Account — xem BqAuth.gs) ----
 function queryBigQuery_(){
-  var req = { query: BQ_SQL, useLegacySql: false };
-  var job = BigQuery.Jobs.query(req, CFG.bqProject);
-  var jobId = job.jobReference.jobId;
-  while(!job.jobComplete){ Utilities.sleep(1000); job = BigQuery.Jobs.getQueryResults(CFG.bqProject, jobId); }
+  var job = bqQuery_(BQ_SQL, CFG.bqProject);
   var fields = job.schema.fields.map(function(f){ return f.name; });
   var numericKeys = ['luong_co_ban','cong','lcb_theo_ngay_cong','thuong_com','bao_hiem','gmv',
                      'an_trua','may_tinh','xe_pc','bu_tien','thue_tncn',
@@ -520,19 +485,9 @@ function plAssertCodesUnique_(rows){
   if (dupes.length) throw 'Mã NV trùng: ' + dupes.join(', ');
 }
 
-// Helper: chạy BQ query job, trả về rows (array). Tự lấy location từ response.
+// Helper: chạy BQ query/DML qua Service Account, trả về rows (array).
 function bqRunJob_(config) {
-  var insertResp = BigQuery.Jobs.insert({ configuration: config }, CFG.bqProject);
-  var jobId = insertResp.jobReference.jobId;
-  var loc = (insertResp.jobReference && insertResp.jobReference.location) || undefined;
-  var opts = loc ? { location: loc } : {};
-  var status = BigQuery.Jobs.get(CFG.bqProject, jobId, opts);
-  while (status.status.state !== 'DONE') {
-    Utilities.sleep(1000);
-    status = BigQuery.Jobs.get(CFG.bqProject, jobId, opts);
-  }
-  if (status.status.errorResult) throw new Error(status.status.errorResult.message);
-  var res = BigQuery.Jobs.getQueryResults(CFG.bqProject, jobId, opts);
+  var res = bqQuery_(config.query.query, CFG.bqProject);
   return res.rows || [];
 }
 
@@ -560,6 +515,8 @@ function luuArchiveBangLuong() {
     var hdr = allVals[0].map(function(h) { return String(h).trim(); });
     var ky = kyLuongHienTai_();
 
+    // Check duplicate — table chưa tồn tại lần đầu → bỏ qua, ghi thẳng
+    // Query/DML BQ qua Service Account (BqAuth.gs) — tự lấy location từ response
     var cnt = 0;
     try {
       cnt = bqQueryCount_('SELECT COUNT(*) AS cnt FROM `pf-salary.payroll.M_bang_luong_archive` WHERE ky_luong = "' + ky + '"');
@@ -572,6 +529,9 @@ function luuArchiveBangLuong() {
       bqRunDml_('DELETE FROM `pf-salary.payroll.M_bang_luong_archive` WHERE ky_luong = "' + ky + '"');
     }
 
+    // Map header thực của sheet → BQ field (xác định từ debugArchiveHeaders 2026-08-24)
+    // COLS đã thay đổi (35 entries) trong khi sheet vẫn dùng layout 30 cột cũ
+    // → không dùng positional COLS, match bằng header string thực tế
     var ARCHIVE_FIELD_MAP = [
       { h: 'STT',                              key: 'stt',            type: 'INTEGER' },
       { h: 'Mã NV',                            key: 'code',           type: 'STRING'  },
@@ -641,13 +601,14 @@ function luuArchiveBangLuong() {
 
     if (!rows.length) { ss.toast('Không có dòng hợp lệ để lưu.', 'Lỗi', 5); return; }
 
+    // Build schema from ARCHIVE_FIELD_MAP
     var schemaFields = [{ name: 'ky_luong', type: 'STRING', mode: 'NULLABLE' }];
     ARCHIVE_FIELD_MAP.forEach(function(fi) {
       schemaFields.push({ name: fi.key, type: fi.type, mode: 'NULLABLE' });
     });
 
+    // JSON Lines blob
     var jsonLines = rows.map(function(r) { return JSON.stringify(r); }).join('\n');
-    var blob = Utilities.newBlob(jsonLines, 'application/octet-stream');
 
     var job = {
       configuration: {
@@ -661,17 +622,10 @@ function luuArchiveBangLuong() {
       }
     };
 
-    var loadJob = BigQuery.Jobs.insert(job, CFG.bqProject, blob);
-    var jobId = loadJob.jobReference.jobId;
-    var jobLocation = (loadJob.jobReference && loadJob.jobReference.location) || undefined;
-    var getOpts = jobLocation ? { location: jobLocation } : {};
-    var status = BigQuery.Jobs.get(CFG.bqProject, jobId, getOpts);
-    while (status.status.state !== 'DONE') {
-      Utilities.sleep(1500);
-      status = BigQuery.Jobs.get(CFG.bqProject, jobId, getOpts);
-    }
-    if (status.status.errorResult) {
-      ui.alert('Lỗi BigQuery: ' + status.status.errorResult.message);
+    try {
+      bqLoadJson_(job, jsonLines, CFG.bqProject); // load qua Service Account — xem BqAuth.gs
+    } catch (e) {
+      ui.alert('Lỗi BigQuery: ' + e.message);
       return;
     }
 
@@ -679,101 +633,6 @@ function luuArchiveBangLuong() {
   } finally {
     lk.releaseLock();
   }
-}
-
-function xuatLuuDrive() {
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var ui = SpreadsheetApp.getUi();
-  var ky = kyLuongHienTai_();
-
-  var DRIVE_FOLDER = 'PalFish Bảng lương Archive';
-  var SHARE_EMAIL  = 'palfishrecruitment@gmail.com';
-
-  var folders = DriveApp.getFoldersByName(DRIVE_FOLDER);
-  var folder;
-  if (folders.hasNext()) {
-    folder = folders.next();
-  } else {
-    folder = DriveApp.createFolder(DRIVE_FOLDER);
-    folder.addEditor(SHARE_EMAIL);
-  }
-
-  var tabs = [
-    { name: CFG.mainSheet,      prefix: 'BangLuong' },
-    { name: THUE_CFG.sheetName, prefix: 'BangThue'  },
-  ];
-
-  var results = [];
-  for (var t = 0; t < tabs.length; t++) {
-    var tab = tabs[t];
-    var sheet = ss.getSheetByName(tab.name);
-    if (!sheet) { results.push(tab.prefix + ': ⚠ không tìm thấy tab'); continue; }
-
-    var tempSS = SpreadsheetApp.create('_temp_' + ky + '_' + tab.prefix);
-    sheet.copyTo(tempSS).setName(tab.name);
-    var defSheet = tempSS.getSheetByName('Sheet1');
-    if (defSheet) tempSS.deleteSheet(defSheet);
-    SpreadsheetApp.flush();
-
-    var tempId  = tempSS.getId();
-    var token   = ScriptApp.getOAuthToken();
-    var headers = { Authorization: 'Bearer ' + token };
-
-    var formats = ['xlsx', 'pdf'];
-    for (var fi = 0; fi < formats.length; fi++) {
-      var fmt = formats[fi];
-      var url = 'https://docs.google.com/spreadsheets/d/' + tempId + '/export?format=' + fmt;
-      if (fmt === 'pdf') url += '&portrait=false&fitw=true&gridlines=false&printtitle=false';
-
-      var fileName = ky + '_' + tab.prefix + '.' + fmt;
-
-      var existing = folder.getFilesByName(fileName);
-      while (existing.hasNext()) existing.next().setTrashed(true);
-
-      var blob = UrlFetchApp.fetch(url, { headers: headers }).getBlob().setName(fileName);
-      folder.createFile(blob);
-    }
-
-    DriveApp.getFileById(tempId).setTrashed(true);
-    results.push(tab.prefix + ': xlsx + pdf ✓');
-  }
-
-  ui.alert('Xuất file kỳ ' + ky + ' thành công!\n\n' + results.join('\n') + '\n\nFolder: ' + folder.getUrl());
-}
-
-function taiBangLuongThue() {
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var ssId = ss.getId();
-
-  var tabs = [
-    { name: CFG.mainSheet,      label: 'Bảng lương' },
-    { name: THUE_CFG.sheetName, label: 'Bảng tính thuế' },
-  ];
-
-  var links = [];
-  for (var i = 0; i < tabs.length; i++) {
-    var sheet = ss.getSheetByName(tabs[i].name);
-    if (!sheet) continue;
-    var gid = sheet.getSheetId();
-    var url = 'https://docs.google.com/spreadsheets/d/' + ssId + '/export?format=xlsx&gid=' + gid;
-    links.push({ label: tabs[i].label, url: url });
-  }
-
-  var html = '<style>'
-    + 'body{font-family:Arial,sans-serif;padding:20px}'
-    + 'a{display:block;margin:12px 0;padding:12px 20px;background:#1a73e8;color:white;'
-    + 'text-decoration:none;border-radius:8px;text-align:center;font-size:14px}'
-    + 'a:hover{background:#1557b0}'
-    + '</style>'
-    + '<p>Click để tải file Excel:</p>';
-  for (var i = 0; i < links.length; i++) {
-    html += '<a href="' + links[i].url + '" target="_blank">\u{1F4E5} ' + links[i].label + '</a>';
-  }
-  html += '<p style="color:#666;font-size:12px;margin-top:20px">File tải về chứa đúng 1 tab, dữ liệu tháng hiện tại.</p>';
-
-  var output = HtmlService.createHtmlOutput(html)
-    .setWidth(350).setHeight(250).setTitle('Tải Excel');
-  SpreadsheetApp.getUi().showModalDialog(output, 'Tải Excel bảng lương + thuế');
 }
 
 function xuatExcelTheoTeam(){

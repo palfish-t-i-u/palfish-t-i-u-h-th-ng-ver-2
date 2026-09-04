@@ -431,13 +431,7 @@ function arr_(len, fill) {
 /* ======== BigQuery ======== */
 
 function queryBQ_thue_() {
-  var req = { query: SQL_THUE, useLegacySql: false };
-  var job = BigQuery.Jobs.query(req, THUE_CFG.bqProject);
-  var jobId = job.jobReference.jobId;
-  while (!job.jobComplete) {
-    Utilities.sleep(1000);
-    job = BigQuery.Jobs.getQueryResults(THUE_CFG.bqProject, jobId);
-  }
+  var job = bqQuery_(SQL_THUE, THUE_CFG.bqProject); // qua Service Account — xem BqAuth.gs
   var fields = job.schema.fields.map(function(f) { return f.name; });
   var numericKeys = ['luong_co_dinh','ngay_cong','income_col_u_val','an_ca','xang_xe','dien_thoai','may_tinh_val','luong_dong_bh','so_npt'];
   var out = [];
@@ -563,7 +557,6 @@ function luuArchiveBangThue() {
     });
 
     var jsonLines = rows.map(function(r) { return JSON.stringify(r); }).join('\n');
-    var blob = Utilities.newBlob(jsonLines, 'application/octet-stream');
 
     var job = {
       configuration: {
@@ -577,17 +570,10 @@ function luuArchiveBangThue() {
       }
     };
 
-    var loadJob = BigQuery.Jobs.insert(job, CFG.bqProject, blob);
-    var jobId = loadJob.jobReference.jobId;
-    var jobLocation = (loadJob.jobReference && loadJob.jobReference.location) || undefined;
-    var getOpts = jobLocation ? { location: jobLocation } : {};
-    var status = BigQuery.Jobs.get(CFG.bqProject, jobId, getOpts);
-    while (status.status.state !== 'DONE') {
-      Utilities.sleep(1500);
-      status = BigQuery.Jobs.get(CFG.bqProject, jobId, getOpts);
-    }
-    if (status.status.errorResult) {
-      ui.alert('Lỗi BigQuery: ' + status.status.errorResult.message);
+    try {
+      bqLoadJson_(job, jsonLines, CFG.bqProject); // load qua Service Account — xem BqAuth.gs
+    } catch (e) {
+      ui.alert('Lỗi BigQuery: ' + e.message);
       return;
     }
 
