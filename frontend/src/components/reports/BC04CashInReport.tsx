@@ -254,7 +254,10 @@ export default function BC04CashInReport() {
                   <Tr key={key}>
                     <Td className="whitespace-nowrap">{fmtDate(row.date)}</Td>
                     <Td>
-                      <Badge tone={GROUP_BADGE_TONE[row.group]}>{CASH_IN_GROUP_LABELS[row.group]}</Badge>
+                      <div className="flex items-center gap-1.5">
+                        <Badge tone={GROUP_BADGE_TONE[row.group]}>{CASH_IN_GROUP_LABELS[row.group]}</Badge>
+                        {!row.isSplit && <Badge tone="warn">Cục — chưa đồng bộ</Badge>}
+                      </div>
                     </Td>
                     <Td className="text-right tabular-nums">{fmtVnd(row.input)}</Td>
                     <Td className="text-right tabular-nums">{fmtVnd(row.balance)}</Td>
@@ -273,7 +276,15 @@ export default function BC04CashInReport() {
                         ))}
                       </select>
                     </Td>
-                    <Td className="whitespace-nowrap text-xs">{row.team ?? "—"}</Td>
+                    <Td className="whitespace-nowrap text-xs">
+                      {row.team ? (
+                        row.team
+                      ) : row.unmatched ? (
+                        <span className="text-gmv-muted">Chưa khớp đơn</span>
+                      ) : (
+                        "—"
+                      )}
+                    </Td>
                     <Td>
                       <input
                         className="min-h-9 w-full min-w-0 rounded-gmv-sm border border-gmv-border px-2 text-xs"

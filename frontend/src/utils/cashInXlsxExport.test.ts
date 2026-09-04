@@ -9,18 +9,23 @@ function _sheetToAoa(ws: XLSX.WorkSheet): unknown[][] {
 
 function _sampleReport(): CashInReport {
   return {
-    summary: { totalInput: 5_000_000, totalRmb: 1351.35, openingBalance: 9_579_473_038, closingBalance: 9_584_473_038, rate: 3700 },
+    summary: {
+      totalInput: 5_000_000, totalRmb: 1351.35, openingBalance: 9_579_473_038, closingBalance: 9_584_473_038,
+      rate: 3700, unsyncedSettlementCount: 0, unsyncedSettlementAmount: 0,
+    },
     days: [{ date: "2026-01-01", totalInput: 5_000_000, totalRmb: 1351.35, endingBalance: 9_584_473_038 }],
     rows: [
       {
         source: "bank", txnId: "t1", date: "2026-01-01", details: "用户付款", output: 0, input: 1_000_000,
         balance: 9_580_473_038, income: 1_000_000, expenditure: 0, businessLine: "Giáo dục / 教育",
         team: "In-house 2", note: null, rmb: 270.27, dataSource: "HN BANK", group: "khach_tra", mainCat: null, detail: null,
+        isSplit: true, unmatched: false,
       },
       {
         source: "gateway", txnId: "t2", date: "2026-01-01", details: "Quẹt thẻ", output: 0, input: 4_000_000,
         balance: 9_584_473_038, income: 4_000_000, expenditure: 0, businessLine: "Giáo dục / 教育",
         team: "In-house 1", note: "PC 79492392", rmb: 1081.08, dataSource: "mPOS", group: "the", mainCat: null, detail: null,
+        isSplit: true, unmatched: false,
       },
     ],
   };
