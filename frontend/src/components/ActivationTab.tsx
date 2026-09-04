@@ -2161,6 +2161,8 @@ export default function ActivationTab() {
   const [search, setSearch] = useState("");
   const [tab, setTab] = useState<ArTabId>("pending_order");
   const [page, setPage] = useState(1);
+  const [remindersCollapsed, setRemindersCollapsed] = useState(true);
+  const [holdCollapsed, setHoldCollapsed] = useState(true);
   const [orderIdDrafts, setOrderIdDrafts] = useState<Record<string, string>>({});
   const [editingKeys, setEditingKeys] = useState<Set<string>>(() => new Set());
   const [savingArIds, setSavingArIds] = useState<Set<string>>(() => new Set());
@@ -2900,22 +2902,42 @@ export default function ActivationTab() {
             display: "flex", alignItems: "flex-start", gap: 8,
           }}>
             <Icons.Bell size={15} style={{ color: "#e65100", flexShrink: 0, marginTop: 1 }} />
-            <div>
-              <strong style={{ color: "#e65100" }}>Sales đang nhắc tạo gói học gấp ({reminders.length})</strong>
-              <div style={{ marginTop: 4, lineHeight: 1.6 }}>
-                {reminders.map((rem) => {
-                  const dt = new Date(rem.requested_at);
-                  return (
-                    <div key={rem.id} style={{ color: "var(--text-2)" }}>
-                      <strong>{rem.customer_name || rem.pr_code}</strong>
-                      {" — nhắc bởi "}{rem.requested_by_name}
-                      {" lúc "}{dt.toLocaleDateString("vi-VN")}{" "}
-                      {dt.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })}
-                      {rem.note && <span style={{ color: "var(--text-3)" }}> · &ldquo;{rem.note}&rdquo;</span>}
-                    </div>
-                  );
-                })}
-              </div>
+            <div style={{ flex: 1 }}>
+              <button
+                type="button"
+                onClick={() => setRemindersCollapsed((v) => !v)}
+                style={{
+                  display: "flex", alignItems: "center", gap: 6,
+                  background: "none", border: "none", padding: 0, cursor: "pointer",
+                  color: "#e65100", font: "inherit", fontWeight: 700,
+                }}
+                aria-expanded={!remindersCollapsed}
+              >
+                <Icons.ChevronDown
+                  size={14}
+                  style={{
+                    transition: "transform 0.15s",
+                    transform: remindersCollapsed ? "rotate(-90deg)" : "none",
+                  }}
+                />
+                Sales đang nhắc tạo gói học gấp ({reminders.length})
+              </button>
+              {!remindersCollapsed && (
+                <div style={{ marginTop: 4, lineHeight: 1.6 }}>
+                  {reminders.map((rem) => {
+                    const dt = new Date(rem.requested_at);
+                    return (
+                      <div key={rem.id} style={{ color: "var(--text-2)" }}>
+                        <strong>{rem.customer_name || rem.pr_code}</strong>
+                        {" — nhắc bởi "}{rem.requested_by_name}
+                        {" lúc "}{dt.toLocaleDateString("vi-VN")}{" "}
+                        {dt.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })}
+                        {rem.note && <span style={{ color: "var(--text-3)" }}> · &ldquo;{rem.note}&rdquo;</span>}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -2928,18 +2950,38 @@ export default function ActivationTab() {
             display: "flex", alignItems: "flex-start", gap: 8,
           }}>
             <span style={{ fontSize: 16, flexShrink: 0, marginTop: 1 }}>⏸</span>
-            <div>
-              <strong style={{ color: "#f57f17" }}>PH chưa muốn tạo gói học ({holdArs.length})</strong>
-              <div style={{ marginTop: 4, lineHeight: 1.6 }}>
-                {holdArs.map((a) => (
-                  <div key={a.id} style={{ color: "var(--text-2)" }}>
-                    <strong>{a.customerName || a.id}</strong>
-                    {a.holdNote
-                      ? <span style={{ color: "var(--text-3)" }}> — &ldquo;{a.holdNote}&rdquo;</span>
-                      : <span style={{ color: "var(--text-3)" }}> — (không ghi chú)</span>}
-                  </div>
-                ))}
-              </div>
+            <div style={{ flex: 1 }}>
+              <button
+                type="button"
+                onClick={() => setHoldCollapsed((v) => !v)}
+                style={{
+                  display: "flex", alignItems: "center", gap: 6,
+                  background: "none", border: "none", padding: 0, cursor: "pointer",
+                  color: "#f57f17", font: "inherit", fontWeight: 700,
+                }}
+                aria-expanded={!holdCollapsed}
+              >
+                <Icons.ChevronDown
+                  size={14}
+                  style={{
+                    transition: "transform 0.15s",
+                    transform: holdCollapsed ? "rotate(-90deg)" : "none",
+                  }}
+                />
+                PH chưa muốn tạo gói học ({holdArs.length})
+              </button>
+              {!holdCollapsed && (
+                <div style={{ marginTop: 4, lineHeight: 1.6 }}>
+                  {holdArs.map((a) => (
+                    <div key={a.id} style={{ color: "var(--text-2)" }}>
+                      <strong>{a.customerName || a.id}</strong>
+                      {a.holdNote
+                        ? <span style={{ color: "var(--text-3)" }}> — &ldquo;{a.holdNote}&rdquo;</span>
+                        : <span style={{ color: "var(--text-3)" }}> — (không ghi chú)</span>}
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         )}
