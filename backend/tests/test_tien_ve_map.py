@@ -1,41 +1,39 @@
-"""_tien_ve_map — ngày tiền về L8 lấy từ giao dịch cổng/bank ĐÃ KHỚP (giữ ngày quẹt).
+"""_tien_ve_map — ngày tiền về L8 lấy từ giao dịch cổng/bank ĐÃ KHỚP.
 
-Bối cảnh: màn Tạo gói học (B3) trước lấy ngày tiền về từ so_doanh_thu (Sổ lên trễ) →
-AR chưa có dòng Sổ bị mất ngày → bị lọc khỏi tab. Đổi nguồn sang gateway/bank đã khớp:
-- thẻ/trả góp = ngày quẹt (paid_at ép UTC = đúng ngay_tien_ve C-T1 dập vào Sổ)
-- CK = transaction_date (giờ VN)
+Màn Tạo gói học (B3) là công cụ đối soát xuất HĐ theo sao kê ngân hàng, nên ngày
+"tiền về" = ngày tiền THỰC về TK:
+- thẻ/trả góp = gateway_transactions.funded_date (naive VN → CHỈ ::date)
+- CK = bank_transactions.transaction_date (timestamptz → giờ VN)
 - AR không khớp → fallback ngày Sổ (không hồi quy).
+Doanh thu (Sổ/BC02) vẫn = ngày quẹt — KHÁI NIỆM KHÁC, cố ý lệch (như BC04 vs BC02).
 
-Rủi ro cao nhất = bẫy timezone (double-shift). Test 2 helper thuần + map tổng hợp.
-Xem docs/learnings/2026-08-08-ct1-ngay-tien-ve-don-the-paid-at-utc.md.
+Rủi ro cao nhất = bẫy timezone. funded_date là 'timestamp without time zone' (giờ VN
+naive) → KHÔNG được đổi timezone; bank transaction_date là timestamptz → PHẢI đổi VN.
+Xem docs/learnings/timestamp-vs-date-funded-date-gateway.md.
 """
 from __future__ import annotations
 
-from activation_routes import _bank_vn_date, _swipe_utc_date, _tien_ve_map
+from activation_routes import _bank_vn_date, _funded_vn_date, _tien_ve_map
 
 
 # ---------------------------------------------------------------------------
 # Helper thuần — bẫy timezone
 # ---------------------------------------------------------------------------
 
-def test_swipe_utc_date_tzaware_utc():
-    assert _swipe_utc_date("2026-09-02T18:00:00+00:00") == "2026-09-02"
+def test_funded_vn_date_naive_giu_nguyen_ngay():
+    # funded_date naive (giờ VN) → CHỈ lấy date, KHÔNG đổi tz
+    assert _funded_vn_date("2026-09-03T00:00:00") == "2026-09-03"
+    assert _funded_vn_date("2026-09-03T23:30:00") == "2026-09-03"
 
 
-def test_swipe_utc_date_naive_khong_double_shift():
-    # naive (không tzinfo) giữ nguyên — KHÔNG coi là VN rồi dịch (double-shift 23h→hôm sau)
-    assert _swipe_utc_date("2026-09-02T23:30:00") == "2026-09-02"
+def test_funded_vn_date_chi_co_ngay():
+    assert _funded_vn_date("2026-09-03") == "2026-09-03"
 
 
-def test_swipe_utc_date_tzaware_vn_ep_ve_utc():
-    # quẹt 02:00 giờ VN (+7) = 19:00 UTC hôm trước → ngày quẹt (UTC) = 09-02
-    assert _swipe_utc_date("2026-09-03T02:00:00+07:00") == "2026-09-02"
-
-
-def test_swipe_utc_date_empty():
-    assert _swipe_utc_date(None) is None
-    assert _swipe_utc_date("") is None
-    assert _swipe_utc_date("rác-không-parse-được") is None
+def test_funded_vn_date_empty():
+    assert _funded_vn_date(None) is None
+    assert _funded_vn_date("") is None
+    assert _funded_vn_date("rác-không-parse-được") is None
 
 
 def test_bank_vn_date_doi_gio_vn():
@@ -49,7 +47,7 @@ def test_bank_vn_date_empty():
 
 
 # ---------------------------------------------------------------------------
-# _tien_ve_map — tổng hợp: thẻ (gateway), CK (bank), fallback Sổ
+# _tien_ve_map — tổng hợp: thẻ (gateway.funded_date), CK (bank), fallback Sổ
 # ---------------------------------------------------------------------------
 
 class _FakeQuery:
@@ -82,16 +80,17 @@ class _FakeSB:
 def _fake_sb():
     return _FakeSB({
         "active_requests": [
-            {"id": "AR1", "pr_id": "PR1"},   # thẻ
+            {"id": "AR1", "pr_id": "PR1"},   # thẻ/trả góp
             {"id": "AR2", "pr_id": "PR2"},   # CK
             {"id": "AR3", "pr_id": "PR3"},   # không có line → fallback Sổ
         ],
         "payment_lines": [
-            {"id": "L1", "payment_request_id": "PR1", "method": "card"},
+            {"id": "L1", "payment_request_id": "PR1", "method": "installment"},
             {"id": "L2", "payment_request_id": "PR2", "method": "bank"},
         ],
         "gateway_transactions": [
-            {"payment_line_id": "L1", "paid_at": "2026-09-02T18:00:00+00:00"},
+            # quẹt 28/08 nhưng tiền về TK (funded) 03/09 → B3 phải hiện 03/09
+            {"payment_line_id": "L1", "funded_date": "2026-09-03T00:00:00"},
         ],
         "bank_transactions": [
             {"payment_line_id": "L2", "transaction_date": "2026-09-02T18:00:00+00:00"},
@@ -102,10 +101,10 @@ def _fake_sb():
     })
 
 
-def test_tien_ve_map_the_lay_ngay_quet():
+def test_tien_ve_map_the_lay_ngay_funded():
     out = _tien_ve_map(_fake_sb(), ["AR1", "AR2", "AR3"])
-    # thẻ → ngày quẹt UTC
-    assert out["AR1"] == ("2026-09-02", "2026-09-02")
+    # thẻ/trả góp → ngày tiền về TK (funded), KHÔNG phải ngày quẹt
+    assert out["AR1"] == ("2026-09-03", "2026-09-03")
 
 
 def test_tien_ve_map_ck_lay_ngay_bank_gio_vn():

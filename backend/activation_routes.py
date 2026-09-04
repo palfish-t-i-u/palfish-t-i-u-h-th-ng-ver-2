@@ -519,21 +519,19 @@ def _credit_hold_map(sb, pr_ids: list[str]) -> dict[str, str]:
     }
 
 
-def _swipe_utc_date(paid_at: Any) -> str | None:
-    """Ngày quẹt = paid_at ép UTC (mirror C-T1 revenue_routes.stamp_net_fee).
+def _funded_vn_date(funded_date: Any) -> str | None:
+    """Ngày tiền về TK (thẻ/trả góp) = gateway_transactions.funded_date.
 
-    paid_at (gateway_transactions) là timestamptz đã chuẩn UTC. KHÔNG dùng
-    _parse_datetime — hàm đó coi naive là VN → double-shift (quẹt 23h nhảy ngày).
-    Xem docs/learnings/2026-08-08-ct1-ngay-tien-ve-don-the-paid-at-utc.md.
+    funded_date là 'timestamp without time zone' = giờ VN naive (nguồn mPOS/Payoo)
+    → CHỈ ::date, KHÔNG đổi timezone (khác paid_at phải ép UTC). Convert sẽ lệch ngày.
+    Xem docs/learnings/timestamp-vs-date-funded-date-gateway.md.
     """
-    if not paid_at:
+    if not funded_date:
         return None
     try:
-        dt = paid_at if isinstance(paid_at, datetime) else datetime.fromisoformat(str(paid_at))
+        dt = funded_date if isinstance(funded_date, datetime) else datetime.fromisoformat(str(funded_date))
     except (ValueError, TypeError):
         return None
-    if dt.tzinfo:
-        dt = dt.astimezone(timezone.utc)
     return dt.date().isoformat()
 
 
@@ -553,14 +551,14 @@ def _bank_vn_date(transaction_date: Any) -> str | None:
 def _tien_ve_map(sb, ar_ids: list[str]) -> dict[str, tuple[str | None, str | None]]:
     """Ngày tiền về (sớm, muộn) của mỗi AR — TỪ giao dịch cổng/bank ĐÃ KHỚP.
 
-    Thẻ/trả góp: ngày quẹt = gateway_transactions.paid_at (match_status='matched'),
-    ép UTC = ĐÚNG ngay_tien_ve mà C-T1 sẽ dập vào Sổ — nhưng có SỚM ngay từ lúc đối
-    soát cổng, không chờ Sổ lên (⟹ hết cảnh AR chưa có dòng Sổ bị mất ngày → bị lọc
-    khỏi tab Tạo gói học).
+    Thẻ/trả góp: ngày tiền về TK = gateway_transactions.funded_date (match_status=
+    'matched') — KHỚP sao kê ngân hàng + BC04 (đối soát xuất HĐ theo tiền thực về TK,
+    không phải ngày quẹt). Đơn quẹt xong chưa settle (funded_date null) → fallback Sổ.
     CK: ngày tiền về = bank_transactions.transaction_date (đổi giờ VN).
     AR không có giao dịch khớp → fallback _tien_ve_map_from_ledger (ngày Sổ) để không
     AR nào đang có ngày bị mất ngày.
-    CHỈ ĐỌC — KHÔNG đụng so_doanh_thu/BC/doanh thu (doanh thu vẫn = ngày quẹt).
+    CHỈ ĐỌC — KHÔNG đụng so_doanh_thu/BC/doanh thu (doanh thu vẫn = ngày quẹt; ngày ở
+    B3 = ngày tiền thực về TK, là khái niệm khác, cố ý lệch — như BC04 vs BC02).
     Batch theo chunk, KHÔNG N+1 (mirror _credit_hold_map).
     """
     ids = [str(a) for a in ar_ids if a]
@@ -602,7 +600,7 @@ def _tien_ve_map(sb, ar_ids: list[str]) -> dict[str, tuple[str | None, str | Non
     if not line_meta:
         return _tien_ve_map_from_ledger(sb, ids)
 
-    # 3) ngày quẹt (thẻ/trả góp) từ gateway đã khớp + ngày CK từ bank
+    # 3) ngày tiền về TK: thẻ/trả góp = gateway.funded_date; CK = bank.transaction_date
     date_by_pr: dict[str, list[str]] = {}
     card_line_ids = [lid for lid, (_, m) in line_meta.items() if m in CREDIT_METHODS]
     ck_line_ids = [lid for lid, (_, m) in line_meta.items() if m not in CREDIT_METHODS]
@@ -611,7 +609,7 @@ def _tien_ve_map(sb, ar_ids: list[str]) -> dict[str, tuple[str | None, str | Non
         try:
             res = (
                 sb.table("gateway_transactions")
-                .select("payment_line_id, paid_at")
+                .select("payment_line_id, funded_date")
                 .in_("payment_line_id", card_line_ids[i : i + CHUNK])
                 .eq("match_status", "matched")
                 .execute()
@@ -620,7 +618,7 @@ def _tien_ve_map(sb, ar_ids: list[str]) -> dict[str, tuple[str | None, str | Non
             continue
         for r in (res.data or []):
             lid = str(r.get("payment_line_id") or "")
-            d = _swipe_utc_date(r.get("paid_at"))
+            d = _funded_vn_date(r.get("funded_date"))
             if lid in line_meta and d:
                 date_by_pr.setdefault(line_meta[lid][0], []).append(d)
 
