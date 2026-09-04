@@ -38,6 +38,14 @@ class TestResolveLeadLabel:
         # Source không mapped + channel mapped → hiện channel label
         assert resolve_lead_label("unknown-src", "832") == "Kênh giới thiệu"
 
+    def test_stale_channel_of_other_source_is_dropped(self):
+        # Sale đổi nguồn Quảng cáo→Gia hạn mà lead_channel FB-VN (300265) còn kẹt.
+        # Kênh KHÔNG thuộc nguồn mới → bỏ kênh, chỉ hiện nguồn (tránh "Gia hạn · FB - VN").
+        assert resolve_lead_label("gia_han", "300265") == "Gia hạn"
+        assert resolve_lead_label("kho_chung", "300431") == "Kho Chung"
+        # Kênh của nguồn khác (Tiktokshop thuộc quang_cao) dưới kho_chung → cũng bỏ.
+        assert resolve_lead_label("kho_chung", "300551") == "Kho Chung"
+
 
 class TestResolveLoaiFromLeadSource:
     """resolve_loai_from_lead_source — map lead_source/channel → loai (vocab Sổ doanh thu/BC02)."""

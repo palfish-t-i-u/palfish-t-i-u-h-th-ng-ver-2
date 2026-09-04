@@ -13,3 +13,19 @@
 **Rule:** Khi một trường hiển thị trong tin DingTalk tồn tại ở cả cấp PR lẫn cấp gói, kiểm CẢ HAI đường: (a) trường đó có nằm trong `_ar_dingtalk_content_key` không (nếu không → re-notify không kích hoạt); (b) builder có render đúng giá trị cấp-gói khi nó lệch cấp-PR không (đừng chỉ test đơn nhiều gói — test cả đơn **1 gói lệch nguồn**). Edit-resend là DingTalk-only (Zalo chỉ bắn `payment_paid`), nên `_ar_dingtalk_content_key` là điểm gác duy nhất.
 
 **Verify:** `& "$env:LOCALAPPDATA\Programs\Python\Python310\python.exe" -m pytest backend/tests/test_zalo_builder.py -q` (đơn 1 gói lệch nguồn: `test_single_course_source_differs_from_pr_prints_per_course`). Content-key: `test_course_lead_source_change_alters_key` trong `backend/tests/test_dingtalk_edit_resend.py` (cần env FastAPI đủ mới — miniconda/CI, không chạy trên Python310 fallback).
+
+---
+
+## Bổ sung (4/9): Kênh mồ côi khi đổi sang nguồn không-kênh → tin hiện "Gia hạn · FB - VN"
+
+**Problem:** Sale đổi nguồn gói Quảng cáo → Gia hạn. `lead_source` đổi đúng thành `gia_han` nhưng `lead_channel` cũ (`300265` = FB-VN) KHÔNG được xoá. Tin DingTalk hiện `Nguồn: Gia hạn · FB - VN` (ca AR-2026-0796 / PR-2026-1245).
+
+**Trap:** `_CHANNEL_LABEL` (lead_source_map.py) là bảng tra **global** — mọi mã kênh tra ra label bất kể nó thuộc nguồn nào. `resolve_lead_label("gia_han", "300265")` thấy cả `s_label` lẫn `c_label` → ghép bừa. `gia_han`/`kho_chung` có `channels: []` nên đáng lẽ không bao giờ có kênh, nhưng kênh cũ của nguồn trước vẫn kẹt trong DB.
+
+**Insight — 2 tầng, cùng gốc "kênh không được xoá khi đổi nguồn":**
+1. FE gốc: `PaymentRequestDetailDrawer.tsx:1333` (course-level source onChange) set `leadChannel: defaultChannelForSource(val)` — với nguồn 0/≥2 kênh hàm trả `undefined` → JSON.stringify DROP key → BE giữ kênh cũ. 3 handler anh em đều có `?? ""` (dòng 3064, 2424; CreatePaymentRequestModal.tsx:323) — riêng 1333 thiếu. Fix = thêm `?? ""`.
+2. BE hiển thị: `resolve_lead_label` chỉ ghép kênh nếu kênh THUỘC nguồn (`_CHANNEL_TO_SOURCE_KEY.get(c_code) == s_key`); kênh mồ côi → bỏ, chỉ hiện nguồn. Bọc luôn mọi row stale cũ, không cần migration.
+
+**Rule:** Khi FE đổi một field cha kéo theo field con phải reset (source→channel), reset về chuỗi rỗng `""`, KHÔNG để `undefined` — undefined bị JSON drop nên BE merge giữ giá trị cũ (kẹt dữ liệu). Và mọi hàm hiển thị ghép source+channel phải kiểm kênh có thuộc nguồn không (bảng tra channel là global, không tự ràng buộc theo nguồn). Báo cáo (`resolve_loai_from_lead_source`) không dính vì ưu tiên `source_key`.
+
+**Verify:** `test_stale_channel_of_other_source_is_dropped` trong `backend/tests/test_lead_source_map.py` (`resolve_lead_label("gia_han","300265")=="Gia hạn"`). Dữ liệu prod: quét `lead_source in (gia_han,kho_chung) and lead_channel<>''` ở cả `payment_requests` lẫn `active_requests.uids_data[].courses[]` để dọn stale (đã dọn 3 PR + 2 gói ngày 4/9).

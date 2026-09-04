@@ -1385,7 +1385,7 @@ function ActiveRequestMiniCardV2({
                                       ...uu,
                                       courses: uu.courses.map((course) =>
                                         course.courseCode === c.courseCode
-                                          ? { ...course, leadSource: val, leadChannel: defaultChannelForSource(val) }
+                                          ? { ...course, leadSource: val, leadChannel: defaultChannelForSource(val) ?? "" }
                                           : course
                                       ),
                                     }

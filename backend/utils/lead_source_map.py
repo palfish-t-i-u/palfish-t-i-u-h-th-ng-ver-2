@@ -85,7 +85,12 @@ def resolve_lead_label(source_key: str | None, channel_code: str | None) -> str:
     c_label = _CHANNEL_LABEL.get(c_code) if c_code else None
 
     if s_label and c_label:
-        return f"{s_label} · {c_label}"
+        # Chỉ ghép kênh nếu kênh THUỘC nguồn này. Kênh sót của nguồn cũ (VD sale đổi
+        # Quảng cáo→Gia hạn mà lead_channel 300265 còn kẹt) → bỏ kênh, chỉ hiện nguồn.
+        # _CHANNEL_TO_SOURCE_KEY định nghĩa bên dưới (resolve lúc gọi, không phải lúc def).
+        if _CHANNEL_TO_SOURCE_KEY.get(c_code) == s_key:
+            return f"{s_label} · {c_label}"
+        return s_label
     if s_label:
         return s_label
     if c_label:
