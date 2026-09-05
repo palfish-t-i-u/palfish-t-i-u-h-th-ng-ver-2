@@ -145,6 +145,36 @@ describe("BC04CashInReport", () => {
     expect(within(tiktokRow as HTMLElement).queryByText("Chưa khớp đơn")).not.toBeInTheDocument();
   });
 
+  it("hiện dòng cảnh báo tổng phiếu chi chưa đồng bộ khi unsyncedSettlementCount > 0", async () => {
+    server.use(
+      http.get(`${BASE}/reports/cash-in`, () => HttpResponse.json(_rawReport()))
+    );
+
+    render(<BC04CashInReport />);
+    // Nội dung chia thành nhiều text node lồng <strong> — query theo textContent
+    // của cả banner thay vì getByText (chỉ khớp trong 1 node).
+    await waitFor(() => {
+      const banner = document.querySelector(".ring-amber-800");
+      expect(banner).toBeTruthy();
+      expect(banner?.textContent).toMatch(/Còn 1 phiếu chi/);
+      expect(banner?.textContent).toMatch(/38\.143\.740 đ/);
+      expect(banner?.textContent).toMatch(/nhắc sale chạy Đồng bộ mPOS\/Payoo/);
+    });
+  });
+
+  it("KHÔNG hiện dòng cảnh báo khi unsyncedSettlementCount = 0", async () => {
+    const report = _rawReport();
+    report.summary.unsynced_settlement_count = 0;
+    report.summary.unsynced_settlement_amount = 0;
+    server.use(
+      http.get(`${BASE}/reports/cash-in`, () => HttpResponse.json(report))
+    );
+
+    render(<BC04CashInReport />);
+    await waitFor(() => expect(screen.getByText("Khách trả")).toBeInTheDocument());
+    expect(document.querySelector(".ring-amber-800")).toBeNull();
+  });
+
   it("báo lỗi khi BE trả lỗi, không crash trang", async () => {
     server.use(
       http.get(`${BASE}/reports/cash-in`, () => HttpResponse.json({ detail: "Lỗi BC04" }, { status: 500 }))

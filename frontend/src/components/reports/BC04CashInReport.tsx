@@ -206,6 +206,14 @@ export default function BC04CashInReport() {
         </div>
       )}
 
+      {data && data.summary.unsyncedSettlementCount > 0 && (
+        <div className="rounded-lg bg-amber-100/60 px-4 py-3 text-sm text-amber-800 ring-1 ring-amber-800">
+          Còn <strong>{data.summary.unsyncedSettlementCount}</strong> phiếu chi (
+          <strong>{fmtVnd(data.summary.unsyncedSettlementAmount)} đ</strong>) chưa đồng bộ thẻ — nhắc sale chạy Đồng bộ
+          mPOS/Payoo.
+        </div>
+      )}
+
       {isMobile ? (
         <BC04CashInRowCards
           rows={rows}
