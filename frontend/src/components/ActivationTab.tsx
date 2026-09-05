@@ -1341,7 +1341,7 @@ function ActivationDetailDrawer({
             </div>
           )}
 
-          {pr ? (
+          {ar?.prId ? (
             <div className="panel" style={{ padding: 14 }}>
               <div className="panel-head" style={{ marginBottom: 10 }}>
                 <h4>
@@ -1360,26 +1360,31 @@ function ActivationDetailDrawer({
                 <div className="info-cell">
                   <div className="info-label">PR-ID</div>
                   <div className="info-value mono">
-                    <span className="pr-id-pill">{pr.id}</span>
+                    <span className="pr-id-pill">{pr?.id ?? ar?.prId}</span>
                   </div>
                 </div>
                 <div className="info-cell">
                   <div className="info-label">Tổng dự kiến</div>
-                  <div className="info-value money">{vnd(pr.target)}</div>
+                  <div className="info-value money">{pr ? vnd(pr.target) : "—"}</div>
                 </div>
                 <div className="info-cell">
                   <div className="info-label">Đã nhận</div>
                   <div className="info-value money" style={{ color: "var(--success-text)" }}>
-                    {vnd(pr.received)}
+                    {pr ? vnd(pr.received) : "—"}
                   </div>
                 </div>
                 <div className="info-cell">
                   <div className="info-label">Số lần TT</div>
                   <div className="info-value">
-                    {pr.doneCount}/{pr.totalCount}
+                    {pr ? `${pr.doneCount}/${pr.totalCount}` : "—"}
                   </div>
                 </div>
               </div>
+              {ar?.prId && !pr && (
+                <div style={{ marginTop: 8, fontSize: 11.5, color: "var(--text-3)" }}>
+                  Chi tiết PR chưa tải — bấm Mở PR.
+                </div>
+              )}
             </div>
           ) : (
             <div className="panel" style={{ padding: 14, display: "flex", alignItems: "center", gap: 12 }}>
