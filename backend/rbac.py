@@ -38,6 +38,19 @@ def _rank(role: str) -> int:
     return ROLE_RANK.get(_normalize_role(role), 1)
 
 
+def _effective_role(meta_role: str, staff_role: str | None, is_env_admin: bool) -> str:
+    """nhan_su_sale = nguồn sự thật cho PHÂN CẤP SALE (sale/leader/manager) nhưng
+    KHÔNG được HẠ CẤP identity mà auth tuyên bố là superuser: lấy role CAO hơn giữa
+    (auth, staff). Chống bug staff role=sale (import nhầm vào bảng sale, team
+    'Khác / Chưa phân loại') kéo tụt admin/system → scope PR về rỗng (sự cố 5/9)."""
+    role = staff_role or meta_role
+    if _rank(meta_role) > _rank(role):
+        role = meta_role
+    if is_env_admin:
+        role = "system"
+    return role
+
+
 def _is_truthy(value: Any) -> bool:
     if isinstance(value, bool):
         return value
@@ -138,16 +151,12 @@ def resolve_actor(sb, authorization: str | None, *, allow_unactivated: bool = Fa
     is_system_admin_email = email.lower() in admin_emails
 
     meta = user.get("user_metadata") or {}
-    role = _normalize_role(meta.get("role"))
+    meta_role = _normalize_role(meta.get("role"))
     staff = _lookup_staff(sb, email) if sb else None
     is_activated = _is_truthy(meta.get("is_activated", False))
 
-    if staff:
-        role = _normalize_role(staff.get("role") or role)
-    elif is_system_admin_email:
-        role = "system"
-    elif meta.get("role"):
-        role = _normalize_role(meta.get("role"))
+    staff_role = _normalize_role(staff["role"]) if (staff and staff.get("role")) else None
+    role = _effective_role(meta_role, staff_role, is_system_admin_email)
 
     if (
         not allow_unactivated
