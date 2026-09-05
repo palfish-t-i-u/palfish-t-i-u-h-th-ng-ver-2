@@ -23,6 +23,7 @@ import {
 import CountryCombo, { COUNTRIES, findCountry } from "./payment-request/CountryCombo";
 import DateRangeFilter, { EMPTY_RANGE, type DateRange, inDateRange } from "./payment-request/DateRangeFilter";
 import { Icons } from "./payment-request/Icons";
+import Modal from "./ui/Modal";
 import { useNoticeCardCollapse } from "../hooks/useNoticeCardCollapse";
 import { activationAuditText, formatPaymentDateFull, formatPaymentDateTime, fromApiActiveRequest, getArReferralStatus, getReferralStatus, pageItems, paginate, prCreatedBeforeCccdLive, REFERRAL_STATUS_HEADER, REFERRAL_STATUS_PANEL_STYLE, toActiveRequestPatchUidsData } from "./payment-request/paymentRequestUtils";
 import { downloadTaxInvoiceZip } from "../utils/taxInvoiceXlsxExport";
@@ -688,6 +689,11 @@ function ActivationDetailDrawer({
       setUncreditDialog({ open: true, uid, courseCode, side, reason: "" });
     }
   };
+  const [billOpen, setBillOpen] = useState(false);
+  const billImages = useMemo(
+    () => (pr?.payments ?? []).flatMap((p) => p.billImages ?? []),
+    [pr]
+  );
   const prByUid = useMemo(() => {
     const map = new Map<string, PaymentRequest>();
     for (const item of requestsForAutofill) {
@@ -1348,6 +1354,11 @@ function ActivationDetailDrawer({
                   <Icons.Wallet size={15} /> Payment Request liên kết
                 </h4>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  {billImages.length > 0 && (
+                    <button type="button" className="btn btn-outline btn-sm" onClick={() => setBillOpen(true)}>
+                      <Icons.Receipt size={13} /> Xem bill ({billImages.length})
+                    </button>
+                  )}
                   {onOpenPr && (
                     <button type="button" className="btn btn-outline btn-sm" onClick={onOpenPr}>
                       <Icons.ChevronRight size={13} /> Mở PR
@@ -2140,6 +2151,15 @@ function ActivationDetailDrawer({
           </div>
         </div>
       )}
+      <Modal open={billOpen} onClose={() => setBillOpen(false)} title={`Ảnh bill — ${ar?.prId ?? ""}`} wide overlayClassName="z-[120]">
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 14, maxHeight: "70vh", overflowY: "auto" }}>
+          {billImages.map((src, idx) => (
+            <a key={`${src}-${idx}`} href={src} target="_blank" rel="noreferrer" style={{ border: "1px solid var(--border)", borderRadius: 10, background: "var(--surface-2)", padding: 10, display: "block" }}>
+              <img src={src} alt={`Biên lai ${idx + 1}`} style={{ width: "100%", borderRadius: 6 }} />
+            </a>
+          ))}
+        </div>
+      </Modal>
     </>
   );
 }
