@@ -5,7 +5,7 @@ import { Icons } from "../payment-request/Icons";
 import { formatPaymentDateTime } from "../payment-request/paymentRequestUtils";
 import { formatPhoneIntl } from "../payment-request/phoneUtils";
 import { findCountry } from "../payment-request/CountryCombo";
-import { formatAddress, type InvoiceRow, vnd } from "../payment-flow/paymentFlowUtils";
+import { formatAddress, invoiceDateFor, type InvoiceRow, vnd } from "../payment-flow/paymentFlowUtils";
 
 interface DefaultsResult {
   customerType: string;
@@ -57,9 +57,7 @@ export default function InvoiceRowCards({
         if (!d) return null;
         const country = findCountry(d.country);
         const complete = isRowComplete(r);
-        const ts = formatPaymentDateTime(
-          r.course.invoiced ? r.course.invoicedAt || "" : r.ar.createdAt
-        );
+        const ts = formatPaymentDateTime(invoiceDateFor(r));
         const reminded = remindedPrMap.has(r.ar.prId || "") && !r.course.invoiced;
         return (
           <RowCard

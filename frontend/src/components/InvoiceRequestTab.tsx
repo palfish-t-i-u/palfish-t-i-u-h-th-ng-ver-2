@@ -3,6 +3,7 @@ import { usePaymentFlow } from "../contexts/PaymentFlowContext";
 import { usePermission } from "../hooks/usePermission";
 import {
   deriveInvoiceRows,
+  invoiceDateFor,
   formatAddress,
   type InvoiceRow,
   vnd,
@@ -279,7 +280,7 @@ export default function InvoiceRequestTab() {
     const q = search.trim().toLowerCase();
     return list.filter((r) => {
       const d = defaultsFor(r);
-      if (!inDateRange(r.ar.createdAt, dateRange)) return false;
+      if (!inDateRange(invoiceDateFor(r), dateRange)) return false;
       if (!q) return true;
       return [
         r.course.courseCode,
@@ -759,9 +760,7 @@ export default function InvoiceRequestTab() {
                         </td>
                         <td>
                           {(() => {
-                            const ts = formatPaymentDateTime(
-                              r.course.invoiced ? r.course.invoicedAt || "" : r.ar.createdAt
-                            );
+                            const ts = formatPaymentDateTime(invoiceDateFor(r));
                             return (
                               <>
                                 <div className="cell-time">{ts.date}</div>
