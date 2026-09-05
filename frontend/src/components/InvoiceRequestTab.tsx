@@ -55,10 +55,14 @@ function CustomerTypeBadge({ type }: { type: string }) {
   );
 }
 
-function isRowComplete(row: InvoiceRow) {
+export function isRowComplete(row: InvoiceRow) {
   const d = defaultsFor(row);
   if (!d) return false;
-  return Boolean(d.name?.trim() && d.phone?.trim() && (d.address || d.ward || d.province));
+  const base = Boolean(d.name?.trim() && d.phone?.trim());
+  // Non-taker (khách không lấy HĐ): không cần địa chỉ — khớp gate backend
+  // (_invoice_blockers return sớm khi !wants_invoice, activation_routes.py:1181).
+  if (!row.pr?.wantsInvoice) return base;
+  return base && Boolean(d.address || d.ward || d.province);
 }
 
 function InvoiceDetailDrawer({
