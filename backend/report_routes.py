@@ -572,6 +572,8 @@ def _load_bc04_card_rows(sb, d_start: str, d_end: str) -> tuple[list[dict], set[
             "sale_name": sale_name_map.get(sale_email, ""),
             "data_source": "mPOS" if t.get("source") == "mpos" else "Payoo",
             "settlement_code": t.get("settlement_code"),
+            "is_split": True,
+            "unmatched": not bool(t.get("payment_line_id")),
         })
     return rows, settlement_codes
 
@@ -619,6 +621,13 @@ def _load_bc04_bank_rows(sb, d_start: str, d_end: str, known_settlement_codes: s
             "sale_name": sale_name_map.get(sale_email, ""),
             "data_source": "HN BANK",
             "settlement_code": pc,
+            # CK/cọc/rút TikTok/khác không có PC -> is_split=True (đã là giao dịch
+            # atomic, không phải cục gộp). Chỉ cục thẻ còn PC mà chưa có trong
+            # gateway (chưa đồng bộ) mới là is_split=False. KHÔNG được hiểu nhầm
+            # thành "mọi dòng bank đều is_split=False" — xem PLAN...§A0 + lưu ý
+            # của Đức khi viết FE test (deb6954).
+            "is_split": not bool(pc),
+            "unmatched": False,
         })
     return rows
 
@@ -665,6 +674,11 @@ def _build_bc04_rows(sb, d_start: str, d_end: str, opening_balance: float, team:
     days: dict[str, dict] = {}
     out_rows: list[dict] = []
     rate_cache: dict[str, Any] = {}
+    # Cục PC chưa đồng bộ (is_split=False) — đếm trên TOÀN BỘ dataset như balance,
+    # không phụ thuộc filter team (đây là cảnh báo tổng quan toàn TK, không phải
+    # theo team). Dedup theo settlement_code phòng khi có nhiều dòng cùng PC.
+    unsynced_settlement_codes: set[str] = set()
+    unsynced_settlement_amount = 0.0
     for r in all_rows:
         if r["date"] not in rate_cache:
             rate_cache[r["date"]] = get_rate_for_date(sb, date.fromisoformat(r["date"]))
@@ -676,6 +690,12 @@ def _build_bc04_rows(sb, d_start: str, d_end: str, opening_balance: float, team:
         balance += r["input"]
         day_bucket = days.setdefault(r["date"], {"total_input": 0.0, "total_rmb": 0.0, "ending_balance": 0.0})
         day_bucket["ending_balance"] = balance
+
+        if not r.get("is_split", True):
+            sc = str(r.get("settlement_code") or r["txn_id"])
+            if sc not in unsynced_settlement_codes:
+                unsynced_settlement_codes.add(sc)
+                unsynced_settlement_amount += r["input"]
 
         row_team = (r.get("team") or "").strip().lower()
         if team_norm and row_team != team_norm:
@@ -707,6 +727,8 @@ def _build_bc04_rows(sb, d_start: str, d_end: str, opening_balance: float, team:
             "data_source": r["data_source"],
             "main_cat": ann.get("main_cat") or auto_main_cat,
             "detail": ann.get("detail") or "",
+            "is_split": r.get("is_split", True),
+            "unmatched": r.get("unmatched", False),
         })
 
     summary_rate = float(get_rate_for_date(sb, date.fromisoformat(d_start)))
@@ -720,6 +742,8 @@ def _build_bc04_rows(sb, d_start: str, d_end: str, opening_balance: float, team:
             "closing_balance": round(balance, 2),
             "rate": summary_rate,
             "row_count": len(out_rows),
+            "unsynced_settlement_count": len(unsynced_settlement_codes),
+            "unsynced_settlement_amount": round(unsynced_settlement_amount, 2),
         },
         "days": [
             {

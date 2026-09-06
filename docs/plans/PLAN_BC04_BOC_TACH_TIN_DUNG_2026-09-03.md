@@ -47,18 +47,15 @@ Response `GET /reports/cash-in`, mỗi row thêm 2 field mới, `summary` thêm 
 
 ---
 
-### A. Việc của Đạt (BE) — chỉ đụng `backend/*`
+### A. Việc của Đạt (BE) — chỉ đụng `backend/*` — ✅ ĐÃ XONG B1-B7
 
-1. **B1 (~0.5h)** — Tự chạy lại SQL khảo sát ở mục 4 trên sandbox để xác nhận số liệu (không tin theo doc cũ, tự tay chạy lại 1 lần cho chắc).
-2. **B2 (~0.5h)** — Đọc `match_gateway_txn` ([gateway_routes.py:549](../../backend/gateway_routes.py)) + `gateway_match_candidates` ([:440](../../backend/gateway_routes.py)) — chỉ để xác nhận API khớp thủ công đã có sẵn, không viết code ở bước này.
-3. **B3 (~1h)** — Trong `_load_bc04_card_rows` ([report_routes.py:536](../../backend/report_routes.py)): thêm `is_split=True` cho mọi row (source luôn là gateway ở hàm này), thêm `unmatched = not t.get("payment_line_id")`.
-4. **B4 (~1h)** — Trong `_load_bc04_bank_rows` ([report_routes.py:579](../../backend/report_routes.py)): thêm `is_split = not bool(pc)` (có `settlement_code` PC mà tới được đây nghĩa là PC đó **chưa** có trong `known_settlement_codes` → cục thật chưa đồng bộ); `unmatched=False` cho row nguồn bank (field này chỉ áp dụng cho gateway).
-5. **B5 (~1h)** — Trong hàm build summary (chỗ gọi cả 2 hàm trên, ~[report_routes.py:654](../../backend/report_routes.py)): cộng dồn `unsynced_settlement_count` (đếm số PC distinct có `is_split=False`) và `unsynced_settlement_amount` (tổng `input` của các row đó) vào object `summary` trả về.
-6. **B6 (~1h)** — Unit test mới trong `backend/tests/test_cash_in_report.py`, dùng đúng số liệu thật đã verify (PC 79523736 = 2 dòng gateway 15.697.500 + 22.446.240, `payment_line_id=null` cả 2):
-   - Case gateway có `payment_line_id null` → row `is_split=True, unmatched=True`.
-   - Case gateway có `payment_line_id` → `unmatched=False`.
-   - Case bank có PC chưa nằm trong `known_settlement_codes` → row `is_split=False`, có mặt trong `unsynced_settlement_count`.
-7. **B7 (~0.5h)** — Xác nhận role nào đang có quyền module `bc04` thật trong RBAC (không phải `test.admin@dev` — tài khoản này không thấy menu Báo cáo khi thử) để bước verify cuối (D2) dùng đúng tài khoản, tránh mất thời gian đăng nhập lại.
+1. **B1 (~0.5h) ✅** — Đã chạy lại SQL khảo sát trên sandbox, khớp đúng số liệu ở mục 4 (49/49 gateway rows 30 ngày gần nhất `payment_line_id is null`).
+2. **B2 (~0.5h) ✅** — Đã đọc `match_gateway_txn` ([gateway_routes.py:549](../../backend/gateway_routes.py)) + `gateway_match_candidates` ([:440](../../backend/gateway_routes.py)) — API match thủ công đã có sẵn, không cần xây mới.
+3. **B3 (~1h) ✅** — `_load_bc04_card_rows` ([report_routes.py:536](../../backend/report_routes.py)): mọi row `is_split=True`, `unmatched = not bool(t.get("payment_line_id"))`.
+4. **B4 (~1h) ✅** — `_load_bc04_bank_rows` ([report_routes.py:579](../../backend/report_routes.py)): `is_split = not bool(pc)`, `unmatched=False`. **Đúng công thức Đức đã lưu ý** — CK/rút TikTok/khoản lạ không có PC vẫn `is_split=True` (atomic, không phải "chưa tách"), chỉ cục PC chưa có trong gateway mới `False`.
+5. **B5 (~1h) ✅** — `_build_bc04_rows` ([report_routes.py:645](../../backend/report_routes.py)): thêm `summary.unsynced_settlement_count` + `unsynced_settlement_amount`, tính trên **toàn bộ dataset trước khi lọc team** (cùng nguyên tắc với `balance` — cảnh báo toàn tài khoản, không theo team), dedup theo `settlement_code`.
+6. **B6 (~1h) ✅** — 6 test mới trong `backend/tests/test_cash_in_report.py` (class `TestBc04SplitAndUnsyncedFlags`), dùng đúng ca vàng PC 79523736 (2 dòng 15.697.500 + 22.446.240, `payment_line_id=null` cả 2) + case đã khớp payment_line + case CK/TikTok thường (guard đúng lưu ý của Đức) + case cục chưa đồng bộ + case filter team không ảnh hưởng `unsynced_settlement_count`. Đã mở rộng `TestBc04ResponseShapeMatchesFeContract` thêm 4 field mới. **34/34 test file này pass, 901/907 toàn bộ backend pass** (6 fail còn lại là pre-existing, không liên quan — đã xác nhận bằng `git stash` chạy lại y hệt fail trước khi có thay đổi này).
+7. **B7 (~0.5h) ✅** — Xác nhận trong `admin_routes.py` (`DEFAULT_DEPT_PERMISSIONS`): chỉ **department `hr`** có `bc04="full"` mặc định (`sale`/`marketing`/`cs` đều `"none"`) — đúng lý do `test.admin@dev` không thấy menu Báo cáo. Ngoài ra `SYSTEM_ADMIN_EMAILS` (gồm `system_admin@palfish.vn`) bypass toàn bộ RBAC. Không có sẵn mật khẩu 2 tài khoản này để tự đăng nhập verify UI trực tiếp — **C3 cần Đạt/Đức dùng tài khoản hr thật hoặc xin anh Minh cấp quyền `bc04` cho 1 tài khoản test** để chụp lại UI cuối cùng trên sandbox thật.
 
 ### B. Việc của Đức (FE) — chỉ đụng `frontend/src/*`
 
