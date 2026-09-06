@@ -264,7 +264,7 @@ export default function BC04CashInReport() {
                     <Td>
                       <div className="flex items-center gap-1.5">
                         <Badge tone={GROUP_BADGE_TONE[row.group]}>{CASH_IN_GROUP_LABELS[row.group]}</Badge>
-                        {!row.isSplit && <Badge tone="warn">Cục — chưa đồng bộ</Badge>}
+                        {!row.isSplit && <Badge tone="warn">Phiếu chi chưa tách</Badge>}
                       </div>
                     </Td>
                     <Td className="text-right tabular-nums">{fmtVnd(row.input)}</Td>
@@ -288,7 +288,7 @@ export default function BC04CashInReport() {
                       {row.team ? (
                         row.team
                       ) : row.unmatched ? (
-                        <span className="text-gmv-muted">Chưa khớp đơn</span>
+                        <span className="text-gmv-muted">Chưa rõ sale/team</span>
                       ) : (
                         "—"
                       )}

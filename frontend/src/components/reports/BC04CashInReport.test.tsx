@@ -108,7 +108,7 @@ describe("BC04CashInReport", () => {
     });
   });
 
-  it("hiện badge 'Cục — chưa đồng bộ' cho dòng is_split=false, KHÔNG hiện cho dòng đã tách", async () => {
+  it("hiện badge 'Phiếu chi chưa tách' cho dòng is_split=false, KHÔNG hiện cho dòng đã tách", async () => {
     server.use(
       http.get(`${BASE}/reports/cash-in`, () => HttpResponse.json(_rawReport()))
     );
@@ -119,14 +119,14 @@ describe("BC04CashInReport", () => {
 
     // t4 (is_split=false) có badge cảnh báo
     const unsyncedRow = screen.getByText("Trả góp").closest("tr");
-    expect(within(unsyncedRow as HTMLElement).getByText("Cục — chưa đồng bộ")).toBeInTheDocument();
+    expect(within(unsyncedRow as HTMLElement).getByText("Phiếu chi chưa tách")).toBeInTheDocument();
 
     // t1 (group="khach_tra" → badge "Khách trả", is_split=true) KHÔNG có badge đó
     const normalRow = screen.getByText("Khách trả").closest("tr");
-    expect(within(normalRow as HTMLElement).queryByText("Cục — chưa đồng bộ")).not.toBeInTheDocument();
+    expect(within(normalRow as HTMLElement).queryByText("Phiếu chi chưa tách")).not.toBeInTheDocument();
   });
 
-  it("hiện 'Chưa khớp đơn' ở cột Đội cho dòng unmatched=true, không lẫn với dòng trống Team hợp lệ", async () => {
+  it("hiện 'Chưa rõ sale/team' ở cột Đội cho dòng unmatched=true, không lẫn với dòng trống Team hợp lệ", async () => {
     server.use(
       http.get(`${BASE}/reports/cash-in`, () => HttpResponse.json(_rawReport()))
     );
@@ -135,14 +135,14 @@ describe("BC04CashInReport", () => {
     // t3: group="the" → badge nhóm "Quẹt thẻ"
     await waitFor(() => expect(screen.getByText("Quẹt thẻ")).toBeInTheDocument());
 
-    // t3 (gateway, unmatched=true, team=null) → "Chưa khớp đơn"
+    // t3 (gateway, unmatched=true, team=null) → "Chưa rõ sale/team"
     const unmatchedRow = screen.getByText("Quẹt thẻ").closest("tr");
-    expect(within(unmatchedRow as HTMLElement).getByText("Chưa khớp đơn")).toBeInTheDocument();
+    expect(within(unmatchedRow as HTMLElement).getByText("Chưa rõ sale/team")).toBeInTheDocument();
 
-    // t2 (rut_tiktok, unmatched=false, team=null) → "—", không phải "Chưa khớp đơn"
+    // t2 (rut_tiktok, unmatched=false, team=null) → "—", không phải "Chưa rõ sale/team"
     const tiktokRow = screen.getByText("Rút TikTok").closest("tr");
     expect(within(tiktokRow as HTMLElement).getByText("—")).toBeInTheDocument();
-    expect(within(tiktokRow as HTMLElement).queryByText("Chưa khớp đơn")).not.toBeInTheDocument();
+    expect(within(tiktokRow as HTMLElement).queryByText("Chưa rõ sale/team")).not.toBeInTheDocument();
   });
 
   it("hiện dòng cảnh báo tổng phiếu chi chưa đồng bộ khi unsyncedSettlementCount > 0", async () => {

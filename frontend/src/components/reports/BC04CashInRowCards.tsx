@@ -52,14 +52,14 @@ export default function BC04CashInRowCards({ rows, loading, savingKey, onClassif
               <>
                 <Badge tone={GROUP_BADGE_TONE[row.group]}>{CASH_IN_GROUP_LABELS[row.group]}</Badge>
                 <Badge tone="neutral">{row.dataSource}</Badge>
-                {!row.isSplit && <Badge tone="warn">Cục — chưa đồng bộ</Badge>}
+                {!row.isSplit && <Badge tone="warn">Phiếu chi chưa tách</Badge>}
               </>
             }
             meta={[
               { label: "Nội dung", value: row.details },
               { label: "Số dư", value: `${fmtVnd(row.balance)} đ` },
               { label: "Thu RMB", value: `¥${fmtRmb(row.rmb)}` },
-              { label: "Đội", value: row.team || (row.unmatched ? "Chưa khớp đơn" : "—") },
+              { label: "Đội", value: row.team || (row.unmatched ? "Chưa rõ sale/team" : "—") },
             ]}
             actions={
               <div className="flex w-full flex-col gap-2">
