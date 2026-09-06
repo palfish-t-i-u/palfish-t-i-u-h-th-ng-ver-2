@@ -9,18 +9,23 @@ function _sheetToAoa(ws: XLSX.WorkSheet): unknown[][] {
 
 function _sampleReport(): CashInReport {
   return {
-    summary: { totalInput: 5_000_000, totalRmb: 1351.35, openingBalance: 9_579_473_038, closingBalance: 9_584_473_038, rate: 3700 },
+    summary: {
+      totalInput: 5_000_000, totalRmb: 1351.35, openingBalance: 9_579_473_038, closingBalance: 9_584_473_038,
+      rate: 3700, unsyncedSettlementCount: 0, unsyncedSettlementAmount: 0,
+    },
     days: [{ date: "2026-01-01", totalInput: 5_000_000, totalRmb: 1351.35, endingBalance: 9_584_473_038 }],
     rows: [
       {
         source: "bank", txnId: "t1", date: "2026-01-01", details: "用户付款", output: 0, input: 1_000_000,
         balance: 9_580_473_038, income: 1_000_000, expenditure: 0, businessLine: "Giáo dục / 教育",
         team: "In-house 2", note: null, rmb: 270.27, dataSource: "HN BANK", group: "khach_tra", mainCat: null, detail: null,
+        isSplit: true, unmatched: false,
       },
       {
         source: "gateway", txnId: "t2", date: "2026-01-01", details: "Quẹt thẻ", output: 0, input: 4_000_000,
         balance: 9_584_473_038, income: 4_000_000, expenditure: 0, businessLine: "Giáo dục / 教育",
         team: "In-house 1", note: "PC 79492392", rmb: 1081.08, dataSource: "mPOS", group: "the", mainCat: null, detail: null,
+        isSplit: true, unmatched: false,
       },
     ],
   };
@@ -74,5 +79,43 @@ describe("buildCashInSheet — clone layout HN BANK 26", () => {
       expect(row[5]).toBe(row[3]); // income === input
       expect(row[6]).toBe(row[2]); // expenditure === output
     }
+  });
+
+  it("F7 — không gộp lại các dòng đã tách cùng phiếu chi, xuất đủ từng dòng riêng (ca vàng PC 79523736)", () => {
+    // 2 dòng gateway thật cùng settlement_code, đã tách per-đơn từ 1 cục bank —
+    // export không được gộp lại theo PC, phải giữ nguyên 2 dòng riêng biệt.
+    const report: CashInReport = {
+      summary: {
+        totalInput: 38_143_740, totalRmb: 10309.12, openingBalance: 0, closingBalance: 38_143_740,
+        rate: 3700, unsyncedSettlementCount: 0, unsyncedSettlementAmount: 0,
+      },
+      days: [{ date: "2026-09-03", totalInput: 38_143_740, totalRmb: 10309.12, endingBalance: 38_143_740 }],
+      rows: [
+        {
+          source: "gateway", txnId: "g1", date: "2026-09-03", details: "Quẹt thẻ", output: 0, input: 15_697_500,
+          balance: 15_697_500, income: 15_697_500, expenditure: 0, businessLine: "Giáo dục / 教育",
+          team: null, note: null, rmb: 4242.57, dataSource: "mPOS", group: "the", mainCat: null, detail: null,
+          isSplit: true, unmatched: true,
+        },
+        {
+          source: "gateway", txnId: "g2", date: "2026-09-03", details: "Trả góp", output: 0, input: 22_446_240,
+          balance: 38_143_740, income: 22_446_240, expenditure: 0, businessLine: "Giáo dục / 教育",
+          team: null, note: null, rmb: 6066.55, dataSource: "mPOS", group: "the_gop", mainCat: null, detail: null,
+          isSplit: true, unmatched: true,
+        },
+      ],
+    };
+
+    const ws = buildCashInSheet(report);
+    const aoa = _sheetToAoa(ws);
+    const dataRows = aoa.slice(2);
+
+    expect(dataRows).toHaveLength(2);
+    expect(dataRows[0][3]).toBe(15_697_500);
+    expect(dataRows[1][3]).toBe(22_446_240);
+    // Không có dòng cục gộp 38.143.740 nào lẫn vào — chỉ 2 dòng tách + tổng input khớp
+    const totalInput = dataRows.reduce((sum, r) => sum + (r[3] as number), 0);
+    expect(totalInput).toBe(38_143_740);
+    expect(dataRows.some((r) => r[3] === 38_143_740)).toBe(false);
   });
 });

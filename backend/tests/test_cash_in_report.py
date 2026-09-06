@@ -345,14 +345,117 @@ class TestBc04ResponseShapeMatchesFeContract:
         assert day["total_input"] == pytest.approx(1_500_000.0)
         assert day["ending_balance"] == pytest.approx(2_500_000.0)
 
+        for key in ("unsynced_settlement_count", "unsynced_settlement_amount"):
+            assert key in summary, f"summary thiếu field '{key}' — FE cashIn.ts cần field này"
+
         for row in result["rows"]:
             for key in ("source", "txn_id", "date", "details", "group", "output", "input",
                         "balance", "income", "expenditure", "business_line", "team", "note",
-                        "rmb", "data_source", "main_cat", "detail"):
+                        "rmb", "data_source", "main_cat", "detail", "is_split", "unmatched"):
                 assert key in row, f"rows[] thiếu field '{key}' — FE CashInRowRaw cần field này"
         groups = {r["source"]: r["group"] for r in result["rows"]}
         assert groups["gateway"] == "the"
         assert groups["bank"] == "khac"  # khong match payment_line_id trong fixture nay
+
+
+class TestBc04SplitAndUnsyncedFlags:
+    """B3-B5: is_split/unmatched trên từng row + unsynced_settlement_count/amount
+    trên summary — theo đúng công thức chốt ở PLAN_BC04_BOC_TACH_TIN_DUNG_2026-09-03.md
+    §A0, và đúng lưu ý của Đức khi viết FE test (commit deb6954): CK/rút TikTok/khoản
+    lạ KHÔNG có PC vẫn là is_split=True (đã atomic), CHỈ cục PC chưa có trong gateway
+    mới là is_split=False."""
+
+    # Ca vàng thật từ sandbox 2026-09-03 (PC 79523736) — dùng nguyên số liệu thật
+    # theo mục 1 của PLAN_BC04_BOC_TACH_TIN_DUNG_2026-09-03.md.
+    PC_79523736_GATEWAY_ROWS = [
+        {"id": "gA", "source": "mpos", "settlement_code": "79523736", "net_amount": 15697500.0,
+         "funded_date": "2026-09-03 02:29:00", "match_status": "pending", "payment_line_id": None},
+        {"id": "gB", "source": "mpos", "settlement_code": "79523736", "net_amount": 22446240.0,
+         "funded_date": "2026-09-03 02:29:00", "match_status": "pending", "payment_line_id": None},
+    ]
+    PC_79523736_BANK_CUC = {
+        "txn_id": "bx", "amount": 38143740.0, "account_number": "1680011668899",
+        "match_status": "ignored",
+        "content": "VCBCSH.250307... PC 79523736 CT tu 1064604204 CTCP CONG TG THANH TOAN NGAN",
+        "transaction_date": "2026-09-03T04:13:00+00:00", "payment_line_id": None, "team": None,
+    }
+
+    def test_gateway_rows_are_split_but_unmatched_when_no_payment_line(self):
+        """2 dòng gateway của PC 79523736 (đúng số liệu thật) chưa khớp payment_line
+        -> is_split=True (đã tách khỏi cục), unmatched=True (chưa rõ Team/Sale)."""
+        sb = _make_fake_sb(
+            gateway_transactions=self.PC_79523736_GATEWAY_ROWS,
+            bank_transactions=[self.PC_79523736_BANK_CUC],
+        )
+        result = rr._build_bc04_rows(sb, "2026-09-03", "2026-09-03", 0, None)
+        assert len(result["rows"]) == 2
+        assert {r["input"] for r in result["rows"]} == {15697500.0, 22446240.0}
+        for row in result["rows"]:
+            assert row["source"] == "gateway"
+            assert row["is_split"] is True
+            assert row["unmatched"] is True
+        # Cục bank bị loại vì PC đã có trong gateway -> không tính vào unsynced.
+        assert result["summary"]["unsynced_settlement_count"] == 0
+        assert result["summary"]["unsynced_settlement_amount"] == pytest.approx(0.0)
+
+    def test_gateway_row_matched_to_payment_line_is_not_unmatched(self):
+        sb = _make_fake_sb(
+            gateway_transactions=[
+                {"id": "g1", "source": "mpos", "settlement_code": "PC-X", "net_amount": 1_000_000.0,
+                 "funded_date": "2026-08-26 09:00:00", "match_status": "matched",
+                 "payment_line_id": "line-1"},
+            ],
+            bank_transactions=[],
+            payment_lines=[{"id": "line-1", "payment_request_id": "PR-1"}],
+            payment_requests=[{"id": "PR-1", "sale_email": "sale.a@palfish.vn"}],
+            nhan_su_sale=[{"email": "sale.a@palfish.vn", "team": "In-house 1", "sub_team": None}],
+        )
+        result = rr._build_bc04_rows(sb, "2026-08-26", "2026-08-26", 0, None)
+        assert result["rows"][0]["is_split"] is True
+        assert result["rows"][0]["unmatched"] is False
+        assert result["rows"][0]["team"] == "In-house 1"
+
+    def test_normal_bank_transfer_without_pc_is_split_true_not_false(self):
+        """LƯU Ý QUAN TRỌNG (đúng phát hiện của Đức): CK khách bình thường không có PC
+        trong nội dung vẫn phải là is_split=True — đây là giao dịch atomic, KHÔNG phải
+        cục gộp chưa tách. Nếu code sai thành is_split=False cho MỌI dòng bank thì FE sẽ
+        hiện nhầm badge 'Cục — chưa đồng bộ' trên cả dòng CK/rút TikTok bình thường."""
+        bank_rows = [
+            {"txn_id": "ck1", "amount": 500000.0, "account_number": "1680011668899",
+             "match_status": "auto_matched", "content": "Nguyen Van A CK hoc phi",
+             "transaction_date": "2026-08-25T02:00:00+00:00", "payment_line_id": None, "team": None},
+            {"txn_id": "tt1", "amount": 300000.0, "account_number": "1680011668899",
+             "match_status": "pending", "content": "TikTok Shop rut tien",
+             "transaction_date": "2026-08-25T03:00:00+00:00", "payment_line_id": None, "team": None},
+        ]
+        sb = _make_fake_sb(gateway_transactions=[], bank_transactions=bank_rows)
+        result = rr._build_bc04_rows(sb, "2026-08-25", "2026-08-25", 0, None)
+        assert len(result["rows"]) == 2
+        for row in result["rows"]:
+            assert row["source"] == "bank"
+            assert row["is_split"] is True
+            assert row["unmatched"] is False
+        assert result["summary"]["unsynced_settlement_count"] == 0
+
+    def test_unsynced_pc_cuc_is_split_false_and_counted_in_summary(self):
+        """PC chưa có trong gateway (chưa đồng bộ) -> cục bank giữ nguyên, is_split=False,
+        và phải được đếm vào summary.unsynced_settlement_count/amount để FE hiện cảnh báo."""
+        sb = _make_fake_sb(gateway_transactions=[], bank_transactions=[GOLDEN_BANK_CUC])
+        result = rr._build_bc04_rows(sb, "2026-08-25", "2026-08-25", 0, None)
+        assert len(result["rows"]) == 1
+        assert result["rows"][0]["is_split"] is False
+        assert result["rows"][0]["unmatched"] is False
+        assert result["summary"]["unsynced_settlement_count"] == 1
+        assert result["summary"]["unsynced_settlement_amount"] == pytest.approx(60732000.0)
+
+    def test_unsynced_count_is_not_affected_by_team_filter(self):
+        """unsynced_settlement_count là cảnh báo TOÀN TÀI KHOẢN (giống balance) — không
+        được đổi theo filter team, kể cả khi filter loại bỏ hết dòng trả về."""
+        sb = _make_fake_sb(gateway_transactions=[], bank_transactions=[GOLDEN_BANK_CUC])
+        result = rr._build_bc04_rows(sb, "2026-08-25", "2026-08-25", 0, "Inhouse 1")
+        assert result["rows"] == []  # cục chưa khớp team -> bị lọc khỏi rows trả về
+        assert result["summary"]["unsynced_settlement_count"] == 1
+        assert result["summary"]["unsynced_settlement_amount"] == pytest.approx(60732000.0)
 
 
 class TestBc04BankRowTeamResolution:

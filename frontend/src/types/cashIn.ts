@@ -24,6 +24,13 @@ export interface CashInRowRaw {
   group: CashInGroup;
   main_cat: string | null;
   detail: string | null;
+  /** true nếu source="gateway" (đã tách từ Đối soát quẹt thẻ); false nếu source="bank"
+   * có settlement_code (cục phiếu chi còn nguyên vì chưa đồng bộ). Xem
+   * docs/plans/PLAN_BC04_BOC_TACH_TIN_DUNG_2026-09-03.md §A0. */
+  is_split: boolean;
+  /** Chỉ có ý nghĩa khi is_split=true — true nếu payment_line_id null (đã tách
+   * nhưng chưa khớp đơn/sale nên chưa rõ Team). */
+  unmatched: boolean;
 }
 
 export interface CashInDaySummaryRaw {
@@ -39,6 +46,10 @@ export interface CashInSummaryRaw {
   opening_balance: number;
   closing_balance: number;
   rate: number;
+  /** Số phiếu chi (settlement_code) còn nguyên cục vì chưa đồng bộ trong kỳ đang xem. */
+  unsynced_settlement_count: number;
+  /** Tổng tiền của các cục phiếu chi chưa đồng bộ đó. */
+  unsynced_settlement_amount: number;
 }
 
 export interface CashInReportRaw {
@@ -65,6 +76,8 @@ export interface CashInRow {
   group: CashInGroup;
   mainCat: string | null;
   detail: string | null;
+  isSplit: boolean;
+  unmatched: boolean;
 }
 
 export interface CashInDaySummary {
@@ -80,6 +93,8 @@ export interface CashInSummary {
   openingBalance: number;
   closingBalance: number;
   rate: number;
+  unsyncedSettlementCount: number;
+  unsyncedSettlementAmount: number;
 }
 
 export interface CashInReport {
@@ -96,6 +111,8 @@ export function mapCashInReport(raw: CashInReportRaw): CashInReport {
       openingBalance: raw.summary.opening_balance,
       closingBalance: raw.summary.closing_balance,
       rate: raw.summary.rate,
+      unsyncedSettlementCount: raw.summary.unsynced_settlement_count,
+      unsyncedSettlementAmount: raw.summary.unsynced_settlement_amount,
     },
     days: raw.days.map((d) => ({
       date: d.date,
@@ -121,6 +138,8 @@ export function mapCashInReport(raw: CashInReportRaw): CashInReport {
       group: r.group,
       mainCat: r.main_cat,
       detail: r.detail,
+      isSplit: r.is_split,
+      unmatched: r.unmatched,
     })),
   };
 }

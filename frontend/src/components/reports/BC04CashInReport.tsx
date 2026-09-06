@@ -202,6 +202,14 @@ export default function BC04CashInReport() {
         </div>
       )}
 
+      {data && data.summary.unsyncedSettlementCount > 0 && (
+        <div className="rounded-lg bg-amber-100/60 px-4 py-3 text-sm text-amber-800 ring-1 ring-amber-800">
+          Còn <strong>{data.summary.unsyncedSettlementCount}</strong> phiếu chi (
+          <strong>{fmtVnd(data.summary.unsyncedSettlementAmount)} đ</strong>) chưa đồng bộ thẻ — nhắc sale chạy Đồng bộ
+          mPOS/Payoo.
+        </div>
+      )}
+
       {isMobile ? (
         <BC04CashInRowCards
           rows={rows}
@@ -250,7 +258,10 @@ export default function BC04CashInReport() {
                   <Tr key={key}>
                     <Td className="whitespace-nowrap">{fmtDate(row.date)}</Td>
                     <Td>
-                      <Badge tone={GROUP_BADGE_TONE[row.group]}>{CASH_IN_GROUP_LABELS[row.group]}</Badge>
+                      <div className="flex items-center gap-1.5">
+                        <Badge tone={GROUP_BADGE_TONE[row.group]}>{CASH_IN_GROUP_LABELS[row.group]}</Badge>
+                        {!row.isSplit && <Badge tone="warn">Phiếu chi chưa tách</Badge>}
+                      </div>
                     </Td>
                     <Td className="text-right tabular-nums">{fmtVnd(row.input)}</Td>
                     <Td className="text-right tabular-nums">{fmtVnd(row.balance)}</Td>
@@ -269,7 +280,15 @@ export default function BC04CashInReport() {
                         ))}
                       </select>
                     </Td>
-                    <Td className="whitespace-nowrap text-xs">{row.team ?? "—"}</Td>
+                    <Td className="whitespace-nowrap text-xs">
+                      {row.team ? (
+                        row.team
+                      ) : row.unmatched ? (
+                        <span className="text-gmv-muted">Chưa rõ sale/team</span>
+                      ) : (
+                        "—"
+                      )}
+                    </Td>
                     <Td>
                       <input
                         className="min-h-9 w-full min-w-0 rounded-gmv-sm border border-gmv-border px-2 text-xs"
