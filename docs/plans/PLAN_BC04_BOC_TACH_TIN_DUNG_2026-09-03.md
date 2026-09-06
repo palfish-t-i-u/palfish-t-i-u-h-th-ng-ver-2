@@ -69,10 +69,12 @@ Response `GET /reports/cash-in`, mỗi row thêm 2 field mới, `summary` thêm 
 
 ### C. Việc chung (làm sau khi A + B đều xong, phối hợp trực tiếp — không phải code song song)
 
-1. **C1** — Ráp FE + BE thật (bỏ mock ở F2), chạy thử trên local/sandbox, đối chiếu đúng field.
-2. **C2** — Vào "Đối soát giao dịch" khớp thủ công các giao dịch `payment_line_id is null` tồn đọng của tháng hiện tại (ưu tiên các PC gần đây nhất trước, xem số liệu thật ở mục 4) — ai rảnh trước làm, không cần chia cứng.
-3. **C3** — Verify cuối trên sandbox bằng tài khoản có quyền `bc04` thật (theo B7): mở đúng khoảng ngày có PC 79523736, xác nhận 2 dòng tách hiện đúng + badge + Team (nếu đã khớp ở C2) + tổng Input khớp 38.143.740đ.
-4. **C4** — Merge `feature/bo-sung-bc04` → `sandbox`, báo anh Minh + chị Vân kiểm tra trước khi lên prod.
+1. **C1 ✅** — Ráp FE + BE thật, chạy local (backend `uvicorn` port 8000 trỏ Supabase sandbox thật + frontend Vite port 5173): `npx vitest` 3 file FE liên quan (15/15 pass) + `tsc -b` sạch — 2 bên khớp contract hoàn toàn.
+2. **C2 — chưa làm** — Vào "Đối soát giao dịch" khớp thủ công các giao dịch `payment_line_id is null` tồn đọng của tháng hiện tại (ưu tiên các PC gần đây nhất trước, xem số liệu thật ở mục 4) — ai rảnh trước làm, không cần chia cứng. (Việc này đổi dữ liệu thật trên sandbox nên cần Đạt/Đức tự làm qua UI, không tự động hoá ở đây.)
+3. **C3 ✅** — Đã verify trực tiếp trên **local backend + sandbox DB thật** bằng JWT thật của `test.admin@dev` (role `system` → bypass RBAC, xem B7): gọi thẳng `GET /reports/cash-in?from=2026-09-03&to=2026-09-03` → đúng 2 dòng gateway PC 79523736 (15.697.500 + 22.446.240, `is_split:true, unmatched:true`), không còn cục 38.143.740 nào, `unsynced_settlement_count:0` (đúng vì mọi PC gần đây đã đồng bộ). Sau đó mở qua **UI thật trên trình duyệt** (đăng nhập `test.admin@dev`, vào Báo cáo → BC04, lọc đúng ngày 3/9) → thấy đúng 2 dòng "Quẹt thẻ" 22.446.240 + 15.697.500 (nguồn mPOS) với chữ **"Chưa khớp đơn"** ở cột Đội, tổng Thu vào ngày khớp 301.817.270đ với API. Badge "Cục — chưa đồng bộ" không hiện nhầm ở bất kỳ dòng CK/Khoản khác nào (đã `find` không ra kết quả) — đúng lưu ý của Đức.
+4. **C4 — chưa làm** — Merge `feature/bo-sung-bc04` → `sandbox`, báo anh Minh + chị Vân kiểm tra trước khi lên prod. (Chưa merge — chờ xác nhận cuối từ anh/chị trước khi đẩy lên nhánh dùng chung.)
+
+**Phát hiện phụ khi verify C3 (không thuộc scope sửa ở đây, ghi lại để theo dõi sau):** dòng "Trả góp" 17.639.380đ ngày 3/9 (nội dung `Payoo CT DS N28.8...`, nhóm `the_gop`) có `is_split=true` dù nhãn hiển thị vẫn là "(chưa tách)" — vì `extract_settlement_code()` chỉ nhận dạng pattern `PC \d+` của VCB, không nhận dạng được mã chuẩn chi của Payoo trong nội dung bank, nên công thức `is_split = not bool(pc)` coi đây là "atomic" thay vì "cục chưa đồng bộ". Đây là hạn chế **có từ trước** (không phải do B3-B5 gây ra) — dòng này trước giờ vẫn luôn hiển thị đúng số tiền, chỉ là sẽ không được đếm vào `unsynced_settlement_count`/không hiện badge cảnh báo mới. Nếu chị Vân cần badge chính xác cho cả các cục Payoo, cần thêm 1 task riêng dạy `extract_settlement_code` nhận diện mã chuẩn chi Payoo — **không làm trong phạm vi task này**.
 
 ---
 
