@@ -2692,7 +2692,9 @@ export default function ActivationTab() {
     const draftVal = orderIdDrafts[row.key] ?? row.orderId;
     const isSavingAr = savingArIds.has(row.arId);
     const isEditing = editingKeys.has(row.key);
-    const showInput = !row.invoiced && (!row.activated || isEditing);
+    // Đơn đã xuất HĐ vẫn cho điền/sửa Order ID (soft-requirement, điền sau khi kích hoạt
+    // CRM). row.activated = đã có order_id → rỗng thì hiện ô nhập; có rồi thì read-only + pencil.
+    const showInput = !row.activated || isEditing;
     const saveEnabled = !readOnly && draftVal.trim() !== "" && draftVal.trim() !== row.orderId.trim() && !isSavingAr;
     const iconBtnStyle: CSSProperties = {
       display: "inline-flex",
@@ -2784,11 +2786,7 @@ export default function ActivationTab() {
         )}
         {isVisible("order") && (
         <td onClick={(e) => e.stopPropagation()}>
-          {row.invoiced ? (
-            <span style={{ fontFamily: "ui-monospace, monospace", fontSize: 12.5 }} title="Đã xuất hoá đơn — không sửa Order ID ở đây">
-              {row.orderId || "—"}
-            </span>
-          ) : showInput ? (
+          {showInput ? (
             <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
               <input
                 value={draftVal}

@@ -23,7 +23,11 @@ from pydantic import BaseModel, Field
 
 from rbac import resolve_actor, visible_creator_emails, can_confirm_payment
 from admin_routes import require_module_access, require_module_write
-from activation_routes import _compute_referral_status, _maybe_enqueue_ar_edit_on_pr_change
+from activation_routes import (
+    _compute_referral_status,
+    _maybe_enqueue_ar_edit_on_pr_change,
+    _maybe_enqueue_bill_updated_dingtalk,
+)
 
 from payos_qr import create_payos_payment_link, fetch_payos_payment, payos_payment_is_paid
 from audit import log_audit
@@ -3311,6 +3315,7 @@ def register_payment_request_routes(app, _get_supabase) -> None:
             pass
 
         _maybe_enqueue_bill_uploaded_zalo(sb, line)
+        _maybe_enqueue_bill_updated_dingtalk(sb, line, public_url)
 
         bill_assets = _fetch_bill_assets_fast(sb, [line_id], force_refresh=True)
         return {

@@ -34,6 +34,7 @@ from utils.team_mapper import get_canonical_team
 from utils.zalo_message_builder import (
     build_activation_request_created_message,
     build_activation_urgent_reminder_message,
+    format_phone_intl,
     ZALO_ENABLED_EVENTS,
 )
 
@@ -1572,6 +1573,158 @@ def _ar_dingtalk_content_key(ar: dict[str, Any], pr: dict[str, Any] | None) -> s
     return json.dumps(payload, sort_keys=True, ensure_ascii=False)
 
 
+_BILL_IMAGE_EXTS = {"jpg", "jpeg", "png", "webp", "gif"}
+
+
+def _is_bill_image_url(url: str) -> bool:
+    """True nếu URL có đuôi ảnh DingTalk nhúng được (khớp worker _is_image_url).
+    PDF/khác → False (DingTalk card không nhúng được → không gửi row ảnh)."""
+    path = (url or "").split("?", 1)[0]
+    ext = path.rsplit(".", 1)[-1].lower() if "." in path else ""
+    return ext in _BILL_IMAGE_EXTS
+
+
+def _ar_order_phones(ar: dict[str, Any], pr: dict[str, Any] | None) -> list[str]:
+    """Danh sách SĐT (đã format "84-...") của đơn — dedup, giữ thứ tự.
+
+    Mirror per-block resolution trong build_activation_request_created_message
+    (utils/zalo_message_builder.py:454-458): block.phone → pr.phone,
+    block.country → pr.country, format qua format_phone_intl. Đơn nhiều bé/UID
+    → trả đủ SĐT distinct. Dedup theo chuỗi ĐÃ FORMAT (block rơi về pr.phone
+    không list số trùng 2 lần).
+    """
+    pr = pr or {}
+
+    def _s(v: Any) -> str:
+        return str(v or "").strip()
+
+    pr_phone = _s(pr.get("phone"))
+    pr_country = _s(pr.get("country"))
+    phones: list[str] = []
+    seen: set[str] = set()
+
+    def _add(raw_phone: str, raw_country: str) -> None:
+        fmt = format_phone_intl(raw_phone or None, (raw_country or pr_country) or None)
+        if fmt and fmt not in seen:
+            seen.add(fmt)
+            phones.append(fmt)
+
+    for uid_block in ar.get("uids_data") or []:
+        if not isinstance(uid_block, dict):
+            continue
+        _add(_s(uid_block.get("phone")) or pr_phone, _s(uid_block.get("country")))
+
+    if not phones and pr_phone:  # không block nào có SĐT → dùng SĐT cấp PR
+        _add(pr_phone, pr_country)
+
+    return phones
+
+
+def _maybe_enqueue_bill_updated_dingtalk(sb, line: dict[str, Any], public_url: str) -> None:
+    """Sale up bill (nút Up bill) → bắn DingTalk 'SALE CẬP NHẬT ẢNH BILL' + ảnh MỚI NHẤT.
+
+    CHỈ bắn khi đơn ĐÃ BÁO (có AR cho pr_id) — tránh bắn lúc up bill trước khi báo đơn
+    (bill đó sẽ nằm trong tin 'Báo đơn' khi báo). public_url = bill VỪA up = mới nhất →
+    chỉ gửi đúng 1 ảnh này (không gộp bill cũ cùng lần TT). Tin gồm 2 row: 1 text (SĐT
+    đơn) + 1 ảnh (bỏ row ảnh nếu là PDF, tránh worker lỗi markdown rỗng). Routing =
+    RAW sale team (giống activation_request_created, skip nếu team không có active group).
+    Best-effort — KHÔNG BAO GIỜ raise (không chặn upload).
+    """
+    try:
+        if not dingtalk_event_enabled("bill_updated"):
+            return
+        public_url = (public_url or "").strip()
+        if not public_url:
+            return
+        line_id = str(line.get("id") or "").strip()
+        pr_id = str(line.get("payment_request_id") or "").strip()
+        if not line_id or not pr_id:
+            return
+
+        # Đơn đã báo? = có AR cho PR này. Chưa báo → skip (không bắn gì).
+        ar_res = sb.table("active_requests").select("*").eq("pr_id", pr_id).limit(1).execute()
+        if not ar_res.data:
+            return
+        ar = ar_res.data[0]
+        if ar.get("is_test"):
+            return
+
+        pr_res = sb.table("payment_requests").select("*").eq("id", pr_id).limit(1).execute()
+        pr = pr_res.data[0] if pr_res.data else None
+        if pr is None or pr.get("is_test"):
+            return
+
+        sale_email = str(pr.get("sale_email") or "").strip().lower()
+        if not sale_email:
+            return
+        staff_res = (
+            sb.table("nhan_su_sale")
+            .select("email, team")
+            .ilike("email", sale_email)
+            .limit(1)
+            .execute()
+        )
+        staff = staff_res.data[0] if staff_res.data else None
+        team = (staff or {}).get("team") or ""
+        if not team:
+            print(f"[dingtalk] bill_updated skip: sale {sale_email} has no team")
+            return
+
+        # RAW team — KHÔNG canonical. Skip nếu team không có active group (KHÔNG fallback).
+        g = (
+            sb.table("dingtalk_team_groups")
+            .select("team_code, is_active")
+            .eq("team_code", team)
+            .limit(1)
+            .execute()
+        )
+        if not g.data or not g.data[0].get("is_active"):
+            print(f"[dingtalk] bill_updated skip: no active group for team {team!r}")
+            return
+        team_code = g.data[0]["team_code"]
+
+        phones = _ar_order_phones(ar, pr)
+        phone_line = ", ".join(phones) if phones else "?"
+        message = f"SALE CẬP NHẬT ẢNH BILL\nCập nhật cho đơn: {phone_line}"
+
+        # source_id keyed theo URL vừa up (unique mỗi lần up vì path có microsecond)
+        # → mỗi lần up 1 cặp row mới; retry cùng URL = cùng source_id = idempotent.
+        bill_hash = hashlib.md5(public_url.encode()).hexdigest()
+        text_source = str(uuid.UUID(hashlib.md5(f"{line_id}:billupd:text:{bill_hash}".encode()).hexdigest()))
+        img_source = str(uuid.UUID(hashlib.md5(f"{line_id}:billupd:img:{bill_hash}".encode()).hexdigest()))
+
+        def _insert_outbox(payload: dict[str, Any]) -> None:
+            try:
+                sb.table("dingtalk_outbox").insert(payload).execute()
+            except Exception as exc:
+                msg = str(exc).lower()
+                if "duplicate" in msg or "unique" in msg:
+                    return  # idempotent — UNIQUE(source_table, source_id, event_type)
+                raise
+
+        # Row TEXT (worker → sampleText, chị Hiền search đối soát được)
+        _insert_outbox({
+            "event_type": "bill_updated",
+            "source_table": "payment_lines",
+            "source_id": text_source,
+            "team_code": team_code,
+            "message": message,
+        })
+        # Row ẢNH — chỉ khi là ảnh (PDF không nhúng được → bỏ)
+        if _is_bill_image_url(public_url):
+            _insert_outbox({
+                "event_type": "bill_updated",
+                "source_table": "payment_lines",
+                "source_id": img_source,
+                "team_code": team_code,
+                "message": "",
+                "image_url": public_url,
+                "image_urls": [public_url],
+            })
+    except Exception as exc:
+        print(f"[dingtalk] bill_updated enqueue failed (non-fatal): {exc}")
+
+
 def _maybe_enqueue_ar_edit_dingtalk(
     sb,
     current: dict[str, Any],
@@ -2613,6 +2766,14 @@ def register_activation_routes(app, supabase_factory):
             _writeback_child_uids_to_pr(sb, merged)
         pr_map = _fetch_prs_by_ids(sb, [str(merged.get("pr_id") or "")])
         _maybe_enqueue_ar_edit_dingtalk(sb, current, merged, pr_map)
+        # Backstop "Tạo gói học thành công" cho đường full-PATCH (detail drawer sửa order_id):
+        # đơn xuất HĐ trước khi điền đủ order_id → status không chạm 'activated' → trigger
+        # không fire. Idempotent với trigger + đường per-course (cùng key md5(ar_id)). Best-effort.
+        if guarded_uids is not None:
+            try:
+                sb.rpc("enqueue_course_activated_if_all_ordered", {"p_ar_id": ar_id}).execute()
+            except Exception as exc:
+                print(f"[dingtalk] course_activated backstop failed (non-fatal): {exc}")
         return _serialize_ar_with_hold(sb, merged, pr_map.get(str(merged.get("pr_id") or "")), tien_ve=_tien_ve_bounds(sb, ar_id))
 
     @app.patch("/api/v1/active-requests/{ar_id}/credit-referral", tags=["Activation"])
@@ -2901,6 +3062,13 @@ def register_activation_routes(app, supabase_factory):
                 print(f"[activation] B3 → Sổ: AR {ar_id} course {course_code} → {ledger_id}")
             else:
                 print(f"[activation] B3 → Sổ: skip/fail AR {ar_id} course {course_code}")
+            # Backstop "Tạo gói học thành công": đơn XUẤT HĐ TRƯỚC khi điền order_id thì
+            # status không bao giờ chạm 'activated' → trigger DingTalk không fire. RPC bắn
+            # khi mọi course đã có order_id, idempotent với trigger (cùng key). Best-effort.
+            try:
+                sb.rpc("enqueue_course_activated_if_all_ordered", {"p_ar_id": ar_id}).execute()
+            except Exception as exc:
+                print(f"[dingtalk] course_activated backstop failed (non-fatal): {exc}")
             pr_map = _fetch_prs_by_ids(sb, [str(row.get("pr_id") or "")])
             return _serialize_ar_with_hold(sb, row, pr_map.get(str(row.get("pr_id") or "")),
                                            tien_ve=_tien_ve_bounds(sb, ar_id))
