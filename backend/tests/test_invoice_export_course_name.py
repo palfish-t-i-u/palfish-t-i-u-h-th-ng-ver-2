@@ -267,3 +267,20 @@ def test_build_invoice_course_patch_taker_so_nha_khong_bat_buoc():
     }
     patch = ar._build_invoice_course_patch(_course(), pr, None)
     assert patch["invoice_customer_name"] == "Nguyễn Thị Hằng"
+
+
+# ── Quy đổi tên SP hóa đơn (bảng chị Thu Hiền, 2026-09-07) ───────────────────
+
+def test_course_to_tax_order_converts_known_package_name():
+    """B4 export: mã gói nội bộ -> tên SP dễ đọc theo bảng chị Thu Hiền duyệt."""
+    course = _course(name="2/W- NEW 24 PHI+2 HN")
+    order = ar._course_to_tax_order(course, {}, {"customer_name": ""}, None, "M1", "PF1")
+    assert order["taxProductName"] == "Khóa học tiếng Anh 03 tháng giáo viên Philippines"
+    assert order["goiHoc"] == "Khóa học tiếng Anh 03 tháng giáo viên Philippines"
+
+
+def test_course_to_tax_order_unknown_package_keeps_raw_name():
+    """Gói ngoài bảng (vd 5/W VIP đã ngừng) -> giữ tên gói thô, KHÔNG để trống."""
+    course = _course(name="5/W- VIP 96 US-UK+5 HN")
+    order = ar._course_to_tax_order(course, {}, {"customer_name": ""}, None, "M1", "PF1")
+    assert order["taxProductName"] == "5/W- VIP 96 US-UK+5 HN"

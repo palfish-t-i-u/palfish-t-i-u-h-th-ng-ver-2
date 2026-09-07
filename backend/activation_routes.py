@@ -28,6 +28,7 @@ from invoice_routes import (
     _build_excel_products,
 )
 from revenue_routes import sync_ledger_from_ar_course
+from course_invoice_name import course_invoice_name
 from env_utils import dingtalk_event_enabled
 from rbac import resolve_actor
 from utils.team_mapper import get_canonical_team
@@ -2137,7 +2138,8 @@ def _course_to_tax_order(
     tax_invoice_code: str,
     tax_product_code: str,
 ) -> dict[str, Any]:
-    product_name = _clean_text(course.get("name")) or _clean_text(course.get("code"))
+    raw_name = _clean_text(course.get("name")) or _clean_text(course.get("code"))
+    product_name = course_invoice_name(raw_name) or raw_name
     customer_type = (
         _clean_text(course.get("customer_type"))
         or (_clean_text(pr.get("customer_type")) if pr else "")
