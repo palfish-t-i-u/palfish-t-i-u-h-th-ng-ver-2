@@ -1083,7 +1083,7 @@ function ActiveRequestMiniCardV2({
       {missingRequiredCount > 0 && (
         <div className="match-warning" style={{ marginBottom: 10 }}>
           <Icons.AlertCircle size={14} />
-          <span>Cần bổ sung: {[...new Set(missingFields)].join(", ")}.</span>
+          <span>Còn thiếu (bổ sung sau cũng được): {[...new Set(missingFields)].join(", ")}.</span>
         </div>
       )}
       <div className={`pulse-progress ${allocation.isOver ? "is-over" : ""}`}>
@@ -2901,7 +2901,7 @@ export default function PaymentRequestDetailDrawer({
           : 0;
         const arRemaining = arReceived - arAlreadyAllocated - arTotal;
         const arRowsValid = arDraftRows.length > 0 && arDraftRows.every(
-          (r) => r.packageName.trim() && r.amount > 0 && r.uid.trim() && r.phone.trim()
+          (r) => r.packageName.trim() && r.amount > 0
         );
         const referralDraftError = validateReferralBonusDraft(arDraftRows);
         const arValid = arRowsValid && arRemaining >= 0 && !referralDraftError;
@@ -3022,7 +3022,7 @@ export default function PaymentRequestDetailDrawer({
                         const norm = normalizeLocalPhone(row.phone, country);
                         return (
                           <>
-                            <label>SĐT tạo gói <span style={{ color: "var(--danger)" }}>*</span></label>
+                            <label>SĐT tạo gói <span style={{ fontSize: 11, color: "var(--text-3)", fontWeight: 400 }}>(có thể bổ sung sau)</span></label>
                             <div style={{ display: "flex", gap: 6 }}>
                               <CountryCombo
                                 value={row.phoneCountry}
@@ -3058,18 +3058,12 @@ export default function PaymentRequestDetailDrawer({
                   {/* Row 2: UID CRM */}
                   <div className="field" style={{ marginBottom: 8 }}>
                     <label>
-                      UID CRM <span style={{ color: "var(--danger)" }}>*</span>
-                      {!row.uid.trim() && (
-                        <span style={{ marginLeft: 6, fontSize: 11, color: "var(--danger)", fontWeight: 400 }}>
-                          Bắt buộc trước khi tạo gói học
-                        </span>
-                      )}
+                      UID CRM <span style={{ fontSize: 11, color: "var(--text-3)", fontWeight: 400 }}>(có thể bổ sung sau)</span>
                     </label>
                     <input
-                      placeholder="VD: 3213123123"
+                      placeholder="Để trống nếu chưa xin được — bổ sung sau"
                       value={row.uid}
                       onChange={(e) => setArRow(i, { uid: e.target.value })}
-                      style={!row.uid.trim() ? { borderColor: "var(--danger)" } : undefined}
                     />
                   </div>
                   {/* Row 3: Gói học + Số tiền + delete */}

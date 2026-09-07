@@ -254,7 +254,6 @@ def _append_children_core(
     start_seq = _max_course_seq(existing_uids) + 1  # G2
     new_blocks = _assign_course_codes(uids_in, pr_id, start_seq=start_seq)
     _assert_course_names_present(new_blocks)
-    _assert_uids_have_uid(new_blocks)
     merged = _merge_uid_blocks(existing_uids, new_blocks)
     _validate_course_amounts(sb, pr, merged, exclude_ar_id=ar_id)  # G4
     _assert_uids_data_order_ids_unique(sb, ar_id, merged)
@@ -1945,30 +1944,6 @@ def _enqueue_activation_request_created_dingtalk(
 # _assert_all_paid_lines_have_bill moved to pr_guards.py
 
 
-def _assert_uids_have_uid(uids_data: list[Any]) -> None:
-    """Gate: bất kỳ block uid-rỗng → 422 MISSING_UID kèm tên bé thiếu.
-
-    Mirrors _assert_all_paid_lines_have_bill / MISSING_BILLS pattern.
-    Gate đặt sau _assign_course_codes để uids_data đã được normalize.
-    """
-    missing: list[str] = []
-    for block in uids_data or []:
-        if not isinstance(block, dict):
-            continue
-        if not str(block.get("uid") or "").strip():
-            name = str(block.get("name") or "").strip() or "học viên"
-            missing.append(name)
-    if missing:
-        raise HTTPException(
-            status_code=422,
-            detail={
-                "code": "MISSING_UID",
-                "message": f"{len(missing)} học viên chưa có UID. Vui lòng bổ sung UID trước khi tạo gói học.",
-                "children": missing,
-            },
-        )
-
-
 def _writeback_pr_uid_from_ar(
     sb, saved_ar: dict[str, Any], pr: dict[str, Any] | None, uids_data: list[Any]
 ) -> None:
@@ -2040,8 +2015,8 @@ def _save_active_request(
     uids_data = _assign_course_codes(uids_in, pr_id or ar_id)
     _assert_course_names_present(uids_data)
 
-    # Gate: chặn kích hoạt khi bất kỳ block nào thiếu UID — mirror MISSING_BILLS
-    _assert_uids_have_uid(uids_data)
+    # (Gỡ 2026-09-07) UID KHÔNG còn bắt buộc lúc báo đơn — hoàn thành = order_id
+    # (chị Thu Hiền điền qua PATCH). Xem memory multi-child-no-uid-bao-don.
 
     # Validate: tổng tiền gói học không được vượt số tiền thực nhận
     if pr is not None:

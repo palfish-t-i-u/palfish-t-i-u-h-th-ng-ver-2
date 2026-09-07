@@ -225,7 +225,6 @@ def test_save_active_request_clears_note_when_hold_false():
          patch("activation_routes._next_ar_id", return_value="AR-STUB-0001"), \
          patch("activation_routes._assign_course_codes", return_value=[]), \
          patch("activation_routes._assert_course_names_present", return_value=None), \
-         patch("activation_routes._assert_uids_have_uid", return_value=None), \
          patch("activation_routes._assert_uids_data_order_ids_unique", return_value=None), \
          patch("activation_routes._derive_status", return_value="pending_order"), \
          patch("activation_routes._writeback_pr_uid_from_ar", return_value=None), \

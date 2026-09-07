@@ -1,9 +1,7 @@
-"""B3 — Test ĐỎ: gate MISSING_UID + writeback qua đường TẠO AR.
+"""B3 — writeback qua đường TẠO AR + UID rỗng KHÔNG còn chặn báo đơn (gỡ 2026-09-07).
 
 Test tại mức _save_active_request (choke point duy nhất cả 2 endpoint tạo AR).
 Endpoint-level vì cần phát hiện "writeback không được wire trong create path".
-
-RED trên code hiện tại → GREEN sau bước 5.
 """
 from __future__ import annotations
 
@@ -108,19 +106,15 @@ def _save(sb, pr_row, uids_in, monkeypatch):
 # ---------------------------------------------------------------------------
 
 class TestMissingUidGate:
-    def test_ar_with_empty_uid_raises_422(self, monkeypatch):
-        """Block uid rỗng → 422 MISSING_UID. RED: gate chưa tồn tại."""
+    def test_ar_with_empty_uid_now_allowed(self, monkeypatch):
+        """(2026-09-07) UID rỗng KHÔNG còn chặn báo đơn — hoàn thành bằng order_id sau."""
         pr = {"id": "PR-001", "uid": "uid1", "name": "KH A", "phone": "09",
               "state": "done", "received": 1_000_000, "target": 1_000_000}
         sb, _ = _fake_sb(pr)
         uids_in = [{"uid": "", "courses": [{"name": "Gói ABC", "amount": 1_000_000}]}]
 
-        with pytest.raises(HTTPException) as exc:
-            _save(sb, pr, uids_in, monkeypatch)
-
-        assert exc.value.status_code == 422
-        detail = exc.value.detail
-        assert detail.get("code") == "MISSING_UID"
+        saved, _ = _save(sb, pr, uids_in, monkeypatch)
+        assert saved is not None
 
     def test_ar_with_uid_set_passes_gate(self, monkeypatch):
         """Block uid đủ → vượt gate (test này GREEN hiện tại, giữ xanh sau thay đổi)."""
