@@ -1,0 +1,13 @@
+# Huỷ PR không vô hiệu lần TT pending → QR cũ vẫn "sống", SePay auto-match vào đơn đã huỷ
+
+**Related files:** `backend/payment_request_routes.py` (`cancel_payment_request` ~2106), `backend/sepay_routes.py` (`_match_transfer_code_in_content` ~392)
+
+**Problem:** PR-2026-1320 (Vũ Xuân Thiệp, sale htn2199) bị sale lỡ huỷ 28/08 khi received=0. 31/08 PH quẹt cọc 1tr bằng ảnh QR CŨ (mã FK3KX) → SePay auto-match thẳng vào lần TT pending của đơn ĐÃ HUỶ → tiền kẹt: line=paid nhưng PR cancelled nên received vẫn 0, dòng CK không rơi tab "CK ngoài chờ ghép" (đã auto_matched) → kế toán không thấy để ghép sang đơn mới PR-2026-1531. Gỡ tay: bank_txn về pending + payment_line_id=NULL, revert line cũ về pending (xem audit `recon.bank_txn_unlinked_manual`).
+
+**Trap:** Huỷ PR chỉ đổi `payment_requests.state='cancelled'` — KHÔNG đụng gì `payment_lines`. Guard huỷ (received>0, hay có line paid → chặn) chỉ soi trạng thái LÚC huỷ; lần TT `status='pending'` sống sót nguyên vẹn. Mà matcher SePay tuyển ứng viên bằng `.eq("method","qr").eq("status","pending")` — KHÔNG join `payment_requests`, KHÔNG lọc PR cancelled. → mã QR cũ vẫn là mục tiêu match hợp lệ vô thời hạn. Khách quẹt lại bằng ảnh QR đã chụp (rất thường) = tiền chui vào đơn chết. Hai lỗ độc lập cộng hưởng: QR không bị "khai tử" khi huỷ + matcher không biết PR đã chết.
+
+**Insight:** Huỷ PR là một business event phải LAN xuống lần TT, không chỉ set cờ ở bảng cha. Đường tiền (SePay) match theo trạng thái *line*, nên trạng thái line mới là source-of-truth phải đóng lại. Fix tận gốc = khi huỷ, void mọi line pending (status→'cancelled'/'rejected'): lần quẹt muộn không còn ứng viên → rơi đúng "CK ngoài chờ ghép" để kế toán ghép tay. Thêm lưới an toàn ở matcher (loại line thuộc PR cancelled) phòng QR đã in/chụp trước khi patch deploy.
+
+**Rule:** (1) `cancel_payment_request`: sau khi set state=cancelled, UPDATE các `payment_lines` pending của PR đó sang trạng thái đóng — đừng để line pending mồ côi trên đơn chết. (2) Bất kỳ auto-matcher tiền nào tuyển theo `status='pending'` PHẢI đồng thời loại line có PR ở state chết (`cancelled`) — lọc bằng join/set, đừng tin mỗi cờ status của line. (3) CK "auto_matched nhưng PR received=0 / PR cancelled" = dấu hiệu tiền kẹt đơn huỷ: check `bank_transactions.payment_line_id → payment_lines → payment_requests.state` trước khi kết luận mất đơn.
+
+**Verify:** `grep -n "status.*pending" backend/sepay_routes.py` → candidate query còn thiếu lọc PR-state (chưa fix code, mới xử lý DB ca này). Truy ca tương lai: `SELECT bt.txn_id, pr.state, pr.received FROM bank_transactions bt JOIN payment_lines pl ON pl.id=bt.payment_line_id JOIN payment_requests pr ON pr.id=pl.payment_request_id WHERE bt.match_status='auto_matched' AND pr.state='cancelled';`
