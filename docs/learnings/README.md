@@ -7,6 +7,7 @@ Written by the `extract-approach` skill. One insight per file.
 ## Index
 
 <!-- Add entries below: - [topic](filename.md) — one-line hook -->
+- [bao-don-completion-signal-order-id](bao-don-completion-signal-order-id.md) — báo đơn/tạo-AR hoàn thành = `order_id` (KHÔNG phải UID); app không tạo gói (kế toán làm off-CRM), đường PATCH order_id vốn không đòi UID nên gate UID lúc tạo AR là mâu thuẫn → gỡ; "SĐT tạo gói" B3 ≠ SĐT khớp lead B1
 - [setdefault-empty-blocks-fallback-chain](setdefault-empty-blocks-fallback-chain.md) — `patch.setdefault(key, _clean_text(...))` ghi `""` vào dict → chặn tầng fallback sau + đè mất giá trị course trong `{**course, **patch}`; fallback merge-dict chỉ được set khi nguồn non-empty
 - [provisional-activation-gate-no-paid-status](provisional-activation-gate-no-paid-status.md) — mở cổng kích hoạt đơn thẻ "đủ tạm" pre-mPOS bằng helper đọc (activatable_received = net paid + gross card/installment pending có bill); TUYỆT ĐỐI không set status='paid' (trigger Zalo bắn tin "ĐÃ VÀO TK" giả); FE≡BE branch-for-branch
 - [stale-closure-chained-setstate-clobbers-first-update](stale-closure-chained-setstate-clobbers-first-update.md) — 2 setState liên tiếp cùng handler, cả 2 dùng `{...draft}` (không phải functional updater) → lời gọi sau đè lời gọi trước; chọn Tỉnh/Thành lần đầu trong form Sửa PR mất ngay, tưởng lỗi Playwright nhưng là bug code thật
