@@ -800,9 +800,23 @@ function ActiveRequestMiniCardV2({
       setAllocationError(referralError);
       return;
     }
+    // Flush uncommitted drafts into AR to avoid stale-closure race
+    // (blur commit queues React state update but hasn't re-rendered yet).
+    const flushed: ActiveRequest = {
+      ...ar,
+      uids: ar.uids.map((u, idx) => ({
+        ...u,
+        uid: (uidDrafts[idx] ?? u.uid ?? "").trim(),
+        phone: (phoneDrafts[idx] ?? u.phone ?? "").replace(/[^\d]/g, ""),
+        courses: u.courses.map((c) => {
+          const raw = (amountDrafts[c.courseCode] ?? "").replace(/[^\d]/g, "");
+          return raw ? { ...c, amount: Number(raw) } : c;
+        }),
+      })),
+    };
     setSaving(true);
     setAllocationError("");
-    await onActiveRequestSave(ar);
+    await onActiveRequestSave(flushed);
     setSaving(false);
     setEditing(false);
   };

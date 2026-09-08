@@ -84,7 +84,7 @@ class ActiveRequestPatchCoursePayload(BaseModel):
 
 
 class ActiveRequestPatchUidPayload(BaseModel):
-    uid: str = Field(..., min_length=1)
+    uid: str = ""
     name: str | None = None  # multi-con: tên bé của block (None = bé 1 / fallback PR.child_name)
     phone: str | None = ""
     country: str | None = "VN"
