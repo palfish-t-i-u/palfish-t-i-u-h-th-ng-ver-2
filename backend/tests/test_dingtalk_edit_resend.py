@@ -14,7 +14,12 @@ from unittest.mock import MagicMock, patch
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from activation_routes import _ar_dingtalk_content_key, _maybe_enqueue_ar_edit_on_pr_change, register_activation_routes
+from activation_routes import (
+    _ar_dingtalk_content_key,
+    _maybe_enqueue_ar_edit_dingtalk,
+    _maybe_enqueue_ar_edit_on_pr_change,
+    register_activation_routes,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -482,3 +487,126 @@ class TestMaybeEnqueueArEditOnPrChange:
             sb.table.return_value.select.return_value.eq.return_value.limit.return_value.execute.return_value = MagicMock(data=[ar])
             _maybe_enqueue_ar_edit_on_pr_change(sb, "PR-2026-9101", pr, pr)
             mock_enq.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# G3 (7/9) — đơn thiếu SĐT/UID: placeholder "(chưa có, bổ sung sau)" + PR-ID;
+# sale điền bù → header "✍️ SALE VỪA BỔ SUNG THÔNG TIN ĐƠN". Chỉ đơn thiếu mới
+# có PR-ID (đơn thường không nhiễu).
+# ---------------------------------------------------------------------------
+
+def _capture_dingtalk_sb():
+    group_response = MagicMock(data=[{"team_code": "inhouse_1", "is_active": True}])
+    lines_response = MagicMock(data=[])
+    staff_response = MagicMock(data=[
+        {"email": "s@p.vn", "display_name": "Sale A", "crm_name": "Sale A", "team": "inhouse_1"}
+    ])
+    inserted: list[dict] = []
+
+    def table_side(name):
+        m = MagicMock()
+        if name == "nhan_su_sale":
+            m.select.return_value.ilike.return_value.limit.return_value.execute.return_value = staff_response
+        elif name == "dingtalk_team_groups":
+            m.select.return_value.eq.return_value.limit.return_value.execute.return_value = group_response
+        elif name == "payment_lines":
+            m.select.return_value.eq.return_value.order.return_value.execute.return_value = lines_response
+        elif name == "dingtalk_outbox":
+            def insert_capture(data):
+                inserted.append(data)
+                r = MagicMock()
+                r.execute.return_value = None
+                return r
+            m.insert = insert_capture
+        return m
+
+    sb = MagicMock()
+    sb.table.side_effect = table_side
+    return sb, inserted
+
+
+_MISSING_BLOCK = [{
+    "uid": "", "name": "Bé An", "phone": "", "country": "VN",
+    "courses": [{"code": "CC-9101-001", "name": "Gói A", "amount": 5_000_000, "order_id": ""}],
+}]
+
+
+class TestMissingContactPlaceholderAndPrId:
+    def test_builder_shows_friendly_hint_for_missing_phone_uid(self):
+        from utils.zalo_message_builder import build_activation_request_created_message
+        ar = {"id": "AR-2026-9101", "customer_name": "KH", "uids_data": _MISSING_BLOCK}
+        pr = {"id": "PR-2026-9101", "phone": "", "country": "VN",
+              "lead_source": "quang_cao", "lead_channel": "300265", "target": 5_000_000}
+        sale = {"display_name": "Sale A", "crm_name": "Sale A", "team": "inhouse_1"}
+        out = build_activation_request_created_message(
+            ar, pr, sale, empty_contact_hint="(chưa có, bổ sung sau)")
+        assert "Phone: (chưa có, bổ sung sau)" in out["message"]
+        assert "UID: (chưa có, bổ sung sau)" in out["message"]
+
+    def test_builder_default_hint_stays_question_mark(self):
+        from utils.zalo_message_builder import build_activation_request_created_message
+        ar = {"id": "AR-2026-9101", "customer_name": "KH", "uids_data": _MISSING_BLOCK}
+        pr = {"id": "PR-2026-9101", "phone": "", "country": "VN", "target": 5_000_000}
+        sale = {"display_name": "Sale A", "team": "inhouse_1"}
+        out = build_activation_request_created_message(ar, pr, sale)
+        assert "Phone: ?" in out["message"]
+        assert "UID: ?" in out["message"]
+
+    def test_create_missing_contact_appends_pr_id(self):
+        from activation_routes import _enqueue_activation_request_created_dingtalk
+        sb, inserted = _capture_dingtalk_sb()
+        saved = _make_ar_row(uids_data=_MISSING_BLOCK)
+        pr = _sample_pr(phone="")
+        with patch("activation_routes.dingtalk_event_enabled", return_value=True):
+            _enqueue_activation_request_created_dingtalk(sb, saved, pr, show_pr_id=True)
+        assert len(inserted) == 1
+        msg = inserted[0]["message"]
+        assert "(chưa có, bổ sung sau)" in msg
+        assert msg.rstrip().endswith("PR-2026-9101")
+
+    def test_normal_order_has_no_pr_id_line(self):
+        from activation_routes import _enqueue_activation_request_created_dingtalk
+        sb, inserted = _capture_dingtalk_sb()
+        saved = _make_ar_row()  # có sẵn phone + uid
+        pr = _sample_pr()
+        with patch("activation_routes.dingtalk_event_enabled", return_value=True):
+            _enqueue_activation_request_created_dingtalk(sb, saved, pr, show_pr_id=False)
+        assert len(inserted) == 1
+        assert "PR-2026-9101" not in inserted[0]["message"]
+
+    def test_contact_supplement_header_and_pr_id(self):
+        from activation_routes import _enqueue_activation_request_created_dingtalk
+        sb, inserted = _capture_dingtalk_sb()
+        saved = _make_ar_row()  # đã điền bù
+        pr = _sample_pr()
+        with patch("activation_routes.dingtalk_event_enabled", return_value=True):
+            _enqueue_activation_request_created_dingtalk(
+                sb, saved, pr, source_suffix=":edit:abc123",
+                show_pr_id=True, is_contact_supplement=True)
+        assert len(inserted) == 1
+        msg = inserted[0]["message"]
+        assert msg.startswith("🔄 SALE VỪA BỔ SUNG THÔNG TIN ĐƠN\n")
+        assert "🔄 SALE VỪA CẬP NHẬT" not in msg
+        assert msg.rstrip().endswith("PR-2026-9101")
+
+
+class TestEditTriggerDetectsContactSupplement:
+    def test_supplement_sets_flags(self):
+        pr = _sample_pr(phone="")  # PR phone trống → block phone trống = thiếu
+        current = _make_ar_row(uids_data=_MISSING_BLOCK)
+        merged = _make_ar_row()  # default: phone + uid đã điền
+        with patch("activation_routes._enqueue_activation_request_created_dingtalk") as mock_enq:
+            _maybe_enqueue_ar_edit_dingtalk(MagicMock(), current, merged, {pr["id"]: pr})
+        mock_enq.assert_called_once()
+        assert mock_enq.call_args.kwargs["is_contact_supplement"] is True
+        assert mock_enq.call_args.kwargs["show_pr_id"] is True
+
+    def test_non_contact_edit_no_supplement_flag(self):
+        pr = _sample_pr()  # có phone
+        current = _make_ar_row()  # phone + uid có sẵn
+        merged = _make_ar_row(uids_data=_uids_payload(amount=6_000_000))  # chỉ đổi tiền
+        with patch("activation_routes._enqueue_activation_request_created_dingtalk") as mock_enq:
+            _maybe_enqueue_ar_edit_dingtalk(MagicMock(), current, merged, {pr["id"]: pr})
+        mock_enq.assert_called_once()
+        assert mock_enq.call_args.kwargs["is_contact_supplement"] is False
+        assert mock_enq.call_args.kwargs["show_pr_id"] is False

@@ -377,6 +377,7 @@ def build_activation_request_created_message(
     sale_info: dict[str, Any],
     *,
     is_supplementary: bool = False,
+    empty_contact_hint: str = "?",
 ) -> dict[str, str]:
     """Build the ACTIVATION REQUEST CREATED notification message.
 
@@ -455,8 +456,8 @@ def build_activation_request_created_message(
         phone_fmt = format_phone_intl(
             _first_nonempty(uid_block.get("phone"), pr_phone), phone_country or None
         )
-        phone = phone_fmt if phone_fmt else "?"
-        uid = _first_nonempty(uid_block.get("uid"), default="?")
+        phone = phone_fmt if phone_fmt else empty_contact_hint
+        uid = _first_nonempty(uid_block.get("uid"), default=empty_contact_hint)
         # Multi-con: block có tên bé riêng thì dùng, không thì fallback bé 1 của PR
         block_child = _first_nonempty(uid_block.get("name"), child_name)
 
@@ -514,8 +515,8 @@ def build_activation_request_created_message(
         blocks.append(
             "\n".join(
                 [
-                    f"Phone: {format_phone_intl(pr_phone, pr_data.get('country')) or '?'}​",
-                    "UID: ?",
+                    f"Phone: {format_phone_intl(pr_phone, pr_data.get('country')) or empty_contact_hint}​",
+                    f"UID: {empty_contact_hint}",
                     child_name,
                 ]
             )

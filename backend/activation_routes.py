@@ -1725,6 +1725,28 @@ def _maybe_enqueue_bill_updated_dingtalk(sb, line: dict[str, Any], public_url: s
         print(f"[dingtalk] bill_updated enqueue failed (non-fatal): {exc}")
 
 
+def _ar_missing_contact_count(ar: dict[str, Any], pr: dict[str, Any] | None) -> int:
+    """Đếm 'thiếu contact' của đơn: mỗi block +1 nếu SĐT trống (cả block lẫn PR),
+    +1 nếu UID block trống. Bật placeholder + PR-ID cho đơn thiếu SĐT/UID lúc báo
+    đơn, và phát hiện sale điền bù (count giảm). Mirror resolution builder: SĐT có
+    fallback pr.phone; UID không có fallback."""
+    pr = pr or {}
+    pr_phone = str(pr.get("phone") or "").strip()
+    n = 0
+    for block in ar.get("uids_data") or []:
+        if not isinstance(block, dict):
+            continue
+        if not (str(block.get("phone") or "").strip() or pr_phone):
+            n += 1
+        if not str(block.get("uid") or "").strip():
+            n += 1
+    return n
+
+
+def _ar_missing_contact(ar: dict[str, Any], pr: dict[str, Any] | None) -> bool:
+    return _ar_missing_contact_count(ar, pr) > 0
+
+
 def _maybe_enqueue_ar_edit_dingtalk(
     sb,
     current: dict[str, Any],
@@ -1741,7 +1763,11 @@ def _maybe_enqueue_ar_edit_dingtalk(
         if key_before == key_after:
             return
         source_suffix = ":edit:" + hashlib.md5(key_after.encode()).hexdigest()[:12]
-        _enqueue_activation_request_created_dingtalk(sb, merged, pr, source_suffix=source_suffix)
+        sup = _ar_missing_contact_count(merged, pr) < _ar_missing_contact_count(current, pr)
+        _enqueue_activation_request_created_dingtalk(
+            sb, merged, pr, source_suffix=source_suffix,
+            show_pr_id=sup, is_contact_supplement=sup,
+        )
     except Exception as exc:
         print(f"[dingtalk] edit-resend enqueue failed (non-fatal): {exc}")
 
@@ -1775,6 +1801,7 @@ def _maybe_enqueue_ar_edit_on_pr_change(
 def _enqueue_activation_request_created_dingtalk(
     sb, saved_ar: dict[str, Any], pr: dict[str, Any] | None, source_suffix: str = "",
     hold_activation: bool = False, hold_note: str | None = None,
+    show_pr_id: bool = False, is_contact_supplement: bool = False,
 ) -> None:
     """Enqueue DingTalk 'activation_request_created' (best-effort, NEVER raises).
 
@@ -1880,6 +1907,7 @@ def _enqueue_activation_request_created_dingtalk(
                 "team": team,
             },
             is_supplementary=is_append,
+            empty_contact_hint="(chưa có, bổ sung sau)",
         )
 
         ar_id = str(saved_ar.get("id") or "")
@@ -1887,7 +1915,9 @@ def _enqueue_activation_request_created_dingtalk(
         # — giữ md5(ar_id) là tin bổ sung bị drop im lặng (G3).
         source_uuid = str(uuid.UUID(hashlib.md5(f"{ar_id}{source_suffix}".encode()).hexdigest()))
         outbox_message = result["message"]
-        if source_suffix.startswith(":edit:"):
+        if is_contact_supplement:
+            outbox_message = "🔄 SALE VỪA BỔ SUNG THÔNG TIN ĐƠN\n" + outbox_message
+        elif source_suffix.startswith(":edit:"):
             outbox_message = "🔄 SALE VỪA CẬP NHẬT ĐƠN ĐÃ BÁO\n" + outbox_message
         if is_append:
             outbox_message = f"⬆️ ĐƠN BỔ SUNG · {pr.get('id') or '?'}\n" + outbox_message
@@ -1896,6 +1926,8 @@ def _enqueue_activation_request_created_dingtalk(
             if hold_note:
                 hold_line += f"\nGhi chú: {hold_note}"
             outbox_message = outbox_message + hold_line
+        if show_pr_id and pr.get("id"):
+            outbox_message = outbox_message + f"\n{pr.get('id')}"
         def _insert_outbox(payload: dict[str, Any]) -> None:
             try:
                 sb.table("dingtalk_outbox").insert(payload).execute()
@@ -2064,7 +2096,7 @@ def _save_active_request(
         saved["customer_name"] = customer_name
     _writeback_pr_uid_from_ar(sb, saved, pr, uids_data)
     _enqueue_activation_request_created_zalo(sb, saved, pr)
-    _enqueue_activation_request_created_dingtalk(sb, saved, pr, hold_activation=hold_activation, hold_note=_hold_note)
+    _enqueue_activation_request_created_dingtalk(sb, saved, pr, hold_activation=hold_activation, hold_note=_hold_note, show_pr_id=_ar_missing_contact({"uids_data": uids_data}, pr))
     return saved, pr
 
 
