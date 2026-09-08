@@ -1949,14 +1949,13 @@ def _enqueue_activation_request_created_dingtalk(
             "team_code": team_code,
             "message": outbox_message,
         })
-        # Mỗi ảnh bill = 1 tin sampleImageMsg riêng. source_id = hash(ar_id + URL),
-        # KHÔNG kèm suffix → CÙNG 1 bill của 1 AR chỉ gửi ĐÚNG 1 LẦN dù báo đơn được
-        # sửa/bổ sung nhiều lần (UNIQUE nuốt lần sau) → hết spam ảnh trùng khi edit-
-        # resend. Bill mới (URL mới) → gửi 1 lần. Hash URL (không dùng vị trí) → bền
-        # với thay đổi thứ tự. Guard từng bill: 1 insert lỗi không làm rớt bill sau.
+        # Mỗi ảnh bill = 1 tin sampleImageMsg riêng. source_id = hash(ar_id + URL + suffix),
+        # kèm suffix → edit/append re-send bill (user muốn thấy đầy đủ ảnh bill trên tin
+        # cập nhật); CÙNG 1 edit (cùng suffix) chỉ gửi 1 lần (UNIQUE nuốt).
+        # Create lần đầu (suffix="") giữ nguyên source_id cũ → tương thích ngược.
         for bill in bill_urls:
             bill_hash = hashlib.md5(bill.encode()).hexdigest()
-            bill_source = str(uuid.UUID(hashlib.md5(f"{ar_id}:bill:{bill_hash}".encode()).hexdigest()))
+            bill_source = str(uuid.UUID(hashlib.md5(f"{ar_id}:bill:{bill_hash}{source_suffix}".encode()).hexdigest()))
             try:
                 _insert_outbox({
                     "event_type": "activation_request_created",

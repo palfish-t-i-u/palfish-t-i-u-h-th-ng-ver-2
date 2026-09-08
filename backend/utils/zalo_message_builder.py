@@ -454,7 +454,7 @@ def build_activation_request_created_message(
             continue
         phone_country = _first_nonempty(uid_block.get("country"), pr_data.get("country"))
         phone_fmt = format_phone_intl(
-            _first_nonempty(uid_block.get("phone"), pr_phone), phone_country or None
+            _first_nonempty(uid_block.get("phone")), phone_country or None
         )
         phone = phone_fmt if phone_fmt else empty_contact_hint
         uid = _first_nonempty(uid_block.get("uid"), default=empty_contact_hint)
