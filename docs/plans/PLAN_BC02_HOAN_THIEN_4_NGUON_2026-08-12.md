@@ -1,5 +1,7 @@
 # PLAN — Hoàn thiện BC02 Key Data: tích hợp 4 nguồn dữ liệu
 
+> ⚠️ **SUPERSEDED 2026-09-09** — xem `PLAN_BC02_HOAN_THIEN_4_NGUON_2026-09-09.md`. Bản dưới đây viết TRƯỚC KHI có tài liệu thật của chị Thu Hiền, nhiều giả định sai (đặc biệt: Metabase Q12749 KHÔNG phải nguồn Trial/BI Leads thật — đó là 2 hệ thống khác hẳn: BI dashboard `sea.pri.ibanyu.com` và "PalFish Class CRM"). Đọc bản v2 trước khi code.
+
 **Ngày**: 2026-08-12 · **Nguồn yêu cầu**: Chị Thu Hiền (Lark doc N4)
 **Status**: DRAFT — chờ anh Minh duyệt. Hướng đã chốt: **tự động (Phương án B+)**, KHÔNG nhập tay.
 **Cập nhật cuối**: 12/8/2026 chiều — thêm Metabase API approach + bước điều tra
