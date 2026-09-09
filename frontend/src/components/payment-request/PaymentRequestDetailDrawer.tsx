@@ -25,6 +25,7 @@ import {
   displayReceived,
   feeTotal,
   formatPaymentDateFull,
+  fromApiActiveRequest,
   getReferralStatus,
   grossReceived,
   hasUnverifiedFeeLine,
@@ -708,7 +709,7 @@ const FOREIGN_COUNTRY_OPTIONS = COUNTRIES.filter((c) => c.code !== "VN")
  * KHÔNG có nút "Xác nhận thông tin" của Thu Hiền (đó là nghiệp vụ riêng ở tab Kích hoạt khoá học).
  * Sales không nhập Order ID ở đây để giữ tách bạch nghiệp vụ với tab Kích hoạt khoá học.
  */
-function ActiveRequestMiniCardV2({
+export function ActiveRequestMiniCardV2({
   ar,
   request,
   onActiveRequestMutate,
@@ -731,6 +732,11 @@ function ActiveRequestMiniCardV2({
   const [deleting, setDeleting] = useState(false);
   const [allocationError, setAllocationError] = useState("");
   const [holdSaving, setHoldSaving] = useState(false);
+  // B (lag 9/9): đang sửa → mọi thao tác ghi draft cục bộ, KHÔNG đụng context
+  // (1 lần ghi context = re-render Table + cả Drawer). Chỉ Lưu mới đẩy qua
+  // onActiveRequestSave. holdActivation nằm ngoài form → luôn đọc/ghi `ar`.
+  const [draftAr, setDraftAr] = useState<ActiveRequest | null>(null);
+  const view: ActiveRequest = editing && draftAr ? draftAr : ar;
 
   useEffect(() => {
     onEditingChange?.(editing ? ar.id : null);
@@ -754,22 +760,24 @@ function ActiveRequestMiniCardV2({
     setAmountDrafts(nextAmountDrafts);
   }, [ar, editing]);
 
-  const summary = activationSummary(ar);
-  const allocation = activeRequestAllocation(ar, request);
+  const summary = activationSummary(view);
+  const allocation = activeRequestAllocation(view, request);
   const allocationWarning = allocation.isOver
     ? `Tổng gói học (${vnd(allocation.total)}) đang vượt tiền đã nhận (${vnd(allocation.received)}) — vượt ${vnd(allocation.overAmount)}.`
     : "";
-  const allCourses = ar.uids.flatMap((u) => u.courses);
+  const allCourses = view.uids.flatMap((u) => u.courses);
   const allCoursesLocked = allCourses.length > 0 && allCourses.every((c) => !!(c.orderId?.trim()) || !!c.invoiced);
   const editFullyLocked = allCoursesLocked && allocation.remaining <= 0;
-  const holdActivationLocked = isHoldActivationLocked(allCourses);
+  // Đọc `ar` (global) chứ không phải draft: thêm gói mới trong draft không được "mở khoá"
+  // radio hold trên AR đã tạo gói hết (BE sẽ 400).
+  const holdActivationLocked = isHoldActivationLocked(ar.uids.flatMap((u) => u.courses));
   const hasUnfilledCourse = allCourses.some((c) => {
     const locked = !!(c.orderId?.trim()) || !!c.invoiced;
     return !locked && (c.amount || 0) <= 0;
   });
   const canAddMore = allocation.remaining > 0 && !hasUnfilledCourse;
   const missingFields: string[] = [];
-  ar.uids.forEach((u, uIdx) => {
+  view.uids.forEach((u, uIdx) => {
     const label = u.uid.trim() || `UID #${uIdx + 1}`;
     if (!u.uid.trim()) missingFields.push("UID");
     if (!u.phone.trim()) missingFields.push("SĐT");
@@ -783,6 +791,10 @@ function ActiveRequestMiniCardV2({
   const missingRequiredCount = missingFields.length;
 
   const mutate = (updater: (next: ActiveRequest) => ActiveRequest) => {
+    if (editing) {
+      setDraftAr((prev) => updater(prev ?? ar));
+      return;
+    }
     onActiveRequestMutate(ar.id, updater);
   };
 
@@ -795,7 +807,7 @@ function ActiveRequestMiniCardV2({
       setAllocationError("Có gói học chưa điền số tiền (0 đ). Hãy điền số tiền hoặc xóa gói trước khi lưu.");
       return;
     }
-    const referralError = validateReferralBonus(ar);
+    const referralError = validateReferralBonus(view);
     if (referralError) {
       setAllocationError(referralError);
       return;
@@ -803,8 +815,12 @@ function ActiveRequestMiniCardV2({
     // Flush uncommitted drafts into AR to avoid stale-closure race
     // (blur commit queues React state update but hasn't re-rendered yet).
     const flushed: ActiveRequest = {
-      ...ar,
-      uids: ar.uids.map((u, idx) => ({
+      ...ar, // spread `ar` sống (không phải draft) để giữ holdActivation vừa persist
+      // updatedAt lấy từ SNAPSHOT lúc bấm Sửa: nếu AR đã đổi trong lúc sửa (vd. "Báo đơn
+      // bổ sung" cùng trình duyệt) thì expected_updated_at lệch → BE 409 → context rollback,
+      // không để draft cũ xoá gói vừa append.
+      updatedAt: view.updatedAt,
+      uids: view.uids.map((u, idx) => ({
         ...u,
         uid: (uidDrafts[idx] ?? u.uid ?? "").trim(),
         phone: (phoneDrafts[idx] ?? u.phone ?? "").replace(/[^\d]/g, ""),
@@ -816,9 +832,13 @@ function ActiveRequestMiniCardV2({
     };
     setSaving(true);
     setAllocationError("");
+    // A (9/9): thoát form NGAY — saveActiveRequest đã set state lạc quan đồng bộ
+    // trước khi gọi mạng, không có lý do giữ form chờ round-trip. Lỗi/conflict:
+    // context tự rollback + apiNote (như cũ).
+    setEditing(false);
+    setDraftAr(null);
     await onActiveRequestSave(flushed);
     setSaving(false);
-    setEditing(false);
   };
 
   const removeAr = async () => {
@@ -832,8 +852,15 @@ function ActiveRequestMiniCardV2({
     if (holdSaving || nextHold === !!ar.holdActivation) return;
     setHoldSaving(true);
     try {
-      await endpoints.activeRequests.update(ar.id, { hold_activation: nextHold });
-      mutate((next) => ({ ...next, holdActivation: nextHold, holdNote: null }));
+      const res = await endpoints.activeRequests.update(ar.id, { hold_activation: nextHold });
+      // Hold đã persist server → ghi thẳng context, KHÔNG qua draft (kể cả đang sửa).
+      // Merge cả updatedAt (BE bump khi PATCH) vào context + draft, kẻo Lưu ngay sau đó
+      // gửi expected_updated_at cũ → 409 mất trắng draft.
+      const freshUpdatedAt = fromApiActiveRequest(res.data).updatedAt;
+      onActiveRequestMutate(ar.id, (next) => ({
+        ...next, holdActivation: nextHold, holdNote: null, updatedAt: freshUpdatedAt ?? next.updatedAt,
+      }));
+      setDraftAr((prev) => (prev ? { ...prev, updatedAt: freshUpdatedAt ?? prev.updatedAt } : prev));
     } catch (err) {
       const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
       window.alert(
@@ -848,7 +875,7 @@ function ActiveRequestMiniCardV2({
 
   const commitUid = (uidIdx: number) => {
     const nextUid = (uidDrafts[uidIdx] ?? "").trim();
-    const current = ar.uids[uidIdx]?.uid ?? "";
+    const current = view.uids[uidIdx]?.uid ?? "";
     if (nextUid === current) return;
     mutate((next) => ({
       ...next,
@@ -858,7 +885,7 @@ function ActiveRequestMiniCardV2({
 
   const commitPhone = (uidIdx: number) => {
     const nextPhone = (phoneDrafts[uidIdx] ?? "").replace(/[^\d]/g, "");
-    const current = ar.uids[uidIdx]?.phone ?? "";
+    const current = view.uids[uidIdx]?.phone ?? "";
     if (nextPhone === current) return;
     mutate((next) => ({
       ...next,
@@ -869,11 +896,11 @@ function ActiveRequestMiniCardV2({
   const commitAmount = (uidIdx: number, courseCode: string) => {
     const raw = (amountDrafts[courseCode] ?? "").replace(/[^\d]/g, "");
     const nextAmount = raw ? Number(raw) : 0;
-    const current = ar.uids[uidIdx]?.courses.find((x) => x.courseCode === courseCode)?.amount ?? 0;
+    const current = view.uids[uidIdx]?.courses.find((x) => x.courseCode === courseCode)?.amount ?? 0;
     if (nextAmount === current) return;
     const nextAr = {
-      ...ar,
-      uids: ar.uids.map((u, idx) =>
+      ...view,
+      uids: view.uids.map((u, idx) =>
         idx === uidIdx
           ? {
               ...u,
@@ -926,7 +953,7 @@ function ActiveRequestMiniCardV2({
   };
 
   const removeCourse = (uidIdx: number, courseCode: string) => {
-    const course = ar.uids[uidIdx]?.courses.find((c) => c.courseCode === courseCode);
+    const course = view.uids[uidIdx]?.courses.find((c) => c.courseCode === courseCode);
     if (!course) return;
     if (course.invoiced) {
       window.alert("Không thể xóa khóa học đã xuất hóa đơn.");
@@ -956,7 +983,7 @@ function ActiveRequestMiniCardV2({
   };
 
   const removeUidGroup = (uidIdx: number) => {
-    const u = ar.uids[uidIdx];
+    const u = view.uids[uidIdx];
     if (!u) return;
     const hasLocked = u.courses.some((c) => !!(c.orderId?.trim()) || !!c.invoiced);
     if (hasLocked) {
@@ -1023,7 +1050,7 @@ function ActiveRequestMiniCardV2({
               title={editFullyLocked ? "Tất cả gói học đã được tạo và đã dùng hết tiền" : "Sửa thông tin gói học"}
               aria-label="Sửa thông tin gói học"
               disabled={editFullyLocked}
-              onClick={() => setEditing(true)}
+              onClick={() => { setDraftAr(ar); setEditing(true); }}
               style={{ opacity: editFullyLocked ? 0.35 : 1 }}
             >
               <Icons.Pencil size={14} /> Sửa
@@ -1130,7 +1157,7 @@ function ActiveRequestMiniCardV2({
         </div>
       )}
       <div className="ar-mini-body">
-        {ar.uids.map((u, uIdx) => (
+        {view.uids.map((u, uIdx) => (
           <div
             key={`${u.uid || "uid"}-${uIdx}`}
             className="ar-mini-uid"
@@ -1184,7 +1211,7 @@ function ActiveRequestMiniCardV2({
                 title={!canAddMore ? "Đã phân bổ hết tiền đã nhận — không thể thêm gói" : "Thêm gói khoá học"}>
                 <Icons.Plus size={12} /> Thêm gói
               </button>
-              {ar.uids.length > 1 && (
+              {view.uids.length > 1 && (
                 <button type="button" className="btn btn-outline btn-sm"
                   disabled={u.courses.some((c) => !!(c.orderId?.trim()) || !!c.invoiced)}
                   title={u.courses.some((c) => !!(c.orderId?.trim()) || !!c.invoiced) ? "UID có gói đã tạo — không thể xóa" : "Xóa UID này"}
@@ -2696,8 +2723,12 @@ export default function PaymentRequestDetailDrawer({
           </div>
 
           {/* AR mini-window — chỉ Sales view, gọn nhẹ. Tab Kích hoạt khoá học (Thu Hiền) vẫn riêng */}
-          {hasActiveRequest && activeRequest && (
+          {/* `open &&` + key: drawer đóng bằng CSS (không unmount) và đổi PR không đóng drawer —
+              phải unmount/remount card để editing/draftAr KHÔNG sống qua đóng drawer / đổi AR
+              (kẻo Lưu ghi uids AR cũ lên AR mới, và editingArIdRef treo → chặn refetch nền mãi). */}
+          {open && hasActiveRequest && activeRequest && (
             <ActiveRequestMiniCardV2
+              key={activeRequest.id}
               ar={activeRequest}
               request={request}
               onActiveRequestMutate={onActiveRequestMutate}

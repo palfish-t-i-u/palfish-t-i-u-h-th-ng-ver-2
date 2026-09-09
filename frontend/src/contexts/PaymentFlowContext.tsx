@@ -214,7 +214,8 @@ export function PaymentFlowProvider({
       inFlightRef.current = false;
       if (pendingRefetchRef.current) {
         pendingRefetchRef.current = false;
-        void loadData({ silent: true });
+        // Cùng gate với silentRefetch: không chain refetch nền khi đang sửa AR.
+        if (!editingArIdRef.current) void loadData({ silent: true });
       }
     }
   }, []);
@@ -227,18 +228,17 @@ export function PaymentFlowProvider({
 
   const pendingQr = useMemo(() => hasPendingQrPayments(requests), [requests]);
 
-  useVisiblePoll(
-    () => {
-      void loadData({ silent: true });
-    },
-    POLL_MS,
-    pendingQr,
-  );
-
+  // Refetch nền (poll / realtime / focus) — bỏ qua khi:
+  // - vừa persist (cooldown 3s, tránh realtime echo ghi đè optimistic)
+  // - đang sửa 1 AR trong drawer (editingArIdRef): full-refetch O(N) giữa lúc gõ
+  //   là nguồn lag chính. loadData() tay (nút "Tải lại") vẫn đi thẳng, không qua đây.
   const silentRefetch = useCallback(() => {
     if (Date.now() < persistCooldownRef.current) return;
+    if (editingArIdRef.current) return;
     void loadData({ silent: true });
   }, [loadData]);
+
+  useVisiblePoll(silentRefetch, POLL_MS, pendingQr);
 
   const markPersisted = useCallback(() => {
     persistCooldownRef.current = Date.now() + 3_000;

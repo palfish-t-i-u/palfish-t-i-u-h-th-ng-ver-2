@@ -55,8 +55,12 @@ export class E2eApiClient {
     return tryGetAccessToken() !== null;
   }
 
-  constructor() {
-    this.baseUrl = getApiBaseUrl();
+  /**
+   * @param baseUrl — override E2E_API_URL (vd. chạy spec trên sandbox Vercel mà
+   *   `.env.e2e` vẫn trỏ localhost: truyền `process.env.E2E_API_URL_OVERRIDE`).
+   */
+  constructor(baseUrl?: string) {
+    this.baseUrl = (baseUrl?.trim().replace(/\/$/, "") || "") || getApiBaseUrl();
     this.token = getAccessToken();
   }
 
@@ -126,7 +130,47 @@ export class E2eApiClient {
     };
   }
 
+  /** Up ảnh bill cho 1 lần TT (BE chặn tạo AR khi line đã thu tiền mà chưa có bill). */
+  async uploadBill(lineId: string, png: Uint8Array, filename = "e2e-bill.png"): Promise<void> {
+    const fd = new FormData();
+    fd.append("file", new Blob([png], { type: "image/png" }), filename);
+    const res = await fetch(`${this.baseUrl}/api/v1/payment-lines/${lineId}/bill`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${this.token}` },
+      body: fd,
+    });
+    if (!res.ok) {
+      throw new Error(`API POST /api/v1/payment-lines/${lineId}/bill → ${res.status}: ${await res.text().catch(() => "")}`);
+    }
+  }
+
+  /** Xác nhận tay 1 lần TT (cần quyền confirm — tài khoản E2E admin có). */
+  async patchLineStatus(lineId: string, status: "paid" | "pending" | "rejected"): Promise<void> {
+    await this.request("PATCH", `/api/v1/transactions/${lineId}/status`, { status });
+  }
+
   // ── Active Requests ──
+  /** Báo đơn (tạo AR) gắn PR — body giống FE `CreateActiveRequestPayload`. */
+  async createActiveRequest(
+    prId: string,
+    body: {
+      uids: { uid: string; phone?: string; country?: string; courses: { name: string; amount: number }[] }[];
+      hold_activation?: boolean;
+    }
+  ): Promise<{ id: string }> {
+    const res = await this.request<{ id: string }>(
+      "POST",
+      `/api/v1/payment-requests/${prId}/active-requests`,
+      body
+    );
+    return { id: res.id };
+  }
+
+  /** Đọc AR thô từ server (verify persist sau khi Lưu). */
+  async getActiveRequest(arId: string): Promise<Record<string, unknown>> {
+    return this.request<Record<string, unknown>>("GET", `/api/v1/active-requests/${arId}`);
+  }
+
   async deleteActiveRequest(arId: string): Promise<void> {
     await this.request("DELETE", `/api/v1/active-requests/${arId}`);
   }
@@ -150,6 +194,36 @@ export class E2eApiClient {
   }
 
   // ── Cleanup search ──
+  /** PR [E2E-TEST] kèm line (id + status) — để dọn PR đã nhận tiền: reject line rồi cancel. */
+  async listTestPaymentRequestsRaw(): Promise<
+    { id: string; name: string; state: string; payments: { id: string; status: string }[] }[]
+  > {
+    const res = await this.request<{ requests: Record<string, unknown>[] }>(
+      "GET",
+      "/api/v1/payment-requests?limit=200"
+    );
+    return (res.requests ?? [])
+      .filter((r) => String(r.name ?? "").includes("[E2E-TEST]"))
+      .map((r) => ({
+        id: String(r.id),
+        name: String(r.name),
+        state: String(r.state ?? ""),
+        payments: (Array.isArray(r.payments) ? (r.payments as Record<string, unknown>[]) : []).map((p) => ({
+          id: String(p.id),
+          status: String(p.status ?? ""),
+        })),
+      }));
+  }
+
+  /** Danh sách AR thô (id + pr_id) — tìm AR gắn PR test để xoá trước khi cancel PR. */
+  async listActiveRequestsRaw(): Promise<{ id: string; pr_id: string | null }[]> {
+    const rows = await this.request<Record<string, unknown>[]>("GET", "/api/v1/active-requests");
+    return (Array.isArray(rows) ? rows : []).map((r) => ({
+      id: String(r.id),
+      pr_id: r.pr_id ? String(r.pr_id) : null,
+    }));
+  }
+
   async findTestPaymentRequests(): Promise<{ id: string; name: string; state: string }[]> {
     const res = await this.request<{
       requests: { id: string; name: string; state: string }[];
