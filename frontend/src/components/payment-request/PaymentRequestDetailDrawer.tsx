@@ -1834,6 +1834,8 @@ export default function PaymentRequestDetailDrawer({
   }, [request?.id]);
 
   const [dismissedStaleLineIds, setDismissedStaleLineIds] = useState<Set<string>>(new Set());
+  // Perf (bấm mở PR lag): defer render body nặng khỏi frame mở drawer.
+  const [bodyReady, setBodyReady] = useState(false);
 
   useEffect(() => {
     setDismissedStaleLineIds(new Set());
@@ -1857,6 +1859,22 @@ export default function PaymentRequestDetailDrawer({
     return () => { document.body.style.overflow = prev; };
   }, [open]);
 
+  // Perf: commit shell + skeleton trước cho slide/scrim mượt, rồi mới mount QrRow list +
+  // AR card + bắn 3 API phụ trợ. Double-rAF = shell paint ≥1 frame trước body. Reset trong
+  // cleanup để mỗi lần mở đều defer lại (không giữ true stale từ lần mở trước).
+  useEffect(() => {
+    if (!open) return;
+    let raf2 = 0;
+    const raf1 = requestAnimationFrame(() => {
+      raf2 = requestAnimationFrame(() => setBodyReady(true));
+    });
+    return () => {
+      cancelAnimationFrame(raf1);
+      cancelAnimationFrame(raf2);
+      setBodyReady(false);
+    };
+  }, [open]);
+
   useEffect(() => {
     if (!showAdd) return;
     const id = setTimeout(() => {
@@ -1869,7 +1887,7 @@ export default function PaymentRequestDetailDrawer({
     return () => clearTimeout(id);
   }, [showAdd]);
 
-  const { canRemind, lastReminder, sending: remindSending, remind, errorMessage: remindError, dismissError: dismissRemindError } = useInvoiceRemind(open && request ? request.id : null);
+  const { canRemind, lastReminder, sending: remindSending, remind, errorMessage: remindError, dismissError: dismissRemindError } = useInvoiceRemind(bodyReady && request ? request.id : null);
   const {
     canRemind: canRemindActivation,
     lastReminder: lastActivationReminder,
@@ -1877,10 +1895,10 @@ export default function PaymentRequestDetailDrawer({
     remind: remindActivation,
     errorMessage: activationRemindError,
     dismissError: dismissActivationRemindError,
-  } = useActivationRemind(open && request ? request.id : null);
+  } = useActivationRemind(bodyReady && request ? request.id : null);
   const [activationNoteModalOpen, setActivationNoteModalOpen] = useState(false);
   const [activationNote, setActivationNote] = useState("");
-  const { latestLog: deliveryLog } = useDeliveryLog(open && activeRequestId ? activeRequestId : null);
+  const { latestLog: deliveryLog } = useDeliveryLog(bodyReady && activeRequestId ? activeRequestId : null);
 
   // PR3 (1B-04): nếu PR đã đủ tiền → hiện popup hướng dẫn thay vì mở form tạo lần TT
   const isPrFull = request?.state === "done" || request?.state === "over";
@@ -2688,7 +2706,7 @@ export default function PaymentRequestDetailDrawer({
               </div>
             </div>
 
-            {detailLoading ? (
+            {(detailLoading || !bodyReady) ? (
               <div data-testid="pr-drawer-detail-loading" className="empty" style={{ padding: "28px 12px", color: "var(--text-3)", fontSize: "0.875rem", textAlign: "center" }}>
                 Đang tải chi tiết lần thanh toán…
               </div>
@@ -2749,10 +2767,12 @@ export default function PaymentRequestDetailDrawer({
           </div>
 
           {/* AR mini-window — chỉ Sales view, gọn nhẹ. Tab Kích hoạt khoá học (Thu Hiền) vẫn riêng */}
-          {/* `open &&` + key: drawer đóng bằng CSS (không unmount) và đổi PR không đóng drawer —
+          {/* `bodyReady &&` + key: drawer đóng bằng CSS (không unmount) và đổi PR không đóng drawer —
               phải unmount/remount card để editing/draftAr KHÔNG sống qua đóng drawer / đổi AR
-              (kẻo Lưu ghi uids AR cũ lên AR mới, và editingArIdRef treo → chặn refetch nền mãi). */}
-          {open && hasActiveRequest && activeRequest && (
+              (kẻo Lưu ghi uids AR cũ lên AR mới, và editingArIdRef treo → chặn refetch nền mãi).
+              bodyReady reset false trong cleanup effect [open] khi đóng → card vẫn unmount đúng
+              (bodyReady = gate defer-render, chặt hơn `open &&` nhưng giữ nguyên invariant unmount). */}
+          {bodyReady && hasActiveRequest && activeRequest && (
             <ActiveRequestMiniCardV2
               key={activeRequest.id}
               ar={activeRequest}

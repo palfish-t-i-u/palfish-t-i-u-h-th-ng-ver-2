@@ -1,5 +1,6 @@
 import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, beforeEach, afterEach, vi } from "vitest";
+import { useEffect, useState } from "react";
 
 // Minimal stub isolating the detailLoading conditional — mirrors the exact
 // JSX condition added to PaymentRequestDetailDrawer section "Các lần thanh toán".
@@ -65,5 +66,60 @@ describe("drawer lazy-load — detailLoading conditional (GĐ2 amendment tiêu c
     render(<PaymentsSection detailLoading={false} paymentsCount={0} />);
     expect(screen.queryByTestId("pr-drawer-detail-loading")).not.toBeInTheDocument();
     expect(screen.getByText(/Chưa có lần thanh toán nào/)).toBeInTheDocument();
+  });
+});
+
+// Mirror cờ bodyReady thật trong PaymentRequestDetailDrawer (defer body nặng khỏi frame mở).
+function DeferredBodyStub({ open }: { open: boolean }) {
+  const [bodyReady, setBodyReady] = useState(false);
+  useEffect(() => {
+    if (!open) return;
+    let raf2 = 0;
+    const raf1 = requestAnimationFrame(() => {
+      raf2 = requestAnimationFrame(() => setBodyReady(true));
+    });
+    return () => {
+      cancelAnimationFrame(raf1);
+      cancelAnimationFrame(raf2);
+      setBodyReady(false);
+    };
+  }, [open]);
+  return bodyReady ? (
+    <div data-testid="drawer-body-ready">BODY</div>
+  ) : (
+    <div data-testid="drawer-body-skeleton">SKELETON</div>
+  );
+}
+
+describe("drawer bodyReady — defer body nặng khỏi frame mở (fix lag bấm mở PR)", () => {
+  beforeEach(() => {
+    vi.stubGlobal("requestAnimationFrame", (cb: FrameRequestCallback) => {
+      cb(0);
+      return 0 as unknown as number;
+    });
+    vi.stubGlobal("cancelAnimationFrame", () => {});
+  });
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("open=false → chỉ skeleton, KHÔNG mount body", () => {
+    render(<DeferredBodyStub open={false} />);
+    expect(screen.getByTestId("drawer-body-skeleton")).toBeInTheDocument();
+    expect(screen.queryByTestId("drawer-body-ready")).not.toBeInTheDocument();
+  });
+
+  it("open=true → sau rAF thì body mount", async () => {
+    render(<DeferredBodyStub open />);
+    expect(await screen.findByTestId("drawer-body-ready")).toBeInTheDocument();
+  });
+
+  // Guard invariant load-bearing: đóng drawer PHẢI reset bodyReady=false → body unmount →
+  // AR card cleanup clear editingArIdRef (nếu ai đó bỏ setBodyReady(false) khỏi cleanup,
+  // test này đỏ trước khi tái hiện bug "editingArIdRef treo → chặn refetch nền").
+  it("open=true→false → body unmount, skeleton trở lại (reset-on-close)", async () => {
+    const { rerender } = render(<DeferredBodyStub open />);
+    expect(await screen.findByTestId("drawer-body-ready")).toBeInTheDocument();
+    rerender(<DeferredBodyStub open={false} />);
+    expect(screen.getByTestId("drawer-body-skeleton")).toBeInTheDocument();
+    expect(screen.queryByTestId("drawer-body-ready")).not.toBeInTheDocument();
   });
 });
