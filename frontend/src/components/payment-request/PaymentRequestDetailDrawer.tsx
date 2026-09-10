@@ -1937,6 +1937,57 @@ export default function PaymentRequestDetailDrawer({
     );
   }
 
+  const drawerHead = (
+    <div className="drawer-head">
+      <div style={{ display: "flex", alignItems: "center", gap: 14, minWidth: 0 }}>
+        <div style={{ flexShrink: 0 }}>
+          <span className="pr-id-pill">{request.id}</span>
+          <div className="drawer-status-mobile">
+            <PaymentRequestStatusBadge state={request.state} totalCount={request.totalCount} provisional={hasUnverifiedFeeLine(request)} />
+          </div>
+        </div>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontWeight: 700, fontSize: 16 }}>{request.name}</div>
+          <div className="drawer-meta" style={{ fontSize: 12, color: "var(--text-3)", marginTop: 2 }}>
+            Sở hữu <strong style={{ color: "var(--text-2)" }} title={request.saleEmail || undefined}>{request.saleName || (request.saleEmail ? request.saleEmail.split("@")[0] : "—")}</strong> · tạo {request.createdAt}
+          </div>
+        </div>
+      </div>
+      <div style={{ display: "flex", gap: 8, alignItems: "center", flexShrink: 0 }}>
+        <PaymentRequestStatusBadge state={request.state} totalCount={request.totalCount} provisional={hasUnverifiedFeeLine(request)} />
+        <HdsdLink moduleSlug="paymentRequests" />
+        <button className="drawer-close" onClick={onClose}>
+          <Icons.Close size={16} />
+        </button>
+        <button type="button" className="drawer-back-mobile" onClick={onClose}>
+          <Icons.ChevronLeft size={14} /> Quay lại
+        </button>
+      </div>
+    </div>
+  );
+
+  // Perf (fix lag bấm mở PR — bước 2): khi drawer vừa mở mà bodyReady chưa bật,
+  // render shell + head + skeleton để slide/scrim chạy mượt; TOÀN BỘ body nặng
+  // (grid B1 + timeline + list lần TT + AR card) mount ở frame sau qua bodyReady.
+  // Cắt ~75–107ms block đồng bộ (render nền) khỏi cú click, cho MỌI PR kể cả PR nhẹ.
+  if (open && !bodyReady) {
+    return (
+      <>
+        <div className="scrim open" onClick={onClose} style={{ pointerEvents: "auto" }} />
+        <aside className="drawer open">
+          {drawerHead}
+          <div className="drawer-body">
+            <div aria-hidden style={{ display: "flex", flexDirection: "column", gap: 12, padding: "8px 2px", opacity: 0.6 }}>
+              <div style={{ height: 76, borderRadius: 12, background: "var(--surface-2, #f1f2f4)" }} />
+              <div style={{ height: 200, borderRadius: 12, background: "var(--surface-2, #f1f2f4)" }} />
+              <div style={{ height: 120, borderRadius: 12, background: "var(--surface-2, #f1f2f4)" }} />
+            </div>
+          </div>
+        </aside>
+      </>
+    );
+  }
+
   const country = findCountry(request.country);
   const remaining = Math.max(0, request.target - request.received);
   const canCancel = request.state !== "cancelled" && request.doneCount === 0 && !activeRequestId;
@@ -1993,32 +2044,7 @@ export default function PaymentRequestDetailDrawer({
     <>
       <div className={`scrim ${open ? "open" : ""}`} onClick={onClose} style={{ pointerEvents: open ? "auto" : "none" }} />
       <aside className={`drawer ${open ? "open" : ""}`}>
-        <div className="drawer-head">
-          <div style={{ display: "flex", alignItems: "center", gap: 14, minWidth: 0 }}>
-            <div style={{ flexShrink: 0 }}>
-              <span className="pr-id-pill">{request.id}</span>
-              <div className="drawer-status-mobile">
-                <PaymentRequestStatusBadge state={request.state} totalCount={request.totalCount} provisional={hasUnverifiedFeeLine(request)} />
-              </div>
-            </div>
-            <div style={{ minWidth: 0 }}>
-              <div style={{ fontWeight: 700, fontSize: 16 }}>{request.name}</div>
-              <div className="drawer-meta" style={{ fontSize: 12, color: "var(--text-3)", marginTop: 2 }}>
-                Sở hữu <strong style={{ color: "var(--text-2)" }} title={request.saleEmail || undefined}>{request.saleName || (request.saleEmail ? request.saleEmail.split("@")[0] : "—")}</strong> · tạo {request.createdAt}
-              </div>
-            </div>
-          </div>
-          <div style={{ display: "flex", gap: 8, alignItems: "center", flexShrink: 0 }}>
-            <PaymentRequestStatusBadge state={request.state} totalCount={request.totalCount} provisional={hasUnverifiedFeeLine(request)} />
-            <HdsdLink moduleSlug="paymentRequests" />
-            <button className="drawer-close" onClick={onClose}>
-              <Icons.Close size={16} />
-            </button>
-            <button type="button" className="drawer-back-mobile" onClick={onClose}>
-              <Icons.ChevronLeft size={14} /> Quay lại
-            </button>
-          </div>
-        </div>
+        {drawerHead}
 
         <div className="drawer-body" ref={drawerBodyRef}>
           {/* Summary */}
