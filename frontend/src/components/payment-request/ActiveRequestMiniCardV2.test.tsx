@@ -170,3 +170,75 @@ describe("ActiveRequestMiniCardV2 — sửa AR (fix lag 9/9: draft cục bộ + 
     );
   });
 });
+
+describe("ActiveRequestMiniCardV2 — pre-existing bug fixes (dồn nháp + commit functional)", () => {
+  it("Bug1: xóa bé giữa → Lưu giữ đúng UID/SĐT bé còn lại (không bị bé trên đè)", () => {
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    const mkUid = (uid: string, phone: string, code: string) => ({
+      uid, phone, country: "VN",
+      courses: [{ courseCode: code, packageName: "Goi", amount: 1_000_000, orderId: "", invoiced: false, invoiceRequestedAt: null }],
+    });
+    const ar: ActiveRequest = {
+      id: "AR-1", prId: "PR-1", customerName: "x", createdAt: NOW, createdBy: "s",
+      holdActivation: false, updatedAt: NOW,
+      uids: [mkUid("A", "111", "CC-1-001"), mkUid("B", "222", "CC-1-002"), mkUid("C", "333", "CC-1-003")],
+    };
+    const onActiveRequestSave = vi.fn(async (_next: ActiveRequest) => {});
+    render(
+      <ActiveRequestMiniCardV2
+        ar={ar}
+        request={makeRequest()}
+        onActiveRequestMutate={vi.fn()}
+        onActiveRequestSave={onActiveRequestSave}
+        onActiveRequestDelete={vi.fn(async () => {})}
+      />
+    );
+    clickEdit();
+    // Xóa bé giữa (idx 1 = "B")
+    fireEvent.click(screen.getAllByRole("button", { name: /Xóa UID/ })[1]);
+    clickSave();
+
+    expect(onActiveRequestSave).toHaveBeenCalledTimes(1);
+    const arg = onActiveRequestSave.mock.calls[0][0] as ActiveRequest;
+    expect(arg.uids).toHaveLength(2);
+    expect(arg.uids[0].uid).toBe("A");
+    expect(arg.uids[0].phone).toBe("111");
+    // Bé "C" dồn lên idx1: PHẢI giữ uid/phone của C, KHÔNG bị nháp của "B" đè
+    expect(arg.uids[1].uid).toBe("C");
+    expect(arg.uids[1].phone).toBe("333");
+  });
+
+  it("Bug2 (regression): sửa UID rồi sửa số tiền → Lưu giữ cả hai (commitAmount không nuốt field khác)", () => {
+    const ar: ActiveRequest = {
+      id: "AR-1", prId: "PR-1", customerName: "x", createdAt: NOW, createdBy: "s",
+      holdActivation: false, updatedAt: NOW,
+      uids: [{
+        uid: "OLD", phone: "111", country: "VN",
+        courses: [{ courseCode: "CC-1-001", packageName: "Goi", amount: 1_000_000, orderId: "", invoiced: false, invoiceRequestedAt: null }],
+      }],
+    };
+    const onActiveRequestSave = vi.fn(async (_next: ActiveRequest) => {});
+    render(
+      <ActiveRequestMiniCardV2
+        ar={ar}
+        request={makeRequest()}
+        onActiveRequestMutate={vi.fn()}
+        onActiveRequestSave={onActiveRequestSave}
+        onActiveRequestDelete={vi.fn(async () => {})}
+      />
+    );
+    clickEdit();
+    const uid = screen.getByPlaceholderText("UID CRM");
+    fireEvent.change(uid, { target: { value: "NEW" } });
+    fireEvent.blur(uid);
+    const amount = screen.getByPlaceholderText("Số tiền");
+    fireEvent.change(amount, { target: { value: "2000000" } });
+    fireEvent.blur(amount);
+    clickSave();
+
+    expect(onActiveRequestSave).toHaveBeenCalledTimes(1);
+    const arg = onActiveRequestSave.mock.calls[0][0] as ActiveRequest;
+    expect(arg.uids[0].uid).toBe("NEW");
+    expect(arg.uids[0].courses[0].amount).toBe(2_000_000);
+  });
+});

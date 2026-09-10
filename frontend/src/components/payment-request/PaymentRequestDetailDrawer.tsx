@@ -920,7 +920,14 @@ export function ActiveRequestMiniCardV2({
       return;
     }
     setAllocationError("");
-    mutate(() => nextAr);
+    mutate((next) => ({
+      ...next,
+      uids: next.uids.map((u, idx) =>
+        idx === uidIdx
+          ? { ...u, courses: u.courses.map((c) => (c.courseCode === courseCode ? { ...c, amount: nextAmount } : c)) }
+          : u
+      ),
+    }));
   };
 
   const addCourseForUid = (uidIdx: number) => {
@@ -982,6 +989,16 @@ export function ActiveRequestMiniCardV2({
     }));
   };
 
+  const shiftDraftsAfterRemove = (rec: Record<number, string>, removed: number) => {
+    const next: Record<number, string> = {};
+    for (const [k, v] of Object.entries(rec)) {
+      const i = Number(k);
+      if (i < removed) next[i] = v;
+      else if (i > removed) next[i - 1] = v; // i === removed: bỏ
+    }
+    return next;
+  };
+
   const removeUidGroup = (uidIdx: number) => {
     const u = view.uids[uidIdx];
     if (!u) return;
@@ -991,6 +1008,15 @@ export function ActiveRequestMiniCardV2({
       return;
     }
     if (!window.confirm(`Xóa UID "${u.uid || "(trống)"}" và tất cả gói học của nó?`)) return;
+    // Dồn nháp UID/SĐT theo cùng index khi xóa 1 bé giữa danh sách, kẻo bé dồn lên
+    // đọc nhầm nháp của bé phía trên → Lưu ghi sai UID/SĐT.
+    setUidDrafts((prev) => shiftDraftsAfterRemove(prev, uidIdx));
+    setPhoneDrafts((prev) => shiftDraftsAfterRemove(prev, uidIdx));
+    // amountDrafts key theo courseCode (không theo index) → KHÔNG dồn, chỉ xóa nháp gói của bé bị bỏ.
+    setAmountDrafts((prev) => {
+      const removedCodes = new Set(u.courses.map((c) => c.courseCode));
+      return Object.fromEntries(Object.entries(prev).filter(([code]) => !removedCodes.has(code)));
+    });
     mutate((next) => ({
       ...next,
       uids: next.uids.filter((_, idx) => idx !== uidIdx),
