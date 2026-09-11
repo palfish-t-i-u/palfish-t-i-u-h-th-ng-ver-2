@@ -2880,7 +2880,7 @@ export default function ActivationTab() {
 
   return (
     <div className="gmv-prototype">
-      <div className="page">
+      <div className="page page--fit">
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, marginBottom: 4 }}>
           {!isMobile && (
             <div style={{ fontSize: 12.5, color: "var(--text-3)", maxWidth: 720, lineHeight: 1.55 }}>
