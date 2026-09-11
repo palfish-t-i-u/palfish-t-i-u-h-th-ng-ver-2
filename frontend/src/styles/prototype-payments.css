@@ -2071,38 +2071,39 @@
   }
 }
 
-/* ───────── Thanh cuộn ngang "dính" đáy viewport (StickyXScrollbar) ─────────
-   Dùng cho bảng dài giữ chiều cao tự nhiên (cuộn cả trang) nhưng vẫn muốn
-   thanh cuộn ngang luôn thấy. `.tbl-hscroll` là proxy đồng bộ scrollLeft với
-   bảng; ẩn thanh cuộn ngang gốc của `.tbl-wrap--proxy` để khỏi trùng. */
-.gmv-prototype .tbl-wrap--proxy { scrollbar-width: none; }
-.gmv-prototype .tbl-wrap--proxy::-webkit-scrollbar { height: 0; }
-
-.gmv-prototype .tbl-hscroll {
-  position: sticky;
-  bottom: 0;
-  z-index: 20;
-  overflow-x: auto;
-  overflow-y: hidden;
-  height: 15px;
-  margin-top: -18px; /* huỷ gap 18px của .page để nằm sát card ở đáy trang */
-  background: var(--surface);
-  border-top: 1px solid var(--border);
-}
-.gmv-prototype .tbl-hscroll-inner { height: 1px; }
-/* Ép thanh cuộn cổ điển (luôn hiện, không bị Windows overlay-hide nuốt) */
-.gmv-prototype .tbl-hscroll::-webkit-scrollbar { height: 13px; }
-.gmv-prototype .tbl-hscroll::-webkit-scrollbar-track { background: transparent; }
-.gmv-prototype .tbl-hscroll::-webkit-scrollbar-thumb {
-  background: var(--border-strong);
-  border-radius: 7px;
-  border: 3px solid var(--surface);
-}
-.gmv-prototype .tbl-hscroll::-webkit-scrollbar-thumb:hover { background: var(--text-3); }
-
-/* Mobile: bảng ẩn (render dạng thẻ) → không cần proxy */
-@media (max-width: 767px) {
-  .gmv-prototype .tbl-hscroll { display: none; }
+/* ───────── Hướng 1: bảng "dính" đầy viewport, header cuộn đi (kiểu Excel/Sheets)
+   Áp cho B3 Tạo gói học (.table-card--fill). Khi cuộn <main>, khối trên (mô tả,
+   cảnh báo, KPI, thanh lọc) cuộn mất; card dính dưới thanh tiêu đề và cao gần hết
+   màn, bảng cuộn TRONG card → thanh cuộn ngang + phân trang docked ở đáy card,
+   không nổi đè lên dòng. `--app-banner-h` = banner sandbox (0 hoặc 22px). ───── */
+@media (min-width: 768px) {
+  /* Bỏ padding-bottom của .page để card không "trôi quá" lên dưới header khi cuộn hết */
+  .gmv-prototype .page.page--fillcard { padding-bottom: 0; }
+  .gmv-prototype .table-card.table-card--fill {
+    position: sticky;
+    top: 0;
+    height: calc(100vh - 112px - var(--app-banner-h, 0px));
+    display: flex;
+    flex-direction: column;
+  }
+  .gmv-prototype .table-card--fill .tbl-wrap {
+    flex: 1;
+    overflow: auto; /* cuộn cả ngang lẫn dọc TRONG bảng */
+  }
+  .gmv-prototype .table-card--fill .tbl thead th {
+    position: sticky; /* header cột đứng yên khi cuộn dòng */
+    top: 0;
+    z-index: 2;
+  }
+  /* Ép thanh cuộn cổ điển (luôn hiện, không bị Windows overlay-hide nuốt) */
+  .gmv-prototype .table-card--fill .tbl-wrap::-webkit-scrollbar { height: 13px; width: 13px; }
+  .gmv-prototype .table-card--fill .tbl-wrap::-webkit-scrollbar-track { background: var(--surface-2); }
+  .gmv-prototype .table-card--fill .tbl-wrap::-webkit-scrollbar-thumb {
+    background: var(--border-strong);
+    border-radius: 7px;
+    border: 3px solid var(--surface-2);
+  }
+  .gmv-prototype .table-card--fill .tbl-wrap::-webkit-scrollbar-thumb:hover { background: var(--text-3); }
 }
 
 .gmv-prototype .pagi-btn:disabled { opacity: 0.45; cursor: default; }

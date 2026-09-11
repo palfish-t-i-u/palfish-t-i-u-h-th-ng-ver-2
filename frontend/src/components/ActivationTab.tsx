@@ -2164,69 +2164,6 @@ function ActivationDetailDrawer({
   );
 }
 
-/**
- * Thanh cuộn ngang "dính" đáy viewport, đồng bộ với bảng dài (`targetRef`).
- * Bảng giữ chiều cao tự nhiên (cuộn cả trang) nhưng thanh cuộn ngang luôn thấy.
- * Đặt như con của `.page` (overflow visible) vì `.table-card` có overflow:hidden
- * sẽ vô hiệu position:sticky. `deps` = tín hiệu bảng đổi bề rộng (số dòng, cột hiện).
- */
-function StickyXScrollbar({ targetRef, deps = [] }: { targetRef: React.RefObject<HTMLDivElement | null>; deps?: React.DependencyList }) {
-  const barRef = useRef<HTMLDivElement>(null);
-  const innerRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const target = targetRef.current;
-    const bar = barRef.current;
-    const inner = innerRef.current;
-    if (!target || !bar || !inner) return;
-
-    let raf = 0;
-    let syncing = false;
-    const recalc = () => {
-      inner.style.width = `${target.scrollWidth}px`;
-      const hasOverflow = target.scrollWidth - target.clientWidth > 1;
-      bar.hidden = !hasOverflow;
-      if (hasOverflow) bar.scrollLeft = target.scrollLeft;
-    };
-    const onTargetScroll = () => {
-      if (syncing) return;
-      syncing = true;
-      bar.scrollLeft = target.scrollLeft;
-      syncing = false;
-    };
-    const onBarScroll = () => {
-      if (syncing) return;
-      syncing = true;
-      target.scrollLeft = bar.scrollLeft;
-      syncing = false;
-    };
-    const schedule = () => { cancelAnimationFrame(raf); raf = requestAnimationFrame(recalc); };
-
-    recalc();
-    target.addEventListener("scroll", onTargetScroll, { passive: true });
-    bar.addEventListener("scroll", onBarScroll, { passive: true });
-    window.addEventListener("resize", schedule);
-    const ro = new ResizeObserver(schedule);
-    ro.observe(target);
-    if (target.firstElementChild) ro.observe(target.firstElementChild);
-
-    return () => {
-      cancelAnimationFrame(raf);
-      target.removeEventListener("scroll", onTargetScroll);
-      bar.removeEventListener("scroll", onBarScroll);
-      window.removeEventListener("resize", schedule);
-      ro.disconnect();
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [targetRef, ...deps]);
-
-  return (
-    <div ref={barRef} className="tbl-hscroll" aria-hidden="true" hidden>
-      <div ref={innerRef} className="tbl-hscroll-inner" />
-    </div>
-  );
-}
-
 export default function ActivationTab() {
   const { readOnly } = usePermission("module3");
   const {
@@ -2435,7 +2372,6 @@ export default function ActivationTab() {
   );
 
   const isMobile = useIsMobile();
-  const courseTblWrapRef = useRef<HTMLDivElement | null>(null);
 
   // ── A-T1/A-T2: cột hiển thị (như Sổ doanh thu) + chọn nhiều AR + nút Xuất HĐ ngoài list ──
   const { isVisible, toggle, showAll, visibleCount } = useColumnVisibility(
@@ -2944,7 +2880,7 @@ export default function ActivationTab() {
 
   return (
     <div className="gmv-prototype">
-      <div className="page">
+      <div className="page page--fillcard">
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, marginBottom: 4 }}>
           {!isMobile && (
             <div style={{ fontSize: 12.5, color: "var(--text-3)", maxWidth: 720, lineHeight: 1.55 }}>
@@ -3156,7 +3092,7 @@ export default function ActivationTab() {
           </div>
         </div>
 
-        <div className="table-card has-tabs">
+        <div className="table-card has-tabs table-card--fill">
           <div className="table-head with-tabs">
             <div className="tabs">
               {(
@@ -3211,7 +3147,7 @@ export default function ActivationTab() {
                   </button>
                 </div>
               )}
-              <div className="tbl-wrap tbl-wrap--proxy" ref={courseTblWrapRef} style={{ overflowX: "auto" }}>
+              <div className="tbl-wrap" style={{ overflowX: "auto" }}>
                 <table className="tbl" style={{ minWidth: 1180 }}>
                   <thead>
                     <tr>
@@ -3297,9 +3233,6 @@ export default function ActivationTab() {
             </>
           )}
         </div>
-        {!isMobile && (
-          <StickyXScrollbar targetRef={courseTblWrapRef} deps={[courseVisible.length, visibleCount]} />
-        )}
       </div>
 
       <ActivationDetailDrawer
