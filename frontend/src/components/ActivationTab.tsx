@@ -2880,7 +2880,7 @@ export default function ActivationTab() {
 
   return (
     <div className="gmv-prototype">
-      <div className="page page--fit">
+      <div className="page page--fit page--tight">
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, marginBottom: 4 }}>
           {!isMobile && (
             <div style={{ fontSize: 12.5, color: "var(--text-3)", maxWidth: 720, lineHeight: 1.55 }}>
@@ -2919,9 +2919,9 @@ export default function ActivationTab() {
 
         {reminders.length > 0 && (
           <div style={{
-            padding: "10px 14px", borderRadius: 10,
+            padding: "8px 14px", borderRadius: 10,
             border: "1px solid #ffcc80", background: "#fff3e0",
-            fontSize: 12.5, marginBottom: 8,
+            fontSize: 12.5, marginBottom: 0,
             display: "flex", alignItems: "flex-start", gap: 8,
           }}>
             <Icons.Bell size={15} style={{ color: "#e65100", flexShrink: 0, marginTop: 1 }} />
@@ -2967,9 +2967,9 @@ export default function ActivationTab() {
 
         {holdArs.length > 0 && (
           <div style={{
-            padding: "10px 14px", borderRadius: 10,
+            padding: "8px 14px", borderRadius: 10,
             border: "1px solid #ffd54f", background: "#fffde7",
-            fontSize: 12.5, marginBottom: 8,
+            fontSize: 12.5, marginBottom: 0,
             display: "flex", alignItems: "flex-start", gap: 8,
           }}>
             <span style={{ fontSize: 16, flexShrink: 0, marginTop: 1 }}>⏸</span>

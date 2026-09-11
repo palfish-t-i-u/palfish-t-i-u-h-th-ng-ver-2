@@ -2069,6 +2069,13 @@
     top: 0;
     z-index: 2;
   }
+  /* B3 Tạo gói học: header nặng (2 thanh cảnh báo + KPI) → nén khối trên để
+     bảng ăn nhiều chiều cao hơn khi page--fit. Chỉ áp cho tab này (.page--tight). */
+  .gmv-prototype .page.page--tight { gap: 10px; }
+  .gmv-prototype .page.page--tight .kpi { padding: 9px 14px; gap: 4px; }
+  .gmv-prototype .page.page--tight .kpi-value { font-size: 18px; }
+  .gmv-prototype .page.page--tight .kpi-icon { width: 26px; height: 26px; top: 10px; right: 12px; }
+  .gmv-prototype .page.page--tight .kpi-label { padding-right: 34px; line-height: 1.25; }
 }
 
 .gmv-prototype .pagi-btn:disabled { opacity: 0.45; cursor: default; }
