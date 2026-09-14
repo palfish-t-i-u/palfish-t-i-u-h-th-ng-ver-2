@@ -767,7 +767,10 @@ export function ActiveRequestMiniCardV2({
     : "";
   const allCourses = view.uids.flatMap((u) => u.courses);
   const allCoursesLocked = allCourses.length > 0 && allCourses.every((c) => !!(c.orderId?.trim()) || !!c.invoiced);
-  const editFullyLocked = allCoursesLocked && allocation.remaining <= 0;
+  // Course đã chốt + hết tiền vẫn phải cho mở edit khi UID/SĐT còn thiếu (bổ sung TT khách),
+  // vì banner hứa "bổ sung sau cũng được". Cấu trúc course vẫn tự khoá per-course (courseLocked).
+  const hasMissingContact = view.uids.some((u) => !u.uid.trim() || !u.phone.trim());
+  const editFullyLocked = allCoursesLocked && allocation.remaining <= 0 && !hasMissingContact;
   // Đọc `ar` (global) chứ không phải draft: thêm gói mới trong draft không được "mở khoá"
   // radio hold trên AR đã tạo gói hết (BE sẽ 400).
   const holdActivationLocked = isHoldActivationLocked(ar.uids.flatMap((u) => u.courses));

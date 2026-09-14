@@ -242,3 +242,47 @@ describe("ActiveRequestMiniCardV2 — pre-existing bug fixes (dồn nháp + comm
     expect(arg.uids[0].courses[0].amount).toBe(2_000_000);
   });
 });
+
+describe("ActiveRequestMiniCardV2 — mở edit khi thiếu UID/SĐT dù course đã chốt + hết tiền", () => {
+  it("invoiced + hết tiền + UID trống → nút Sửa MỞ được", () => {
+    const ar: ActiveRequest = {
+      id: "AR-1", prId: "PR-1", customerName: "chị Mai", createdAt: NOW, createdBy: "sale@test",
+      holdActivation: false, updatedAt: NOW,
+      uids: [{
+        uid: "", phone: "905815681", country: "VN",
+        courses: [{ courseCode: "CC-1572-001", packageName: "Goi", amount: 25_000_000, orderId: "", invoiced: true, invoiceRequestedAt: null }],
+      }],
+    };
+    render(
+      <ActiveRequestMiniCardV2
+        ar={ar}
+        request={makeRequest()}
+        onActiveRequestMutate={vi.fn()}
+        onActiveRequestSave={vi.fn(async () => {})}
+        onActiveRequestDelete={vi.fn(async () => {})}
+      />
+    );
+    expect(screen.getByRole("button", { name: "Sửa thông tin gói học" })).not.toBeDisabled();
+  });
+
+  it("invoiced + hết tiền + UID & SĐT đủ → nút Sửa KHOÁ (regression)", () => {
+    const ar: ActiveRequest = {
+      id: "AR-1", prId: "PR-1", customerName: "chị Mai", createdAt: NOW, createdBy: "sale@test",
+      holdActivation: false, updatedAt: NOW,
+      uids: [{
+        uid: "3304812073", phone: "905815681", country: "VN",
+        courses: [{ courseCode: "CC-1572-001", packageName: "Goi", amount: 25_000_000, orderId: "", invoiced: true, invoiceRequestedAt: null }],
+      }],
+    };
+    render(
+      <ActiveRequestMiniCardV2
+        ar={ar}
+        request={makeRequest()}
+        onActiveRequestMutate={vi.fn()}
+        onActiveRequestSave={vi.fn(async () => {})}
+        onActiveRequestDelete={vi.fn(async () => {})}
+      />
+    );
+    expect(screen.getByRole("button", { name: "Sửa thông tin gói học" })).toBeDisabled();
+  });
+});
