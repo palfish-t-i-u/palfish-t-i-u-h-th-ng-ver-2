@@ -13,7 +13,8 @@ LEAD_SOURCES: list[dict] = [
         "channels": [
             {"code": "300265", "label": "FB - VN"},
             {"code": "300281", "label": "FB H5 OV"},
-            {"code": "300431", "label": "FB - Livestream"},
+            {"code": "300431", "value": "300431", "label": "FB - Livestream"},
+            {"code": "300431", "value": "300431_ls_tt", "label": "TikTok - Livestream"},
             {"code": "300561", "label": "FB-Instant Form-VN"},
             {"code": "300571", "label": "FB-Instant Form-OV"},
             {"code": "300581", "label": "FB-Landing Page-VN"},
@@ -63,11 +64,17 @@ LEAD_SOURCES: list[dict] = [
     },
 ]
 
+# Key theo `value` (mịn) — mặc định = code; 1 code nhiều nhãn (vd 300431 FB/TikTok live)
+# thì mỗi nhãn 1 value riêng. lead_channel lưu chính là value này.
+def _chan_value(ch: dict) -> str:
+    return ch.get("value") or ch["code"]
+
+
 _SOURCE_LABEL: dict[str, str] = {s["key"]: s["label"] for s in LEAD_SOURCES}
 _CHANNEL_LABEL: dict[str, str] = {}
 for _s in LEAD_SOURCES:
     for _ch in _s["channels"]:
-        _CHANNEL_LABEL[_ch["code"]] = _ch["label"]
+        _CHANNEL_LABEL[_chan_value(_ch)] = _ch["label"]
 
 
 def resolve_lead_label(source_key: str | None, channel_code: str | None) -> str:
@@ -118,13 +125,13 @@ _SOURCE_TO_LOAI: dict[str, str] = {
 }
 
 _CHANNEL_TO_SOURCE_KEY: dict[str, str] = {
-    ch["code"]: s["key"] for s in LEAD_SOURCES for ch in s["channels"]
+    _chan_value(ch): s["key"] for s in LEAD_SOURCES for ch in s["channels"]
 }
 
 
-# FB-Livestream tách riêng cột "Lives" trên BC02, không gộp vào "广告" dù
-# channel này thuộc source quang_cao (chị Hiền chốt — xem plan mục 3, G2-T1).
-_LIVESTREAM_CHANNEL_CODE = "300431"
+# Livestream (FB + TikTok, cùng mã CRM 300431 nhưng 2 value) tách riêng cột "Lives"
+# trên BC02, không gộp vào "广告" dù thuộc source quang_cao (chị Hiền chốt).
+_LIVESTREAM_VALUES = {"300431", "300431_ls_tt"}
 
 
 def resolve_loai_from_lead_source(source_key: str | None, channel_code: str | None) -> str:
@@ -138,7 +145,7 @@ def resolve_loai_from_lead_source(source_key: str | None, channel_code: str | No
     s_key = (source_key or "").strip()
     c_code = (channel_code or "").strip()
 
-    if s_key == "quang_cao" and c_code == _LIVESTREAM_CHANNEL_CODE:
+    if s_key == "quang_cao" and c_code in _LIVESTREAM_VALUES:
         return "Lives"
 
     if s_key in _SOURCE_TO_LOAI:

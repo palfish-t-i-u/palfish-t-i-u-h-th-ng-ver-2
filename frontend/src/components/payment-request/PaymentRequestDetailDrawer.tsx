@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { LEAD_SOURCES, LY_DO_KHONG_GHEP, NEW_CHECK_SOURCES, defaultChannelForSource, findSourceByKey, sourceHasChannels } from "../../constants/leadSource";
+import { LEAD_SOURCES, LY_DO_KHONG_GHEP, NEW_CHECK_SOURCES, channelCodeFromValue, channelValue, defaultChannelForSource, findSourceByKey, resolveChannel, sourceHasChannels } from "../../constants/leadSource";
 import type {
   ActiveRequest,
   AddPaymentAttemptPayload,
@@ -1406,8 +1406,7 @@ export function ActiveRequestMiniCardV2({
                       <div style={{ gridColumn: "1 / -1", fontSize: 11, color: "var(--text-3)", display: "flex", gap: 8 }}>
                         {c.leadSource && <span>Nguồn: {findSourceByKey(c.leadSource)?.label ?? c.leadSource}</span>}
                         {c.leadChannel && (() => {
-                          const src = findSourceByKey(c.leadSource);
-                          const ch = src?.channels.find((ch) => ch.code === c.leadChannel);
+                          const ch = resolveChannel(c.leadSource, c.leadChannel);
                           return <span>Kênh: {ch ? `${ch.code} - ${ch.label}` : c.leadChannel}</span>;
                         })()}
                       </div>
@@ -1495,7 +1494,7 @@ export function ActiveRequestMiniCardV2({
                           >
                             <option value="">— Kênh —</option>
                             {findSourceByKey(c.leadSource)?.channels.map((ch) => (
-                              <option key={ch.code} value={ch.code}>{ch.code} - {ch.label}</option>
+                              <option key={channelValue(ch)} value={channelValue(ch)}>{ch.code} - {ch.label}</option>
                             ))}
                           </select>
                         )}
@@ -2306,7 +2305,7 @@ export default function PaymentRequestDetailDrawer({
                 {request.leadChannel && (
                   <div className="info-cell">
                     <div className="info-label">Kênh</div>
-                    <div className="info-value mono">{request.leadChannel}</div>
+                    <div className="info-value mono">{channelCodeFromValue(request.leadChannel)}</div>
                   </div>
                 )}
                 {request.wantsInvoice && (
@@ -2629,7 +2628,7 @@ export default function PaymentRequestDetailDrawer({
                     >
                       <option value="">— Chọn kênh —</option>
                       {findSourceByKey(draft.leadSource)?.channels.map((ch) => (
-                        <option key={ch.code} value={ch.code}>{ch.code} - {ch.label}</option>
+                        <option key={channelValue(ch)} value={channelValue(ch)}>{ch.code} - {ch.label}</option>
                       ))}
                     </select>
                   </div>
@@ -3250,7 +3249,7 @@ export default function PaymentRequestDetailDrawer({
                         >
                           <option value="">— Kênh —</option>
                           {findSourceByKey(row.leadSource)?.channels.map((ch) => (
-                            <option key={ch.code} value={ch.code}>{ch.code} - {ch.label}</option>
+                            <option key={channelValue(ch)} value={channelValue(ch)}>{ch.code} - {ch.label}</option>
                           ))}
                         </select>
                       </div>

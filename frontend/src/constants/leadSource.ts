@@ -1,6 +1,12 @@
 export interface LeadChannel {
+  /** Mã CRM (có thể trùng giữa nhiều nhãn, vd 300431 = livestream FB + TikTok). */
   code: string;
   label: string;
+  /**
+   * Khoá mịn lưu vào lead_channel — phân biệt các nhãn cùng `code`.
+   * Mặc định = code (1 mã ↔ 1 nhãn). Chỉ set khi 1 code có nhiều nhãn.
+   */
+  value?: string;
 }
 
 export interface LeadSourceDef {
@@ -16,7 +22,8 @@ export const LEAD_SOURCES: LeadSourceDef[] = [
     channels: [
       { code: "300265", label: "FB - VN" },
       { code: "300281", label: "FB H5 OV" },
-      { code: "300431", label: "FB - Livestream" },
+      { code: "300431", value: "300431", label: "FB - Livestream" },
+      { code: "300431", value: "300431_ls_tt", label: "TikTok - Livestream" },
       { code: "300561", label: "FB-Instant Form-VN" },
       { code: "300571", label: "FB-Instant Form-OV" },
       { code: "300581", label: "FB-Landing Page-VN" },
@@ -91,8 +98,40 @@ export function sourceHasChannels(sourceKey: string | undefined | null): boolean
  */
 export function defaultChannelForSource(sourceKey: string | undefined | null): string | undefined {
   const src = findSourceByKey(sourceKey);
-  if (src && src.channels.length === 1) return src.channels[0].code;
+  if (src && src.channels.length === 1) return src.channels[0].value ?? src.channels[0].code;
   return undefined;
+}
+
+/** Giá trị lưu/so khớp của 1 channel = value (nếu có) hoặc code. */
+export function channelValue(ch: LeadChannel): string {
+  return ch.value ?? ch.code;
+}
+
+/** Khớp channel theo giá trị đã lưu (value mịn), fallback code cho dữ liệu cũ. */
+export function resolveChannel(
+  sourceKey: string | undefined | null,
+  storedValue: string | undefined | null,
+): LeadChannel | undefined {
+  const src = findSourceByKey(sourceKey);
+  if (!src || !storedValue) return undefined;
+  return (
+    src.channels.find((c) => channelValue(c) === storedValue) ??
+    src.channels.find((c) => c.code === storedValue)
+  );
+}
+
+/**
+ * Trả về mã CRM (300431...) từ giá trị đã lưu — dùng hiển thị read-only chỉ mã,
+ * ẩn hậu tố value mịn. Không cần sourceKey; fallback tách theo '_'.
+ */
+export function channelCodeFromValue(storedValue: string | undefined | null): string {
+  if (!storedValue) return "";
+  for (const s of LEAD_SOURCES) {
+    for (const c of s.channels) {
+      if (channelValue(c) === storedValue) return c.code;
+    }
+  }
+  return storedValue.split("_")[0];
 }
 
 export const NEW_CHECK_SOURCES = new Set(["quang_cao", "offline", "koc", "khac"]);
