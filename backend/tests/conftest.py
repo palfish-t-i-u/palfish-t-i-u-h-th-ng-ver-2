@@ -36,6 +36,21 @@ def _env_defaults(monkeypatch):
     monkeypatch.setenv("SYSTEM_ADMIN_EMAILS", "admin@test.com")
 
 
+@pytest.fixture(autouse=True)
+def _clear_rbac_cache():
+    """rbac._TTL_CACHE (M2-T1, plan pr-list-server-pagination) là module-level global
+    — không xoá giữa các test thì mock của test A (VD _sale_name_map trả {}) rò sang
+    test B chạy sau trong CÙNG tiến trình pytest, gây fail phụ thuộc thứ tự chạy
+    (bắt được thật: test_ar_sale_name_enrichment fail khi chạy full suite nhưng pass
+    khi chạy riêng lẻ). Cache thật trên server sống qua nhiều request là ĐÚNG ý đồ;
+    chỉ trong test mới cần cô lập tuyệt đối."""
+    import rbac
+
+    rbac._TTL_CACHE.clear()
+    yield
+    rbac._TTL_CACHE.clear()
+
+
 def _make_mock_supabase():
     """Create a mock supabase client with chainable query builder."""
     sb = MagicMock()

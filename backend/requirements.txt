@@ -4,7 +4,11 @@ uvicorn[standard]>=0.29.0
 python-multipart>=0.0.9
 
 # Supabase / DB
-supabase>=2.4.0,<3
+# Pin chính xác (M2-T0, plan pr-list-server-pagination) — tránh Render pull bản mới
+# có breaking change giữa các lần deploy. 2.30.0 = bản đang cài + test pass thật trên
+# máy dev (901/907 backend test xanh) tại thời điểm pin — không phải đoán theo version
+# cũ trong plan gốc (2.15.2, chưa verify chạy được).
+supabase==2.30.0
 
 # HTTP client
 httpx>=0.27.0

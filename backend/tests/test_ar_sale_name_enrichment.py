@@ -17,6 +17,7 @@ class Query:
         self.filters = []
         self.in_filters = []
         self._limit = None
+        self._range = None
         self._desc = False
 
     def select(self, *_args, **_kwargs):
@@ -27,6 +28,11 @@ class Query:
 
     def limit(self, value):
         self._limit = value
+        return self
+
+    def range(self, start, end):
+        # Mirror Supabase .range(start, end) — INCLUSIVE cả 2 đầu (M2-T6 sentinel loop).
+        self._range = (start, end)
         return self
 
     def eq(self, key, value):
@@ -47,6 +53,9 @@ class Query:
             matched = [row for row in matched if str(row.get(key, "")).lower() == str(value).lower()]
         for key, values in self.in_filters:
             matched = [row for row in matched if str(row.get(key)) in values]
+        if self._range is not None:
+            start, end = self._range
+            matched = matched[start : end + 1]
         if self._limit is not None:
             matched = matched[: self._limit]
         return MagicMock(data=matched)

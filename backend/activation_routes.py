@@ -2293,6 +2293,10 @@ def register_activation_routes(app, supabase_factory):
             None,
             description="Lọc theo status: pending_order | partial_order | ready_invoice | invoiced | activated",
         ),
+        pr_ids: str | None = Query(
+            None,
+            description="CSV pr_id (≤100) — lọc AR theo tập PR cụ thể (M2-T6, dùng khi FE hydrate trang PR-list server mode)",
+        ),
         authorization: str | None = Header(None),
     ):
         """Danh sách AR — snake_case, kèm payment_request snippet cho FE Activation/Invoice."""
@@ -2311,15 +2315,55 @@ def register_activation_routes(app, supabase_factory):
                     f"status không hợp lệ — dùng một trong: {', '.join(sorted(ALLOWED_AR_STATUSES))}",
                 )
 
+        pr_id_list: list[str] | None = None
+        if pr_ids is not None and str(pr_ids).strip():
+            pr_id_list = [p.strip() for p in str(pr_ids).split(",") if p.strip()][:100]
+
         try:
-            query = sb.table("active_requests").select("*").order("created_at", desc=True)
-            if status_filter:
-                query = query.eq("status", status_filter)
-            res = query.execute()
+            if pr_id_list is not None:
+                # Có pr_ids → chunk theo 100 (giới hạn PostgREST .in_()), không cần
+                # lo cap-1000 vì FE chỉ truyền tập nhỏ (1 trang PR-list, ≤50-100 id).
+                from payment_request_routes import _chunked  # import cục bộ — tránh circular import module-level
+
+                rows = []
+                for chunk in _chunked(pr_id_list, 100):
+                    query = sb.table("active_requests").select("*").order("created_at", desc=True).in_("pr_id", chunk)
+                    if status_filter:
+                        query = query.eq("status", status_filter)
+                    rows.extend(query.execute().data or [])
+            else:
+                # KHÔNG có pr_ids → tải toàn bộ (hành vi cũ), nhưng PostgREST mặc định
+                # cắt 1000 dòng/response NẾU không .range() — trước đây query này không
+                # .range() nên khi AR > 1000 sẽ ÂM THẦM mất dữ liệu (prod hiện 941/1000,
+                # sát ngưỡng). Loop .range() theo trang 1000 tới khi hết, cảnh báo nếu
+                # thực sự phải sang trang 2+ (chứng minh code cũ đã/sắp cắt cụt).
+                rows = []
+                page_size = 1000
+                off = 0
+                pages = 0
+                while True:
+                    query = (
+                        sb.table("active_requests")
+                        .select("*")
+                        .order("created_at", desc=True)
+                        .range(off, off + page_size - 1)
+                    )
+                    if status_filter:
+                        query = query.eq("status", status_filter)
+                    batch = query.execute().data or []
+                    rows.extend(batch)
+                    pages += 1
+                    if len(batch) < page_size:
+                        break
+                    off += page_size
+                if pages > 1:
+                    print(
+                        f"[AR list] sentinel cap-1000: đã tải {len(rows)} dòng qua {pages} trang — "
+                        "code cũ (không .range()) sẽ đã CẮT CỤT dữ liệu ở đây."
+                    )
         except Exception as exc:
             raise HTTPException(500, f"Không đọc active_requests: {exc}") from exc
 
-        rows = res.data or []
         pr_ids = list({str(r.get("pr_id")) for r in rows if r.get("pr_id")})
         pr_map = _fetch_prs_by_ids(sb, pr_ids)
         from payment_request_routes import _sale_name_map
