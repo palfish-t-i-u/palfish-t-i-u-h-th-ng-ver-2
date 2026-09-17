@@ -130,7 +130,7 @@ def _line_for_state(target: int, state: str, rng: random.Random) -> list[dict[st
         return [{"amount": target, "status": "paid", "method": "qr"}]
     if state == "over":
         recv = int(target * rng.uniform(1.1, 1.5))
-        return [{"amount": recv, "status": "paid", "method": "bank"}]
+        return [{"amount": recv, "status": "paid", "method": "cash"}]
     if state == "cancelled":
         # Đa số cancelled không có line paid; ~10% có 1 line paid CỐ Ý (mirror hành vi
         # thật đã thấy trên prod — early-return payment_request_routes.py:~1501, không phải bug).
@@ -229,7 +229,7 @@ def build_seed(n_total: int = N_TOTAL) -> tuple[list[dict], list[dict], list[dic
             ars.append({
                 "id": f"AR-SEED-{i + 1:05d}",
                 "pr_id": pr_id,
-                "status": "pending",
+                "status": "pending_order",
                 "customer_name": name,
                 "uids_data": [],
                 "created_at": created_at.isoformat(),

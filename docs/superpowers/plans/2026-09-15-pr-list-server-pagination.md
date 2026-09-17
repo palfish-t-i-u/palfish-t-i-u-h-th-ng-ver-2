@@ -230,11 +230,17 @@ phiên trước (bị chặn vì thiếu quyền).
 - M0-T3/M1-T3: fixture vàng 15 case (`frontend/src/lib/__fixtures__/normViCases.json`)
   sinh THẬT bằng cách chạy `normVi()` (node -e), KHÔNG đoán tay — gồm case "Trường"
   (2 tầng dấu chồng: horn + huyền) theo đúng yêu cầu.
-- M0-T5: `backend/scripts/seed_pr_scale.py` viết xong, dry-run khớp đúng phân bố
-  spec ({short:400, done:800, pending:600, cancelled:100, over:100}, ~38% AR, 50
-  cặp trùng created_at) — **CHƯA apply vào sandbox**: bị chặn bởi permission
-  classifier ("Modify Shared Resources", sandbox dùng chung với Đức/Minh). Cần
-  anh Minh cho phép chạy `--apply` nếu muốn scale test thật 2000 PR.
+- M0-T5: `backend/scripts/seed_pr_scale.py` — **đã apply thật lên sandbox**
+  (anh Đạt xác nhận cho phép chạy `--apply`, 2026-09-18). Bắt + sửa 2 bug thật
+  lúc apply (dry-run không phát hiện được vì không đụng DB thật):
+  (1) `method: "bank"` cho line "over" — vi phạm `payment_lines_method_check`
+  (chỉ nhận `qr/cash/card/installment`), đổi sang `"cash"`;
+  (2) `status: "pending"` cho active_requests — vi phạm `active_requests_status_check`
+  (chỉ nhận `pending_order/partial_order/ready_invoice/invoiced/activated`),
+  đổi sang `"pending_order"`. Sau khi sửa: **2000 payment_requests + 3365
+  payment_lines + 769 active_requests đã có thật trên sandbox**, khớp đúng
+  phân bố spec (raw column: `{done:800, over:100, short:400, pending:600,
+  cancelled:100}`).
 
 **Đã làm — M1 (áp dụng + verify THẬT trên sandbox, không chỉ viết):**
 - `backend/migrations/2026-09-16-pr-list-page-rpc.sql` — đầy đủ 2 index +
@@ -247,9 +253,20 @@ phiên trước (bị chặn vì thiếu quyền).
   thật (51 PR có sẵn) — nội bộ nhất quán (tabs.tracking = filtered_total =
   chips.all). Test riêng bug SĐT rỗng: phone rỗng/null/ngắn (<4 số) đều
   `would_match=false`, phone thật khớp `true` — đúng fix.
-- **Chưa làm** (cần seed 2000 PR trước — xem M0-T5): EXPLAIN thật ở scale lớn để
-  xác nhận Index Scan (ở 51 dòng planner chọn Seq Scan, ĐÚNG theo cost — không
-  phải bug, chỉ là chưa đủ dữ liệu để chứng minh Index Scan kích hoạt).
+- **M1-T2 EXPLAIN thật ở scale (sau khi seed 2000 PR, tổng 2051):**
+  `select id, created_at from payment_requests order by created_at desc, id desc
+  limit 50` → **Index Only Scan using idx_pr_created_at_id_desc**, 0.186ms
+  (ở 51 dòng trước đó planner chọn Seq Scan — ĐÚNG theo cost, không phải bug,
+  chỉ là chưa đủ dữ liệu). `pr_list_page(...)` full (is_test=true, bucket=
+  tracking): ~94ms. Có `q='nguyen'` (norm_vi search full-text): ~211ms — vẫn
+  dưới xa ngưỡng defer gin_trgm (>300ms). `pr_list_summary`: ~71ms.
+  **Phát hiện thú vị (không phải bug):** `chips` tính từ `pr_effective` (dữ
+  liệu payment_lines THẬT) lệch nhẹ so với cột `state` thô của seed
+  (VD done raw=800 nhưng eff=859) — vì 100 PR "heavy installment" (M0-T5) có
+  tổng dòng = ĐÚNG BẰNG target (thiết kế cố ý để mô phỏng đơn nhiều lần TT),
+  nên vài PR gán nhãn "short" lúc seed thực ra tính ra "done" khi nhìn dòng
+  thật. Đây CHÍNH LÀ nguyên lý M0-N1 (không tin cột state thô) được minh hoạ
+  đúng bằng dữ liệu thật, không cần sửa gì.
 
 **Đã làm — M2 (BE, đầy đủ + test thật):**
 - M2-T0: pin `supabase==2.30.0` (không phải 2.15.2 như khung gốc — đó là bản
@@ -315,21 +332,32 @@ cầu tường minh của Đạt "làm hết M0-M4"; đã cực kỳ cẩn trọ
   và "BE từ chối mark-paid khi requests=[] → rollback" (plan liệt kê nhưng cần
   thêm thời gian dựng MSW phức tạp hơn — ghi lại để làm tiếp, không phải bỏ sót
   do quên).
-- Verify sống trên **browser thật** (`VITE_PR_LIST_MODE=server` tạm thời local):
-  KPI/chips/table render đúng số liệu khớp 100% với verify SQL trực tiếp trước
-  đó (31 tracking, ~124tr đã thu); search "tran van" gửi đúng `q=tran+van`; đổi
-  filter (date/hideTest) → query đổi đúng, trả 0 kết quả ĐÚNG (dữ liệu sandbox
-  không có PR thật nào trong tháng 9, không phải bug). Sau đó xoá
-  `VITE_PR_LIST_MODE` khỏi `.env` local — trả về mặc định `load-all`.
+- Verify sống trên **browser thật** (`VITE_PR_LIST_MODE=server` tạm thời local),
+  2 vòng — vòng 1 trước khi seed (51 PR), vòng 2 SAU khi seed 2000 PR thật
+  (2051 PR):
+  - Vòng 1: KPI/chips/table render đúng số liệu khớp 100% với verify SQL trực
+    tiếp trước đó (31 tracking, ~124tr đã thu); search "tran van" gửi đúng
+    `q=tran+van`; đổi filter (date/hideTest) → query đổi đúng, trả 0 kết quả
+    ĐÚNG (dữ liệu sandbox không có PR thật nào trong tháng 9, không phải bug).
+  - Vòng 2 (scale thật 2051 PR, bỏ lọc ngày + hideTest): KPI hiện đúng **1931
+    PR đang theo dõi, 4.520.241.747đ đã thu, 970 sẵn sàng tạo gói học**; sidebar
+    badge "Tạo gói học" hiện **405** (badge-counts qua toàn bộ 2051 PR); **phân
+    trang hiện đủ 39 trang** (2051 PR ÷ 50/trang ≈ 41, phù hợp sau khi trừ
+    cancelled) — xác nhận `page_size=50` + `pageTotal` hoạt động đúng ở quy mô
+    thật, không phải giả lập.
+  - Sau cả 2 vòng: xoá `VITE_PR_LIST_MODE` khỏi `.env` local — trả về mặc định
+    `load-all`.
 - **tsc -b sạch, `npm run build` sạch, 83 test file / 840 test frontend pass**
   (834 trước M3-T4 → 840 sau khi thêm 6 test KpiCards + 6 test serverMode, trừ
   đi phần trùng — con số ròng đã re-run xác nhận), backend 971/977 pass (6 fail
-  pre-existing).
+  pre-existing) — re-run lại LẦN CUỐI sau khi sửa seed script, vẫn y hệt.
 
 **M4 — CHƯA làm, có chủ đích:**
 - M4-T3 (migration PROD) và các bước prod khác trong bảng gate phía trên đòi hỏi
   soak sandbox 2 ngày + merge qua anh Minh (classifier chặn Claude push main) —
   không thể/không nên nén vào 1 phiên. Đã dừng đúng ở "sẵn sàng cho M4", không
   tự ý chạm prod.
-- Việc CÓ THỂ làm ngay khi anh Minh duyệt: seed 2000 PR thật (cần gỡ permission
-  block), rồi chạy lại M1-T2 EXPLAIN ở scale thật để xác nhận Index Scan.
+- Seed 2000 PR (M0-T5) + EXPLAIN scale thật (M1-T2) **đã xong** (2026-09-18, anh
+  Đạt cho phép) — xem chi tiết ở mục M0/M1 phía trên. 2000 PR-SEED-* vẫn còn
+  trên sandbox (chủ ý giữ lại để test scale sau này); có `--clean --apply` nếu
+  cần dọn.
