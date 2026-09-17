@@ -2181,7 +2181,12 @@ export default function ActivationTab() {
     markPersisted,
     handleCreateActiveRequestFromForm,
     requestInvoiceForCourse,
+    ensureFullData,
   } = usePaymentFlow();
+  // Server-side pagination (M3-T5, pr-list-server-pagination): B3 chưa chuyển sang
+  // findPr/pageRows nên vẫn cần `requests`/`activeRequests` đầy đủ — báo context tải
+  // song song với trang PR-list (không thay thế, chỉ cộng thêm khi tab này mounted).
+  useEffect(() => ensureFullData(), [ensureFullData]);
   const [openArId, setOpenArId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [tab, setTab] = useState<ArTabId>("pending_order");

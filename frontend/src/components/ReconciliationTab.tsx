@@ -400,7 +400,10 @@ function TeamBadge({ team }: { team: "HCM" | "HN" | null | undefined }) {
 
 export default function ReconciliationTab() {
   const { readOnly } = usePermission("reconciliation");
-  const { requests, confirmTransaction, rejectTransaction, navigate, apiNote } = usePaymentFlow();
+  const { requests, confirmTransaction, rejectTransaction, navigate, apiNote, ensureFullData } = usePaymentFlow();
+  // Server-side pagination (M3-T5, pr-list-server-pagination): tab này chưa chuyển
+  // sang findPr/pageRows nên vẫn cần `requests` đầy đủ — báo context tải song song.
+  useEffect(() => ensureFullData(), [ensureFullData]);
   const [bankTxns, setBankTxns] = useState<BankTransaction[]>([]);
   const [bankMatchOpen, setBankMatchOpen] = useState(false);
   const [bankMatchTxnId, setBankMatchTxnId] = useState<string | null>(null);

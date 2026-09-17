@@ -235,6 +235,12 @@ export function fromApiPaymentRequest(raw: any): PaymentRequest {
     payments: Array.isArray(raw.payments) ? raw.payments.map(fromApiAttempt) : [],
     isTest: Boolean(raw.is_test ?? raw.isTest),
     completion_reports: Array.isArray(raw.completion_reports) ? raw.completion_reports : [],
+    // Chỉ set khi BE trả về (response ?view=page / detail, M2/M3) — tránh spread
+    // ghi đè mất giá trị cũ khi merge partial response (giống pattern saleName ở trên).
+    ...((raw.ar_id ?? raw.arId) !== undefined ? { arId: raw.ar_id ?? raw.arId } : {}),
+    ...((raw.ar_activated ?? raw.arActivated) !== undefined
+      ? { arActivated: Boolean(raw.ar_activated ?? raw.arActivated) }
+      : {}),
   };
 }
 

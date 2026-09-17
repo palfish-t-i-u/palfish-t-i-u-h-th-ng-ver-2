@@ -18,7 +18,11 @@ import type {
   OwnerOptionsResponse,
   PaymentLineApiRow,
   PaymentRequestsListResponse,
+  PrBadgeCountsResponse,
+  PrListPageResponse,
+  PrListQuery,
   PrOwnershipLogEntry,
+  PrSummaryResponse,
   TransferPrResponse,
 } from "../types/paymentRequest";
 import type {
@@ -126,6 +130,34 @@ export const endpoints = {
     // GET not yet available on backend — Tab uses mock fallback on error
     list: (params?: { limit?: number; offset?: number }) =>
       api.get<PaymentRequestsListResponse>("/api/v1/payment-requests", { params }),
+    // Server-side pagination (M2/M3, pr-list-server-pagination) — page_size mặc định
+    // để BE tự áp (50); page_size truyền vào chỉ khi cần khác 50 (hydrate/test).
+    listPage: (query: PrListQuery & { page_size?: number }) =>
+      api.get<PrListPageResponse>("/api/v1/payment-requests", {
+        params: {
+          view: "page",
+          page: query.page,
+          page_size: query.page_size,
+          bucket: query.bucket,
+          state: query.state || undefined,
+          date_from: query.dateFrom || undefined,
+          date_to: query.dateTo || undefined,
+          is_test: query.isTest,
+          tvts: query.tvts && query.tvts.length > 0 ? query.tvts.join(",") : undefined,
+          q: query.q || undefined,
+        },
+      }),
+    summary: (query: Omit<PrListQuery, "bucket" | "state" | "q" | "page">) =>
+      api.get<PrSummaryResponse>("/api/v1/payment-requests/summary", {
+        params: {
+          date_from: query.dateFrom || undefined,
+          date_to: query.dateTo || undefined,
+          is_test: query.isTest,
+          tvts: query.tvts && query.tvts.length > 0 ? query.tvts.join(",") : undefined,
+        },
+      }),
+    get: (id: string) => api.get<Record<string, unknown>>(`/api/v1/payment-requests/${id}`),
+    badgeCounts: () => api.get<PrBadgeCountsResponse>("/api/v1/payment-requests/badge-counts"),
     syncPendingPayos: () =>
       api.post<{ synced_count: number; synced: { line_id: string; payment_request_id: string }[] }>(
         "/api/v1/payment-requests/sync-pending-payos"
@@ -206,7 +238,9 @@ export const endpoints = {
       ),
   },
   activeRequests: {
-    list: (params?: { status?: string }) =>
+    // pr_ids (M2-T6, pr-list-server-pagination): CSV pr_id — lọc AR theo tập PR cụ thể
+    // (dùng khi FE server mode hydrate AR cho 1 trang PR đang xem, thay vì tải hết).
+    list: (params?: { status?: string; pr_ids?: string }) =>
       api.get<ActiveRequestApiRow[]>("/api/v1/active-requests", { params }),
     get: (arId: string) =>
       api.get<ActiveRequestApiRow>(`/api/v1/active-requests/${arId}`),
