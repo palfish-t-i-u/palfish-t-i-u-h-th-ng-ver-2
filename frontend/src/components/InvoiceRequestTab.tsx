@@ -32,7 +32,10 @@ function defaultsFor(row: InvoiceRow | null) {
   if (!row) return null;
   const { ar, pr, uidObj: u, course: c } = row;
   return {
-    customerType: (c.customerType as "individual" | "business") || "individual",
+    // Loại KH: course-level trước, fallback PR-level (B1). Khớp ActivationTab.tsx:522,
+    // taxInvoiceXlsxExport.ts:65, BE activation_routes.py:1185 — nếu chỉ đọc course sẽ
+    // hiện "Cá nhân" sai khi sale set Doanh nghiệp ở B1 mà chưa copy xuống course.
+    customerType: ((c.customerType ?? pr?.customerType) as "individual" | "business") || "individual",
     name: c.name ?? ar.customerName,
     email: c.email || row.pr?.email || "",
     country: c.country || u.country || pr?.country || "VN",
@@ -40,8 +43,8 @@ function defaultsFor(row: InvoiceRow | null) {
     address: c.address ?? (pr?.address || ""),
     ward: c.ward ?? (pr?.ward || ""),
     province: c.province ?? (pr?.province || ""),
-    taxCode: c.taxCode || "",
-    companyName: c.companyName || "",
+    taxCode: c.taxCode || pr?.taxId || "",
+    companyName: c.companyName || pr?.companyName || "",
     note: c.note || "",
   };
 }
