@@ -24,7 +24,7 @@ from admin_routes import require_module_access, require_module_write
 from audit import log_audit
 from rbac import enforce_report_scope, resolve_actor, scope_sale_names
 from revenue_routes import DEFAULT_TY_GIA, get_rate_for_date, load_team_map
-from sepay_routes import classify_cash_in, extract_settlement_code
+from sepay_routes import classify_cash_in, extract_settlement_code, is_payoo_settlement
 from vn_staff import is_vn_sale_row
 
 _MONTH_RE = re.compile(r"^\d{4}-\d{2}$")
@@ -605,6 +605,10 @@ def _load_bc04_bank_rows(sb, d_start: str, d_end: str, known_settlement_codes: s
         pc = extract_settlement_code(content)
         if pc and pc in known_settlement_codes:
             continue  # đã tách per-đơn ở gateway — bỏ cục, tránh đếm 2 lần (G3)
+        # Payoo settlement dedup: gateway_transactions có settlement_code="PAYOO-{sepay_id}"
+        sepay_id = str(r.get("sepay_id") or "")
+        if sepay_id and is_payoo_settlement(content) and f"PAYOO-{sepay_id}" in known_settlement_codes:
+            continue
         group = classify_cash_in(content=content, payment_line_id=r.get("payment_line_id"))
         line = lines_by_id.get(r.get("payment_line_id")) or {}
         pr = prs_by_id.get(line.get("payment_request_id")) or {}

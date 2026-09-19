@@ -280,6 +280,54 @@ def extract_settlement_code(content: str) -> str | None:
     return m.group(1) if m else None
 
 
+def is_payoo_settlement(content: str) -> bool:
+    """Payoo settlement specifically (not mPOS). Used by sepay_routes + report_routes."""
+    return all(p.search(content or "") for p in _PAYOO_SETTLE_SIGNALS)
+
+
+def _try_fill_payoo_funded_date(
+    sb, bank_amount: float, bank_txn_date: datetime, bank_sepay_id: str
+) -> int:
+    """Match Payoo gateway_transactions by net_amount, fill funded_date.
+
+    Only fills when exactly 1 gateway txn matches (1-to-1 settlement).
+    funded_date stored as VN naive (timestamp without time zone).
+    Returns number of rows filled (0 or 1).
+    """
+    try:
+        res = (
+            sb.table("gateway_transactions")
+            .select("id")
+            .eq("source", "payoo")
+            .is_("funded_date", "null")
+            .eq("net_amount", bank_amount)
+            .execute()
+        )
+    except Exception:
+        return 0
+
+    rows = res.data or []
+    if len(rows) != 1:
+        if len(rows) > 1:
+            print(f"[sepay] Payoo funded_date: {len(rows)} gateway txns match amount {bank_amount} — skipping (ambiguous)")
+        return 0
+
+    funded_naive = bank_txn_date.replace(tzinfo=None).isoformat()
+    settlement_code = f"PAYOO-{bank_sepay_id}"
+
+    try:
+        sb.table("gateway_transactions").update({
+            "funded_date": funded_naive,
+            "settlement_code": settlement_code,
+            "updated_at": _iso_now(),
+        }).eq("id", rows[0]["id"]).execute()
+    except Exception as exc:
+        print(f"[sepay] Payoo funded_date UPDATE failed for {rows[0]['id']}: {exc}")
+        return 0
+
+    return 1
+
+
 def classify_cash_in(*, content: str, payment_line_id: str | None, is_card: bool = False) -> str:
     """Nhóm nội bộ cho BC04 (Dòng tiền về): khach_tra | the | the_gop | rut_tiktok | khac.
     Chỉ dùng để auto-gán nhãn hiển thị + phân loại quản báo — KHÔNG đổi match_status.
@@ -707,6 +755,15 @@ def _process_sepay_transaction(sb, txn: dict[str, Any]) -> dict[str, Any]:
             })
         except Exception as exc:
             print(f"[sepay] late-match audit failed (match_status kept): {exc}")
+
+    # Payoo settlement: auto-fill funded_date on matching gateway_transactions
+    if is_new and match_status == "ignored" and is_payoo_settlement(content) and txn_date:
+        try:
+            filled = _try_fill_payoo_funded_date(sb, amount, txn_date, sepay_id)
+            if filled:
+                print(f"[sepay] Payoo settlement {sepay_id}: filled funded_date for {filled} gateway txn(s)")
+        except Exception as exc:
+            print(f"[sepay] Payoo funded_date fill failed (non-blocking): {exc}")
 
     return {
         "sepay_id": sepay_id,
