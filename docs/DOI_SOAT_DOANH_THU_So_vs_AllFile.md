@@ -189,9 +189,16 @@ INSERT INTO so_doanh_thu SELECT * FROM tmp;
 - Dedup offline: `backend/scripts/dedup_gsheet_ledger.py:214` (block theo `(ngày, tiền)` chính xác + chỉ xoá `import:%` → sót dup chéo nguồn).
 - Learning liên quan: `docs/learnings/2026-08-11-bq-so-doanh-thu-dual-source-dup.md` (đã khuyến nghị "import bỏ qua uid đã có đơn app trong tháng" — **CHƯA cài vào code**).
 
-**Giải pháp toàn diện (GĐ):**
+**Cập nhật 17/9/2026 — dup TÁI PHÁT sau khi T8 đã về 0đ (bằng chứng mới, sửa lại hướng fix):**
+- Phát hiện 4 đơn T8-T9 đếm đôi (auto+import), +42,88tr — đã xoá 4 dòng import (backup `so_doanh_thu_dup_bak_20260917`). Chi tiết: [[project_bao-don-vs-allfile-recon]].
+- **Thủ phạm = backfill hàng loạt 16/9** (`backfill_ledger_from_active_requests` @ `revenue_routes.py:1331` → gọi `sync_ledger_from_ar_course`), tức **AUTO sinh SAU khi import đã có** (import cuối T8, auto backfill 16/9). ⇒ G1-T1 hiểu theo nghĩa "import bỏ qua đơn app" KHÔNG cứu được chiều này.
+- **Khớp exact quá GIÒN:** dòng auto & import **giống hệt uid+ngày+tiền** mà `loose_match` (`revenue_routes.py:1280`, `.eq` exact uid+ngày+tiền, chỉ dedup khi `len==1`) VẪN trượt → chèn mới. Khoá exact + tier crm (import không có crm) không đủ để bắt trùng chéo nguồn.
+
+**Giải pháp toàn diện (GĐ) — ĐÃ CẬP NHẬT 17/9:**
 - **GĐ0** Chốt nguyên tắc: 1 đơn = 1 dòng; đơn qua App → auto chuẩn, All File không import lại; số tiền = NET cả 2 nguồn.
-- **GĐ1 (code chặn):** G1-T1 import bỏ qua đơn đã có auto (crm/uid+tháng+tiền±ngưỡng); G1-T2 Path A ghi NET; G1-T3 chuẩn hoá/chặn UID rác; G1-T4 đồng bộ khi đơn đổi (huỷ/sửa/upsale); G1-T5 số dòng Sổ = số gói thu.
+- **GĐ1 (code chặn):**
+  - **G1-T1 (SỬA): dedup chéo nguồn CHẮC + KHOAN DUNG, áp ở MỌI đường chèn** (báo đơn `sync_ledger_from_ar_course`, PR-paid `sync_ledger_for_pr`, **backfill `backfill_ledger_from_active_requests`**, import `sync_gsheet_to_ledger`). Tầng khớp: (1) `crm_order_id`; (2) `uid + tiền±ngưỡng + |ngày|≤cửa sổ` (chịu net/gross & bank_day-vs-paydate); (3) SĐT(9 số)+tiền±. Khi tìm thấy dòng import trùng → LINK/GHI ĐÈ dòng đó (gắn crm), KHÔNG chèn mới. **Bỏ điều kiện `len==1`** (nếu >1 → chọn dòng import không-crm để merge, log cảnh báo).
+  - G1-T2 Path A ghi NET; G1-T3 chuẩn hoá/chặn UID rác; G1-T4 đồng bộ khi đơn đổi (huỷ/sửa/upsale); G1-T5 số dòng Sổ = số gói thu.
 - **GĐ2 (data):** rà toàn bộ Sổ mọi tháng theo 5 loại lỗi, backup + duyệt + xoá/sửa.
-- **GĐ3 (giám sát):** job tuần đối chiếu tổng + dò 5 loại lỗi → cảnh báo; tab "nghi trùng" cho chị Hiền.
-- Đòn bẩy lớn nhất & rẻ nhất: **G1-T1 + G1-T2** (chặn ~90% dup tại nguồn).
+- **GĐ3 (giám sát):** job tuần đối chiếu tổng + dò 5 loại lỗi → cảnh báo; tab "nghi trùng" cho chị Hiền. (Bổ trợ: view `raw.gmv_freshness` trên ECS đã có heartbeat độ tươi.)
+- Đòn bẩy lớn nhất & rẻ nhất: **G1-T1 (khoan dung, bidirectional) + G1-T2** (chặn ~90% dup tại nguồn).

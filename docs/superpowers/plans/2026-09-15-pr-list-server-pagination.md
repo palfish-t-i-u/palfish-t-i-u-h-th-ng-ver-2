@@ -45,7 +45,7 @@
 - [ ] **M2-T8** — **Middleware telemetry** `backend/main.py` cạnh `GZipMiddleware`: log JSON 1 dòng `{"evt":"http","path","ms","bytes","role"}` cho 5 path nóng; đọc bằng Render logs filter — 40'
 - [ ] **M2-T9** — **pytest** (mock theo mẫu `test_pr_list_load_all.py:16-52`): `test_pr_list_page.py` (rpc mock trả `[{pr:{...},filtered_total:3}]`; assert `p_from/p_to` +07:00; `p_emails` None ops / [email] sale; 503 khi thiếu function; response có `payments`, `total`, `page`, `ar_id`), `test_pr_summary_endpoint.py`, `test_pr_detail_endpoint.py` (404 ngoài scope; **route-order tường minh**: `/summary`, `/badge-counts` không bị `/{id}` bắt), `test_badge_counts.py`, `test_ar_list_pr_ids.py` — 100'
 - [ ] **M2-T10** — **Deploy BE sandbox + smoke curl**: `bash scripts/deploy.sh sandbox` → JWT sandbox curl 5 endpoint mới 200; `GET /payment-requests?limit=5` diff = giống trước — 20'
-- [ ] **M2-T11** — **2 script diff tự động** (read-only, sandbox seed rồi prod trước M4): `backend/scripts/diff_pr_search.py` 35 query (tên có/không dấu, tên bé, UID, SĐT `84-x`/`0x`/`+84`, PR-ID, **bẫy**: 'PR-2026', 'a bao' vắt field, chuỗi có `\` và `%`) so port Python của `paymentRequestMatchesSearch` (`paymentRequestUtils.ts:53-67`) vs RPC → exit 1 nếu lệch; `backend/scripts/diff_summary_vs_client.py` kéo full list endpoint cũ → tính chips/tabs/kpi/tvts bằng port Python `computePrKpi` + `PaymentRequestsTab.tsx:139-238` → so `pr_list_summary` (3 bộ filter) → exit 1 nếu lệch — 80'
+- [ ] **M2-T11** — **2 script diff tự động** (read-only, sandbox seed rồi prod trước M4): `backend/scripts/diff_pr_search.py` 35 query (tên có/không dấu, tên bé, UID, SĐT `84-x`/`0x`/`+84`, PR-ID, **bẫy**: 'PR-2026', 'a bao' vắt field, chuỗi có `\` và `%`, SĐT rỗng + query dạng số ≥4 chữ số) so port Python của `paymentRequestMatchesSearch` (`paymentRequestUtils.ts:53-67`) vs RPC → exit 1 nếu lệch; `backend/scripts/diff_summary_vs_client.py` kéo full list endpoint cũ → tính chips/tabs/kpi/tvts bằng port Python `computePrKpi` + `PaymentRequestsTab.tsx:139-238` → so `pr_list_summary` (3 bộ filter) → exit 1 nếu lệch — 80'
 - [ ] **M2-T12** — **SePay recompute fail → ghi log rõ**: `sepay_routes.py:686-698` tách recompute khỏi `log_audit`; fail → `log.error` có pr_id (không nuốt print) — 20'
 
 ### M3 — FE server mode sau flag `VITE_PR_LIST_MODE` (~8,5h, sandbox)
@@ -131,8 +131,9 @@ language sql stable set search_path = public, pg_temp as $$
          or norm_vi(p.child_name) like '%'||q.nq_like||'%'
          or exists (select 1 from jsonb_array_elements(coalesce(p.extra_children,'[]'::jsonb)) c
                     where norm_vi(c->>'name') like '%'||q.nq_like||'%')
-         -- SĐT 2 chiều (phoneSearch.ts:16-26)
+         -- SĐT 2 chiều (phoneSearch.ts:16-26); guard pd rỗng (position('' in x) = 1 trong PG)
          or (q.is_phone and length(q.qd) >= 4 and
+             length(ltrim(regexp_replace(coalesce(p.phone,''),'\D','','g'),'0')) >= 4 and
              (ltrim(regexp_replace(coalesce(p.phone,''),'\D','','g'),'0') like '%'||q.qd||'%'
               or position(ltrim(regexp_replace(coalesce(p.phone,''),'\D','','g'),'0') in q.qd) > 0)))
   order by p.created_at desc, p.id desc

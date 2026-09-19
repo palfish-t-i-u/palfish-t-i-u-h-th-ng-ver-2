@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import type { CreatePaymentRequestPayload, CustomerType, OwnerOption } from "../../types/paymentRequest";
 import { endpoints } from "../../lib/api";
 import { useMe } from "../../hooks/useMe";
-import { LEAD_SOURCES, NEW_CHECK_SOURCES, defaultChannelForSource, findSourceByKey, sourceHasChannels } from "../../constants/leadSource";
+import { LEAD_SOURCES, NEW_CHECK_SOURCES, channelValue, defaultChannelForSource, findSourceByKey, sourceHasChannels } from "../../constants/leadSource";
 import CountryCombo, { COUNTRIES, findCountry } from "./CountryCombo";
 import { applySmartPhoneInput, normalizeLocalPhone, crmPhoneFormat } from "./phoneUtils";
 import { Icons } from "./Icons";
@@ -347,7 +347,7 @@ export default function CreatePaymentRequestModal({
                 >
                   <option value="">— Chọn kênh —</option>
                   {findSourceByKey(form.leadSource)?.channels.map((ch) => (
-                    <option key={ch.code} value={ch.code}>{ch.code} - {ch.label}</option>
+                    <option key={channelValue(ch)} value={channelValue(ch)}>{ch.code} - {ch.label}</option>
                   ))}
                 </select>
               </div>

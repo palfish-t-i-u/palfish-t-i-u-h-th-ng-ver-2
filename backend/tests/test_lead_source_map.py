@@ -19,6 +19,11 @@ class TestResolveLeadLabel:
         assert resolve_lead_label(None, "300301") == "Tiktok ads"
         assert resolve_lead_label("", "300391") == "VN KOC"
 
+    def test_livestream_fb_vs_tiktok_same_code(self):
+        # 300431 = livestream chung, 2 value tách nhãn FB vs TikTok.
+        assert resolve_lead_label("quang_cao", "300431") == "Quảng cáo · FB - Livestream"
+        assert resolve_lead_label("quang_cao", "300431_ls_tt") == "Quảng cáo · TikTok - Livestream"
+
     def test_fallback_raw_when_unmapped(self):
         # Backward-compat: dữ liệu cũ có thể lưu label sẵn (không phải code)
         assert resolve_lead_label(None, "Facebook") == "Facebook"
@@ -77,6 +82,7 @@ class TestResolveLoaiFromLeadSource:
         # Chị Hiền tách riêng cột "Lives" trên BC02 cho kênh FB-Livestream,
         # không gộp chung "广告" dù channel này thuộc source quang_cao.
         assert resolve_loai_from_lead_source("quang_cao", "300431") == "Lives"
+        assert resolve_loai_from_lead_source("quang_cao", "300431_ls_tt") == "Lives"
 
     def test_livestream_channel_alone_without_source_still_maps_via_channel(self):
         assert resolve_loai_from_lead_source(None, "300431") == "广告"
