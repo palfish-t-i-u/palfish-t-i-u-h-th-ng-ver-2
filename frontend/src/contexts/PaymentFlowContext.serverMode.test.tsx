@@ -232,4 +232,35 @@ describe("PaymentFlowContext — server mode (VITE_PR_LIST_MODE=server)", () => 
 
     cleanup();
   });
+
+  it("pinPr: PR bị rớt khỏi pageRows (refetch nền) vẫn sống trong findPr qua pinnedRows", async () => {
+    installDefaultHandlers();
+    let ctxRef: ReturnType<typeof usePaymentFlow> | null = null;
+    renderProbe((ctx) => {
+      ctxRef = ctx;
+    });
+    await waitFor(() => expect(ctxRef).not.toBeNull());
+    await waitFor(() => expect(ctxRef!.pageRows.some((r) => r.id === "PR-1")).toBe(true));
+
+    const prA = ctxRef!.pageRows.find((r) => r.id === "PR-1")!;
+    ctxRef!.pinPr(prA);
+
+    // Mô phỏng refetch nền rớt PR-1 khỏi trang (VD lọc chip đổi bucket khi PR chuyển state).
+    server.use(
+      http.get(`${BASE}/api/v1/payment-requests`, ({ request }) => {
+        capturedUrls.push(request.url);
+        return HttpResponse.json(pageResponse({ requests: [], total: 0 }));
+      })
+    );
+    await waitFor(() => ctxRef!.loadData());
+    await waitFor(() => expect(ctxRef!.pageRows.length).toBe(0));
+
+    // pageRows rỗng nhưng findPr vẫn thấy PR-1 nhờ pinnedRows -> drawer không trắng.
+    expect(ctxRef!.findPr("PR-1")?.id).toBe("PR-1");
+
+    ctxRef!.unpinPr("PR-1");
+    await waitFor(() => {
+      expect(ctxRef!.findPr("PR-1")).toBeNull();
+    });
+  });
 });

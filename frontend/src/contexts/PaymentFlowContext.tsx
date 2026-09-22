@@ -17,7 +17,7 @@ import {
   PR_TOTAL_WARN_THRESHOLD,
   type RawPrRow,
 } from "../lib/fetchAllPaymentRequests";
-import { PR_LIST_MODE } from "../lib/prListMode";
+import { PR_LIST_MODE, PR_SERVER_PAGE_SIZE } from "../lib/prListMode";
 import { useRefetchOnFocus } from "../hooks/useRefetchOnFocus";
 import { useRealtimeTable } from "../hooks/useRealtimeTable";
 import { useVisiblePoll } from "../hooks/useVisiblePoll";
@@ -139,6 +139,9 @@ type PaymentFlowContextValue = {
   ensureFullData: () => () => void;
   /** Tải 1 PR đầy đủ ngoài trang đang xem (VD nav từ B3 tới PR tháng khác) → ghim vào pinnedRows. */
   hydratePr: (id: string) => Promise<PaymentRequest | null>;
+  /** Ghim/bỏ ghim 1 PR đã có sẵn (row từ lưới) vào pinnedRows — không gọi mạng. */
+  pinPr: (row: PaymentRequest) => void;
+  unpinPr: (id: string) => void;
 };
 
 const PaymentFlowContext = createContext<PaymentFlowContextValue | null>(null);
@@ -264,7 +267,7 @@ export function PaymentFlowProvider({
         let nextTotal = 0;
         let pageOk = false;
         try {
-          const res = await endpoints.paymentRequests.listPage({ ...listQuery, page_size: 50 });
+          const res = await endpoints.paymentRequests.listPage({ ...listQuery, page_size: PR_SERVER_PAGE_SIZE });
           nextPageRows = (res.data.requests ?? []).map((r) =>
             normalizeRequest(fromApiPaymentRequest(r as unknown as Record<string, unknown>))
           );
@@ -411,6 +414,25 @@ export function PaymentFlowProvider({
     } catch {
       return null;
     }
+  }, []);
+
+  // Ghim 1 PR đã có sẵn (row từ lưới) vào pinnedRows — KHÔNG gọi mạng, chỉ giữ nó
+  // "sống" qua refetch nền để findPr không trả null (server mode). updateRequest đã
+  // đồng bộ pinnedRows nên snapshot được cập nhật khi có optimistic update.
+  const pinPr = useCallback((row: PaymentRequest) => {
+    setPinnedRows((prev) => {
+      const next = new Map(prev);
+      next.set(row.id, row);
+      return next;
+    });
+  }, []);
+  const unpinPr = useCallback((id: string) => {
+    setPinnedRows((prev) => {
+      if (!prev.has(id)) return prev;
+      const next = new Map(prev);
+      next.delete(id);
+      return next;
+    });
   }, []);
 
   const pendingQr = useMemo(() => {
@@ -952,6 +974,8 @@ export function PaymentFlowProvider({
       findPr,
       ensureFullData,
       hydratePr,
+      pinPr,
+      unpinPr,
     }),
     [
       requests,
@@ -988,6 +1012,8 @@ export function PaymentFlowProvider({
       findPr,
       ensureFullData,
       hydratePr,
+      pinPr,
+      unpinPr,
       badgeCounts,
       nav,
       navigate,

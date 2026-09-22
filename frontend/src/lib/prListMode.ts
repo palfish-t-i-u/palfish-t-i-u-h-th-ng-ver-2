@@ -10,3 +10,7 @@ export type PrListMode = "load-all" | "server";
 
 export const PR_LIST_MODE: PrListMode =
   import.meta.env.VITE_PR_LIST_MODE === "server" ? "server" : "load-all";
+
+/** 1 nguồn sự thật cho page size server mode — dùng ở cả PaymentFlowContext (query) và
+ * PaymentRequestsTab (totalPages/effectivePageSize) để tránh lệch số trang khi đổi. */
+export const PR_SERVER_PAGE_SIZE = 50;

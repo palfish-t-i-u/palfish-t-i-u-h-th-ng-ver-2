@@ -7,7 +7,7 @@ import useIsMobile from "../hooks/useIsMobile";
 import { usePermission } from "../hooks/usePermission";
 import { endpoints } from "../lib/api";
 import { compressImageFile } from "../lib/imageCompress";
-import { PR_LIST_MODE } from "../lib/prListMode";
+import { PR_LIST_MODE, PR_SERVER_PAGE_SIZE } from "../lib/prListMode";
 import type {
   ActiveRequest,
   AddPaymentAttemptPayload,
@@ -79,9 +79,10 @@ export default function PaymentRequestsTab() {
     summary,
     findPr,
     hydratePr,
+    pinPr,
+    unpinPr,
   } = usePaymentFlow();
   const isServerMode = PR_LIST_MODE === "server";
-  const PAGE_SIZE_SERVER = 50;
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -103,6 +104,8 @@ export default function PaymentRequestsTab() {
   }, [search]);
 
   // Đẩy bộ lọc hiện tại lên context (server mode) — chỉ áp dụng khi bật flag.
+  // Đổi filter ở page>1 push listQuery 2 lần (page cũ→1); seq-guard `loadDataSeqRef`
+  // loại kết quả cũ, chỉ tốn 1 request thừa — chấp nhận (vô hại nhờ seq-guard).
   useEffect(() => {
     if (!isServerMode) return;
     setListQuery({
@@ -112,6 +115,7 @@ export default function PaymentRequestsTab() {
       dateTo: dateRange.to || undefined,
       isTest: hideTest ? false : undefined,
       tvts: tvtsSelected.size > 0 ? [...tvtsSelected] : undefined,
+      // min-length search gate: 1 ký tự trả gần toàn bộ + tránh trgm scan vô ích.
       q: debouncedSearch.trim().length >= 2 ? debouncedSearch.trim() : undefined,
       page,
     });
@@ -324,13 +328,14 @@ export default function PaymentRequestsTab() {
   const effectiveChips = isServerMode ? chipsServer : chips;
   const effectiveTabs = isServerMode ? tabsServer : tabs;
   const effectiveTvtsOptions = isServerMode ? tvtsOptionsServer : tvtsOptions;
-  const effectivePageSize = isServerMode ? PAGE_SIZE_SERVER : PAGE_SIZE;
+  const effectivePageSize = isServerMode ? PR_SERVER_PAGE_SIZE : PAGE_SIZE;
   const effectiveTotal = isServerMode ? pageTotal : filtered.length;
   const effectivePageSlice = isServerMode
-    ? { rows: pageRows, page, totalPages: Math.max(1, Math.ceil(pageTotal / PAGE_SIZE_SERVER)) }
+    ? { rows: pageRows, page, totalPages: Math.max(1, Math.ceil(pageTotal / PR_SERVER_PAGE_SIZE)) }
     : pageSlice;
 
   const handleSelect = (request: PaymentRequest) => {
+    if (isServerMode) pinPr(request); // giữ PR sống qua refetch nền — tránh drawer trắng (server mode)
     setSelectedId(request.id);
     setDrawerOpen(true);
   };
@@ -974,7 +979,10 @@ export default function PaymentRequestsTab() {
       <PaymentRequestDetailDrawer
         request={selected}
         open={drawerOpen}
-        onClose={() => setDrawerOpen(false)}
+        onClose={() => {
+          if (isServerMode && selectedId) unpinPr(selectedId);
+          setDrawerOpen(false);
+        }}
         onUpdatePr={handleUpdatePr}
         onAddPayment={handleAddPayment}
         onCancelPayment={handleCancelPayment}

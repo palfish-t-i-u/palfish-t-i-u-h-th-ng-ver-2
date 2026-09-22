@@ -180,3 +180,70 @@ def test_badge_counts_no_pr_in_scope_returns_all_zero(monkeypatch):
     client = _make_client(monkeypatch, pr_rows=[])
     res = client.get("/api/v1/payment-requests/badge-counts")
     assert res.json() == {"reconciliation": 0, "activation": 0, "invoice": 0}
+
+
+class _RangedQuery:
+    """Fake query builder mô phỏng PostgREST cắt 1000 dòng/response — .range() SLICE
+    thật (khác _FilterableQuery.range() no-op) để verify vòng loop pr_query gộp đủ
+    khi payment_requests > 1000 dòng (G1-T1, badge-counts trước đây bị cắt)."""
+
+    def __init__(self, rows):
+        self.rows = list(rows)
+
+    def select(self, *_a, **_k):
+        return self
+
+    def neq(self, *_a, **_k):
+        return self
+
+    def in_(self, *_a, **_k):
+        return self
+
+    def range(self, start, end):
+        self._start, self._end = start, end
+        return self
+
+    def execute(self):
+        return MagicMock(data=self.rows[self._start : self._end + 1])
+
+
+def test_badge_counts_over_1000_pr_not_cut_by_postgrest_default(monkeypatch):
+    """payment_requests > 1000 dòng (scope admin/ops) -> pr_query phải loop .range()
+    gộp đủ, không dừng ở batch đầu (mô phỏng lỗi F1 đã sửa: trước đây thiếu .range()
+    nên PostgREST tự cắt 1000, badge đếm thiếu ~40%)."""
+    total_pr = 1234
+    pr_rows = [{"id": f"PR-{i}", "sale_email": "sale.a@x.com", "state": "pending"} for i in range(total_pr)]
+    # Tất cả 1234 PR đều có 1 line pending -> reconciliation phải = 1234 nếu KHÔNG bị cắt.
+    line_rows = [
+        {"id": f"l{i}", "status": "pending", "payment_request_id": f"PR-{i}"} for i in range(total_pr)
+    ]
+
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    import payment_request_routes as prr
+
+    class _Actor:
+        email = "admin@test.com"
+
+    def _table(name):
+        if name == "payment_requests":
+            return _RangedQuery(pr_rows)
+        if name == "payment_lines":
+            return _FilterableQuery(line_rows)
+        if name == "active_requests":
+            return _FilterableQuery([])
+        return _FilterableQuery([])
+
+    sb = MagicMock()
+    sb.table.side_effect = _table
+    monkeypatch.setattr(prr, "_sb_or_503", lambda _get_sb: sb)
+    monkeypatch.setattr(prr, "resolve_actor", lambda sb, auth: _Actor())
+    monkeypatch.setattr(prr, "visible_creator_emails", lambda sb, actor: None)
+
+    app = FastAPI()
+    prr.register_payment_request_routes(app, lambda: sb)
+    client = TestClient(app)
+
+    res = client.get("/api/v1/payment-requests/badge-counts")
+    assert res.status_code == 200
+    assert res.json()["reconciliation"] == total_pr

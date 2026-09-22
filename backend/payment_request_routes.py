@@ -1967,11 +1967,26 @@ def _compute_badge_counts(sb, allowed_emails: list[str] | None) -> dict[str, int
     với dữ liệu thật) → đơn giản hoá đúng nghĩa thành count(status='pending').
     activation = countPendingAr (:193-195). invoice = countPendingInvoice (:197-207).
     """
-    pr_query = sb.table("payment_requests").select("id, sale_email").neq("state", "cancelled")
-    if allowed_emails is not None:
-        pr_query = pr_query.in_("sale_email", allowed_emails)
+    # PostgREST cắt 1000 dòng/response nếu không .range() — scope admin/ops
+    # (~1657 PR non-cancelled trên prod) sẽ ÂM THẦM mất ~40% → badge đếm thiếu.
+    # Loop .range() theo trang 1000 tới khi hết (mẫu activation_routes.py:2340).
+    pr_rows: list[dict[str, Any]] = []
     try:
-        pr_rows = pr_query.execute().data or []
+        _page_size = 1000
+        _off = 0
+        _pages = 0
+        while True:
+            _q = sb.table("payment_requests").select("id, sale_email").neq("state", "cancelled")
+            if allowed_emails is not None:
+                _q = _q.in_("sale_email", allowed_emails)
+            _batch = _q.range(_off, _off + _page_size - 1).execute().data or []
+            pr_rows.extend(_batch)
+            _pages += 1
+            if len(_batch) < _page_size:
+                break
+            _off += _page_size
+        if _pages > 1:
+            print(f"[badge-counts] sentinel cap-1000: tai {len(pr_rows)} PR qua {_pages} trang.")
     except Exception as exc:
         raise HTTPException(500, f"Khong doc duoc payment_requests cho badge-counts: {exc}") from exc
     pr_ids = [str(r.get("id") or "") for r in pr_rows if r.get("id")]
