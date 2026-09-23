@@ -1,6 +1,10 @@
 # Tab Quản lý thanh toán → server-side pagination (nhanh như CRM) — Plan (2026-09-15)
 
-> Trạng thái: **CHỜ DUYỆT** — chưa code. Người làm: anh Minh + Claude, theo phiên tối.
+> Trạng thái (2026-09-18): **M0-M3 đã code + verify trên sandbox thật (branch
+> `feature/pr-list-server-pagination`)**. M4 (rollout prod) CHƯA làm — cần soak
+> sandbox 2 ngày + con người thực thi theo checklist gate bên dưới. Xem §Nhật ký
+> triển khai cuối file.
+> Người làm: anh Minh + Claude, theo phiên tối.
 > Thay thế lộ trình GĐ2 → GĐ3 cũ (`2026-07-11-pr-list-slim-lazy-gd2.md`, `RESEARCH_SCALE_10K_PR_2026-07-11.md §5`).
 
 ## Trả lời: có cần đi qua GĐ2 không?
@@ -206,3 +210,154 @@ where p.state <> 'cancelled' and coalesce(c.recv,0) <> coalesce(p.received,0);
 - **Không tăng gánh hạ tầng**: 0 cột, 0 bảng, 0 extension mới, 2 index + 3 function; flag env rollback 2'. ✅
 - **Tối ưu token**: bỏ 18h việc GĐ2 sẽ vứt; task path:line rõ. ✅
 - **Self-contained**: mọi task có path:line + contract; 4 task state sống đánh dấu Opus inline. ✅
+
+## Nhật ký triển khai (2026-09-18, branch `feature/pr-list-server-pagination`)
+
+**Bối cảnh quan trọng:** một phiên trước đã báo cáo "đã viết xong nền tảng M0/M1"
+nhưng KHÔNG commit gì cả — khi phiên này bắt đầu, không file nào trong số đó tồn
+tại ở bất kỳ branch/stash/commit rác nào trong repo. Toàn bộ M0-M3 dưới đây được
+viết lại từ đầu, KHÔNG dựa trên "thành quả cũ" nào. Phiên này có quyền Supabase
+MCP đầy đủ (sandbox `pxgybyfiwywksesyogti`) nên áp dụng + verify được thật, khác
+phiên trước (bị chặn vì thiếu quyền).
+
+**Đã làm — M0:**
+- M0-T2 (đọc trên sandbox, KHÔNG có quyền query PROD trong phiên này — bị chặn ở
+  tầng permission của công cụ, không phải chủ động bỏ qua): publication realtime
+  sandbox RỖNG (khớp giả định plan) · collation `en_US.UTF-8` (không phải "vi" —
+  khẳng định quyết định (c) sort TVTS ở FE) · `pg_trgm` có sẵn nhưng CHƯA cài đặt
+  (đúng tinh thần defer) · `pg_cron` 1.6.4 đã cài · FK
+  `payment_lines_payment_request_id_fkey` tồn tại.
+- M0-T3/M1-T3: fixture vàng 15 case (`frontend/src/lib/__fixtures__/normViCases.json`)
+  sinh THẬT bằng cách chạy `normVi()` (node -e), KHÔNG đoán tay — gồm case "Trường"
+  (2 tầng dấu chồng: horn + huyền) theo đúng yêu cầu.
+- M0-T5: `backend/scripts/seed_pr_scale.py` — **đã apply thật lên sandbox**
+  (anh Đạt xác nhận cho phép chạy `--apply`, 2026-09-18). Bắt + sửa 2 bug thật
+  lúc apply (dry-run không phát hiện được vì không đụng DB thật):
+  (1) `method: "bank"` cho line "over" — vi phạm `payment_lines_method_check`
+  (chỉ nhận `qr/cash/card/installment`), đổi sang `"cash"`;
+  (2) `status: "pending"` cho active_requests — vi phạm `active_requests_status_check`
+  (chỉ nhận `pending_order/partial_order/ready_invoice/invoiced/activated`),
+  đổi sang `"pending_order"`. Sau khi sửa: **2000 payment_requests + 3365
+  payment_lines + 769 active_requests đã có thật trên sandbox**, khớp đúng
+  phân bố spec (raw column: `{done:800, over:100, short:400, pending:600,
+  cancelled:100}`).
+
+**Đã làm — M1 (áp dụng + verify THẬT trên sandbox, không chỉ viết):**
+- `backend/migrations/2026-09-16-pr-list-page-rpc.sql` — đầy đủ 2 index +
+  `norm_vi` + `pr_effective` (helper mới, không có trong khung Phụ lục A gốc —
+  cần vì SQL function không tái dùng biểu thức CASE dễ, tách ra cho sạch) +
+  `pr_list_page` + `pr_list_summary` + GRANT/REVOKE + rollback. **Đã áp dụng
+  thật lên sandbox** qua MCP `apply_migration`, `get_advisors` = 0 finding mới.
+- `backend/scripts/verify_norm_vi.py` — chạy thật, **15/15 case khớp**.
+- Verify `pr_list_page`/`pr_list_summary` bằng SQL trực tiếp trên dữ liệu sandbox
+  thật (51 PR có sẵn) — nội bộ nhất quán (tabs.tracking = filtered_total =
+  chips.all). Test riêng bug SĐT rỗng: phone rỗng/null/ngắn (<4 số) đều
+  `would_match=false`, phone thật khớp `true` — đúng fix.
+- **M1-T2 EXPLAIN thật ở scale (sau khi seed 2000 PR, tổng 2051):**
+  `select id, created_at from payment_requests order by created_at desc, id desc
+  limit 50` → **Index Only Scan using idx_pr_created_at_id_desc**, 0.186ms
+  (ở 51 dòng trước đó planner chọn Seq Scan — ĐÚNG theo cost, không phải bug,
+  chỉ là chưa đủ dữ liệu). `pr_list_page(...)` full (is_test=true, bucket=
+  tracking): ~94ms. Có `q='nguyen'` (norm_vi search full-text): ~211ms — vẫn
+  dưới xa ngưỡng defer gin_trgm (>300ms). `pr_list_summary`: ~71ms.
+  **Phát hiện thú vị (không phải bug):** `chips` tính từ `pr_effective` (dữ
+  liệu payment_lines THẬT) lệch nhẹ so với cột `state` thô của seed
+  (VD done raw=800 nhưng eff=859) — vì 100 PR "heavy installment" (M0-T5) có
+  tổng dòng = ĐÚNG BẰNG target (thiết kế cố ý để mô phỏng đơn nhiều lần TT),
+  nên vài PR gán nhãn "short" lúc seed thực ra tính ra "done" khi nhìn dòng
+  thật. Đây CHÍNH LÀ nguyên lý M0-N1 (không tin cột state thô) được minh hoạ
+  đúng bằng dữ liệu thật, không cần sửa gì.
+
+**Đã làm — M2 (BE, đầy đủ + test thật):**
+- M2-T0: pin `supabase==2.30.0` (không phải 2.15.2 như khung gốc — đó là bản
+  ĐANG chạy + test pass thật trên máy dev, khung gốc chưa verify được version).
+- M2-T1: cache TTL in-process (`rbac.py` `_cached`/`_rbac_cache_ttl`/
+  `invalidate_roster`) cho `_lookup_staff`, `_sale_name_map`, `_staff_map`,
+  `visible_creator_emails`. **Bẫy tự bắt được**: cache global rò giữa các test
+  trong CÙNG tiến trình pytest → thêm fixture `autouse` xoá cache mỗi test
+  (`backend/tests/conftest.py`).
+- M2-T2/T3/T4: `GET /payment-requests?view=page`, `GET .../summary`,
+  `GET .../{id}` — route-order xác nhận bằng test đọc trực tiếp
+  `app.router.routes` (không chỉ tin cấu trúc code).
+- M2-T5 (Opus inline): `GET .../badge-counts` — tái dùng NGUYÊN helper đã có
+  (`_course_order_id`, `_course_is_invoiced`, `_course_invoice_requested_at` từ
+  `activation_routes.py`) thay vì viết lại logic song song có nguy cơ lệch.
+- M2-T6: `pr_ids` cho `GET /active-requests` + sentinel cap-1000 (loop `.range()`
+  thay vì không giới hạn — bug thật: PostgREST tự cắt 1000 dòng nếu không
+  `.range()`, prod hiện 941/1000, sát ngưỡng).
+- M2-T7: recompute chỉ UPDATE khi received/state thực sự đổi.
+- Test: `test_rbac_cache.py` (8), `test_pr_list_page.py` (14),
+  `test_pr_summary_endpoint.py` (7), `test_pr_detail_endpoint.py` (6),
+  `test_badge_counts.py` (9), `test_ar_list_pr_ids.py` (7) = 51 test mới.
+  **901→971 pass**, 6 fail còn lại pre-existing (xác nhận bằng git stash).
+- Verify sống qua HTTP thật (local backend + sandbox DB, JWT thật
+  `test.admin@dev`): cả 5 endpoint 200, search "tran van" tìm đúng "Trần Văn
+  Bân" xuyên suốt full stack.
+- **Chưa làm**: M2-T8 (telemetry middleware), M2-T10 (deploy Render sandbox —
+  cần quyền deploy riêng), M2-T11 (2 script diff tự động — ưu tiên thấp hơn vì
+  đã có 51 test unit + verify tay qua HTTP thật).
+
+**Đã làm — M3 (FE, rủi ro cao nhất — làm KHÔNG có anh Minh trực tiếp, theo yêu
+cầu tường minh của Đạt "làm hết M0-M4"; đã cực kỳ cẩn trọng, flag mặc định OFF):**
+- M3-T1: `frontend/src/lib/prListMode.ts` (mặc định `"load-all"` — hành vi hiện
+  tại 100% không đổi trừ khi set `VITE_PR_LIST_MODE=server`), types
+  (`PrListQuery`, `PrSummaryResponse`, `PrBadgeCountsResponse`, `arId`/
+  `arActivated` trên `PaymentRequest`), `api.ts` (`listPage`, `summary`, `get`,
+  `badgeCounts`, `activeRequests.list({pr_ids})`).
+- M3-T4: `PaymentRequestKpiCards.tsx` tách `computePrKpi()` + prop `kpi?`
+  override.
+- M3-T2 (Opus inline — vùng nhạy cảm nhất, có lịch sử bug PR-0080/0081):
+  `PaymentFlowContext.tsx` thêm `listQuery/pageRows/pageTotal/pinnedRows/
+  pageActiveRequests/summary/findPr/ensureFullData/hydratePr`. **Phát hiện +
+  sửa 1 gap thật khi viết code** (không có trong plan gốc): `updateRequest`/
+  `updateActiveRequest` (dùng cho optimistic update khi confirm/reject/cancel...)
+  TRƯỚC ĐÓ chỉ set `requests` — ở server mode PR sống trong `pageRows`/
+  `pinnedRows`, optimistic update sẽ KHÔNG hiện trên UI nếu không sửa 2 hàm này
+  set ĐỒNG THỜI cả 3 nơi. Đã sửa + không có trong estimate 150' gốc.
+- M3-T3 (Opus inline): `PaymentRequestsTab.tsx` — mọi `requests.find()` (8 chỗ,
+  2 trong context + 6 trong tab) đổi sang `findPr()`; chips/tabs/tvtsOptions/
+  pageSlice/KPI/total rẽ nhánh server/load-all qua biến `effective*`.
+- M3-T5: `ensureFullData()` gọi trong `ReconciliationTab.tsx`, `ActivationTab.tsx`,
+  `InvoiceRequestTab.tsx` (mount effect) — B2/B3/B4 vẫn nhận đủ `requests`/
+  `activeRequests` ở server mode, không cần chuyển sang findPr ngay.
+- M3-T6: `PaymentFlowContext.serverMode.test.tsx` (6 test, TỰ DỰNG từ đầu —
+  "refetchGate.test.tsx" nhắc trong plan gốc KHÔNG tồn tại, không có tiền lệ
+  mount `PaymentFlowProvider` thật + MSW trong repo trước đây): query params
+  đúng, `summary.kpi` lộ ra context, `pageTotal` đúng nghĩa, hydratePr +
+  pinnedRows, **seq-guard race** (response cũ resolve SAU response mới cho
+  CÙNG id → bị chặn, không ghi đè), `ensureFullData` tải song song không thay
+  thế pageRows. Bắt + sửa 1 test cũ (`PaymentRequestsTab.tvtsFilter.test.tsx`)
+  thiếu mock `findPr`/`hydratePr`/... sau khi thêm field context mới.
+  **Chưa viết**: kịch bản "B3 mounted + realtime → activeRequests không giảm"
+  và "BE từ chối mark-paid khi requests=[] → rollback" (plan liệt kê nhưng cần
+  thêm thời gian dựng MSW phức tạp hơn — ghi lại để làm tiếp, không phải bỏ sót
+  do quên).
+- Verify sống trên **browser thật** (`VITE_PR_LIST_MODE=server` tạm thời local),
+  2 vòng — vòng 1 trước khi seed (51 PR), vòng 2 SAU khi seed 2000 PR thật
+  (2051 PR):
+  - Vòng 1: KPI/chips/table render đúng số liệu khớp 100% với verify SQL trực
+    tiếp trước đó (31 tracking, ~124tr đã thu); search "tran van" gửi đúng
+    `q=tran+van`; đổi filter (date/hideTest) → query đổi đúng, trả 0 kết quả
+    ĐÚNG (dữ liệu sandbox không có PR thật nào trong tháng 9, không phải bug).
+  - Vòng 2 (scale thật 2051 PR, bỏ lọc ngày + hideTest): KPI hiện đúng **1931
+    PR đang theo dõi, 4.520.241.747đ đã thu, 970 sẵn sàng tạo gói học**; sidebar
+    badge "Tạo gói học" hiện **405** (badge-counts qua toàn bộ 2051 PR); **phân
+    trang hiện đủ 39 trang** (2051 PR ÷ 50/trang ≈ 41, phù hợp sau khi trừ
+    cancelled) — xác nhận `page_size=50` + `pageTotal` hoạt động đúng ở quy mô
+    thật, không phải giả lập.
+  - Sau cả 2 vòng: xoá `VITE_PR_LIST_MODE` khỏi `.env` local — trả về mặc định
+    `load-all`.
+- **tsc -b sạch, `npm run build` sạch, 83 test file / 840 test frontend pass**
+  (834 trước M3-T4 → 840 sau khi thêm 6 test KpiCards + 6 test serverMode, trừ
+  đi phần trùng — con số ròng đã re-run xác nhận), backend 971/977 pass (6 fail
+  pre-existing) — re-run lại LẦN CUỐI sau khi sửa seed script, vẫn y hệt.
+
+**M4 — CHƯA làm, có chủ đích:**
+- M4-T3 (migration PROD) và các bước prod khác trong bảng gate phía trên đòi hỏi
+  soak sandbox 2 ngày + merge qua anh Minh (classifier chặn Claude push main) —
+  không thể/không nên nén vào 1 phiên. Đã dừng đúng ở "sẵn sàng cho M4", không
+  tự ý chạm prod.
+- Seed 2000 PR (M0-T5) + EXPLAIN scale thật (M1-T2) **đã xong** (2026-09-18, anh
+  Đạt cho phép) — xem chi tiết ở mục M0/M1 phía trên. 2000 PR-SEED-* vẫn còn
+  trên sandbox (chủ ý giữ lại để test scale sau này); có `--clean --apply` nếu
+  cần dọn.

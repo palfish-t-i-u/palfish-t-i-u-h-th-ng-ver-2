@@ -21,10 +21,13 @@ from fastapi import APIRouter, File, Header, HTTPException, Query, Request, Uplo
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
-from rbac import resolve_actor, visible_creator_emails, can_confirm_payment
+from rbac import resolve_actor, visible_creator_emails, can_confirm_payment, _cached, _rbac_cache_ttl
 from admin_routes import require_module_access, require_module_write
 from activation_routes import (
     _compute_referral_status,
+    _course_invoice_requested_at,
+    _course_is_invoiced,
+    _course_order_id,
     _maybe_enqueue_ar_edit_on_pr_change,
     _maybe_enqueue_bill_updated_dingtalk,
 )
@@ -849,47 +852,57 @@ def _chunked(items: list, size: int) -> list[list]:
 
 
 def _sale_name_map(sb) -> dict[str, str]:
-    """Map email (lower) -> ten TVTS (display_name/crm_name) tu nhan_su_sale."""
-    try:
-        res = sb.table("nhan_su_sale").select("email, display_name, crm_name").execute()
-    except Exception as exc:
-        print(f"[payment_requests] nhan_su_sale lookup failed: {exc}")
-        return {}
-    mapping: dict[str, str] = {}
-    for row in res.data or []:
-        email = str(row.get("email") or "").strip().lower()
-        if not email:
-            continue
-        mapping[email] = row.get("display_name") or row.get("crm_name") or email
-    return mapping
+    """Map email (lower) -> ten TVTS (display_name/crm_name) tu nhan_su_sale.
+    Cache TTL (M2-T1) — endpoint list/summary gọi hàm này mỗi request, trước đây
+    quét lại toàn bộ nhan_su_sale mỗi lần dù data ít đổi."""
+
+    def _fetch() -> dict[str, str]:
+        try:
+            res = sb.table("nhan_su_sale").select("email, display_name, crm_name").execute()
+        except Exception as exc:
+            print(f"[payment_requests] nhan_su_sale lookup failed: {exc}")
+            return {}
+        mapping: dict[str, str] = {}
+        for row in res.data or []:
+            email = str(row.get("email") or "").strip().lower()
+            if not email:
+                continue
+            mapping[email] = row.get("display_name") or row.get("crm_name") or email
+        return mapping
+
+    return _cached("roster:sale_name_map", _rbac_cache_ttl(), _fetch)
 
 
 def _staff_map(sb) -> dict[str, dict[str, Any]]:
     """Map email(lower) → {name, role, team, sub_team, leader_email, is_active}.
 
     Query riêng khỏi _sale_name_map: nếu cột (vd leader_email) drift thì chỉ mất
-    leader enrich, không kéo sập tên TVTS ở bảng chính."""
-    try:
-        res = sb.table("nhan_su_sale").select(
-            "email, display_name, crm_name, role, team, sub_team, leader_email, is_active"
-        ).execute()
-    except Exception as exc:
-        print(f"[payment_requests] nhan_su_sale staff map failed: {exc}")
-        return {}
-    out: dict[str, dict[str, Any]] = {}
-    for row in res.data or []:
-        email = str(row.get("email") or "").strip().lower()
-        if not email:
-            continue
-        out[email] = {
-            "name": row.get("display_name") or row.get("crm_name") or email,
-            "role": str(row.get("role") or "sale").strip().lower(),
-            "team": row.get("team"),
-            "sub_team": row.get("sub_team"),
-            "leader_email": str(row.get("leader_email") or "").strip().lower(),
-            "is_active": row.get("is_active"),
-        }
-    return out
+    leader enrich, không kéo sập tên TVTS ở bảng chính. Cache TTL (M2-T1)."""
+
+    def _fetch() -> dict[str, dict[str, Any]]:
+        try:
+            res = sb.table("nhan_su_sale").select(
+                "email, display_name, crm_name, role, team, sub_team, leader_email, is_active"
+            ).execute()
+        except Exception as exc:
+            print(f"[payment_requests] nhan_su_sale staff map failed: {exc}")
+            return {}
+        out: dict[str, dict[str, Any]] = {}
+        for row in res.data or []:
+            email = str(row.get("email") or "").strip().lower()
+            if not email:
+                continue
+            out[email] = {
+                "name": row.get("display_name") or row.get("crm_name") or email,
+                "role": str(row.get("role") or "sale").strip().lower(),
+                "team": row.get("team"),
+                "sub_team": row.get("sub_team"),
+                "leader_email": str(row.get("leader_email") or "").strip().lower(),
+                "is_active": row.get("is_active"),
+            }
+        return out
+
+    return _cached("roster:staff_map", _rbac_cache_ttl(), _fetch)
 
 
 def _leader_name_for(email: str, staff_map: dict[str, dict[str, Any]]) -> str:
@@ -1517,13 +1530,20 @@ def recompute_payment_request_totals(sb, payment_request_id: str) -> dict[str, A
     received = _sum_paid_amount(line_res.data or [])
     state = _compute_state(received, target)
 
-    update_res = (
-        sb.table("payment_requests")
-        .update({"received": received, "state": state})
-        .eq("id", payment_request_id)
-        .execute()
-    )
-    updated = update_res.data[0] if update_res.data else {**pr_row, "received": received, "state": state}
+    if pr_row.get("received") == received and pr_row.get("state") == state:
+        # Không đổi gì — bỏ qua UPDATE (M2-T7). Realtime publication đã bật cho
+        # payment_requests; UPDATE trùng giá trị vẫn phát sự kiện, khiến FE server
+        # mode (M3) refetch trang không cần thiết mỗi lần recompute được gọi lại
+        # (VD 2 payment_lines đổi cùng lúc → recompute chạy 2 lần, lần 2 no-op).
+        updated = pr_row
+    else:
+        update_res = (
+            sb.table("payment_requests")
+            .update({"received": received, "state": state})
+            .eq("id", payment_request_id)
+            .execute()
+        )
+        updated = update_res.data[0] if update_res.data else {**pr_row, "received": received, "state": state}
     if state in ("done", "over"):
         try:
             from revenue_routes import sync_ledger_for_pr
@@ -1884,20 +1904,296 @@ class CompletionReportBody(BaseModel):
     reason: str | None = None
 
 
+# ---------------------------------------------------------------------------
+# M2 — server-side pagination cho tab Quản lý thanh toán (B1).
+# Plan: docs/superpowers/plans/2026-09-15-pr-list-server-pagination.md §Phụ lục C.
+# GIỮ NGUYÊN contract GET /payment-requests cũ (không view=page) cho B2/B3/B4 + e2e —
+# chỉ thêm nhánh mới, không đổi hành vi mặc định.
+# ---------------------------------------------------------------------------
+PR_BUCKETS = frozenset({"tracking", "created", "cancelled"})
+
+
+def _tvts_param_list(tvts: str | None) -> list[str] | None:
+    if not tvts:
+        return None
+    items = [t.strip().lower() for t in tvts.split(",") if t.strip()]
+    return items or None
+
+
+def _date_range_to_utc_offset(date_from: str | None, date_to: str | None) -> tuple[str | None, str | None]:
+    """YYYY-MM-DD -> mốc +07:00 (giờ VN, đã chốt M0-T4b — không dùng TZ trình duyệt)."""
+    p_from = f"{date_from}T00:00:00+07:00" if date_from else None
+    p_to = f"{date_to}T23:59:59.999999+07:00" if date_to else None
+    return p_from, p_to
+
+
+def _ar_is_activated(uids_data: Any) -> bool:
+    """Mirror PaymentRequestTable.tsx:280-291 — 'Đã tạo' khi ÍT NHẤT 1 course có orderId."""
+    for u in (uids_data or []):
+        if not isinstance(u, dict):
+            continue
+        for c in (u.get("courses") or []):
+            if isinstance(c, dict) and _course_order_id(c):
+                return True
+    return False
+
+
+def _ar_courses(uids_data: Any) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    for u in (uids_data or []):
+        if isinstance(u, dict):
+            out.extend(c for c in (u.get("courses") or []) if isinstance(c, dict))
+    return out
+
+
+def _ar_status_is_pending_order(uids_data: Any) -> bool:
+    """Mirror deriveArStatus (paymentFlowUtils.ts:131-137) — pending_order khi:
+    rỗng, HOẶC không phải mọi course đã invoiced VÀ không phải mọi course có orderId."""
+    courses = _ar_courses(uids_data)
+    if not courses:
+        return True
+    all_invoiced = all(_course_is_invoiced(c) for c in courses)
+    if all_invoiced:
+        return False
+    all_ordered = all(bool(_course_order_id(c)) for c in courses)
+    return not all_ordered
+
+
+def _compute_badge_counts(sb, allowed_emails: list[str] | None) -> dict[str, int]:
+    """{reconciliation, activation, invoice} cho 3 badge tab B2/B3/B4 (M2-T5).
+
+    reconciliation = countAwaitingTransactions (paymentFlowUtils.ts:180-191): với
+    txnDisplayStatus, 1 line không cancelled/rejected/paid LUÔN rơi vào 'awaiting'
+    (branch 'unsent' chỉ áp cho status ngoài pending/paid/rejected — không xảy ra
+    với dữ liệu thật) → đơn giản hoá đúng nghĩa thành count(status='pending').
+    activation = countPendingAr (:193-195). invoice = countPendingInvoice (:197-207).
+    """
+    # PostgREST cắt 1000 dòng/response nếu không .range() — scope admin/ops
+    # (~1657 PR non-cancelled trên prod) sẽ ÂM THẦM mất ~40% → badge đếm thiếu.
+    # Loop .range() theo trang 1000 tới khi hết (mẫu activation_routes.py:2340).
+    pr_rows: list[dict[str, Any]] = []
+    try:
+        _page_size = 1000
+        _off = 0
+        _pages = 0
+        while True:
+            _q = sb.table("payment_requests").select("id, sale_email").neq("state", "cancelled")
+            if allowed_emails is not None:
+                _q = _q.in_("sale_email", allowed_emails)
+            _batch = _q.range(_off, _off + _page_size - 1).execute().data or []
+            pr_rows.extend(_batch)
+            _pages += 1
+            if len(_batch) < _page_size:
+                break
+            _off += _page_size
+        if _pages > 1:
+            print(f"[badge-counts] sentinel cap-1000: tai {len(pr_rows)} PR qua {_pages} trang.")
+    except Exception as exc:
+        raise HTTPException(500, f"Khong doc duoc payment_requests cho badge-counts: {exc}") from exc
+    pr_ids = [str(r.get("id") or "") for r in pr_rows if r.get("id")]
+
+    reconciliation = 0
+    if pr_ids:
+        try:
+            for chunk in _chunked(pr_ids, 100):
+                res = (
+                    sb.table("payment_lines")
+                    .select("id", count="exact")
+                    .in_("payment_request_id", chunk)
+                    .eq("status", "pending")
+                    .execute()
+                )
+                reconciliation += res.count if res.count is not None else len(res.data or [])
+        except Exception as exc:
+            print(f"[badge-counts] reconciliation query failed: {exc}")
+
+    activation = 0
+    invoice = 0
+    if pr_ids:
+        try:
+            for chunk in _chunked(pr_ids, 100):
+                ar_res = sb.table("active_requests").select("uids_data").in_("pr_id", chunk).execute()
+                for ar in ar_res.data or []:
+                    uids_data = ar.get("uids_data")
+                    if _ar_status_is_pending_order(uids_data):
+                        activation += 1
+                    for c in _ar_courses(uids_data):
+                        if _course_invoice_requested_at(c) and not _course_is_invoiced(c):
+                            invoice += 1
+        except Exception as exc:
+            print(f"[badge-counts] activation/invoice query failed: {exc}")
+
+    return {"reconciliation": reconciliation, "activation": activation, "invoice": invoice}
+
+
+def _rpc_page_or_503(sb, fn: str, params: dict[str, Any]) -> list[dict[str, Any]]:
+    try:
+        res = sb.rpc(fn, params).execute()
+        return res.data or []
+    except HTTPException:
+        raise
+    except Exception as exc:
+        msg = str(exc).lower()
+        if "could not find the function" in msg:
+            raise HTTPException(
+                503,
+                f"Chưa có RPC {fn} — chạy migration backend/migrations/2026-09-16-pr-list-page-rpc.sql",
+            ) from exc
+        raise HTTPException(500, f"Query {fn} thất bại: {exc}") from exc
+
+
+def _list_payment_requests_page(
+    sb,
+    actor,
+    *,
+    page: int,
+    page_size: int,
+    bucket: str,
+    state: str | None,
+    date_from: str | None,
+    date_to: str | None,
+    is_test: bool | None,
+    tvts: str | None,
+    q: str | None,
+) -> dict[str, Any]:
+    if bucket not in PR_BUCKETS:
+        allowed = ", ".join(sorted(PR_BUCKETS))
+        raise HTTPException(400, f"bucket không hợp lệ. Giá trị hợp lệ: {allowed}")
+    if state and state not in PR_STATES:
+        allowed = ", ".join(sorted(PR_STATES))
+        raise HTTPException(400, f"state không hợp lệ. Giá trị hợp lệ: {allowed}")
+
+    allowed_emails = visible_creator_emails(sb, actor)
+    p_from, p_to = _date_range_to_utc_offset(date_from, date_to)
+    p_tvts = _tvts_param_list(tvts)
+    offset = (page - 1) * page_size
+
+    rows = _rpc_page_or_503(sb, "pr_list_page", {
+        "p_emails": allowed_emails,
+        "p_is_test": is_test,
+        "p_from": p_from,
+        "p_to": p_to,
+        "p_bucket": bucket,
+        "p_state": state,
+        "p_tvts": p_tvts,
+        "p_q": q or "",
+        "p_limit": page_size,
+        "p_offset": offset,
+    })
+
+    total = rows[0]["filtered_total"] if rows else 0
+    pr_rows = [r["pr"] for r in rows]
+    pr_ids = [str(row.get("id") or "") for row in pr_rows if row.get("id")]
+
+    lines_by_pr: dict[str, list[dict[str, Any]]] = {pid: [] for pid in pr_ids}
+    if pr_ids:
+        try:
+            line_res = sb.table("payment_lines").select("*").in_("payment_request_id", pr_ids).execute()
+            lines_by_pr.update(_group_lines_by_request(line_res.data or []))
+        except Exception as exc:
+            raise HTTPException(500, f"Khong doc duoc payment_lines: {exc}") from exc
+
+    ars_by_pr: dict[str, list[dict[str, Any]]] = {pid: [] for pid in pr_ids}
+    ar_flag_by_pr: dict[str, dict[str, Any]] = {}
+    if pr_ids:
+        try:
+            for chunk in _chunked(pr_ids, 100):
+                ar_res = (
+                    sb.table("active_requests")
+                    .select("id, pr_id, uids_data")
+                    .in_("pr_id", chunk)
+                    .execute()
+                )
+                for ar in ar_res.data or []:
+                    pid = str(ar.get("pr_id") or "")
+                    if pid not in ars_by_pr:
+                        continue
+                    ars_by_pr[pid].append(ar)
+                    if pid not in ar_flag_by_pr:
+                        ar_flag_by_pr[pid] = {
+                            "ar_id": ar.get("id"),
+                            "ar_activated": _ar_is_activated(ar.get("uids_data")),
+                        }
+        except Exception as exc:
+            print(f"Khong doc duoc active_requests for PR page: {exc}")
+
+    reports_by_pr: dict[str, list[dict[str, Any]]] = {pid: [] for pid in pr_ids}
+    if pr_ids:
+        try:
+            for chunk in _chunked(pr_ids, 100):
+                rep_res = (
+                    sb.table("pr_completion_reports")
+                    .select("*")
+                    .in_("pr_id", chunk)
+                    .order("seq", desc=False)
+                    .execute()
+                )
+                for rep in rep_res.data or []:
+                    pid = str(rep.get("pr_id") or "")
+                    if pid in reports_by_pr:
+                        reports_by_pr[pid].append(rep)
+        except Exception as exc:
+            print(f"[payment_requests] khong doc duoc pr_completion_reports page: {exc}")
+
+    name_map = _sale_name_map(sb)
+    staff_map = _staff_map(sb)
+
+    requests: list[dict[str, Any]] = []
+    for row in pr_rows:
+        pr_id = str(row.get("id") or "")
+        item = _serialize_payment_request_list_item(
+            row, lines_by_pr.get(pr_id, []), {}, {}, name_map, completion_reports=reports_by_pr.get(pr_id, [])
+        )
+        all_courses: list[dict[str, Any]] = []
+        for ar in ars_by_pr.get(pr_id, []):
+            for u in (ar.get("uids_data") or []):
+                if isinstance(u, dict):
+                    for c in (u.get("courses") or []):
+                        if isinstance(c, dict):
+                            all_courses.append(c)
+        item["referral_status"] = _compute_referral_status(all_courses)
+        flag = ar_flag_by_pr.get(pr_id) or {}
+        item["ar_id"] = flag.get("ar_id")
+        item["ar_activated"] = bool(flag.get("ar_activated", False))
+        email = str(item.get("sale_email") or "").strip().lower()
+        item["sale_name"] = name_map.get(email, "")
+        item["sale_leader_name"] = _leader_name_for(email, staff_map)
+        requests.append(item)
+
+    return {"requests": requests, "total": total, "page": page, "page_size": page_size}
+
+
 def register_payment_request_routes(app, _get_supabase) -> None:
     global get_supabase
     get_supabase = _get_supabase
 
     @router.get("/payment-requests")
     def list_payment_requests(
+        view: str | None = Query(None, description="'page' = server-side pagination (M2)"),
         state: str | None = Query(None),
         uid: str | None = Query(None),
         limit: int = Query(100, ge=1, le=500),
         offset: int = Query(0, ge=0),
+        page: int = Query(1, ge=1),
+        page_size: int = Query(50, ge=1, le=100),
+        bucket: str = Query("tracking"),
+        date_from: str | None = Query(None),
+        date_to: str | None = Query(None),
+        is_test: bool | None = Query(None),
+        tvts: str | None = Query(None, description="CSV email, ví dụ a@x.com,b@x.com"),
+        q: str | None = Query(None),
         authorization: str | None = Header(None),
     ):
         sb = _sb_or_503(get_supabase)
         actor = resolve_actor(sb, authorization)
+
+        if view == "page":
+            return _list_payment_requests_page(
+                sb, actor,
+                page=page, page_size=page_size, bucket=bucket, state=state,
+                date_from=date_from, date_to=date_to, is_test=is_test, tvts=tvts, q=q,
+            )
+
         query = sb.table("payment_requests").select("*", count="exact")
         allowed_emails = visible_creator_emails(sb, actor)
         if allowed_emails is not None:
@@ -2011,6 +2307,70 @@ def register_payment_request_routes(app, _get_supabase) -> None:
             item["sale_leader_name"] = _leader_name_for(email, staff_map)
 
         return {"requests": requests, "total": total}
+
+    @router.get("/payment-requests/summary")
+    def get_payment_requests_summary(
+        state: str | None = Query(None),
+        date_from: str | None = Query(None),
+        date_to: str | None = Query(None),
+        is_test: bool | None = Query(None),
+        tvts: str | None = Query(None),
+        authorization: str | None = Header(None),
+    ):
+        """chips/tabs/kpi/tvts/has_pending_qr cho tab Quản lý thanh toán (M2-T3).
+        Khai báo TRƯỚC /{payment_request_id} — path literal 2 đoạn, tránh bị route
+        động bắt nhầm (xem M2-T4)."""
+        sb = _sb_or_503(get_supabase)
+        actor = resolve_actor(sb, authorization)
+        allowed_emails = visible_creator_emails(sb, actor)
+        p_from, p_to = _date_range_to_utc_offset(date_from, date_to)
+        p_tvts = _tvts_param_list(tvts)
+
+        try:
+            res = sb.rpc("pr_list_summary", {
+                "p_emails": allowed_emails,
+                "p_is_test": is_test,
+                "p_from": p_from,
+                "p_to": p_to,
+                "p_tvts": p_tvts,
+            }).execute()
+        except Exception as exc:
+            msg = str(exc).lower()
+            if "could not find the function" in msg:
+                raise HTTPException(
+                    503,
+                    "Chưa có RPC pr_list_summary — chạy migration backend/migrations/2026-09-16-pr-list-page-rpc.sql",
+                ) from exc
+            raise HTTPException(500, f"Query pr_list_summary thất bại: {exc}") from exc
+
+        summary = res.data or {}
+        name_map = _sale_name_map(sb)
+        tvts_out = []
+        for entry in summary.get("tvts") or []:
+            email = str(entry.get("email") or "").strip().lower()
+            name = name_map.get(email, "") if email != "__unknown_tvts__" else ""
+            label = name or (email.split("@")[0] if "@" in email else email) or "Không rõ TVTS"
+            if email == "__unknown_tvts__":
+                label = "Không rõ TVTS"
+            tvts_out.append({"email": email, "name": name, "label": label, "count": entry.get("count", 0)})
+
+        return {
+            "chips": summary.get("chips") or {},
+            "tabs": summary.get("tabs") or {},
+            "kpi": summary.get("kpi") or {},
+            "tvts": tvts_out,
+            "has_pending_qr": bool(summary.get("has_pending_qr", False)),
+        }
+
+    @router.get("/payment-requests/badge-counts")
+    def get_payment_requests_badge_counts(authorization: str | None = Header(None)):
+        """{reconciliation, activation, invoice} — mirror countAwaitingTransactions /
+        countPendingAr / countPendingInvoice (paymentFlowUtils.ts). Opus inline (M2-T5)
+        — khai báo TRƯỚC /{payment_request_id} cùng lý do với /summary."""
+        sb = _sb_or_503(get_supabase)
+        actor = resolve_actor(sb, authorization)
+        allowed_emails = visible_creator_emails(sb, actor)
+        return _compute_badge_counts(sb, allowed_emails)
 
     @router.patch("/payment-requests/{payment_request_id}")
     def patch_payment_request(
@@ -3832,5 +4192,72 @@ def register_payment_request_routes(app, _get_supabase) -> None:
             "last_reminder": last_reminder,
             "can_remind": can_remind
         }
+
+    @router.get("/payment-requests/{payment_request_id}")
+    def get_payment_request_detail(
+        payment_request_id: str,
+        authorization: str | None = Header(None),
+    ):
+        """1 PR đầy đủ (item y hệt shape list, kèm ar_id/ar_activated) — dùng cho
+        drawer hydrate khi PR không có sẵn trong trang 50 dòng đang xem (M2-T4).
+        Đặt CUỐI cụm GET /payment-requests/* — path 1 tham số động, đứng trước sẽ
+        bắt nhầm mọi literal path (summary, badge-counts, owner-options...)."""
+        sb = _sb_or_503(get_supabase)
+        actor = resolve_actor(sb, authorization)
+
+        row_res = (
+            sb.table("payment_requests")
+            .select("*")
+            .eq("id", payment_request_id)
+            .limit(1)
+            .execute()
+        )
+        if not row_res.data:
+            raise HTTPException(404, "Khong tim thay payment_request")
+        row = row_res.data[0]
+        if not _can_access_request(sb, actor, row):
+            raise HTTPException(404, "Khong tim thay payment_request")
+
+        lines_res = (
+            sb.table("payment_lines")
+            .select("*")
+            .eq("payment_request_id", payment_request_id)
+            .execute()
+        )
+        reports_res = (
+            sb.table("pr_completion_reports")
+            .select("*")
+            .eq("pr_id", payment_request_id)
+            .order("seq", desc=False)
+            .execute()
+        )
+        ar_res = (
+            sb.table("active_requests")
+            .select("id, pr_id, uids_data")
+            .eq("pr_id", payment_request_id)
+            .execute()
+        )
+
+        name_map = _sale_name_map(sb)
+        staff_map = _staff_map(sb)
+        item = _serialize_payment_request_list_item(
+            row, lines_res.data or [], {}, {}, name_map,
+            completion_reports=reports_res.data or [],
+        )
+        ars = ar_res.data or []
+        all_courses: list[dict[str, Any]] = []
+        for ar in ars:
+            for u in (ar.get("uids_data") or []):
+                if isinstance(u, dict):
+                    for c in (u.get("courses") or []):
+                        if isinstance(c, dict):
+                            all_courses.append(c)
+        item["referral_status"] = _compute_referral_status(all_courses)
+        item["ar_id"] = ars[0].get("id") if ars else None
+        item["ar_activated"] = _ar_is_activated(ars[0].get("uids_data")) if ars else False
+        email = str(item.get("sale_email") or "").strip().lower()
+        item["sale_name"] = name_map.get(email, "")
+        item["sale_leader_name"] = _leader_name_for(email, staff_map)
+        return item
 
     app.include_router(router)

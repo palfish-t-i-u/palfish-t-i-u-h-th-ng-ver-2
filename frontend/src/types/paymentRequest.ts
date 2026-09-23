@@ -138,6 +138,11 @@ export interface PaymentRequest {
   isTest?: boolean;
   /** Lịch sử "Báo đơn hoàn thành" (B3, 16/7). BE có thể chưa merge — luôn đọc `?? []`. */
   completion_reports?: CompletionReport[];
+  /** AR gắn PR này (nếu có) — chỉ có ở response ?view=page / summary (M2/M3, pr-list-server-pagination).
+   * Dùng để hiện badge "TT Gói học" mà không cần tải toàn bộ activeRequests. */
+  arId?: string | null;
+  /** true nếu ÍT NHẤT 1 course của AR đã có orderId (mirror PaymentRequestTable.tsx badge "Đã tạo"). */
+  arActivated?: boolean;
 }
 
 /** 1 lần bấm "Báo đơn hoàn thành" — nguồn sự thật thay trigger DingTalk pr_fully_paid tự động. */
@@ -233,6 +238,44 @@ export interface PaymentRequestsListResponse {
   requests: PaymentRequest[];
   activeRequests: ActiveRequest[];
   total?: number;
+}
+
+/** Response GET /payment-requests?view=page (M2-T2, pr-list-server-pagination). */
+export interface PrListPageResponse {
+  requests: PaymentRequest[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+
+/** Response GET /payment-requests/summary (M2-T3). */
+export interface PrSummaryResponse {
+  chips: { all: number; pending: number; short: number; done: number; over: number };
+  tabs: { tracking: number; created: number; cancelled: number };
+  kpi: { total: number; done: number; over: number; short: number; received: number; target: number };
+  tvts: { email: string; name: string; label: string; count: number }[];
+  has_pending_qr: boolean;
+}
+
+/** Response GET /payment-requests/badge-counts (M2-T5). */
+export interface PrBadgeCountsResponse {
+  reconciliation: number;
+  activation: number;
+  invoice: number;
+}
+
+/** Query params GET /payment-requests?view=page&... (Phụ lục C plan pr-list-server-pagination). */
+export interface PrListQuery {
+  bucket: "tracking" | "created" | "cancelled";
+  /** "" hoặc undefined = mọi state (chỉ áp dụng khi bucket !== "cancelled"). */
+  state?: PaymentRequestStatus | "";
+  dateFrom?: string;
+  dateTo?: string;
+  isTest?: boolean;
+  /** email TVTS đã chọn lọc — [] hoặc undefined = không lọc. */
+  tvts?: string[];
+  q?: string;
+  page: number;
 }
 
 export type AddPaymentAttemptPayload = {

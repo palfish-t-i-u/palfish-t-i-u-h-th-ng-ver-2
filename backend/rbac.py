@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import os
+import time
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Callable
 
 import httpx
 from fastapi import HTTPException
@@ -13,6 +14,43 @@ _http = httpx.Client(timeout=15)
 
 ROLE_RANK = {"sale": 1, "ops": 2, "leader": 2, "manager": 3, "system": 4}
 OPS_ROLES = {"ops", "system"}
+
+# ---------------------------------------------------------------------------
+# Cache in-process TTL (M2-T1, plan pr-list-server-pagination) — mỗi request
+# GET /payment-requests trước đây query lại toàn bộ nhan_su_sale nhiều lần
+# (_lookup_staff mỗi resolve_actor, _sale_name_map + _staff_map mỗi list/summary).
+# TTL ngắn (mặc định 120s, env RBAC_CACHE_TTL, 0 = tắt cache) đủ để giảm tải mà
+# không làm đổi quyền chậm hơn 1 vòng cache khi admin sửa nhan_su_sale.
+# ---------------------------------------------------------------------------
+_TTL_CACHE: dict[str, tuple[float, Any]] = {}
+
+
+def _rbac_cache_ttl() -> float:
+    try:
+        return float(os.getenv("RBAC_CACHE_TTL", "120"))
+    except ValueError:
+        return 120.0
+
+
+def _cached(key: str, ttl: float, fn: Callable[[], Any]) -> Any:
+    if ttl <= 0:
+        return fn()
+    now = time.monotonic()
+    hit = _TTL_CACHE.get(key)
+    if hit is not None and (now - hit[0]) < ttl:
+        return hit[1]
+    value = fn()
+    _TTL_CACHE[key] = (now, value)
+    return value
+
+
+def invalidate_roster() -> None:
+    """Xoá cache liên quan nhan_su_sale — gọi ở điểm mutate bảng này
+    (admin_routes.py: thêm/sửa/xoá nhân sự) để tránh quyền cũ sống sót
+    quá TTL sau khi admin vừa đổi team/role/is_active."""
+    for k in list(_TTL_CACHE.keys()):
+        if k.startswith("staff:") or k.startswith("roster_emails:"):
+            _TTL_CACHE.pop(k, None)
 
 
 @dataclass
@@ -114,20 +152,23 @@ def _auth_user_from_jwt(token: str) -> dict[str, Any] | None:
 
 
 def _lookup_staff(sb, email: str) -> dict[str, Any] | None:
-    try:
-        res = (
-            sb.table("nhan_su_sale")
-            .select("*")
-            .eq("email", email)
-            .limit(1)
-            .execute()
-        )
-        if res.data:
-            return res.data[0]
-        return None
-    except Exception as exc:
-        print(f"staff lookup: {exc}")
-        return None
+    def _fetch() -> dict[str, Any] | None:
+        try:
+            res = (
+                sb.table("nhan_su_sale")
+                .select("*")
+                .eq("email", email)
+                .limit(1)
+                .execute()
+            )
+            if res.data:
+                return res.data[0]
+            return None
+        except Exception as exc:
+            print(f"staff lookup: {exc}")
+            return None
+
+    return _cached(f"staff:{(email or '').strip().lower()}", _rbac_cache_ttl(), _fetch)
 
 
 def resolve_actor(sb, authorization: str | None, *, allow_unactivated: bool = False) -> Actor:
@@ -253,42 +294,39 @@ def scope_sale_names(sb, team: str, sub_team: str) -> set[str]:
 
 
 def visible_creator_emails(sb, actor: Actor) -> list[str] | None:
-    """None = all orders (system). Otherwise filter don_hang.created_by."""
+    """None = all orders (system). Otherwise filter don_hang.created_by.
+
+    Roster (email theo team/sub_team) cache TTL (M2-T1) — actor.email tự thêm
+    LUÔN TƯƠI (không cache) để không lệ thuộc key cache khớp đúng actor."""
     role = _normalize_role(actor.role)
     if role in OPS_ROLES:
         return None
     if role == "sale":
         return [actor.email.lower()]
 
-    try:
-        q = sb.table("nhan_su_sale").select("email").eq("is_active", True)
-        if role == "leader":
-            staff = actor.staff or {}
-            team = staff.get("team")
-            sub = staff.get("sub_team")
-            if not team:
-                return [actor.email.lower()]
-            if team:
-                q = q.eq("team", team)
-            if sub:
-                q = q.eq("sub_team", sub)
-        elif role == "manager":
-            staff = actor.staff or {}
-            team = staff.get("team")
-            if not team:
-                return [actor.email.lower()]
-            if team:
-                q = q.eq("team", team)
-        res = q.execute()
-        emails = {actor.email.lower()}
-        for row in res.data or []:
-            e = (row.get("email") or "").strip().lower()
-            if e:
-                emails.add(e)
-        return list(emails)
-    except Exception as exc:
-        print(f"visible_emails: {exc}")
+    staff = actor.staff or {}
+    team = staff.get("team")
+    sub = staff.get("sub_team")
+    if not team:
         return [actor.email.lower()]
+
+    def _fetch() -> list[str]:
+        try:
+            q = sb.table("nhan_su_sale").select("email").eq("is_active", True).eq("team", team)
+            if role == "leader" and sub:
+                q = q.eq("sub_team", sub)
+            res = q.execute()
+            return [
+                (row.get("email") or "").strip().lower()
+                for row in (res.data or [])
+                if (row.get("email") or "").strip()
+            ]
+        except Exception as exc:
+            print(f"visible_emails: {exc}")
+            return []
+
+    roster = _cached(f"roster_emails:{role}:{team}:{sub}", _rbac_cache_ttl(), _fetch)
+    return list({actor.email.lower(), *roster})
 
 
 def actor_ma_nv(actor: Actor) -> str | None:

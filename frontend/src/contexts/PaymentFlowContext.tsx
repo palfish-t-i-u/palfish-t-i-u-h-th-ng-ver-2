@@ -17,6 +17,7 @@ import {
   PR_TOTAL_WARN_THRESHOLD,
   type RawPrRow,
 } from "../lib/fetchAllPaymentRequests";
+import { PR_LIST_MODE, PR_SERVER_PAGE_SIZE } from "../lib/prListMode";
 import { useRefetchOnFocus } from "../hooks/useRefetchOnFocus";
 import { useRealtimeTable } from "../hooks/useRealtimeTable";
 import { useVisiblePoll } from "../hooks/useVisiblePoll";
@@ -30,6 +31,9 @@ import type {
   PatchPaymentRequestPayload,
   PaymentAttempt,
   PaymentRequest,
+  PrBadgeCountsResponse,
+  PrListQuery,
+  PrSummaryResponse,
 } from "../types/paymentRequest";
 import {
   buildCreateActiveRequestPayload,
@@ -114,6 +118,30 @@ type PaymentFlowContextValue = {
   nav: NavState;
   setNav: (next: NavState) => void;
   navigate: (view: PaymentFlowView, extra?: NavState) => void;
+
+  // --- Server-side pagination cho B1 (M3-T2, pr-list-server-pagination) ---
+  // Vô hại/rỗng khi PR_LIST_MODE==="load-all" (mặc định) — chỉ có ý nghĩa ở server mode.
+  /** Bộ lọc trang hiện tại (bucket/state/date/tvts/search/page) — set qua setListQuery. */
+  listQuery: PrListQuery;
+  setListQuery: (next: PrListQuery) => void;
+  /** 1 trang PR (≤50) khớp listQuery hiện tại — server mode dùng thay `requests` để render bảng. */
+  pageRows: PaymentRequest[];
+  pageTotal: number;
+  /** AR của các PR trong pageRows + PR đã hydrate rời (pinnedRows) — TÁCH khỏi `activeRequests`
+   * đầy đủ (LB6: B3 mounted độc lập cần `activeRequests` full, không được thay bằng bản trang). */
+  pageActiveRequests: ActiveRequest[];
+  /** chips/tabs/kpi/tvts/has_pending_qr cho toàn bộ tập khớp filter (không chỉ 1 trang). */
+  summary: PrSummaryResponse | null;
+  /** Tìm 1 PR: pageRows → pinnedRows (đã hydrate rời) → requests (full, nếu đã tải). */
+  findPr: (id: string) => PaymentRequest | null;
+  /** B2/B3/B4 gọi trong effect mount để đảm bảo `requests`/`activeRequests` đầy đủ vẫn được tải
+   * song song ở server mode (3 tab này chưa chuyển sang findPr/pageRows). Trả cleanup giảm đếm. */
+  ensureFullData: () => () => void;
+  /** Tải 1 PR đầy đủ ngoài trang đang xem (VD nav từ B3 tới PR tháng khác) → ghim vào pinnedRows. */
+  hydratePr: (id: string) => Promise<PaymentRequest | null>;
+  /** Ghim/bỏ ghim 1 PR đã có sẵn (row từ lưới) vào pinnedRows — không gọi mạng. */
+  pinPr: (row: PaymentRequest) => void;
+  unpinPr: (id: string) => void;
 };
 
 const PaymentFlowContext = createContext<PaymentFlowContextValue | null>(null);
@@ -142,9 +170,85 @@ export function PaymentFlowProvider({
   const pendingRefetchRef = useRef(false);
   const editingArIdRef = useRef<string | null>(null);
 
+  // --- Server-side pagination cho B1 (M3-T2) — chỉ đọc/ghi khi PR_LIST_MODE==="server" ---
+  const [listQuery, setListQueryState] = useState<PrListQuery>({ bucket: "tracking", page: 1 });
+  const [pageRows, setPageRows] = useState<PaymentRequest[]>([]);
+  const [pageTotal, setPageTotal] = useState(0);
+  const [pinnedRows, setPinnedRows] = useState<Map<string, PaymentRequest>>(new Map());
+  const [pageActiveRequests, setPageActiveRequests] = useState<ActiveRequest[]>([]);
+  const [summary, setSummary] = useState<PrSummaryResponse | null>(null);
+  const [badgeCountsServer, setBadgeCountsServer] = useState<PrBadgeCountsResponse | null>(null);
+  const fullLoadedRef = useRef(false);
+  const fullConsumersRef = useRef(0);
+  const hydrateSeqRef = useRef<Record<string, number>>({});
+  const pinnedRowsRef = useRef(pinnedRows);
+  useEffect(() => {
+    pinnedRowsRef.current = pinnedRows;
+  }, [pinnedRows]);
+
+  const setListQuery = useCallback((next: PrListQuery) => {
+    setListQueryState(next);
+  }, []);
+
   useEffect(() => {
     onViewChangeRef.current = onViewChange;
   }, [onViewChange]);
+
+  // Tải toàn bộ requests + activeRequests (hành vi GĐ1 gốc) — dùng làm nhánh
+  // load-all mode VÀ khi server mode có consumer full-data (B2/B3/B4 mounted).
+  const fetchFullData = useCallback(async (): Promise<{
+    requests: PaymentRequest[] | null;
+    activeRequests: ActiveRequest[] | null;
+    notes: string[];
+  }> => {
+    const notes: string[] = [];
+    let nextRequests: PaymentRequest[] | null = null;
+    try {
+      const all = await fetchAllPaymentRequests(async (limit, offset) => {
+        const response = await endpoints.paymentRequests.list({ limit, offset });
+        return { requests: (response.data.requests ?? []) as unknown as RawPrRow[], total: response.data.total };
+      });
+      nextRequests = all.requests.map((r) => normalizeRequest(fromApiPaymentRequest(r)));
+      if (all.incomplete) {
+        notes.push("Danh sách PR tải chưa đủ — sẽ tự đồng bộ lại, hoặc bấm tải lại trang.");
+      }
+      if (all.total !== null && all.total > PR_TOTAL_WARN_THRESHOLD) {
+        console.warn(
+          `[pr-list] total=${all.total} vượt ${PR_TOTAL_WARN_THRESHOLD} — trigger GĐ2 (slim list), xem docs/superpowers/plans/2026-07-11-pr-list-slim-lazy-gd2.md`
+        );
+      }
+    } catch {
+      notes.push("GET /payment-requests chưa sẵn sàng.");
+    }
+
+    let nextArs: ActiveRequest[] | null = null;
+    try {
+      const arRes = await endpoints.activeRequests.list();
+      const rows = Array.isArray(arRes.data) ? arRes.data : [];
+      nextArs = rows.map(fromApiActiveRequest);
+    } catch {
+      notes.push("GET /active-requests chưa sẵn sàng.");
+    }
+
+    return { requests: nextRequests, activeRequests: nextArs, notes };
+  }, []);
+
+  const applyFullData = useCallback((nextRequests: PaymentRequest[] | null, nextArs: ActiveRequest[] | null) => {
+    if (nextRequests) setRequests(nextRequests);
+    if (nextArs) {
+      const editId = editingArIdRef.current;
+      if (editId) {
+        setActiveRequests((prev) => {
+          const editing = prev.find((x) => x.id === editId);
+          if (!editing) return nextArs;
+          return nextArs.map((x) => (x.id === editId ? editing : x));
+        });
+      } else {
+        setActiveRequests(nextArs);
+      }
+    }
+    if (nextRequests || nextArs) fullLoadedRef.current = true;
+  }, []);
 
   const loadData = useCallback(async (options?: LoadDataOptions) => {
     if (options?.silent && inFlightRef.current) {
@@ -154,60 +258,87 @@ export function PaymentFlowProvider({
     inFlightRef.current = true;
     const seq = ++loadDataSeqRef.current;
     if (!options?.silent) setLoading(true);
-    const notes: string[] = [];
 
     try {
-      // Sprint 3 SePay-only: webhook tự flip status=paid, không cần poll.
-      // PayOS sync endpoint đã gate USE_PAYOS=false ở BE — bỏ call để tiết kiệm round-trip.
-
-      let nextRequests: PaymentRequest[] = [];
-      let prOk = false;
-      try {
-        const all = await fetchAllPaymentRequests(async (limit, offset) => {
-          const response = await endpoints.paymentRequests.list({ limit, offset });
-          return { requests: (response.data.requests ?? []) as unknown as RawPrRow[], total: response.data.total };
-        });
-        nextRequests = all.requests.map((r) => normalizeRequest(fromApiPaymentRequest(r)));
-        prOk = true;
-        if (all.incomplete) {
-          notes.push("Danh sách PR tải chưa đủ — sẽ tự đồng bộ lại, hoặc bấm tải lại trang.");
-        }
-        if (all.total !== null && all.total > PR_TOTAL_WARN_THRESHOLD) {
-          console.warn(
-            `[pr-list] total=${all.total} vượt ${PR_TOTAL_WARN_THRESHOLD} — trigger GĐ2 (slim list), xem docs/superpowers/plans/2026-07-11-pr-list-slim-lazy-gd2.md`
+      if (PR_LIST_MODE === "server") {
+        // --- Server mode: trang (≤50 dòng) + summary + badge-counts + AR của trang ---
+        const notes: string[] = [];
+        let nextPageRows: PaymentRequest[] = [];
+        let nextTotal = 0;
+        let pageOk = false;
+        try {
+          const res = await endpoints.paymentRequests.listPage({ ...listQuery, page_size: PR_SERVER_PAGE_SIZE });
+          nextPageRows = (res.data.requests ?? []).map((r) =>
+            normalizeRequest(fromApiPaymentRequest(r as unknown as Record<string, unknown>))
           );
+          nextTotal = res.data.total ?? 0;
+          pageOk = true;
+        } catch {
+          notes.push("GET /payment-requests?view=page chưa sẵn sàng.");
         }
-      } catch {
-        notes.push("GET /payment-requests chưa sẵn sàng.");
+
+        let nextSummary: PrSummaryResponse | null = null;
+        try {
+          nextSummary = (await endpoints.paymentRequests.summary(listQuery)).data;
+        } catch {
+          notes.push("GET /payment-requests/summary chưa sẵn sàng.");
+        }
+
+        let nextBadge: PrBadgeCountsResponse | null = null;
+        try {
+          nextBadge = (await endpoints.paymentRequests.badgeCounts()).data;
+        } catch {
+          notes.push("GET /payment-requests/badge-counts chưa sẵn sàng.");
+        }
+
+        let nextPageArs: ActiveRequest[] = [];
+        if (pageOk && nextPageRows.length > 0) {
+          try {
+            const ids = nextPageRows.map((r) => r.id).join(",");
+            const arRes = await endpoints.activeRequests.list({ pr_ids: ids });
+            const rows = Array.isArray(arRes.data) ? arRes.data : [];
+            nextPageArs = rows.map(fromApiActiveRequest);
+          } catch {
+            notes.push("GET /active-requests?pr_ids chưa sẵn sàng.");
+          }
+        }
+
+        // B2/B3/B4 vẫn cần requests/activeRequests đầy đủ khi mounted — tải song song,
+        // KHÔNG chờ tuần tự (mỗi consumer chỉ tăng chi phí khi thực sự có tab đó mở).
+        let fullResult: Awaited<ReturnType<typeof fetchFullData>> | null = null;
+        if (fullConsumersRef.current > 0) {
+          fullResult = await fetchFullData();
+          notes.push(...fullResult.notes);
+        }
+
+        if (seq !== loadDataSeqRef.current) return;
+
+        if (pageOk) {
+          setPageRows(nextPageRows);
+          setPageTotal(nextTotal);
+        }
+        if (nextSummary) setSummary(nextSummary);
+        if (nextBadge) setBadgeCountsServer(nextBadge);
+        setPageActiveRequests((prev) => {
+          // Giữ AR của các PR đã pin (hydratePr) không nằm trong trang hiện tại —
+          // tránh B3 "mất" AR của 1 PR ngoài trang đang mở drawer.
+          const pageIds = new Set(nextPageRows.map((r) => r.id));
+          const kept = prev.filter(
+            (ar) => ar.prId && !pageIds.has(ar.prId) && pinnedRowsRef.current.has(ar.prId)
+          );
+          return [...nextPageArs, ...kept];
+        });
+        if (fullResult) applyFullData(fullResult.requests, fullResult.activeRequests);
+
+        setApiNote(notes.join(" "));
+        if (!options?.silent) setLoading(false);
+        return;
       }
 
-      let nextArs: ActiveRequest[] = [];
-      let arOk = false;
-      try {
-        const arRes = await endpoints.activeRequests.list();
-        const rows = Array.isArray(arRes.data) ? arRes.data : [];
-        nextArs = rows.map(fromApiActiveRequest);
-        arOk = true;
-      } catch {
-        notes.push("GET /active-requests chưa sẵn sàng.");
-      }
-
-      // Drop stale poll: a newer loadData() has already started.
+      // --- Load-all mode (mặc định, hành vi GĐ1 gốc — KHÔNG đổi) ---
+      const { requests: nextRequests, activeRequests: nextArs, notes } = await fetchFullData();
       if (seq !== loadDataSeqRef.current) return;
-
-      if (prOk) setRequests(nextRequests);
-      if (arOk) {
-        const editId = editingArIdRef.current;
-        if (editId) {
-          setActiveRequests((prev) => {
-            const editing = prev.find((x) => x.id === editId);
-            if (!editing) return nextArs;
-            return nextArs.map((x) => (x.id === editId ? editing : x));
-          });
-        } else {
-          setActiveRequests(nextArs);
-        }
-      }
+      applyFullData(nextRequests, nextArs);
       setApiNote(notes.join(" "));
       if (!options?.silent) setLoading(false);
     } finally {
@@ -218,15 +349,97 @@ export function PaymentFlowProvider({
         if (!editingArIdRef.current) void loadData({ silent: true });
       }
     }
-  }, []);
+  }, [listQuery, fetchFullData, applyFullData]);
 
-  // Initial data load on mount.
+  // Load-all mode: tải full ngay khi mount. Server mode: xem effect [listQuery] dưới
+  // (chạy luôn ở lần mount đầu vì useEffect luôn fire ít nhất 1 lần).
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    void loadData();
+    if (PR_LIST_MODE === "load-all") {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      void loadData();
+    }
   }, [loadData]);
 
-  const pendingQr = useMemo(() => hasPendingQrPayments(requests), [requests]);
+  // Server mode: bộ lọc/trang đổi -> refetch. KHÔNG gộp chung effect với load-all
+  // ở trên để tránh double-fetch lúc mount (2 effect cùng gọi loadData 1 lần đầu).
+  useEffect(() => {
+    if (PR_LIST_MODE === "server") {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      void loadData();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [listQuery]);
+
+  const ensureFullData = useCallback(() => {
+    fullConsumersRef.current += 1;
+    if (PR_LIST_MODE === "server" && !fullLoadedRef.current) {
+      void loadData({ silent: true });
+    }
+    return () => {
+      fullConsumersRef.current = Math.max(0, fullConsumersRef.current - 1);
+    };
+  }, [loadData]);
+
+  const findPr = useCallback(
+    (id: string): PaymentRequest | null => {
+      return pageRows.find((r) => r.id === id) ?? pinnedRows.get(id) ?? requests.find((r) => r.id === id) ?? null;
+    },
+    [pageRows, pinnedRows, requests]
+  );
+
+  const hydratePr = useCallback(async (id: string): Promise<PaymentRequest | null> => {
+    const seq = (hydrateSeqRef.current[id] ?? 0) + 1;
+    hydrateSeqRef.current[id] = seq;
+    try {
+      const res = await endpoints.paymentRequests.get(id);
+      // Seq-guard per-id (bug QR cross-PR 26/6): 1 hydrate cũ hơn trả về SAU 1 hydrate
+      // mới hơn cho CÙNG id thì bỏ, không ghi đè dữ liệu mới bằng dữ liệu cũ.
+      if (hydrateSeqRef.current[id] !== seq) return null;
+      const pr = normalizeRequest(fromApiPaymentRequest(res.data));
+      setPinnedRows((prev) => {
+        const next = new Map(prev);
+        next.set(id, pr);
+        return next;
+      });
+      try {
+        const arRes = await endpoints.activeRequests.list({ pr_ids: id });
+        const rows = Array.isArray(arRes.data) ? arRes.data : [];
+        const ars = rows.map(fromApiActiveRequest);
+        if (hydrateSeqRef.current[id] === seq) {
+          setPageActiveRequests((prev) => [...prev.filter((a) => a.prId !== id), ...ars]);
+        }
+      } catch {
+        // AR hydrate lỗi không chặn hiển thị PR — trả pr, AR coi như chưa có.
+      }
+      return pr;
+    } catch {
+      return null;
+    }
+  }, []);
+
+  // Ghim 1 PR đã có sẵn (row từ lưới) vào pinnedRows — KHÔNG gọi mạng, chỉ giữ nó
+  // "sống" qua refetch nền để findPr không trả null (server mode). updateRequest đã
+  // đồng bộ pinnedRows nên snapshot được cập nhật khi có optimistic update.
+  const pinPr = useCallback((row: PaymentRequest) => {
+    setPinnedRows((prev) => {
+      const next = new Map(prev);
+      next.set(row.id, row);
+      return next;
+    });
+  }, []);
+  const unpinPr = useCallback((id: string) => {
+    setPinnedRows((prev) => {
+      if (!prev.has(id)) return prev;
+      const next = new Map(prev);
+      next.delete(id);
+      return next;
+    });
+  }, []);
+
+  const pendingQr = useMemo(() => {
+    if (PR_LIST_MODE === "server") return summary?.has_pending_qr ?? false;
+    return hasPendingQrPayments(requests);
+  }, [requests, summary]);
 
   // Refetch nền (poll / realtime / focus) — bỏ qua khi:
   // - vừa persist (cooldown 3s, tránh realtime echo ghi đè optimistic)
@@ -252,11 +465,24 @@ export function PaymentFlowProvider({
   useRefetchOnFocus(silentRefetch);
 
   const updateRequest = useCallback((id: string, updater: (r: PaymentRequest) => PaymentRequest) => {
+    // Cập nhật ĐỒNG THỜI mọi nơi PR có thể đang sống (requests / pageRows / pinnedRows,
+    // M3-T2) — set trên mảng/Map không chứa id là no-op vô hại, nên an toàn gọi cả 3 dù
+    // mode nào. Thiếu bước này: optimistic update ở server mode chỉ chạm `requests`
+    // (thường rỗng), UI trang/pin không thấy thay đổi cho tới lần refetch kế tiếp.
     setRequests((prev) => prev.map((r) => (r.id === id ? normalizeRequest(updater(r)) : r)));
+    setPageRows((prev) => prev.map((r) => (r.id === id ? normalizeRequest(updater(r)) : r)));
+    setPinnedRows((prev) => {
+      const current = prev.get(id);
+      if (!current) return prev;
+      const next = new Map(prev);
+      next.set(id, normalizeRequest(updater(current)));
+      return next;
+    });
   }, []);
 
   const updateActiveRequest = useCallback((id: string, updater: (ar: ActiveRequest) => ActiveRequest) => {
     setActiveRequests((prev) => prev.map((ar) => (ar.id === id ? updater(ar) : ar)));
+    setPageActiveRequests((prev) => prev.map((ar) => (ar.id === id ? updater(ar) : ar)));
   }, []);
 
   const setEditingArId = useCallback((id: string | null) => {
@@ -287,7 +513,7 @@ export function PaymentFlowProvider({
 
   const handleAddPayment = useCallback(
     async (requestId: string, payload: AddPaymentAttemptPayload) => {
-      const selected = requests.find((r) => r.id === requestId);
+      const selected = findPr(requestId);
       if (!selected) return null;
 
       const nextIdx =
@@ -319,7 +545,7 @@ export function PaymentFlowProvider({
         throw err;
       }
     },
-    [requests, updateRequest]
+    [findPr, updateRequest]
   );
 
   const confirmTransaction = useCallback(
@@ -388,7 +614,7 @@ export function PaymentFlowProvider({
   const rejectTransaction = useCallback(
     async (prId: string, paymentId: string, rejectReason?: string) => {
       // Snapshot trước khi optimistic để rollback nếu BE từ chối
-      const previousPayments = (requests.find((r) => r.id === prId)?.payments ?? null);
+      const previousPayments = (findPr(prId)?.payments ?? null);
       updateRequest(prId, (r) => ({
         ...r,
         payments: r.payments.map((p) =>
@@ -414,7 +640,7 @@ export function PaymentFlowProvider({
         }
       }
     },
-    [requests, updateRequest]
+    [findPr, updateRequest]
   );
 
   const handleCreateActiveRequest = useCallback(
@@ -691,14 +917,14 @@ export function PaymentFlowProvider({
     []
   );
 
-  const badgeCounts = useMemo(
-    () => ({
+  const badgeCounts = useMemo(() => {
+    if (PR_LIST_MODE === "server" && badgeCountsServer) return badgeCountsServer;
+    return {
       reconciliation: countAwaitingTransactions(requests),
       activation: countPendingAr(activeRequests),
       invoice: countPendingInvoice(activeRequests),
-    }),
-    [requests, activeRequests]
-  );
+    };
+  }, [requests, activeRequests, badgeCountsServer]);
 
   const navigate = useCallback((view: PaymentFlowView, extra?: NavState) => {
     setNav(extra ?? {});
@@ -739,6 +965,17 @@ export function PaymentFlowProvider({
       nav,
       setNav,
       navigate,
+      listQuery,
+      setListQuery,
+      pageRows,
+      pageTotal,
+      pageActiveRequests,
+      summary,
+      findPr,
+      ensureFullData,
+      hydratePr,
+      pinPr,
+      unpinPr,
     }),
     [
       requests,
@@ -766,6 +1003,17 @@ export function PaymentFlowProvider({
       patchCourseOrderId,
       requestInvoiceForCourse,
       issueInvoiceForCourse,
+      listQuery,
+      setListQuery,
+      pageRows,
+      pageTotal,
+      pageActiveRequests,
+      summary,
+      findPr,
+      ensureFullData,
+      hydratePr,
+      pinPr,
+      unpinPr,
       badgeCounts,
       nav,
       navigate,

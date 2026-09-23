@@ -224,8 +224,11 @@ function InvoiceDetailDrawer({
 
 export default function InvoiceRequestTab() {
   const { readOnly } = usePermission("module4");
-  const { activeRequests, requests, issueInvoiceForCourse, navigate, nav, setNav, apiNote } =
+  const { activeRequests, requests, issueInvoiceForCourse, navigate, nav, setNav, apiNote, ensureFullData } =
     usePaymentFlow();
+  // Server-side pagination (M3-T5, pr-list-server-pagination): B4 chưa chuyển sang
+  // findPr/pageRows nên vẫn cần `requests`/`activeRequests` đầy đủ.
+  useEffect(() => ensureFullData(), [ensureFullData]);
   const [tab, setTab] = useState<"pending" | "issued">("pending");
   const [search, setSearch] = useState("");
   const [dateRange, setDateRange] = useState<DateRange>(EMPTY_RANGE);

@@ -15,4 +15,6 @@ ENV PYTHONPATH=/app
 
 EXPOSE 8000
 
+# Cache RBAC in-process (rbac.py _TTL_CACHE) giả định 1 worker; nếu bật --workers N /
+# scale >1 instance phải đổi sang shared cache (Redis) kẻo roster stale tới hết TTL.
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]

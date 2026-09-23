@@ -1,0 +1,62 @@
+[
+  {
+    "input": "Như Ý",
+    "expected": "nhu y"
+  },
+  {
+    "input": "Đặng",
+    "expected": "dang"
+  },
+  {
+    "input": "ĐỖ",
+    "expected": "do"
+  },
+  {
+    "input": "Hà Bảo Ngân",
+    "expected": "ha bao ngan"
+  },
+  {
+    "input": "Nguyễn Thị Phương Thảo",
+    "expected": "nguyen thi phuong thao"
+  },
+  {
+    "input": "PR-2026-0001",
+    "expected": "pr-2026-0001"
+  },
+  {
+    "input": "84-396249966",
+    "expected": "84-396249966"
+  },
+  {
+    "input": "",
+    "expected": ""
+  },
+  {
+    "input": null,
+    "expected": ""
+  },
+  {
+    "input": null,
+    "expected": ""
+  },
+  {
+    "input": "Trường",
+    "expected": "truong"
+  },
+  {
+    "input": "Đường Nguyễn Trãi",
+    "expected": "duong nguyen trai"
+  },
+  {
+    "input": "Vũ Thị Bích Thuận",
+    "expected": "vu thi bich thuan"
+  },
+  {
+    "input": "Bùi Thị Hạnh - Bùi Thị Hạnh 2",
+    "expected": "bui thi hanh - bui thi hanh 2"
+  },
+  {
+    "input": "a\\b%c_d",
+    "expected": "a\\b%c_d"
+  }
+]

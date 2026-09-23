@@ -66,6 +66,15 @@ const makeFlow = (requests: PaymentRequest[]) => ({
   deleteActiveRequest: vi.fn(),
   nav: {},
   setNav: vi.fn(),
+  // Server-side pagination (M3, pr-list-server-pagination) — test này chạy load-all
+  // mode (không set VITE_PR_LIST_MODE) nên chỉ cần findPr mirror requests.find().
+  setListQuery: vi.fn(),
+  pageRows: [],
+  pageTotal: 0,
+  pageActiveRequests: [],
+  summary: null,
+  findPr: (id: string) => requests.find((r) => r.id === id) ?? null,
+  hydratePr: vi.fn(async () => null),
 });
 let mockFlow = makeFlow(ALL_PRS);
 

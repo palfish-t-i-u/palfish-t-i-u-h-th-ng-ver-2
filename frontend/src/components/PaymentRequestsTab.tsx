@@ -7,6 +7,7 @@ import useIsMobile from "../hooks/useIsMobile";
 import { usePermission } from "../hooks/usePermission";
 import { endpoints } from "../lib/api";
 import { compressImageFile } from "../lib/imageCompress";
+import { PR_LIST_MODE, PR_SERVER_PAGE_SIZE } from "../lib/prListMode";
 import type {
   ActiveRequest,
   AddPaymentAttemptPayload,
@@ -69,7 +70,19 @@ export default function PaymentRequestsTab() {
     reportComplete,
     nav,
     setNav,
+    // Server-side pagination (M3-T3, pr-list-server-pagination) — vô hại khi
+    // PR_LIST_MODE==="load-all" (mặc định): setListQuery/pageRows/... không được đọc.
+    setListQuery,
+    pageRows,
+    pageTotal,
+    pageActiveRequests,
+    summary,
+    findPr,
+    hydratePr,
+    pinPr,
+    unpinPr,
   } = usePaymentFlow();
+  const isServerMode = PR_LIST_MODE === "server";
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -82,6 +95,32 @@ export default function PaymentRequestsTab() {
   // F5/thoát app/chuyển tab là về mặc định (spec: bộ lọc kiểu Google Sheet)
   const [tvtsSelected, setTvtsSelected] = useState<ReadonlySet<string>>(new Set());
   const [page, setPage] = useState(1);
+  // Search gửi server debounce 300ms (M3-T3) — KHÔNG debounce ô input hiển thị (search state
+  // ở trên vẫn cập nhật ngay khi gõ, chỉ giá trị gửi API mới trễ, tránh gõ giật/nháy bảng).
+  const [debouncedSearch, setDebouncedSearch] = useState(search);
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search), 300);
+    return () => clearTimeout(t);
+  }, [search]);
+
+  // Đẩy bộ lọc hiện tại lên context (server mode) — chỉ áp dụng khi bật flag.
+  // Đổi filter ở page>1 push listQuery 2 lần (page cũ→1); seq-guard `loadDataSeqRef`
+  // loại kết quả cũ, chỉ tốn 1 request thừa — chấp nhận (vô hại nhờ seq-guard).
+  useEffect(() => {
+    if (!isServerMode) return;
+    setListQuery({
+      bucket: tab,
+      state: status === "all" ? undefined : status,
+      dateFrom: dateRange.from || undefined,
+      dateTo: dateRange.to || undefined,
+      isTest: hideTest ? false : undefined,
+      tvts: tvtsSelected.size > 0 ? [...tvtsSelected] : undefined,
+      // min-length search gate: 1 ký tự trả gần toàn bộ + tránh trgm scan vô ích.
+      q: debouncedSearch.trim().length >= 2 ? debouncedSearch.trim() : undefined,
+      page,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isServerMode, tab, status, dateRange, hideTest, tvtsSelected, debouncedSearch, page]);
   const [createOpen, setCreateOpen] = useState(false);
   const [cancelTarget, setCancelTarget] = useState<PaymentRequest | null>(null);
   const [qrView, setQrView] = useState<{ qr: PaymentAttempt; request: PaymentRequest } | null>(null);
@@ -104,21 +143,36 @@ export default function PaymentRequestsTab() {
     images: [],
   });
 
-  const arByPrId = useMemo(() => buildArByPrId(activeRequests), [activeRequests]);
+  const arByPrId = useMemo(
+    () => buildArByPrId(isServerMode ? pageActiveRequests : activeRequests),
+    [isServerMode, pageActiveRequests, activeRequests]
+  );
 
   useEffect(() => {
     if (!nav.openPrId) return;
-    const pr = requests.find((r) => r.id === nav.openPrId);
-    if (!pr) return;
-    setSelectedId(nav.openPrId);
-    setDrawerOpen(true);
-    setNav({});
-  }, [nav.openPrId, requests, setNav]);
+    const id = nav.openPrId;
+    const pr = findPr(id);
+    if (pr) {
+      setSelectedId(id);
+      setDrawerOpen(true);
+      setNav({});
+      return;
+    }
+    // Không có sẵn trong pageRows/pinnedRows/requests (server mode, PR ngoài trang
+    // đang xem) — hydrate rời rồi mở, thay vì im lặng bỏ qua như trước.
+    let cancelled = false;
+    void hydratePr(id).then((hydrated) => {
+      if (cancelled || !hydrated) return;
+      setSelectedId(id);
+      setDrawerOpen(true);
+      setNav({});
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [nav.openPrId, findPr, hydratePr, setNav]);
 
-  const selected = useMemo(
-    () => requests.find((r) => r.id === selectedId) || null,
-    [requests, selectedId]
-  );
+  const selected = useMemo(() => findPr(selectedId ?? "") ?? null, [findPr, selectedId]);
 
   const billModalQr = useMemo(() => {
     if (!billModal.open || !selected) return null;
@@ -237,7 +291,51 @@ export default function PaymentRequestsTab() {
     [trackingRequests, createdRequests, cancelledRequests]
   );
 
+  // --- Server mode (M3-T3): chips/tabs/tvtsOptions/pageSlice/total từ `summary` +
+  // `pageRows` thay vì tính từ mảng client. Mirror ĐÚNG hình dạng để JSX dưới không
+  // cần rẽ nhánh (chỉ chọn nguồn qua biến effective*).
+  const chipsServer = useMemo(
+    () => [
+      { id: "all" as StatusFilter, label: "Tất cả", count: summary?.chips.all ?? 0 },
+      { id: "pending" as StatusFilter, label: "Chưa TT", count: summary?.chips.pending ?? 0, color: "var(--text-2)" },
+      { id: "short" as StatusFilter, label: "Thiếu", count: summary?.chips.short ?? 0, color: "var(--danger)" },
+      { id: "done" as StatusFilter, label: "Đủ", count: summary?.chips.done ?? 0, color: "var(--success)" },
+      { id: "over" as StatusFilter, label: "Thừa", count: summary?.chips.over ?? 0, color: "var(--warning)" },
+    ],
+    [summary]
+  );
+
+  const tabsServer = useMemo(
+    () => [
+      { key: "tracking" as RequestBucket, label: "Đang theo dõi", icon: "Wallet" as const, count: summary?.tabs.tracking ?? 0 },
+      { key: "created" as RequestBucket, label: "Gói học đã tạo", icon: "Sparkle" as const, count: summary?.tabs.created ?? 0 },
+      { key: "cancelled" as RequestBucket, label: "Đã huỷ", icon: "XCircle" as const, count: summary?.tabs.cancelled ?? 0 },
+    ],
+    [summary]
+  );
+
+  // Sort A→Z "vi" + "Không rõ TVTS" cuối — mirror đúng tail của deriveTvtsOptions
+  // (quyết định (c) đã chốt với anh Minh: RPC KHÔNG sort, FE tự sort).
+  const tvtsOptionsServer = useMemo(() => {
+    const options = (summary?.tvts ?? []).map((t) => ({ key: t.email, label: t.label, count: t.count }));
+    return [...options].sort((a, b) => {
+      if (a.key === "__unknown_tvts__") return 1;
+      if (b.key === "__unknown_tvts__") return -1;
+      return a.label.localeCompare(b.label, "vi");
+    });
+  }, [summary]);
+
+  const effectiveChips = isServerMode ? chipsServer : chips;
+  const effectiveTabs = isServerMode ? tabsServer : tabs;
+  const effectiveTvtsOptions = isServerMode ? tvtsOptionsServer : tvtsOptions;
+  const effectivePageSize = isServerMode ? PR_SERVER_PAGE_SIZE : PAGE_SIZE;
+  const effectiveTotal = isServerMode ? pageTotal : filtered.length;
+  const effectivePageSlice = isServerMode
+    ? { rows: pageRows, page, totalPages: Math.max(1, Math.ceil(pageTotal / PR_SERVER_PAGE_SIZE)) }
+    : pageSlice;
+
   const handleSelect = (request: PaymentRequest) => {
+    if (isServerMode) pinPr(request); // giữ PR sống qua refetch nền — tránh drawer trắng (server mode)
     setSelectedId(request.id);
     setDrawerOpen(true);
   };
@@ -248,7 +346,7 @@ export default function PaymentRequestsTab() {
   };
 
   const handleUpdatePr = async (next: PaymentRequest, leadPatch?: LeadPatchSnake) => {
-    const previous = requests.find((r) => r.id === next.id) ?? null;
+    const previous = findPr(next.id) ?? null;
     // Bug 1A-08: cảnh báo nếu sửa target nhỏ hơn số đã thu — PR sẽ chuyển "Thừa"
     if (previous && next.target !== previous.target && next.target < previous.received) {
       const ok = window.confirm(
@@ -287,7 +385,7 @@ export default function PaymentRequestsTab() {
       const savedRaw = res.data?.payment_request;
       if (savedRaw) {
         const saved = normalizeRequest(fromApiPaymentRequest(savedRaw));
-        const prev = requests.find((r) => r.id === next.id);
+        const prev = findPr(next.id);
         if (prev) {
           // Response PATCH không có sale_name — giữ lại tên TVTS đã load từ danh sách
           saved.saleName = saved.saleName || prev.saleName;
@@ -342,7 +440,7 @@ export default function PaymentRequestsTab() {
     const cancelledAt = nowStamp();
     const reason = "Sales huỷ lần thanh toán";
     // Snapshot trước optimistic để rollback nếu BE từ chối
-    const previous = requests.find((r) => r.id === prId) ?? null;
+    const previous = findPr(prId) ?? null;
 
     updateRequest(prId, (r) => ({
       ...r,
@@ -471,7 +569,7 @@ export default function PaymentRequestsTab() {
     if (!selected) return;
     const prId = selected.id;
     // Snapshot trước optimistic — nếu BE từ chối thì rollback để KPI không sai
-    const previous = requests.find((r) => r.id === prId) ?? null;
+    const previous = findPr(prId) ?? null;
     updateRequest(prId, (r) => ({
       ...r,
       payments: r.payments.map((p: PaymentAttempt) =>
@@ -716,7 +814,7 @@ export default function PaymentRequestsTab() {
     const id = cancelTarget.id;
     // Snapshot PR trước optimistic — nếu BE từ chối (vì PR đã có lần TT paid hay
     // đã nhận tiền), rollback để PR không bị "cancelled giả".
-    const previous = requests.find((r) => r.id === id) ?? null;
+    const previous = findPr(id) ?? null;
     const wasDrawerOpen = selected?.id === id && drawerOpen;
     updateRequest(id, (r) => ({
       ...r,
@@ -740,7 +838,7 @@ export default function PaymentRequestsTab() {
 
   const handleRestore = async (request: PaymentRequest) => {
     // Snapshot trước optimistic — nếu BE từ chối thì rollback
-    const previous = requests.find((r) => r.id === request.id) ?? null;
+    const previous = findPr(request.id) ?? null;
     updateRequest(request.id, (r) => ({
       ...r,
       cancelledAt: null,
@@ -808,13 +906,18 @@ export default function PaymentRequestsTab() {
           </div>
         </div>
 
-        {tab !== "cancelled" && <PaymentRequestKpiCards requests={trackingRequests} />}
+        {tab !== "cancelled" && (
+          <PaymentRequestKpiCards
+            requests={isServerMode ? [] : trackingRequests}
+            kpi={isServerMode ? summary?.kpi : undefined}
+          />
+        )}
 
         <PaymentRequestToolbar
           search={search}
           status={status}
           dateRange={dateRange}
-          chips={chips}
+          chips={effectiveChips}
           showChips={tab !== "cancelled"}
           hideTest={hideTest}
           onSearch={setSearch}
@@ -824,7 +927,7 @@ export default function PaymentRequestsTab() {
           tvtsFilter={
             showTvts ? (
               <TvtsFilterDropdown
-                options={tvtsOptions}
+                options={effectiveTvtsOptions}
                 selected={tvtsSelected}
                 onChange={setTvtsSelected}
               />
@@ -848,16 +951,16 @@ export default function PaymentRequestsTab() {
         )}
 
         <PaymentRequestTable
-          requests={pageSlice.rows}
-          total={filtered.length}
-          page={pageSlice.page}
-          totalPages={pageSlice.totalPages}
-          pageSize={PAGE_SIZE}
+          requests={effectivePageSlice.rows}
+          total={effectiveTotal}
+          page={effectivePageSlice.page}
+          totalPages={effectivePageSlice.totalPages}
+          pageSize={effectivePageSize}
           onPageChange={setPage}
           selectedId={drawerOpen ? selected?.id ?? null : null}
           tab={tab}
           onTabChange={setTab}
-          tabs={tabs}
+          tabs={effectiveTabs}
           onSelect={handleSelect}
           onCancelClick={setCancelTarget}
           onRestoreClick={handleRestore}
@@ -876,7 +979,10 @@ export default function PaymentRequestsTab() {
       <PaymentRequestDetailDrawer
         request={selected}
         open={drawerOpen}
-        onClose={() => setDrawerOpen(false)}
+        onClose={() => {
+          if (isServerMode && selectedId) unpinPr(selectedId);
+          setDrawerOpen(false);
+        }}
         onUpdatePr={handleUpdatePr}
         onAddPayment={handleAddPayment}
         onCancelPayment={handleCancelPayment}

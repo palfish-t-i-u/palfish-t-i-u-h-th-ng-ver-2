@@ -15,6 +15,7 @@ from pydantic import BaseModel
 
 from rbac import (
     _rank,
+    invalidate_roster,
     require_min_role,
     resolve_actor,
     staff_to_profile,
@@ -582,6 +583,7 @@ def register_admin_routes(app, get_supabase):
             if patch:
                 raise HTTPException(400, "Chưa có hồ sơ nhân sự — cần ghép CRM trước")
 
+        invalidate_roster()
         actor = resolve_actor(sb, authorization, allow_unactivated=True)
         return staff_to_profile(actor)
 
@@ -658,6 +660,7 @@ def register_admin_routes(app, get_supabase):
         )
         if not res.data:
             raise HTTPException(404, "Không tìm thấy nhân sự CRM")
+        invalidate_roster()
         return _sale_row_to_api(res.data[0])
 
     @app.post("/admin/sales/sync")
@@ -677,6 +680,7 @@ def register_admin_routes(app, get_supabase):
             ).execute()
 
         _deactivate_non_vn_staff(sb)
+        invalidate_roster()
 
         return {
             "synced": len(rows),
@@ -941,6 +945,7 @@ def register_admin_routes(app, get_supabase):
         except Exception as exc:
             raise HTTPException(500, str(exc)) from exc
 
+        invalidate_roster()
         return {"ok": True, "userId": user_id}
 
     @app.post("/admin/auth-users")
@@ -1014,6 +1019,7 @@ def register_admin_routes(app, get_supabase):
             except Exception as exc:
                 print(f"[admin] create_user CRM link failed: {exc}")
 
+        invalidate_roster()
         return {"ok": True, "userId": new_id}
 
     @app.post("/admin/auth-users/bulk-delete")
@@ -1096,6 +1102,7 @@ def register_admin_routes(app, get_supabase):
                 })
 
         # Return partial success tracking
+        invalidate_roster()
         return {
             "status": "success",
             "deleted_count": len(deleted),
