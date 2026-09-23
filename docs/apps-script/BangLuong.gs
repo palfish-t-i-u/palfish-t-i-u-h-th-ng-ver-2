@@ -35,9 +35,13 @@ const BQ_SQL = [
   "  t.bonus_com AS thuong_com,",
   "  t.bao_hiem_xa_hoi AS bao_hiem,",
   "  t.gmv_vnd AS gmv,",
+  "  COALESCE(t.ty_le_com, 0) AS ty_le_com,",
   "  COALESCE(t.gmv_ban_moi, 0) AS gmv_ban_moi,",
+  "  COALESCE(t.ty_le_com_ban_moi, 0) AS ty_le_com_ban_moi,",
   "  COALESCE(t.gmv_gioi_thieu, 0) AS gmv_gioi_thieu,",
+  "  COALESCE(t.ty_le_com_gioi_thieu, 0) AS ty_le_com_gioi_thieu,",
   "  COALESCE(t.gmv_tai_ky, 0) AS gmv_tai_ky,",
+  "  COALESCE(t.ty_le_com_tai_ky, 0) AS ty_le_com_tai_ky,",
   "  t.tro_cap_an_trua AS an_trua,",
   "  t.tro_cap_may_tinh AS may_tinh,",
   "  COALESCE(t.tro_cap_xe_trach_nhiem,0) AS xe_pc,",
@@ -79,10 +83,14 @@ const COLS = [
   { key:'lcb_ngay_cong', h:'LCB theo ngày công',               role:'auto',  src:'lcb_theo_ngay_cong' },
   { key:'thuong_com',    h:'Thưởng COM',                       role:'input', src:'thuong_com' },
   { key:'bao_hiem',      h:'Bảo hiểm',                         role:'auto',  src:'bao_hiem' },
-  { key:'gmv',           h:'GMV',                              role:'auto',  src:'gmv' },
-  { key:'gmv_ban_moi',   h:'GMV bán mới',                      role:'auto',  src:'gmv_ban_moi' },
-  { key:'gmv_gioi_thieu',h:'GMV giới thiệu',                   role:'auto',  src:'gmv_gioi_thieu' },
-  { key:'gmv_tai_ky',    h:'GMV tái ký',                        role:'auto',  src:'gmv_tai_ky' },
+  { key:'gmv',                h:'GMV',                              role:'auto',  src:'gmv' },
+  { key:'ty_le_com',         h:'% COM',                            role:'auto',  src:'ty_le_com' },
+  { key:'gmv_ban_moi',       h:'GMV bán mới',                      role:'auto',  src:'gmv_ban_moi' },
+  { key:'ty_le_com_ban_moi', h:'% COM bán mới',                    role:'auto',  src:'ty_le_com_ban_moi' },
+  { key:'gmv_gioi_thieu',    h:'GMV giới thiệu',                   role:'auto',  src:'gmv_gioi_thieu' },
+  { key:'ty_le_com_gioi_thieu',h:'% COM giới thiệu',               role:'auto',  src:'ty_le_com_gioi_thieu' },
+  { key:'gmv_tai_ky',        h:'GMV tái ký',                        role:'auto',  src:'gmv_tai_ky' },
+  { key:'ty_le_com_tai_ky',  h:'% COM tái ký',                     role:'auto',  src:'ty_le_com_tai_ky' },
   { key:'an_trua',       h:'Hỗ trợ ăn trưa',                   role:'auto',  src:'an_trua' },
   { key:'may_tinh',      h:'Tiền hỗ trợ máy tính',             role:'auto',  src:'may_tinh' },
   { key:'xe_pc',         h:'Hỗ trợ tiền xe + PC trách nhiệm',  role:'input', src:'xe_pc' },
@@ -101,7 +109,7 @@ const COLS = [
 function onOpen(){
   var ui = SpreadsheetApp.getUi();
   ui.createMenu('⚙ Bảng lương')
-    .addItem('🔄 (1) Cập nhật bảng lương', 'capNhatTuBigQuery')
+    .addItem('🔄 (1) Cập nhật bảng lương', 'chayTinhLuong')
     .addItem('📋 (2) Đối soát với bảng lương mẫu', 'doiSoatLuong')
     .addSeparator()
     .addItem('👁 Xem trước phiếu lương (dòng đang chọn)', 'xemTruocPhieuLuong')
@@ -359,10 +367,12 @@ function capNhatTuBigQuery(){
 const COL_WIDTH = {
   stt:38, code:72, team:80, name:150, chuc_danh:135, employee_type:80, phong_ban:110,
   cong:52, note:150,
+  ty_le_com:75, ty_le_com_ban_moi:75, ty_le_com_gioi_thieu:75, ty_le_com_tai_ky:75,
 };
 const MONEY_KEYS = ['tong_lt','tong_luong','luong_cb','lcb_ngay_cong','thuong_com','bao_hiem',
                     'gmv','gmv_ban_moi','gmv_gioi_thieu','gmv_tai_ky',
                     'an_trua','may_tinh','xe_pc','khau_tru_thue','bu_tien'];
+const PERCENT_KEYS = ['ty_le_com','ty_le_com_ban_moi','ty_le_com_gioi_thieu','ty_le_com_tai_ky'];
 
 function formatSheet_(main, numRows){
   const numCols = COLS.length;
@@ -375,6 +385,7 @@ function formatSheet_(main, numRows){
 
   // Số tiền: #,##0 (âm hiện -X). Giá trị vẫn là SỐ → không ảnh hưởng lookup/BQ.
   MONEY_KEYS.forEach(function(k){ main.getRange(2, colIndex(k), numRows, 1).setNumberFormat('#,##0'); });
+  PERCENT_KEYS.forEach(function(k){ main.getRange(2, colIndex(k), numRows, 1).setNumberFormat('0.0%'); });
 
   // Màu theo role
   COLS.forEach(function(col, i){
@@ -421,6 +432,7 @@ function queryBigQuery_(){
   var numericKeys = ['luong_co_ban','cong','lcb_theo_ngay_cong','thuong_com','bao_hiem','gmv',
                      'an_trua','may_tinh','xe_pc','bu_tien','thue_tncn',
                      'gmv_ban_moi','gmv_gioi_thieu','gmv_tai_ky',
+                     'ty_le_com','ty_le_com_ban_moi','ty_le_com_gioi_thieu','ty_le_com_tai_ky',
                      'so_npt','an_ca_van','dien_thoai_van'];
   var out = [];
   (job.rows||[]).forEach(function(row){
@@ -549,9 +561,13 @@ function luuArchiveBangLuong() {
       { h: 'Thưởng COM',                       key: 'thuong_com',     type: 'INTEGER' },
       { h: 'Bảo hiểm',                         key: 'bao_hiem',       type: 'INTEGER' },
       { h: 'GMV',                              key: 'gmv',            type: 'INTEGER' },
+      { h: '% COM',                            key: 'ty_le_com',      type: 'FLOAT'   },
       { h: 'GMV bán mới',                      key: 'gmv_ban_moi',    type: 'INTEGER' },
+      { h: '% COM bán mới',                    key: 'ty_le_com_ban_moi',    type: 'FLOAT' },
       { h: 'GMV giới thiệu',                   key: 'gmv_gioi_thieu', type: 'INTEGER' },
+      { h: '% COM giới thiệu',                 key: 'ty_le_com_gioi_thieu', type: 'FLOAT' },
       { h: 'GMV tái ký',                       key: 'gmv_tai_ky',     type: 'INTEGER' },
+      { h: '% COM tái ký',                     key: 'ty_le_com_tai_ky',     type: 'FLOAT' },
       { h: 'Hỗ trợ ăn trưa',                  key: 'an_trua',        type: 'INTEGER' },
       { h: 'Tiền hỗ trợ máy tính',            key: 'may_tinh',       type: 'INTEGER' },
       { h: 'Hỗ trợ tiền xe + PC trách nhiệm', key: 'xe_pc',          type: 'INTEGER' },
@@ -635,6 +651,8 @@ function luuArchiveBangLuong() {
     lk.releaseLock();
   }
 }
+
+/* ================== XUẤT EXCEL ================== */
 
 function xuatExcelTheoTeam(){
   var html = HtmlService.createHtmlOutputFromFile('Xuất file phòng ban')

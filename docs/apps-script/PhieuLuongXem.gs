@@ -26,7 +26,8 @@ var PV_TAG_ALIAS = {
 };
 
 // Keys to keep decimal (sync with formatValue in PayslipDetail.tsx)
-var PV_KEEP_DECIMAL_ = { 'Công': true, 'Tỉ lệ đạt KPI': true, '% Com ≥100%': true };
+var PV_KEEP_DECIMAL_ = { 'Công': true, 'Tỉ lệ đạt KPI': true, '% Com ≥100%': true,
+  '% COM': true, '% COM bán mới': true, '% COM giới thiệu': true, '% COM tái ký': true };
 
 // Sentinel: caller must filter out rows where pvFmt_ returns this value
 var PV_BO_DONG_ = '__BO_DONG__';
