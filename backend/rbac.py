@@ -183,13 +183,11 @@ def _claims_to_user(claims: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _auth_user_from_jwt(token: str) -> dict[str, Any] | None:
-    """Verify JWT LOCAL — 0 network, bỏ ~400ms/request (dính lên MỌI endpoint).
-    Claims Supabase đã chứa email + user_metadata + sub.
-    1) ES256 qua JWKS public key (token ký bằng signing key ECC hiện tại).
-    2) HS256 qua SUPABASE_JWT_SECRET nếu đã set (token legacy chưa roll sang ECC).
-    3) Fallback: _auth_user_from_jwt_remote (gọi Auth API — chậm, cho token lạ/JWKS lỗi).
-    Bảo mật giữ nguyên: verify chữ ký + exp + aud='authenticated' ở cả 2 nhánh."""
+def _auth_user_from_jwt_local(token: str) -> dict[str, Any] | None:
+    """Verify JWT LOCAL — 0 network. Claims Supabase chứa email + user_metadata + sub.
+    1) ES256 qua JWKS public key (signing key ECC hiện tại).
+    2) HS256 qua SUPABASE_JWT_SECRET nếu set (token legacy chưa roll sang ECC).
+    Bảo mật: verify chữ ký + exp + aud='authenticated'. None nếu không verify được."""
     # 1) ES256 (JWKS public key)
     client = _get_jwks_client()
     if client is not None:
@@ -211,7 +209,23 @@ def _auth_user_from_jwt(token: str) -> dict[str, Any] | None:
             ))
         except Exception:
             pass
-    # 3) Fallback remote
+    return None
+
+
+def _auth_user_from_jwt(token: str) -> dict[str, Any] | None:
+    """Verify local trước (nhanh, bỏ ~400ms/request); token lạ/JWKS lỗi -> remote."""
+    local = _auth_user_from_jwt_local(token)
+    if local is not None:
+        # G1b: is_activated bị ĐÓNG BĂNG trong token (lúc login). Nếu token ghi "chưa
+        # kích hoạt", hỏi LIVE Supabase để bắt kịp admin vừa duyệt (khỏi user phải
+        # login lại). Chỉ nhóm user chưa-duyệt (hiếm) mới tốn network; user đã duyệt
+        # (99,9%) đọc local nhanh như thường.
+        if not _is_truthy((local.get("user_metadata") or {}).get("is_activated")):
+            live = _auth_user_from_jwt_remote(token)
+            if live is not None:
+                return live
+        return local
+    # Verify local thất bại -> fallback remote (giữ đúng hành vi cũ)
     return _auth_user_from_jwt_remote(token)
 
 

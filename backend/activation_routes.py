@@ -2468,6 +2468,10 @@ def register_activation_routes(app, supabase_factory):
             None,
             description="CSV pr_id (≤100) — lọc AR theo tập PR cụ thể (M2-T6, dùng khi FE hydrate trang PR-list server mode)",
         ),
+        light: bool = Query(
+            False,
+            description="G4: B1 grid bỏ enrich tien_ve + credit (chỉ B3/B4 render) → cắt ~1.2s. B3/B4 KHÔNG dùng light.",
+        ),
         authorization: str | None = Header(None),
     ):
         """Danh sách AR — snake_case, kèm payment_request snippet cho FE Activation/Invoice."""
@@ -2547,15 +2551,16 @@ def register_activation_routes(app, supabase_factory):
         with ThreadPoolExecutor(max_workers=4) as _ex:
             _f_pr = _ex.submit(_fetch_prs_by_ids, sb, pr_ids)
             _f_snm = _ex.submit(_sale_name_map, sb)
-            _f_tv = _ex.submit(_tien_ve_map, sb, ar_ids)
-            _f_credit = _ex.submit(_credit_hold_map, sb, pr_ids)
+            # G4: light (B1) bỏ tien_ve + credit — 2 map nặng nhất, chỉ B3/B4 cần.
+            _f_tv = None if light else _ex.submit(_tien_ve_map, sb, ar_ids)
+            _f_credit = None if light else _ex.submit(_credit_hold_map, sb, pr_ids)
             pr_map = _f_pr.result()
             try:
                 snm = _f_snm.result()
             except Exception:
                 snm = {}
-            tv_map = _f_tv.result()
-            credit_map = _f_credit.result()
+            tv_map = _f_tv.result() if _f_tv is not None else {}
+            credit_map = _f_credit.result() if _f_credit is not None else {}
         return [
             _serialize_ar(
                 r,

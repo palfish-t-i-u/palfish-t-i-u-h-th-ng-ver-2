@@ -240,7 +240,7 @@ export const endpoints = {
   activeRequests: {
     // pr_ids (M2-T6, pr-list-server-pagination): CSV pr_id — lọc AR theo tập PR cụ thể
     // (dùng khi FE server mode hydrate AR cho 1 trang PR đang xem, thay vì tải hết).
-    list: (params?: { status?: string; pr_ids?: string }) =>
+    list: (params?: { status?: string; pr_ids?: string; light?: number }) =>
       api.get<ActiveRequestApiRow[]>("/api/v1/active-requests", { params }),
     get: (arId: string) =>
       api.get<ActiveRequestApiRow>(`/api/v1/active-requests/${arId}`),

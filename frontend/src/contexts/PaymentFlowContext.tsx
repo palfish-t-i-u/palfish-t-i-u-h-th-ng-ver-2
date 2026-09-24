@@ -293,7 +293,9 @@ export function PaymentFlowProvider({
         if (pageOk && nextPageRows.length > 0) {
           try {
             const ids = nextPageRows.map((r) => r.id).join(",");
-            const arRes = await endpoints.activeRequests.list({ pr_ids: ids });
+            // G4: light=1 — B1 grid chỉ cần AR presence + uids_data, KHÔNG cần tien_ve/credit
+            // (chỉ B3/B4 render) → BE bỏ 2 map nặng, cắt ~1.2s. B3/B4 gọi list() KHÔNG light.
+            const arRes = await endpoints.activeRequests.list({ pr_ids: ids, light: 1 });
             const rows = Array.isArray(arRes.data) ? arRes.data : [];
             nextPageArs = rows.map(fromApiActiveRequest);
           } catch {
