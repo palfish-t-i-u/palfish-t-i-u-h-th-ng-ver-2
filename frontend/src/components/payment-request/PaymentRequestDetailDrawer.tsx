@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { LEAD_SOURCES, LY_DO_KHONG_GHEP, NEW_CHECK_SOURCES, channelCodeFromValue, channelValue, defaultChannelForSource, findSourceByKey, resolveChannel, sourceHasChannels } from "../../constants/leadSource";
 import type {
   ActiveRequest,
@@ -95,7 +95,7 @@ function QrThumb({ paid, method }: { paid: boolean; method: PaymentMethod }) {
   );
 }
 
-function QrRow({
+const QrRow = memo(function QrRow({
   qr,
   onCancelQr,
   onBillFile,
@@ -394,9 +394,9 @@ function QrRow({
     </div>
     </>
   );
-}
+});
 
-function AddPaymentForm({
+const AddPaymentForm = memo(function AddPaymentForm({
   pr,
   onCancel,
   onSubmit,
@@ -628,7 +628,7 @@ function AddPaymentForm({
       </div>
     </div>
   );
-}
+});
 
 interface DraftPr {
   uid: string;
@@ -709,7 +709,7 @@ const FOREIGN_COUNTRY_OPTIONS = COUNTRIES.filter((c) => c.code !== "VN")
  * KHÔNG có nút "Xác nhận thông tin" của Thu Hiền (đó là nghiệp vụ riêng ở tab Kích hoạt khoá học).
  * Sales không nhập Order ID ở đây để giữ tách bạch nghiệp vụ với tab Kích hoạt khoá học.
  */
-export function ActiveRequestMiniCardV2({
+export const ActiveRequestMiniCardV2 = memo(function ActiveRequestMiniCardV2({
   ar,
   request,
   onActiveRequestMutate,
@@ -1628,7 +1628,7 @@ export function ActiveRequestMiniCardV2({
       </div>
     </div>
   );
-}
+});
 
 function useInvoiceRemind(prId: string | null) {
   const [canRemind, setCanRemind] = useState(true);
@@ -2995,16 +2995,18 @@ export default function PaymentRequestDetailDrawer({
           </div>
         </div>
       </aside>
-      <TransferSaleModal
-        pr={transferOpen ? request : null}
-        onClose={() => setTransferOpen(false)}
-        onTransferred={async () => {
-          setTransferOpen(false);
-          onClose();
-          await onTransferred?.();
-        }}
-      />
-      <PrHistoryModal pr={historyOpen ? request : null} onClose={() => setHistoryOpen(false)} />
+      {transferOpen && (
+        <TransferSaleModal
+          pr={request}
+          onClose={() => setTransferOpen(false)}
+          onTransferred={async () => {
+            setTransferOpen(false);
+            onClose();
+            await onTransferred?.();
+          }}
+        />
+      )}
+      {historyOpen && <PrHistoryModal pr={request} onClose={() => setHistoryOpen(false)} />}
       {arPackageModalOpen && (() => {
         const arTotal = arDraftRows.reduce((s, r) => s + (r.amount || 0), 0);
         const arReceived = Math.max(0, activatableReceived(request));
