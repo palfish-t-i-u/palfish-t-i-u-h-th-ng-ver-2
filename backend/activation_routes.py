@@ -2536,14 +2536,26 @@ def register_activation_routes(app, supabase_factory):
             raise HTTPException(500, f"Không đọc active_requests: {exc}") from exc
 
         pr_ids = list({str(r.get("pr_id")) for r in rows if r.get("pr_id")})
-        pr_map = _fetch_prs_by_ids(sb, pr_ids)
+        ar_ids = [str(r.get("id")) for r in rows if r.get("id")]
         from payment_request_routes import _sale_name_map
-        try:
-            snm = _sale_name_map(sb)
-        except Exception:
-            snm = {}
-        tv_map = _tien_ve_map(sb, [str(r.get("id")) for r in rows if r.get("id")])
-        credit_map = _credit_hold_map(sb, pr_ids)
+
+        # G3a (2026-09-24): 4 map enrich ĐỘC LẬP nhau — chạy SONG SONG (thread) thay vì
+        # tuần tự. Mỗi map là chuỗi REST call Sydney (~150ms/call); tuần tự ≈ 1.5s,
+        # song song ≈ map chậm nhất (~0.5s). httpx.Client (supabase) an toàn đa luồng.
+        from concurrent.futures import ThreadPoolExecutor
+
+        with ThreadPoolExecutor(max_workers=4) as _ex:
+            _f_pr = _ex.submit(_fetch_prs_by_ids, sb, pr_ids)
+            _f_snm = _ex.submit(_sale_name_map, sb)
+            _f_tv = _ex.submit(_tien_ve_map, sb, ar_ids)
+            _f_credit = _ex.submit(_credit_hold_map, sb, pr_ids)
+            pr_map = _f_pr.result()
+            try:
+                snm = _f_snm.result()
+            except Exception:
+                snm = {}
+            tv_map = _f_tv.result()
+            credit_map = _f_credit.result()
         return [
             _serialize_ar(
                 r,
