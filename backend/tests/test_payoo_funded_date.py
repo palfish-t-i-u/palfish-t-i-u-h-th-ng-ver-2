@@ -1,16 +1,20 @@
-"""Tests for Payoo funded_date auto-fill from SePay settlement."""
+"""Tests for Payoo funded_date auto-fill from SePay settlement (batch-range)."""
 from __future__ import annotations
 
 import os
 import sys
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from unittest.mock import MagicMock
 
 import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from sepay_routes import is_payoo_settlement, _try_fill_payoo_funded_date
+from sepay_routes import (
+    is_payoo_settlement,
+    _parse_payoo_settle_range,
+    _try_fill_payoo_funded_date,
+)
 
 REAL_PAYOO_CONTENT = (
     "Payoo CT DS N10.7 12.7.2026 cho TKECOM. PY3 PALFISH EC- Ma GD ACSP/123456"
@@ -89,6 +93,17 @@ class FakeSB:
         return Query(name, self._tables.setdefault(name, []))
 
 
+def _gw(gid, net, day, funded=None):
+    """Gateway Payoo row quẹt ngày `day` (YYYY-MM-DD)."""
+    return {
+        "id": gid,
+        "source": "payoo",
+        "net_amount": net,
+        "funded_date": funded,
+        "paid_at": f"{day}T10:00:00+00:00",
+    }
+
+
 # ---------------------------------------------------------------------------
 # is_payoo_settlement
 # ---------------------------------------------------------------------------
@@ -108,82 +123,165 @@ class TestIsPayooSettlement:
 
 
 # ---------------------------------------------------------------------------
-# _try_fill_payoo_funded_date
+# _parse_payoo_settle_range
+# ---------------------------------------------------------------------------
+class TestParsePayooSettleRange:
+    def test_single_day(self):
+        assert _parse_payoo_settle_range(
+            "Payoo CT DS N23.9.2026 cho TK ECOM. PY3 PALFISH EC"
+        ) == (date(2026, 9, 23), date(2026, 9, 23))
+
+    def test_range_same_month(self):
+        assert _parse_payoo_settle_range(REAL_PAYOO_CONTENT) == (
+            date(2026, 7, 10),
+            date(2026, 7, 12),
+        )
+
+    def test_range_cross_month(self):
+        assert _parse_payoo_settle_range(
+            "Payoo CT DS N28.8 2.9.2026 cho TK ECOM. PY3 PALFISH EC"
+        ) == (date(2026, 8, 28), date(2026, 9, 2))
+
+    def test_range_cross_year(self):
+        # Tháng đầu (12) > tháng cuối (1) → ngày đầu thuộc năm trước.
+        assert _parse_payoo_settle_range("Payoo CT DS N30.12 2.1.2027 cho TK ECOM") == (
+            date(2026, 12, 30),
+            date(2027, 1, 2),
+        )
+
+    def test_unparseable_returns_none(self):
+        assert _parse_payoo_settle_range("Nguyen Van A chuyen tien hoc phi") is None
+        assert _parse_payoo_settle_range("") is None
+        assert _parse_payoo_settle_range(None) is None
+
+
+# ---------------------------------------------------------------------------
+# _try_fill_payoo_funded_date (batch-range)
 # ---------------------------------------------------------------------------
 class TestTryFillPayooFundedDate:
-    def _make_sb(self, gateway_rows):
+    def _sb(self, gateway_rows):
         return FakeSB({"gateway_transactions": gateway_rows})
 
-    def test_happy_path_1to1_match(self):
-        """Exactly 1 unfunded Payoo gateway txn matches bank_amount → fill."""
-        gw = {"id": "gw-1", "source": "payoo", "funded_date": None, "net_amount": 18422580.0}
-        sb = self._make_sb([gw])
-        bank_date = datetime(2026, 9, 18, 10, 30, 0, tzinfo=VN_TZ)
+    def test_single_day_two_same_amount_both_filled(self):
+        """Lô 1 ngày, 2 đơn cùng net (case 1-to-1 cũ chết) → cả 2 được fill."""
+        content = "Payoo CT DS N23.9.2026 cho TK ECOM. PY3 PALFISH EC"
+        g1 = _gw("g1", 9376620.0, "2026-09-23")
+        g2 = _gw("g2", 9376620.0, "2026-09-23")
+        sb = self._sb([g1, g2])
+        bank_date = datetime(2026, 9, 24, 14, 39, 0, tzinfo=VN_TZ)
 
-        result = _try_fill_payoo_funded_date(sb, 18422580.0, bank_date, "sepay-abc")
+        result = _try_fill_payoo_funded_date(sb, 18753240.0, bank_date, "84244968", content)
+
+        assert result == 2
+        assert g1["funded_date"] == "2026-09-24T14:39:00"
+        assert g2["funded_date"] == "2026-09-24T14:39:00"
+        assert g1["settlement_code"] == "PAYOO-84244968"
+        assert g2["settlement_code"] == "PAYOO-84244968"
+
+    def test_multi_day_range_fills_all(self):
+        """Dải 10→12/7, đơn rải 3 ngày → cả lô fill khi Σnet == cục."""
+        g1 = _gw("g1", 4000000.0, "2026-07-10")
+        g2 = _gw("g2", 5000000.0, "2026-07-11")
+        g3 = _gw("g3", 3254880.0, "2026-07-12")
+        sb = self._sb([g1, g2, g3])
+        bank_date = datetime(2026, 7, 13, 7, 55, 0, tzinfo=VN_TZ)
+
+        result = _try_fill_payoo_funded_date(sb, 12254880.0, bank_date, "s-713", REAL_PAYOO_CONTENT)
+
+        assert result == 3
+        for g in (g1, g2, g3):
+            assert g["funded_date"] == "2026-07-13T07:55:00"
+            assert g["settlement_code"] == "PAYOO-s-713"
+
+    def test_cross_month_range(self):
+        content = "Payoo CT DS N28.8 2.9.2026 cho TK ECOM. PY3 PALFISH EC"
+        g1 = _gw("g1", 10000000.0, "2026-08-28")
+        g2 = _gw("g2", 7639380.0, "2026-09-02")
+        sb = self._sb([g1, g2])
+        bank_date = datetime(2026, 9, 3, 8, 16, 0, tzinfo=VN_TZ)
+
+        result = _try_fill_payoo_funded_date(sb, 17639380.0, bank_date, "s-903", content)
+
+        assert result == 2
+        assert g1["funded_date"] == "2026-09-03T08:16:00"
+        assert g2["funded_date"] == "2026-09-03T08:16:00"
+
+    def test_sum_mismatch_no_fill(self):
+        """Σnet != cục → bỏ qua, không fill (chống gán nhầm lô)."""
+        content = "Payoo CT DS N23.9.2026 cho TK ECOM. PY3 PALFISH EC"
+        g1 = _gw("g1", 9376620.0, "2026-09-23")
+        sb = self._sb([g1])
+        bank_date = datetime(2026, 9, 24, 14, 39, 0, tzinfo=VN_TZ)
+
+        result = _try_fill_payoo_funded_date(sb, 9000000.0, bank_date, "s-x", content)
+
+        assert result == 0
+        assert g1["funded_date"] is None
+
+    def test_only_unfunded_rows_updated(self):
+        """1 đơn đã funded + 1 chưa; Σnet cả 2 == cục → chỉ đơn chưa funded được set."""
+        content = "Payoo CT DS N23.9.2026 cho TK ECOM. PY3 PALFISH EC"
+        g1 = _gw("g1", 9376620.0, "2026-09-23", funded="2026-09-24T14:39:00")
+        g2 = _gw("g2", 9376620.0, "2026-09-23")
+        sb = self._sb([g1, g2])
+        bank_date = datetime(2026, 9, 24, 14, 39, 0, tzinfo=VN_TZ)
+
+        result = _try_fill_payoo_funded_date(sb, 18753240.0, bank_date, "s-2", content)
 
         assert result == 1
-        assert gw["funded_date"] == "2026-09-18T10:30:00"  # VN naive, no tz
-        assert gw["settlement_code"] == "PAYOO-sepay-abc"
-
-    def test_amount_mismatch_no_fill(self):
-        """Bank amount doesn't match any gateway → no fill."""
-        gw = {"id": "gw-1", "source": "payoo", "funded_date": None, "net_amount": 18422580.0}
-        sb = self._make_sb([gw])
-        bank_date = datetime(2026, 9, 18, 10, 0, 0, tzinfo=VN_TZ)
-
-        result = _try_fill_payoo_funded_date(sb, 18000000.0, bank_date, "sepay-x")
-
-        assert result == 0
-        assert gw["funded_date"] is None
-
-    def test_multiple_matches_no_fill(self):
-        """Multiple gateway txns match same amount → ambiguous, skip."""
-        gw1 = {"id": "gw-1", "source": "payoo", "funded_date": None, "net_amount": 5000000.0}
-        gw2 = {"id": "gw-2", "source": "payoo", "funded_date": None, "net_amount": 5000000.0}
-        sb = self._make_sb([gw1, gw2])
-        bank_date = datetime(2026, 9, 18, 10, 0, 0, tzinfo=VN_TZ)
-
-        result = _try_fill_payoo_funded_date(sb, 5000000.0, bank_date, "sepay-y")
-
-        assert result == 0
-        assert gw1["funded_date"] is None
-        assert gw2["funded_date"] is None
-
-    def test_mpos_gateway_not_matched(self):
-        """Only matches source='payoo', not mPOS."""
-        gw = {"id": "gw-1", "source": "mpos", "funded_date": None, "net_amount": 18422580.0}
-        sb = self._make_sb([gw])
-        bank_date = datetime(2026, 9, 18, 10, 0, 0, tzinfo=VN_TZ)
-
-        result = _try_fill_payoo_funded_date(sb, 18422580.0, bank_date, "sepay-z")
-
-        assert result == 0
-
-    def test_already_funded_not_matched(self):
-        """Gateway with funded_date already set → not matched (is_ null filter)."""
-        gw = {"id": "gw-1", "source": "payoo", "funded_date": "2026-09-17T10:00:00",
-              "net_amount": 18422580.0}
-        sb = self._make_sb([gw])
-        bank_date = datetime(2026, 9, 18, 10, 0, 0, tzinfo=VN_TZ)
-
-        result = _try_fill_payoo_funded_date(sb, 18422580.0, bank_date, "sepay-w")
-
-        assert result == 0
+        assert g2["funded_date"] == "2026-09-24T14:39:00"
 
     def test_funded_date_vn_naive_no_tz(self):
-        """G1: funded_date stored as VN naive — no timezone info."""
-        gw = {"id": "gw-1", "source": "payoo", "funded_date": None, "net_amount": 10000000.0}
-        sb = self._make_sb([gw])
+        """G1: funded_date lưu VN naive, không có tzinfo."""
+        content = "Payoo CT DS N14.9.2026 cho TK ECOM. PY3 PALFISH EC"
+        g1 = _gw("g1", 10000000.0, "2026-09-14")
+        sb = self._sb([g1])
         bank_date = datetime(2026, 9, 14, 3, 26, 0, tzinfo=VN_TZ)
 
-        _try_fill_payoo_funded_date(sb, 10000000.0, bank_date, "sepay-tz")
+        _try_fill_payoo_funded_date(sb, 10000000.0, bank_date, "s-tz", content)
 
-        funded = gw["funded_date"]
-        assert funded is not None
-        assert "+" not in funded  # no timezone offset
-        assert "Z" not in funded
+        funded = g1["funded_date"]
         assert funded == "2026-09-14T03:26:00"
+        assert "+" not in funded and "Z" not in funded
+
+    def test_mpos_rows_not_summed(self):
+        """Chỉ cộng/khớp đơn source='payoo' — mPOS cùng ngày không tính."""
+        content = "Payoo CT DS N23.9.2026 cho TK ECOM. PY3 PALFISH EC"
+        payoo = _gw("p1", 8172450.0, "2026-09-23")
+        mpos = {"id": "m1", "source": "mpos", "net_amount": 5000000.0,
+                "funded_date": None, "paid_at": "2026-09-23T09:00:00+00:00"}
+        sb = self._sb([payoo, mpos])
+        bank_date = datetime(2026, 9, 24, 14, 39, 0, tzinfo=VN_TZ)
+
+        result = _try_fill_payoo_funded_date(sb, 8172450.0, bank_date, "s-p", content)
+
+        assert result == 1
+        assert payoo["funded_date"] == "2026-09-24T14:39:00"
+        assert mpos["funded_date"] is None
+
+    def test_order_outside_range_excluded(self):
+        """Đơn quẹt ngoài dải không được cộng/fill."""
+        content = "Payoo CT DS N23.9.2026 cho TK ECOM. PY3 PALFISH EC"
+        in_range = _gw("g1", 8172450.0, "2026-09-23")
+        out_range = _gw("g2", 9376620.0, "2026-09-24")  # 24/9, ngoài dải
+        sb = self._sb([in_range, out_range])
+        bank_date = datetime(2026, 9, 24, 14, 39, 0, tzinfo=VN_TZ)
+
+        result = _try_fill_payoo_funded_date(sb, 8172450.0, bank_date, "s-r", content)
+
+        assert result == 1
+        assert in_range["funded_date"] == "2026-09-24T14:39:00"
+        assert out_range["funded_date"] is None
+
+    def test_unparseable_content_no_fill(self):
+        g1 = _gw("g1", 9376620.0, "2026-09-23")
+        sb = self._sb([g1])
+        bank_date = datetime(2026, 9, 24, 14, 39, 0, tzinfo=VN_TZ)
+
+        result = _try_fill_payoo_funded_date(sb, 9376620.0, bank_date, "s-np", "CK khong co ngay")
+
+        assert result == 0
+        assert g1["funded_date"] is None
 
 
 # ---------------------------------------------------------------------------

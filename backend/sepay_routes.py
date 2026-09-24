@@ -13,7 +13,7 @@ import os
 import re
 import time
 import unicodedata
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import Any, Callable
 
 import httpx
@@ -61,6 +61,17 @@ _PAYOO_SETTLE_SIGNALS: list[re.Pattern] = [
     re.compile(r"PAYOO\s*CT\s*DS", re.IGNORECASE),              # Payoo chuyển doanh số
     re.compile(r"PALFISH\s*EC|TK\s*\.?\s*ECOM|TKECOM|PY3", re.IGNORECASE),  # TK ecom PalFish
 ]
+
+# Dải ngày quẹt trong nội dung cục Payoo. Payoo gộp nhiều đơn (1 ngày hoặc 1 dải,
+# có thể vắt tháng) net phí, chi 1 cục về TK — nội dung ghi ngày/dải quẹt:
+#   'Payoo CT DS N23.9.2026 ...'      -> 1 ngày 23/09/2026
+#   'Payoo CT DS N10.7 12.7.2026 ...' -> dải 10/07 → 12/07/2026 (năm ở ngày cuối)
+_PAYOO_SETTLE_RANGE_RE = re.compile(
+    r"N\s*(\d{1,2})\.(\d{1,2})\s+(\d{1,2})\.(\d{1,2})\.(\d{4})", re.IGNORECASE
+)
+_PAYOO_SETTLE_SINGLE_RE = re.compile(
+    r"N\s*(\d{1,2})\.(\d{1,2})\.(\d{4})", re.IGNORECASE
+)
 
 # Rút tiền định kỳ từ TikTok Shop về TK MB (hàng tuần, nội dung CK đúng chuỗi
 # "TikTok Shop") — không phải học phí → ignore. Match EXACT toàn chuỗi để khách
@@ -285,47 +296,105 @@ def is_payoo_settlement(content: str) -> bool:
     return all(p.search(content or "") for p in _PAYOO_SETTLE_SIGNALS)
 
 
-def _try_fill_payoo_funded_date(
-    sb, bank_amount: float, bank_txn_date: datetime, bank_sepay_id: str
-) -> int:
-    """Match Payoo gateway_transactions by net_amount, fill funded_date.
+def _parse_payoo_settle_range(content: str) -> tuple[date, date] | None:
+    """Parse dải ngày quẹt từ nội dung cục Payoo settlement.
 
-    Only fills when exactly 1 gateway txn matches (1-to-1 settlement).
-    funded_date stored as VN naive (timestamp without time zone).
-    Returns number of rows filled (0 or 1).
+    'N23.9.2026'       -> (2026-09-23, 2026-09-23)
+    'N10.7 12.7.2026'  -> (2026-07-10, 2026-07-12)
+    'N28.8 2.9.2026'   -> (2026-08-28, 2026-09-02)  (vắt tháng)
+    Năm chỉ ghi ở ngày cuối; ngày đầu kế thừa, trừ khi tháng đầu > tháng cuối
+    (vắt năm) thì lùi 1 năm. Trả None nếu không parse được / dải nghịch.
     """
+    text = content or ""
+    m = _PAYOO_SETTLE_RANGE_RE.search(text)
+    if m:
+        d1, mo1, d2, mo2, year = (int(g) for g in m.groups())
+        year1 = year - 1 if mo1 > mo2 else year
+        try:
+            start = date(year1, mo1, d1)
+            end = date(year, mo2, d2)
+        except ValueError:
+            return None
+        return (start, end) if start <= end else None
+    m = _PAYOO_SETTLE_SINGLE_RE.search(text)
+    if m:
+        d1, mo1, year = (int(g) for g in m.groups())
+        try:
+            single = date(year, mo1, d1)
+        except ValueError:
+            return None
+        return (single, single)
+    return None
+
+
+def _try_fill_payoo_funded_date(
+    sb, bank_amount: float, bank_txn_date: datetime, bank_sepay_id: str, content: str
+) -> int:
+    """Gán funded_date cho CẢ LÔ đơn Payoo của 1 cục settlement.
+
+    Payoo gộp nhiều đơn theo dải ngày ghi trong nội dung, net phí, chi 1 cục về
+    TK (T+1). Parse dải ngày quẹt → cộng net_amount mọi đơn Payoo quẹt trong dải;
+    nếu Σnet == số tiền cục (khớp tuyệt đối) thì stamp funded_date (ngày cục về
+    TK, VN naive) + settlement_code cho các đơn CHƯA có funded_date.
+
+    Chỉ fill khi Σnet == bank_amount (chống gán nhầm lô). Trả số dòng đã fill.
+    funded_date lưu VN naive (timestamp without time zone) — KHÔNG convert tz.
+    """
+    date_range = _parse_payoo_settle_range(content)
+    if not date_range:
+        print(f"[sepay] Payoo funded_date: không parse được dải ngày, nội dung={content!r}")
+        return 0
+    d_start, d_end = date_range
+
+    # paid_at lưu giờ VN dán nhãn +00 → lọc cửa sổ UTC [start 00:00, end 23:59:59]
+    # đúng bằng ngày quẹt VN.
+    lo = f"{d_start.isoformat()}T00:00:00+00:00"
+    hi = f"{d_end.isoformat()}T23:59:59+00:00"
+
     try:
         res = (
             sb.table("gateway_transactions")
-            .select("id")
+            .select("id, net_amount, funded_date")
             .eq("source", "payoo")
-            .is_("funded_date", "null")
-            .eq("net_amount", bank_amount)
+            .gte("paid_at", lo)
+            .lte("paid_at", hi)
             .execute()
         )
-    except Exception:
+    except Exception as exc:
+        print(f"[sepay] Payoo funded_date: query lô thất bại: {exc}")
         return 0
 
     rows = res.data or []
-    if len(rows) != 1:
-        if len(rows) > 1:
-            print(f"[sepay] Payoo funded_date: {len(rows)} gateway txns match amount {bank_amount} — skipping (ambiguous)")
+    if not rows:
+        return 0
+
+    total_net = sum(float(r.get("net_amount") or 0) for r in rows)
+    # So nguyên đồng (chống sai số float khi cộng nhiều net_amount).
+    if round(total_net) != round(float(bank_amount)):
+        print(
+            f"[sepay] Payoo funded_date: Σnet {total_net:.0f} != cục {float(bank_amount):.0f} "
+            f"(dải {d_start}..{d_end}, {len(rows)} đơn) — bỏ qua, soát tay"
+        )
+        return 0
+
+    to_fill = [r["id"] for r in rows if not r.get("funded_date")]
+    if not to_fill:
         return 0
 
     funded_naive = bank_txn_date.replace(tzinfo=None).isoformat()
     settlement_code = f"PAYOO-{bank_sepay_id}"
-
     try:
-        sb.table("gateway_transactions").update({
-            "funded_date": funded_naive,
-            "settlement_code": settlement_code,
-            "updated_at": _iso_now(),
-        }).eq("id", rows[0]["id"]).execute()
+        (
+            sb.table("gateway_transactions")
+            .update({"funded_date": funded_naive, "settlement_code": settlement_code})
+            .in_("id", to_fill)
+            .execute()
+        )
     except Exception as exc:
-        print(f"[sepay] Payoo funded_date UPDATE failed for {rows[0]['id']}: {exc}")
+        print(f"[sepay] Payoo funded_date UPDATE thất bại (dải {d_start}..{d_end}): {exc}")
         return 0
 
-    return 1
+    return len(to_fill)
 
 
 def classify_cash_in(*, content: str, payment_line_id: str | None, is_card: bool = False) -> str:
@@ -759,7 +828,7 @@ def _process_sepay_transaction(sb, txn: dict[str, Any]) -> dict[str, Any]:
     # Payoo settlement: auto-fill funded_date on matching gateway_transactions
     if is_new and match_status == "ignored" and is_payoo_settlement(content) and txn_date:
         try:
-            filled = _try_fill_payoo_funded_date(sb, amount, txn_date, sepay_id)
+            filled = _try_fill_payoo_funded_date(sb, amount, txn_date, sepay_id, content)
             if filled:
                 print(f"[sepay] Payoo settlement {sepay_id}: filled funded_date for {filled} gateway txn(s)")
         except Exception as exc:
