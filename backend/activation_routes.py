@@ -881,11 +881,21 @@ def _course_is_invoiced(course: dict[str, Any]) -> bool:
 def _fetch_prs_by_ids(sb, pr_ids: list[str]) -> dict[str, dict[str, Any]]:
     if not pr_ids:
         return {}
+    # .in_() KHÔNG .range() → PostgREST cắt cụt 1000 dòng. Khi AR tham chiếu > 1000 PR
+    # khác nhau (prod vượt mốc 24/9: 1131 AR/1131 PR), các PR bị rớt khỏi map làm AR
+    # tương ứng mất embed payment_request → grid Tạo gói học trắng tên KH + tên sale.
+    # Chunk 100 (giống list endpoint dưới) để mỗi query < ngưỡng cắt.
+    from payment_request_routes import _chunked  # import cục bộ — tránh circular import
+    out: dict[str, dict[str, Any]] = {}
     try:
-        res = sb.table("payment_requests").select("*").in_("id", pr_ids).execute()
+        for chunk in _chunked(pr_ids, 100):
+            res = sb.table("payment_requests").select("*").in_("id", chunk).execute()
+            for r in (res.data or []):
+                if r.get("id"):
+                    out[str(r["id"])] = r
     except Exception:
-        return {}
-    return {str(r["id"]): r for r in (res.data or []) if r.get("id")}
+        return out
+    return out
 
 
 def _next_ar_id(sb, year: int | None = None) -> str:
