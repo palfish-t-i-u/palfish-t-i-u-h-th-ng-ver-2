@@ -1,0 +1,13 @@
+# Đổi biến thường → hook mà quên: hook sau early return = crash toàn drawer
+
+**Related files:** `frontend/src/components/payment-request/PaymentRequestDetailDrawer.tsx` (early return `if (open && !bodyReady)` ~dòng 1972; khối `activeSummary`/`arUnallocated`/`reportBtn`/`copyPrId` ~dòng 1996), `frontend/eslint.config.js`, `frontend/CLAUDE.md`
+
+**Problem:** Tối ưu drawer QLTT (G5b) bọc 4 giá trị dẫn xuất bằng `useMemo`/`useCallback`. Merge lên prod → crash "Đã xảy ra lỗi" (Error Boundary) MỖI LẦN mở PR. `tsc -b` sạch, 854 unit test pass, build pass — vẫn crash.
+
+**Trap:** Đặt `useMemo`/`useCallback` ngay tại chỗ 4 biến cũ (dòng ~1996) mà KHÔNG để ý chúng nằm SAU một early return (`if (open && !bodyReady) return <skeleton>` dòng 1972). Bản gốc là biến thường + arrow function thường → đặt sau early return vô hại; đổi sang hook thì thành "hook gọi có điều kiện". Drawer render 2 pha: pha skeleton (`bodyReady=false`) return sớm → bỏ qua 4 hook; pha body (`bodyReady=true`) chạy tới → gọi 4 hook. Số hook giữa 2 lần render lệch → React "Rendered fewer hooks than expected" → Error Boundary nuốt cả trang. Bẫy phụ: tin `tsc -b` + unit test là đủ trước push — cả hai đều KHÔNG bắt lỗi thứ tự hook (unit test dùng stub, không render component thật qua transition bodyReady).
+
+**Insight:** `tsc -b` không hiểu Rules of Hooks; chỉ `eslint-plugin-react-hooks` (`react-hooks/rules-of-hooks`, đã bật sẵn trong `eslint.config.js` qua `reactHooks.configs.flat.recommended`) bắt được "hook called conditionally". Gate trước push chỉ có `tsc -b` (theo CLAUDE.md cũ) nên lỗi lọt. Thêm điểm quan trọng: 4 giá trị này chỉ dùng inline trong JSX của chính drawer cha, KHÔNG truyền làm prop cho memo children → bọc hook cho chúng còn chẳng có lợi ích, thuần tuý là rủi ro thừa. Fix đúng = trả về biến/hàm thường như gốc, chỉ giữ 2 tối ưu an toàn (memo children + lazy-mount modal — khai báo ngoài thân drawer/không dính early return).
+
+**Rule:** (a) Bất kỳ component nào có early return (loading/skeleton/guard) thì MỌI hook (`useMemo`/`useCallback`/`useState`/`useEffect`…) phải nằm TRƯỚC early return đó — không có ngoại lệ. (b) Khi đổi một biến/hàm thường thành hook, kiểm tra vị trí nó so với mọi `return` phía trên. (c) Chỉ bọc `useMemo`/`useCallback` khi giá trị THỰC SỰ truyền làm prop cho `React.memo` child hoặc vào dependency array — dùng inline trong JSX cha thì không cần. (d) Trước push FE luôn chạy `npm run lint`, không chỉ `tsc -b`.
+
+**Verify:** `cd frontend && npm run lint` — 0 lỗi `react-hooks/rules-of-hooks`; `grep -n "useMemo\|useCallback" frontend/src/components/payment-request/PaymentRequestDetailDrawer.tsx` — nếu có, mọi dòng phải nằm trước dòng chứa `if (open && !bodyReady)` (`grep -n "open && !bodyReady" ...` cho số dòng early return để đối chiếu).

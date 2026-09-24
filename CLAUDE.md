@@ -61,16 +61,24 @@ When user says "chạy e2e" or "test e2e":
 2. Report pass/fail count
 3. If failures, suggest `npm run e2e:headed` or `npm run e2e:report`
 
-## Type Checking
+## Type Checking + Lint (gate trước push)
 
 **IMPORTANT**: Always use `tsc -b` (build mode), NOT `tsc --noEmit`.
 Vercel runs `tsc -b && vite build` — `tsc -b` is stricter than `--noEmit`
-(enforces project references, declaration emit). Use:
+(enforces project references, declaration emit).
+
+**BẮT BUỘC chạy CẢ HAI trước khi push** (tsc không bắt lỗi quy tắc React hooks):
 
 ```bash
-cd frontend && npx tsc -b          # must pass before push
-cd frontend && npm run build       # full Vercel-identical build
+cd frontend && npx tsc -b          # 1. type check — must pass
+cd frontend && npm run lint        # 2. eslint — 0 lỗi react-hooks/rules-of-hooks
+cd frontend && npm run build       # (tuỳ chọn) full Vercel-identical build
 ```
+
+⚠️ `tsc -b` KHÔNG bắt lỗi "hook gọi có điều kiện / sau early return". Chỉ
+`eslint` (`react-hooks/rules-of-hooks`) bắt được. Sự cố G5b (drawer QLTT crash
+mỗi lần mở PR) là do `useMemo`/`useCallback` đặt sau early return skeleton mà
+chỉ chạy `tsc -b` nên lọt lên prod — xem `docs/learnings/hook-after-early-return-crash.md`.
 
 ## Dev Server
 
