@@ -2045,55 +2045,70 @@ def _list_payment_requests_page(
     pr_rows = [r["pr"] for r in rows]
     pr_ids = [str(row.get("id") or "") for row in pr_rows if row.get("id")]
 
-    lines_by_pr: dict[str, list[dict[str, Any]]] = {pid: [] for pid in pr_ids}
-    if pr_ids:
+    # G3b (2026-09-24): 3 fetch enrich (lines / ars / reports) ĐỘC LẬP nhau — trước
+    # chạy tuần tự (page ~883ms). Chạy SONG SONG (thread) → ≈ fetch chậm nhất (~400ms).
+    # httpx.Client thread-safe; mỗi hàm ghi dict cục bộ → kết quả y hệt tuần tự.
+    def _load_lines() -> dict[str, list[dict[str, Any]]]:
+        if not pr_ids:
+            return {}
         try:
             line_res = sb.table("payment_lines").select("*").in_("payment_request_id", pr_ids).execute()
-            lines_by_pr.update(_group_lines_by_request(line_res.data or []))
+            return _group_lines_by_request(line_res.data or [])
         except Exception as exc:
             raise HTTPException(500, f"Khong doc duoc payment_lines: {exc}") from exc
 
-    ars_by_pr: dict[str, list[dict[str, Any]]] = {pid: [] for pid in pr_ids}
-    ar_flag_by_pr: dict[str, dict[str, Any]] = {}
-    if pr_ids:
-        try:
-            for chunk in _chunked(pr_ids, 100):
-                ar_res = (
-                    sb.table("active_requests")
-                    .select("id, pr_id, uids_data")
-                    .in_("pr_id", chunk)
-                    .execute()
-                )
-                for ar in ar_res.data or []:
-                    pid = str(ar.get("pr_id") or "")
-                    if pid not in ars_by_pr:
-                        continue
-                    ars_by_pr[pid].append(ar)
-                    if pid not in ar_flag_by_pr:
-                        ar_flag_by_pr[pid] = {
-                            "ar_id": ar.get("id"),
-                            "ar_activated": _ar_is_activated(ar.get("uids_data")),
-                        }
-        except Exception as exc:
-            print(f"Khong doc duoc active_requests for PR page: {exc}")
+    def _load_ars() -> tuple[dict[str, list[dict[str, Any]]], dict[str, dict[str, Any]]]:
+        _ars: dict[str, list[dict[str, Any]]] = {pid: [] for pid in pr_ids}
+        _flags: dict[str, dict[str, Any]] = {}
+        if pr_ids:
+            try:
+                for chunk in _chunked(pr_ids, 100):
+                    ar_res = (
+                        sb.table("active_requests").select("id, pr_id, uids_data").in_("pr_id", chunk).execute()
+                    )
+                    for ar in ar_res.data or []:
+                        pid = str(ar.get("pr_id") or "")
+                        if pid not in _ars:
+                            continue
+                        _ars[pid].append(ar)
+                        if pid not in _flags:
+                            _flags[pid] = {
+                                "ar_id": ar.get("id"),
+                                "ar_activated": _ar_is_activated(ar.get("uids_data")),
+                            }
+            except Exception as exc:
+                print(f"Khong doc duoc active_requests for PR page: {exc}")
+        return _ars, _flags
 
-    reports_by_pr: dict[str, list[dict[str, Any]]] = {pid: [] for pid in pr_ids}
-    if pr_ids:
-        try:
-            for chunk in _chunked(pr_ids, 100):
-                rep_res = (
-                    sb.table("pr_completion_reports")
-                    .select("*")
-                    .in_("pr_id", chunk)
-                    .order("seq", desc=False)
-                    .execute()
-                )
-                for rep in rep_res.data or []:
-                    pid = str(rep.get("pr_id") or "")
-                    if pid in reports_by_pr:
-                        reports_by_pr[pid].append(rep)
-        except Exception as exc:
-            print(f"[payment_requests] khong doc duoc pr_completion_reports page: {exc}")
+    def _load_reports() -> dict[str, list[dict[str, Any]]]:
+        _reports: dict[str, list[dict[str, Any]]] = {pid: [] for pid in pr_ids}
+        if pr_ids:
+            try:
+                for chunk in _chunked(pr_ids, 100):
+                    rep_res = (
+                        sb.table("pr_completion_reports")
+                        .select("*")
+                        .in_("pr_id", chunk)
+                        .order("seq", desc=False)
+                        .execute()
+                    )
+                    for rep in rep_res.data or []:
+                        pid = str(rep.get("pr_id") or "")
+                        if pid in _reports:
+                            _reports[pid].append(rep)
+            except Exception as exc:
+                print(f"[payment_requests] khong doc duoc pr_completion_reports page: {exc}")
+        return _reports
+
+    from concurrent.futures import ThreadPoolExecutor
+
+    with ThreadPoolExecutor(max_workers=3) as _ex:
+        _f_lines = _ex.submit(_load_lines)
+        _f_ars = _ex.submit(_load_ars)
+        _f_reports = _ex.submit(_load_reports)
+        lines_by_pr = _f_lines.result()
+        ars_by_pr, ar_flag_by_pr = _f_ars.result()
+        reports_by_pr = _f_reports.result()
 
     name_map = _sale_name_map(sb)
     staff_map = _staff_map(sb)
