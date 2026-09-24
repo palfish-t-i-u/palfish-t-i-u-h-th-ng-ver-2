@@ -261,34 +261,32 @@ export function PaymentFlowProvider({
 
     try {
       if (PR_LIST_MODE === "server") {
-        // --- Server mode: trang (≤50 dòng) + summary + badge-counts + AR của trang ---
+        // --- Server mode: trang (≤50) + summary CHẠY SONG SONG; AR của trang. ---
+        // badge-counts KHÔNG nằm ở đây: nó filter-INDEPENDENT (đếm toàn bộ PR) — fetch riêng
+        // qua refreshBadge (mount + realtime/poll/focus), tránh 6-13s mỗi lần đổi filter.
         const notes: string[] = [];
         let nextPageRows: PaymentRequest[] = [];
         let nextTotal = 0;
         let pageOk = false;
-        try {
-          const res = await endpoints.paymentRequests.listPage({ ...listQuery, page_size: PR_SERVER_PAGE_SIZE });
-          nextPageRows = (res.data.requests ?? []).map((r) =>
+        let nextSummary: PrSummaryResponse | null = null;
+
+        const [pageRes, sumRes] = await Promise.allSettled([
+          endpoints.paymentRequests.listPage({ ...listQuery, page_size: PR_SERVER_PAGE_SIZE }),
+          endpoints.paymentRequests.summary(listQuery),
+        ]);
+        if (pageRes.status === "fulfilled") {
+          nextPageRows = (pageRes.value.data.requests ?? []).map((r) =>
             normalizeRequest(fromApiPaymentRequest(r as unknown as Record<string, unknown>))
           );
-          nextTotal = res.data.total ?? 0;
+          nextTotal = pageRes.value.data.total ?? 0;
           pageOk = true;
-        } catch {
+        } else {
           notes.push("GET /payment-requests?view=page chưa sẵn sàng.");
         }
-
-        let nextSummary: PrSummaryResponse | null = null;
-        try {
-          nextSummary = (await endpoints.paymentRequests.summary(listQuery)).data;
-        } catch {
+        if (sumRes.status === "fulfilled") {
+          nextSummary = sumRes.value.data;
+        } else {
           notes.push("GET /payment-requests/summary chưa sẵn sàng.");
-        }
-
-        let nextBadge: PrBadgeCountsResponse | null = null;
-        try {
-          nextBadge = (await endpoints.paymentRequests.badgeCounts()).data;
-        } catch {
-          notes.push("GET /payment-requests/badge-counts chưa sẵn sàng.");
         }
 
         let nextPageArs: ActiveRequest[] = [];
@@ -318,7 +316,6 @@ export function PaymentFlowProvider({
           setPageTotal(nextTotal);
         }
         if (nextSummary) setSummary(nextSummary);
-        if (nextBadge) setBadgeCountsServer(nextBadge);
         setPageActiveRequests((prev) => {
           // Giữ AR của các PR đã pin (hydratePr) không nằm trong trang hiện tại —
           // tránh B3 "mất" AR của 1 PR ngoài trang đang mở drawer.
@@ -436,6 +433,24 @@ export function PaymentFlowProvider({
     });
   }, []);
 
+  // Badge sidebar (reconciliation/activation/invoice) là số filter-INDEPENDENT (đếm toàn bộ PR),
+  // KHÔNG fetch theo mỗi lần đổi filter — chỉ mount (effect dưới) + realtime/poll/focus (silentRefetch).
+  const refreshBadge = useCallback(() => {
+    if (PR_LIST_MODE !== "server") return;
+    void endpoints.paymentRequests
+      .badgeCounts()
+      .then((r) => setBadgeCountsServer(r.data))
+      .catch(() => {
+        /* badge lỗi không chặn tab */
+      });
+  }, []);
+
+  // Server mode: badge fetch 1 lần lúc mount (tách khỏi effect [listQuery] để KHÔNG
+  // refetch badge mỗi lần đổi filter). Sau đó chỉ tươi qua silentRefetch (realtime/poll/focus).
+  useEffect(() => {
+    refreshBadge();
+  }, [refreshBadge]);
+
   const pendingQr = useMemo(() => {
     if (PR_LIST_MODE === "server") return summary?.has_pending_qr ?? false;
     return hasPendingQrPayments(requests);
@@ -448,8 +463,9 @@ export function PaymentFlowProvider({
   const silentRefetch = useCallback(() => {
     if (Date.now() < persistCooldownRef.current) return;
     if (editingArIdRef.current) return;
+    refreshBadge(); // badge tươi theo data thật (realtime/poll/focus), không theo filter
     void loadData({ silent: true });
-  }, [loadData]);
+  }, [loadData, refreshBadge]);
 
   useVisiblePoll(silentRefetch, POLL_MS, pendingQr);
 
