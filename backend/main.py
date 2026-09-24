@@ -89,6 +89,22 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Server-Timing (G-DIAG 2026-09-24): mỗi response kèm thời gian xử lý handler (ms) →
+# Network/HAR hiện luôn server time per-request để chẩn đoán latency, khỏi đoán.
+import time as _time
+
+
+@app.middleware("http")
+async def _server_timing(request, call_next):
+    _t0 = _time.perf_counter()
+    response = await call_next(request)
+    try:
+        response.headers["Server-Timing"] = f"app;dur={(_time.perf_counter() - _t0) * 1000:.0f}"
+    except Exception:
+        pass
+    return response
+
+
 # Fallback in-memory khi chưa cấu hình Supabase
 _orders_mem: dict[str, dict[str, Any]] = {}
 _order_seq = 0
