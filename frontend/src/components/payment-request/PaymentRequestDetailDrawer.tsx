@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { LEAD_SOURCES, LY_DO_KHONG_GHEP, NEW_CHECK_SOURCES, channelCodeFromValue, channelValue, defaultChannelForSource, findSourceByKey, resolveChannel, sourceHasChannels } from "../../constants/leadSource";
 import type {
   ActiveRequest,
@@ -95,7 +95,7 @@ function QrThumb({ paid, method }: { paid: boolean; method: PaymentMethod }) {
   );
 }
 
-const QrRow = memo(function QrRow({
+function QrRow({
   qr,
   onCancelQr,
   onBillFile,
@@ -394,9 +394,9 @@ const QrRow = memo(function QrRow({
     </div>
     </>
   );
-});
+}
 
-const AddPaymentForm = memo(function AddPaymentForm({
+function AddPaymentForm({
   pr,
   onCancel,
   onSubmit,
@@ -628,7 +628,7 @@ const AddPaymentForm = memo(function AddPaymentForm({
       </div>
     </div>
   );
-});
+}
 
 interface DraftPr {
   uid: string;
@@ -709,7 +709,7 @@ const FOREIGN_COUNTRY_OPTIONS = COUNTRIES.filter((c) => c.code !== "VN")
  * KHÔNG có nút "Xác nhận thông tin" của Thu Hiền (đó là nghiệp vụ riêng ở tab Kích hoạt khoá học).
  * Sales không nhập Order ID ở đây để giữ tách bạch nghiệp vụ với tab Kích hoạt khoá học.
  */
-export const ActiveRequestMiniCardV2 = memo(function ActiveRequestMiniCardV2({
+export function ActiveRequestMiniCardV2({
   ar,
   request,
   onActiveRequestMutate,
@@ -1628,7 +1628,7 @@ export const ActiveRequestMiniCardV2 = memo(function ActiveRequestMiniCardV2({
       </div>
     </div>
   );
-});
+}
 
 function useInvoiceRemind(prId: string | null) {
   const [canRemind, setCanRemind] = useState(true);
@@ -1993,18 +1993,17 @@ export default function PaymentRequestDetailDrawer({
   const activatable = activatableReceived(request);
   const ready = activatable > 0 && activatable >= request.target;
   const hasActiveRequest = !!activeRequestId;
-  const activeSummary = useMemo(() => activationSummary(activeRequest), [activeRequest]);
-  const arUnallocated = useMemo(() => {
-    if (!activeRequestId || !activeRequest) return 0;
-    return activeRequestAllocation(activeRequest, request).remaining;
-  }, [activeRequestId, activeRequest, request]);
-  const reportBtn = useMemo(() => reportButtonState({
+  const activeSummary = activationSummary(activeRequest);
+  const arUnallocated = hasActiveRequest && activeRequest
+    ? activeRequestAllocation(activeRequest, request).remaining
+    : 0;
+  const reportBtn = reportButtonState({
     ready,
     hasAr: hasActiveRequest,
     unallocated: arUnallocated,
     arLabel: activeSummary.buttonLabel,
-  }), [ready, hasActiveRequest, arUnallocated, activeSummary.buttonLabel]);
-  const copyPrId = useCallback(async () => {
+  });
+  const copyPrId = async () => {
     const id = request.id;
     const fallbackCopy = () => {
       try {
@@ -2038,7 +2037,7 @@ export default function PaymentRequestDetailDrawer({
     if (!ok) {
       window.prompt("Không thể tự copy trong trình duyệt này. Copy PR-ID thủ công:", id);
     }
-  }, [request.id]);
+  };
 
   return (
     <>
@@ -2996,18 +2995,16 @@ export default function PaymentRequestDetailDrawer({
           </div>
         </div>
       </aside>
-      {transferOpen && (
-        <TransferSaleModal
-          pr={request}
-          onClose={() => setTransferOpen(false)}
-          onTransferred={async () => {
-            setTransferOpen(false);
-            onClose();
-            await onTransferred?.();
-          }}
-        />
-      )}
-      {historyOpen && <PrHistoryModal pr={request} onClose={() => setHistoryOpen(false)} />}
+      <TransferSaleModal
+        pr={transferOpen ? request : null}
+        onClose={() => setTransferOpen(false)}
+        onTransferred={async () => {
+          setTransferOpen(false);
+          onClose();
+          await onTransferred?.();
+        }}
+      />
+      <PrHistoryModal pr={historyOpen ? request : null} onClose={() => setHistoryOpen(false)} />
       {arPackageModalOpen && (() => {
         const arTotal = arDraftRows.reduce((s, r) => s + (r.amount || 0), 0);
         const arReceived = Math.max(0, activatableReceived(request));
