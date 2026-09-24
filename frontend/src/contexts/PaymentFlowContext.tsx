@@ -289,22 +289,7 @@ export function PaymentFlowProvider({
           notes.push("GET /payment-requests/summary chưa sẵn sàng.");
         }
 
-        let nextPageArs: ActiveRequest[] = [];
-        if (pageOk && nextPageRows.length > 0) {
-          try {
-            const ids = nextPageRows.map((r) => r.id).join(",");
-            // G4: light=1 — B1 grid chỉ cần AR presence + uids_data, KHÔNG cần tien_ve/credit
-            // (chỉ B3/B4 render) → BE bỏ 2 map nặng, cắt ~1.2s. B3/B4 gọi list() KHÔNG light.
-            const arRes = await endpoints.activeRequests.list({ pr_ids: ids, light: 1 });
-            const rows = Array.isArray(arRes.data) ? arRes.data : [];
-            nextPageArs = rows.map(fromApiActiveRequest);
-          } catch {
-            notes.push("GET /active-requests?pr_ids chưa sẵn sàng.");
-          }
-        }
-
-        // B2/B3/B4 vẫn cần requests/activeRequests đầy đủ khi mounted — tải song song,
-        // KHÔNG chờ tuần tự (mỗi consumer chỉ tăng chi phí khi thực sự có tab đó mở).
+        // B2/B3/B4 mounted → cần requests/activeRequests đầy đủ (await có chủ đích).
         let fullResult: Awaited<ReturnType<typeof fetchFullData>> | null = null;
         if (fullConsumersRef.current > 0) {
           fullResult = await fetchFullData();
@@ -318,19 +303,34 @@ export function PaymentFlowProvider({
           setPageTotal(nextTotal);
         }
         if (nextSummary) setSummary(nextSummary);
-        setPageActiveRequests((prev) => {
-          // Giữ AR của các PR đã pin (hydratePr) không nằm trong trang hiện tại —
-          // tránh B3 "mất" AR của 1 PR ngoài trang đang mở drawer.
-          const pageIds = new Set(nextPageRows.map((r) => r.id));
-          const kept = prev.filter(
-            (ar) => ar.prId && !pageIds.has(ar.prId) && pinnedRowsRef.current.has(ar.prId)
-          );
-          return [...nextPageArs, ...kept];
-        });
         if (fullResult) applyFullData(fullResult.requests, fullResult.activeRequests);
-
         setApiNote(notes.join(" "));
-        if (!options?.silent) setLoading(false);
+        if (!options?.silent) setLoading(false); // G4b: lưới hiện NGAY sau page+summary (~0.6s)
+
+        // G4b: AR của trang chạy NỀN (không chặn render lưới). Grid ở server mode đã đúng
+        // ngay (bucket lọc server-side); arByPrId (drawer + tinh chỉnh) điền sau ~400ms.
+        // seq-guard: filter đổi trước khi AR về → bỏ (tránh ghi đè trang cũ).
+        if (pageOk && nextPageRows.length > 0) {
+          const arSeq = seq;
+          const arRowIds = nextPageRows.map((r) => r.id);
+          void endpoints.activeRequests
+            .list({ pr_ids: arRowIds.join(","), light: 1 })
+            .then((arRes) => {
+              if (arSeq !== loadDataSeqRef.current) return;
+              const rows = Array.isArray(arRes.data) ? arRes.data : [];
+              const nextPageArs = rows.map(fromApiActiveRequest);
+              setPageActiveRequests((prev) => {
+                const pageIds = new Set(arRowIds);
+                const kept = prev.filter(
+                  (ar) => ar.prId && !pageIds.has(ar.prId) && pinnedRowsRef.current.has(ar.prId)
+                );
+                return [...nextPageArs, ...kept];
+              });
+            })
+            .catch(() => {
+              /* AR nền lỗi không chặn lưới */
+            });
+        }
         return;
       }
 

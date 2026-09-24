@@ -1861,20 +1861,17 @@ export default function PaymentRequestDetailDrawer({
     return () => { document.body.style.overflow = prev; };
   }, [open]);
 
-  // Perf: commit shell + skeleton trước cho slide/scrim mượt, rồi mới mount QrRow list +
-  // AR card + bắn 3 API phụ trợ. Double-rAF = shell paint ≥1 frame trước body. Reset trong
-  // cleanup để mỗi lần mở đều defer lại (không giữ true stale từ lần mở trước).
+  // Perf (G5 2026-09-24): slide drawer = transform 260ms (GPU, .drawer prototype-payments.css).
+  // Content nặng (list lần TT + AR card + 3 API phụ) render ~76ms + forced layout ~58ms → nếu
+  // render GIỮA lúc slide sẽ nghẽn main thread → compositor rớt frame → KHỰNG (cả mở lẫn đóng).
+  // Fix: MOUNT content SAU khi slide-in xong + UNMOUNT sau khi slide-out xong → cả 2 chiều mượt.
+  // (Trước đây double-rAF chỉ hoãn ~32ms — content vẫn render giữa slide.) Skeleton `open &&
+  // !bodyReady` (dưới) hiện trong lúc slide. Giữ invariant: bodyReady=false khi đóng xong →
+  // card unmount đúng + fresh-defer khi mở lại (chỉ TRỄ ~300ms, KHÔNG bỏ).
   useEffect(() => {
-    if (!open) return;
-    let raf2 = 0;
-    const raf1 = requestAnimationFrame(() => {
-      raf2 = requestAnimationFrame(() => setBodyReady(true));
-    });
-    return () => {
-      cancelAnimationFrame(raf1);
-      cancelAnimationFrame(raf2);
-      setBodyReady(false);
-    };
+    // 260ms slide + buffer nhỏ. Mở → bật bodyReady sau slide-in; đóng → tắt sau slide-out.
+    const id = setTimeout(() => setBodyReady(open), 300);
+    return () => clearTimeout(id);
   }, [open]);
 
   useEffect(() => {
