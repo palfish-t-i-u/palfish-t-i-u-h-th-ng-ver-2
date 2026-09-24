@@ -136,8 +136,8 @@ class TestBuildActivationRequestCreatedMessage:
         assert "UID: 222" in message
         # 2 blocks -> exactly one blank-line separator between them
         assert "\n\n" in message
-        # Nguồn giờ ở footer chung (1 lần), không lặp mỗi block
-        assert message.count("Nguồn: Facebook") == 1
+        # 24/9: Nguồn in per-gói (mỗi khối) → 2 gói = 2 dòng Nguồn, footer KHÔNG có
+        assert message.count("Nguồn: Facebook") == 2
         assert result["canonical_team_code"] == "Offline"
 
     def test_mixed_source_prints_nguon_per_course(self):
@@ -177,8 +177,8 @@ class TestBuildActivationRequestCreatedMessage:
         assert message.count("Tổng:") == 1
         assert "Tổng: 17.820.000 VND" in message
 
-    def test_uniform_source_keeps_single_footer_nguon(self):
-        # Đơn nhiều con CÙNG nguồn → giữ format cũ: 1 dòng Nguồn ở footer, không per-con.
+    def test_uniform_source_prints_nguon_per_course(self):
+        # 24/9: Nguồn in per-gói ở MỌI đơn (kể cả nhiều con CÙNG nguồn) — footer bỏ dòng Nguồn.
         ar_data = {
             "id": "AR-2026-0600",
             "uids_data": [
@@ -192,8 +192,39 @@ class TestBuildActivationRequestCreatedMessage:
         }
         message = build_activation_request_created_message(
             ar_data, {"lead_source": "kho_chung"}, {"team": "Inhouse 1"})["message"]
-        assert message.count("Nguồn:") == 1  # đồng nhất → footer 1 dòng
+        assert message.count("Nguồn:") == 2  # mỗi con 1 dòng, footer KHÔNG còn
         assert "Nguồn: Kho Chung" in message
+
+    def test_multi_course_same_uid_splits_into_blocks(self):
+        # PR-2026-1916 (24/9): 1 bé mua 2 gói cùng lúc (cùng UID) → tách 2 khối, mỗi gói
+        # có Tiền + Nguồn riêng, cách nhau 1 dòng trống. Phone/UID chỉ hiện 1 lần đầu block.
+        ar_data = {
+            "id": "AR-2026-1132",
+            "customer_name": "Chị Hương",
+            "uids_data": [
+                {"uid": "3295029092", "name": "Minh Anh", "phone": "900000009", "country": "VN",
+                 "courses": [
+                     {"name": "2/W- UPSALE 48 PHI+5 HN", "amount": 8_580_000, "lead_source": "gia_han"},
+                     {"name": "2/W- UPSALE 48 US-UK+2 HN", "amount": 24_000_000, "lead_source": "gia_han"},
+                 ]},
+            ],
+        }
+        message = build_activation_request_created_message(
+            ar_data, {"lead_source": "gia_han"},
+            {"display_name": "Tran Thi Son", "team": "Inhouse 1"})["message"]
+        # Phone/UID chỉ 1 lần dù 2 gói cùng UID
+        assert message.count("Phone:") == 1
+        assert message.count("UID: 3295029092") == 1
+        # Tiền + Nguồn per-gói (2 mỗi loại); footer chỉ Tổng + Sale
+        assert "Tiền: 8.580.000 VND" in message
+        assert "Tiền: 24.000.000 VND" in message
+        assert message.count("Nguồn: Gia hạn") == 2
+        # 2 gói cách nhau đúng 1 dòng trống
+        assert "Nguồn: Gia hạn\n\nMinh Anh, 2/W- UPSALE 48 US-UK+2 HN" in message
+        # Tổng = Σ tiền gói, 1 lần; kết bằng dòng Sale
+        assert message.count("Tổng:") == 1
+        assert "Tổng: 32.580.000 VND" in message
+        assert message.rstrip().endswith("Sale: Tran Thi Son · Team Inhouse 1")
 
     def test_single_course_source_differs_from_pr_prints_per_course(self):
         # PR-2026-1445 (30/8): sale đổi nguồn 1 gói Kho Chung → Gia hạn nhưng PR vẫn

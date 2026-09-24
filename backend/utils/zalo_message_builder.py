@@ -433,22 +433,9 @@ def build_activation_request_created_message(
             return resolve_lead_label(c_src, c_ch)
         return lead  # gói không có nguồn riêng → fallback nguồn cấp PR
 
-    _course_leads = [
-        _course_lead(c)
-        for ub in uid_blocks if isinstance(ub, dict)
-        for c in (ub.get("courses") if isinstance(ub.get("courses"), list) else [])
-        if isinstance(c, dict)
-    ]
-    _distinct_course_leads = {lbl for lbl in _course_leads if lbl and lbl != "?"}
-    # In "Nguồn" per-con khi nguồn gói KHÁC nguồn footer cấp PR — hoặc nhiều gói lệch
-    # nhau (ca chị Kim Chi 17/8), HOẶC 1 gói mà sale đổi nguồn riêng (VD Kho Chung →
-    # Gia hạn) mà PR chưa đổi (PR-2026-1445 30/8). Mọi gói trùng đúng nguồn PR → footer
-    # 1 dòng như cũ (không đổi hành vi đơn thường).
-    per_course_source = bool(_distinct_course_leads) and _distinct_course_leads != {lead}
-
     blocks: list[str] = []
     grand_total = 0.0
-    any_block_amount = False
+    any_course_amount = False
     for uid_block in uid_blocks:
         if not isinstance(uid_block, dict):
             continue
@@ -464,52 +451,35 @@ def build_activation_request_created_message(
         courses = uid_block.get("courses")
         courses = courses if isinstance(courses, list) else []
 
-        course_lines: list[str] = []
-        block_total = 0.0
-        block_has_amount = False
-        block_leads: list[str] = []
+        # 24/9 (a Minh + chị Hiền): MỖI GÓI = 1 khối riêng "<bé>, <tên gói>" / "Tiền: <tiền
+        # gói>" / "Nguồn: <nguồn gói>", các gói cách nhau 1 dòng trống. Trước đây gộp Tiền
+        # cả bé thành 1 dòng → mất tiền từng gói khi 1 bé mua nhiều gói cùng lúc. Nguồn giờ
+        # LUÔN in per-gói (bỏ nhánh per_course_source + Nguồn footer cũ).
+        course_units: list[str] = []
         for course in courses:
             if not isinstance(course, dict):
                 continue
             course_name = _first_nonempty(course.get("name"), default="(chưa có tên gói)")
-            course_lines.append(f"{block_child}, {course_name}")
-            # Referral lines removed per chị Hiền 27/8 — thông tin refer giữ trong DB, không hiển thị trên tin DingTalk
-            block_leads.append(_course_lead(course))
+            unit_lines = [f"{block_child}, {course_name}"]
+            # Referral lines removed per chị Hiền 27/8 — refer giữ trong DB, không in trên tin
             amount = course.get("amount")
             if amount not in (None, ""):
                 try:
-                    block_total += float(amount)
-                    block_has_amount = True
+                    amt_f = float(amount)
+                    grand_total += amt_f
+                    any_course_amount = True
+                    tien_str = f"{int(round(amt_f)):,}".replace(",", ".")
+                    unit_lines.append(f"Tiền: {tien_str} VND")  # vắng amount → ẩn (không bịa 0)
                 except (TypeError, ValueError):
                     logger.warning("Invalid course amount %r in %s", amount, ctx)
-        if not course_lines:
-            course_lines = [block_child]
-        # 29/7 (a Minh): "Tiền" mỗi con = tổng amount gói của con đó. Vắng amount →
-        # ẩn dòng (không bịa 0). 14/8: gom vào grand_total để footer Tổng = Σ dòng Tiền.
-        if block_has_amount:
-            tien_str = f"{int(round(block_total)):,}".replace(",", ".")
-            course_lines.append(f"Tiền: {tien_str} VND")
-        # Đơn lệch nguồn: in "Nguồn" của con NGAY SAU dòng Tiền (a Minh chốt 17/8 —
-        # thứ tự bé/gói → Tiền → Nguồn). Con nhiều gói khác nguồn (hiếm) → gộp 1 dòng.
-        if per_course_source:
-            _seen: list[str] = []
-            for _l in block_leads:
-                if _l and _l != "?" and _l not in _seen:
-                    _seen.append(_l)
-            course_lines.append(f"Nguồn: {' · '.join(_seen) if _seen else lead}")
-        grand_total += block_total
-        any_block_amount = any_block_amount or block_has_amount
+            unit_lines.append(f"Nguồn: {_course_lead(course)}")
+            course_units.append("\n".join(unit_lines))
+        if not course_units:
+            course_units = [block_child]
 
-        # 17/7 (a Hiếu chốt): block chỉ Phone/UID/<bé, gói>. Nguồn + Tổng ở footer chung.
-        blocks.append(
-            "\n".join(
-                [
-                    f"Phone: {phone}​",
-                    f"UID: {uid}",
-                    *course_lines,
-                ]
-            )
-        )
+        # Phone/UID hiện 1 lần đầu block (nhiều gói cùng UID không lặp lại header).
+        header = f"Phone: {phone}​\nUID: {uid}"
+        blocks.append(header + "\n" + "\n\n".join(course_units))
 
     if not blocks:
         blocks.append(
@@ -536,19 +506,15 @@ def build_activation_request_created_message(
             return float(v)
         except (TypeError, ValueError):
             return 0.0
-    if any_block_amount and not is_supplementary:
+    if any_course_amount and not is_supplementary:
         total_val = grand_total
     else:
         recv_f = _num(pr_data.get("received"))
         target_f = _num(pr_target)
         total_val = recv_f if recv_f > 0 else target_f
     total_str = f"{int(round(total_val)):,}".replace(",", ".")  # dấu chấm nghìn, đơn vị VND
-    footer_lines: list[str] = []
-    if not per_course_source:
-        footer_lines.append(f"Nguồn: {lead}")
-    footer_lines.append(f"Tổng: {total_str} VND")
-    footer_lines.append(f"Sale: {sale_name} · Team {team_display}")
-    footer = "\n".join(footer_lines)
+    # Nguồn giờ in per-gói (trong mỗi khối) → footer chỉ còn Tổng + Sale.
+    footer = f"Tổng: {total_str} VND\nSale: {sale_name} · Team {team_display}"
     message = "\n\n".join(blocks) + "\n" + footer
 
     return {"message": message, "canonical_team_code": canonical_team}
