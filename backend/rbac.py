@@ -8,6 +8,8 @@ from dataclasses import dataclass
 from typing import Any, Callable
 
 import httpx
+import jwt
+from jwt import PyJWKClient
 from fastapi import HTTPException
 
 _http = httpx.Client(timeout=15)
@@ -130,7 +132,27 @@ def _extract_bearer(authorization: str | None) -> str | None:
     return None
 
 
-def _auth_user_from_jwt(token: str) -> dict[str, Any] | None:
+_jwks_client: PyJWKClient | None = None
+_jwks_url: str = ""
+
+
+def _get_jwks_client() -> PyJWKClient | None:
+    """PyJWKClient cache JWKS public key (ES256) — fetch 1 lần rồi verify offline."""
+    global _jwks_client, _jwks_url
+    url = os.getenv("SUPABASE_URL", "").strip().rstrip("/")
+    if not url:
+        return None
+    if _jwks_client is None or _jwks_url != url:
+        _jwks_url = url
+        _jwks_client = PyJWKClient(
+            f"{url}/auth/v1/.well-known/jwks.json", cache_keys=True, lifespan=3600
+        )
+    return _jwks_client
+
+
+def _auth_user_from_jwt_remote(token: str) -> dict[str, Any] | None:
+    """Fallback: gọi Supabase Auth API verify token (chậm ~400ms/network). Chỉ dùng khi
+    verify local fail (token legacy HS256, JWKS chưa sẵn, lỗi). Giữ đúng hành vi cũ."""
     url = os.getenv("SUPABASE_URL", "").strip().rstrip("/")
     key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "").strip()
     if not url or not key:
@@ -149,6 +171,48 @@ def _auth_user_from_jwt(token: str) -> dict[str, Any] | None:
     except Exception as exc:
         print(f"JWT user lookup failed: {exc}")
         return None
+
+
+def _claims_to_user(claims: dict[str, Any]) -> dict[str, Any]:
+    """Dựng dict tương thích /auth/v1/user từ JWT claims (resolve_actor chỉ đọc
+    email / user_metadata / id=sub)."""
+    return {
+        "id": claims.get("sub"),
+        "email": claims.get("email"),
+        "user_metadata": claims.get("user_metadata") or {},
+    }
+
+
+def _auth_user_from_jwt(token: str) -> dict[str, Any] | None:
+    """Verify JWT LOCAL — 0 network, bỏ ~400ms/request (dính lên MỌI endpoint).
+    Claims Supabase đã chứa email + user_metadata + sub.
+    1) ES256 qua JWKS public key (token ký bằng signing key ECC hiện tại).
+    2) HS256 qua SUPABASE_JWT_SECRET nếu đã set (token legacy chưa roll sang ECC).
+    3) Fallback: _auth_user_from_jwt_remote (gọi Auth API — chậm, cho token lạ/JWKS lỗi).
+    Bảo mật giữ nguyên: verify chữ ký + exp + aud='authenticated' ở cả 2 nhánh."""
+    # 1) ES256 (JWKS public key)
+    client = _get_jwks_client()
+    if client is not None:
+        try:
+            signing_key = client.get_signing_key_from_jwt(token)
+            return _claims_to_user(jwt.decode(
+                token, signing_key.key, algorithms=["ES256"],
+                audience="authenticated", options={"require": ["exp", "sub"]},
+            ))
+        except Exception:
+            pass
+    # 2) HS256 (legacy shared secret) — chỉ khi env có
+    secret = os.getenv("SUPABASE_JWT_SECRET", "").strip()
+    if secret:
+        try:
+            return _claims_to_user(jwt.decode(
+                token, secret, algorithms=["HS256"],
+                audience="authenticated", options={"require": ["exp", "sub"]},
+            ))
+        except Exception:
+            pass
+    # 3) Fallback remote
+    return _auth_user_from_jwt_remote(token)
 
 
 def _lookup_staff(sb, email: str) -> dict[str, Any] | None:
