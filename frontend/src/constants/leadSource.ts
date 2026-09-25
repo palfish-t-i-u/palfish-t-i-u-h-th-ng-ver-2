@@ -73,8 +73,8 @@ export const LEAD_SOURCES: LeadSourceDef[] = [
     key: "khac",
     label: "Khác",
     channels: [
-      { code: "300444", label: "Tài App - Palfish Class" },
-      { code: "300445", label: "Tài App - Palfish English" },
+      { code: "300444", label: "Tải App - Palfish Class" },
+      { code: "300445", label: "Tải App - Palfish English" },
       { code: "300311", label: "Sales tự tìm kiếm" },
       { code: "300471", label: "Sales tự tìm kiếm (HCM)" },
     ],
