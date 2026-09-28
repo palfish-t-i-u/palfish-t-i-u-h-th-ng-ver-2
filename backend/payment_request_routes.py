@@ -1490,6 +1490,47 @@ def _is_payment_line_content_stale(
     return True
 
 
+def _unlink_reconciliation_txns(sb, line_id: str, actor_email: str) -> None:
+    """Nhả mọi bank_transactions + gateway_transactions đang ghép tới line_id về
+    'pending' khi line bị reject. Chống giao dịch mồ côi (ghép = gắn txn + mark
+    line paid; hủy phải đảo ĐỦ cả 2 nửa). KHÔNG đụng payment_lines.
+    Xem docs/learnings/reject-line-does-not-unlink-bank-txn.md.
+
+    Bẫy schema (đã verify information_schema prod): cột khác nhau giữa 2 bảng.
+    bank_transactions có updated_at + matched_payment_id, KHÔNG có matched_at.
+    gateway_transactions có matched_at, KHÔNG có updated_at/matched_payment_id.
+    → dùng extra_clear set đúng cột từng bảng, tránh PostgREST 42703 (column
+    does not exist) làm nhả thất bại im lặng.
+    """
+    from audit import log_audit
+
+    now_iso = _iso_now()
+    for table, key_col, extra_clear in (
+        ("bank_transactions", "txn_id", {"matched_payment_id": None, "updated_at": now_iso}),
+        ("gateway_transactions", "id", {"matched_at": None}),
+    ):
+        try:
+            res = (
+                sb.table(table)
+                .update({
+                    "match_status": "pending",
+                    "payment_line_id": None,
+                    "matched_by": None,
+                    **extra_clear,
+                })
+                .eq("payment_line_id", line_id)
+                .execute()
+            )
+            freed = [str(r.get(key_col) or "") for r in (res.data or [])]
+            if freed:
+                log_audit(sb, actor_email, "recon.txn_unlinked_on_reject", table, line_id, {
+                    "freed": freed,
+                })
+        except Exception as exc:
+            # Non-fatal: line đã reject xong; nhả txn lỗi thì log, không chặn response.
+            print(f"[reject] unlink {table} for line {line_id} failed (non-fatal): {exc}")
+
+
 def recompute_payment_request_totals(sb, payment_request_id: str) -> dict[str, Any]:
     request_res = (
         sb.table("payment_requests")
@@ -3552,6 +3593,10 @@ def register_payment_request_routes(app, _get_supabase) -> None:
 
         try:
             updated_res = sb.table("payment_lines").update(patch).eq("id", transaction_id).execute()
+            # Reject = nhả mọi giao dịch ngân hàng/thẻ đã ghép tới line này về pending,
+            # nếu không giao dịch treo mồ côi trỏ line rejected (sự cố PR-1819).
+            if status == "rejected":
+                _unlink_reconciliation_txns(sb, transaction_id, actor.email)
             totals = recompute_payment_request_totals(sb, payment_request_id)
         except HTTPException:
             raise
