@@ -397,6 +397,60 @@ def _try_fill_payoo_funded_date(
     return len(to_fill)
 
 
+def retry_fill_payoo_funded_date_from_bank(sb, since_date: str | None = None) -> int:
+    """Chiều NGƯỢC của _try_fill_payoo_funded_date: quét cục settlement Payoo ĐÃ nằm
+    trong bank_transactions rồi thử fill funded_date cho các đơn vừa có mặt.
+
+    Vì sao cần: chiều xuôi (webhook cục về → fill đơn) chỉ chạy 1 lần đúng khoảnh
+    khắc cục về. Nếu lúc đó các đơn thành phần CHƯA sync vào gateway_transactions
+    (extension Payoo sync theo chu kỳ), Σnet != cục → webhook bỏ qua và KHÔNG có
+    cơ chế chạy lại → đơn sync muộn kẹt funded_date=NULL vĩnh viễn (biến mất khỏi
+    bộ lọc "Ngày tiền về" + thiếu ở BC04). Gọi hàm này SAU khi ingest đơn Payoo để
+    thử lại từ phía đơn.
+
+    Idempotent + an toàn: mỗi cục chạy lại _try_fill_payoo_funded_date — guard khớp
+    tuyệt đối Σnet == cục (per-settlement, không gộp union) + chỉ fill đơn
+    funded_date IS NULL. Cục đã fill đủ → to_fill rỗng → 0, không ghi đè.
+
+    since_date: 'YYYY-MM-DD' — chỉ xét cục transaction_date >= mốc này (bound theo
+    ngày quẹt sớm nhất của đơn vừa ingest; settlement luôn về SAU ngày quẹt, nên
+    cục cũ hơn không thể chứa đơn mới). None = quét tất (dùng cho worker/thủ công).
+
+    Trả tổng số dòng gateway đã fill.
+    """
+    query = (
+        sb.table("bank_transactions")
+        .select("sepay_id, amount, content, transaction_date")
+        .eq("gateway", "sepay_webhook")
+    )
+    if since_date:
+        query = query.gte("transaction_date", since_date)
+    try:
+        res = query.execute()
+    except Exception as exc:
+        print(f"[sepay] retry Payoo funded_date: query settlement thất bại: {exc}")
+        return 0
+
+    filled_total = 0
+    for row in res.data or []:
+        content = row.get("content") or ""
+        # is_payoo_settlement không SQL-filter được → lọc Python; đây cũng là chốt
+        # chỉ đụng cục Payoo (mPOS/CK thường bỏ qua).
+        if not is_payoo_settlement(content):
+            continue
+        txn_date_raw = row.get("transaction_date")
+        if not txn_date_raw:
+            continue
+        try:
+            txn_date = datetime.fromisoformat(str(txn_date_raw))
+        except (ValueError, TypeError):
+            continue
+        filled_total += _try_fill_payoo_funded_date(
+            sb, row.get("amount") or 0, txn_date, row.get("sepay_id") or "", content
+        )
+    return filled_total
+
+
 def classify_cash_in(*, content: str, payment_line_id: str | None, is_card: bool = False) -> str:
     """Nhóm nội bộ cho BC04 (Dòng tiền về): khach_tra | the | the_gop | rut_tiktok | khac.
     Chỉ dùng để auto-gán nhãn hiển thị + phân loại quản báo — KHÔNG đổi match_status.

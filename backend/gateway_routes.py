@@ -362,6 +362,20 @@ def register_gateway_routes(app, get_supabase: Callable[[], Any]) -> None:
             parsed = parse_payoo_orders(body.orders)
             txn_rows = [_txn_insert_row(row) for row in parsed["transactions"] if row.get("txn_code")]
             inserted, skipped = _upsert_rows(sb, "gateway_transactions", txn_rows, "txn_code")
+            # Chiều ngược: đơn có thể sync SAU khi cục settlement Payoo đã về TK → lúc
+            # webhook chạy Σnet != cục nên đơn kẹt funded_date=NULL. Thử fill lại từ các
+            # cục đã nằm trong bank_transactions (idempotent, guard khớp tuyệt đối). Bound
+            # theo ngày quẹt sớm nhất của đơn vừa ingest (settlement luôn về SAU ngày quẹt).
+            try:
+                from sepay_routes import retry_fill_payoo_funded_date_from_bank
+
+                swipe_dates = [str(r["paid_at"])[:10] for r in txn_rows if r.get("paid_at")]
+                since_date = min(swipe_dates) if swipe_dates else None
+                refilled = retry_fill_payoo_funded_date_from_bank(sb, since_date)
+                if refilled:
+                    print(f"[gateway] ingest-orders: retry filled funded_date for {refilled} Payoo txn(s)")
+            except Exception as exc:
+                print(f"[gateway] ingest-orders retry funded_date failed (non-blocking): {exc}")
         except ValueError as exc:
             raise HTTPException(400, str(exc)) from exc
         except Exception as exc:

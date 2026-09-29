@@ -1,0 +1,13 @@
+# Payoo funded_date: fill 1-shot lúc webhook = NULL vĩnh viễn khi đơn sync muộn
+
+**Related files:** `backend/sepay_routes.py` (`_try_fill_payoo_funded_date`, `retry_fill_payoo_funded_date_from_bank`), `backend/gateway_routes.py` (`ingest_gateway_orders`), `backend/tests/test_payoo_funded_date.py`. Nối tiếp `payoo-funded-date-autofill-multi-txn-lumps.md` + `2026-09-24-payoo-funded-date-batch-range.md`.
+
+**Problem:** Cục payout Payoo ~32,3tr về TK 28/9 (sepay_id 85273153, "N25.9 27.9.2026") nhưng lọc "Ngày tiền về = 28/9" tab Payoo ra 0 — dù 3 đơn cấu thành đã ghép PR. `funded_date` của cả 3 đơn kẹt NULL.
+
+**Trap:** `funded_date` chỉ được điền **một lần duy nhất, đồng bộ**, đúng khoảnh khắc cục settlement về qua webhook SePay (`_try_fill_payoo_funded_date` tại call site `is_payoo_settlement`). Guard khớp tuyệt đối `Σnet == cục` là đúng, KHÔNG phải bug parse dải ngày (chạy lại logic đó hôm nay thì 3 đơn khớp tuyệt đối). Vấn đề thuần **lỡ nhịp thời điểm**: extension Payoo sync đơn theo chu kỳ (`chrome.alarms` 360′); nếu lúc cục về các đơn thành phần CHƯA có trong `gateway_transactions` thì Σnet != cục → webhook bỏ qua → và KHÔNG có cơ chế chạy lại. Đơn sync vào SAU đó nhưng `funded_date` NULL mãi. `gateway_transactions` không có created_at/synced_at nên KHÔNG "detect đơn sync muộn" từ data được — fix phải là **retry cấu trúc**, không phải detect.
+
+**Insight:** Việc fill phải idempotent + retry được từ CẢ HAI chiều, dùng chung 1 lõi khớp settlement→orders (`_try_fill_payoo_funded_date`, nhận params 1 cục: amount/txn_date/sepay_id/content). (1) chiều xuôi giữ nguyên: webhook về → fill. (2) chiều ngược mới: SAU `ingest_gateway_orders`, quét các cục Payoo ĐÃ nằm trong `bank_transactions` (`gateway='sepay_webhook'` + `is_payoo_settlement`, bound `transaction_date >= ngày quẹt sớm nhất đơn vừa ingest` vì settlement luôn về SAU ngày quẹt) và chạy lại lõi cho từng cục. An toàn vì lõi tự guard `round(Σnet)==round(cục)` **per-settlement** (không gộp union — dải chồng nhau vẫn khớp riêng) + chỉ đụng đơn `funded_date IS NULL`. `funded_date` = `transaction_date` cục, VN naive (`.replace(tzinfo=None)`), `settlement_code=PAYOO-{sepay_id}`.
+
+**Rule:** Bất kỳ auto-fill nào phụ thuộc "hai nguồn dữ liệu bất đồng bộ đều đã có mặt" (ở đây: cục bank qua webhook + đơn qua extension) mà chỉ chạy 1-shot ở 1 phía = sẽ mất dữ liệu khi phía kia đến muộn. Thêm retry ở CẢ hai điểm ingest, tách lõi khớp thành hàm nhận-1-đối-tượng để dùng lại, giữ nguyên guard tuyệt đối để retry idempotent.
+
+**Verify:** `cd backend && python -m pytest tests/test_payoo_funded_date.py tests/test_tien_ve_map.py tests/test_gateway_routes.py -q` (54 passed). Case prod 32.320.081 đã vá tay 3 dòng trước — fix này để KHÔNG tái diễn.

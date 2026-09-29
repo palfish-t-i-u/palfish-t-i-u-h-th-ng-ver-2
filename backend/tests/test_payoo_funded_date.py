@@ -14,6 +14,7 @@ from sepay_routes import (
     is_payoo_settlement,
     _parse_payoo_settle_range,
     _try_fill_payoo_funded_date,
+    retry_fill_payoo_funded_date_from_bank,
 )
 
 REAL_PAYOO_CONTENT = (
@@ -282,6 +283,101 @@ class TestTryFillPayooFundedDate:
 
         assert result == 0
         assert g1["funded_date"] is None
+
+
+# ---------------------------------------------------------------------------
+# retry_fill_payoo_funded_date_from_bank (reverse: after ingest orders)
+# ---------------------------------------------------------------------------
+def _settlement(sepay_id, amount, content, txn_date):
+    """Cục settlement Payoo trong bank_transactions."""
+    return {
+        "sepay_id": sepay_id,
+        "gateway": "sepay_webhook",
+        "amount": amount,
+        "content": content,
+        "transaction_date": txn_date,
+    }
+
+
+class TestRetryFillFromBank:
+    def test_order_synced_after_settlement_gets_filled(self):
+        """Bug gốc: cục settlement về TK 28/9 TRƯỚC khi 3 đơn quẹt 25/9 sync vào.
+        Sau khi ingest đơn muộn → retry từ cục đã có trong bank → funded_date được
+        điền (VN naive) + settlement_code, không cần vá tay."""
+        content = "Payoo CT DS N25.9 27.9.2026 cho TK ECOM. PY3 PALFISH EC"
+        # 3 đơn quẹt 25/9 vừa sync muộn, funded_date còn NULL
+        g1 = _gw("g1", 10000000.0, "2026-09-25")
+        g2 = _gw("g2", 12000000.0, "2026-09-25")
+        g3 = _gw("g3", 10320081.0, "2026-09-25")
+        # cục về TK 28/9 15:18, đã nằm sẵn trong bank_transactions
+        settle = _settlement(
+            "85273153", 32320081.0, content, "2026-09-28T15:18:00+07:00"
+        )
+        sb = FakeSB({
+            "gateway_transactions": [g1, g2, g3],
+            "bank_transactions": [settle],
+        })
+
+        filled = retry_fill_payoo_funded_date_from_bank(sb, since_date="2026-09-25")
+
+        assert filled == 3
+        for g in (g1, g2, g3):
+            assert g["funded_date"] == "2026-09-28T15:18:00"  # VN naive, strip +07
+            assert "+" not in g["funded_date"]
+            assert g["settlement_code"] == "PAYOO-85273153"
+
+    def test_idempotent_second_run_fills_nothing(self):
+        """Chạy lại lần 2 (đơn đã funded) → 0, không ghi đè."""
+        content = "Payoo CT DS N25.9 27.9.2026 cho TK ECOM. PY3 PALFISH EC"
+        g1 = _gw("g1", 32320081.0, "2026-09-25")
+        settle = _settlement("85273153", 32320081.0, content, "2026-09-28T15:18:00+07:00")
+        sb = FakeSB({"gateway_transactions": [g1], "bank_transactions": [settle]})
+
+        assert retry_fill_payoo_funded_date_from_bank(sb) == 1
+        assert retry_fill_payoo_funded_date_from_bank(sb) == 0
+        assert g1["funded_date"] == "2026-09-28T15:18:00"
+
+    def test_sum_mismatch_no_fill(self):
+        """Đơn chưa đủ (Σnet != cục) → guard tuyệt đối per-settlement chặn, 0 fill."""
+        content = "Payoo CT DS N25.9 27.9.2026 cho TK ECOM. PY3 PALFISH EC"
+        g1 = _gw("g1", 10000000.0, "2026-09-25")  # thiếu 2 đơn còn lại
+        settle = _settlement("85273153", 32320081.0, content, "2026-09-28T15:18:00+07:00")
+        sb = FakeSB({"gateway_transactions": [g1], "bank_transactions": [settle]})
+
+        assert retry_fill_payoo_funded_date_from_bank(sb) == 0
+        assert g1["funded_date"] is None
+
+    def test_non_payoo_bank_rows_ignored(self):
+        """Cục mPOS / CK thường trong bank không bị đụng."""
+        mpos = _settlement("m1", 60732000.0, REAL_MPOS_CONTENT, "2026-09-28T03:26:00+07:00")
+        ck = _settlement("c1", 5000000.0, "Nguyen Van A chuyen hoc phi", "2026-09-28T09:00:00+07:00")
+        g1 = _gw("g1", 5000000.0, "2026-09-25")
+        sb = FakeSB({"gateway_transactions": [g1], "bank_transactions": [mpos, ck]})
+
+        assert retry_fill_payoo_funded_date_from_bank(sb) == 0
+        assert g1["funded_date"] is None
+
+    def test_multiple_settlements_matched_per_settlement(self):
+        """2 cục dải chồng nhau → khớp theo TỪNG cục, không gộp union."""
+        c_a = "Payoo CT DS N23.9.2026 cho TK ECOM. PY3 PALFISH EC"       # 1 ngày
+        c_b = "Payoo CT DS N23.9 24.9.2026 cho TK ECOM. PY3 PALFISH EC"  # dải trùm 23/9
+        # cục A khớp riêng đơn 23/9; cục B (dải 23-24) sẽ KHÔNG khớp vì Σ(23+24) != B
+        gA = _gw("gA", 8172450.0, "2026-09-23")
+        gB = _gw("gB", 9000000.0, "2026-09-24")
+        settle_a = _settlement("sa", 8172450.0, c_a, "2026-09-24T15:00:00+07:00")
+        settle_b = _settlement("sb", 5000000.0, c_b, "2026-09-25T15:00:00+07:00")
+        sb = FakeSB({
+            "gateway_transactions": [gA, gB],
+            "bank_transactions": [settle_a, settle_b],
+        })
+
+        filled = retry_fill_payoo_funded_date_from_bank(sb)
+
+        # chỉ cục A khớp (đơn 23/9) → gA filled; cục B không khớp Σ → gB vẫn NULL
+        assert filled == 1
+        assert gA["funded_date"] == "2026-09-24T15:00:00"
+        assert gA["settlement_code"] == "PAYOO-sa"
+        assert gB["funded_date"] is None
 
 
 # ---------------------------------------------------------------------------
