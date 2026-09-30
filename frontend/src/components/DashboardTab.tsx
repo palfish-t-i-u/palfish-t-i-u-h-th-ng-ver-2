@@ -454,12 +454,12 @@ function MonthRanking({ rows, loading }: { rows: DashboardSaleRow[]; loading: bo
               <div className="min-w-0">
                 <div className="truncate font-extrabold text-[#101426]">{row.sale_crm_name}</div>
                 <div className="truncate text-[11px] text-[#8A92A6] md:hidden">
-                  {[row.team, subTeamLabel(row.sub_team)].filter(Boolean).join(" · ") || "—"}
+                  {[row.team, subTeamLabel(row.sub_team, row.team)].filter(Boolean).join(" · ") || "—"}
                 </div>
               </div>
             </div>
             <div className="truncate text-[#4B5572] max-md:hidden">{row.team || "—"}</div>
-            <div className="truncate text-[#4B5572] max-md:hidden">{subTeamLabel(row.sub_team) || "—"}</div>
+            <div className="truncate text-[#4B5572] max-md:hidden">{subTeamLabel(row.sub_team, row.team) || "—"}</div>
             <div className="text-right font-extrabold text-[#101426]">
               <span className="md:hidden">{formatVndCompact(row.gmv_vnd)}</span>
               <span className="hidden md:inline">{formatRevenueMillions(row.gmv_vnd)}</span>

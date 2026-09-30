@@ -156,7 +156,7 @@ export default function ProfilePage() {
               </div>
               <div>
                 <span className="text-gmv-muted">Sub-team</span>
-                <div className="font-semibold text-gmv-text-strong">{subTeamLabel(profile.subTeam) || "—"}</div>
+                <div className="font-semibold text-gmv-text-strong">{subTeamLabel(profile.subTeam, profile.team) || "—"}</div>
               </div>
               <div>
                 <span className="text-gmv-muted">Cấp quyền</span>

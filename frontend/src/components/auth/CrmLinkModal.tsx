@@ -120,7 +120,7 @@ export default function CrmLinkModal({ open, onClose, onConfirm, linkedCrmNames 
         >
           <option value="">Tất cả sub-team</option>
           {subTeams.map((t) => (
-            <option key={t} value={t}>{subTeamLabel(t)}</option>
+            <option key={t} value={t}>{subTeamLabel(t, teamFilter)}</option>
           ))}
         </Select>
         <Button size="sm" variant="primary" onClick={handleSync} disabled={syncing}>
@@ -173,7 +173,7 @@ export default function CrmLinkModal({ open, onClose, onConfirm, linkedCrmNames 
                     </td>
                     <td className="font-semibold text-gmv-text-strong">{s.crmName}</td>
                     <td className="text-gmv-text">{s.team || "—"}</td>
-                    <td className="text-gmv-text">{subTeamLabel(s.subTeam) || "—"}</td>
+                    <td className="text-gmv-text">{subTeamLabel(s.subTeam, s.team) || "—"}</td>
                     <td>
                       {isLinked ? (
                         <span className="aa-crm-link linked">

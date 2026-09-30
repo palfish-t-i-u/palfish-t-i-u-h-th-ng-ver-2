@@ -32,6 +32,7 @@ const TEAMS_BY_DEPT: Record<string, string[]> = {
 
 const SUBTEAMS_BY_TEAM: Record<string, string[]> = {
   "Inhouse 1": ["Team 1", "Team 2", "Team 3", "Team 4", "Team 5", "Sales"],
+  "Inhouse 2": ["Team 1", "Team 2"],
   "HN Offline Store": ["Linh Dam Store", "An Binh Store"],
 };
 
@@ -212,7 +213,7 @@ export default function SignUpPage() {
               <option value="">-- Chọn sub-team --</option>
               {subTeams.map((t) => (
                 <option key={t} value={t}>
-                  {subTeamLabel(t)}
+                  {subTeamLabel(t, form.team)}
                 </option>
               ))}
             </Select>

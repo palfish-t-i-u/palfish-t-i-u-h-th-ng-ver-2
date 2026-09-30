@@ -81,6 +81,7 @@ const TEAMS_BY_DEPT: Record<string, string[]> = {
 
 const SUBTEAMS_BY_TEAM: Record<string, string[]> = {
   "Inhouse 1": ["Team 1", "Team 2", "Team 3", "Team 4", "Team 5", "Sales"],
+  "Inhouse 2": ["Team 1", "Team 2"],
   "HN Offline Store": ["Linh Dam Store", "An Binh Store"],
 };
 
@@ -271,7 +272,7 @@ export default function AccountDetailDrawer({ user, onClose, onUpdated, linkedCr
             </div>
             <div className="aa-summary-cell">
               <div className="aa-summary-label">Team</div>
-              <div className="aa-summary-value">{user.team || "—"}{user.subTeam ? ` · ${subTeamLabel(user.subTeam)}` : ""}</div>
+              <div className="aa-summary-value">{user.team || "—"}{user.subTeam ? ` · ${subTeamLabel(user.subTeam, user.team)}` : ""}</div>
             </div>
             <div className="aa-summary-cell">
               <div className="aa-summary-label">CRM</div>
@@ -374,7 +375,7 @@ export default function AccountDetailDrawer({ user, onClose, onUpdated, linkedCr
                       <Select value={editSubTeam} onChange={(e) => setEditSubTeam(e.target.value)}>
                         <option value="">— Chọn —</option>
                         {editSubTeams.map((t) => (
-                          <option key={t} value={t}>{subTeamLabel(t)}</option>
+                          <option key={t} value={t}>{subTeamLabel(t, editTeam)}</option>
                         ))}
                       </Select>
                     ) : (
@@ -416,7 +417,7 @@ export default function AccountDetailDrawer({ user, onClose, onUpdated, linkedCr
                   </div>
                   <div className="aa-info-item">
                     <label>Sub-team</label>
-                    <span>{subTeamLabel(user.subTeam) || "—"}</span>
+                    <span>{subTeamLabel(user.subTeam, user.team) || "—"}</span>
                   </div>
                   <div className="aa-info-item">
                     <label>Provider</label>
@@ -455,7 +456,7 @@ export default function AccountDetailDrawer({ user, onClose, onUpdated, linkedCr
                 <div className="aa-crm-card">
                   <div>
                     <div className="aa-crm-card-name">{user.crmName}</div>
-                    <div className="aa-crm-card-team">{user.team || "—"}{user.subTeam ? ` · ${subTeamLabel(user.subTeam)}` : ""}</div>
+                    <div className="aa-crm-card-team">{user.team || "—"}{user.subTeam ? ` · ${subTeamLabel(user.subTeam, user.team)}` : ""}</div>
                   </div>
                   <span className="aa-crm-link linked">
                     <span className="aa-status-dot" style={{ background: "var(--gmv-ok)" }} />
