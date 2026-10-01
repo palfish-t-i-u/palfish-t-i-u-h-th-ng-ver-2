@@ -193,6 +193,22 @@ export default function AccountDetailDrawer({ user, onClose, onUpdated, linkedCr
     }
   }
 
+  async function handleToggleBanned() {
+    setError("");
+    const banning = !user!.isBanned;
+    if (banning && !window.confirm(`Khoá tài khoản ${user!.email}? Người này sẽ không đăng nhập được cho tới khi mở khoá.`)) return;
+    try {
+      await endpoints.admin.patchAuthUser(user!.id, { banned: banning });
+      onUpdated();
+    } catch (err: unknown) {
+      const msg =
+        err && typeof err === "object" && "response" in err
+          ? ((err as { response?: { data?: { detail?: string } } }).response?.data?.detail ?? "Lỗi.")
+          : "Lỗi.";
+      setError(msg);
+    }
+  }
+
   async function handleCrmLink(crmName: string) {
     setError("");
     try {
@@ -507,6 +523,13 @@ export default function AccountDetailDrawer({ user, onClose, onUpdated, linkedCr
             onClick={handleToggleActivation}
           >
             {user.isActivated ? "Dừng kích hoạt" : "Kích hoạt"}
+          </Button>
+          <Button
+            size="sm"
+            variant={user.isBanned ? "ok" : "danger"}
+            onClick={handleToggleBanned}
+          >
+            {user.isBanned ? "Mở khoá" : "Khoá tài khoản"}
           </Button>
           <div className="aa-drawer-footer-spacer" />
           <Button variant="primary" onClick={handleSave} disabled={!hasChanges || saving}>
