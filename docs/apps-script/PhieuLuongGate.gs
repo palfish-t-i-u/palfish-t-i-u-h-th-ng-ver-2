@@ -79,6 +79,15 @@ function guiPhieuOnEdit(e) {
     var sendStep = gStepBySend_(header);
     var reqStep  = gStepByRequire_(header);
 
+    // Khoá tài liệu: 2 lần tick sát nhau = 2 execution onEdit chạy chồng; nếu không
+    // khoá, cả 2 đọc cùng getLastRow() rồi append đè nhau → MẤT dòng trong _outbox.
+    var lk = LockService.getDocumentLock();
+    if (!lk.tryLock(20000)) {
+      ss.toast('Đang bận, tick lại sau 1-2 giây (hoặc dùng "Xếp lại hàng đợi").', 'Cổng gửi phiếu', 6);
+      return;
+    }
+    try {
+
     // ═══ BATCH READ: tất cả data 1 lần ═══
     var lastCol = sh.getLastColumn();
     var headers = sh.getRange(1, 1, 1, lastCol).getValues()[0];
@@ -116,7 +125,8 @@ function guiPhieuOnEdit(e) {
     var obUpdates = {};           // { sheetRow: rowArr }
     var stUpdates = {};           // { id: { row, code, ky, states } }
     var cellFalse = [];           // [sheetRow] — setValue(false) trên bảng chính
-    var enqueued = 0, blocked = 0, revoked = 0, confirmed = 0;
+    var reTickTrue = [];          // [sheetRow] — ép setValue(true): ô "Gửi" đã sent, chặn bỏ tick
+    var enqueued = 0, blocked = 0, revoked = 0, confirmed = 0, relocked = 0;
 
     for (var ri = 0; ri < numRows; ri++) {
       var rowData = allData[ri];
@@ -132,7 +142,18 @@ function guiPhieuOnEdit(e) {
 
       // (A) Cột là NÚT GỬI
       if (sendStep) {
-        if (!val) { stIdx[stKey].states[header] = false; continue; }
+        if (!val) {
+          // Ô "Gửi" đã gửi (_outbox sent) = bằng chứng đã phát phiếu → KHÔNG cho bỏ tick,
+          // ép ✔ lại + giữ state=true (nếu không sheet lệch app như 11 ca kỳ 2026-09).
+          var obIdU = code + '|' + ky + '|' + sendStep.stage;
+          if (obIdx[obIdU] && obIdx[obIdU].status === 'sent') {
+            reTickTrue.push(row);
+            stIdx[stKey].states[header] = true;
+            relocked++;
+            continue;
+          }
+          stIdx[stKey].states[header] = false; continue;
+        }
         if (cReq && rowData[cReq - 1] !== true) {
           cellFalse.push(row);
           stIdx[stKey].states[header] = false;
@@ -163,9 +184,16 @@ function guiPhieuOnEdit(e) {
       if (reqStep) {
         stIdx[stKey].states[header] = val;
         if (!val && cSend && rowData[cSend - 1] === true) {
-          cellFalse.push(row);
-          stIdx[stKey].states[reqStep.send] = false;
-          revoked++;
+          // Ô "Gửi" phụ thuộc đã gửi (_outbox sent) → KHÔNG thu hồi (giữ ✔);
+          // ô điều kiện vẫn được bỏ theo ý người. Chỉ bịt cascade gỡ ô đã phát.
+          var obIdB = code + '|' + ky + '|' + reqStep.stage;
+          if (obIdx[obIdB] && obIdx[obIdB].status === 'sent') {
+            // giữ nguyên ô "Gửi": không push cellFalse, không set states[reqStep.send]=false
+          } else {
+            cellFalse.push(row);
+            stIdx[stKey].states[reqStep.send] = false;
+            revoked++;
+          }
         } else if (val) { confirmed++; }
         continue;
       }
@@ -205,13 +233,18 @@ function guiPhieuOnEdit(e) {
     for (var fi = 0; fi < cellFalse.length; fi++) {
       sh.getRange(cellFalse[fi], targetCol).setValue(false);
     }
+    // ô "Gửi" đã sent bị bỏ tick → ép ✔ lại (editCol LUÔN là cột "Gửi" khi có reTickTrue)
+    for (var rt = 0; rt < reTickTrue.length; rt++) {
+      sh.getRange(reTickTrue[rt], editCol).setValue(true);
+    }
 
     // ═══ TOAST ═══
     if (numRows === 1) {
       var singleName = (cName ? String(allData[0][cName-1]||'') : '') +
                         (cMa ? ' (' + String(allData[0][cMa-1]||'') + ')' : '');
       if (sendStep) {
-        if (blocked) ss.toast('Phải tick "' + sendStep.require + '" trước.', '⛔ Chưa đủ điều kiện', 6);
+        if (relocked) ss.toast('Phiếu đã gửi — ô khóa. Cần hủy/sửa: báo admin (app chưa có nút rút phiếu).', '🔒 Đã gửi, không bỏ được', 7);
+        else if (blocked) ss.toast('Phải tick "' + sendStep.require + '" trước.', '⛔ Chưa đủ điều kiện', 6);
         else if (enqueued) ss.toast(singleName + ' kỳ ' + ky + '.', '✓ Đã xếp hàng gửi (' + sendStep.label + ')', 6);
       } else if (reqStep) {
         if (revoked) ss.toast('Bỏ "' + header + '" → thu hồi "' + reqStep.send + '" (' + singleName + ').', '↩ Thu hồi', 6);
@@ -224,8 +257,12 @@ function guiPhieuOnEdit(e) {
       if (enqueued) summary.push(enqueued + ' xếp hàng');
       if (blocked)  summary.push(blocked + ' chặn (thiếu điều kiện)');
       if (revoked)  summary.push(revoked + ' thu hồi');
+      if (relocked) summary.push(relocked + ' khóa (đã gửi)');
       if (confirmed) summary.push(confirmed + ' xác nhận');
       ss.toast(summary.join(' · ') || numRows + ' dòng.', '⚡ ' + header + ' (' + numRows + ' dòng)', 8);
+    }
+    } finally {
+      lk.releaseLock();
     }
   } catch (err) {
     SpreadsheetApp.getActiveSpreadsheet().toast('Lỗi cổng gửi phiếu: ' + err, 'Cổng gửi phiếu', 8);
@@ -293,6 +330,80 @@ function gEnqueueRow_(sh, row, hmap, stage, stageLabel) {
   else ob.appendRow(rowArr);
   return { title:'✓ Đã xếp hàng gửi (' + stageLabel + ')',
            msg: name + ' (' + code + ') kỳ ' + ky + '. Chạy "Gửi phiếu đang chờ" để phát.' };
+}
+
+/* ======== RECONCILE (quét bù — không phụ thuộc trigger onEdit) ========
+ *
+ * Vì sao cần: guiPhieuOnEdit (trigger onEdit) đôi khi KHÔNG xếp được phiếu vào
+ * _outbox — tick dồn dập → 2 lần chạy đè nhau ở append (getLastRow), hoặc Google
+ * rớt/timeout onEdit. Hàm này đọc THẲNG bảng: dòng nào đang tick 'Gửi BL <tầng>'
+ * + đã đủ cột điều kiện mà CHƯA có trong _outbox (pending|sent) → xếp bù.
+ * Idempotent + có LockService → chạy lại bao nhiêu lần cũng an toàn.
+ * Bấm nút này TRƯỚC 'Gửi phiếu đang chờ' là chắc ăn đủ người.
+ */
+function reconcileOutbox() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var main = ss.getSheetByName(GATE_CFG.mainSheet);
+  if (!main) { ss.toast('Không thấy tab "' + GATE_CFG.mainSheet + '".', 'Xếp lại hàng đợi', 6); return; }
+
+  var lk = LockService.getDocumentLock();
+  if (!lk.tryLock(20000)) { ss.toast('Đang bận, thử lại sau vài giây.', 'Xếp lại hàng đợi', 6); return; }
+  try {
+    var ky      = kyLuongHienTai_();
+    var lastCol = main.getLastColumn();
+    var lastRow = main.getLastRow();
+    if (lastRow < 2) { ss.toast('Bảng trống.', 'Xếp lại hàng đợi', 5); return; }
+
+    var headers  = main.getRange(1, 1, 1, lastCol).getValues()[0];
+    var allData  = main.getRange(2, 1, lastRow - 1, lastCol).getValues();
+    var hmap     = gHeaderMap_(main);
+    var cMa      = hmap[GATE_CFG.colMaNV];
+    var cName    = hmap[GATE_CFG.colName];
+    var skipCols = gSkipCols_();
+    if (!cMa) { ss.toast('Không thấy cột "' + GATE_CFG.colMaNV + '".', 'Xếp lại hàng đợi', 6); return; }
+
+    var ob    = gOutbox_();
+    var obIdx = gOutboxIndex_(ob);   // id -> {row, status}
+
+    var appends = [], added = 0, blocked = 0, already = 0;
+    for (var s = 0; s < SEND_STEPS.length; s++) {
+      var step  = SEND_STEPS[s];
+      var cSend = hmap[step.send];
+      var cReq  = hmap[step.require];
+      if (!cSend) continue;
+      for (var r = 0; r < allData.length; r++) {
+        var rowData = allData[r];
+        if (rowData[cSend - 1] !== true) continue;             // chưa tick Gửi
+        var code = String(rowData[cMa - 1] || '').trim();
+        if (!code) continue;
+        if (cReq && rowData[cReq - 1] !== true) { blocked++; continue; }  // thiếu điều kiện
+        var obId = code + '|' + ky + '|' + step.stage;
+        if (obIdx[obId]) { already++; continue; }              // đã pending|sent rồi
+        var name  = cName ? String(rowData[cName - 1] || '').trim() : '';
+        var phieu = gBuildPhieu_(headers, rowData, skipCols);
+        if (step.stage === 'truoc_thue') gApplyTruocThue_(phieu); // ẩn thuế + tổng chưa trừ thuế (khớp guiPhieuOnEdit)
+        var payload = {
+          meta: { source:'sheet-gate-reconcile', version:1, code:code, ky_luong:ky,
+                  stage:step.stage, stage_label:step.label,
+                  enqueued_at:new Date().toISOString(), sheet_id:ss.getId() },
+          phieu: phieu,
+        };
+        appends.push([obId, code, name, ky, step.stage, 'pending',
+                      new Date().toISOString(), '', 0, '', JSON.stringify(payload)]);
+        obIdx[obId] = { row: -1, status: 'pending' };          // tránh trùng trong cùng lần quét
+        added++;
+      }
+    }
+
+    if (appends.length) {
+      ob.getRange(ob.getLastRow() + 1, 1, appends.length, OUTBOX_HEADERS.length).setValues(appends);
+    }
+    ss.toast('Xếp bù ' + added + ' phiếu · đã có sẵn ' + already +
+             (blocked ? ' · ' + blocked + ' thiếu điều kiện' : '') +
+             '. Giờ bấm "Gửi phiếu đang chờ".', '✓ Xếp lại hàng đợi (kỳ ' + ky + ')', 10);
+  } finally {
+    lk.releaseLock();
+  }
 }
 
 /* ======== FLUSH (POST sang app — hoặc dry-run nếu chưa nối) ======== */
@@ -396,7 +507,78 @@ function restoreGateTicks_(main) {
         if (cc && states2[h] === true) main.getRange(r + 2, cc).setValue(true);
       }
     }
+    _forceSentTicks_(main);   // tự-lành: ô "Gửi" có _outbox=sent nhưng đang ✗ → ép ✔ + ghi state
   } catch (err) { /* không chặn refresh */ }
+}
+
+/* Tự-lành ô "Gửi BL <tầng>": mọi dòng _outbox status=sent của kỳ hiện tại mà ô đang
+ * ✗ → ép ✔ + ghi _gate_state=true (bền qua refresh). Chỉ setValue (KHÔNG kích trigger)
+ * → không enqueue lại; chốt sent của _outbox giữ nguyên → KHÔNG gửi trùng. Trả số ô đã sửa.
+ * Khớp _outbox theo cột id (code|ky|stage), KHÔNG theo cột ky (bị Sheets ép Date). */
+function _forceSentTicks_(main) {
+  if (!main) return 0;
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var ob = ss.getSheetByName(GATE_CFG.outboxSheet);
+  if (!ob) return 0;
+  var ky = kyLuongHienTai_();
+
+  var sendColByStage = {};
+  for (var s = 0; s < SEND_STEPS.length; s++) sendColByStage[SEND_STEPS[s].stage] = SEND_STEPS[s].send;
+
+  var obData = ob.getDataRange().getValues();
+  var needTick = {};   // code -> { 'Gửi BL <tầng>': true }
+  for (var i = 1; i < obData.length; i++) {
+    if (String(obData[i][5]) !== 'sent') continue;      // col 5 = status
+    var id = String(obData[i][0] || '');                 // col 0 = id = code|ky|stage
+    if (!id) continue;
+    var parts = id.split('|');
+    if (parts.length < 3) continue;
+    if (parts[1] !== ky) continue;
+    var sendHdr = sendColByStage[parts[2]];
+    if (!sendHdr) continue;
+    if (!needTick[parts[0]]) needTick[parts[0]] = {};
+    needTick[parts[0]][sendHdr] = true;
+  }
+  if (!Object.keys(needTick).length) return 0;
+
+  var hmap = gHeaderMap_(main);
+  var cMa = hmap[GATE_CFG.colMaNV];
+  if (!cMa) return 0;
+  var last = main.getLastRow();
+  if (last < 2) return 0;
+  var codes = main.getRange(2, cMa, last - 1, 1).getValues();
+  var fixed = 0;
+  for (var r = 0; r < codes.length; r++) {
+    var code2 = String(codes[r][0] || '').trim();
+    var want = needTick[code2];
+    if (!want) continue;
+    for (var hdr in want) {
+      var cc = hmap[hdr];
+      if (!cc) continue;
+      var cell = main.getRange(r + 2, cc);
+      if (cell.getValue() !== true) {
+        gSaveState_(code2, ky, hdr, true);   // G2: ghi state TRƯỚC (nguồn chân lý)
+        cell.setValue(true);                 // G3: setValue không kích trigger
+        fixed++;
+      }
+    }
+  }
+  return fixed;
+}
+
+/** Menu: khớp ngay ô "Gửi" với _outbox đã gửi (sửa ô rụng) — không cần refresh full. */
+function healSentTicks() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var main = ss.getSheetByName(GATE_CFG.mainSheet);
+  if (!main) { ss.toast('Không thấy tab "' + GATE_CFG.mainSheet + '".', '🩹 Khớp tick đã gửi', 6); return; }
+  var lk = LockService.getDocumentLock();
+  if (!lk.tryLock(20000)) { ss.toast('Đang bận, thử lại sau vài giây.', '🩹 Khớp tick đã gửi', 6); return; }
+  try {
+    var n = _forceSentTicks_(main);
+    ss.toast('Đã khớp ' + n + ' ô "Gửi" với hàng đợi đã gửi (kỳ ' + kyLuongHienTai_() + ').', '🩹 Khớp tick đã gửi', 8);
+  } finally {
+    lk.releaseLock();
+  }
 }
 
 /* ======== INSTALL + XEM ======== */

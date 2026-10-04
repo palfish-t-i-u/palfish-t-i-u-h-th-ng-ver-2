@@ -142,6 +142,8 @@ function onOpen(){
     .addItem('🗓️ Tạo tab Chấm công', 'taoTabChamCong')
     .addSeparator()
     .addItem('🔌 Cài đặt cổng gửi phiếu', 'installGateTriggers')
+    .addItem('🧹 Xếp lại hàng đợi (quét bù tick sót)', 'reconcileOutbox')
+    .addItem('🩹 Khớp tick đã gửi (sửa ô rụng)', 'healSentTicks')
     .addItem('📤 Gửi phiếu đang chờ', 'flushOutbox')
     .addItem('📋 Mở hàng đợi', 'moHangDoi')
     .addItem('🔃 Đồng bộ xác nhận từ app', 'pullConfirmsFromApp')
