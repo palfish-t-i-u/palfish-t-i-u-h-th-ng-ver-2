@@ -48,6 +48,26 @@ function pvFmt_(val, key) {
   return String(val);
 }
 
+/**
+ * Tháng 2 chữ số của kỳ lương hiện tại (vd '2026-09' → '09'). '' nếu không hợp lệ.
+ */
+function pvThangKy_() {
+  var ky = kyLuongHienTai_();
+  var mm = String(ky || '').slice(-2);
+  return /^\d{2}$/.test(mm) ? mm : '';
+}
+
+/**
+ * Nhãn thông minh: thay "tháng NN" trong nhãn bằng tháng kỳ lương hiện tại.
+ * Vd kỳ 2026-09: "Khấu trừ thuế tháng 05" → "Khấu trừ thuế tháng 09".
+ * Nhãn không chứa "tháng NN" → giữ nguyên. Giá trị KHÔNG đụng (chỉ sửa nhãn).
+ */
+function pvNhanThang_(label) {
+  var mm = pvThangKy_();
+  if (!mm) return label;
+  return String(label).replace(/tháng \d{1,2}/, 'tháng ' + mm);
+}
+
 /* ======== DOC TAGS ======== */
 
 /**
@@ -223,11 +243,11 @@ function pvNapDuLieu() {
 
     // Serialize each display row — filter out PV_BO_DONG_ sentinel
     phieu.dong = phieu.dong
-      .map(function (d) { return { key: d.key, label: d.label, val: pvFmt_(d.val, d.key) }; })
+      .map(function (d) { return { key: d.key, label: pvNhanThang_(d.label), val: pvFmt_(d.val, d.key) }; })
       .filter(function (d) { return d.val !== PV_BO_DONG_; });
 
     phieu.conLai = phieu.conLai
-      .map(function (d) { return { key: d.key, label: d.label, val: pvFmt_(d.val, d.key) }; })
+      .map(function (d) { return { key: d.key, label: pvNhanThang_(d.label), val: pvFmt_(d.val, d.key) }; })
       .filter(function (d) { return d.val !== PV_BO_DONG_; });
 
     duLieu[code] = phieu;
@@ -383,6 +403,18 @@ function pvTaiPDF(code) {
       body.replaceText(pattern, replacement);
       if (header) header.replaceText(pattern, replacement);
       if (footer) footer.replaceText(pattern, replacement);
+    }
+
+    // Nhãn thông minh: sửa nhãn literal "Khấu trừ thuế tháng NN" còn sót trong Doc
+    // về tháng kỳ lương hiện tại. CHẠY SAU vòng thay placeholder trên (placeholder
+    // <<...>> đã thành số rồi; đây chỉ còn nhãn literal bên cạnh).
+    var mmPdf = pvThangKy_();
+    if (mmPdf) {
+      var reThang = 'Khấu trừ thuế tháng \\d{1,2}';
+      var replThang = 'Khấu trừ thuế tháng ' + mmPdf;
+      body.replaceText(reThang, replThang);
+      if (header) header.replaceText(reThang, replThang);
+      if (footer) footer.replaceText(reThang, replThang);
     }
 
     doc.saveAndClose();
