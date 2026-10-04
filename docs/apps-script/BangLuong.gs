@@ -16,6 +16,23 @@ const BQ_SQL = [
   "SELECT",
   "  t.code,",
   "  CASE",
+  // ===== GHI ĐÈ KHỐI THEO CÁ NHÂN (hardcode nhanh — chị Trang chốt 2026-10-02) =====
+  // Đặt TRƯỚC phan_vung để đè. Khi nào HR sửa phan_vung ở file nguồn thì xoá dòng tương ứng.
+  "    WHEN t.code = 'HN0001' THEN 'Inhouse 1'",   // Đào Thị Trang   (nguồn phan_vung=BOD)
+  "    WHEN t.code = 'HN0002' THEN 'MKT'",          // Hoàng Ngọc Hiếu (nguồn phan_vung=BOD)
+  "    WHEN t.code = 'HN0147' THEN 'Inhouse 2'",    // Nguyễn Việt Hoàng (nguồn phan_vung=HR,ACCOUTANT)
+  // ===== KHỐI bám theo cột `phan_vung` (HR duy trì ở file nhân sự → pipeline tự sync lên BQ). =====
+  // Ở đây CHỈ chuẩn hoá nhãn phan_vung -> nhãn khối hiển thị. Muốn đổi khối 1 người:
+  // sửa `phan_vung` ở FILE NGUỒN nhân sự, KHÔNG sửa code (vd đưa BOD về cơ sở: đổi phan_vung BOD -> INHOUSE 1 / MARKETING).
+  "    WHEN UPPER(TRIM(t.phan_vung)) = 'INHOUSE 1' THEN 'Inhouse 1'",
+  "    WHEN UPPER(TRIM(t.phan_vung)) = 'INHOUSE 2' THEN 'Inhouse 2'",
+  "    WHEN UPPER(TRIM(t.phan_vung)) = 'OFFLINE' THEN 'Offline'",
+  "    WHEN UPPER(TRIM(t.phan_vung)) = 'CS TEAM' THEN 'CSKH'",
+  "    WHEN UPPER(TRIM(t.phan_vung)) = 'MARKETING' THEN 'MKT'",
+  "    WHEN UPPER(TRIM(t.phan_vung)) = 'HR, ACCOUTANT +HR' THEN 'Back office'",
+  "    WHEN UPPER(TRIM(t.phan_vung)) = 'BOD' THEN 'BOD'",
+  "    WHEN UPPER(TRIM(t.phan_vung)) = 'HEAD QUARTER' THEN 'Head quarter'",
+  // Fallback: phan_vung trống / giá trị lạ (vd nhân sự mới HR chưa điền) -> suy luận tạm từ workplace + chức danh.
   "    WHEN t.title_job LIKE '%Giám đốc%' THEN 'BOD'",
   "    WHEN UPPER(t.workplace) LIKE 'INHOUSE 2%' OR t.workplace LIKE '47 Nguy%' THEN 'Inhouse 2'",
   "    WHEN t.workplace LIKE 'Store%' THEN 'Offline'",
@@ -50,9 +67,11 @@ const BQ_SQL = [
   "  t.an_ca_van,",
   "  t.dien_thoai_van,",
   "  t.ghi_chu_thuong_nong,",
-  "  COALESCE(t.so_nguoi_phu_thuoc, 0) AS so_npt",
+  "  COALESCE(t.so_nguoi_phu_thuoc, 0) AS so_npt,",
+  "  im.note AS note",   // Note điền tay — nguồn gốc tab 'Nhập tay' → C_imput_bao_hiem_tro_cap (BQ)
   "FROM `pf-salary.payroll.C_view_bang_luong_truoc_thue` t",
   "LEFT JOIN `pf-salary.payroll.C_view_bang_luong_co_ban_theo_ngay_cong` cb ON cb.code = t.code",
+  "LEFT JOIN `pf-salary.payroll.C_imput_bao_hiem_tro_cap` im ON im.code = t.code",
   "ORDER BY",
   "  CASE team WHEN 'BOD' THEN 1 WHEN 'Inhouse 1' THEN 2 WHEN 'CSKH' THEN 3 WHEN 'Inhouse 2' THEN 4 WHEN 'Offline' THEN 5 WHEN 'Back office' THEN 6 WHEN 'MKT' THEN 7 WHEN 'Head quarter' THEN 8 ELSE 9 END,",
   "  t.departments,",
@@ -96,7 +115,7 @@ const COLS = [
   { key:'xe_pc',         h:'Hỗ trợ tiền xe + PC trách nhiệm',  role:'input', src:'xe_pc' },
   { key:'khau_tru_thue', h:'Khấu trừ thuế',                    role:'auto',  src:'thue_tncn' },
   { key:'bu_tien',       h:'Bù tiền',                          role:'input', src:'bu_tien' },
-  { key:'note',          h:'Note',                             role:'input', src:null },
+  { key:'note',          h:'Note',                             role:'input', src:'note' },
   { key:'gc_thuong_nong',h:'Ghi chú thưởng nóng',              role:'auto',  src:'ghi_chu_thuong_nong' },
   // --- Status (khớp GATE_COLS trong PhieuLuongGate.gs — 5 cột tuần tự) ---
   { key:'xn_tt',         h:'Xác nhận thông tin',               role:'status', kind:'check' },
@@ -113,7 +132,7 @@ function onOpen(){
     .addItem('📋 (2) Đối soát với bảng lương mẫu', 'doiSoatLuong')
     .addSeparator()
     .addItem('👁 Xem trước phiếu lương (dòng đang chọn)', 'xemTruocPhieuLuong')
-    .addItem('📥 Xuất Excel theo Phòng ban', 'xuatExcelTheoTeam')
+    .addItem('📥 Xuất Excel theo Khối', 'xuatExcelTheoTeam')
     .addSeparator()
     .addItem('🎨 Định dạng lại (không cần BQ)', 'dinhDangBangLuong')
     .addItem('📊 Cập nhật bảng tính thuế (tham chiếu)', 'capNhatBangThue')
@@ -305,7 +324,7 @@ function capNhatTuBigQuery(){
       } else if(col.role==='input'){
         const cur = oldVal(code, col.h);
         if(!col.src){
-          // Input-only (Bù tiền, Note): KHÔNG có nguồn BQ → LUÔN giữ giá trị điền tay
+          // Input-only (không có nguồn BQ) → LUÔN giữ giá trị điền tay.
           rowVals.push((cur===''||cur===null) ? '' : cur);
           newSnap[code][col.key] = '';
         } else {
@@ -548,7 +567,7 @@ function luuArchiveBangLuong() {
     var ARCHIVE_FIELD_MAP = [
       { h: 'STT',                              key: 'stt',            type: 'INTEGER' },
       { h: 'Mã NV',                            key: 'code',           type: 'STRING'  },
-      { h: 'Khối',                             key: 'team',           type: 'STRING'  },
+      { h: 'Team',                             key: 'team',           type: 'STRING'  },
       { h: 'Name',                             key: 'name',           type: 'STRING'  },
       { h: 'Chức danh',                        key: 'chuc_danh',      type: 'STRING'  },
       { h: 'Loại NV',                          key: 'employee_type',  type: 'STRING'  },
@@ -656,6 +675,6 @@ function luuArchiveBangLuong() {
 
 function xuatExcelTheoTeam(){
   var html = HtmlService.createHtmlOutputFromFile('Xuất file phòng ban')
-    .setWidth(620).setHeight(720).setTitle('Xuất Excel theo Phòng ban');
+    .setWidth(620).setHeight(720).setTitle('Xuất Excel theo Khối');
   SpreadsheetApp.getActiveSpreadsheet().show(html);
 }

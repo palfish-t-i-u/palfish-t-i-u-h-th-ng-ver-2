@@ -141,6 +141,7 @@ function guiPhieuOnEdit(e) {
         }
         // Build payload in memory
         var phieu = gBuildPhieu_(headers, rowData, skipCols);
+        if (sendStep.stage === 'truoc_thue') gApplyTruocThue_(phieu); // ẩn thuế + tổng chưa trừ thuế
         var obId = code + '|' + ky + '|' + sendStep.stage;
         if (obIdx[obId] && obIdx[obId].status === 'sent') { continue; }
         var payload = {
@@ -241,6 +242,21 @@ function gBuildPhieu_(headers, vals, skipCols){
   return phieu;
 }
 
+/* Biến payload sang dạng TRƯỚC THUẾ (dùng khi gửi tầng truoc_thue):
+ *  - CỘNG Khấu trừ thuế lại vào 2 cột tổng (hiện số CHƯA trừ thuế).
+ *  - Ẩn ô Khấu trừ thuế (để trống).
+ * phieu key theo NHÃN cột. Sửa trực tiếp trên object & trả về. */
+function gApplyTruocThue_(phieu) {
+  var TAX = 'Khấu trừ thuế', T1 = 'Tổng lương', T2 = 'Tổng lương + thưởng (Net)';
+  var tax = Number(phieu[TAX]) || 0;
+  if (tax > 0) {
+    if (typeof phieu[T1] === 'number') phieu[T1] = phieu[T1] + tax;
+    if (typeof phieu[T2] === 'number') phieu[T2] = phieu[T2] + tax;
+  }
+  phieu[TAX] = ''; // ẩn thuế ở bản trước thuế
+  return phieu;
+}
+
 /** Dựng payload 1 dòng + upsert vào _outbox (idempotent theo code|kỳ|tầng). */
 function gEnqueueRow_(sh, row, hmap, stage, stageLabel) {
   if (GATE_COLS.length !== 5) throw 'GATE_COLS bị đổi độ dài — kiểm tra .push nhầm';
@@ -256,6 +272,7 @@ function gEnqueueRow_(sh, row, hmap, stage, stageLabel) {
   var id = code + '|' + ky + '|' + stage;
 
   var phieu = gBuildPhieu_(headers, vals, gSkipCols_());
+  if (stage === 'truoc_thue') gApplyTruocThue_(phieu); // ẩn thuế + tổng chưa trừ thuế
   var payload = {
     meta: {
       source:'sheet-gate', version:1, code:code, ky_luong:ky,

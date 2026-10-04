@@ -171,10 +171,19 @@
     #meRow { font-size: 11.5px; color: #b06000; text-align: center; margin-top: 6px; }
 
     #loiChu { color: #d93025; font-size: 12px; margin-top: 8px; display: none; }
+
+    /* ---- Loại phiếu: trước/sau thuế ---- */
+    #taxModeBox { display: flex; align-items: center; gap: 10px; }
+    #taxModeBox b { font-size: 13px; }
+    .tax-seg { display: inline-flex; border: 1px solid #dadce0; border-radius: 14px; overflow: hidden; }
+    .tax-opt { font-size: 12px; font-weight: 600; padding: 6px 14px; border: none; background: #fff; color: #5f6368; cursor: pointer; }
+    .tax-opt + .tax-opt { border-left: 1px solid #dadce0; }
+    .tax-opt:hover:not(.active) { background: #f1f3f4; }
+    .tax-opt.active { background: #0b5394; color: #fff; }
   </style>
 </head>
 <body>
-  <h2>📥 Xuất Excel theo Phòng ban</h2>
+  <h2>📥 Xuất Excel theo Khối</h2>
 
   <div class="box" id="kyBox-wrap">
     <div id="kyBox">
@@ -200,10 +209,18 @@
     <div id="tongDong"></div>
   </div>
 
+  <div class="box" id="taxModeBox">
+    <b>Loại phiếu:</b>
+    <div class="tax-seg">
+      <button class="tax-opt active" id="btnSauThue" data-mode="sau">Sau thuế (đủ thuế)</button>
+      <button class="tax-opt" id="btnTruocThue" data-mode="truoc">Trước thuế (ẩn thuế)</button>
+    </div>
+  </div>
+
   <div class="taiRow">
-    <button class="btn" id="btnZip" disabled>📦 Tải ZIP: Mỗi phòng ban 1 file → gộp vào 1 file ZIP</button>
+    <button class="btn" id="btnZip" disabled>📦 Tải ZIP: Mỗi khối 1 file → gộp vào 1 file ZIP</button>
     <button class="btn" id="btnMotFile" disabled>
-      <span>📄 Tải 1 file Excel duy nhất — mỗi phòng ban 1 tab riêng</span>
+      <span>📄 Tải 1 file Excel duy nhất — mỗi khối 1 tab riêng</span>
       <span id="canhBaoMotFile">⚠ File này chứa lương TẤT CẢ các nhóm được chọn.</span>
     </button>
   </div>
@@ -226,6 +243,7 @@
     var sortAZ = false;
     var kyConfirmed = false;
     var kyDaXacNhan = '';
+    var taxMode = 'sau';   // 'sau' (đủ thuế) | 'truoc' (ẩn thuế + tổng chưa trừ thuế)
     var dangChay = false;
     var tienTrinhTimer = null;
     var tienTrinhGiay = 0;
@@ -276,12 +294,12 @@
         coNoiDung = true;
         var tieuDe = document.createElement('div');
         tieuDe.className = 'tieuDe';
-        tieuDe.textContent = '⚠ Phòng ban lạ — giá trị không nhận ra:';
+        tieuDe.textContent = '⚠ Khối lạ — giá trị không nhận ra:';
         box.appendChild(tieuDe);
         teamLa.forEach(function(t){
           var d = document.createElement('div');
           d.className = 'dong';
-          d.textContent = "Phòng ban lạ: '" + t.giaTri + "' (" + t.soNguoi + ' người) — kiểm tra dữ liệu HRIS.';
+          d.textContent = "Khối lạ: '" + t.giaTri + "' (" + t.soNguoi + ' người) — kiểm tra cột Team/phan_vung.';
           box.appendChild(d);
         });
       }
@@ -437,6 +455,19 @@
       if (thongKe) renderDanhSach(thongKe);
     });
 
+    /* ======== LOẠI PHIẾU: TRƯỚC / SAU THUẾ ======== */
+    (function(){
+      var btnSau = document.getElementById('btnSauThue');
+      var btnTruoc = document.getElementById('btnTruocThue');
+      function chon(mode){
+        taxMode = mode;
+        btnSau.classList.toggle('active', mode === 'sau');
+        btnTruoc.classList.toggle('active', mode === 'truoc');
+      }
+      btnSau.addEventListener('click', function(){ chon('sau'); });
+      btnTruoc.addEventListener('click', function(){ chon('truoc'); });
+    })();
+
     /* ======== XÁC NHẬN KỲ ======== */
 
     var kyInputEl = document.getElementById('kyInput');
@@ -514,8 +545,8 @@
           onErr(err, false);
         });
 
-      if (loai === 'zip') handler.xlTaiZip(kyDaXacNhan, danhSachChon);
-      else handler.xlTaiMotFile(kyDaXacNhan, danhSachChon);
+      if (loai === 'zip') handler.xlTaiZip(kyDaXacNhan, danhSachChon, taxMode);
+      else handler.xlTaiMotFile(kyDaXacNhan, danhSachChon, taxMode);
     }
 
     function batDauTienTrinh(){

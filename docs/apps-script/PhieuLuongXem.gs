@@ -281,7 +281,18 @@ function pvBanDaGui(id) {
 
   try {
     var parsed = JSON.parse(payloadStr || '{}');
-    var phieu = parsed.phieu || {};
+    var rawPhieu = parsed.phieu || {};
+    // Payload bản đã gửi key theo NHÃN cột + giá trị THÔ. Quy đổi về MÃ NỘI BỘ + ĐÃ FORMAT
+    // để khớp bản live (liveDict key nội bộ, val đã format) → so sánh "ô đã đổi" + hiển thị đúng.
+    var headerToKey = {};
+    for (var ci = 0; ci < COLS.length; ci++) headerToKey[COLS[ci].h] = COLS[ci].key;
+    var phieu = {};
+    for (var h in rawPhieu) {
+      if (!rawPhieu.hasOwnProperty(h)) continue;
+      var k = headerToKey[h] || h;
+      var fv = pvFmt_(rawPhieu[h], k);
+      phieu[k] = (fv === PV_BO_DONG_) ? '' : fv;
+    }
     return plSerialize_({ phieu: phieu, status: status, sentAt: sentAt });
   } catch (e) {
     return plSerialize_({ phieu: {}, status: 'error', sentAt: '' });

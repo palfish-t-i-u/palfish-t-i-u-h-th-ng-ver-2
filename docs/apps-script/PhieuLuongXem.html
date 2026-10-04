@@ -146,6 +146,27 @@ html, body {
   margin-left: 4px;
 }
 
+/* Nút gạt Trước/Sau thuế (bản live) */
+.tax-toggle {
+  display: inline-flex;
+  border: 1px solid #dadce0;
+  border-radius: 14px;
+  overflow: hidden;
+}
+.tax-opt {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 4px 12px;
+  border: none;
+  background: #fff;
+  color: #5f6368;
+  cursor: pointer;
+  transition: background 0.1s, color 0.1s;
+}
+.tax-opt + .tax-opt { border-left: 1px solid #dadce0; }
+.tax-opt:hover:not(.active) { background: #f1f3f4; }
+.tax-opt.active { background: #1a73e8; color: #fff; }
+
 /* ===== CARDS ===== */
 .card {
   background: #fff;
@@ -373,6 +394,7 @@ html, body {
 var gData          = null;   // full data from pvNapDuLieu()
 var gCurrentCode   = '';     // selected Mã NV
 var gViewMode      = 'live'; // 'live' | 'truoc_thue' | 'sau_thue'
+var gTaxMode       = 'truoc';// 'truoc' | 'sau' — nút gạt trước/sau thuế cho BẢN LIVE (mặc định: trước thuế)
 var gSentCache     = {};     // lazy cache: id → sentData from pvBanDaGui()
 var gPartBCollapsed = false; // Part B toggle state
 
@@ -582,14 +604,28 @@ function renderPhieuDisplay(phieu, sentData) {
     });
   }
 
-  // --- Badges ---
-  renderBadges(phieu, sentData, changeCount);
+  // --- Trước/sau thuế ---
+  //  Bản LIVE: theo nút gạt gTaxMode. Bản đã gửi: theo tầng (truoc_thue/sau_thue).
+  var isTruocThue = (gViewMode === 'live') ? (gTaxMode === 'truoc')
+                                           : (gViewMode === 'truoc_thue');
+
+  // Dạng TRƯỚC THUẾ: ẩn dòng Khấu trừ thuế + CỘNG thuế lại vào 2 cột tổng (hiện số CHƯA trừ thuế).
+  // Idempotent: bản đã gửi trước thuế thuế đã trống => cộng 0, không đổi.
+  var dongShow = phieu.dong, conLaiShow = phieu.conLai;
+  if (isTruocThue) {
+    var tax = Math.max(plFindTax_(phieu.dong), plFindTax_(phieu.conLai));
+    dongShow   = plApplyTruocThue_(phieu.dong, tax);
+    conLaiShow = plApplyTruocThue_(phieu.conLai, tax);
+  }
+
+  // --- Badges (kèm nút gạt trước/sau thuế cho bản live) ---
+  renderBadges(phieu, sentData, changeCount, isTruocThue);
 
   // --- Part A ---
-  renderPartA(name, phieu.dong, sentDict, changedKeys);
+  renderPartA(name, dongShow, sentDict, changedKeys, isTruocThue);
 
   // --- Part B ---
-  renderPartB(phieu.conLai, sentDict, changedKeys);
+  renderPartB(conLaiShow, sentDict, changedKeys);
 
   // --- Orphan tags ---
   renderOrphan(phieu.moCoi);
@@ -609,26 +645,67 @@ function updateSourceButtons(code) {
   $('btnSau').disabled   = !hasSau;
 }
 
+/* Parse chuỗi tiền đã format (vd "810.000", "-1.234") → số nguyên (giữ dấu âm). Rỗng/undefined → 0. */
+function plParseMoney_(v) {
+  if (v === undefined || v === null || v === '') return 0;
+  var s = String(v);
+  var neg = /^\s*-/.test(s);
+  var digits = s.replace(/[^0-9]/g, '');
+  var n = digits ? parseInt(digits, 10) : 0;
+  return neg ? -n : n;
+}
+
+/* Tìm giá trị Khấu trừ thuế (key 'khau_tru_thue') trong 1 danh sách dòng → số (0 nếu không có). */
+function plFindTax_(rows) {
+  var t = 0;
+  rows.forEach(function (r) { if (r.key === 'khau_tru_thue') t = plParseMoney_(r.val); });
+  return t;
+}
+
+/* Biến đổi danh sách dòng sang dạng TRƯỚC THUẾ:
+ *  - Bỏ dòng Khấu trừ thuế.
+ *  - Cộng `tax` lại vào 2 cột tổng (tong_lt, tong_luong) → hiện số CHƯA trừ thuế.
+ * Trả về MẢNG MỚI (không sửa dữ liệu gốc gData.duLieu). */
+function plApplyTruocThue_(rows, tax) {
+  var out = [];
+  rows.forEach(function (r) {
+    if (r.key === 'khau_tru_thue') return; // ẩn dòng thuế
+    if (tax > 0 && (r.key === 'tong_lt' || r.key === 'tong_luong')) {
+      out.push({ key: r.key, label: r.label, val: (plParseMoney_(r.val) + tax).toLocaleString('vi-VN') });
+    } else {
+      out.push(r);
+    }
+  });
+  return out;
+}
+
 /* ===== BADGES ===== */
-function renderBadges(phieu, sentData, changeCount) {
+function renderBadges(phieu, sentData, changeCount, isTruocThue) {
   var row = $('badgesRow');
   clearNode(row);
 
-  // Tax tier badge: find 'Khấu trừ thuế' in dong + conLai
-  var taxVal = null;
-  var taxFound = false;
-  phieu.dong.concat(phieu.conLai).forEach(function (r) {
-    if (!taxFound && (r.key === 'Khấu trừ thuế' || r.label === 'Khấu trừ thuế')) {
-      taxVal = r.val;
-      taxFound = true;
-    }
-  });
-  var isTruocThue = !taxFound || taxVal === '0' || taxVal === '' || taxVal === null;
-  var taxBadge = el('span',
-    isTruocThue ? 'Bản này đang là TRƯỚC THUẾ' : 'SAU THUẾ',
-    'badge ' + (isTruocThue ? 'badge-blue' : 'badge-orange')
-  );
-  row.appendChild(taxBadge);
+  if (gViewMode === 'live') {
+    // Nút gạt Trước/Sau thuế — chỉ cho bản live (bản đã gửi: tầng cố định theo stage).
+    var tg = el('span', null, 'tax-toggle');
+    var b1 = el('button', 'Trước thuế', 'tax-opt' + (isTruocThue ? ' active' : ''));
+    var b2 = el('button', 'Sau thuế',   'tax-opt' + (!isTruocThue ? ' active' : ''));
+    b1.addEventListener('click', function () {
+      if (gTaxMode !== 'truoc') { gTaxMode = 'truoc'; renderPhieuDisplay(gData.duLieu[gCurrentCode], null); }
+    });
+    b2.addEventListener('click', function () {
+      if (gTaxMode !== 'sau') { gTaxMode = 'sau'; renderPhieuDisplay(gData.duLieu[gCurrentCode], null); }
+    });
+    tg.appendChild(b1);
+    tg.appendChild(b2);
+    row.appendChild(tg);
+  } else {
+    // Bản đã gửi — badge tĩnh theo tầng.
+    var taxBadge = el('span',
+      isTruocThue ? 'Bản này đang là TRƯỚC THUẾ' : 'Bản này đã bao gồm thuế (SAU THUẾ)',
+      'badge ' + (isTruocThue ? 'badge-blue' : 'badge-orange')
+    );
+    row.appendChild(taxBadge);
+  }
 
   // Diff badge
   if (sentData && changeCount > 0) {
@@ -645,16 +722,18 @@ function renderBadges(phieu, sentData, changeCount) {
 }
 
 /* ===== PART A ===== */
-function renderPartA(name, dongRows, sentDict, changedKeys) {
+function renderPartA(name, dongRows, sentDict, changedKeys, isTruocThue) {
   // Title
   $('phieuTitle').textContent = 'Bảng lương tháng ' + gData.ky;
 
   // Salutation
   $('phieuSalutation').textContent = 'Kính gửi Anh/Chị ' + name + ',';
 
-  // Intro
+  // Intro — khớp trạng thái trước/sau thuế (không hard-code "đã bao gồm thuế").
   var intro = $('phieuIntro');
-  intro.innerHTML = 'Phòng Nhân sự gửi Anh/Chị thông tin bảng lương trong kỳ <strong>đã bao gồm thuế</strong> như sau:';
+  intro.innerHTML = isTruocThue
+    ? 'Phòng Nhân sự gửi Anh/Chị thông tin bảng lương trong kỳ <strong>(chưa bao gồm thuế)</strong> như sau:'
+    : 'Phòng Nhân sự gửi Anh/Chị thông tin bảng lương trong kỳ <strong>đã bao gồm thuế</strong> như sau:';
 
   // Table A — skip Name row (already in salutation)
   var tbl = $('tableA');

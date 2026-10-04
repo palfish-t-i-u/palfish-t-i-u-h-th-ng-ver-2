@@ -92,12 +92,34 @@ function xlMauSo_(bang){
   return bang.rows.length;
 }
 
+/* Biến bang.rows sang dạng TRƯỚC THUẾ: ẩn ô Khấu trừ thuế + CỘNG thuế lại vào 2 cột tổng
+ * (Tổng lương, Tổng lương + thưởng (Net)) → hiện số CHƯA trừ thuế. Trả về MẢNG MỚI. */
+function xlApplyTruocThueRows_(headers, rows){
+  var iTax = headers.indexOf('Khấu trừ thuế');
+  if(iTax < 0) return rows; // không có cột thuế → giữ nguyên
+  var iT1 = headers.indexOf('Tổng lương');
+  var iT2 = headers.indexOf('Tổng lương + thưởng (Net)');
+  return rows.map(function(r){
+    var row = r.slice();
+    var tax = Number(row[iTax]) || 0;
+    if(tax > 0){
+      if(iT1 >= 0 && typeof row[iT1] === 'number') row[iT1] = row[iT1] + tax;
+      if(iT2 >= 0 && typeof row[iT2] === 'number') row[iT2] = row[iT2] + tax;
+    }
+    row[iTax] = ''; // ẩn thuế ở bản trước thuế
+    return row;
+  });
+}
+
 /* ======== GOM NHÓM THEO PHÒNG BAN ======== */
 
 function xlGomNhom_(bang){
-  var teamIdx = bang.headers.indexOf('Phòng ban (HRIS)');
-  if(teamIdx < 0) teamIdx = bang.headers.indexOf('Team');
-  if(teamIdx < 0) throw 'Không tìm thấy cột "Phòng ban (HRIS)" hoặc "Team" trên bảng lương.';
+  // Gom theo KHỐI (cột "Team"/"Khối") để tách Inhouse 1 / Inhouse 2 / Offline...
+  // thay vì "Phòng ban (HRIS)" (gộp chung toàn bộ sale vào "Kinh doanh").
+  var teamIdx = bang.headers.indexOf('Team');
+  if(teamIdx < 0) teamIdx = bang.headers.indexOf('Khối');
+  if(teamIdx < 0) teamIdx = bang.headers.indexOf('Phòng ban (HRIS)');
+  if(teamIdx < 0) throw 'Không tìm thấy cột "Team"/"Khối"/"Phòng ban (HRIS)" trên bảng lương.';
 
   var groups = [];     // [{ten, canon, rows, variants:{}}]
   var canonMap = {};    // canon → index in groups
@@ -146,8 +168,9 @@ function xlGomNhom_(bang){
 /* ======== KIỂM NHÓM LẠ (Phòng ban trống hoặc không nhận ra) ======== */
 
 function xlKiemTeam_(bang){
-  var pbIdx = bang.headers.indexOf('Phòng ban (HRIS)');
-  if(pbIdx < 0) pbIdx = bang.headers.indexOf('Team');
+  var pbIdx = bang.headers.indexOf('Team');
+  if(pbIdx < 0) pbIdx = bang.headers.indexOf('Khối');
+  if(pbIdx < 0) pbIdx = bang.headers.indexOf('Phòng ban (HRIS)');
   if(pbIdx < 0) return [];
   var counts = {};
   for(var r=0; r<bang.rows.length; r++){
@@ -273,7 +296,7 @@ function xlGhiTmpId_(id){
  * @param {Object}      alias     - PV_TAG_ALIAS
  * @param {string[]}    daDungTab - tên tab đã dùng (để tránh trùng)
  */
-function xlPhieuTab_(ss, code, name, ky, headers, vals, tags, alias, daDungTab) {
+function xlPhieuTab_(ss, code, name, ky, headers, vals, tags, alias, daDungTab, isTruocThue) {
   var tabName = xlTenTab_(name || code, daDungTab);
   daDungTab.push(tabName);
   var sh = ss.insertSheet(tabName);
@@ -308,7 +331,9 @@ function xlPhieuTab_(ss, code, name, ky, headers, vals, tags, alias, daDungTab) 
   data.push(['', '']);                                                       // 2
   data.push(['Kính gửi Anh/Chị ' + name + ',', '']);                       // 3
   data.push(['', '']);                                                       // 4
-  data.push(['Phòng Nhân sự gửi Anh/Chị thông tin bảng lương trong kỳ đã bao gồm thuế như sau:', '']); // 5
+  data.push([isTruocThue
+    ? 'Phòng Nhân sự gửi Anh/Chị thông tin bảng lương trong kỳ (chưa bao gồm thuế) như sau:'
+    : 'Phòng Nhân sự gửi Anh/Chị thông tin bảng lương trong kỳ đã bao gồm thuế như sau:', '']); // 5
   data.push(['', '']);                                                       // 6
 
   var tableStart = data.length + 1;  // 1-indexed
@@ -362,8 +387,8 @@ function xlThongKe(){
   var ky   = typeof kyLuongHienTai_ === 'function' ? kyLuongHienTai_() : '';
   var tong = xlMauSo_(bang);
 
-  // Bảng chéo: nhóm chính = Phòng ban (HRIS), chéo = Team
-  var cheoIdx = bang.headers.indexOf('Khối');
+  // Bảng chéo: nhóm chính = Khối (Team), chéo = Phòng ban (HRIS)
+  var cheoIdx = bang.headers.indexOf('Phòng ban (HRIS)');
   var nhomOut = [];
   for(var g=0; g<nhom.length; g++){
     var gr = nhom[g];
@@ -398,20 +423,22 @@ function xlThongKe(){
     soNhom:  nhom.length,
     nhom:    nhomOut,
     teamLa:  teamLa,
-    canhBao: nhom.length <= 2 ? 'Chỉ có '+nhom.length+' nhóm — kiểm tra cột Phòng ban (HRIS).' :
+    canhBao: nhom.length <= 2 ? 'Chỉ có '+nhom.length+' khối — kiểm tra cột Team/Khối.' :
              (nhomOut[0] && nhomOut[0].so/tong > 0.6) ? 'Nhóm "'+nhomOut[0].ten+'" chiếm '+(nhomOut[0].so/tong*100).toFixed(0)+'% dân số.' : '',
   });
 }
 
 /* ======== XUẤT ZIP / 1 FILE ======== */
 
-function xlTaiZip(ky, danhSachTeam){
+function xlTaiZip(ky, danhSachTeam, taxMode){
   var lk = LockService.getDocumentLock();
   if(!lk.tryLock(0)){
     return plSerialize_({ error:'Đang có thao tác khác chạy, chờ chút.' });
   }
   try {
+    var isTruocThue = (taxMode === 'truoc');
     var bang = xlDocBang_();
+    if(isTruocThue) bang.rows = xlApplyTruocThueRows_(bang.headers, bang.rows);
     var nhom = xlGomNhom_(bang);
     var tong = xlMauSo_(bang);
 
@@ -430,11 +457,11 @@ function xlTaiZip(ky, danhSachTeam){
     // Guard: quá ít nhóm hoặc 1 nhóm chiếm >60% (chỉ khi KHÔNG lọc)
     if(!dangLoc){
       if(nhom.length <= 2){
-        return plSerialize_({ error:'Chỉ có '+nhom.length+' nhóm phòng ban — có thể cột Phòng ban (HRIS) bị lệch. Kiểm tra lại trước khi xuất.' });
+        return plSerialize_({ error:'Chỉ có '+nhom.length+' khối — có thể cột Team/Khối bị lệch. Kiểm tra lại trước khi xuất.' });
       }
       var max = nhom[0].rows.length;
       if(max / tong > 0.6){
-        return plSerialize_({ error:'Nhóm "'+nhom[0].ten+'" chiếm '+(max/tong*100).toFixed(0)+'% ('+max+'/'+tong+') — kiểm tra cột Phòng ban (HRIS) trước khi xuất.' });
+        return plSerialize_({ error:'Khối "'+nhom[0].ten+'" chiếm '+(max/tong*100).toFixed(0)+'% ('+max+'/'+tong+') — kiểm tra cột Team/Khối trước khi xuất.' });
       }
     }
 
@@ -515,7 +542,7 @@ function xlTaiZip(ky, danhSachTeam){
         var nvName = nameIdx2 >= 0 ? String(gr.rows[p][nameIdx2] || '').trim() : '';
         if (nvCode) {
           xlPhieuTab_(tmpSS, nvCode, nvName, ky, bang.headers, gr.rows[p],
-                      tagResult.tags, PV_TAG_ALIAS, daDungTab);
+                      tagResult.tags, PV_TAG_ALIAS, daDungTab, isTruocThue);
         }
       }
 
@@ -558,9 +585,10 @@ function xlTaiZip(ky, danhSachTeam){
     }
 
     // ZIP
+    var taxTag = isTruocThue ? '_truocthue' : '_sauthue';
     var zipName = dangLoc
-      ? 'BangLuong_'+ky+'_'+nhom.length+'nhom.zip'
-      : 'BangLuong_'+ky+'.zip';
+      ? 'BangLuong_'+ky+taxTag+'_'+nhom.length+'nhom.zip'
+      : 'BangLuong_'+ky+taxTag+'.zip';
     var zipBlob = Utilities.zip(fileBlobs, zipName);
 
     // Encode base64 data URI
@@ -586,13 +614,15 @@ function xlTaiZip(ky, danhSachTeam){
   }
 }
 
-function xlTaiMotFile(ky, danhSachTeam){
+function xlTaiMotFile(ky, danhSachTeam, taxMode){
   var lk = LockService.getDocumentLock();
   if(!lk.tryLock(0)){
     return plSerialize_({ error:'Đang có thao tác khác chạy, chờ chút.' });
   }
   try {
+    var isTruocThue = (taxMode === 'truoc');
     var bang = xlDocBang_();
+    if(isTruocThue) bang.rows = xlApplyTruocThueRows_(bang.headers, bang.rows);
     var nhom = xlGomNhom_(bang);
     var tong = xlMauSo_(bang);
 
@@ -666,7 +696,7 @@ function xlTaiMotFile(ky, danhSachTeam){
         var nvName = nameIdx2 >= 0 ? String(gr.rows[p][nameIdx2] || '').trim() : '';
         if (nvCode) {
           xlPhieuTab_(tmpSS, nvCode, nvName, ky, bang.headers, gr.rows[p],
-                      tagResult.tags, PV_TAG_ALIAS, daDungTab);
+                      tagResult.tags, PV_TAG_ALIAS, daDungTab, isTruocThue);
         }
       }
     }
@@ -684,7 +714,7 @@ function xlTaiMotFile(ky, danhSachTeam){
       throw 'Export lỗi HTTP '+resp.getResponseCode()+'.';
     }
     var blob = resp.getBlob();
-    var fileName = 'BangLuong_'+ky+'_tat_ca.xlsx';
+    var fileName = 'BangLuong_'+ky+(isTruocThue?'_truocthue':'_sauthue')+'_tat_ca.xlsx';
     blob.setName(fileName);
 
     var b64 = Utilities.base64Encode(blob.getBytes());
