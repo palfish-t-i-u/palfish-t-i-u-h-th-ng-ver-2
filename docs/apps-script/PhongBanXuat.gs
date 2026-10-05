@@ -62,7 +62,7 @@ function xlDocBang_(){
   var lastRow = main.getLastRow();
   if(lastRow < 2) throw 'Bảng lương rỗng — chưa có dữ liệu.';
   var allVals = main.getRange(1, 1, lastRow, main.getLastColumn()).getValues();
-  var rawHdr  = allVals[0].map(function(x){ return String(x||'').trim(); });
+  var rawHdr  = allVals[0].map(function(x){ return plHeaderKey_(x); });  // khớp VN (bỏ CN)
 
   var skip = xlBoCotXuat_();
   var keepIdx = [];

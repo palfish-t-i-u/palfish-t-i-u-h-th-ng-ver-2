@@ -205,7 +205,7 @@ function pvNapDuLieu() {
 
   // ONE getValues() for the entire table
   var allVals = main.getRange(1, 1, lastRow, lastCol).getValues();
-  var headers = allVals[0].map(function (h) { return String(h || '').trim(); });
+  var headers = allVals[0].map(function (h) { return plHeaderKey_(h); });  // khớp VN (bỏ CN)
 
   // Read Doc tags
   var tagResult = pvDocTags_();
@@ -340,7 +340,7 @@ function pvTaiPDF(code) {
     var lastRow = main.getLastRow();
     if (lastRow < 2) throw 'Bảng lương rỗng.';
     var allVals = main.getRange(1, 1, lastRow, main.getLastColumn()).getValues();
-    var headers = allVals[0].map(function(h) { return String(h || '').trim(); });
+    var headers = allVals[0].map(function(h) { return plHeaderKey_(h); });  // khớp VN (bỏ CN)
 
     var codeIdx = headers.indexOf('Mã NV');
     if (codeIdx < 0) throw 'Không tìm thấy cột "Mã NV".';

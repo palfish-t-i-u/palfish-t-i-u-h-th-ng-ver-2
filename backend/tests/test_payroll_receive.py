@@ -22,11 +22,11 @@ _TOKEN = "test-gate-secret"
 
 
 class _Exec:
-    def __init__(self, captured):
-        self._c = captured
+    def __init__(self, data):
+        self._data = data
 
     def execute(self):
-        return type("R", (), {"data": [self._c.get("row")]})()
+        return type("R", (), {"data": self._data})()
 
 
 class _Table:
@@ -34,11 +34,26 @@ class _Table:
         self._name = name
         self._c = captured
 
+    # --- upsert path (ghi phiếu) ---
     def upsert(self, row, on_conflict=None, **_kw):
         self._c["table"] = self._name
         self._c["row"] = row
         self._c["on_conflict"] = on_conflict
-        return _Exec(self._c)
+        return _Exec([row])
+
+    # --- select path (đọc payload cũ để so đổi) ---
+    def select(self, *_a, **_k):
+        return self
+
+    def eq(self, *_a, **_k):
+        return self
+
+    def limit(self, *_a, **_k):
+        return self
+
+    def execute(self):
+        prev = self._c.get("prev")
+        return type("R", (), {"data": ([prev] if prev is not None else [])})()
 
 
 class _FakeSB:
@@ -119,3 +134,42 @@ def test_receive_empty_phieu_422():
     r = client.post("/api/payroll/payslips/receive", json=_payload(phieu={}),
                     headers={"X-Gate-Token": _TOKEN})
     assert r.status_code == 422
+
+
+# --- Gửi lại phiếu (resend): reset xác nhận khi payload ĐỔI ---
+
+def test_resend_changed_payload_resets_confirm():
+    client, captured = _client()
+    captured["prev"] = {"payload_json": {"Name": "Nguyen Van A", "Cong": 24}}
+    r = client.post("/api/payroll/payslips/receive",
+                    json=_payload(phieu={"Name": "Nguyen Van A", "Cong": 22}),  # Cong đổi 24->22
+                    headers={"X-Gate-Token": _TOKEN})
+    assert r.status_code == 200, r.text
+    assert r.json()["confirm_reset"] is True
+    row = captured["row"]
+    assert row["review_status"] == "none"
+    assert row["confirm_status"] == "none"
+    assert row["reviewed_at"] is None
+    assert row["confirmed_at"] is None
+
+
+def test_resend_same_payload_keeps_confirm():
+    client, captured = _client()
+    captured["prev"] = {"payload_json": {"Name": "Nguyen Van A", "Cong": 24}}
+    r = client.post("/api/payroll/payslips/receive",
+                    json=_payload(phieu={"Name": "Nguyen Van A", "Cong": 24}),  # y hệt
+                    headers={"X-Gate-Token": _TOKEN})
+    assert r.status_code == 200, r.text
+    assert r.json()["confirm_reset"] is False
+    row = captured["row"]
+    assert "confirm_status" not in row  # không reset
+    assert "review_status" not in row
+
+
+def test_first_send_no_reset():
+    client, captured = _client()  # không set prev -> coi như chưa có phiếu
+    r = client.post("/api/payroll/payslips/receive", json=_payload(),
+                    headers={"X-Gate-Token": _TOKEN})
+    assert r.status_code == 200, r.text
+    assert r.json()["confirm_reset"] is False
+    assert "confirm_status" not in captured["row"]

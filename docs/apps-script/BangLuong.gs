@@ -125,6 +125,82 @@ const COLS = [
   { key:'nv_xn_sau',     h:'NV xác nhận sau thuế',             role:'status', kind:'check' },
 ];
 
+/* ======== SONG NGỮ VN/CN — helper dùng chung (M2) ========
+ * Ô header tab "Bảng lương" = "VN\nCN". plHeaderKey_ trả KHOÁ KHỚP = dòng VN,
+ * bỏ dòng CN và hậu tố " tháng NN" → mọi chỗ khớp header (gate, archive, đối soát,
+ * xuất) vẫn so với nhãn VN gốc trong COLS. KHÔNG đổi nhãn VN = không gãy matching. */
+function plHeaderKey_(s){
+  return String(s == null ? '' : s).split('\n')[0].replace(/\s*tháng\s*\d{1,2}\s*$/i, '').trim();
+}
+
+// Nhãn tiếng Trung theo KEY cột (đã duyệt). Để RIÊNG, KHÔNG nhét vào COLS để không
+// đụng mảng COLS (nguồn công thức/role). khau_tru_thue: tháng gắn động theo kỳ lương.
+const PL_CN = {
+  stt:'序号', code:'工号', team:'团队', name:'姓名', chuc_danh:'岗位',
+  employee_type:'员工类型', phong_ban:'部门',
+  tong_lt:'总收入', tong_luong:'总薪资（未含提成）', luong_cb:'底薪',
+  cong:'工作日', lcb_ngay_cong:'按工作日计薪', thuong_com:'提成', bao_hiem:'社保',
+  gmv:'总GMV', ty_le_com:'提成比例',
+  gmv_ban_moi:'新签GMV', ty_le_com_ban_moi:'新签提成比例',
+  gmv_gioi_thieu:'转介绍GMV', ty_le_com_gioi_thieu:'转介绍提成比例',
+  gmv_tai_ky:'续费GMV', ty_le_com_tai_ky:'续费提成比例',
+  an_trua:'餐补', may_tinh:'电脑补贴', xe_pc:'停车费',
+  khau_tru_thue:'减税', bu_tien:'补钱', note:'备注', gc_thuong_nong:'即时奖金备注',
+  xn_tt:'HR确认信息', gui_truoc:'发送税前工资单', nv_xn_truoc:'员工确认税前',
+  gui_sau:'发送税后工资单', nv_xn_sau:'员工确认税后',
+};
+
+// Dịch Chức danh VN→EN cho BẢN GỬI SẾP (chỉ cột chuc_danh). Không có trong map = giữ VN.
+// HR báo đổi/bổ sung tên thì sửa ở đây. Chức danh đang là email (lỗi nguồn) tạm giữ nguyên.
+const PL_CHUCDANH_EN = {
+  'Nhân viên kinh doanh':'Sales Executive',
+  'Nhân viên Kinh doanh':'Sales Executive',
+  'CTV CS':'CS Collaborator',
+  'Sale Team Leader':'Sales Team Leader',
+  'Chuyên viên tư vấn tuyển sinh':'Admissions Consultant',
+  'Nhân viên CS':'Customer Service Staff',
+  'Nhân viên hành chính nhân sự':'HR & Admin Staff',
+  'Giám đốc kinh doanh':'Sales Director',
+  'CS Leader':'CS Team Leader',
+  'Chuyên viên Chăm sóc học viên':'Student Care Specialist',
+  'Trưởng nhóm Kinh doanh':'Sales Team Leader',
+  'Chuyên viên phát triển thị trường':'Market Development Specialist',
+  'Phiên dịch Part-time':'Translator (Part-time)',
+  'Data Analyst Intern':'Data Analyst Intern',
+  'Cộng tác viên':'Collaborator',
+  'Vệ sinh':'Cleaner',
+  'Data operation & Junior Developer':'Data Operation & Junior Developer',
+  'Thực tập sinh Marketing':'Marketing Intern',
+  'developer freelancer':'Freelance Developer',
+  'CS part time, Page admin':'CS (Part-time) & Page Admin',
+  'Sales part-time':'Sales (Part-time)',
+  'Chuyên viên Creator tiktok AI':'TikTok AI Creator Specialist',
+  'Chuyên viên vận hành Fanpage & Group Facebook':'Fanpage & FB Group Operations Specialist',
+  'Chuyên viên tuyển dụng':'Recruitment Specialist',
+  'Graphic Designer':'Graphic Designer',
+  'Chuyên viên kế toán tổng hợp':'General Accountant',
+  'Giáo viên Tiếng Anh':'English Teacher',
+  'Giáo viên tiếng Anh':'English Teacher',
+  'Chuyên viên Sales Admin':'Sales Admin Specialist',
+  'Sales Operation Leader':'Sales Operation Leader',
+  'Trưởng nhóm Tư vấn tuyển sinh':'Admissions Team Leader',
+  'Giám đốc Marketing':'Marketing Director',
+  'Full stack developer/Data engineer freelancer':'Full Stack Developer / Data Engineer (Freelance)',
+};
+
+// Dựng header GHI (song ngữ) + header KHỚP (VN thuần). khau_tru_thue gắn tháng kỳ.
+function plBuildHeaders_(){
+  var mm = '';
+  try { mm = String(kyLuongHienTai_() || '').slice(-2); if (!/^\d{2}$/.test(mm)) mm = ''; } catch (e) { mm = ''; }
+  var headers = COLS.map(function(c){
+    var vn = c.h, cn = PL_CN[c.key] || '';
+    if (c.key === 'khau_tru_thue' && mm) { vn = 'Khấu trừ thuế tháng ' + mm; cn = mm + '月减税'; }
+    return cn ? (vn + '\n' + cn) : vn;
+  });
+  var headerKeys = COLS.map(function(c){ return c.h; });
+  return { headers: headers, headerKeys: headerKeys };
+}
+
 function onOpen(){
   var ui = SpreadsheetApp.getUi();
   ui.createMenu('⚙ Bảng lương')
@@ -133,6 +209,7 @@ function onOpen(){
     .addSeparator()
     .addItem('👁 Xem trước phiếu lương (dòng đang chọn)', 'xemTruocPhieuLuong')
     .addItem('📥 Xuất Excel theo Khối', 'xuatExcelTheoTeam')
+    .addItem('📤 Xuất bản gửi sếp (song ngữ)', 'taoBangLuongGuiSep')
     .addSeparator()
     .addItem('🎨 Định dạng lại (không cần BQ)', 'dinhDangBangLuong')
     .addItem('📊 Cập nhật bảng tính thuế (tham chiếu)', 'capNhatBangThue')
@@ -144,6 +221,7 @@ function onOpen(){
     .addItem('🔌 Cài đặt cổng gửi phiếu', 'installGateTriggers')
     .addItem('🧹 Xếp lại hàng đợi (quét bù tick sót)', 'reconcileOutbox')
     .addItem('🩹 Khớp tick đã gửi (sửa ô rụng)', 'healSentTicks')
+    .addItem('🔄 Gửi lại phiếu (dòng đang chọn)', 'resendPayslip')
     .addItem('📤 Gửi phiếu đang chờ', 'flushOutbox')
     .addItem('📋 Mở hàng đợi', 'moHangDoi')
     .addItem('🔃 Đồng bộ xác nhận từ app', 'pullConfirmsFromApp')
@@ -267,15 +345,17 @@ function capNhatTuBigQuery(){
 
   writeRaw_(data, rows);
 
-  const headers = COLS.map(c=>c.h);
-  plAssertHeadersUnique_(headers);
+  const built = plBuildHeaders_();
+  const headers = built.headers;        // song ngữ (VN\nCN) để GHI
+  const headerKeys = built.headerKeys;  // VN thuần để KHỚP/so layout
+  plAssertHeadersUnique_(headerKeys);
   plAssertCodesUnique_(rows);
   ensureGridWidth_(main, headers.length);
 
   // Đọc dữ liệu cũ TRƯỚC khi clear — key theo Mã NV + TÊN cột (không theo vị trí dòng).
   // Bền với đổi thứ tự dòng (ORDER BY) VÀ đổi layout cột → giá trị điền tay không lệch/mất.
   const oldRange = main.getLastRow() > 1 ? main.getDataRange().getValues() : [];
-  const oldHdr = oldRange.length ? oldRange[0].map(function(x){ return String(x).trim(); }) : [];
+  const oldHdr = oldRange.length ? oldRange[0].map(function(x){ return plHeaderKey_(x); }) : [];
   const oldCodeIdx = oldHdr.indexOf('Mã NV');
   const oldByCode = {};
   if (oldRange.length > 1 && oldCodeIdx >= 0) {
@@ -291,8 +371,8 @@ function capNhatTuBigQuery(){
   };
 
   // Detect column layout change → clear stale data (snapshot cột src không còn tin được)
-  const layoutChanged = oldHdr.length !== headers.length ||
-    headers.some((h, i) => h !== (oldHdr[i] || ''));
+  const layoutChanged = oldHdr.length !== headerKeys.length ||
+    headerKeys.some((h, i) => h !== (oldHdr[i] || ''));
   if (layoutChanged && main.getLastRow() > 1) {
     const clearRange = main.getRange(2, 1, main.getLastRow() - 1, Math.max(oldHdr.length, headers.length));
     clearRange.clear();
@@ -402,7 +482,7 @@ function formatSheet_(main, numRows){
   main.getRange(1, 1, 1, numCols)
       .setWrap(true).setVerticalAlignment('middle').setHorizontalAlignment('center')
       .setFontWeight('bold').setBackground('#0b5394').setFontColor('white');
-  main.setRowHeight(1, 42);
+  main.setRowHeight(1, 56);  // cao hơn cho header 2 dòng VN/CN
 
   // Số tiền: #,##0 (âm hiện -X). Giá trị vẫn là SỐ → không ảnh hưởng lookup/BQ.
   MONEY_KEYS.forEach(function(k){ main.getRange(2, colIndex(k), numRows, 1).setNumberFormat('#,##0'); });
@@ -441,6 +521,8 @@ function dinhDangBangLuong(){
   const main = ss.getSheetByName(CFG.mainSheet);
   if(!main){ ss.toast('Chưa có tab "'+CFG.mainSheet+'".','Lỗi',5); return; }
   const numRows = Math.max(1, main.getLastRow()-1);
+  const built = plBuildHeaders_();
+  main.getRange(1,1,1,built.headers.length).setValues([built.headers]);  // áp header song ngữ không cần BQ
   formatSheet_(main, numRows);
   ss.toast('Đã định dạng lại Bảng lương (wrap, #,##0, độ rộng cột, màu).','✓',5);
   } finally { lk.releaseLock(); }
@@ -546,7 +628,7 @@ function luuArchiveBangLuong() {
     var allVals = main.getDataRange().getValues();
     if (allVals.length < 2) { ss.toast('Bảng lương chưa có dữ liệu.', 'Lỗi', 5); return; }
 
-    var hdr = allVals[0].map(function(h) { return String(h).trim(); });
+    var hdr = allVals[0].map(function(h) { return plHeaderKey_(h); });  // khớp VN (bỏ CN + tháng)
     var ky = kyLuongHienTai_();
 
     // Check duplicate — table chưa tồn tại lần đầu → bỏ qua, ghi thẳng
@@ -671,6 +753,87 @@ function luuArchiveBangLuong() {
   } finally {
     lk.releaseLock();
   }
+}
+
+/* ================== BẢN GỬI SẾP (song ngữ, tab riêng) — M1 ==================
+ * Tạo tab "Bảng lương (gửi sếp)": header song ngữ VN/CN, bỏ 5 cột gate, có dòng BOD.
+ * Khớp cột theo VN qua plHeaderKey_ → chịu được header nguồn đang VN-only HAY song ngữ.
+ * KHÔNG đụng tab gốc / gate. Chạy lại = tạo lại. */
+function taoBangLuongGuiSep(){
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var ui = SpreadsheetApp.getUi();
+  var src = ss.getSheetByName(CFG.mainSheet);
+  if(!src){ ui.alert('Không thấy tab "'+CFG.mainSheet+'".'); return; }
+  var lastRow = src.getLastRow(), lastCol = src.getLastColumn();
+  if(lastRow < 2){ ui.alert('Bảng lương rỗng.'); return; }
+
+  var allVals = src.getRange(1,1,lastRow,lastCol).getValues();
+  var srcKeys = allVals[0].map(plHeaderKey_);
+  var srcIdx = {}; srcKeys.forEach(function(k,i){ if(k && !(k in srcIdx)) srcIdx[k]=i; });
+
+  var mm=''; try{ mm=String(kyLuongHienTai_()||'').slice(-2); if(!/^\d{2}$/.test(mm)) mm=''; }catch(e){ mm=''; }
+  var bossCols = COLS.filter(function(c){ return c.role !== 'status'; });  // bỏ 5 cột gate
+
+  var missing = [];
+  bossCols.forEach(function(c){ if(!(c.h in srcIdx)) missing.push(c.h); });
+  if(missing.length){ ui.alert('Không khớp cột nguồn:\n'+missing.join(', ')); return; }
+
+  var header = bossCols.map(function(c){
+    var vn=c.h, cn=PL_CN[c.key]||'';
+    if(c.key==='khau_tru_thue' && mm){ vn='Khấu trừ thuế tháng '+mm; cn=mm+'月减税'; }
+    return cn ? (vn+'\n'+cn) : vn;
+  });
+
+  var maPos = srcIdx['Mã NV'];
+  var body = [];
+  for(var r=1;r<allVals.length;r++){
+    var row = allVals[r];
+    if(maPos===undefined || !String(row[maPos]||'').trim()) continue;
+    body.push(bossCols.map(function(c){
+      var v = row[srcIdx[c.h]];
+      if(c.key==='chuc_danh'){ var en = PL_CHUCDANH_EN[String(v||'').trim()]; if(en) v = en; }  // dịch EN, không có thì giữ VN
+      return v;
+    }));
+  }
+
+  var bod=[]; for(var k=0;k<bossCols.length;k++) bod.push('');
+  bod[0]='BOD';
+  bossCols.forEach(function(c,ci){
+    if(MONEY_KEYS.indexOf(c.key)>=0){
+      var s=0; body.forEach(function(rr){ var v=Number(rr[ci]); if(!isNaN(v)) s+=v; }); bod[ci]=s;
+    }
+  });
+
+  var name='Bảng lương (gửi sếp)';
+  var dest=ss.getSheetByName(name); if(dest) ss.deleteSheet(dest);
+  dest=ss.insertSheet(name, ss.getSheets().length);
+
+  var allRows=[header,bod].concat(body);
+  dest.getRange(1,1,allRows.length,bossCols.length).setValues(allRows);
+
+  bossCols.forEach(function(c,ci){
+    if(MONEY_KEYS.indexOf(c.key)>=0) dest.getRange(2,ci+1,allRows.length-1,1).setNumberFormat('#,##0');
+    else if(PERCENT_KEYS.indexOf(c.key)>=0) dest.getRange(2,ci+1,allRows.length-1,1).setNumberFormat('0.0%');
+  });
+
+  dest.getRange(1,1,1,bossCols.length)
+      .setBackground('#E69138').setFontColor('#000000').setFontWeight('bold')
+      .setHorizontalAlignment('center').setVerticalAlignment('middle').setWrap(true);
+  dest.setRowHeight(1,56);
+  dest.getRange(2,1,1,bossCols.length).setBackground('#FCE5CD').setFontWeight('bold');
+  dest.getRange(1,1,allRows.length,bossCols.length).setBorder(true,true,true,true,true,true);
+  dest.setFrozenRows(1);
+  dest.setFrozenColumns(3);
+  dest.setColumnWidths(1,bossCols.length,108);
+  bossCols.forEach(function(c,i){
+    if(c.key==='stt') dest.setColumnWidth(i+1,46);
+    if(c.key==='code') dest.setColumnWidth(i+1,72);
+    if(c.key==='name') dest.setColumnWidth(i+1,160);
+    if(c.key==='chuc_danh') dest.setColumnWidth(i+1,150);
+  });
+
+  dest.activate();
+  ui.alert('Đã tạo "'+name+'" — '+body.length+' NV + dòng BOD'+(mm?(' (kỳ tháng '+mm+')'):'')+'.');
 }
 
 /* ================== XUẤT EXCEL ================== */

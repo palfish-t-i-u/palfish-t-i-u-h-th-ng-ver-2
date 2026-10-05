@@ -61,7 +61,7 @@ function doiSoatLuong() {
     return;
   }
   const bqData    = bqSheet.getDataRange().getValues();
-  const bqHeaders = bqData[0];
+  const bqHeaders = bqData[0].map(plHeaderKey_);   // khớp VN (bỏ CN + " tháng NN")
   const bqMap     = parseBQData_(bqData, bqHeaders);
 
   // --- 3. So sánh ---

@@ -148,6 +148,29 @@ def register_payroll_routes(app, get_supabase) -> None:
             raise HTTPException(422, "Payload thieu 'phieu'")
 
         name = str(body.phieu.get("Name") or meta.get("name") or "").strip() or None
+
+        sb = _sb_or_503(get_supabase)
+
+        # Gửi lại phiếu: nếu nội dung (payload) ĐỔI so với bản đã lưu → xác nhận/duyệt cũ
+        # hết hiệu lực, reset về 'none' để NV xác nhận lại. Gửi lại y hệt → giữ nguyên.
+        payload_changed = False
+        try:
+            prev = (
+                sb.table("payslips")
+                .select("payload_json")
+                .eq("code", code)
+                .eq("ky_luong", ky_luong)
+                .eq("stage", stage)
+                .limit(1)
+                .execute()
+            )
+            prev_row = (prev.data or [None])[0]
+            payload_changed = (
+                prev_row is not None and prev_row.get("payload_json") != body.phieu
+            )
+        except Exception:
+            payload_changed = False
+
         row = {
             "code": code,
             "name": name,
@@ -156,8 +179,14 @@ def register_payroll_routes(app, get_supabase) -> None:
             "payload_json": body.phieu,
             "updated_at": _now_iso(),
         }
+        if payload_changed:
+            row.update({
+                "review_status": "none",
+                "confirm_status": "none",
+                "reviewed_at": None,
+                "confirmed_at": None,
+            })
 
-        sb = _sb_or_503(get_supabase)
         try:
             sb.table("payslips").upsert(
                 row, on_conflict="code,ky_luong,stage"
@@ -165,7 +194,13 @@ def register_payroll_routes(app, get_supabase) -> None:
         except Exception as exc:
             raise HTTPException(500, f"Khong luu duoc payslip: {exc}") from exc
 
-        return {"ok": True, "code": code, "ky_luong": ky_luong, "stage": stage}
+        return {
+            "ok": True,
+            "code": code,
+            "ky_luong": ky_luong,
+            "stage": stage,
+            "confirm_reset": payload_changed,
+        }
 
     # ---- Đọc / xác nhận (Milestone B) — user JWT + RBAC ----
 
