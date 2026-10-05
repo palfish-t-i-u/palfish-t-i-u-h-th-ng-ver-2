@@ -25,7 +25,7 @@ import DateRangeFilter, { EMPTY_RANGE, type DateRange, inDateRange } from "./pay
 import { Icons } from "./payment-request/Icons";
 import Modal from "./ui/Modal";
 import { useNoticeCardCollapse } from "../hooks/useNoticeCardCollapse";
-import { activationAuditText, formatPaymentDateFull, formatPaymentDateTime, fromApiActiveRequest, getArReferralStatus, getReferralStatus, pageItems, paginate, prCreatedBeforeCccdLive, REFERRAL_STATUS_HEADER, REFERRAL_STATUS_PANEL_STYLE, toActiveRequestPatchUidsData } from "./payment-request/paymentRequestUtils";
+import { activationAuditText, arHoldPending, formatPaymentDateFull, formatPaymentDateTime, fromApiActiveRequest, getArReferralStatus, getReferralStatus, pageItems, paginate, prCreatedBeforeCccdLive, REFERRAL_STATUS_HEADER, REFERRAL_STATUS_PANEL_STYLE, toActiveRequestPatchUidsData } from "./payment-request/paymentRequestUtils";
 import { downloadTaxInvoiceZip } from "../utils/taxInvoiceXlsxExport";
 import type { InvoiceRow } from "./payment-flow/paymentFlowUtils";
 import { getUidSyncState } from "./ActivationTab.uidSync";
@@ -1204,7 +1204,7 @@ function ActivationDetailDrawer({
         </div>
 
         <div className="drawer-body ar-drawer-body" ref={arBodyScrollRef}>
-          {enriched.holdActivation && enriched.status !== "activated" && enriched.status !== "invoiced" && (
+          {arHoldPending(enriched) && (
             <div style={{
               padding: "10px 14px", borderRadius: 10,
               border: "1px solid #ffd54f", background: "#fffde7",
@@ -2278,7 +2278,7 @@ export default function ActivationTab() {
   }, [activeRequests, prById]);
 
   const holdArs = useMemo(
-    () => rows.filter((a) => a.holdActivation && a.status !== "activated" && a.status !== "invoiced"),
+    () => rows.filter((a) => arHoldPending(a)),
     [rows]
   );
 
@@ -2311,7 +2311,7 @@ export default function ActivationTab() {
         }
       }
       if (holdFilter !== "all") {
-        const isHold = !!a.holdActivation && a.status !== "activated" && a.status !== "invoiced";
+        const isHold = arHoldPending(a);
         if (holdFilter === "hold" && !isHold) return false;
         if (holdFilter === "now" && isHold) return false;
       }
@@ -2343,7 +2343,7 @@ export default function ActivationTab() {
         }
       }
       if (holdFilter !== "all") {
-        const isHold = !!a.holdActivation && a.status !== "activated" && a.status !== "invoiced";
+        const isHold = arHoldPending(a);
         if (holdFilter === "hold" && !isHold) return false;
         if (holdFilter === "now" && isHold) return false;
       }

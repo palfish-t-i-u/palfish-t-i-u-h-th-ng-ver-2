@@ -1,5 +1,5 @@
 import { RowCard, RowCardList } from "../ui/RowCard";
-import { formatPaymentDateTime, getArReferralStatus } from "../payment-request/paymentRequestUtils";
+import { arHoldPending, formatPaymentDateTime, getArReferralStatus } from "../payment-request/paymentRequestUtils";
 import {
   AR_STATUS_META,
   type EnrichedActiveRequest,
@@ -64,7 +64,7 @@ export default function ActivationRowCards({
               <>
                 <StatusBadge status={a.status} />
                 <ReferralBadge ar={a} />
-                {a.holdActivation && a.status !== "activated" && a.status !== "invoiced" && (
+                {arHoldPending(a) && (
                   <span
                     className="badge badge-warning"
                     title={a.holdNote ? `Chưa muốn tạo gói học — "${a.holdNote}"` : "Chưa muốn tạo gói học"}

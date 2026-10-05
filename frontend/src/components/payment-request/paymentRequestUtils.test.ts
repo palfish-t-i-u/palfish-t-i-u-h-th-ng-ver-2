@@ -3,6 +3,7 @@ import type { ActiveCourse, ActiveRequest, ActiveRequestApiRow, PaymentAttempt, 
 import {
   activationSummary,
   activeRequestAllocation,
+  arHoldPending,
   buildCreateActiveRequestPayload,
   displayReceived,
   feeTotal,
@@ -830,6 +831,56 @@ describe("getArReferralStatus", () => {
       ],
     }] };
     expect(getArReferralStatus(ar)).toBe("partial");
+  });
+});
+
+describe("arHoldPending", () => {
+  const base: ActiveRequest = {
+    id: "AR-HOLD", prId: "PR-HOLD", customerName: "Hold", createdAt: "", createdBy: "",
+    uids: [{ uid: "U1", phone: "", country: "VN", courses: [
+      { courseCode: "CC-1", packageName: "", amount: 1000, orderId: "", invoiced: false },
+    ] }],
+  };
+
+  it("false khi không bật hold", () => {
+    expect(arHoldPending({ ...base, holdActivation: false })).toBe(false);
+    expect(arHoldPending(base)).toBe(false); // holdActivation undefined
+  });
+
+  it("true khi bật hold và còn gói chưa có Order ID (pending)", () => {
+    expect(arHoldPending({ ...base, holdActivation: true })).toBe(true);
+  });
+
+  it("true khi bật hold và đơn ĐÃ xuất HĐ nhưng Order ID còn trống (ca lỗi cũ)", () => {
+    const ar: ActiveRequest = {
+      ...base, holdActivation: true,
+      uids: [{ uid: "U1", phone: "", country: "VN", courses: [
+        { courseCode: "CC-1", packageName: "", amount: 1000, orderId: "", invoiced: true,
+          invoiceId: "INV-2026-1539", invoiceRequestedAt: "2026-10-01 11:59" },
+      ] }],
+    };
+    expect(arHoldPending(ar)).toBe(true);
+  });
+
+  it("false khi bật hold nhưng mọi gói đã có Order ID (tạo gói xong, dù invoiced)", () => {
+    const ar: ActiveRequest = {
+      ...base, holdActivation: true,
+      uids: [{ uid: "U1", phone: "", country: "VN", courses: [
+        { courseCode: "CC-1", packageName: "", amount: 1000, orderId: "ORD-1", invoiced: true },
+      ] }],
+    };
+    expect(arHoldPending(ar)).toBe(false);
+  });
+
+  it("true khi nhiều gói, chỉ 1 gói chưa có Order ID", () => {
+    const ar: ActiveRequest = {
+      ...base, holdActivation: true,
+      uids: [{ uid: "U1", phone: "", country: "VN", courses: [
+        { courseCode: "CC-1", packageName: "", amount: 1000, orderId: "ORD-1", invoiced: false },
+        { courseCode: "CC-2", packageName: "", amount: 2000, orderId: "", invoiced: false },
+      ] }],
+    };
+    expect(arHoldPending(ar)).toBe(true);
   });
 });
 
