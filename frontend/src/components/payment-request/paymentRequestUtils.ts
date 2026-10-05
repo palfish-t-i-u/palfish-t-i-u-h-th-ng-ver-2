@@ -909,6 +909,21 @@ export function isHoldActivationLocked(courses: ActiveCourse[]): boolean {
   return courses.every((c) => !!c.orderId?.trim()); // true = activated; false = partial/pending
 }
 
+/**
+ * AR đang "giữ chưa tạo gói" cho mục đích HIỂN THỊ/LỌC — bật hold VÀ còn ≥1 gói
+ * chưa có Order ID (chưa thực sự tạo gói). Dùng order_id làm tín hiệu "đã tạo gói"
+ * (xem docs/learnings/bao-don-completion-signal-order-id), KHÔNG dùng status: đơn
+ * đã xuất HĐ (status "invoiced") mà order_id còn trống thì vẫn đang chờ tạo gói →
+ * phải hiện hold. Đơn đã có order_id hết (tạo gói xong) → false dù hold_activation
+ * còn sót. Khớp đúng điều kiện tag dòng desktop (row.holdActivation && !row.activated).
+ */
+export function arHoldPending(ar: ActiveRequest): boolean {
+  return (
+    !!ar.holdActivation &&
+    ar.uids.some((u) => u.courses.some((c) => !(c.orderId ?? "").trim()))
+  );
+}
+
 export function createdAtDate(createdAt: string) {
   return formatPaymentDateTime(createdAt);
 }
