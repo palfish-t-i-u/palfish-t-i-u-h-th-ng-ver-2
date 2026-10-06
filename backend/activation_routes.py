@@ -1516,8 +1516,17 @@ def _ar_dingtalk_content_key(ar: dict[str, Any], pr: dict[str, Any] | None) -> s
 
     Đổi key này mới đáng bắn tin edit-resend. LOẠI TRỪ (không hiển thị, đổi không
     bắn tin): order_id, status, timestamps, info_confirmed, budget, course_count,
-    dòng Sale/Team. Dùng child_label ĐÃ RESOLVE (block.name ?? pr.child_name ??
-    ar.customer_name ?? pr.name), KHÔNG dùng customer_name thô khi block đã có tên.
+    dòng Sale/Team, hold_activation, hold_note. Dùng child_label ĐÃ RESOLVE
+    (block.name ?? pr.child_name ?? ar.customer_name ?? pr.name), KHÔNG dùng
+    customer_name thô khi block đã có tên.
+
+    hold_activation/hold_note CỐ Ý loại trừ (task 2026-10-06): toggle "Cần tạo
+    gói ngay / Chưa cần tạo gói ngay" (PATCH /active-requests/{id}) không được
+    tự bắn tin edit-resend — sale đổi trạng thái này khá thường xuyên, bắn tin
+    mỗi lần sẽ làm loãng nhóm DingTalk. Nội dung "⏸ PH CHƯA MUỐN..." vẫn hiện
+    đúng trong tin KHI tin được bắn vì lý do khác (tạo đơn, báo đơn bổ sung, hoặc
+    sửa 1 trường hiển thị khác cùng lúc) — chỉ riêng việc đổi 2 trường này không
+    còn là LÝ DO để bắn tin.
     """
     pr = pr or {}
 
@@ -1577,8 +1586,6 @@ def _ar_dingtalk_content_key(ar: dict[str, Any], pr: dict[str, Any] | None) -> s
         "lead_source": _s(pr.get("lead_source")),
         "lead_channel": _s(pr.get("lead_channel")),
         "total": total,
-        "hold_activation": bool(ar.get("hold_activation")),
-        "hold_note": _s(ar.get("hold_note")),
     }
     return json.dumps(payload, sort_keys=True, ensure_ascii=False)
 

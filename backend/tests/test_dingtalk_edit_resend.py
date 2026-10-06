@@ -168,6 +168,24 @@ class TestArDingtalkContentKey:
         ar2 = _make_ar_row(info_confirmed_at="2026-08-13T12:00:00Z")
         assert _ar_dingtalk_content_key(ar, pr) == _ar_dingtalk_content_key(ar2, pr)
 
+    def test_hold_activation_change_does_not_alter_key(self):
+        """Task 2026-10-06: toggle hold_activation không còn là lý do bắn tin
+        edit-resend — sale đổi trạng thái này thường xuyên, bắn tin mỗi lần
+        sẽ làm loãng nhóm DingTalk."""
+        ar = _make_ar_row(hold_activation=False, hold_note=None)
+        pr = _sample_pr()
+        ar2 = _make_ar_row(hold_activation=True, hold_note=None)
+        assert _ar_dingtalk_content_key(ar, pr) == _ar_dingtalk_content_key(ar2, pr)
+
+    def test_hold_note_change_does_not_alter_key(self):
+        """hold_note đi kèm hold_activation — cũng loại trừ, vì PATCH toggle luôn
+        set hold_note=None (nếu chỉ loại trừ hold_activation thì việc hold_note
+        rơi từ có-giá-trị về None vẫn làm key đổi, không thật sự tắt được tin)."""
+        ar = _make_ar_row(hold_activation=True, hold_note="PH bận việc")
+        pr = _sample_pr()
+        ar2 = _make_ar_row(hold_activation=True, hold_note=None)
+        assert _ar_dingtalk_content_key(ar, pr) == _ar_dingtalk_content_key(ar2, pr)
+
     def test_customer_name_change_does_not_alter_key_when_block_has_name(self):
         """Block đã có name riêng (khác None) → customer_name thô không ảnh hưởng hiển thị."""
         uids = _uids_payload()
@@ -257,6 +275,43 @@ class TestPatchActiveRequestEditResendWiring:
 
         assert res.status_code == 200, res.text
         mock_dt.assert_not_called()
+
+    def test_toggling_hold_activation_alone_does_not_enqueue(self):
+        """Task 2026-10-06: PATCH chỉ đổi hold_activation (radio 'Cần tạo gói
+        ngay' / 'Chưa cần tạo gói ngay') → KHÔNG bắn tin DingTalk — sale đổi
+        trạng thái này thường xuyên, bắn tin mỗi lần làm loãng nhóm."""
+        ar_row = _make_ar_row(hold_activation=False, hold_note=None)
+        pr = _sample_pr()
+        client = _build_patch_client(ar_row)
+
+        with _patch_dependencies(pr) as mock_dt:
+            res = client.patch(
+                "/api/v1/active-requests/AR-2026-9101",
+                json={"hold_activation": True},
+            )
+
+        assert res.status_code == 200, res.text
+        assert res.json()["hold_activation"] is True
+        mock_dt.assert_not_called()
+
+    def test_toggling_hold_activation_with_real_content_change_still_enqueues(self):
+        """Đối chứng: fix chỉ loại trừ hold_activation/hold_note khỏi key so
+        sánh — nếu CÙNG lúc có nội dung hiển thị thật sự đổi (VD amount), vẫn
+        phải bắn đúng 1 tin :edit: như bình thường (không phải tắt cả hệ thống
+        edit-resend)."""
+        ar_row = _make_ar_row(hold_activation=False, hold_note=None)
+        pr = _sample_pr()
+        client = _build_patch_client(ar_row)
+
+        with _patch_dependencies(pr) as mock_dt:
+            res = client.patch(
+                "/api/v1/active-requests/AR-2026-9101",
+                json={"hold_activation": True, "uids_data": _uids_payload(amount=6_000_000)},
+            )
+
+        assert res.status_code == 200, res.text
+        mock_dt.assert_called_once()
+        assert mock_dt.call_args.kwargs["source_suffix"].startswith(":edit:")
 
 
 # ---------------------------------------------------------------------------
