@@ -677,6 +677,8 @@ export const endpoints = {
     },
     mktFeedback: (id: string, note: string) =>
       api.post<{ item: LeadFeedback }>(`/api/v1/lead-feedback/${id}/mkt-feedback`, { note }),
+    remove: (id: string) =>
+      api.delete<{ deleted: boolean; id: string }>(`/api/v1/lead-feedback/${id}`),
   },
 };
 

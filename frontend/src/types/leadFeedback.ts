@@ -24,6 +24,7 @@ export interface LeadFeedback {
   mkt_images: LeadFeedbackImage[];
   mkt_by: string | null;
   mkt_at: string | null;
+  can_delete?: boolean; // BE tính theo quyền+scope: người xem có được xoá dòng này không
 }
 
 export interface LeadFeedbackListResponse {
