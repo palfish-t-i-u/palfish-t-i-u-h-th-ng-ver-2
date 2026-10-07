@@ -1,7 +1,6 @@
 import { useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { Icons } from "../payment-request/Icons";
-import { formatPhoneIntl } from "../payment-request/phoneUtils";
 import {
   LEAD_SOURCES,
   findSourceByKey,
@@ -10,6 +9,7 @@ import {
 } from "../../constants/leadSource";
 import { endpoints } from "../../lib/api";
 import ImageDropZone, { type HeldImage } from "./ImageDropZone";
+import { normalizePhone } from "./phone";
 
 /** Suy ra nguồn + kênh từ mã CRM của lead (crm_code = channel code, vd 300265). */
 function resolveSourceFromCrmCode(crmCode: string | null | undefined): {
@@ -51,7 +51,7 @@ export default function CreateFeedbackModal({
 
   // Tra lead trong handler (không qua effect) → khớp thì tự điền UID / tên / nguồn / kênh, sale vẫn sửa được.
   const onLookup = async () => {
-    const formatted = formatPhoneIntl("VN", phone) || phone.trim();
+    const formatted = normalizePhone(phone) || phone.trim();
     if (!formatted) return;
     setPhone(formatted);
     setLookupStatus("loading");
@@ -80,7 +80,7 @@ export default function CreateFeedbackModal({
 
   const save = async () => {
     setErr(null);
-    const fmtPhone = formatPhoneIntl("VN", phone) || phone.trim();
+    const fmtPhone = normalizePhone(phone) || phone.trim();
     if (!fmtPhone) {
       setErr("Nhập SĐT khách.");
       return;
@@ -182,7 +182,7 @@ export default function CreateFeedbackModal({
                 autoComplete="off"
                 onChange={(e) => setPhone(e.target.value)}
                 onBlur={() => {
-                  const f = formatPhoneIntl("VN", phone);
+                  const f = normalizePhone(phone);
                   if (f) setPhone(f);
                 }}
                 onKeyDown={(e) => {
