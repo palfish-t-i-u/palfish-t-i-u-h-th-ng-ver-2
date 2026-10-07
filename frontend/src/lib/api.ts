@@ -4,6 +4,7 @@ import { supabase } from "./supabase";
 import type { Bc03Report, Bc03MonthlySettings, Bc03StaffOption, CreateOrderPayload, DashboardDailyTrends, DashboardLiveSummary, DashboardSummary, InvoiceOrder, Order } from "../types/order";
 import type { CashInReportRaw } from "../types/cashIn";
 import type { GamificationDashboardSummary } from "../types/dashboard";
+import type { LeadFeedback, LeadFeedbackListResponse, CreateLeadFeedbackBody } from "../types/leadFeedback";
 import type {
   ActiveRequestApiRow,
   AddPaymentAttemptPayload,
@@ -659,6 +660,23 @@ export const endpoints = {
           match_source: string | null;
         }[];
       }>("/api/v1/leads/lookup", { params }),
+  },
+  leadFeedback: {
+    list: (params?: { q?: string; status?: string; date_from?: string; date_to?: string }) =>
+      api.get<LeadFeedbackListResponse>("/api/v1/lead-feedback", { params }),
+    create: (body: CreateLeadFeedbackBody) =>
+      api.post<{ item: LeadFeedback }>("/api/v1/lead-feedback", body),
+    uploadImage: (id: string, kind: "sale" | "mkt", file: Blob, filename: string) => {
+      const fd = new FormData();
+      fd.append("file", file, filename);
+      return api.post<{ url: string; images: LeadFeedback["sale_images"] }>(
+        `/api/v1/lead-feedback/${id}/images`,
+        fd,
+        { params: { kind }, headers: { "Content-Type": "multipart/form-data" }, timeout: 60000 },
+      );
+    },
+    mktFeedback: (id: string, note: string) =>
+      api.post<{ item: LeadFeedback }>(`/api/v1/lead-feedback/${id}/mkt-feedback`, { note }),
   },
 };
 

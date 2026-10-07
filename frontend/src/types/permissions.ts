@@ -45,6 +45,8 @@ export const MODULE_LIST: ModuleDef[] = [
   // ── Khách hàng & Đơn hàng ──
   { key: "dashboard", label: "Bảng thông tin", description: "Tổng quan đơn hàng, doanh thu, KPI", section: "Khách hàng & Đơn hàng" },
   { key: "paymentRequests", label: "Quản lý thanh toán", description: "Tra cứu và xác nhận thanh toán", section: "Khách hàng & Đơn hàng" },
+  { key: "leadFeedback", label: "Feedback lead", description: "Sale gửi bằng chứng & ghi chú về lead; MKT nhận xét", section: "Khách hàng & Đơn hàng" },
+  { key: "leadFeedbackReview", label: "Feedback lead — Quyền nhận xét (MKT)", description: "Điền nhận xét Block 3 + xem hết (team Marketing)", section: "Khách hàng & Đơn hàng" },
   // ── Đối soát & Hóa đơn ──
   { key: "reconciliation", label: "Đối soát giao dịch (Chuyển khoản)", description: "So khớp chuyển khoản SePay", section: "Đối soát & Hóa đơn" },
   { key: "reconCard", label: "Đối soát giao dịch mPOS/Payoo", description: "So khớp giao dịch quẹt thẻ với lần thanh toán", section: "Đối soát & Hóa đơn" },
@@ -84,6 +86,7 @@ export const DEPARTMENT_LIST: DepartmentDef[] = [
 export const DEFAULT_PERMISSIONS: Record<string, Record<string, AccessLevel>> = {
   sale: {
     dashboard: "full", paymentRequests: "full",
+    leadFeedback: "full", leadFeedbackReview: "none",
     reconciliation: "full", reconCard: "none", module3: "full", module4: "read",
     revenueLedger: "read", bc01: "read", bc02: "read", bc03: "read", bc04: "none",
     module5: "none", module6: "full", gatewaySync: "none",
@@ -93,6 +96,7 @@ export const DEFAULT_PERMISSIONS: Record<string, Record<string, AccessLevel>> = 
   },
   hr: {
     dashboard: "full", paymentRequests: "full",
+    leadFeedback: "full", leadFeedbackReview: "none",
     reconciliation: "full", reconCard: "full", module3: "full", module4: "full",
     revenueLedger: "full", bc01: "full", bc02: "full", bc03: "full", bc04: "full",
     module5: "full", module6: "full", gatewaySync: "full",
@@ -102,6 +106,7 @@ export const DEFAULT_PERMISSIONS: Record<string, Record<string, AccessLevel>> = 
   },
   marketing: {
     dashboard: "read", paymentRequests: "none",
+    leadFeedback: "full", leadFeedbackReview: "full",
     reconciliation: "none", reconCard: "none", module3: "none", module4: "none",
     revenueLedger: "full", bc01: "read", bc02: "read", bc03: "read", bc04: "none",
     module5: "none", module6: "none", gatewaySync: "none",
@@ -111,6 +116,7 @@ export const DEFAULT_PERMISSIONS: Record<string, Record<string, AccessLevel>> = 
   },
   cs: {
     dashboard: "read", paymentRequests: "none",
+    leadFeedback: "none", leadFeedbackReview: "none",
     reconciliation: "none", reconCard: "none", module3: "full", module4: "none",
     revenueLedger: "none", bc01: "none", bc02: "none", bc03: "none", bc04: "none",
     module5: "none", module6: "none", gatewaySync: "none",
