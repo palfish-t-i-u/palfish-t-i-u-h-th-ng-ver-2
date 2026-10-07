@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import "../styles/prototype-payments.css";
 import { endpoints } from "../lib/api";
 import type { LeadFeedback } from "../types/leadFeedback";
@@ -30,6 +31,9 @@ export default function LeadFeedbackTab() {
 
   const [createOpen, setCreateOpen] = useState(false);
   const [detail, setDetail] = useState<LeadFeedback | null>(null);
+  const [toDelete, setToDelete] = useState<LeadFeedback | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteErr, setDeleteErr] = useState<string | null>(null);
 
   // Debounce ô tìm kiếm.
   useEffect(() => {
@@ -71,13 +75,27 @@ export default function LeadFeedbackTab() {
     setDetail((cur) => (cur && cur.id === next.id ? next : cur));
   };
 
+  const confirmDelete = async () => {
+    if (!toDelete) return;
+    setDeleting(true);
+    setDeleteErr(null);
+    try {
+      await endpoints.leadFeedback.remove(toDelete.id);
+      setItems((prev) => prev.filter((x) => x.id !== toDelete.id));
+      setDetail((cur) => (cur && cur.id === toDelete.id ? null : cur));
+      setToDelete(null);
+    } catch (e) {
+      const msg = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      setDeleteErr(msg || "Không xoá được feedback. Thử lại.");
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   return (
     <div className="gmv-prototype">
       <div className="page page--fit">
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
-          <div style={{ fontSize: 12.5, color: "var(--text-3)", maxWidth: 640, lineHeight: 1.55 }}>
-            Sale gửi bằng chứng và ghi chú về chất lượng lead đã nhận; team Marketing xem và nhận xét lại.
-          </div>
+        <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
           {canCreate && (
             <button className="btn btn-primary" onClick={() => setCreateOpen(true)}>
               <Icons.Plus size={15} strokeWidth={2.3} /> Tạo Feedback
@@ -125,7 +143,7 @@ export default function LeadFeedbackTab() {
                   <th>SĐT</th>
                   <th>Nguồn</th>
                   <th style={{ width: 170 }}>Trạng thái</th>
-                  <th style={{ width: 70 }} />
+                  <th style={{ width: 120 }} />
                 </tr>
               </thead>
               <tbody>
@@ -172,17 +190,28 @@ export default function LeadFeedbackTab() {
                             </span>
                           )}
                         </td>
-                        <td>
-                          <button
-                            type="button"
-                            className="btn btn-outline btn-sm"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setDetail(it);
-                            }}
-                          >
-                            <Icons.Eye size={13} /> Xem
-                          </button>
+                        <td onClick={(e) => e.stopPropagation()}>
+                          <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
+                            <button
+                              type="button"
+                              className="btn btn-outline btn-sm"
+                              onClick={() => setDetail(it)}
+                            >
+                              <Icons.Eye size={13} /> Xem
+                            </button>
+                            {it.can_delete && (
+                              <button
+                                type="button"
+                                className="btn btn-outline btn-sm"
+                                title="Xoá feedback"
+                                aria-label="Xoá feedback"
+                                onClick={() => setToDelete(it)}
+                                style={{ color: "var(--danger)", padding: "5px 8px" }}
+                              >
+                                <Icons.Trash size={13} />
+                              </button>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     );
@@ -214,6 +243,56 @@ export default function LeadFeedbackTab() {
           onUpdated={onUpdated}
         />
       )}
+      {toDelete &&
+        createPortal(
+          <div className="gmv-prototype-modal-scrim" onClick={() => !deleting && setToDelete(null)}>
+            <div
+              className="modal"
+              style={{ width: "min(440px, 100%)" }}
+              role="dialog"
+              aria-modal="true"
+              aria-label="Xác nhận xoá feedback"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="modal-head">
+                <h3>Xoá feedback?</h3>
+                <button className="drawer-close" onClick={() => setToDelete(null)} disabled={deleting} aria-label="Đóng">
+                  <Icons.Close size={16} />
+                </button>
+              </div>
+              <div className="modal-body">
+                <div style={{ fontSize: 13.5, color: "var(--text)", lineHeight: 1.5 }}>
+                  Xoá feedback của <strong>{toDelete.customer_name || toDelete.phone || "khách này"}</strong> (người điền:{" "}
+                  {toDelete.sale_name || toDelete.sale_email})? Ảnh đính kèm cũng bị xoá và{" "}
+                  <strong>không khôi phục được</strong>.
+                </div>
+                {deleteErr && (
+                  <div
+                    style={{
+                      fontSize: 12.5,
+                      color: "var(--danger-text)",
+                      background: "var(--danger-bg)",
+                      border: "1px solid var(--danger)",
+                      borderRadius: 8,
+                      padding: "8px 12px",
+                    }}
+                  >
+                    {deleteErr}
+                  </div>
+                )}
+              </div>
+              <div className="modal-foot">
+                <button type="button" className="btn btn-outline" onClick={() => setToDelete(null)} disabled={deleting}>
+                  Huỷ
+                </button>
+                <button type="button" className="btn btn-danger" onClick={() => void confirmDelete()} disabled={deleting}>
+                  {deleting ? "Đang xoá…" : "Xoá"}
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body,
+        )}
     </div>
   );
 }

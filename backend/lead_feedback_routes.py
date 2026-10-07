@@ -131,13 +131,13 @@ def register_lead_feedback_routes(app, get_sb):
         if date_to:
             query = query.lte("created_at", f"{date_to}T23:59:59.999Z")
 
+        del_emails = visible_creator_emails(sb, actor)  # None=all; sale=own; leader=team
         see_all = can_review or _rank(actor.role) >= _rank("manager")
         if not see_all:
-            emails = visible_creator_emails(sb, actor)  # sale=own, leader=team, else None(all)
-            if emails is not None:
-                if not emails:
+            if del_emails is not None:
+                if not del_emails:
                     return {"items": [], "can_review": can_review, "can_create": can_create}
-                query = query.in_("sale_email", emails)
+                query = query.in_("sale_email", del_emails)
 
         rows = (query.limit(500).execute().data) or []
 
@@ -156,8 +156,19 @@ def register_lead_feedback_routes(app, get_sb):
                 return False
             rows = [r for r in rows if _hit(r)]
 
+        def _can_delete(r: dict) -> bool:
+            # Xoá = có quyền tạo (full) + trong phạm vi: admin(None)=tất cả · leader=team · sale=của mình.
+            if not can_create:
+                return False
+            return del_emails is None or (r.get("sale_email") or "") in del_emails
+
+        items = []
+        for r in rows:
+            it = _serialize(r)
+            it["can_delete"] = _can_delete(r)
+            items.append(it)
         return {
-            "items": [_serialize(r) for r in rows],
+            "items": items,
             "can_review": can_review,
             "can_create": can_create,
         }
@@ -249,3 +260,28 @@ def register_lead_feedback_routes(app, get_sb):
         if not res.data:
             raise HTTPException(404, "Không tìm thấy feedback")
         return {"item": _serialize(res.data[0])}
+
+    @app.delete("/api/v1/lead-feedback/{fid}")
+    def delete_feedback(fid: str, authorization: str | None = Header(None)):
+        sb, actor, _can_review, can_create = _ctx(authorization)
+        if not can_create:
+            raise HTTPException(403, "Bạn không có quyền xoá feedback")
+        row = _load(sb, fid)
+        emails = visible_creator_emails(sb, actor)  # None=all; sale=own; leader=team
+        if emails is not None and (row.get("sale_email") or "") not in emails:
+            raise HTTPException(403, "Bạn chỉ được xoá feedback của mình hoặc của sale trong team")
+        # Dọn ảnh Storage (best-effort — lỗi vẫn xoá row để không kẹt)
+        paths = []
+        for col in ("sale_images", "mkt_images"):
+            for img in (row.get(col) or []):
+                url = (img or {}).get("url") or ""
+                marker = f"/{_BUCKET}/"
+                if marker in url:
+                    paths.append(url.split(marker, 1)[1])
+        if paths:
+            try:
+                sb.storage.from_(_BUCKET).remove(paths)
+            except Exception as exc:
+                print(f"[lead-feedback] remove images failed fid={fid}: {exc}")
+        sb.table("lead_feedback").delete().eq("id", fid).execute()
+        return {"deleted": True, "id": fid}

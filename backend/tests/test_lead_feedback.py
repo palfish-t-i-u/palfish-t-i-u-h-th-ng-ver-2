@@ -98,6 +98,24 @@ class _Update:
         return _Res(out)
 
 
+class _Delete:
+    def __init__(self, store, table):
+        self.store, self.table, self.filters = store, table, []
+
+    def eq(self, col, val):
+        self.filters.append((col, val)); return self
+
+    def execute(self):
+        removed, keep = [], []
+        for r in self.store[self.table]:
+            if all(r.get(c) == v for c, v in self.filters):
+                removed.append(dict(r))
+            else:
+                keep.append(r)
+        self.store[self.table] = keep
+        return _Res(removed)
+
+
 class _Table:
     def __init__(self, store, name):
         self.store, self.name = store, name
@@ -111,6 +129,9 @@ class _Table:
     def update(self, upd):
         return _Update(self.store, self.name, upd)
 
+    def delete(self):
+        return _Delete(self.store, self.name)
+
 
 class _Bucket:
     def upload(self, path, file, file_options=None):
@@ -118,6 +139,9 @@ class _Bucket:
 
     def get_public_url(self, path):
         return f"https://sb.test/storage/v1/object/public/lead-feedback/{path}"
+
+    def remove(self, paths):
+        return True
 
 
 class _Storage:
@@ -251,3 +275,46 @@ def test_mkt_feedback_requires_note():
     sb = FakeSB(); _seed(sb); _set("sale", "mkt@x.com", PERMS_MKT, None)
     r = _client(sb).post("/api/v1/lead-feedback/1/mkt-feedback", json={"note": "  "})
     assert r.status_code == 400
+
+
+# ---------------- delete ----------------
+def test_delete_owner_ok():
+    sb = FakeSB(); _seed(sb); _set("sale", "a@x.com", PERMS_SALE, ["a@x.com"])
+    r = _client(sb).delete("/api/v1/lead-feedback/1")  # id 1 = a@x.com
+    assert r.status_code == 200, r.text
+    assert r.json()["deleted"] is True
+    assert all(x["id"] != "1" for x in sb.store["lead_feedback"])
+
+
+def test_delete_leader_team_ok():
+    sb = FakeSB(); _seed(sb); _set("leader", "lead@x.com", PERMS_SALE, ["a@x.com", "b@x.com"])
+    r = _client(sb).delete("/api/v1/lead-feedback/2")  # id 2 = b@x.com, cùng team
+    assert r.status_code == 200, r.text
+
+
+def test_delete_other_team_forbidden():
+    sb = FakeSB(); _seed(sb); _set("sale", "a@x.com", PERMS_SALE, ["a@x.com"])
+    r = _client(sb).delete("/api/v1/lead-feedback/2")  # id 2 = b@x.com, KHÔNG phải của mình
+    assert r.status_code == 403
+    assert any(x["id"] == "2" for x in sb.store["lead_feedback"])  # không bị xoá
+
+
+def test_delete_admin_any():
+    sb = FakeSB(); _seed(sb); _set("system", "admin@x.com", PERMS_MKT, None)  # visible None = tất cả
+    r = _client(sb).delete("/api/v1/lead-feedback/2")
+    assert r.status_code == 200, r.text
+
+
+def test_delete_forbidden_readonly():
+    sb = FakeSB(); _seed(sb); _set("sale", "a@x.com", PERMS_READ, ["a@x.com"])
+    r = _client(sb).delete("/api/v1/lead-feedback/1")
+    assert r.status_code == 403  # chỉ xem, không được xoá
+
+
+def test_list_can_delete_scope_mkt_own_only():
+    # MKT thấy HẾT (can_review) nhưng chỉ xoá được của mình (visible = own)
+    sb = FakeSB(); _seed(sb); _set("sale", "a@x.com", PERMS_MKT, ["a@x.com"])
+    r = _client(sb).get("/api/v1/lead-feedback")
+    flags = {it["id"]: it["can_delete"] for it in r.json()["items"]}
+    assert flags["1"] is True   # a@x.com của mình
+    assert flags["2"] is False  # b@x.com không xoá được
