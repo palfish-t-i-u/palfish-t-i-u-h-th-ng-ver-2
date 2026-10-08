@@ -38,6 +38,7 @@ class FakeQuery:
     def __init__(self, data: list[dict]):
         self._data = list(data)
         self._insert_capture: list[dict] | None = None
+        self._update_capture: list[dict] | None = None
 
     def select(self, *a, **kw): return self
     def eq(self, col, val):
@@ -48,6 +49,8 @@ class FakeQuery:
         self._data = self._data[:n]
         return self
     def update(self, payload):
+        if self._update_capture is not None:
+            self._update_capture.append(dict(payload))
         for r in self._data:
             r.update(payload)
         return self
@@ -66,12 +69,14 @@ class FakeSB:
     def __init__(self, tables: dict[str, list[dict]]):
         self._tables = {k: list(v) for k, v in tables.items()}
         self.inserted: list[dict] = []
+        self.updated: list[dict] = []
 
     def table(self, name: str):
         data = self._tables.get(name, [])
         q = FakeQuery(data)
-        # Wire insert capture for so_doanh_thu
+        # Wire insert/update capture for so_doanh_thu
         q._insert_capture = self.inserted
+        q._update_capture = self.updated
         return q
 
 
@@ -224,6 +229,78 @@ def test_ar_sync_no_time_falls_back_to_midnight():
     row = sb.inserted[0]
     assert row["ngay_tien_ve"] == "2026-07-15"
     assert "T00:00:00" in row["pay_time"], "fallback phải là nửa đêm"
+
+
+# ---------------------------------------------------------------------------
+# C2. M1 real-time: đơn ĐÃ BÁO nhưng CHƯA kích hoạt (chưa order_id)
+# ---------------------------------------------------------------------------
+
+def _make_ar_tables_baodon(order_id: str = "", paid_at: str | None = "2026-07-15T21:59:00+07:00",
+                           so_doanh_thu: list | None = None):
+    course = {"code": AR_COURSE_CODE, "amount": 3_000_000, "name": "Gói 1 năm"}
+    if order_id:
+        course["order_id"] = order_id
+    return {
+        "active_requests": [{
+            "id": "ar-1", "pr_id": "pr-1", "customer_name": "KH Test",
+            "uids_data": [{"uid": "", "phone": "", "courses": [course]}],
+        }],
+        "payment_requests": [{"id": "pr-1", "uid": "", "phone": "", "name": "KH", "is_test": False}],
+        "payment_lines": [{"paid_at": paid_at, "created_at": paid_at, "status": "paid",
+                           "payment_request_id": "pr-1"}] if paid_at else [],
+        "so_doanh_thu": so_doanh_thu if so_doanh_thu is not None else [],
+    }
+
+
+def _patch_resolvers(pay_time):
+    return [
+        patch.object(rev_mod, "_resolve_team", return_value="HN Inhouse"),
+        patch.object(rev_mod, "_resolve_sale_from_pr_email", return_value=("Sale A", "sale@test.com")),
+        patch.object(rev_mod, "_resolve_payment_method_from_pr", return_value="CK"),
+        patch.object(rev_mod, "_resolve_payment_time_from_pr", return_value=pay_time),
+        patch.object(rev_mod, "_resolve_payment_date_from_pr", return_value=date(2026, 7, 15)),
+        patch.object(rev_mod, "_try_auto_stamp_fee", return_value=False),
+    ]
+
+
+def test_baodon_no_orderid_with_payment_writes_flagged_row():
+    """Báo đơn chưa order_id + tiền đã về → ghi Sổ ngay, cờ chưa-kích-hoạt (crm_order_id None)."""
+    sb = FakeSB(_make_ar_tables_baodon(order_id=""))
+    with contextlib.ExitStack() as st:
+        for p in _patch_resolvers(vn(2026, 7, 15, 21, 59)):
+            st.enter_context(p)
+        result = rev_mod.sync_ledger_from_ar_course(sb, "ar-1", AR_COURSE_CODE)
+    assert result is not None
+    assert sb.inserted, "Báo đơn có tiền phải ghi Sổ"
+    row = sb.inserted[0]
+    assert row["crm_order_id"] is None, "Dòng báo đơn phải để crm_order_id None (cờ chưa kích hoạt)"
+    assert row["ma_don_hang"] == AR_COURSE_CODE
+    assert row["loai_nhap"] == "tu_dong"
+
+
+def test_baodon_no_orderid_no_payment_does_not_write():
+    """Báo đơn chưa order_id VÀ chưa có tiền → KHÔNG ghi Sổ."""
+    sb = FakeSB(_make_ar_tables_baodon(order_id="", paid_at=None))
+    with contextlib.ExitStack() as st:
+        for p in _patch_resolvers(None):
+            st.enter_context(p)
+        result = rev_mod.sync_ledger_from_ar_course(sb, "ar-1", AR_COURSE_CODE)
+    assert result is None
+    assert not sb.inserted, "Chưa có tiền thì không được ghi Sổ"
+
+
+def test_activation_after_baodon_updates_same_row_no_dup():
+    """Đã có dòng báo-đơn (crm_order_id None); kích hoạt (order_id) → UPDATE chính dòng, không đẻ mới."""
+    existing = [{"id": "sodt-1", "loai_nhap": "tu_dong", "ma_don_hang": AR_COURSE_CODE,
+                 "crm_order_id": None}]
+    sb = FakeSB(_make_ar_tables_baodon(order_id=AR_ORDER_ID, so_doanh_thu=existing))
+    with contextlib.ExitStack() as st:
+        for p in _patch_resolvers(vn(2026, 7, 15, 21, 59)):
+            st.enter_context(p)
+        result = rev_mod.sync_ledger_from_ar_course(sb, "ar-1", AR_COURSE_CODE)
+    assert result == "sodt-1", "Phải trả id dòng báo-đơn cũ (idempotent)"
+    assert not sb.inserted, "KHÔNG được insert dòng mới khi kích hoạt đơn đã báo"
+    assert any(u.get("crm_order_id") == AR_ORDER_ID for u in sb.updated), "Phải gắn order_id vào dòng cũ"
 
 
 # ---------------------------------------------------------------------------
