@@ -1008,7 +1008,10 @@ def _sync_ledger_courses_from_uids(sb, ar_id: str, uids_data: list) -> None:
             if not isinstance(c, dict):
                 continue
             code = str(c.get("code") or "").strip()
-            if code and _course_order_id(c):
+            # M1 real-time: gọi sync cho MỌI course có code (kể cả chưa order_id).
+            # sync_ledger_from_ar_course tự guard "chỉ ghi khi tiền đã về" và gắn
+            # order_id sau khi kích hoạt → đơn báo-đơn lên Sổ ngay, không chờ order_id.
+            if code:
                 sync_ledger_from_ar_course(sb, ar_id, code)
 
 
