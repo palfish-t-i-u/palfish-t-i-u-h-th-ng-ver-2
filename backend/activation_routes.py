@@ -2974,6 +2974,12 @@ def register_activation_routes(app, supabase_factory):
             hold_note=hold_note,
             crm_address_confirmed=crm_address_confirmed,
         )
+        # M1 real-time: báo đơn (TẠO AR) cũng ghi Sổ ngay nếu tiền đã về. Trước
+        # đây chỉ đường SỬA (PATCH) mới gọi sync → đơn báo-xong-chưa-kích-hoạt bị sót.
+        try:
+            _sync_ledger_courses_from_uids(sb, str(saved.get("id") or ""), saved.get("uids_data") or [])
+        except Exception as exc:
+            print(f"[activation] sync So luc tao AR loi (non-fatal): {exc}")
         return _serialize_ar_with_hold(sb, saved, pr)
 
     @app.post(
@@ -3010,6 +3016,12 @@ def register_activation_routes(app, supabase_factory):
             hold_note=hold_note,
             crm_address_confirmed=crm_address_confirmed,
         )
+        # M1 real-time: báo đơn (TẠO AR) cũng ghi Sổ ngay nếu tiền đã về. Trước
+        # đây chỉ đường SỬA (PATCH) mới gọi sync → đơn báo-xong-chưa-kích-hoạt bị sót.
+        try:
+            _sync_ledger_courses_from_uids(sb, str(saved.get("id") or ""), saved.get("uids_data") or [])
+        except Exception as exc:
+            print(f"[activation] sync So luc tao AR loi (non-fatal): {exc}")
         return _serialize_ar_with_hold(sb, saved, pr)
 
     @app.post("/api/v1/active-requests/{ar_id}/append", tags=["Activation"])
@@ -3072,6 +3084,12 @@ def register_activation_routes(app, supabase_factory):
         except Exception as exc:
             raise HTTPException(500, f"Khong cap nhat active_requests: {exc}") from exc
         updated = (upd.data or [{**ar_row, **patch}])[0]
+
+        # M1 real-time: báo đơn bổ sung cũng ghi Sổ ngay cho course mới (nếu tiền đã về).
+        try:
+            _sync_ledger_courses_from_uids(sb, ar_id, merged)
+        except Exception as exc:
+            print(f"[activation] sync So luc append loi (non-fatal): {exc}")
 
         _writeback_pr_uid_from_ar(sb, updated, pr, merged)
 
