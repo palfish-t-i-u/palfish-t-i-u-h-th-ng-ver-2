@@ -440,6 +440,8 @@ export function fromApiActiveRequest(raw: ActiveRequestApiRow): ActiveRequest {
         referrerCreditedBy: c.referrer_credited_by ?? null,
         orderIdSetBy: c.order_id_set_by ?? null,
         orderIdSetAt: c.order_id_set_at ?? null,
+        tienVeSom: c.tien_ve_som ?? null,
+        tienVeMuon: c.tien_ve_muon ?? null,
       })),
     })),
   };

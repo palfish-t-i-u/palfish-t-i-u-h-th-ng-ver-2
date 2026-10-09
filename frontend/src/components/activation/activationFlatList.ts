@@ -32,7 +32,8 @@ export interface CourseRow {
   referral: ReferralStatus | null;
   holdActivation: boolean;
   holdNote: string | null;
-  /** Ngày tiền về sớm/muộn nhất của AR (Sổ doanh thu) — ISO "YYYY-MM-DD" hoặc null. */
+  /** Ngày tiền về sớm/muộn nhất của RIÊNG khoá này — ISO "YYYY-MM-DD" hoặc null.
+   *  BE gán per-course; fallback AR-level nếu thiếu (BE cũ / light path). */
   tienVeSom: string | null;
   tienVeMuon: string | null;
   isCreditOrder: boolean;
@@ -82,8 +83,8 @@ export function flatCourseRows(ars: ActiveRequest[]): CourseRow[] {
           referral: courseReferral(c),
           holdActivation: Boolean(ar.holdActivation),
           holdNote: ar.holdNote ?? null,
-          tienVeSom: ar.tienVeSom ?? null,
-          tienVeMuon: ar.tienVeMuon ?? null,
+          tienVeSom: c.tienVeSom ?? ar.tienVeSom ?? null,
+          tienVeMuon: c.tienVeMuon ?? ar.tienVeMuon ?? null,
           isCreditOrder: Boolean(ar.isCreditOrder),
           creditSettlementPending: Boolean(ar.creditSettlementPending),
         });

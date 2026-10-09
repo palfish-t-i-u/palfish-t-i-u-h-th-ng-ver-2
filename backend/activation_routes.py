@@ -397,14 +397,17 @@ def _compute_referral_status(courses: list[dict[str, Any]]) -> str | None:
     return "partial"
 
 
-def _tien_ve_map_from_ledger(sb, ar_ids: list[str]) -> dict[str, tuple[str | None, str | None]]:
-    """Ngày tiền về (sớm nhất, muộn nhất) mỗi AR — lấy từ Sổ doanh thu.
+def _tien_ve_map_from_ledger(
+    sb, ar_ids: list[str]
+) -> dict[str, dict[str, tuple[str | None, str | None]]]:
+    """Ngày tiền về PER-COURSE mỗi AR — lấy từ Sổ doanh thu.
 
-    Nguồn khớp C-T1: mỗi dòng Sổ sinh từ khoá học của AR có note = "AR {ar_id}"
-    và cột `ngay_tien_ve` đã chuẩn (đơn thẻ = ngày quẹt, CK = ngày xác nhận).
-    Trả về {ar_id: (som_iso, muon_iso)}; AR chưa có dòng Sổ sẽ vắng mặt.
+    Mỗi dòng Sổ sinh từ MỘT khoá học của AR: note = "AR {ar_id}", ma_don_hang =
+    course_code, `ngay_tien_ve` đã chuẩn (đơn thẻ = ngày quẹt, CK = ngày xác nhận).
+    Trả {ar_id: {course_code: (som, muon)}} với som=muon=ngày Sổ của khoá đó.
+    AR/khoá chưa có dòng Sổ sẽ vắng mặt.
     """
-    out: dict[str, tuple[str | None, str | None]] = {}
+    out: dict[str, dict[str, tuple[str | None, str | None]]] = {}
     ids = [str(a) for a in ar_ids if a]
     if not ids:
         return out
@@ -415,32 +418,53 @@ def _tien_ve_map_from_ledger(sb, ar_ids: list[str]) -> dict[str, tuple[str | Non
         try:
             res = (
                 sb.table("so_doanh_thu")
-                .select("note, ngay_tien_ve")
+                .select("note, ma_don_hang, ngay_tien_ve")
                 .in_("note", notes[i : i + CHUNK])
                 .execute()
             )
             rows.extend(res.data or [])
         except Exception:
             continue
-    by_ar: dict[str, list[str]] = {}
     for r in rows:
         note = str(r.get("note") or "")
         if not note.startswith("AR "):
             continue
         aid = note[3:].strip()
+        code = str(r.get("ma_don_hang") or "").strip()
         d = r.get("ngay_tien_ve")
-        if not d:
+        if not code or not d:
             continue
-        by_ar.setdefault(aid, []).append(str(d)[:10])
-    for aid, dates in by_ar.items():
-        if dates:
-            out[aid] = (min(dates), max(dates))  # ISO date → so sánh chuỗi = so sánh thời gian
+        ds = str(d)[:10]  # ISO date → so sánh chuỗi = so sánh thời gian
+        out.setdefault(aid, {})[code] = (ds, ds)
     return out
 
 
-def _tien_ve_bounds(sb, ar_id: str) -> tuple[str | None, str | None]:
-    """Ngày tiền về (sớm, muộn) của MỘT AR — dùng cho response mutation lẻ."""
-    return _tien_ve_map(sb, [str(ar_id)]).get(str(ar_id), (None, None))
+def _pair_course_dates(
+    courses: list[tuple[str, float]],
+    funded_dates: list[str],
+) -> dict[str, tuple[str | None, str | None]]:
+    """Gán ngày tiền về cho TỪNG khoá (bé) trong 1 AR.
+
+    - courses: [(course_code, amount)] theo thứ tự uids_data.
+    - funded_dates: ngày tiền về (ISO "YYYY-MM-DD") của các line thuộc PR.
+
+    Ghép 1-1 (mỗi bé 1 ngày riêng) CHỈ khi an toàn: có ngày + số line == số khoá +
+    mọi khoá đều >0đ → khoá[i] ↔ ngày[i] (sort tăng dần), trả (ngày, ngày).
+    Ngược lại (1 khoá nhiều line = tín dụng/cọc; lệch số line↔khoá; có khoá 0đ
+    refer) → mọi khoá nhận (min, max) cả PR = hành vi cũ, KHÔNG regression.
+    """
+    codes = [c for c, _ in courses]
+    agg = (min(funded_dates), max(funded_dates)) if funded_dates else (None, None)
+    paying = [c for c, amt in courses if amt and amt > 0]
+    if funded_dates and len(funded_dates) == len(courses) == len(paying):
+        ordered = sorted(funded_dates)
+        return {code: (d, d) for code, d in zip(codes, ordered)}
+    return {code: agg for code in codes}
+
+
+def _tien_ve_courses(sb, ar_id: str) -> dict[str, tuple[str | None, str | None]]:
+    """Ngày tiền về per-course của MỘT AR — dùng cho response mutation lẻ."""
+    return _tien_ve_map(sb, [str(ar_id)]).get(str(ar_id), {})
 
 
 # Loại lần TT quẹt thẻ tín dụng — đồng bộ gateway_routes.py:512 (candidates match cổng).
@@ -549,8 +573,12 @@ def _bank_vn_date(transaction_date: Any) -> str | None:
     return dt.date().isoformat()
 
 
-def _tien_ve_map(sb, ar_ids: list[str]) -> dict[str, tuple[str | None, str | None]]:
-    """Ngày tiền về (sớm, muộn) của mỗi AR — TỪ giao dịch cổng/bank ĐÃ KHỚP.
+def _tien_ve_map(sb, ar_ids: list[str]) -> dict[str, dict[str, tuple[str | None, str | None]]]:
+    """Ngày tiền về (sớm, muộn) PER-COURSE của mỗi AR — TỪ giao dịch cổng/bank ĐÃ KHỚP.
+
+    Trả {ar_id: {course_code: (som, muon)}}. Line thanh toán thuộc PR (không gắn
+    sẵn với bé) → _pair_course_dates ghép line↔khoá: nhiều bé mỗi bé 1 ngày riêng;
+    1 bé nhiều lần (tín dụng/cọc) giữ range. Xem _pair_course_dates.
 
     Thẻ/trả góp: ngày tiền về TK = gateway_transactions.funded_date (match_status=
     'matched') — KHỚP sao kê ngân hàng + BC04 (đối soát xuất HĐ theo tiền thực về TK,
@@ -567,18 +595,29 @@ def _tien_ve_map(sb, ar_ids: list[str]) -> dict[str, tuple[str | None, str | Non
         return {}
     CHUNK = 150
 
-    # 1) AR → pr_id
+    # 1) AR → pr_id + danh sách khoá (code, amount) theo thứ tự uids_data
     pr_by_ar: dict[str, str] = {}
+    courses_by_ar: dict[str, list[tuple[str, float]]] = {}
     for i in range(0, len(ids), CHUNK):
         try:
-            res = sb.table("active_requests").select("id, pr_id").in_("id", ids[i : i + CHUNK]).execute()
+            res = sb.table("active_requests").select("id, pr_id, uids_data").in_("id", ids[i : i + CHUNK]).execute()
         except Exception:
             continue
         for r in (res.data or []):
             aid = str(r.get("id") or "")
+            if not aid:
+                continue
             prid = str(r.get("pr_id") or "")
-            if aid and prid:
+            if prid:
                 pr_by_ar[aid] = prid
+            clist: list[tuple[str, float]] = []
+            for ub in (r.get("uids_data") or []):
+                if not isinstance(ub, dict):
+                    continue
+                for c in (ub.get("courses") or []):
+                    if isinstance(c, dict) and c.get("code"):
+                        clist.append((str(c["code"]), float(c.get("amount") or 0)))
+            courses_by_ar[aid] = clist
     pr_ids = list({p for p in pr_by_ar.values() if p})
 
     # 2) payment_lines của các PR → line_id → (pr_id, method)
@@ -639,13 +678,13 @@ def _tien_ve_map(sb, ar_ids: list[str]) -> dict[str, tuple[str | None, str | Non
             if lid in line_meta and d:
                 date_by_pr.setdefault(line_meta[lid][0], []).append(d)
 
-    # 4) gộp về AR (min/max); AR chưa có ngày → fallback Sổ (không hồi quy)
-    out: dict[str, tuple[str | None, str | None]] = {}
+    # 4) gán per-course (ghép line↔khoá); AR chưa có ngày → fallback Sổ (không hồi quy)
+    out: dict[str, dict[str, tuple[str | None, str | None]]] = {}
     uncovered: list[str] = []
     for aid in ids:
         dates = date_by_pr.get(pr_by_ar.get(aid) or "", [])
         if dates:
-            out[aid] = (min(dates), max(dates))
+            out[aid] = _pair_course_dates(courses_by_ar.get(aid, []), dates)
         else:
             uncovered.append(aid)
     if uncovered:
@@ -657,7 +696,7 @@ def _serialize_ar(
     row: dict[str, Any],
     pr: dict[str, Any] | None = None,
     sale_name_map: dict[str, str] | None = None,
-    tien_ve: tuple[str | None, str | None] | None = None,
+    tien_ve: dict[str, tuple[str | None, str | None]] | None = None,
     credit_settlement_pending: bool = False,
     is_credit_order: bool = False,
 ) -> dict[str, Any]:
@@ -674,6 +713,10 @@ def _serialize_ar(
             next_course = dict(course)
             next_course["order_id"] = _course_order_id(next_course)
             next_course.pop("orderId", None)
+            if tien_ve is not None:
+                c_som, c_muon = tien_ve.get(str(next_course.get("code") or ""), (None, None))
+                next_course["tien_ve_som"] = c_som
+                next_course["tien_ve_muon"] = c_muon
             next_courses.append(next_course)
         next_uid["courses"] = next_courses
         uids_data.append(next_uid)
@@ -701,7 +744,11 @@ def _serialize_ar(
         "is_credit_order": bool(is_credit_order),
     }
     if tien_ve is not None:
-        out["tien_ve_som"], out["tien_ve_muon"] = tien_ve
+        # AR-level = min/max across khoá (giữ field cũ cho consumer + FE fallback)
+        _soms = [v[0] for v in tien_ve.values() if v[0]]
+        _muons = [v[1] for v in tien_ve.values() if v[1]]
+        out["tien_ve_som"] = min(_soms) if _soms else None
+        out["tien_ve_muon"] = max(_muons) if _muons else None
     if pr is not None:
         target, received = _pr_amounts(pr)
         budget = max(target, received)
@@ -2576,7 +2623,7 @@ def register_activation_routes(app, supabase_factory):
                 r,
                 pr_map.get(str(r.get("pr_id") or "")),
                 snm,
-                tien_ve=tv_map.get(str(r.get("id") or ""), (None, None)),
+                tien_ve=tv_map.get(str(r.get("id") or ""), {}),
                 credit_settlement_pending=credit_map.get(str(r.get("pr_id") or "")) == "pending",
                 is_credit_order=str(r.get("pr_id") or "") in credit_map,
             )
@@ -2601,7 +2648,7 @@ def register_activation_routes(app, supabase_factory):
 
         row = res.data[0]
         pr = _fetch_payment_request(sb, str(row.get("pr_id") or "")) if row.get("pr_id") else None
-        return _serialize_ar_with_hold(sb, row, pr, tien_ve=_tien_ve_bounds(sb, ar_id))
+        return _serialize_ar_with_hold(sb, row, pr, tien_ve=_tien_ve_courses(sb, ar_id))
 
     @app.get("/api/v1/payment-requests/{pr_id}/course-budget", tags=["Activation"])
     def get_pr_course_budget(pr_id: str, authorization: str | None = Header(None)):
@@ -2821,7 +2868,7 @@ def register_activation_routes(app, supabase_factory):
                         ) from exc
                 pr_map = _fetch_prs_by_ids(sb, [str(merged.get("pr_id") or "")])
                 _maybe_enqueue_ar_edit_dingtalk(sb, current, merged, pr_map)
-                return _serialize_ar_with_hold(sb, merged, pr_map.get(str(merged.get("pr_id") or "")), tien_ve=_tien_ve_bounds(sb, ar_id))
+                return _serialize_ar_with_hold(sb, merged, pr_map.get(str(merged.get("pr_id") or "")), tien_ve=_tien_ve_courses(sb, ar_id))
             patch["uids_data"] = uids_data
             patch["status"] = guarded_status
             guarded_uids = uids_data
@@ -2863,7 +2910,7 @@ def register_activation_routes(app, supabase_factory):
                 sb.rpc("enqueue_course_activated_if_all_ordered", {"p_ar_id": ar_id}).execute()
             except Exception as exc:
                 print(f"[dingtalk] course_activated backstop failed (non-fatal): {exc}")
-        return _serialize_ar_with_hold(sb, merged, pr_map.get(str(merged.get("pr_id") or "")), tien_ve=_tien_ve_bounds(sb, ar_id))
+        return _serialize_ar_with_hold(sb, merged, pr_map.get(str(merged.get("pr_id") or "")), tien_ve=_tien_ve_courses(sb, ar_id))
 
     @app.patch("/api/v1/active-requests/{ar_id}/credit-referral", tags=["Activation"])
     def credit_referral(
@@ -3178,7 +3225,7 @@ def register_activation_routes(app, supabase_factory):
                 print(f"[dingtalk] course_activated backstop failed (non-fatal): {exc}")
             pr_map = _fetch_prs_by_ids(sb, [str(row.get("pr_id") or "")])
             return _serialize_ar_with_hold(sb, row, pr_map.get(str(row.get("pr_id") or "")),
-                                           tien_ve=_tien_ve_bounds(sb, ar_id))
+                                           tien_ve=_tien_ve_courses(sb, ar_id))
 
         row = rpc_active_request_row(
             sb,
@@ -3193,7 +3240,7 @@ def register_activation_routes(app, supabase_factory):
         )
         pr_map = _fetch_prs_by_ids(sb, [str(row.get("pr_id") or "")])
         return _serialize_ar_with_hold(sb, row, pr_map.get(str(row.get("pr_id") or "")),
-                                       tien_ve=_tien_ve_bounds(sb, ar_id))
+                                       tien_ve=_tien_ve_courses(sb, ar_id))
 
     @app.post(
         "/api/v1/active-requests/{ar_id}/request-invoice",
