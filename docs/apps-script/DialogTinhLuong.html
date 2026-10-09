@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html>
+<head>
+<base target="_top">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Google Sans', Roboto, Arial, sans-serif;
+    display: flex; align-items: center; justify-content: center;
+    height: 100vh; background: #fff; color: #202124;
+    text-align: center; padding: 16px;
+  }
+  .wrap { max-width: 320px; }
+  .icon { font-size: 36px; margin-bottom: 12px; }
+  .title { font-size: 16px; font-weight: 500; margin-bottom: 6px; }
+  .desc { font-size: 13px; color: #5f6368; line-height: 1.5; margin-bottom: 20px; }
+  .spinner {
+    width: 28px; height: 28px; border: 3px solid #e8eaed;
+    border-top-color: #1a73e8; border-radius: 50%;
+    animation: spin .8s linear infinite; margin: 0 auto 14px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .btn {
+    display: inline-block; padding: 8px 24px; font-size: 14px;
+    font-weight: 500; color: #fff; background: #1a73e8;
+    border: none; border-radius: 4px; cursor: pointer;
+    font-family: inherit;
+  }
+  .btn:hover { background: #1765cc; }
+  .hide { display: none; }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <!-- Trang thai 1: dang chay -->
+  <div id="running">
+    <div class="spinner"></div>
+    <div class="title">Đang cập nhật bảng lương…</div>
+    <div class="desc">
+      Vui lòng đợi, quá trình này mất khoảng 5–8 phút.<br>
+      Không đóng cửa sổ này.
+    </div>
+  </div>
+
+  <!-- Trang thai 2: xong -->
+  <div id="done" class="hide">
+    <div class="icon">✅</div>
+    <div class="title">Đã cập nhật bảng lương thành công</div>
+    <div class="desc">Số liệu trên Sheet đã được làm mới.</div>
+    <button class="btn" onclick="google.script.host.close()">Đóng</button>
+  </div>
+</div>
+
+<script>
+var POLL_MS = 5000;
+var RETRY_MS = 10000;
+
+function poll() {
+  google.script.run
+    .withSuccessHandler(function(dangChay) {
+      if (dangChay) {
+        setTimeout(poll, POLL_MS);
+      } else {
+        document.getElementById('running').classList.add('hide');
+        document.getElementById('done').classList.remove('hide');
+      }
+    })
+    .withFailureHandler(function() {
+      setTimeout(poll, RETRY_MS);
+    })
+    .dangTinhLuong();
+}
+
+setTimeout(poll, POLL_MS);
+</script>
+
+</body>
+</html>
