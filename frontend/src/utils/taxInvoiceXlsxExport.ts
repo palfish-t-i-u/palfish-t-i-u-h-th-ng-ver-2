@@ -5,6 +5,7 @@
 import JSZip from "jszip";
 import * as XLSX from "xlsx";
 import type { InvoiceRow } from "../components/payment-flow/paymentFlowUtils";
+import { courseInvoiceName } from "./courseInvoiceName";
 
 export type TaxExportOrder = {
   taxInvoiceCode: string;
@@ -57,7 +58,10 @@ export function mapInvoiceRowsToTaxOrders(rows: InvoiceRow[]): TaxExportOrder[] 
       row.pr?.invoiceCustomerName ??
       row.ar.customerName;
     const phone = row.course.phone ?? row.uidObj.phone ?? row.pr?.phone ?? "";
-    const productName = row.course.packageName?.trim() || row.course.courseCode;
+    // Mirror BE _course_to_tax_order: mã gói thô -> tên đẹp ("Khóa học tiếng Anh NN
+    // tháng giáo viên…"); fallback tên thô nếu gói ngoài bảng (courseInvoiceName -> "").
+    const rawName = row.course.packageName?.trim() || row.course.courseCode;
+    const productName = courseInvoiceName(rawName) || rawName;
     const taxInvoiceCode =
       row.course.taxInvoiceCode ||
       (row.course.invoiceId?.startsWith("M") ? row.course.invoiceId : `M${dateKey}${String(i + 1).padStart(3, "0")}`);
