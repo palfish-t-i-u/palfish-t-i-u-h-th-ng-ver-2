@@ -31,6 +31,15 @@ describe("invoiceDateFor — mốc ngày B4 theo tiền về", () => {
     expect(invoiceDateFor(makeRow({ tienVeMuon: null, tienVeSom: "2026-08-31" }))).toBe("2026-08-31");
   });
 
+  it("chờ xuất → ưu tiên mốc PER-COURSE của bé, KHÔNG lấy mốc gộp cả AR", () => {
+    // AR gộp 2 bé (PR-2309): AR-level muộn = 09/10 (của bé kia); bé này tiền về riêng 08/10.
+    const row = {
+      ar: { createdAt: "2026-10-08", tienVeSom: "2026-10-08", tienVeMuon: "2026-10-09" },
+      course: { invoiced: false, invoicedAt: null, tienVeSom: "2026-10-08", tienVeMuon: "2026-10-08" },
+    } as unknown as InvoiceRow;
+    expect(invoiceDateFor(row)).toBe("2026-10-08");
+  });
+
   it("chờ xuất, chưa có tiền về → fallback ngày tạo (không biến mất)", () => {
     expect(invoiceDateFor(makeRow({ tienVeMuon: null, tienVeSom: null, createdAt: "2026-09-03" }))).toBe("2026-09-03");
   });

@@ -2332,8 +2332,9 @@ export default function ActivationTab() {
   // Pipeline desktop: lọc AR (date/referral/hold) → trải khoá → lọc tab+search cấp khoá.
   const courseVisible = useMemo(() => {
     const nq = normVi(search.trim());
+    // Lọc referral/hold/invoice ở cấp AR; filter NGÀY chuyển xuống cấp dòng khoá
+    // (per-course) để đơn nhiều bé mỗi bé neo mốc tiền về riêng — xem filter dưới.
     const arFiltered = rows.filter((a) => {
-      if (!inDateRange(activationFilterDate(a, timeType), dateRange)) return false;
       if (referralFilter !== "all") {
         const rs = getArReferralStatus(a);
         if (referralFilter === "any") {
@@ -2354,7 +2355,10 @@ export default function ActivationTab() {
       return true;
     });
     return flatCourseRows(arFiltered).filter(
-      (r) => courseRowMatchesTab(r, tab) && courseRowMatchesSearch(r, nq)
+      (r) =>
+        courseRowMatchesTab(r, tab) &&
+        courseRowMatchesSearch(r, nq) &&
+        inDateRange(activationFilterDate(r, timeType), dateRange)
     );
   }, [rows, tab, search, dateRange, timeType, referralFilter, holdFilter, invoiceFilter, arActionById]);
 

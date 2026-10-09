@@ -200,6 +200,10 @@ export interface ActiveCourse {
   orderIdSetBy?: string | null;
   /** Thời điểm gắn/sửa Order ID gần nhất */
   orderIdSetAt?: string | null;
+  /** Ngày tiền về sớm/muộn nhất của RIÊNG khoá này (B3) — ISO "YYYY-MM-DD" hoặc null.
+   *  BE gán per-course (_pair_course_dates); nhiều bé chung PR mỗi bé ngày riêng. */
+  tienVeSom?: string | null;
+  tienVeMuon?: string | null;
 }
 
 export interface ActiveUidGroup {
@@ -447,6 +451,8 @@ export type ActiveRequestApiRow = {
       referrer_credited_by?: string | null;
       order_id_set_by?: string | null;
       order_id_set_at?: string | null;
+      tien_ve_som?: string | null;
+      tien_ve_muon?: string | null;
     }>;
   }>;
   status?: string;
