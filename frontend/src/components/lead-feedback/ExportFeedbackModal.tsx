@@ -52,7 +52,9 @@ export default function ExportFeedbackModal({ onClose }: { onClose: () => void }
     <div className="gmv-prototype-modal-scrim" onClick={() => !busy && onClose()}>
       <div
         className="modal"
-        style={{ width: "min(480px, 100%)" }}
+        // overflow:visible để popup lịch (.date-pop absolute) không bị .modal
+        // (overflow:hidden mặc định) cắt. Nội dung modal ngắn nên không cần cuộn.
+        style={{ width: "min(480px, 100%)", overflow: "visible" }}
         role="dialog"
         aria-modal="true"
         aria-label="Xuất CSV feedback"
@@ -67,7 +69,13 @@ export default function ExportFeedbackModal({ onClose }: { onClose: () => void }
           </button>
         </div>
 
-        <div className="modal-body" style={{ overflow: "visible", display: "flex", flexDirection: "column", gap: 14 }}>
+        {/* class gmv-prototype: DateRangeFilter dùng style scope .gmv-prototype
+            (.date-pop/.quick/.info-label...); modal portal ra ngoài .gmv-prototype
+            nên phải thêm scope ở đây, nếu không popup lịch mất style (bung inline). */}
+        <div
+          className="modal-body gmv-prototype"
+          style={{ overflow: "visible", display: "flex", flexDirection: "column", gap: 14 }}
+        >
           <div>
             <div className="info-label" style={{ marginBottom: 6 }}>
               Khoảng thời gian
