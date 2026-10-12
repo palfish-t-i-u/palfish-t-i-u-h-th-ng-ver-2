@@ -9,6 +9,7 @@ import DateRangeFilter, { EMPTY_RANGE, type DateRange } from "./payment-request/
 import { findSourceByKey } from "../constants/leadSource";
 import CreateFeedbackModal from "./lead-feedback/CreateFeedbackModal";
 import FeedbackDetailModal from "./lead-feedback/FeedbackDetailModal";
+import ExportFeedbackModal from "./lead-feedback/ExportFeedbackModal";
 
 const PAGE_SIZE = 20;
 
@@ -34,6 +35,7 @@ export default function LeadFeedbackTab() {
   const [page, setPage] = useState(1);
 
   const [createOpen, setCreateOpen] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
   const [detail, setDetail] = useState<LeadFeedback | null>(null);
   const [toDelete, setToDelete] = useState<LeadFeedback | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -105,6 +107,9 @@ export default function LeadFeedbackTab() {
     <div className="gmv-prototype">
       <div className="page page--fit">
         <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+          <button className="btn btn-outline" onClick={() => setExportOpen(true)}>
+            <Icons.Download size={15} /> Xuất CSV
+          </button>
           {canCreate && (
             <button className="btn btn-primary" onClick={() => setCreateOpen(true)}>
               <Icons.Plus size={15} strokeWidth={2.3} /> Tạo Feedback
@@ -300,6 +305,7 @@ export default function LeadFeedbackTab() {
           onCreated={() => void load()}
         />
       )}
+      {exportOpen && <ExportFeedbackModal onClose={() => setExportOpen(false)} />}
       {detail && (
         <FeedbackDetailModal
           item={detail}
