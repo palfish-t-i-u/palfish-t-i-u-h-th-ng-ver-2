@@ -1,21 +1,80 @@
-import { useState } from "react";
+import { useState, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 import { Icons } from "../payment-request/Icons";
-import DateRangeFilter, { EMPTY_RANGE, type DateRange } from "../payment-request/DateRangeFilter";
+import { presetRange } from "../payment-request/DateRangeFilter";
 import { endpoints } from "../../lib/api";
 import { downloadFeedbackCsv } from "./feedbackCsv";
 
 /**
- * Modal "Xuất CSV" cho Feedback lead. Chọn khoảng thời gian + trạng thái rồi
- * tải dữ liệu thô về. Gọi lại endpoint list (RBAC đã áp ở BE) với bộ lọc riêng
- * của modal — KHÔNG ảnh hưởng bộ lọc/trang của bảng chính.
+ * Modal "Xuất CSV" cho Feedback lead. Chọn khoảng thời gian (preset + 2 ô ngày
+ * hiện thẳng, KHÔNG dropdown lồng) + trạng thái rồi tải dữ liệu thô về.
+ * Gọi lại endpoint list (RBAC đã áp ở BE) với bộ lọc riêng của modal — KHÔNG
+ * ảnh hưởng bộ lọc/trang của bảng chính.
+ *
+ * Style: dùng class scrim (.field-row/.btn...) + inline var(--token) — scrim tự
+ * định nghĩa token (prototype-payments.css) nên không cần wrap .gmv-prototype.
  */
+
+const PRESETS: Array<[string, string]> = [
+  ["today", "Hôm nay"],
+  ["7d", "7 ngày"],
+  ["30d", "30 ngày"],
+  ["thismonth", "Tháng này"],
+  ["all", "Toàn bộ"],
+];
+
+const labelStyle: CSSProperties = {
+  display: "block",
+  fontSize: 11,
+  color: "var(--text-3)",
+  textTransform: "uppercase",
+  letterSpacing: "0.05em",
+  fontWeight: 600,
+  marginBottom: 7,
+};
+
+const chipBase: CSSProperties = {
+  padding: "6px 12px",
+  border: "1px solid var(--border)",
+  borderRadius: 8,
+  fontSize: 12.5,
+  fontWeight: 600,
+  cursor: "pointer",
+  background: "white",
+  color: "var(--text-2)",
+};
+
+const chipActive: CSSProperties = {
+  background: "var(--primary-50)",
+  borderColor: "var(--primary)",
+  color: "var(--primary-700)",
+};
+
+const inputStyle: CSSProperties = {
+  border: "1px solid var(--border)",
+  borderRadius: 9,
+  padding: "8px 11px",
+  fontSize: 13,
+  background: "white",
+  color: "var(--text)",
+  width: "100%",
+};
+
 export default function ExportFeedbackModal({ onClose }: { onClose: () => void }) {
-  const [range, setRange] = useState<DateRange>(EMPTY_RANGE);
+  const [from, setFrom] = useState("");
+  const [to, setTo] = useState("");
+  const [preset, setPreset] = useState("all");
   const [status, setStatus] = useState<"" | "wait" | "done">("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
+
+  const applyPreset = (key: string) => {
+    const r = presetRange(key);
+    setFrom(r.from);
+    setTo(r.to);
+    setPreset(key);
+  };
 
   const onExport = async () => {
     setBusy(true);
@@ -24,15 +83,15 @@ export default function ExportFeedbackModal({ onClose }: { onClose: () => void }
     try {
       const { data } = await endpoints.leadFeedback.list({
         status: status || undefined,
-        date_from: range.from || undefined,
-        date_to: range.to || undefined,
+        date_from: from || undefined,
+        date_to: to || undefined,
       });
       const items = data.items;
       if (items.length === 0) {
         setErr("Không có feedback nào khớp bộ lọc đã chọn.");
         return;
       }
-      const part = range.from || range.to ? `${range.from || "dau"}_den_${range.to || "nay"}` : "tat_ca";
+      const part = from || to ? `${from || "dau"}_den_${to || "nay"}` : "tat_ca";
       downloadFeedbackCsv(items, `feedback_lead_${part}.csv`);
       setMsg(
         `Đã xuất ${items.length} dòng.` +
@@ -52,9 +111,7 @@ export default function ExportFeedbackModal({ onClose }: { onClose: () => void }
     <div className="gmv-prototype-modal-scrim" onClick={() => !busy && onClose()}>
       <div
         className="modal"
-        // overflow:visible để popup lịch (.date-pop absolute) không bị .modal
-        // (overflow:hidden mặc định) cắt. Nội dung modal ngắn nên không cần cuộn.
-        style={{ width: "min(480px, 100%)", overflow: "visible" }}
+        style={{ width: "min(480px, 100%)" }}
         role="dialog"
         aria-modal="true"
         aria-label="Xuất CSV feedback"
@@ -69,37 +126,55 @@ export default function ExportFeedbackModal({ onClose }: { onClose: () => void }
           </button>
         </div>
 
-        {/* class gmv-prototype: DateRangeFilter dùng style scope .gmv-prototype
-            (.date-pop/.quick/.info-label...); modal portal ra ngoài .gmv-prototype
-            nên phải thêm scope ở đây, nếu không popup lịch mất style (bung inline). */}
-        <div
-          className="modal-body gmv-prototype"
-          style={{ overflow: "visible", display: "flex", flexDirection: "column", gap: 14 }}
-        >
+        <div className="modal-body" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
           <div>
-            <div className="info-label" style={{ marginBottom: 6 }}>
-              Khoảng thời gian
+            <label style={labelStyle}>Khoảng thời gian</label>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 10 }}>
+              {PRESETS.map(([key, text]) => (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => applyPreset(key)}
+                  style={preset === key ? { ...chipBase, ...chipActive } : chipBase}
+                >
+                  {text}
+                </button>
+              ))}
             </div>
-            <DateRangeFilter value={range} onChange={setRange} />
+            <div className="field-row">
+              <div>
+                <label style={{ ...labelStyle, marginBottom: 4 }}>Từ ngày</label>
+                <input
+                  type="date"
+                  value={from}
+                  onChange={(e) => {
+                    setFrom(e.target.value);
+                    setPreset("custom");
+                  }}
+                  style={inputStyle}
+                />
+              </div>
+              <div>
+                <label style={{ ...labelStyle, marginBottom: 4 }}>Đến ngày</label>
+                <input
+                  type="date"
+                  value={to}
+                  onChange={(e) => {
+                    setTo(e.target.value);
+                    setPreset("custom");
+                  }}
+                  style={inputStyle}
+                />
+              </div>
+            </div>
           </div>
 
           <div>
-            <div className="info-label" style={{ marginBottom: 6 }}>
-              Loại dữ liệu (theo trạng thái)
-            </div>
+            <label style={labelStyle}>Loại dữ liệu (theo trạng thái)</label>
             <select
-              className="input input-sm"
               value={status}
               onChange={(e) => setStatus(e.target.value as "" | "wait" | "done")}
-              style={{
-                border: "1px solid var(--border)",
-                borderRadius: 9,
-                padding: "8px 11px",
-                fontSize: 13,
-                background: "white",
-                color: "var(--text)",
-                width: "100%",
-              }}
+              style={inputStyle}
             >
               <option value="">Tất cả</option>
               <option value="wait">Chờ MKT feedback</option>
@@ -143,7 +218,9 @@ export default function ExportFeedbackModal({ onClose }: { onClose: () => void }
             Đóng
           </button>
           <button type="button" className="btn btn-primary" onClick={() => void onExport()} disabled={busy}>
-            {busy ? "Đang xuất…" : (
+            {busy ? (
+              "Đang xuất…"
+            ) : (
               <>
                 <Icons.Download size={14} /> Tải CSV về
               </>
