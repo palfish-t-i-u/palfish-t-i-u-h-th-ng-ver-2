@@ -3,7 +3,7 @@
 **Ngày**: 2026-09-09 · **Thay thế**: `PLAN_BC02_HOAN_THIEN_4_NGUON_2026-08-12.md` (v1, đánh dấu SUPERSEDED — v1 viết khi CHƯA có tài liệu thật của chị Thu Hiền, nhiều giả định sai)
 **Nguồn**: Lark doc *"Danh sách các nguồn thông tin để hoàn thiện báo cáo Key Data"* (chị Thu Hiền, tải về `Danh sách các nguồn thông tin để hoàn thiện báo cáo Key Data/` cạnh repo) + đọc trực tiếp `backend/revenue_routes.py` (`_build_key_data_pivot`, `BC02_GMV_GROUPS`)
 **Người giao việc**: anh Minh (leader) · **Lý do ưu tiên**: 1 trong các chốt chặn cuối để hoàn thiện dự án GMV
-**Status**: PLAN — cần anh Minh duyệt hướng + xác nhận vài điểm mở trước khi code (xem mục VI)
+**Status**: ✅ **ĐÃ DUYỆT (2026-10-14)** — toàn bộ 12 câu mở ở mục VI đã chốt (anh Minh trả lời #1,3,4,7,8,11 · chị Hiền trả lời #9,10,12 · #2,5 tự giải quyết qua dữ liệu thật · #6 không chặn, tự test được). Sẵn sàng code **M1** (Budget ADS + Chatpage). Xem mục VI để biết nội dung từng quyết định.
 
 ---
 
@@ -45,7 +45,7 @@ Hai điều rút ra:
 - BC02 hiện tại (`_build_key_data_pivot` trong `backend/revenue_routes.py:433`) chỉ có **1 nguồn**: `so_doanh_thu`, pivot theo ngày × 8 nhóm loại nguồn (Quảng cáo/Offline/Giới thiệu/Kho chung/Gia hạn/KOC/Other/Livestream — xem `BC02_GMV_GROUPS` dòng 117), ra số đơn + GMV. Đây là bản mô phỏng lại tab "In-house" của sheet **All File Thu Hiền** (ảnh trong tài liệu khớp 100% với các cột này).
 - Thiếu 4 nhóm số liệu chị Hiền đang phải **tổng hợp tay mỗi ngày** từ 4 nguồn khác nhau, deadline **trước 10h ngày N+1** cho báo cáo ngày N.
 - **Điểm cần làm rõ với anh Minh trước khi code**: 4 số liệu này (Leads/Chatpage/Trial/Budget) là chỉ số **funnel/marketing theo vùng HN-HCM**, khác hẳn trục "loại nguồn GMV" hiện có của BC02 — cần thêm **1 khối cột mới song song**, không trộn vào 8 cột hiện tại.
-- **Vênh granularity team**: app hiện có 6 team canonical (`Inhouse 1`, `Inhouse 2`, `HCM (Online)`, `Linh Dam (Store)`, `Offline`, `An Binh (Store)` — `backend/utils/team_mapper.py`), nhưng báo cáo tay chị Hiền chỉ chia **2 vùng: HN / HCM**. 4 nguồn mới đo theo vùng (HN gộp cả Inhouse 1+2+Linh Đàm+Offline+**An Bình** (5 team — `backend/admin_routes.py:406` ghi rõ "HN Offline Store: các store con (An Bình, Linh Đàm…)"), HCM = HCM Online) — cần map rõ 6→2 khi hiển thị khối cột mới, không áp nhầm số HN cho từng team con.
+- **Vênh granularity team**: app hiện có 6 team canonical (`Inhouse 1`, `Inhouse 2`, `HCM (Online)`, `Linh Dam (Store)`, `Offline`, `An Binh (Store)` — `backend/utils/team_mapper.py`), nhưng báo cáo tay chị Hiền chỉ chia **2 vùng: HN / HCM**. ✅ **CHỐT (câu #10)**: chị Hiền xác nhận trực tiếp **HN = Inhouse 1 + Inhouse 2 + Offline (thực chất chỉ còn Linh Đàm — An Bình đã đóng cửa, không cần tính riêng/lo nhầm lẫn 2 store con nữa)**; HCM = HCM (Online). `An Binh (Store)` vẫn giữ nguyên trong `team_mapper.py` cho dữ liệu lịch sử, chỉ đơn giản là không còn phát sinh số mới — không cần sửa code mapping.
 
 ---
 
@@ -56,11 +56,18 @@ Hai điều rút ra:
 - **Hệ thống**: BI dashboard nội bộ, URL `https://sea.pri.ibanyu.com/picture-bi/picinter1v1/picinter-leadsapply?dashboard=1386` (giao diện tiếng Trung "国际化业务数据 / leads分配 / 分渠道leads情况"). Cần VPN.
 - **Cột thật** (soi từ ảnh chụp màn hình + file xuất mẫu): `in_crm_time, service_type, source_name, channel_name, channel (mã số kênh), team_name, spend, actual_leads, cpl, D0/D1/D2 拨打人数 (số lượt gọi)...`
 - **Bộ lọc**: date range, `业务线` (business line) = `本地化-越南` (localized-Vietnam).
-- **Có nút tải trực tiếp .csv / .xlsx / .json** ngay trên UI (khoanh đỏ trong ảnh) — đây là manh mối quan trọng: rất có thể có **share-link hoặc API token** phía sau nút này (nhiều BI tool dạng "拼BI"/FineBI expose 1 endpoint `export` nhận `dashboard_id` + `card_id` + token). **Chưa xác nhận** — nằm trong M0.
+- **Có nút tải trực tiếp .csv / .xlsx / .json** ngay trên UI (khoanh đỏ trong ảnh). ✅ **Đã xác nhận đường vào** (10/2026): login `metabase.ibanyu.com` redirect đúng sang `sea.pri.ibanyu.com`, tải được file export thật (`channel维度leads数...xlsx`, cột khớp 100% mô tả dưới). **Chưa xác nhận** phần còn lại của M0-T3 (API/token thật đứng sau nút tải, hay chỉ generate file phía server) — việc này **chỉ cần làm trước M2** (nguồn khó), KHÔNG chặn M1.
+- **Account dùng để pull**: tài khoản CRM cá nhân của anh Minh (SĐT `84-353748121`, đã mở quyền cho Đức + Đạt) — KHÔNG xin account automation riêng (anh Minh chốt câu #7, xem mục V-bis).
 - **Công thức chị Hiền dùng** (KHÔNG phải đọc thẳng 1 cột):
   - Sheet HN cột E "Facebook Leads-300265" = `actual_leads` tại dòng có `channel = 300265` (team = 越南河内 / Vietnam Hà Nội).
   - Sheet HN cột B "CRM Leads" = `SUM(actual_leads toàn bộ ngày đó)` − cột E (FB 300265 HN) − cột J sheet HCM (FB leads HCM). **Đây là số trừ chéo — bắt buộc phải tổng hợp đúng theo đúng công thức, không được suy diễn.**
-  - Sheet HCM: nhiều kênh riêng biệt, mỗi kênh đổ vào **1 cột khác nhau** (không gộp 1 cột như HN). Ảnh chị Hiền liệt kê 1 phần danh sách kênh HCM: `300461=Offline booth, 300471=Sales develop, 1032=Refer, 1035=Other, 1036=MP kindergarten` — **danh sách này bị cắt trong ảnh, chưa đủ** — cần xin chị Hiền bảng đầy đủ mã kênh↔cột trước khi code mapping.
+  - Sheet HCM: nhiều kênh riêng biệt, mỗi kênh đổ vào **1 cột khác nhau** (không gộp 1 cột như HN).
+  - ✅ **CHỐT (câu #2)** — mã kênh HCM đã verify bằng data export thật (31 ngày, 09-10/2026), không cần bảng mapping tĩnh nữa, cứ đọc cột `team_name`/`channel_name` trực tiếp từ export:
+    - `channel=1032` = "Kênh giới thiệu HCM" (Refer) — khớp đúng ảnh gốc.
+    - `channel=300461` = "HCM Offline booth" — khớp đúng ảnh gốc.
+    - Thêm các mã khác thấy trong data thật: `1035`="HCM - Other", `300511`="Linh Dam Store", `300531`="Paid Partnership", `300551`="Tiktok Shop", `300571`="FB-Instant-Form-OV", `500084`="CRM nhập nội địa".
+    - ⚠️ 1 số dòng có `team_name` **rỗng** (không gắn HN/HCM) — **chị Hiền đã chốt (câu #12): vẫn tính các dòng này vào `SUM(actual_leads toàn bộ ngày đó)` (số "Tổng" dùng trong công thức CRM Leads), không cần phân vùng riêng cho các kênh mơ hồ.** Không cần logic đặc biệt, không cần hỏi thêm.
+    - ⚠️ KHÔNG dùng bảng "Channel" trong file `HCM - Lead Management.xlsx` nội bộ team HCM làm nguồn mapping — đó là taxonomy khác, dùng cho mục đích khác (quản lý lead nội bộ), từng gây nhầm lẫn vì mã `1035` ở đó ghi "FB" thay vì "Other".
 
 ### Nguồn 2 — Chatpage
 
@@ -70,10 +77,15 @@ Hai điều rút ra:
   - Chatpage HCM: `14kfCV7p3WrBBK2UQDv4akcGnVkYIKVD9T_x5gWhjXxo` (tab "Data từ chatpage")
 - **Bản chất dữ liệu**: đây là **log thô** — mỗi dòng là 1 SĐT khách nhắn vào page, có cột ngày + cột TVTS + nhiều cột khác (ảnh cho thấy bảng dài nhiều dòng, không phải bảng tổng hợp sẵn). Chị Hiền **đếm số dòng khớp ngày lọc** (và với Inhouse 1 phải **trừ dòng nào thuộc HCM nếu bị lẫn**) rồi cộng Inhouse 1 + Linh Đàm → điền HN cột O; HCM đếm riêng → cột R.
 - ⚠️ Đây KHÔNG phải phép đọc `SUM()` 1 ô — là `COUNT(rows WHERE ngày = X [AND not-HCM])`. Script pull Sheets API phải áp đúng bộ lọc này, không lấy nhầm 1 ô tổng có sẵn (không có ô tổng sẵn theo ngày).
+- ✅ **CHỐT (M0-T5, verify bằng file thật `PalFish - Chatpage 2026.xlsx` + `PalFish Linh Đàm _ Database.xlsx`, 10/2026)**:
+  - Sheet HN **không phải 1 sheet cố định** — chia theo tháng: `Trực page T012026`...`Trực page T102026` (1 sheet/tháng, puller phải chọn đúng sheet theo tháng của `report_date`, không hardcode 1 tên sheet).
+  - Cột ngày = `Đầu Ngày` (giống hệt tên cột ở sheet HCM `Data từ chatpage` và sheet Linh Đàm `Data Tổng` — 1 hàm đếm dùng chung được cho cả 3).
+  - Cột `TVTS` có tiền tố tên team (`"HN - HoaTT"`, `"HCM - LinhLNT"`...) — dùng tiền tố này để lọc, KHÔNG cần tra cứu roster riêng.
+  - 🆕 **Phát hiện quan trọng, sửa lại hiểu nhầm của bản trước**: sheet "Trực page" (tưởng là thuần Inhouse 1) thực ra **trộn chung cả 4 nhóm TVTS**: đếm thử tháng 10/2026 (1058 dòng) ra `HN=787, HN2=188, HCM=55, OFF=28`. Công thức đếm HN **đơn giản hơn tưởng**: chỉ cần loại trừ dòng TVTS bắt đầu `"HCM -"`, GIỮ LẠI mọi tiền tố khác (HN/HN2/OFF) — đúng khớp với câu trả lời chị Hiền (câu #10: HN gộp cả Inhouse 1+2+Offline/Linh Đàm). Không cần cross-reference với bảng roster nào khác.
 
 ### Nguồn 3 — Trial
 
-- **Hệ thống**: trang riêng **"PalFish Class CRM" → mục "Thống kê TVTS"** (`销售统计` = "Thống kê bán hàng" / tab "销售业绩数据"), **KHÔNG phải Metabase, không phải CRM sync (`crm_routes.py`) mà app đang dùng**. Cần đăng nhập CRM này (không rõ có chung tài khoản Metabase hay khác — cần hỏi).
+- **Hệ thống**: trang riêng **"PalFish Class CRM" → mục "Thống kê TVTS"** (`销售统计` = "Thống kê bán hàng" / tab "销售业绩数据"), **KHÔNG phải Metabase, không phải CRM sync (`crm_routes.py`) mà app đang dùng**. ✅ **CHỐT (câu #5)**: dùng tài khoản CRM cá nhân của anh Minh (SĐT `84-353748121`, đã mở cho Đức + Đạt) — KHÁC với account Metabase (dùng account chung sẵn có trong Lark doc chị Hiền). 2 hệ thống dùng 2 credential riêng biệt.
 - **Thao tác**: chọn khoảng ngày (1 ngày), chọn nhóm nghiệp vụ "国际化业务" → chọn team cụ thể (`越南河内团队` = Vietnam Hà Nội, `越南胡志明团队` = Vietnam HCM) — double-click để filter đúng team.
 - **UI có nút "导出Excel" / "Xuất file Excel"** — giống BI Leads, có khả năng có network request đứng sau (cần bắt bằng DevTools khi có VPN+login để biết có phải gọi 1 REST endpoint đơn giản hay không).
 - **2 số cần lấy** (khoanh đỏ trong ảnh, cột trong bảng "Tình hình học thử"):
@@ -83,11 +95,22 @@ Hai điều rút ra:
 
 ### Nguồn 4 — Budget ADS
 
-- **Hệ thống**: Google Sheet "Daily Report", ID `15hbb2Qr7QolqpJzre-AZ4FkDS9U_cMw66ysA8JfKhr8`, tab `越南总` ("Việt Nam tổng").
-- **B1**: tab `越南总` có 1 hàng tổng theo tháng (VD "8月汇总") + các hàng theo ngày, cột "投放成本 Cost of Ads USD" (ảnh: cột AA) = tổng chi phí QC ngày đó cho toàn VN (HN+HCM gộp). Ghi chú thao tác gốc nói "COPY nhấp đúp để lấy đủ số lẻ" — tức đây là **giá trị tính toán** (có công thức/số thập phân dài), không phải số nguyên hiển thị — khi pull qua Sheets API cần lấy **giá trị đã tính** (`valueRenderOption=UNFORMATTED_VALUE`), không lấy text hiển thị đã làm tròn.
-- **B2**: cột AF của **sheet HCM riêng** (không phải sheet `越南总`) — sum lũy kế đến **ngày N-1** (KHÔNG phải ngày N) → điền vào cột AQ sheet HCM của báo cáo Key.
-- **B3**: `Sheet HN ô AN2 = Sheet 越南总 ô AA2 − Sheet HCM ô AQ2` — **lại là công thức trừ chéo**, giống hệt pattern ở Nguồn 1. HN không đo trực tiếp, luôn là phần dư sau khi trừ HCM khỏi tổng VN.
-- ⚠️ **Soát lại lần 2 (xem kỹ ảnh gốc) — phát hiện thêm 1 lớp mơ hồ, KHÔNG tự giải quyết được, làm câu hỏi #1 (mục VI) cấp bách hơn**: trong file mẫu chị Hiền đính kèm, ô **AA2** của tab `越南总` **không phải dòng ngày** — nó là dòng **"8月汇总" (tổng gộp tháng 8) = 26.026**, nằm ở hàng 2 ngay dưới header, TÁCH RIÊNG khỏi khối các dòng theo-từng-ngày (2026/8/11=2.338, 2026/8/10=2.294...) nằm ở các hàng bên dưới. Nếu đúng vậy thì công thức B3 (`AN2 = AA2 − AQ2`) là phép trừ giữa **tổng lũy kế cả tháng** (AA2) và **lũy kế HCM tới ngày N-1** (AQ2, theo đúng B2) → ra kết quả gần giống "lũy kế HN tới N-1", KHÔNG PHẢI số của riêng ngày N. Trong khi đó, hướng dẫn B2 (đoạn "COPY số liệu... **từng ngày**...") lại mô tả 1 bảng khác — copy giá trị **của từng ngày riêng lẻ** (không lũy kế) vào bảng pivot chính. → **Rất có thể đây là 2 cách tính cho 2 vị trí khác nhau trong báo cáo** (1 ô tổng-tháng-để-đối-chiếu vs 1 cột daily-pivot), nhưng chỉ đọc ảnh + text không đủ chắc chắn — **không nên tự suy diễn thêm, cần chị Hiền xác nhận trực tiếp ô nào dùng công thức nào khi ngồi cùng xem file thật**, tránh code sai 1 trong 2 công thức mà không ai phát hiện vì cả 2 đều "chạy được", chỉ ra số sai.
+✅ **CHỐT (câu #1)** — toàn bộ phần B1-B3 + ô `AA2`/越南总 bên dưới đây **ĐÃ LỖI THỜI**. Tài liệu gốc của chị Hiền tự ghi chú *"Link lấy dữ liệu ADS (cũ rồi, phiên bản mới tại ADS V2)"* — xác nhận bằng file thật `Palfish ADS 2026 V2 - From June 2026.xlsx` (10/2026):
+
+- **Hệ thống hiện tại**: Google Sheet "Palfish ADS 2026 V2", sheet **"Daily report"** (KHÔNG còn tab `越南总` tiếng Trung nữa — đã đổi sang tiếng Anh).
+- Cấu trúc: cột `Day` = ngày thật (date object, không phải text), cột `Budget` = chi phí **ĐÚNG NGÀY ĐÓ** — đã verify giá trị dao động (1763, 1881, 1771, 1817, 1880, 1682, 2264...VND) chứ KHÔNG tăng dần → chắc chắn là per-day, hết mơ hồ ngày/luỹ kế của bản cũ.
+- Header row 1 có sẵn 3 khối tổng side-by-side: `Total digital channel`, `Total digital channel - Hanoi inhouse`, `Total digital channel - Hanoi inhouse 2`, và 1 khối **"Total digital channel - HCM TEAM"** riêng — gợi ý HCM có thể đã đo trực tiếp (không cần công thức trừ chéo cũ `HN = Tổng VN − HCM`) nhưng **chưa verify kỹ 3 khối này độc lập hay vẫn dẫn xuất từ 1 công thức** — cần xem thêm formula ẩn sau các ô này trước khi code M1-T2, không giả định.
+- Việc cần làm trước khi code: xác nhận với chị Hiền đây đúng là file/sheet chị đang dùng hằng ngày (khớp tên "ADS V2" trong tài liệu gốc), và hỏi nhanh cấu trúc 3 khối HN/HN2/HCM có đo độc lập hay công thức trừ chéo.
+
+<details>
+<summary>Nội dung B1-B3 gốc (ĐÃ LỖI THỜI — giữ lại chỉ để tham khảo lịch sử, KHÔNG dùng để code)</summary>
+
+- **Hệ thống (cũ)**: Google Sheet "Daily Report", ID `15hbb2Qr7QolqpJzre-AZ4FkDS9U_cMw66ysA8JfKhr8`, tab `越南总` ("Việt Nam tổng").
+- **B1**: tab `越南总` có 1 hàng tổng theo tháng (VD "8月汇总") + các hàng theo ngày, cột "投放成本 Cost of Ads USD" (ảnh: cột AA) = tổng chi phí QC ngày đó cho toàn VN (HN+HCM gộp).
+- **B2**: cột AF của **sheet HCM riêng** — sum lũy kế đến **ngày N-1** → điền vào cột AQ sheet HCM của báo cáo Key.
+- **B3**: `Sheet HN ô AN2 = Sheet 越南总 ô AA2 − Sheet HCM ô AQ2` — công thức trừ chéo, nhưng ô AA2 thực ra là dòng "8月汇总" (tổng tháng), không phải theo ngày — đây chính là nguồn gốc câu hỏi #1, nay đã moot vì dùng ADS V2.
+
+</details>
 
 ### Phụ lục — Metabase (do anh Minh phát hiện thêm, KHÔNG có trong quy trình tay của chị Hiền)
 
@@ -138,15 +161,20 @@ v1 giả định tất cả 4 nguồn đều auto được ngay (Phương án B+
                                                                         BC02 UI hiện cột mới
 ```
 
-**Khuyến nghị**: làm **Budget ADS + Chatpage trước** (ít rủi ro, có thể ship M1 trong vài ngày, chị Hiền thấy kết quả ngay), song song chạy M0 điều tra BI Leads + Trial. Không nên cam kết "auto 100% cả 4 nguồn" trước khi M0 xong — nếu Trial/BI Leads không có API, phương án thực tế nhất là: vẫn tự động hoá 2 nguồn dễ, còn 2 nguồn khó tạm giữ **form nhập tay trong app** (nhanh, không phá deadline 10h N+1) và tiếp tục điều tra automation sau — tốt hơn là block toàn bộ task chờ có full-auto.
+✅ **CHỐT (câu #11, 2026-10-14)**: anh Minh chọn phương án **(a) — KHÔNG nhập tay, auto hoàn toàn cả 4 nguồn**. Nguyên văn: *"KHÔNG nhập tay — hướng là tự động hoàn toàn. Để chị Hiền nhập tay = đẻ thêm việc cho chị, không giải quyết gốc. Được phép ship 2 nguồn dễ (Budget + Chatpage) tự động trước cho nhanh, nhưng 2 nguồn khó (BI Leads, Trial) cũng phải auto sau khi M0 tìm ra token/API — không rơi về nhập tay."*
 
-> ⚠️ **ĐIỂM NÀY ĐẢO NGƯỢC 1 QUYẾT ĐỊNH ĐÃ CHỐT CỦA v1 — CẦN ANH MINH DUYỆT LẠI, KHÔNG TỰ Ý LÀM.**
-> v1 (12/8) ghi rõ: *"~~Phương án A (form nhập tay)~~ — **BỎ**. Mục tiêu dự án là tự động hóa, để Hiền nhập tay = không giải quyết gốc."*
-> v2 đề xuất cho phép **form nhập tay như đường lùi TẠM THỜI cho 1-2 nguồn khó**, vì lý do mới xuất hiện sau khi có tài liệu thật: nguồn Trial nằm ở "PalFish Class CRM" — hệ thống mà lúc viết v1 chưa ai biết là tồn tại, và chưa có bằng chứng nào cho thấy nó có API.
-> **Hai lựa chọn để anh Minh chốt:**
-> - **(a) Giữ nguyên tinh thần v1** — không nhập tay, chấp nhận BC02 thiếu cột Trial/BI Leads cho tới khi M0 tìm được đường auto (deadline không xác định, phụ thuộc kết quả điều tra).
-> - **(b) Theo v2** — nhập tay tạm cho nguồn chưa auto được, có gắn cờ `source='manual'` + badge trên UI, và giữ vé nợ kỹ thuật để auto hoá sau.
-> Em nghiêng về (b) vì chị Hiền vẫn đang nhập tay 100% cho cả 4 nguồn — (b) là giảm từ 4 xuống 1-2 nguồn ngay tuần này, còn (a) là giữ nguyên 4 cho tới khi điều tra xong. Nhưng đây là quyết định của anh, không phải của em.
+→ **Chỉ staging THỨ TỰ SHIP là khác nhau** (Budget+Chatpage trước, BI Leads+Trial sau khi M0 xong), **kiến trúc cuối cùng không có đường lùi nhập tay**. Điều này đổi lại:
+- **M2-T3** (form nhập tay FE) — **BỎ HẲN**, không còn trong scope.
+- **M4-T3** (modal nhập tay) — **BỎ HẲN**.
+- Schema mục IV vẫn giữ `*_source CHECK (... IN (..., 'manual'))` cho AN TOÀN (phòng hờ kỹ thuật tạm thời nếu M0 bí 1 nguồn quá lâu), nhưng **không xây UI nhập tay** — nếu M0 bí thật sự, quay lại hỏi anh Minh chứ không tự ý thêm form.
+- M0 cho BI Leads/Trial giờ **quan trọng hơn trước** (không còn safety net) — ưu tiên làm M0-T3 (bắt DevTools tìm token/API thật) sớm, song song lúc code M1.
+
+<details>
+<summary>Thảo luận gốc trước khi chốt (giữ lại để hiểu bối cảnh quyết định)</summary>
+
+v1 (12/8) ghi rõ: *"~~Phương án A (form nhập tay)~~ — **BỎ**. Mục tiêu dự án là tự động hóa, để Hiền nhập tay = không giải quyết gốc."* v2 từng đề xuất cho phép nhập tay tạm thời cho 1-2 nguồn khó (lý do: Trial nằm ở "PalFish Class CRM" — hệ thống v1 chưa biết tồn tại, chưa rõ có API). Anh Minh đã xem xét cả 2 lựa chọn và chọn giữ nguyên tinh thần v1 — xem quyết định chính thức ở trên.
+
+</details>
 
 ---
 
@@ -285,14 +313,14 @@ for qid, name in [(12749, "leads-status-update"), (14385, "referral-details-vn")
   - Sau khi thêm file: **cập nhật thủ công danh sách thứ tự migration trong `docs/PROJECT.md` (dòng ~150)** — quy ước bắt buộc của repo, bỏ bước này thì lần sau ai đó reset sandbox sẽ thiếu bảng này mà không biết (đúng bẫy đã từng xảy ra thật với `docs/migrations/2026-06-09-top1-02-installment-fields.sql`, ghi trong Gotchas của skill).
   - Verify sau khi áp: `SELECT to_regclass('public.bc02_daily_metrics');` phải khác NULL, và `SELECT column_name FROM information_schema.columns WHERE table_name='bc02_daily_metrics';` khớp đủ cột.
 - **M1-T2 · Google Sheets puller**: 1 module dùng chung Service Account (đã có sẵn credential pattern trong repo cho GSheet ledger import — tái dùng `backend/gsheet_ledger_import.py`'s auth helper thay vì viết mới), 2 hàm: `pull_budget_ads(date)` (áp đúng công thức trừ chéo mục II.4) và `pull_chatpage(date)` (đếm dòng theo 3 sheet). **Ghi kết quả bằng `INSERT ... ON CONFLICT (report_date, region) DO UPDATE`** (đúng UNIQUE constraint ở mục IV) — không phải insert-fail-nếu-trùng, vì M3-T4 (rolling re-pull) sẽ gọi lại cùng ngày nhiều lần và PHẢI đè lên giá trị cũ, không tạo dòng trùng hoặc báo lỗi conflict.
-- **M1-T3 · Endpoint GET**: `/revenue/bc02-metrics?from=&to=` cho FE — trả `bc02_daily_metrics` theo range, kèm field nào NULL (chưa auto được) để FE biết hiện trạng thái "chưa có data" khác "auto ra 0". **Bắt buộc theo đúng pattern endpoint BC02 hiện có** (đã đọc `revenue_pivot_key_data` thật trong `backend/revenue_routes.py:1927-1949`): `resolve_actor` → `require_module_access(sb, actor, "bc02")` → `enforce_report_scope(actor, team_filter)` → nếu có `sub_team` thì lọc tiếp bằng `scope_sale_names`. Endpoint mới KHÔNG được bỏ qua bước này dù dữ liệu là "region" chứ không phải "team" — nếu không, 1 sale bị giới hạn xem team mình vẫn đọc được budget/lead toàn công ty qua endpoint mới. Trả lời câu hỏi #3 (mục VI) sẽ quyết định độ chặt của RBAC này (ai được thấy budget).
+- **M1-T3 · Endpoint GET**: `/revenue/bc02-metrics?from=&to=` cho FE — trả `bc02_daily_metrics` theo range, kèm field nào NULL (chưa auto được) để FE biết hiện trạng thái "chưa có data" khác "auto ra 0". **Bắt buộc theo đúng pattern endpoint BC02 hiện có** (đã đọc `revenue_pivot_key_data` thật trong `backend/revenue_routes.py:1927-1949`): `resolve_actor` → `require_module_access(sb, actor, "bc02")` → `enforce_report_scope(actor, team_filter)` → nếu có `sub_team` thì lọc tiếp bằng `scope_sale_names`. Endpoint mới KHÔNG được bỏ qua bước này dù dữ liệu là "region" chứ không phải "team" — nếu không, 1 sale bị giới hạn xem team mình vẫn đọc được budget/lead toàn công ty qua endpoint mới. ✅ **CHỐT (câu #3)**: không cần code thêm gate riêng — `require_module_access(sb, actor, "bc02")` đã tự động đi qua `_compute_permissions()` (`admin_routes.py:272-348`), hàm này đọc `min_role` từ bảng DB `department_permissions`. Đã verify trực tiếp qua Supabase MCP: **prod** có sẵn `department='sale', module_key='bc02', min_role='leader'` (từ 09/06/2026) → sale thường đã bị 403 thật, đúng ý anh Minh "chỉ Leader trở lên". ⚠️ **sandbox lại khác** (`min_role='sale', access_level='full'` — sale thường full quyền) — chỉ là khác biệt môi trường test, không ảnh hưởng code, nhưng cần nhớ khi test trên sandbox đừng hiểu nhầm là lộ dữ liệu.
 - **M1-T4 · Merge pivot**: sửa `_build_key_data_pivot()` — thêm khối `regionMetrics` per-date (2 dòng con HN/HCM) alongside `categories` hiện có, KHÔNG trộn vào 8 cột GMV cũ. **Key ngày để join phải khớp CHÍNH XÁC**: 8 cột GMV hiện tại bucket theo `dk = _row_pay_date(r).isoformat()` (dòng 446), và `_row_pay_date()` → `ky_doanh_thu()` → đọc cột **`ngay_tien_ve`** của `so_doanh_thu` (đã verify trực tiếp `backend/revenue_routes.py:321-323`, comment gốc: *"Kỳ doanh thu chuẩn = ngay_tien_ve"*) — **không phải `pay_time`**. `bc02_daily_metrics.report_date` phải join đúng vào key `dk` này (tức phải hiểu `report_date` chị Hiền ghi trong báo cáo tay tương ứng với khái niệm `ngay_tien_ve` của app, không phải ngày quẹt thẻ theo nghĩa đen — 2 khái niệm này được xác nhận là tương đương trong ngữ cảnh Sổ/BC01/BC02 theo `docs/learnings/2026-09-04-b3-tien-ve-funded-not-quet.md`, khác với B3/BC04 dùng `funded_date`/`transaction_date`). Nếu 2 ngày lệch nhau dù 1 ngày, dòng dữ liệu mới sẽ không khớp dòng GMV cũ — bảng hiện trống ở 1 bên dù cả 2 đều "có data".
 
 ### M2 — Backend: puller cho nguồn rủi ro cao (theo kết quả M0)
 
 - Nếu Metabase khớp Trial: **M2-T1** viết `pull_metabase(question_id)` dùng session token, cache trong giờ chạy.
-- Nếu BI dashboard có API/share-link: **M2-T2** viết `pull_bi_leads(date)` (áp công thức trừ chéo + mapping kênh HCM từ M0-T4).
-- Nếu 1 trong 2 nguồn KHÔNG có đường auto: **M2-T3** — thêm form nhập tay trong FE BC02 cho đúng field đó (giữ nguyên schema, `source='manual'`), không chặn toàn bộ task.
+- Nếu BI dashboard có API/share-link: **M2-T2** viết `pull_bi_leads(date)` (áp công thức trừ chéo + mapping kênh HCM — đã có bảng mã thật, xem mục II Nguồn 1).
+- ~~M2-T3 (form nhập tay)~~ — **BỎ, theo quyết định câu #11**: không có đường lùi nhập tay. Nếu M0-T3 không tìm được API/token cho 1 trong 2 nguồn này, quay lại báo cáo anh Minh thay vì tự ý thêm form.
 
 ### M3 — Automation: cron
 
@@ -313,8 +341,8 @@ for qid, name in [(12749, "leads-status-update"), (14385, "referral-details-vn")
 ### M4 — Frontend: mở rộng bảng BC02
 
 - **M4-T1**: Thêm khối cột mới (Leads/Chatpage/Trial/Budget) vào `BC02KeyDataReport.tsx`, tách biệt trực quan khỏi 8 cột GMV hiện có (ví dụ nhóm màu khác, giống cách `_build_key_data_pivot` đã tách `categories` khỏi `grandTotal`).
-- **M4-T2**: Badge trạng thái theo field: `auto` (source=metabase_api/bi_dashboard_api/sheets_api) vs `manual` vs `chưa có` (NULL) — để chị Hiền/kế toán biết ngày nào cần bổ sung tay.
-- **M4-T3**: Nếu M2-T3 cần form nhập tay — thêm modal nhập nhanh (giống pattern `LedgerFormModal.tsx`).
+- **M4-T2**: Badge trạng thái theo field: `auto` (source=metabase_api/bi_dashboard_api/sheets_api) vs `chưa có` (NULL) — để biết ngày nào auto chưa chạy kịp. (Bỏ nhánh `manual` khỏi badge UI — không còn nhập tay, theo câu #11; giữ giá trị `'manual'` trong CHECK constraint của schema chỉ để dự phòng kỹ thuật, không hiển thị UI riêng cho nó.)
+- ~~M4-T3 (modal nhập tay)~~ — **BỎ, theo quyết định câu #11**.
 
 ### M5 — Validate + deploy
 
@@ -347,7 +375,10 @@ for qid, name in [(12749, "leads-status-update"), (14385, "referral-details-vn")
 1. **Không bao giờ commit**: mật khẩu Metabase/CRM (đang nằm plaintext trong Lark doc đã tải về `Danh sách các nguồn thông tin…/` — thư mục này nằm NGOÀI repo, **giữ nguyên như vậy**, đừng copy vào repo), file `.ovpn`, file JSON Service Account, session cookie.
 2. **Cân nhắc lại việc để 4 Google Sheet ID trong file plan công khai.** Nếu bất kỳ sheet nào đang share ở chế độ "anyone with the link", thì công khai ID = công khai dữ liệu lead/budget công ty. → Việc cần làm: kiểm tra chế độ share của 4 sheet; nếu là "anyone with link", hoặc đổi sang "restricted + share cho Service Account", hoặc bỏ ID khỏi file public và để trong secret store.
 3. **GitHub Actions trên repo public: log công khai.** Cấm `print()` response thô/token trong job cron. Chỉ log số dòng + trạng thái. (Secret của Actions vẫn được mã hoá và tự động che trong log, nhưng dữ liệu *nội dung* trả về từ API thì không được che.)
-4. **Tài khoản đang dùng là account cá nhân của anh Hiếu / chị Tuyết** (v1 note: credentials dùng chung cho cả VPN lẫn Metabase). Đề nghị: xin account riêng cho automation; nếu buộc dùng account cá nhân thì tối thiểu phải đổi mật khẩu sau khi dự án xong, vì mật khẩu đã đi qua nhiều kênh chia sẻ.
+4. ✅ **CHỐT (câu #7)**: anh Minh quyết định **KHÔNG xin account automation riêng** — lý do: "OTP chỉ 1-2 lần/tháng, không phải vấn đề. Mấu chốt là mò token/API kéo tự động, không phải là login vào rồi tải tay." Dùng:
+   - **BI dashboard + PalFish Class CRM**: tài khoản cá nhân của anh Minh (SĐT `84-353748121`), đã mở quyền cho Đức + Đạt.
+   - **Metabase**: account chung sẵn có trong Lark doc chị Hiền (`hoanghieuw00617@ipalfish.com` / `lethianhtuyetw01384@ipalfish.com` — xem Phụ lục).
+   → Vẫn giữ nguyên nguyên tắc bảo mật bên dưới (không commit mật khẩu/token/session cookie vào repo) — chỉ khác là không cần thủ tục xin cấp account mới nữa.
 5. Thêm vào `.gitignore` (phòng nhầm lẫn): `*.ovpn`, `*service-account*.json`, `Danh sách các nguồn thông tin*/`.
 
 ---
@@ -368,21 +399,34 @@ Anh Minh đang track task bằng ID milestone trong memory/note riêng ("chặn 
 
 ---
 
-## VI. Cần anh Minh / chị Hiền xác nhận trước khi bắt đầu code
+## VI. ✅ ĐÃ CHỐT — 12 câu mở (anh Minh + chị Hiền trả lời 2026-10-14)
 
-*(#1, #6 không chặn M0 — có thể bắt đầu điều tra song song trong lúc chờ trả lời. #2–5, #7–8 chặn M1 trở đi.)*
+*Toàn bộ mục này ban đầu là danh sách câu hỏi chờ duyệt — nay đã chốt xong hết. Giữ nguyên câu hỏi gốc + ghi thêm câu trả lời ngay dưới mỗi câu, để ai đọc sau biết rõ quyết định VÀ lý do, không chỉ đọc kết quả cuối.*
 
-1. **Budget ADS: số từng ngày hay lũy kế từ đầu tháng?** Soát lần 2 phát hiện thêm nghi vấn cụ thể: ô `AA2` trong file mẫu trỏ vào dòng **"8月汇总" (tổng tháng)**, không phải dòng theo ngày — trong khi hướng dẫn B2 lại nói "COPY... từng ngày". Có thể là 2 công thức cho 2 ô khác nhau trong báo cáo (1 ô daily-pivot, 1 ô tổng-tháng-đối-chiếu) — cần chị Hiền xác nhận trực tiếp trên file thật, không tự suy diễn thêm vì cả 2 cách hiểu đều "chạy được" nhưng ra số khác nhau, sai sẽ không ai phát hiện ngay.
-2. **Bảng đầy đủ mã kênh↔cột sheet HCM** (M0-T4) — ảnh trong tài liệu hiện bị cắt, mới thấy 5 kênh (300461, 300471, 1032, 1035, 1036).
-3. **Ai được xem Budget ADS trong BC02?** — **dữ kiện quan trọng vừa verify** (`backend/admin_routes.py:167-172`, `DEFAULT_DEPT_PERMISSIONS`): mặc định BC02 hiện đang **"read" cho CẢ department "sale" (nhân viên sale thường, không chỉ leader/manager) LẪN "marketing"** — nghĩa là nếu không thêm chặn riêng, mọi sale rep + marketing đều thấy được ngân sách quảng cáo công ty ngay khi cột Budget ADS lên UI. Cần anh Minh chốt: giữ nguyên mức "read" chung như hiện tại (chấp nhận sale/marketing thấy budget), hay tách quyền riêng cho khối cột mới (VD chỉ hiện Budget/Lead cho leader trở lên, ẩn với sale — cần thêm field-level permission, phức tạp hơn module-level đang có)?
-4. **Khi user lọc 1 team con (VD Inhouse 1) thì khối Lead/Chatpage/Trial/Budget nên ẩn hay hiện kèm nhãn "toàn HN"?** Vì 4 nhóm này đo theo vùng, không theo từng team con.
-5. **Tài khoản PalFish Class CRM** ("Thống kê TVTS") — có chung với Metabase (2 email trong Phụ lục) hay là hệ thống đăng nhập riêng? Cần biết trước khi làm M0-T3.
-6. **Giờ refresh BI dashboard (10h/15h/17h/19h) là giờ Bắc Kinh hay giờ VN?** (M0-T7) — quyết định giờ chạy cron ở M3, không chặn code nhưng chặn M3.
-7. **Xin được account riêng cho automation trên Metabase/BI/PalFish CRM, hay buộc dùng account cá nhân anh Hiếu/chị Tuyết?** (mục V-bis điểm 4) — nếu dùng account cá nhân, cần thống nhất đổi mật khẩu sau khi xong vì đã đi qua nhiều kênh chia sẻ (bao gồm cả tài liệu Lark, hiện đã tải plaintext về máy này).
-8. **Referral (Metabase Q14385) có nằm trong phạm vi task BC02 lần này không?** — BC02 đã có sẵn cột "Giới thiệu" từ `so_doanh_thu`, cần làm rõ Q14385 là bổ sung/đối chiếu hay ngoài phạm vi.
-9. **Chị Hiền có cần ghi ngược số liệu tự động lên Google Sheet/All File sau khi app tính xong không, hay chỉ cần app hiện đúng số là đủ, chị bỏ hẳn quy trình tay?** Nếu cần ghi ngược → thêm hẳn 1 milestone ghi-ngược, tăng đáng kể khối lượng.
-10. **Xác nhận scope "HN"** trong báo cáo tay chị Hiền = đúng gộp Inhouse 1 + Inhouse 2 + Linh Đàm + Offline + An Bình (5 team canonical trong app — xem `TEAM_TO_CANONICAL` trong `backend/utils/team_mapper.py`), không phải chỉ Inhouse 1 — mục I đang giả định, cần chốt.
-11. **Chấp nhận hướng "auto trước 2 nguồn dễ, 2 nguồn khó chờ M0" + cho phép nhập tay tạm thời** (mục III, đảo ngược 1 phần quyết định "bỏ nhập tay" của v1 — xem callout ở mục III) thay vì chờ auto đủ cả 4 nguồn mới ship.
+1. **Budget ADS: số từng ngày hay lũy kế từ đầu tháng?**
+   ✅ **Hết mơ hồ, không cần hỏi** — nguồn dữ liệu đã đổi hẳn sang **ADS V2** (tài liệu gốc tự ghi chú "cũ rồi"), sheet "Daily report" có cột `Day`/`Budget` rõ ràng theo từng ngày, đã verify không tăng dần. Chi tiết mục II Nguồn 4.
+2. **Bảng đầy đủ mã kênh↔cột sheet HCM.**
+   ✅ **Không cần bảng tĩnh nữa** — đọc thẳng cột `team_name`/`channel_name` từ export BI dashboard thật, đã verify đủ data 31 ngày. Chi tiết mục II Nguồn 1.
+3. **Ai được xem Budget ADS trong BC02?**
+   ✅ **Anh Minh**: "Chỉ Leader trở lên." — đã verify qua Supabase MCP: prod đã có sẵn `department_permissions(sale, bc02, min_role=leader)` từ 09/06/2026, không cần code thêm gì. Chi tiết mục V (M1-T3).
+4. **Khi user lọc 1 team con thì khối Lead/Chatpage/Trial/Budget nên ẩn hay hiện kèm nhãn "toàn HN"?**
+   ✅ **Anh Minh**: "Luôn hiện, và luôn là số vùng/toàn công ty (không đổi theo bộ lọc team con). Không ẩn, không cần logic nhãn riêng theo từng team — 4 nguồn này đo theo vùng HN/HCM nên cứ hiện mức đó." → M4-T1 implement đơn giản: 4 cột này KHÔNG tham gia filter team con của FE, luôn render 1 giá trị cố định theo ngày.
+5. **Tài khoản PalFish Class CRM có chung với Metabase hay là hệ thống đăng nhập riêng?**
+   ✅ **Riêng** — xác nhận qua câu #7: PalFish Class CRM + BI dashboard dùng account cá nhân anh Minh, Metabase dùng account chung Lark doc. 2 credential khác nhau.
+6. **Giờ refresh BI dashboard (10h/15h/17h/19h) là giờ Bắc Kinh hay giờ VN?**
+   ⚪ **Chưa hỏi, không chặn code** — tự kiểm chứng bằng thực nghiệm được (pull đúng giờ VN, so dữ liệu mới nhất dừng ở đâu). Chỉ cần xong trước M3 (cron), không chặn M1/M2.
+7. **Xin account riêng cho automation hay buộc dùng account cá nhân?**
+   ✅ **Anh Minh**: "Dùng tài khoản CRM của anh 84-353748121 cho BI dashboard + PalFish Class CRM (anh đã mở cho 2 em). Metabase dùng account chung sẵn có trong Lark doc chị Hiền. Không xin account riêng — OTP chỉ 1-2 lần/tháng, không phải vấn đề. Mấu chốt là mò token/API kéo tự động, không phải là login vào rồi tải tay." Chi tiết mục V-bis điểm 4.
+8. **Referral (Metabase Q14385) có nằm trong phạm vi task BC02 lần này không?**
+   ✅ **Anh Minh**: "Ngoài phạm vi lần này. Chỉ làm đúng 4 nguồn Lead/Chatpage/Trial/Budget. BC02 đã có cột 'Giới thiệu' từ sổ rồi, Q14385 để đối chiếu sau."
+9. **Chị Hiền có cần ghi ngược số liệu tự động lên Google Sheet/All File sau khi app tính xong không?**
+   ✅ **Chị Hiền (qua Đức)**: "Không cần ghi ngược vì mục đích của app là thay thế luồng việc thủ công." → Bớt hẳn 1 milestone so với lo ngại ban đầu (câu hỏi gốc cảnh báo "nếu cần ghi ngược → thêm hẳn 1 milestone, tăng đáng kể khối lượng" — nay không cần).
+10. **Xác nhận scope "HN"** = Inhouse 1 + Inhouse 2 + Linh Đàm + Offline + An Bình (5 team)?
+    ✅ **Chị Hiền**: "HN là bao gồm cả HN1 + HN2 + OFF." + bổ sung từ Đức: **An Bình đã đóng cửa** → thực tế chỉ còn Inhouse 1 + Inhouse 2 + Linh Đàm. Verify thêm bằng data thật (sheet Trực page tháng 10/2026, 1058 dòng): TVTS trộn sẵn `HN=787, HN2=188, HCM=55, OFF=28` → công thức: loại trừ TVTS bắt đầu `"HCM -"`, giữ lại mọi tiền tố khác. Chi tiết mục I + mục II Nguồn 2.
+11. **Chấp nhận nhập tay tạm cho 2 nguồn khó, hay phải auto hết 4 nguồn?**
+    ✅ **Anh Minh chọn KHÔNG nhập tay** — auto hoàn toàn, chỉ so le THỨ TỰ ship (Budget+Chatpage trước). Nguyên văn + hệ quả: xem callout ở mục III.
+12. **(Phát sinh 10/2026, không có trong bản gốc) Lead có `team_name` rỗng trong export BI dashboard thì tính vào đâu?**
+    ✅ **Chị Hiền**: "Team_name rỗng vẫn tính nhé, trong báo cáo Key có những cột nào thì ghi cột đó." → Các dòng này vẫn cộng vào `SUM(actual_leads toàn bộ ngày đó)` (số "Tổng" trong công thức CRM Leads), không cần phân vùng riêng. Chi tiết mục II Nguồn 1.
 
 ## VII. Ước lượng thời gian (đã điều chỉnh, không còn "3.5 ngày cố định" như v1)
 
@@ -409,7 +453,7 @@ Nếu anh Minh cần con số cam kết cho sếp: **ship được 2 nguồn d�
 
 ## Đối chiếu 5 tiêu chí (giữ nguyên khung v1, cập nhật nội dung)
 
-1. **Triệt để**: auto tối đa nguồn có API xác nhận được ở M0; nguồn chưa xác nhận có form tay tạm thời (KHÔNG bỏ trắng, KHÔNG block cả task chờ 1 nguồn khó nhất).
+1. **Triệt để**: auto cả 4 nguồn, KHÔNG có form nhập tay (chốt câu #11) — so le chỉ ở thứ tự ship (Budget+Chatpage trước), không so le ở kiến trúc cuối.
 2. **Không lỗi con**: upsert UNIQUE(report_date, region); `raw_fetch_meta` lưu vết nguồn để debug lệch số; chạy song song đối chiếu trước khi tắt quy trình tay (M5-T3).
 3. **Không tăng hạ tầng quá mức**: tái dùng Service Account pattern đã có (`gsheet_ledger_import.py`), tái dùng DingTalk outbox cho alert, không thêm server/DB mới.
 4. **Tối ưu token/thời gian**: M0 điều tra trước, plan self-contained kèm ground-truth thật (không đoán mò như v1).
