@@ -20,6 +20,7 @@ const BC02KeyDataReport = lazyRetry(() => import("../components/reports/BC02KeyD
 const ReportBC03Tab = lazyRetry(() => import("../components/ReportBC03Tab"));
 const BC04CashInReport = lazyRetry(() => import("../components/reports/BC04CashInReport"));
 const PaymentRequestsTab = lazyRetry(() => import("../components/PaymentRequestsTab"));
+const LeadFeedbackTab = lazyRetry(() => import("../components/LeadFeedbackTab"));
 const ReconciliationTab = lazyRetry(() => import("../components/ReconciliationTab"));
 const CardReconciliationTab = lazyRetry(() => import("../components/CardReconciliationTab"));
 const GatewaySyncTab = lazyRetry(() => import("../components/GatewaySyncTab"));
@@ -36,6 +37,7 @@ const PayslipTab = lazyRetry(() => import("../components/payslip/PayslipTab"));
 
 const PRELOAD_MAP: Record<string, () => Promise<unknown>> = {
   paymentRequests: () => import("../components/PaymentRequestsTab"),
+  leadFeedback: () => import("../components/LeadFeedbackTab"),
   reconciliation: () => import("../components/ReconciliationTab"),
   reconCard: () => import("../components/CardReconciliationTab"),
   module3: () => import("../components/ActivationTab"),
@@ -52,6 +54,7 @@ const PRELOAD_MAP: Record<string, () => Promise<unknown>> = {
 type ViewId =
   | "dashboard"
   | "paymentRequests"
+  | "leadFeedback"
   | "reconciliation"
   | "reconCard"
   | "profile"
@@ -171,6 +174,11 @@ const I = {
       <line x1="9" y1="15" x2="13" y2="15" />
     </svg>
   ),
+  leadFeedback: (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
+    </svg>
+  ),
 };
 
 const TITLES: Record<ViewId, { title: string; subtitle?: string }> = {
@@ -181,6 +189,10 @@ const TITLES: Record<ViewId, { title: string; subtitle?: string }> = {
   paymentRequests: {
     title: "Quản lý thanh toán",
     subtitle: "Theo dõi Payment Requests, biên lai & tiến độ chuyển khoản của khách",
+  },
+  leadFeedback: {
+    title: "Feedback lead",
+    subtitle: "Sale gửi bằng chứng & ghi chú về chất lượng lead; team Marketing nhận xét lại",
   },
   reconciliation: {
     title: "Đối soát giao dịch · Chuyển khoản",
@@ -305,6 +317,8 @@ function MainPageInner({
       list.push({ id: "dashboard", label: "Bảng thông tin", icon: I.chart, section: "Khách hàng & Đơn hàng" });
     if (can("paymentRequests"))
       list.push({ id: "paymentRequests", label: "Quản lý thanh toán", icon: I.invoice, ...(!can("dashboard") ? { section: "Khách hàng & Đơn hàng" } : {}) });
+    if (can("leadFeedback"))
+      list.push({ id: "leadFeedback", label: "Feedback lead", icon: I.leadFeedback, ...(!can("dashboard") && !can("paymentRequests") ? { section: "Khách hàng & Đơn hàng" } : {}) });
 
     // ── Đối soát & Hóa đơn ── (dropdown 3 tab con: Chuyển khoản / mPOS / Payoo)
     const reconChildren: NavChildItem[] = [];
@@ -393,6 +407,7 @@ function MainPageInner({
   const wideContent =
     activeView === "dashboard" ||
     activeView === "paymentRequests" ||
+    activeView === "leadFeedback" ||
     activeView === "reconciliation" ||
     activeView === "reconCard" ||
     activeView === "module3" ||
@@ -414,6 +429,7 @@ function MainPageInner({
     switch (activeView) {
       case "dashboard": return <DashboardTab />;
       case "paymentRequests": return <PaymentRequestsTab />;
+      case "leadFeedback": return <LeadFeedbackTab />;
       case "reconciliation": return <ReconciliationTab />;
       case "reconCard": return <CardReconciliationTab onGoToSync={() => setActiveView("gatewaySync")} />;
       case "module3": return <ActivationTab />;

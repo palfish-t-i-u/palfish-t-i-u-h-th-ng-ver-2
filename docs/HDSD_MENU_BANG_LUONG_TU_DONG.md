@@ -73,6 +73,7 @@ Chỉ cần làm **một lần duy nhất**. Các lần sau bấm nút nào cũn
 | 🔌 **Cài đặt cổng gửi phiếu** | Nối sheet với app để gửi phiếu. Chỉ chạy một lần (lúc thiết lập). |
 | 🧹 **Xếp lại hàng đợi (quét bù tick sót)** 🆕 | Quét lại cả bảng, tìm những dòng đã tick "Gửi BL" mà chưa vào hàng đợi rồi **xếp bù**. Bấm nút này **trước** "Gửi phiếu đang chờ" là chắc ăn đủ người. | Khi tick nhiều dòng liên tiếp, hoặc nghi gửi sót |
 | 🩹 **Khớp tick đã gửi (sửa ô rụng)** 🆕 | Nếu ô "Gửi BL" của phiếu **đã gửi** bị rụng dấu tick, nút này tick lại cho khớp thực tế. **Không gửi lại phiếu.** | Khi thấy ô "Gửi" của người đã nhận phiếu lại trống |
+| 🔄 **Gửi lại phiếu (dòng đang chọn)** 🆕 | Gửi lại phiếu **đã sửa** cho nhân viên: chọn dòng NV → bấm nút → app nhận số mới (ghi đè, không tạo bản trùng). Nếu số đổi, NV phải xác nhận lại. Ô "Gửi" vẫn giữ khóa. | Khi cần sửa 1 phiếu ĐÃ gửi rồi gửi lại |
 | 📤 **Gửi phiếu đang chờ** | Gửi tất cả phiếu đang chờ sang app cho nhân viên xem. | Khi đã kiểm tra xong và sẵn sàng gửi |
 | 📋 **Mở hàng đợi** | Xem danh sách phiếu đã gửi / đang chờ / lỗi. | Khi muốn kiểm tra trạng thái gửi |
 | 🔃 **Đồng bộ xác nhận từ app** | Kéo trạng thái "nhân viên đã xác nhận" từ app về tick lên sheet (lưới an toàn nếu một lần đẩy bị rớt). | Khi tick xác nhận trên sheet chưa khớp app |
@@ -94,7 +95,16 @@ Mỗi nút "Gửi" chỉ tick được khi cột điều kiện trước nó đ�
 
 > **⚠️ Quy tắc quan trọng — ô "Gửi" đã gửi sẽ bị KHÓA:**
 > Khi một phiếu đã gửi, ô "Gửi BL" của nó **không bỏ tick được nữa**. Nếu lỡ bỏ, hệ thống tự tick lại và báo *"🔒 Đã gửi, không bỏ được"*. Việc này để Sheet luôn khớp với phiếu nhân viên đã nhận.
-> Muốn **sửa/thu hồi** một phiếu đã gửi → **báo admin** (hiện app chưa có nút rút phiếu).
+> Muốn **sửa** một phiếu đã gửi → **KHÔNG** bỏ tick ô "Gửi"; dùng nút **🔄 Gửi lại phiếu** (xem ngay dưới).
+
+### Sửa & gửi lại phiếu đã gửi 🆕
+
+Khi một phiếu đã gửi mà phát hiện sai số, **không bỏ tick ô "Gửi"**. Làm thế này:
+
+1. Sửa số trên tab **"Bảng lương"** (ngay dòng nhân viên đó).
+2. Bấm chọn 1 ô ở dòng đó → menu **⚙ Bảng lương → 🔄 Gửi lại phiếu (dòng đang chọn)** → bấm **Có** để xác nhận.
+3. App nhận **số mới** (ghi đè bản cũ, **không** tạo thêm bản). Nếu số **đổi**, dấu "NV xác nhận" của phiếu đó **tự rụng** → nhân viên phải **xác nhận lại** bản mới. Gửi lại y hệt (không đổi số) thì giữ nguyên xác nhận.
+4. Ô "Gửi" vẫn giữ ✔ (khóa) suốt quá trình — đúng thiết kế.
 
 ---
 

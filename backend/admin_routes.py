@@ -142,6 +142,8 @@ class DingTalkTestPayload(BaseModel):
 MODULE_LIST = [
     "dashboard",
     "paymentRequests",
+    "leadFeedback",         # <-- Feedback lead (sale tạo + xem theo scope)
+    "leadFeedbackReview",   # <-- Quyền nhận xét Block 3 (team MKT), mở rộng được cho phòng khác
     "reconciliation",
     "reconCard",      # <-- Thêm mới phục vụ đối soát mPOS/Payoo
     "module3",
@@ -169,6 +171,7 @@ VALID_MIN_ROLES = {"sale", "leader", "manager"}
 DEFAULT_DEPT_PERMISSIONS: dict[str, dict[str, str]] = {
     "sale": {
         "dashboard": "full", "paymentRequests": "full",
+        "leadFeedback": "full", "leadFeedbackReview": "none",
         "reconciliation": "full", "module3": "full", "module4": "read",
         "revenueLedger": "read", "bc01": "read", "bc02": "read", "bc03": "read", "bc04": "none",
         "module5": "none", "module6": "full",
@@ -178,6 +181,7 @@ DEFAULT_DEPT_PERMISSIONS: dict[str, dict[str, str]] = {
     },
     "hr": {
         "dashboard": "full", "paymentRequests": "full",
+        "leadFeedback": "full", "leadFeedbackReview": "none",
         "reconciliation": "full", "module3": "full", "module4": "full",
         "revenueLedger": "full", "bc01": "full", "bc02": "full", "bc03": "full", "bc04": "full",
         "module5": "full", "module6": "full",
@@ -187,6 +191,7 @@ DEFAULT_DEPT_PERMISSIONS: dict[str, dict[str, str]] = {
     },
     "marketing": {
         "dashboard": "read", "paymentRequests": "none",
+        "leadFeedback": "full", "leadFeedbackReview": "full",
         "reconciliation": "none", "module3": "none", "module4": "none",
         "revenueLedger": "full", "bc01": "read", "bc02": "read", "bc03": "read", "bc04": "none",
         "module5": "none", "module6": "none",
@@ -196,6 +201,7 @@ DEFAULT_DEPT_PERMISSIONS: dict[str, dict[str, str]] = {
     },
     "cs": {
         "dashboard": "read", "paymentRequests": "none",
+        "leadFeedback": "none", "leadFeedbackReview": "none",
         "reconciliation": "none", "module3": "full", "module4": "none",
         "revenueLedger": "none", "bc01": "none", "bc02": "none", "bc03": "none", "bc04": "none",
         "module5": "none", "module6": "none",

@@ -37,6 +37,7 @@ from sepay_routes import register_sepay_routes
 from mpos_import import register_mpos_routes
 from gateway_routes import register_gateway_routes
 from leads_routes import register_leads_routes
+from lead_feedback_routes import register_lead_feedback_routes
 
 CANCEL_ANY_ROLES = {"manager", "system"}
 PAYOS_MAX_SAFE_ORDER_CODE = 9_007_199_254_740_991
@@ -1382,6 +1383,7 @@ register_sepay_routes(app, _supabase)
 register_mpos_routes(app, _supabase)
 register_gateway_routes(app, _supabase)
 register_leads_routes(app, _supabase)
+register_lead_feedback_routes(app, _supabase)
 
 
 _zalo_token_refresh_task = None
