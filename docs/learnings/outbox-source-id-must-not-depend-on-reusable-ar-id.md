@@ -1,0 +1,17 @@
+# source_id outbox KHÔNG được chỉ dựa trên AR id (id bị tái dùng)
+
+**Related files:** `backend/activation_routes.py` (`_ar_notify_nonce`, `_next_ar_id`, `_enqueue_activation_request_created_dingtalk`, `_enqueue_activation_request_created_zalo`), `backend/migrations/2026-10-17-ar-notify-key.sql`, `dingtalk_outbox` / `zalo_outbox`
+
+**Problem:** Tin báo đơn DingTalk (event `activation_request_created`) bị MẤT phần TEXT — sale chỉ thấy ảnh bill, không thấy chữ (phát hiện 17/10: nhà C Phương/Alina 6T). Chị Hiền không search đối soát được vì không có tin text.
+
+**Trap:** Nghĩ worker/DingTalk hỏng. Thực ra tin text CHƯA TỪNG vào outbox. Hai yếu tố cộng lại:
+1. `_next_ar_id` (activation_routes.py:~948) sinh id kiểu `MAX(id)+1`. Khi AR mang số lớn nhất bị **XOÁ**, id đó bị **TÁI DÙNG** cho AR mới (ca thật: AR-2026-1623 cấp cho bé Thương 09:10 → xoá → 11:15 tái cấp cho C Phương).
+2. `source_id` của row outbox = `md5(ar_id[+suffix])`. Bảng có `UNIQUE(source_table, source_id, event_type)` + `_insert_outbox` nuốt lỗi duplicate im lặng. AR cũ (đã xoá) để lại row TEXT với `source_id = md5('AR-2026-1623')`. AR mới cùng id → row TEXT mới **trùng source_id** → ON CONFLICT nuốt → không gửi text. Row ẢNH có `source_id` khác (`:bill:` + hash url) nên vẫn gửi → chỉ còn ảnh.
+
+Vá timestamp (`created_at`) làm nonce thì gần đủ nhưng vẫn dựa vào độ phân giải đồng hồ; owner (anh Minh) chốt dùng **khoá random riêng mỗi dòng** cho chắc chắn by-design.
+
+**Insight:** Không chống được tận gốc bằng cách "đừng tái dùng id" — id tái dùng vẫn có thể va **dữ liệu lịch sử đã xoá** (row outbox mồ côi còn đó), và đổi `_next_ar_id` sang counter bền có rủi ro downstream (Hiền/BQ/UID neo theo id). Lời giải đúng: **làm source_id độc lập với việc id có bị tái dùng hay không** — thêm cột `notify_key uuid NOT NULL DEFAULT gen_random_uuid()` trên `active_requests`, nonce = `@{notify_key}`. Mỗi lần tạo AR (kể cả trùng id) có khoá khác → source_id khác → không bị nuốt. `gen_random_uuid()` là VOLATILE nên `ADD COLUMN` tự backfill uuid riêng cho từng dòng cũ trong lúc rewrite (1 câu, không cần UPDATE). Giữ idempotency `:edit:`/`:append:`: `notify_key` cố định theo AR (không đổi sau insert), suffix vẫn phân biệt từng đợt. Helper trả `""` khi thiếu `notify_key` → công thức rút về `md5(ar_id[+suffix])` cũ → tương thích ngược, code deploy trước migration không crash (chỉ chưa fix tới khi migration chạy). Zalo (`_enqueue_activation_request_created_zalo`) dùng cùng kiểu `md5(ar_id)` nên dính y hệt — sửa đồng bộ.
+
+**Rule:** Khi `source_id` idempotency của outbox dựa trên một khoá thực thể mà khoá đó CÓ THỂ bị tái dùng (id kiểu MAX+1, sequence reset, mã nghiệp vụ tái cấp), source_id PHẢI nhúng thêm một **nonce duy nhất-theo-dòng, bất biến sau tạo** (uuid random trên chính bản ghi). Đừng chỉ dựa khoá thực thể, cũng đừng dựa timestamp (phân giải đồng hồ). Giữ fallback rỗng = công thức cũ để deploy-trước-migration an toàn.
+
+**Verify:** `cd backend && py -3.10 -m pytest tests/test_dingtalk_ar_created.py::TestEnqueueActivationRequestCreatedDingtalk::test_reused_ar_id_distinct_notify_key_no_collision tests/test_dingtalk_ar_created.py::TestEnqueueActivationRequestCreatedDingtalk::test_notify_key_nonce_in_source_id tests/test_zalo_integration.py::TestEnqueueActivationRequestCreatedZalo::test_reused_ar_id_distinct_notify_key_no_collision -q` — phải pass (2 AR cùng id, khác notify_key → source_id khác nhau VÀ khác md5(ar_id) thuần). Migration phải chạy trên **cả prod (jozcvbbypwvzaefteoxn) và sandbox** trước khi fix có tác dụng.

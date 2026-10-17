@@ -1442,6 +1442,27 @@ def _parse_create_ar_payload(raw: Any) -> tuple[str | None, str | None, list[Any
     return None, None, _coerce_uids_payload(raw)
 
 
+def _ar_notify_nonce(saved_ar: dict[str, Any]) -> str:
+    """Nonce bền theo TỪNG AR để source_id outbox KHÔNG chỉ phụ thuộc ar_id.
+
+    `_next_ar_id` sinh id kiểu MAX(id)+1 → khi AR có số lớn nhất bị XOÁ, id đó
+    bị TÁI DÙNG cho AR mới. Nếu source_id = md5(ar_id[+suffix]), tin TEXT của AR
+    mới sẽ TRÙNG source_id với row outbox còn sót của AR cũ (đã xoá) → bị
+    UNIQUE(source_table, source_id, event_type) nuốt im lặng → MẤT chữ, sale chỉ
+    thấy ảnh bill (ca 17/10: C Phương/Alina tái dùng AR-2026-1623 của bé Thương).
+
+    `notify_key` (uuid random, default gen_random_uuid() — xem migration
+    docs/migrations/2026-10-17_add_active_requests_notify_key.sql) là DUY NHẤT cho
+    mỗi dòng AR, kể cả khi id bị tái dùng, và KHÔNG đổi sau insert nên giữ nguyên
+    ngữ nghĩa idempotency theo :edit:/:append: (notify_key cố định, suffix phân
+    biệt từng đợt). Rỗng khi thiếu notify_key (AR cũ trước migration, hoặc migration
+    chưa chạy) → công thức rút về md5(ar_id[+suffix]) cũ → tương thích ngược, không
+    crash, chỉ là chưa chống tái dùng id cho tới khi migration chạy xong.
+    """
+    key = str(saved_ar.get("notify_key") or "").strip()
+    return f"@{key}" if key else ""
+
+
 def _enqueue_activation_request_created_zalo(
     sb, saved_ar: dict[str, Any], pr: dict[str, Any] | None
 ) -> None:
@@ -1536,7 +1557,9 @@ def _enqueue_activation_request_created_zalo(
         )
 
         ar_id = str(saved_ar.get("id") or "")
-        source_uuid = str(uuid.UUID(hashlib.md5(ar_id.encode()).hexdigest()))
+        # nonce theo created_at → AR tái dùng id vẫn ra source_id khác (xem
+        # _ar_notify_nonce). Zalo không có luồng edit/append nên không dùng suffix.
+        source_uuid = str(uuid.UUID(hashlib.md5(f"{ar_id}{_ar_notify_nonce(saved_ar)}".encode()).hexdigest()))
 
         try:
             sb.table("zalo_outbox").insert(
@@ -1978,9 +2001,13 @@ def _enqueue_activation_request_created_dingtalk(
         )
 
         ar_id = str(saved_ar.get("id") or "")
+        # nonce theo created_at → AR tái dùng id (MAX+1 sau khi xoá) vẫn ra source_id
+        # khác, hết nuốt tin TEXT (xem _ar_notify_nonce). Rỗng khi thiếu created_at →
+        # md5(ar_id+suffix) cũ.
+        ar_nonce = _ar_notify_nonce(saved_ar)
         # source_suffix (append lần 2): outbox UNIQUE(source_table, source_id, event_type)
         # — giữ md5(ar_id) là tin bổ sung bị drop im lặng (G3).
-        source_uuid = str(uuid.UUID(hashlib.md5(f"{ar_id}{source_suffix}".encode()).hexdigest()))
+        source_uuid = str(uuid.UUID(hashlib.md5(f"{ar_id}{ar_nonce}{source_suffix}".encode()).hexdigest()))
         outbox_message = result["message"]
         if is_contact_supplement:
             outbox_message = "🔄 SALE VỪA BỔ SUNG THÔNG TIN ĐƠN\n" + outbox_message
@@ -2022,7 +2049,7 @@ def _enqueue_activation_request_created_dingtalk(
         # Create lần đầu (suffix="") giữ nguyên source_id cũ → tương thích ngược.
         for bill in bill_urls:
             bill_hash = hashlib.md5(bill.encode()).hexdigest()
-            bill_source = str(uuid.UUID(hashlib.md5(f"{ar_id}:bill:{bill_hash}{source_suffix}".encode()).hexdigest()))
+            bill_source = str(uuid.UUID(hashlib.md5(f"{ar_id}{ar_nonce}:bill:{bill_hash}{source_suffix}".encode()).hexdigest()))
             try:
                 _insert_outbox({
                     "event_type": "activation_request_created",
