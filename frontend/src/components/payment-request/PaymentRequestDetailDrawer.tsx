@@ -1061,7 +1061,7 @@ export const ActiveRequestMiniCardV2 = memo(function ActiveRequestMiniCardV2({
     <div className={`panel ar-mini-card ${allocation.isOver ? "is-over-allocated" : ""}`}>
       <div className="panel-head ar-mini-head">
         <h4>
-          <Icons.CheckSquare size={15} /> Tạo gói học
+          <Icons.CheckSquare size={15} /> Báo đơn & Tạo gói học
           <span className="num-pill">{ar.id}</span>
         </h4>
         <span
