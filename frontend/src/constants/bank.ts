@@ -31,11 +31,14 @@ export interface BankAccount {
 
 export const BANK_ACCOUNTS: BankAccount[] = [
   {
+    // TK mặc định MB HN — PHẢI lấy từ BANK_INFO để tôn trọng override VITE_BANK_*
+    // trên Vercel prod (nếu hardcode sẽ lệch số TK nhận tiền thật). alias giữ literal
+    // vì nó là khoá lưu bank_account + match dropdown.
     alias: "PalFish Hà Nội - MB Bank",
-    bin: "970422",
-    accountNo: "1680011668899",
-    accountName: "CONG TY TNHH TRUONG QUOC TE PALFISH SINGAPORE - VIETNAM",
-    displayName: "Ngân hàng TMCP Quân Đội (MB Bank)",
+    bin: BANK_INFO.bin,
+    accountNo: BANK_INFO.accountNo,
+    accountName: BANK_INFO.accountName,
+    displayName: BANK_INFO.displayName,
     sepayConnected: true,
   },
   {
