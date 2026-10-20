@@ -78,5 +78,6 @@ export function buildVietQrUrl(amount: number, infoCode: string): string {
     addInfo: infoCode,
     accountName,
   });
-  return `https://img.vietqr.io/image/${bin}-${accountNo}-compact2.png?${params.toString()}`;
+  // .svg: vietqr.io đổi .png/.jpg → 301 sang .svg (301 thiếu CORS) — xem QrViewModal.buildQrUrl.
+  return `https://img.vietqr.io/image/${bin}-${accountNo}-compact2.svg?${params.toString()}`;
 }

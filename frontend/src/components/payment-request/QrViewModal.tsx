@@ -7,11 +7,14 @@ import { vnd } from "./paymentRequestUtils";
 import { formatPhoneIntl } from "./phoneUtils";
 import { HdsdLink } from "../help/HdsdLink";
 
-/** compact2 = QR + logo Napas + logo bank, không có whitespace thừa như print */
+/** compact2 = QR + logo Napas + logo bank, không có whitespace thừa như print.
+ *  Dùng .svg: 20/10/2026 vietqr.io đổi .png/.jpg → 301 redirect sang .svg, mà response
+ *  301 KHÔNG có CORS header → <img crossOrigin="anonymous"> bị chặn ở bước redirect →
+ *  ảnh không load. Trỏ thẳng .svg (có Access-Control-Allow-Origin) để load + capture OK. */
 function buildQrUrl(amount: number, content: string, account: BankAccount): string {
   const { bin, accountNo, accountName } = account;
   const params = new URLSearchParams({ amount: String(amount), addInfo: content, accountName });
-  return `https://img.vietqr.io/image/${bin}-${accountNo}-compact2.png?${params.toString()}`;
+  return `https://img.vietqr.io/image/${bin}-${accountNo}-compact2.svg?${params.toString()}`;
 }
 
 function buildFullBankText(amount: number, transferCode: string, account: BankAccount): string {
