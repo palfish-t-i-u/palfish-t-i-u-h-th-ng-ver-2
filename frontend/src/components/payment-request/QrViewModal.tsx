@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { BANK_INFO } from "../../constants/bank";
+import { findBankAccount, type BankAccount } from "../../constants/bank";
 import type { PaymentAttempt, PaymentRequest } from "../../types/paymentRequest";
 import { findCountry } from "./CountryCombo";
 import { Icons } from "./Icons";
@@ -8,17 +8,17 @@ import { formatPhoneIntl } from "./phoneUtils";
 import { HdsdLink } from "../help/HdsdLink";
 
 /** compact2 = QR + logo Napas + logo bank, không có whitespace thừa như print */
-function buildQrUrl(amount: number, content: string): string {
-  const { bin, accountNo, accountName } = BANK_INFO;
+function buildQrUrl(amount: number, content: string, account: BankAccount): string {
+  const { bin, accountNo, accountName } = account;
   const params = new URLSearchParams({ amount: String(amount), addInfo: content, accountName });
   return `https://img.vietqr.io/image/${bin}-${accountNo}-compact2.png?${params.toString()}`;
 }
 
-function buildFullBankText(amount: number, transferCode: string): string {
+function buildFullBankText(amount: number, transferCode: string, account: BankAccount): string {
   return [
-    `Ngân hàng: ${BANK_INFO.displayName}`,
-    `Chủ tài khoản: ${BANK_INFO.accountName}`,
-    `Số tài khoản: ${BANK_INFO.accountNo}`,
+    `Ngân hàng: ${account.displayName}`,
+    `Chủ tài khoản: ${account.accountName}`,
+    `Số tài khoản: ${account.accountNo}`,
     `Số tiền: ${amount.toLocaleString("vi-VN")} VND`,
     `Nội dung chuyển khoản: ${transferCode}`,
   ].join("\n");
@@ -68,8 +68,10 @@ export default function QrViewModal({
 
   const country = qr && request ? findCountry(request.country) : null;
   const transferCode = qr ? qr.transferContent || qr.code : "";
-  const qrImageUrl = qr ? buildQrUrl(qr.amount, transferCode) : "";
-  const fullBankText = qr ? buildFullBankText(qr.amount, transferCode) : "";
+  // TK nhận theo line.bank (alias). Line cũ (bank rỗng) → fallback MB HN.
+  const account = findBankAccount(qr?.bank ?? "");
+  const qrImageUrl = qr ? buildQrUrl(qr.amount, transferCode, account) : "";
+  const fullBankText = qr ? buildFullBankText(qr.amount, transferCode, account) : "";
   const imgReady = qrImageUrl !== "" && imgReadyUrl === qrImageUrl;
 
   if (!qr || !request || !country) return null;
@@ -301,12 +303,12 @@ export default function QrViewModal({
                   {country.flag} {formatPhoneIntl(request.country, request.phone)} · {request.name}
                 </div>
 
-                <BankInfoRow label="Ngân hàng" value={BANK_INFO.displayName} />
-                <BankInfoRow label="Chủ tài khoản" value={BANK_INFO.accountName} />
+                <BankInfoRow label="Ngân hàng" value={account.displayName} />
+                <BankInfoRow label="Chủ tài khoản" value={account.accountName} />
                 <BankInfoRow
                   label="Số tài khoản"
-                  value={BANK_INFO.accountNo}
-                  onCopy={() => copy(BANK_INFO.accountNo)}
+                  value={account.accountNo}
+                  onCopy={() => copy(account.accountNo)}
                 />
                 <BankInfoRow
                   label="Số tiền"
