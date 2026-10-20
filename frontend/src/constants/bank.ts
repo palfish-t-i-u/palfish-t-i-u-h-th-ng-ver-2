@@ -24,6 +24,9 @@ export interface BankAccount {
   accountNo: string;  // Số tài khoản
   accountName: string; // Tên chủ tài khoản (dùng cho VietQR)
   displayName: string; // Tên ngân hàng đầy đủ
+  /** TK có nối SePay (tự khớp CK) hay không. false = kế toán xác nhận tay
+   *  (line CK của TK này đi tab "Chờ xác nhận" thay vì chờ bank_transaction). */
+  sepayConnected: boolean;
 }
 
 export const BANK_ACCOUNTS: BankAccount[] = [
@@ -33,6 +36,7 @@ export const BANK_ACCOUNTS: BankAccount[] = [
     accountNo: "1680011668899",
     accountName: "CONG TY TNHH TRUONG QUOC TE PALFISH SINGAPORE - VIETNAM",
     displayName: "Ngân hàng TMCP Quân Đội (MB Bank)",
+    sepayConnected: true,
   },
   {
     alias: "PalFish HCM - Vietcombank",
@@ -40,6 +44,7 @@ export const BANK_ACCOUNTS: BankAccount[] = [
     accountNo: "1044914392",
     accountName: "CONG TY TNHH PALFISH CLASS SAI GON",
     displayName: "Ngân hàng TMCP Ngoại Thương Việt Nam (Vietcombank)",
+    sepayConnected: false,
   },
 ];
 
@@ -53,6 +58,14 @@ export function getAvailableBanks(team: string | null | undefined): BankAccount[
 /** Tìm tài khoản theo alias, fallback về tài khoản đầu tiên */
 export function findBankAccount(alias: string): BankAccount {
   return BANK_ACCOUNTS.find((b) => b.alias === alias) ?? BANK_ACCOUNTS[0];
+}
+
+/** Tài khoản nhận này có auto-khớp qua SePay không.
+ *  alias rỗng/không rõ (line cũ) = coi như có (mặc định MB) → giữ hành vi cũ. */
+export function isSepayAccount(alias: string | null | undefined): boolean {
+  if (!alias) return true;
+  const acc = BANK_ACCOUNTS.find((b) => b.alias === alias);
+  return acc ? acc.sepayConnected : true;
 }
 
 export function buildVietQrUrl(amount: number, infoCode: string): string {

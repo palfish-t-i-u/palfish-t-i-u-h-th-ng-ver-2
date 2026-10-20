@@ -198,6 +198,9 @@ class PaymentLineCreate(BaseModel):
     transfer_code: str | None = None
     code: str | None = None
     name_for_transfer: str | None = None
+    # Tài khoản nhận (alias trong BANK_ACCOUNTS, VD "PalFish HCM - Vietcombank").
+    # None = mặc định MB HN (FE fallback). Lưu để QR đổ đúng TK + định tuyến đối soát.
+    bank: str | None = None
     installment_platform: str | None = None
     installment_total: int | str | None = None
     sale_received: int | str | None = None
@@ -751,6 +754,7 @@ def _serialize_payment_line(
         "transfer_code": row.get("transfer_code") or "",
         "transfer_content": row.get("transfer_content") or "",
         "name_for_transfer": row.get("name_for_transfer"),
+        "bank": row.get("bank_account") or None,
         "qr_code": row.get("qr_code") or "",
         "checkout_url": row.get("checkout_url") or "",
         "paid_at": row.get("paid_at") or "",
@@ -792,6 +796,7 @@ def _serialize_payment_for_list(
         "transfer_code": row.get("transfer_code") or "",
         "transfer_content": row.get("transfer_content") or "",
         "name_for_transfer": row.get("name_for_transfer"),
+        "bank": row.get("bank_account") or None,
         "qr_code": row.get("qr_code") or "",
         "checkout_url": row.get("checkout_url") or "",
         "paid_at": paid_at if paid_at else None,
@@ -3185,6 +3190,11 @@ def register_payment_request_routes(app, _get_supabase) -> None:
         student_name = _clean_text(body.student_name) or None
         if student_name:
             insert_row["student_name"] = student_name
+
+        # Tài khoản nhận (QR/card) — lưu alias để QR đổ đúng TK + định tuyến đối soát.
+        bank_account = _clean_text(body.bank) or None
+        if method in ("qr", "card") and bank_account:
+            insert_row["bank_account"] = bank_account
 
         if method == "installment":
             inst_total = _parse_amount(body.installment_total) if body.installment_total is not None else None
