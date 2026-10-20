@@ -946,25 +946,19 @@ def _fetch_prs_by_ids(sb, pr_ids: list[str]) -> dict[str, dict[str, Any]]:
 
 
 def _next_ar_id(sb, year: int | None = None) -> str:
-    yr = year or datetime.now(timezone.utc).year
-    prefix = f"AR-{yr}-"
-    try:
-        res = (
-            sb.table("active_requests")
-            .select("id")
-            .like("id", f"{prefix}%")
-            .order("id", desc=True)
-            .limit(1)
-            .execute()
-        )
-        if res.data:
-            tail = str(res.data[0]["id"]).rsplit("-", 1)[-1]
-            n = int(tail) + 1
-        else:
-            n = 1
-    except Exception:
-        n = 1
-    return f"{prefix}{n:04d}"
+    """Cấp mã AR qua DB sequence atomic (next_active_request_id) — mirror
+    _allocate_pr_id. Counter đơn điệu, KHÔNG phụ thuộc MAX của hàng còn sống →
+    id đã cấp không bao giờ bị cấp lại dù AR bị xoá (ca 20/10: AR-2026-1664 tái
+    dùng sang PR khác sau khi xoá). Bỏ pattern MAX+1 cũ (còn là bug concurrency:
+    2 sale báo đơn cùng giây → trùng id). Xem migration
+    migrations/2026-10-20-ar-id-sequence.sql + docs/learnings/
+    outbox-source-id-must-not-depend-on-reusable-ar-id.md."""
+    from rpc_helpers import rpc_next_active_request_id
+
+    ar_id = rpc_next_active_request_id(sb, year).strip()
+    if not ar_id:
+        raise HTTPException(500, "RPC next_active_request_id không trả mã AR")
+    return ar_id
 
 
 def _fetch_payment_request(sb, pr_id: str) -> dict[str, Any]:
@@ -2753,6 +2747,27 @@ def register_activation_routes(app, supabase_factory):
             sb.table("active_requests").delete().eq("id", ar_id).execute()
         except Exception as exc:
             raise HTTPException(500, f"Khong xoa active_requests: {exc}") from exc
+
+        # Ghi audit + snapshot để truy vết (ai/khi nào) VÀ khôi phục được. Trước
+        # đây xoá AR không để lại dấu vết nào → ca 20/10 (Chị Thái) không biết ai
+        # xoá, phải đào ops_ar_change_log để dựng lại. log_audit tự nuốt lỗi,
+        # không bao giờ làm hỏng thao tác xoá.
+        from audit import log_audit
+
+        log_audit(
+            sb,
+            actor.email,
+            "activation.ar_deleted",
+            "active_request",
+            ar_id,
+            {
+                "pr_id": row.get("pr_id"),
+                "status": row.get("status"),
+                "customer_name": row.get("customer_name"),
+                "course_count": len(courses),
+                "uids_data": row.get("uids_data") or [],
+            },
+        )
 
         return {"ok": True, "id": ar_id}
 

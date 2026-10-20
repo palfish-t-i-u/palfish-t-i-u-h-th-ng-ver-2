@@ -52,6 +52,23 @@ def rpc_next_payment_request_id(sb, year: int | None = None) -> str:
     return str(row or "")
 
 
+def rpc_next_active_request_id(sb, year: int | None = None) -> str:
+    params: dict[str, Any] = {}
+    if year is not None:
+        params["p_year"] = year
+    row = rpc_first_row(sb, "next_active_request_id", params)
+    if isinstance(row, str):
+        return row
+    if isinstance(row, dict):
+        return str(
+            row.get("next_active_request_id")
+            or row.get("ar_id")
+            or row.get("id")
+            or ""
+        )
+    return str(row or "")
+
+
 def _raise_ar_rpc_error(exc: Exception, fn: str) -> None:
     msg = str(exc).lower()
     if "active_request_not_found" in msg:
