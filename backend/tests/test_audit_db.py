@@ -292,3 +292,41 @@ class TestDB07_RevenueFetchBounded:
                     "DB-07 FAIL: Vòng lặp fetch so_doanh_thu vẫn không có giới hạn. "
                     "Manager xem báo cáo BC01/BC02 cả năm → server load vô hạn → đơ/crash."
                 )
+
+
+# ─────────────────────────────────────────────
+# DB-08 · Mã Active Request phải dùng DB sequence, không MAX+1
+# ─────────────────────────────────────────────
+# Tình huống: xoá AR mang số lớn nhất → _next_ar_id MAX+1 cấp lại chính id đó cho
+# AR mới của PR khác → audit/outbox/BQ neo theo id trỏ nhầm đơn (ca thật 20/10:
+# AR-2026-1664 / PR-2026-2376 "Chị Thái" bị xoá → 1664 tái cấp cho PR-2026-2514).
+# Cũng là bug concurrency: 2 sale báo đơn cùng giây → trùng id.
+
+class TestDB08_ActiveRequestSequenceAtomic:
+
+    def test_next_ar_id_uses_db_sequence(self):
+        """
+        Verify _next_ar_id() không còn pattern: select max(id) → +1.
+        Fix đúng = dùng next_active_request_id RPC (DB sequence đơn điệu).
+        """
+        import activation_routes as ar_mod
+
+        source = inspect.getsource(ar_mod._next_ar_id)
+
+        has_select_then_compute = bool(
+            re.search(r'\.select\(', source) and re.search(r'\+\s*1', source)
+        )
+        has_rpc_or_nextval = bool(
+            re.search(
+                r'(\.rpc\(|rpc_next_active_request_id|next_active_request_id|nextval)',
+                source, re.I,
+            )
+        )
+
+        if has_select_then_compute and not has_rpc_or_nextval:
+            pytest.fail(
+                "DB-08 FAIL: _next_ar_id() vẫn dùng MAX(id)+1. Xoá AR có id lớn nhất "
+                "→ id tái dùng cho AR mới của PR khác → audit/outbox/BQ trỏ nhầm đơn; "
+                "2 sale báo đơn cùng lúc → trùng mã AR. "
+                "Cần chuyển sang next_active_request_id (DB sequence)."
+            )
