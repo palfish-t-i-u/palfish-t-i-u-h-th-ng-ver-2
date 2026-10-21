@@ -1716,6 +1716,9 @@
 .gmv-prototype .ar-mini-course.is-editing {
   grid-template-columns: minmax(0, 1fr) 130px auto auto;
   border-left-color: var(--border);
+  /* Cột tên gói cao hơn (có label course code) nên center làm ô số tiền/toggle
+     tụt xuống giữa — căn top để ô số tiền thẳng hàng với ô tên gói. */
+  align-items: start;
 }
 /* Course code monospace */
 .gmv-prototype .ar-course-code {
