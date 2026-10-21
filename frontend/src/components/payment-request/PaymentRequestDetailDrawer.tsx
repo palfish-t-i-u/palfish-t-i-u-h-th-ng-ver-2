@@ -896,6 +896,17 @@ export const ActiveRequestMiniCardV2 = memo(function ActiveRequestMiniCardV2({
     }));
   };
 
+  // Đổi đầu số (country) của UID block — khách nước ngoài (JP +81, DE +49...).
+  // CountryCombo trả code trực tiếp → commit ngay (không qua draft như uid/phone).
+  const commitCountry = (uidIdx: number, code: string) => {
+    const current = view.uids[uidIdx]?.country ?? "";
+    if (code === current) return;
+    mutate((next) => ({
+      ...next,
+      uids: next.uids.map((u, idx) => (idx === uidIdx ? { ...u, country: code } : u)),
+    }));
+  };
+
   const commitAmount = (uidIdx: number, courseCode: string) => {
     const raw = (amountDrafts[courseCode] ?? "").replace(/[^\d]/g, "");
     const nextAmount = raw ? Number(raw) : 0;
@@ -1216,26 +1227,31 @@ export const ActiveRequestMiniCardV2 = memo(function ActiveRequestMiniCardV2({
                   background: "white",
                 }}
               />
-              <input
-                value={phoneDrafts[uIdx] ?? u.phone ?? ""}
-                onChange={(e) =>
-                  setPhoneDrafts((prev) => ({
-                    ...prev,
-                    [uIdx]: e.target.value.replace(/[^\d]/g, ""),
-                  }))
-                }
-                onBlur={() => commitPhone(uIdx)}
-                placeholder={`Chỉ nhập phần số, VD: ${findCountry(u.country).exampleLocal.replace(/\s/g, "")}`}
-                style={{
-                  border: "1px solid var(--border)",
-                  borderRadius: 8,
-                  padding: "7px 9px",
-                  fontFamily: "JetBrains Mono, monospace",
-                  fontSize: 12,
-                  outline: "none",
-                  background: "white",
-                }}
-              />
+              <div style={{ display: "flex", gap: 6, minWidth: 0 }}>
+                <CountryCombo value={u.country} onChange={(code) => commitCountry(uIdx, code)} />
+                <input
+                  value={phoneDrafts[uIdx] ?? u.phone ?? ""}
+                  onChange={(e) =>
+                    setPhoneDrafts((prev) => ({
+                      ...prev,
+                      [uIdx]: e.target.value.replace(/[^\d]/g, ""),
+                    }))
+                  }
+                  onBlur={() => commitPhone(uIdx)}
+                  placeholder={`Chỉ nhập phần số, VD: ${findCountry(u.country).exampleLocal.replace(/\s/g, "")}`}
+                  style={{
+                    flex: 1,
+                    minWidth: 0,
+                    border: "1px solid var(--border)",
+                    borderRadius: 8,
+                    padding: "7px 9px",
+                    fontFamily: "JetBrains Mono, monospace",
+                    fontSize: 12,
+                    outline: "none",
+                    background: "white",
+                  }}
+                />
+              </div>
               <button type="button" className="btn btn-outline btn-sm" disabled={!canAddMore} onClick={() => addCourseForUid(uIdx)}
                 title={!canAddMore ? "Đã phân bổ hết tiền đã nhận — không thể thêm gói" : "Thêm gói khoá học"}>
                 <Icons.Plus size={12} /> Thêm gói
@@ -1360,6 +1376,9 @@ export const ActiveRequestMiniCardV2 = memo(function ActiveRequestMiniCardV2({
                       title={courseLocked ? "Đã tạo gói học — Sales không thể đổi số tiền" : undefined}
                       style={{
                         display: editing ? "block" : "none",
+                        // Khớp chiều cao ô Combobox tên gói (min-h-10 = 40px) để 2 ô bằng nhau.
+                        minHeight: 40,
+                        boxSizing: "border-box",
                         border: "1px solid var(--border)",
                         borderRadius: 8,
                         padding: "7px 9px",
