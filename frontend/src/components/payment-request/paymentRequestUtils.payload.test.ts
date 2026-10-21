@@ -57,3 +57,29 @@ describe("buildCreateActiveRequestPayload — phone per bé (18/7)", () => {
     expect(p.uids[1].country).toBe("CZ");
   });
 });
+
+describe("buildCreateActiveRequestPayload — bàn giao CS per-bé (khâu 1)", () => {
+  it("map care fields vào course, 2 bé giữ riêng Contact/Note", () => {
+    const p = buildCreateActiveRequestPayload(PR, [
+      row({ childName: "Uy Kha", uid: "U1", careChannel: "Zalo", careContactId: "84-937865100", handoverNote: "care kĩ" }),
+      row({ childName: "Mai Kha", uid: "U2", careChannel: "Zalo", careContactId: "84-949501528", handoverNote: "hướng nội" }),
+    ]);
+    const c1 = p.uids[0].courses[0];
+    const c2 = p.uids[1].courses[0];
+    expect(c1.care_channel).toBe("Zalo");
+    expect(c1.care_contact_id).toBe("84-937865100");
+    expect(c1.handover_note).toBe("care kĩ");
+    expect(c2.care_contact_id).toBe("84-949501528");
+    expect(c2.handover_note).toBe("hướng nội");
+  });
+
+  it("bỏ qua care field rỗng / chỉ khoảng trắng", () => {
+    const course = buildCreateActiveRequestPayload(
+      PR,
+      [row({ careChannel: "", careContactId: "   ", handoverNote: "" })]
+    ).uids[0].courses[0];
+    expect(course.care_channel).toBeUndefined();
+    expect(course.care_contact_id).toBeUndefined();
+    expect(course.handover_note).toBeUndefined();
+  });
+});

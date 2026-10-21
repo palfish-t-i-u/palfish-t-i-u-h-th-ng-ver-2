@@ -73,6 +73,10 @@ class ActiveRequestPatchCoursePayload(BaseModel):
     tax_product_code: str | None = ""
     lead_source: str | None = None
     lead_channel: str | None = None
+    # Sale→CS handover (khâu 1) per-course — bàn giao cho CS theo từng bé
+    care_channel: str | None = None
+    care_contact_id: str | None = None
+    handover_note: str | None = None
     # Cộng buổi referral (nguồn = gioi_thieu): persist trong uids_data JSONB
     referrer_uid: str | None = None
     bonus_sessions_referee: int | None = None
@@ -300,6 +304,16 @@ def _assign_course_codes(uids_in: list[Any], pr_id: str, start_seq: int = 1) -> 
             lc = str(c.get("lead_channel") or "").strip()
             if lc:
                 norm_course["lead_channel"] = lc
+            # Sale→CS handover (khâu 1) per-course — lưu để đổ sheet bàn giao khi có Order ID
+            care_ch = str(c.get("care_channel") or "").strip()
+            if care_ch:
+                norm_course["care_channel"] = care_ch
+            care_cid = str(c.get("care_contact_id") or "").strip()
+            if care_cid:
+                norm_course["care_contact_id"] = care_cid
+            handover_note = str(c.get("handover_note") or "").strip()
+            if handover_note:
+                norm_course["handover_note"] = handover_note
             ref_uid = str(c.get("referrer_uid") or c.get("referrerUid") or "").strip()
             if ref_uid:
                 norm_course["referrer_uid"] = ref_uid
