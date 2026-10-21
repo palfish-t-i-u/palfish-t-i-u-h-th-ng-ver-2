@@ -1376,6 +1376,9 @@ export const ActiveRequestMiniCardV2 = memo(function ActiveRequestMiniCardV2({
                       title={courseLocked ? "Đã tạo gói học — Sales không thể đổi số tiền" : undefined}
                       style={{
                         display: editing ? "block" : "none",
+                        // Khớp chiều cao ô Combobox tên gói (min-h-10 = 40px) để 2 ô bằng nhau.
+                        minHeight: 40,
+                        boxSizing: "border-box",
                         border: "1px solid var(--border)",
                         borderRadius: 8,
                         padding: "7px 9px",
