@@ -49,7 +49,9 @@ _FIELD_HEADERS: dict[str, list[str]] = {
     "ten_hoc_sinh": ["Tên học sinh"],
     "uid": ["UID"],
     "sdt": ["SDT KH", "SDT", "SĐT"],
-    "goi_hoc": ["Gói học"],
+    # Gói học: KHÔNG auto-ghi. App dùng mã CRM nội bộ (vd "2/W- NEW 24 PHI+2 HN",
+    # đếm theo buổi) còn cột sheet là dropdown nhãn theo tháng ("Philipine 6 tháng").
+    # Quy đổi buổi→tháng lossy + sheet dropdown sai chính tả → để trống cho sale/CS chọn.
     "so_tien": ["Số tiền"],
     "kenh_cham_soc": ["Kênh liên hệ"],
     "contact_id": ["Contact ID"],
@@ -87,7 +89,7 @@ def build_field_values(
         "ten_hoc_sinh": str(uid_block.get("name") or pr.get("child_name") or ""),
         "uid": str(uid_block.get("uid") or ""),
         "sdt": str(uid_block.get("phone") or pr.get("phone") or ""),
-        "goi_hoc": str(course.get("name") or ""),
+        # goi_hoc bỏ: sale/CS tự chọn dropdown (xem _FIELD_HEADERS).
         "so_tien": course.get("amount") or "",
         "kenh_cham_soc": str(course.get("care_channel") or ""),
         "contact_id": str(course.get("care_contact_id") or ""),

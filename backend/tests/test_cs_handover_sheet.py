@@ -78,7 +78,7 @@ class TestRowMapping:
         assert row[5] == "3307581410"          # UID
         assert row[6] == "84-937865100"        # SDT KH
         assert row[9] == "Zalo"                # Kênh liên hệ
-        assert row[10] == "Philipine 12 tháng"  # Gói học
+        assert row[10] == ""                   # Gói học để trống (sale/CS tự chọn dropdown)
         assert row[11] == 17820000             # Số tiền (startswith)
         assert row[12] == "care kĩ"            # Ghi chú (ô SALE, index 12 — KHÔNG phải 18 GVCN)
         assert row[18] == ""                   # Ghi chú GVCN để trống
@@ -93,7 +93,7 @@ class TestRowMapping:
         assert row[4] == "84-937865100"        # SDT
         assert row[5] == "3307581410"          # UID
         assert row[7] == 17820000              # Số tiền
-        assert row[9] == "Philipine 12 tháng"  # Gói học
+        assert row[9] == ""                    # Gói học để trống (sale/CS tự chọn dropdown)
         assert row[13] == "care kĩ"            # Note (ô sale) — KHÔNG phải "Ghi chú" (17 GVCN)
         assert row[17] == ""                   # Ghi chú GVCN để trống
         assert row[20] == "Zalo"               # Kênh liên hệ
