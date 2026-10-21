@@ -2548,6 +2548,24 @@ def _stamp_order_id_changes(
     return audit_changes
 
 
+def _push_cs_handover_for_oid_changes(sb, ar_row, oid_changes) -> None:
+    """Sale→CS handover (khâu 1): order_id set qua đường full-PATCH detail drawer → đẩy
+    dòng bàn giao sang Google Sheet cho MỖI course vừa được gán order_id. Non-fatal +
+    idempotent (dedup handover_pushed_at), nên trùng với đường per-course cũng an toàn."""
+    try:
+        from cs_handover_sheet import maybe_push_cs_handover
+    except Exception as exc:
+        print(f"[cs_handover] import lỗi (non-fatal): {exc}")
+        return
+    for oc in oid_changes or []:
+        if oc.get("action") != "set":
+            continue
+        try:
+            maybe_push_cs_handover(sb, ar_row, oc.get("code"))
+        except Exception as exc:
+            print(f"[cs_handover] full-PATCH hook failed (non-fatal): {exc}")
+
+
 def register_activation_routes(app, supabase_factory):
 
     @app.get("/api/v1/active-requests", tags=["Activation"])
@@ -2924,6 +2942,7 @@ def register_activation_routes(app, supabase_factory):
                         ) from exc
                 pr_map = _fetch_prs_by_ids(sb, [str(merged.get("pr_id") or "")])
                 _maybe_enqueue_ar_edit_dingtalk(sb, current, merged, pr_map)
+                _push_cs_handover_for_oid_changes(sb, merged, oid_changes)
                 return _serialize_ar_with_hold(sb, merged, pr_map.get(str(merged.get("pr_id") or "")), tien_ve=_tien_ve_courses(sb, ar_id))
             patch["uids_data"] = uids_data
             patch["status"] = guarded_status
@@ -2966,6 +2985,7 @@ def register_activation_routes(app, supabase_factory):
                 sb.rpc("enqueue_course_activated_if_all_ordered", {"p_ar_id": ar_id}).execute()
             except Exception as exc:
                 print(f"[dingtalk] course_activated backstop failed (non-fatal): {exc}")
+            _push_cs_handover_for_oid_changes(sb, merged, oid_changes)
         return _serialize_ar_with_hold(sb, merged, pr_map.get(str(merged.get("pr_id") or "")), tien_ve=_tien_ve_courses(sb, ar_id))
 
     @app.patch("/api/v1/active-requests/{ar_id}/credit-referral", tags=["Activation"])
