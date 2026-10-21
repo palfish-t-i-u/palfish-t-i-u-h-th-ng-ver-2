@@ -3279,6 +3279,12 @@ def register_activation_routes(app, supabase_factory):
                 sb.rpc("enqueue_course_activated_if_all_ordered", {"p_ar_id": ar_id}).execute()
             except Exception as exc:
                 print(f"[dingtalk] course_activated backstop failed (non-fatal): {exc}")
+            # Sale→CS handover (khâu 1): đẩy dòng bàn giao sang Google Sheet khi course có order_id
+            try:
+                from cs_handover_sheet import maybe_push_cs_handover
+                maybe_push_cs_handover(sb, row, course_code)
+            except Exception as exc:
+                print(f"[cs_handover] hook failed (non-fatal): {exc}")
             pr_map = _fetch_prs_by_ids(sb, [str(row.get("pr_id") or "")])
             return _serialize_ar_with_hold(sb, row, pr_map.get(str(row.get("pr_id") or "")),
                                            tien_ve=_tien_ve_courses(sb, ar_id))

@@ -3,6 +3,13 @@
 > Người soạn: Claude (phiên GMV) · Nguồn yêu cầu: `palfish-cs-ops/docs/14` mục D + meeting note Lark 16/10 + xác nhận anh Minh 21/10.
 > Trạng thái: **✅ ĐÃ CODE (B+ per-bé) — render thật đã xác nhận, chưa commit.** Chi tiết §9.
 
+## 11. G3 — Ghi Google Sheet (SA-direct) · DONE 21/10 (chưa commit)
+Chốt (anh Minh + Hoàng 21/10): đẩy **cả KH mới + gia hạn** về sheet kèm **tag "KH mới"/"Gia hạn"**; gia hạn KHÔNG nhảy ticket chia CS (khâu 2 app CS tự lọc, ngoài GMV).
+- **Module `backend/cs_handover_sheet.py`**: write client scope `spreadsheets` (dùng lại `GOOGLE_SERVICE_ACCOUNT_JSON`); `resolve_route(team, is_gia_han)` → (sheet, tab) cho 4 team (Offline/Linh Dam/An Bình→tab chung Offline; Inhouse 2→tab mới/gia hạn Team 2; HCM→tab chung; Inhouse 1→tab mới/gia hạn); `build_field_values` + `build_row_values` map theo TÊN cột (ứng viên: Sale/TVTS, Tên KH/Họ tên, SDT KH/SDT, Note/Ghi chú(ô sale đầu tiên), Kênh liên hệ, Contact ID, tag KH mới/gia hạn — tab chung); `_read_header_cells` dò dòng chứa "STT" (KH mới header dòng 2, Team 2 dòng 1); `maybe_push_cs_handover` non-fatal + dedup `handover_pushed_at` per-course (JSONB, không migration).
+- **Hook** `activation_routes.py` trong `patch_active_request_course` sau backstop (chỗ order_id set + sync Sổ) — non-fatal.
+- Verify: `py_compile` ✅; standalone (python thuần) + pytest `tests/test_cs_handover_sheet.py` (routing/field/mapping 2 schema + note→Ghi chú ô sale vs Note Team 2 + orchestration happy/dedup/no-orderid/unrouted) ✅. (pytest chạy ở CI; worktree thiếu pytest → verify bằng standalone.)
+- ⚠️ Runtime cần: anh thêm cột `Contact ID`(+`Kênh liên hệ` tab Team 2/gia hạn) + SA editor 3 sheet. Ghi theo tên nên chạy ngay khi cột xuất hiện; thiếu cột → bỏ qua field (log).
+
 ## 9. CHỐT CUỐI — B+ (bàn giao per-bé) · 21/10
 "Báo đơn" = nút **"Báo đơn & Tạo gói học"** (B3, modal `arPackageModal` trong `PaymentRequestDetailDrawer.tsx`). Mỗi bé/đơn cùng phụ huynh có thể khác Contact ID + Note (ảnh sheet IH1: Uy Kha 84-937865100 vs Mai Kha 84-949501528) → **3 trường per-dòng-gói**, KHÔNG dùng chung.
 - **UI**: khung "Bàn giao cho CS — bé này" trong MỖI dòng gói (`arDraftRows.map`); gate `arRowsValid` += `isHandoverComplete(r.careChannel, r.careContactId, r.handoverNote)` (chặn cứng mỗi dòng, cả create + append); nút "Thêm gói" **prefill Kênh + Contact ID từ dòng trước** (Note để trống).
