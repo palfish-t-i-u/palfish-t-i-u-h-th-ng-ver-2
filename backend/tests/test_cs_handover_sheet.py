@@ -3,6 +3,8 @@ from cs_handover_sheet import (
     resolve_route,
     build_field_values,
     build_row_values,
+    _col_a1,
+    _row_segments,
 )
 
 # Header thật (rút gọn) — KH mới (Offline, dòng 2) vs Team 2 (dòng 1).
@@ -106,6 +108,29 @@ class TestRowMapping:
         assert row[2] == "C Liên"
         assert row[4] == "care kĩ"
         assert len(row) == 5
+
+
+class TestProtectedColsSkip:
+    """Né cột protected (T/U 'chỉ xem' trên tab Offline) khi ghi — cắt row thành đoạn liền kề."""
+
+    def test_col_a1(self):
+        assert _col_a1(0) == "A"
+        assert _col_a1(19) == "T"
+        assert _col_a1(20) == "U"
+        assert _col_a1(21) == "V"
+        assert _col_a1(26) == "AA"
+
+    def test_segments_skip_middle_cols(self):
+        # Offline: block T(19)+U(20) → A..S (0..18) + V(21), chừa T/U
+        row = [f"c{i}" for i in range(22)]
+        segs = _row_segments(row, {19, 20})
+        assert segs == [(0, [f"c{i}" for i in range(19)]), (21, ["c21"])]
+
+    def test_segments_no_block(self):
+        assert _row_segments(["a", "b", "c"], set()) == [(0, ["a", "b", "c"])]
+
+    def test_segments_block_at_start(self):
+        assert _row_segments(["a", "b", "c"], {0}) == [(1, ["b", "c"])]
 
 
 def _ar(is_gia_han=True, order_id="X", pushed=False):

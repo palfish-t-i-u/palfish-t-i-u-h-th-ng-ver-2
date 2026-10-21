@@ -12,6 +12,7 @@ Non-fatal: lỗi ghi sheet KHÔNG làm fail việc gắn order_id/ledger. Dedup 
 from __future__ import annotations
 
 import os
+import re
 from datetime import datetime, timezone
 from typing import Any
 
@@ -162,14 +163,102 @@ def _read_header_cells(service, spreadsheet_id: str, tab: str) -> list[Any]:
     return []
 
 
+def _col_a1(idx0: int) -> str:
+    """0 -> A, 25 -> Z, 26 -> AA."""
+    s, n = "", idx0
+    while True:
+        s = chr(ord("A") + n % 26) + s
+        n = n // 26 - 1
+        if n < 0:
+            return s
+
+
+def _protected_cols(service, spreadsheet_id: str, tab: str) -> set[int]:
+    """Cột (index 0-based) bị khóa 'chỉ xem' trên tab — protected range toàn cột (không chặn hàng).
+
+    append/update chạm vào ô protected (kể cả ghi rỗng) sẽ bị Google từ chối → né các cột này.
+    """
+    try:
+        meta = (
+            service.spreadsheets()
+            .get(
+                spreadsheetId=spreadsheet_id,
+                fields="sheets(properties(title),protectedRanges(range(startRowIndex,endRowIndex,startColumnIndex,endColumnIndex)))",
+            )
+            .execute()
+        )
+    except Exception as exc:
+        print(f"[cs_handover] đọc protected range lỗi (bỏ qua): {exc}")
+        return set()
+    blocked: set[int] = set()
+    for sh in meta.get("sheets", []) or []:
+        if (sh.get("properties") or {}).get("title") != tab:
+            continue
+        for pr in sh.get("protectedRanges", []) or []:
+            rng = pr.get("range") or {}
+            # Chỉ né protected range toàn cột (không giới hạn hàng) — mới chặn hàng append mới.
+            if rng.get("startRowIndex") is None and rng.get("endRowIndex") is None:
+                c0, c1 = rng.get("startColumnIndex"), rng.get("endColumnIndex")
+                if c0 is not None and c1 is not None:
+                    blocked.update(range(c0, c1))
+    return blocked
+
+
+def _row_segments(row: list[Any], blocked: set[int]) -> list[tuple[int, list[Any]]]:
+    """Cắt row thành các đoạn cột liền nhau, bỏ cột bị khóa. Trả [(start_col0, [values])]."""
+    segs: list[tuple[int, list[Any]]] = []
+    cur_start: int | None = None
+    cur: list[Any] = []
+    for i, v in enumerate(row):
+        if i in blocked:
+            if cur:
+                segs.append((cur_start, cur))
+            cur_start, cur = None, []
+            continue
+        if cur_start is None:
+            cur_start = i
+        cur.append(v)
+    if cur:
+        segs.append((cur_start, cur))
+    return segs
+
+
 def _append_row(service, spreadsheet_id: str, tab: str, row: list[Any]) -> None:
-    service.spreadsheets().values().append(
-        spreadsheetId=spreadsheet_id,
-        range=f"'{tab}'!A1",
-        valueInputOption="USER_ENTERED",
-        insertDataOption="INSERT_ROWS",
-        body={"values": [row]},
-    ).execute()
+    """Ghi 1 hàng, né các cột bị khóa (chỉ xem). append đoạn đầu để lấy số hàng, update phần còn lại."""
+    blocked = _protected_cols(service, spreadsheet_id, tab)
+    segs = _row_segments(row, blocked)
+    if not segs:
+        return
+    # Đoạn đầu: append để Google tự chọn hàng mới + trả về vị trí đã ghi.
+    s0_col, s0_vals = segs[0]
+    res = (
+        service.spreadsheets()
+        .values()
+        .append(
+            spreadsheetId=spreadsheet_id,
+            range=f"'{tab}'!{_col_a1(s0_col)}1",
+            valueInputOption="USER_ENTERED",
+            # OVERWRITE (không INSERT_ROWS): ghi vào hàng trống sẵn dưới bảng, không chèn
+            # hàng mới — tránh chạm cột protected toàn-cột (T/U "chỉ xem") gây lỗi 400.
+            insertDataOption="OVERWRITE",
+            body={"values": [s0_vals]},
+        )
+        .execute()
+    )
+    updated = (res.get("updates") or {}).get("updatedRange") or ""
+    # updatedRange: "'tab'!A252:S252" → lấy số hàng.
+    m = re.search(r"(\d+)(?!.*\d)", updated)
+    if not m:
+        return
+    row_no = int(m.group(1))
+    # Các đoạn còn lại: update đúng hàng đó (các cột này không bị khóa).
+    for col0, vals in segs[1:]:
+        service.spreadsheets().values().update(
+            spreadsheetId=spreadsheet_id,
+            range=f"'{tab}'!{_col_a1(col0)}{row_no}",
+            valueInputOption="USER_ENTERED",
+            body={"values": [vals]},
+        ).execute()
 
 
 # --- Supabase helpers ---
