@@ -156,6 +156,25 @@ describe("ActiveRequestMiniCardV2 — sửa AR (fix lag 9/9: draft cục bộ + 
     expect(amount).toHaveStyle({ display: "none" });
   });
 
+  it("Đầu số: đổi country qua CountryCombo → Lưu gửi country mới cho UID block, giữ nguyên SĐT", () => {
+    const { onActiveRequestSave } = setup();
+    clickEdit();
+    // Trigger combo hiện dial hiện tại (+84); mở, tìm Japan, chọn
+    fireEvent.click(screen.getByRole("button", { name: /\+84/ }));
+    fireEvent.change(screen.getByPlaceholderText(/Tìm theo tên hoặc đầu số/), {
+      target: { value: "japan" },
+    });
+    fireEvent.click(screen.getByText("Japan"));
+
+    clickSave();
+
+    expect(onActiveRequestSave).toHaveBeenCalledTimes(1);
+    const arg = onActiveRequestSave.mock.calls[0][0] as ActiveRequest;
+    expect(arg.uids[0].country).toBe("JP");
+    // đổi đầu số KHÔNG đụng đuôi số
+    expect(arg.uids[0].phone).toBe("905815681");
+  });
+
   it("B6: radio hold khi đang sửa vẫn ghi thẳng context (không vào draft)", async () => {
     server.use(
       http.patch("*/api/v1/active-requests/:id", () => HttpResponse.json({ ok: true }))
