@@ -73,6 +73,10 @@ class ActiveRequestPatchCoursePayload(BaseModel):
     tax_product_code: str | None = ""
     lead_source: str | None = None
     lead_channel: str | None = None
+    # Sale→CS handover (khâu 1) per-course — bàn giao cho CS theo từng bé
+    care_channel: str | None = None
+    care_contact_id: str | None = None
+    handover_note: str | None = None
     # Cộng buổi referral (nguồn = gioi_thieu): persist trong uids_data JSONB
     referrer_uid: str | None = None
     bonus_sessions_referee: int | None = None
@@ -300,6 +304,16 @@ def _assign_course_codes(uids_in: list[Any], pr_id: str, start_seq: int = 1) -> 
             lc = str(c.get("lead_channel") or "").strip()
             if lc:
                 norm_course["lead_channel"] = lc
+            # Sale→CS handover (khâu 1) per-course — lưu để đổ sheet bàn giao khi có Order ID
+            care_ch = str(c.get("care_channel") or "").strip()
+            if care_ch:
+                norm_course["care_channel"] = care_ch
+            care_cid = str(c.get("care_contact_id") or "").strip()
+            if care_cid:
+                norm_course["care_contact_id"] = care_cid
+            handover_note = str(c.get("handover_note") or "").strip()
+            if handover_note:
+                norm_course["handover_note"] = handover_note
             ref_uid = str(c.get("referrer_uid") or c.get("referrerUid") or "").strip()
             if ref_uid:
                 norm_course["referrer_uid"] = ref_uid
@@ -2534,6 +2548,24 @@ def _stamp_order_id_changes(
     return audit_changes
 
 
+def _push_cs_handover_for_oid_changes(sb, ar_row, oid_changes) -> None:
+    """Sale→CS handover (khâu 1): order_id set qua đường full-PATCH detail drawer → đẩy
+    dòng bàn giao sang Google Sheet cho MỖI course vừa được gán order_id. Non-fatal +
+    idempotent (dedup handover_pushed_at), nên trùng với đường per-course cũng an toàn."""
+    try:
+        from cs_handover_sheet import maybe_push_cs_handover
+    except Exception as exc:
+        print(f"[cs_handover] import lỗi (non-fatal): {exc}")
+        return
+    for oc in oid_changes or []:
+        if oc.get("action") != "set":
+            continue
+        try:
+            maybe_push_cs_handover(sb, ar_row, oc.get("code"))
+        except Exception as exc:
+            print(f"[cs_handover] full-PATCH hook failed (non-fatal): {exc}")
+
+
 def register_activation_routes(app, supabase_factory):
 
     @app.get("/api/v1/active-requests", tags=["Activation"])
@@ -2910,6 +2942,7 @@ def register_activation_routes(app, supabase_factory):
                         ) from exc
                 pr_map = _fetch_prs_by_ids(sb, [str(merged.get("pr_id") or "")])
                 _maybe_enqueue_ar_edit_dingtalk(sb, current, merged, pr_map)
+                _push_cs_handover_for_oid_changes(sb, merged, oid_changes)
                 return _serialize_ar_with_hold(sb, merged, pr_map.get(str(merged.get("pr_id") or "")), tien_ve=_tien_ve_courses(sb, ar_id))
             patch["uids_data"] = uids_data
             patch["status"] = guarded_status
@@ -2952,6 +2985,7 @@ def register_activation_routes(app, supabase_factory):
                 sb.rpc("enqueue_course_activated_if_all_ordered", {"p_ar_id": ar_id}).execute()
             except Exception as exc:
                 print(f"[dingtalk] course_activated backstop failed (non-fatal): {exc}")
+            _push_cs_handover_for_oid_changes(sb, merged, oid_changes)
         return _serialize_ar_with_hold(sb, merged, pr_map.get(str(merged.get("pr_id") or "")), tien_ve=_tien_ve_courses(sb, ar_id))
 
     @app.patch("/api/v1/active-requests/{ar_id}/credit-referral", tags=["Activation"])
@@ -3265,6 +3299,12 @@ def register_activation_routes(app, supabase_factory):
                 sb.rpc("enqueue_course_activated_if_all_ordered", {"p_ar_id": ar_id}).execute()
             except Exception as exc:
                 print(f"[dingtalk] course_activated backstop failed (non-fatal): {exc}")
+            # Sale→CS handover (khâu 1): đẩy dòng bàn giao sang Google Sheet khi course có order_id
+            try:
+                from cs_handover_sheet import maybe_push_cs_handover
+                maybe_push_cs_handover(sb, row, course_code)
+            except Exception as exc:
+                print(f"[cs_handover] hook failed (non-fatal): {exc}")
             pr_map = _fetch_prs_by_ids(sb, [str(row.get("pr_id") or "")])
             return _serialize_ar_with_hold(sb, row, pr_map.get(str(row.get("pr_id") or "")),
                                            tien_ve=_tien_ve_courses(sb, ar_id))

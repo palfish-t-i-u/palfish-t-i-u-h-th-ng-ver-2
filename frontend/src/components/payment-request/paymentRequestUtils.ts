@@ -13,6 +13,19 @@ export const FOREIGN_COUNTRY_NAMES: ReadonlySet<string> = new Set(
 );
 
 /**
+ * Sale→CS handover (khâu 1): đủ 3 trường bàn giao để BÁO ĐƠN lần đầu —
+ * Kênh chăm sóc + Contact ID + Note bàn giao (Contact ID & Note tính sau khi trim).
+ * Append (báo đơn bổ sung) không gọi hàm này: đã bàn giao từ lần báo đơn đầu.
+ */
+export function isHandoverComplete(
+  careChannel: string | null | undefined,
+  careContactId: string | null | undefined,
+  handoverNote: string | null | undefined,
+): boolean {
+  return !!(careChannel && (careContactId ?? "").trim() && (handoverNote ?? "").trim());
+}
+
+/**
  * Khách nước ngoài (OV) khi: đầu số ĐT khác VN, HOẶC ô Tỉnh/TP giữ tên 1 quốc
  * gia nước ngoài. Vế `province` là bắt buộc: khách OV dùng SĐT Việt thì `country`
  * (đầu số) vẫn là "VN" — chỉ nhìn đầu số sẽ nhầm OV thành khách VN và bắt điền
@@ -431,6 +444,9 @@ export function fromApiActiveRequest(raw: ActiveRequestApiRow): ActiveRequest {
         phone: c.phone ?? undefined,
         leadSource: c.lead_source ?? c.leadSource ?? undefined,
         leadChannel: c.lead_channel ?? c.leadChannel ?? undefined,
+        careChannel: c.care_channel ?? c.careChannel ?? undefined,
+        careContactId: c.care_contact_id ?? c.careContactId ?? undefined,
+        handoverNote: c.handover_note ?? c.handoverNote ?? undefined,
         referrerUid: c.referrer_uid ?? undefined,
         bonusSessionsReferee: c.bonus_sessions_referee ?? undefined,
         bonusSessionsReferrer: c.bonus_sessions_referrer ?? undefined,
@@ -483,6 +499,12 @@ export function buildCreateActiveRequestPayload(
       name: row.packageName.trim(),
       amount: Math.max(0, Math.round(row.amount)),
     };
+    // Sale→CS handover (khâu 1) per-bé → lưu per-course trong AR (uids_data)
+    if (row.careChannel) course.care_channel = row.careChannel;
+    const careCid = (row.careContactId ?? "").trim();
+    if (careCid) course.care_contact_id = careCid;
+    const careNote = (row.handoverNote ?? "").trim();
+    if (careNote) course.handover_note = careNote;
     const src = (row.leadSource ?? "").trim();
     if (src) {
       course.lead_source = src;
