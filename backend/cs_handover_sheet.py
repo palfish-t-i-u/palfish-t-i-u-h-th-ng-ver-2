@@ -17,6 +17,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from utils.team_mapper import get_canonical_team
+from utils.zalo_message_builder import format_phone_intl
 
 # Scope GHI (khác client readonly của gsheet_ledger_import). SA cần Editor trên 3 sheet.
 GSHEET_WRITE_SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
@@ -33,7 +34,9 @@ _ROUTES: dict[str, tuple[str, str, str]] = {
     "Offline": (_SHEET_IH2_OFFLINE, "Bàn giao KH mới + gia hạn Offline team", "Bàn giao KH mới + gia hạn Offline team"),
     "Linh Dam (Store)": (_SHEET_IH2_OFFLINE, "Bàn giao KH mới + gia hạn Offline team", "Bàn giao KH mới + gia hạn Offline team"),
     "An Binh (Store)": (_SHEET_IH2_OFFLINE, "Bàn giao KH mới + gia hạn Offline team", "Bàn giao KH mới + gia hạn Offline team"),
-    "Inhouse 2": (_SHEET_IH2_OFFLINE, "Bàn giao KH mới Team 2", "Bàn giao KH gia hạn Team 2"),
+    # Inhouse 2 (Team 2) ĐÃ BỎ 22/10: 2 tab Team 2 cột B-N là công thức QUERY kéo từ
+    # "Dữ liệu KH tổng Team 2" (← sheet ngoài), KHÔNG ghi đè được (overwrite array). Handover
+    # IH2 do pipeline ngoài quản. Re-enable khi chốt cách đẩy field mới vào nguồn Team 2.
     "HCM (Online)": (_SHEET_HCM, "Bàn giao KH ", "Bàn giao KH "),
     "Inhouse 1": (_SHEET_IH1, "Bàn giao KH mới", " Bàn giao KH gia hạn"),
 }
@@ -88,7 +91,9 @@ def build_field_values(
         "ten_kh": str(pr.get("name") or ""),
         "ten_hoc_sinh": str(uid_block.get("name") or pr.get("child_name") or ""),
         "uid": str(uid_block.get("uid") or ""),
-        "sdt": str(uid_block.get("phone") or pr.get("phone") or ""),
+        # SĐT: DB lưu số nội địa (vd "977770297"), format kèm mã nước → "84-...".
+        "sdt": format_phone_intl(uid_block.get("phone") or pr.get("phone"),
+                                 uid_block.get("country") or pr.get("country")) or "",
         # goi_hoc bỏ: sale/CS tự chọn dropdown (xem _FIELD_HEADERS).
         "so_tien": course.get("amount") or "",
         "kenh_cham_soc": str(course.get("care_channel") or ""),
@@ -278,7 +283,7 @@ def _fetch_pr(sb, pr_id: str) -> dict[str, Any] | None:
     try:
         res = (
             sb.table("payment_requests")
-            .select("id, name, child_name, phone, sale_email")
+            .select("id, name, child_name, phone, sale_email, country")
             .eq("id", pr_id)
             .limit(1)
             .execute()
