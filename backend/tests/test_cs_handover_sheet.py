@@ -71,47 +71,52 @@ class TestFieldValues:
 class TestRowMapping:
     def test_kh_moi_columns(self):
         v = build_field_values(PR, UID_BLOCK, COURSE, is_gia_han=False, sale_name="Vũ Thúy Hường")
-        row = build_row_values(HEADER_KH_MOI, v)
+        row, owned = build_row_values(HEADER_KH_MOI, v)
         assert row[2] == "Vũ Thúy Hường"      # Sale
         assert row[3] == "C Liên"              # Tên KH
         assert row[4] == "Uy Kha"              # Tên học sinh
         assert row[5] == "3307581410"          # UID
         assert row[6] == "84-937865100"        # SDT KH
         assert row[9] == "Zalo"                # Kênh liên hệ
-        assert row[10] == ""                   # Gói học để trống (sale/CS tự chọn dropdown)
         assert row[11] == 17820000             # Số tiền (startswith)
         assert row[12] == "care kĩ"            # Ghi chú (ô SALE, index 12 — KHÔNG phải 18 GVCN)
-        assert row[18] == ""                   # Ghi chú GVCN để trống
         assert row[13] == "KH mới"             # tag
         assert row[21] == "84-937865100"       # Contact ID
+        # owned_cols = chỉ cột G3 map; KHÔNG gồm Gói học(10), GVCN(14-18),
+        # Handover date(19) + Thời gian tạo nhóm(20) của Chung.
+        assert owned == {1, 2, 3, 4, 5, 6, 9, 11, 12, 13, 21}
+        assert 19 not in owned and 20 not in owned   # cột Chung — KHÔNG ghi đè
 
     def test_team2_columns(self):
         v = build_field_values(PR, UID_BLOCK, COURSE, is_gia_han=True, sale_name="Vũ Thúy Hường")
-        row = build_row_values(HEADER_TEAM2, v)
+        row, owned = build_row_values(HEADER_TEAM2, v)
         assert row[1] == "Vũ Thúy Hường"       # TVTS (= Sale)
         assert row[3] == "C Liên"              # Họ tên (= Tên KH)
         assert row[4] == "84-937865100"        # SDT
         assert row[5] == "3307581410"          # UID
         assert row[7] == 17820000              # Số tiền
-        assert row[9] == ""                    # Gói học để trống (sale/CS tự chọn dropdown)
         assert row[13] == "care kĩ"            # Note (ô sale) — KHÔNG phải "Ghi chú" (17 GVCN)
-        assert row[17] == ""                   # Ghi chú GVCN để trống
         assert row[20] == "Zalo"               # Kênh liên hệ
         assert row[21] == "84-937865100"       # Contact ID
+        # Team2: Handover date(18=S) + Thời gian tạo nhóm(19=T) của Chung — KHÔNG ghi đè
+        assert 18 not in owned and 19 not in owned
+        assert owned == {1, 3, 4, 5, 7, 13, 20, 21}
 
     def test_missing_column_skipped(self):
         # Header KHÔNG có Contact ID / Kênh liên hệ → bỏ qua, không lỗi
         header = ["STT", "Sale", "Tên KH", "UID", "Ghi chú"]
         v = build_field_values(PR, UID_BLOCK, COURSE, is_gia_han=False, sale_name="X")
-        row = build_row_values(header, v)
+        row, owned = build_row_values(header, v)
         assert row[1] == "X"
         assert row[2] == "C Liên"
+        assert row[3] == "3307581410"   # UID
         assert row[4] == "care kĩ"
         assert len(row) == 5
+        assert owned == {1, 2, 3, 4}     # sale, tên KH, UID, note
 
 
-class TestProtectedColsSkip:
-    """Né cột protected (T/U 'chỉ xem' trên tab Offline) khi ghi — cắt row thành đoạn liền kề."""
+class TestRowSegments:
+    """_row_segments CHỈ ghi các cột trong write_cols (G3 sở hữu, trừ khóa) — cắt thành đoạn liền kề."""
 
     def test_col_a1(self):
         assert _col_a1(0) == "A"
@@ -120,17 +125,20 @@ class TestProtectedColsSkip:
         assert _col_a1(21) == "V"
         assert _col_a1(26) == "AA"
 
-    def test_segments_skip_middle_cols(self):
-        # Offline: block T(19)+U(20) → A..S (0..18) + V(21), chừa T/U
+    def test_only_owned_cols_written(self):
+        # G3 map {1,2,3, 20,21}; cột ngoài tập (gồm Chung/GVCN) KHÔNG ghi đè
         row = [f"c{i}" for i in range(22)]
-        segs = _row_segments(row, {19, 20})
-        assert segs == [(0, [f"c{i}" for i in range(19)]), (21, ["c21"])]
+        segs = _row_segments(row, {1, 2, 3, 20, 21})
+        assert segs == [(1, ["c1", "c2", "c3"]), (20, ["c20", "c21"])]
 
-    def test_segments_no_block(self):
-        assert _row_segments(["a", "b", "c"], set()) == [(0, ["a", "b", "c"])]
+    def test_contiguous_run(self):
+        assert _row_segments(["a", "b", "c"], {0, 1, 2}) == [(0, ["a", "b", "c"])]
 
-    def test_segments_block_at_start(self):
-        assert _row_segments(["a", "b", "c"], {0}) == [(1, ["b", "c"])]
+    def test_skip_start_col(self):
+        assert _row_segments(["a", "b", "c"], {1, 2}) == [(1, ["b", "c"])]
+
+    def test_empty_write_cols(self):
+        assert _row_segments(["a", "b", "c"], set()) == []
 
 
 def _ar(is_gia_han=True, order_id="X", pushed=False):
@@ -151,7 +159,7 @@ def _patch(monkeypatch, calls, team="Inhouse 2", header=None):
     monkeypatch.setattr(m, "_fetch_sale", lambda sb, e: {"display_name": "Full Name", "team": team})
     monkeypatch.setattr(m, "_sheets_write_service", lambda: "SVC")
     monkeypatch.setattr(m, "_read_header_cells", lambda svc, sid, tab: header or HEADER_TEAM2)
-    monkeypatch.setattr(m, "_append_row", lambda svc, sid, tab, row: calls["append"].append((tab, row)))
+    monkeypatch.setattr(m, "_append_row", lambda svc, sid, tab, row, owned: calls["append"].append((tab, row)))
     monkeypatch.setattr(m, "_mark_handover_pushed", lambda sb, ar, uids, cc: calls["mark"].append(cc))
     return m
 

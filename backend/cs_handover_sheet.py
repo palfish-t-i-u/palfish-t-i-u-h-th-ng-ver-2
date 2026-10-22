@@ -12,7 +12,6 @@ Non-fatal: lỗi ghi sheet KHÔNG làm fail việc gắn order_id/ledger. Dedup 
 from __future__ import annotations
 
 import os
-import re
 from datetime import datetime, timezone
 from typing import Any
 
@@ -113,8 +112,10 @@ def _match_col(header_cells: list[Any], candidates: list[str], used: set[int]) -
     return None
 
 
-def build_row_values(header_cells: list[Any], field_values: dict[str, Any]) -> list[Any]:
-    """Dàn giá trị vào đúng cột theo header (blank cột không map). Đủ rộng tới cột xa nhất."""
+def build_row_values(header_cells: list[Any], field_values: dict[str, Any]) -> tuple[list[Any], set[int]]:
+    """Dàn giá trị vào đúng cột theo header. Trả (row, owned_cols): owned_cols = tập index
+    cột G3 THỰC SỰ map — chỉ ghi các cột này, KHÔNG đụng cột khác (GVCN, Handover date and
+    time + Thời gian tạo nhóm của Chung, STT, Gói học, Trình độ, Quốc Tịch…)."""
     row: list[Any] = [""] * len(header_cells)
     used: set[int] = set()
     for field, cands in _FIELD_HEADERS.items():
@@ -128,7 +129,7 @@ def build_row_values(header_cells: list[Any], field_values: dict[str, Any]) -> l
             row.append("")
         v = field_values[field]
         row[idx] = "" if v is None else v
-    return row
+    return row, used
 
 
 # --- I/O (mock trong test) ---
@@ -209,55 +210,50 @@ def _protected_cols(service, spreadsheet_id: str, tab: str) -> set[int]:
     return blocked
 
 
-def _row_segments(row: list[Any], blocked: set[int]) -> list[tuple[int, list[Any]]]:
-    """Cắt row thành các đoạn cột liền nhau, bỏ cột bị khóa. Trả [(start_col0, [values])]."""
+def _row_segments(row: list[Any], write_cols: set[int]) -> list[tuple[int, list[Any]]]:
+    """Cắt thành các đoạn cột liền nhau CHỈ gồm cột trong write_cols (G3 sở hữu, không bị
+    khóa). Cột ngoài write_cols KHÔNG đụng tới (không ghi "" đè). Trả [(start_col0, [values])]."""
     segs: list[tuple[int, list[Any]]] = []
     cur_start: int | None = None
     cur: list[Any] = []
-    for i, v in enumerate(row):
-        if i in blocked:
+    for i in range(len(row)):
+        if i not in write_cols:
             if cur:
                 segs.append((cur_start, cur))
             cur_start, cur = None, []
             continue
         if cur_start is None:
             cur_start = i
-        cur.append(v)
+        cur.append(row[i])
     if cur:
         segs.append((cur_start, cur))
     return segs
 
 
-def _append_row(service, spreadsheet_id: str, tab: str, row: list[Any]) -> None:
-    """Ghi 1 hàng, né các cột bị khóa (chỉ xem). append đoạn đầu để lấy số hàng, update phần còn lại."""
-    blocked = _protected_cols(service, spreadsheet_id, tab)
-    segs = _row_segments(row, blocked)
-    if not segs:
-        return
-    # Đoạn đầu: append để Google tự chọn hàng mới + trả về vị trí đã ghi.
-    s0_col, s0_vals = segs[0]
+def _next_empty_row(service, spreadsheet_id: str, tab: str) -> int:
+    """Hàng trống kế tiếp = dưới MỌI dữ liệu hiện có. Đọc cả tab (API cắt hàng trống cuối)
+    → len+1. KHÔNG dùng append (append anchor vào cột có ô-1 rỗng do merge banner sẽ ghi
+    nhầm vào row 1)."""
     res = (
         service.spreadsheets()
         .values()
-        .append(
-            spreadsheetId=spreadsheet_id,
-            range=f"'{tab}'!{_col_a1(s0_col)}1",
-            valueInputOption="USER_ENTERED",
-            # OVERWRITE (không INSERT_ROWS): ghi vào hàng trống sẵn dưới bảng, không chèn
-            # hàng mới — tránh chạm cột protected toàn-cột (T/U "chỉ xem") gây lỗi 400.
-            insertDataOption="OVERWRITE",
-            body={"values": [s0_vals]},
-        )
+        .get(spreadsheetId=spreadsheet_id, range=f"'{tab}'", majorDimension="ROWS")
         .execute()
     )
-    updated = (res.get("updates") or {}).get("updatedRange") or ""
-    # updatedRange: "'tab'!A252:S252" → lấy số hàng.
-    m = re.search(r"(\d+)(?!.*\d)", updated)
-    if not m:
+    return len((res.get("values") or [])) + 1
+
+
+def _append_row(service, spreadsheet_id: str, tab: str, row: list[Any], owned_cols: set[int]) -> None:
+    """Ghi 1 hàng. CHỈ ghi các cột G3 sở hữu (owned_cols) trừ cột bị khóa cứng — KHÔNG đụng
+    cột của Chung (Handover date / Thời gian tạo nhóm) hay GVCN. Tìm hàng trống cuối rồi
+    update từng đoạn cột liền kề."""
+    blocked = _protected_cols(service, spreadsheet_id, tab)
+    write_cols = {c for c in owned_cols if c not in blocked}
+    segs = _row_segments(row, write_cols)
+    if not segs:
         return
-    row_no = int(m.group(1))
-    # Các đoạn còn lại: update đúng hàng đó (các cột này không bị khóa).
-    for col0, vals in segs[1:]:
+    row_no = _next_empty_row(service, spreadsheet_id, tab)
+    for col0, vals in segs:
         service.spreadsheets().values().update(
             spreadsheetId=spreadsheet_id,
             range=f"'{tab}'!{_col_a1(col0)}{row_no}",
@@ -361,8 +357,8 @@ def maybe_push_cs_handover(sb, ar_row: dict[str, Any], course_code: str) -> None
         if not header:
             print(f"[cs_handover] skip: không đọc được header tab {tab!r} ({spreadsheet_id})")
             return
-        row = build_row_values(header, field_values)
-        _append_row(service, spreadsheet_id, tab, row)
+        row, owned_cols = build_row_values(header, field_values)
+        _append_row(service, spreadsheet_id, tab, row, owned_cols)
         _mark_handover_pushed(sb, ar_id, uids, course_code)
         print(f"[cs_handover] pushed AR {ar_id} course {course_code} → {tab!r} ({'gia hạn' if is_gia_han else 'KH mới'})")
     except Exception as exc:
