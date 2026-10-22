@@ -3310,16 +3310,14 @@ export default function PaymentRequestDetailDrawer({
                     <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
                       <div className="field" style={{ flex: 1, marginBottom: 0 }}>
                         <label>Kênh chăm sóc</label>
-                        <select
+                        <Combobox
+                          freeText
                           value={row.careChannel ?? ""}
-                          onChange={(e) => setArRow(i, { careChannel: e.target.value })}
-                          style={{ font: "inherit", fontSize: 13, width: "100%", borderRadius: 8, padding: "7px 8px", border: row.careChannel ? "1px solid var(--border)" : "1px solid var(--danger)" }}
-                        >
-                          <option value="">— Chọn kênh —</option>
-                          {CARE_CHANNELS.map((c) => (
-                            <option key={c} value={c}>{c}</option>
-                          ))}
-                        </select>
+                          onChange={(v) => setArRow(i, { careChannel: v })}
+                          options={CARE_CHANNELS.map((c) => ({ value: c, label: c }))}
+                          placeholder="Chọn hoặc gõ kênh..."
+                          invalid={!(row.careChannel ?? "").trim()}
+                        />
                       </div>
                       <div className="field" style={{ flex: 1, marginBottom: 0 }}>
                         <label>Contact ID</label>
