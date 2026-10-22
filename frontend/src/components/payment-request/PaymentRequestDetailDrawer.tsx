@@ -3122,7 +3122,8 @@ export default function PaymentRequestDetailDrawer({
               {arDraftRows.map((row, i) => (
                 <div key={i} style={{ border: "1px solid var(--border)", borderRadius: 8, padding: "10px 12px", marginBottom: 10 }}>
                   {/* Row 1: Tên bé | SĐT kích hoạt (số kích hoạt gói cho từng bé — khác SĐT lead/phụ huynh) */}
-                  <div style={{ display: "flex", gap: 8, marginBottom: 8, alignItems: "flex-start" }}>
+                  {/* flexWrap: mobile hẹp thì SĐT rớt xuống hàng riêng (2 cột minWidth 200 = 400px tràn modal mobile) */}
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 8, alignItems: "flex-start" }}>
                     <div className="field" style={{ flex: 1, minWidth: 200, marginBottom: 0 }}>
                       <label>Tên bé</label>
                       <Combobox
