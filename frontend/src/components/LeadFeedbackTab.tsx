@@ -1,13 +1,17 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import "../styles/prototype-payments.css";
 import { endpoints } from "../lib/api";
 import type { LeadFeedback } from "../types/leadFeedback";
 import { Icons } from "./payment-request/Icons";
+import { paginate, pageItems } from "./payment-request/paymentRequestUtils";
 import DateRangeFilter, { EMPTY_RANGE, type DateRange } from "./payment-request/DateRangeFilter";
 import { findSourceByKey } from "../constants/leadSource";
 import CreateFeedbackModal from "./lead-feedback/CreateFeedbackModal";
 import FeedbackDetailModal from "./lead-feedback/FeedbackDetailModal";
+import ExportFeedbackModal from "./lead-feedback/ExportFeedbackModal";
+
+const PAGE_SIZE = 20;
 
 function fmtDateTime(iso: string | null | undefined): string {
   if (!iso) return "—";
@@ -28,8 +32,10 @@ export default function LeadFeedbackTab() {
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [status, setStatus] = useState<"" | "wait" | "done">("");
   const [dateRange, setDateRange] = useState<DateRange>(EMPTY_RANGE);
+  const [page, setPage] = useState(1);
 
   const [createOpen, setCreateOpen] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
   const [detail, setDetail] = useState<LeadFeedback | null>(null);
   const [toDelete, setToDelete] = useState<LeadFeedback | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -70,6 +76,11 @@ export default function LeadFeedbackTab() {
     void load();
   }, [load]);
 
+  // Đổi bộ lọc/tìm kiếm → về trang 1 (reset trong handler, không qua effect).
+  // paginate tự clamp page vào [1, totalPages] nên UI luôn hợp lệ kể cả khi
+  // danh sách co lại mà chưa reset.
+  const pageSlice = useMemo(() => paginate(items, page, PAGE_SIZE), [items, page]);
+
   const onUpdated = (next: LeadFeedback) => {
     setItems((prev) => prev.map((it) => (it.id === next.id ? next : it)));
     setDetail((cur) => (cur && cur.id === next.id ? next : cur));
@@ -96,6 +107,9 @@ export default function LeadFeedbackTab() {
     <div className="gmv-prototype">
       <div className="page page--fit">
         <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+          <button className="btn btn-outline" onClick={() => setExportOpen(true)}>
+            <Icons.Download size={15} /> Xuất CSV
+          </button>
           {canCreate && (
             <button className="btn btn-primary" onClick={() => setCreateOpen(true)}>
               <Icons.Plus size={15} strokeWidth={2.3} /> Tạo Feedback
@@ -109,13 +123,19 @@ export default function LeadFeedbackTab() {
             <input
               placeholder="Tìm SĐT, tên khách hoặc sale…"
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              onChange={(e) => {
+                setSearch(e.target.value);
+                setPage(1);
+              }}
             />
           </div>
           <select
             className="input input-sm"
             value={status}
-            onChange={(e) => setStatus(e.target.value as "" | "wait" | "done")}
+            onChange={(e) => {
+              setStatus(e.target.value as "" | "wait" | "done");
+              setPage(1);
+            }}
             style={{
               border: "1px solid var(--border)",
               borderRadius: 9,
@@ -129,10 +149,16 @@ export default function LeadFeedbackTab() {
             <option value="wait">Chờ MKT feedback</option>
             <option value="done">MKT đã feedback</option>
           </select>
-          <DateRangeFilter value={dateRange} onChange={setDateRange} />
+          <DateRangeFilter
+            value={dateRange}
+            onChange={(r) => {
+              setDateRange(r);
+              setPage(1);
+            }}
+          />
         </div>
 
-        <div className="table-card">
+        <div className="table-card has-tabs">
           <div className="tbl-wrap">
             <table className="tbl">
               <thead>
@@ -166,7 +192,7 @@ export default function LeadFeedbackTab() {
                     </td>
                   </tr>
                 ) : (
-                  items.map((it) => {
+                  pageSlice.rows.map((it) => {
                     const src = findSourceByKey(it.lead_source);
                     return (
                       <tr key={it.id} onClick={() => setDetail(it)}>
@@ -220,6 +246,50 @@ export default function LeadFeedbackTab() {
               </tbody>
             </table>
           </div>
+          {!loading && !error && (
+            <div className="pagi">
+              <span>
+                {items.length === 0
+                  ? "Không có kết quả"
+                  : `Hiển thị ${(pageSlice.page - 1) * PAGE_SIZE + 1}–${(pageSlice.page - 1) * PAGE_SIZE + pageSlice.rows.length} trong ${items.length} feedback`}
+              </span>
+              {pageSlice.totalPages > 1 && (
+                <div className="pagi-btns">
+                  <button
+                    className="pagi-btn"
+                    disabled={pageSlice.page <= 1}
+                    onClick={() => setPage((p) => p - 1)}
+                    aria-label="Trang trước"
+                  >
+                    <Icons.ChevronLeft size={13} />
+                  </button>
+                  {pageItems(pageSlice.page, pageSlice.totalPages).map((it, i) =>
+                    it === "..." ? (
+                      <span key={`gap-${i}`} className="pagi-gap">
+                        …
+                      </span>
+                    ) : (
+                      <button
+                        key={it}
+                        className={`pagi-btn ${it === pageSlice.page ? "active" : ""}`}
+                        onClick={() => setPage(it)}
+                      >
+                        {it}
+                      </button>
+                    ),
+                  )}
+                  <button
+                    className="pagi-btn"
+                    disabled={pageSlice.page >= pageSlice.totalPages}
+                    onClick={() => setPage((p) => p + 1)}
+                    aria-label="Trang sau"
+                  >
+                    <Icons.ChevronRight size={13} />
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         <div style={{ display: "flex", justifyContent: "flex-end" }}>
@@ -235,6 +305,7 @@ export default function LeadFeedbackTab() {
           onCreated={() => void load()}
         />
       )}
+      {exportOpen && <ExportFeedbackModal onClose={() => setExportOpen(false)} />}
       {detail && (
         <FeedbackDetailModal
           item={detail}

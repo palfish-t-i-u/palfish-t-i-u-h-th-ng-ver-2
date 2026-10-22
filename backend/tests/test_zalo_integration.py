@@ -456,3 +456,21 @@ class TestEnqueueActivationRequestCreatedZalo:
         activation_routes._enqueue_activation_request_created_zalo(
             sb, _sample_saved_ar(), _sample_pr()
         )
+
+    def test_reused_ar_id_distinct_notify_key_no_collision(self):
+        """Cùng bug tái dùng AR id như DingTalk: Zalo source_id phải nhúng nonce
+        notify_key → 2 AR cùng id (khác notify_key) ra source_id khác, và khác
+        row lịch sử kiểu md5(ar_id) thuần."""
+        def _sid(ar):
+            sb, calls = _build_enqueue_sb(
+                staff_rows=[{"email": "sale@test.com", "team": "Inhouse 2"}],
+                group_rows=[{"group_id": "GID-IH2", "is_active": True}],
+            )
+            activation_routes._enqueue_activation_request_created_zalo(sb, ar, _sample_pr())
+            return calls[0]["source_id"]
+
+        old_sid = _sid(_sample_saved_ar(notify_key="11111111-1111-1111-1111-111111111111"))
+        new_sid = _sid(_sample_saved_ar(notify_key="22222222-2222-2222-2222-222222222222"))
+        legacy_sid = str(uuid.UUID(hashlib.md5(b"AR-2026-9001").hexdigest()))
+        assert old_sid != new_sid
+        assert new_sid != legacy_sid and old_sid != legacy_sid

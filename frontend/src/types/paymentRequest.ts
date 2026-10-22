@@ -182,6 +182,10 @@ export interface ActiveCourse {
   note?: string;
   leadSource?: string;
   leadChannel?: string;
+  /** Sale→CS handover (khâu 1) per-course — bàn giao cho CS theo từng bé/đơn. */
+  careChannel?: string;
+  careContactId?: string;
+  handoverNote?: string;
   /** UID người giới thiệu (referral) — sale nhập khi nguồn = gioi_thieu */
   referrerUid?: string;
   /** Số buổi thưởng cho người được giới thiệu (chủ AR) */
@@ -200,6 +204,10 @@ export interface ActiveCourse {
   orderIdSetBy?: string | null;
   /** Thời điểm gắn/sửa Order ID gần nhất */
   orderIdSetAt?: string | null;
+  /** Ngày tiền về sớm/muộn nhất của RIÊNG khoá này (B3) — ISO "YYYY-MM-DD" hoặc null.
+   *  BE gán per-course (_pair_course_dates); nhiều bé chung PR mỗi bé ngày riêng. */
+  tienVeSom?: string | null;
+  tienVeMuon?: string | null;
 }
 
 export interface ActiveUidGroup {
@@ -366,6 +374,10 @@ export type CreateActiveRequestCoursePayload = {
   amount: number;
   lead_source?: string;
   lead_channel?: string;
+  /** Sale→CS handover (khâu 1) per-course — bàn giao cho CS theo từng bé/đơn. */
+  care_channel?: string;
+  care_contact_id?: string;
+  handover_note?: string;
   /** Cộng buổi referral (nguồn = gioi_thieu) — nhập inline khi báo đơn */
   referrer_uid?: string;
   bonus_sessions_referee?: number;
@@ -391,6 +403,12 @@ export type ArDraftRow = {
   amount: number;      // VND
   leadSource: string;
   leadChannel: string;
+  /** Sale→CS handover (khâu 1) per-bé — Kênh chăm sóc (Zalo/Viber/WhatsApp/Kakao). */
+  careChannel?: string;
+  /** Contact ID của bé trên kênh chăm sóc. */
+  careContactId?: string;
+  /** Note bàn giao cho CS — riêng từng bé. */
+  handoverNote?: string;
   /** Referral (nguồn gioi_thieu) — nhập inline ngay trong form báo đơn */
   referrerUid?: string;
   bonusSessionsReferee?: number;
@@ -438,6 +456,12 @@ export type ActiveRequestApiRow = {
       leadSource?: string;
       lead_channel?: string;
       leadChannel?: string;
+      care_channel?: string;
+      careChannel?: string;
+      care_contact_id?: string;
+      careContactId?: string;
+      handover_note?: string;
+      handoverNote?: string;
       referrer_uid?: string;
       bonus_sessions_referee?: number;
       bonus_sessions_referrer?: number;
@@ -447,6 +471,8 @@ export type ActiveRequestApiRow = {
       referrer_credited_by?: string | null;
       order_id_set_by?: string | null;
       order_id_set_at?: string | null;
+      tien_ve_som?: string | null;
+      tien_ve_muon?: string | null;
     }>;
   }>;
   status?: string;

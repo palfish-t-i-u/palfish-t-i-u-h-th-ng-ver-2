@@ -73,6 +73,10 @@ class ActiveRequestPatchCoursePayload(BaseModel):
     tax_product_code: str | None = ""
     lead_source: str | None = None
     lead_channel: str | None = None
+    # Sale→CS handover (khâu 1) per-course — bàn giao cho CS theo từng bé
+    care_channel: str | None = None
+    care_contact_id: str | None = None
+    handover_note: str | None = None
     # Cộng buổi referral (nguồn = gioi_thieu): persist trong uids_data JSONB
     referrer_uid: str | None = None
     bonus_sessions_referee: int | None = None
@@ -300,6 +304,16 @@ def _assign_course_codes(uids_in: list[Any], pr_id: str, start_seq: int = 1) -> 
             lc = str(c.get("lead_channel") or "").strip()
             if lc:
                 norm_course["lead_channel"] = lc
+            # Sale→CS handover (khâu 1) per-course — lưu để đổ sheet bàn giao khi có Order ID
+            care_ch = str(c.get("care_channel") or "").strip()
+            if care_ch:
+                norm_course["care_channel"] = care_ch
+            care_cid = str(c.get("care_contact_id") or "").strip()
+            if care_cid:
+                norm_course["care_contact_id"] = care_cid
+            handover_note = str(c.get("handover_note") or "").strip()
+            if handover_note:
+                norm_course["handover_note"] = handover_note
             ref_uid = str(c.get("referrer_uid") or c.get("referrerUid") or "").strip()
             if ref_uid:
                 norm_course["referrer_uid"] = ref_uid
@@ -397,14 +411,17 @@ def _compute_referral_status(courses: list[dict[str, Any]]) -> str | None:
     return "partial"
 
 
-def _tien_ve_map_from_ledger(sb, ar_ids: list[str]) -> dict[str, tuple[str | None, str | None]]:
-    """Ngày tiền về (sớm nhất, muộn nhất) mỗi AR — lấy từ Sổ doanh thu.
+def _tien_ve_map_from_ledger(
+    sb, ar_ids: list[str]
+) -> dict[str, dict[str, tuple[str | None, str | None]]]:
+    """Ngày tiền về PER-COURSE mỗi AR — lấy từ Sổ doanh thu.
 
-    Nguồn khớp C-T1: mỗi dòng Sổ sinh từ khoá học của AR có note = "AR {ar_id}"
-    và cột `ngay_tien_ve` đã chuẩn (đơn thẻ = ngày quẹt, CK = ngày xác nhận).
-    Trả về {ar_id: (som_iso, muon_iso)}; AR chưa có dòng Sổ sẽ vắng mặt.
+    Mỗi dòng Sổ sinh từ MỘT khoá học của AR: note = "AR {ar_id}", ma_don_hang =
+    course_code, `ngay_tien_ve` đã chuẩn (đơn thẻ = ngày quẹt, CK = ngày xác nhận).
+    Trả {ar_id: {course_code: (som, muon)}} với som=muon=ngày Sổ của khoá đó.
+    AR/khoá chưa có dòng Sổ sẽ vắng mặt.
     """
-    out: dict[str, tuple[str | None, str | None]] = {}
+    out: dict[str, dict[str, tuple[str | None, str | None]]] = {}
     ids = [str(a) for a in ar_ids if a]
     if not ids:
         return out
@@ -415,32 +432,53 @@ def _tien_ve_map_from_ledger(sb, ar_ids: list[str]) -> dict[str, tuple[str | Non
         try:
             res = (
                 sb.table("so_doanh_thu")
-                .select("note, ngay_tien_ve")
+                .select("note, ma_don_hang, ngay_tien_ve")
                 .in_("note", notes[i : i + CHUNK])
                 .execute()
             )
             rows.extend(res.data or [])
         except Exception:
             continue
-    by_ar: dict[str, list[str]] = {}
     for r in rows:
         note = str(r.get("note") or "")
         if not note.startswith("AR "):
             continue
         aid = note[3:].strip()
+        code = str(r.get("ma_don_hang") or "").strip()
         d = r.get("ngay_tien_ve")
-        if not d:
+        if not code or not d:
             continue
-        by_ar.setdefault(aid, []).append(str(d)[:10])
-    for aid, dates in by_ar.items():
-        if dates:
-            out[aid] = (min(dates), max(dates))  # ISO date → so sánh chuỗi = so sánh thời gian
+        ds = str(d)[:10]  # ISO date → so sánh chuỗi = so sánh thời gian
+        out.setdefault(aid, {})[code] = (ds, ds)
     return out
 
 
-def _tien_ve_bounds(sb, ar_id: str) -> tuple[str | None, str | None]:
-    """Ngày tiền về (sớm, muộn) của MỘT AR — dùng cho response mutation lẻ."""
-    return _tien_ve_map(sb, [str(ar_id)]).get(str(ar_id), (None, None))
+def _pair_course_dates(
+    courses: list[tuple[str, float]],
+    funded_dates: list[str],
+) -> dict[str, tuple[str | None, str | None]]:
+    """Gán ngày tiền về cho TỪNG khoá (bé) trong 1 AR.
+
+    - courses: [(course_code, amount)] theo thứ tự uids_data.
+    - funded_dates: ngày tiền về (ISO "YYYY-MM-DD") của các line thuộc PR.
+
+    Ghép 1-1 (mỗi bé 1 ngày riêng) CHỈ khi an toàn: có ngày + số line == số khoá +
+    mọi khoá đều >0đ → khoá[i] ↔ ngày[i] (sort tăng dần), trả (ngày, ngày).
+    Ngược lại (1 khoá nhiều line = tín dụng/cọc; lệch số line↔khoá; có khoá 0đ
+    refer) → mọi khoá nhận (min, max) cả PR = hành vi cũ, KHÔNG regression.
+    """
+    codes = [c for c, _ in courses]
+    agg = (min(funded_dates), max(funded_dates)) if funded_dates else (None, None)
+    paying = [c for c, amt in courses if amt and amt > 0]
+    if funded_dates and len(funded_dates) == len(courses) == len(paying):
+        ordered = sorted(funded_dates)
+        return {code: (d, d) for code, d in zip(codes, ordered)}
+    return {code: agg for code in codes}
+
+
+def _tien_ve_courses(sb, ar_id: str) -> dict[str, tuple[str | None, str | None]]:
+    """Ngày tiền về per-course của MỘT AR — dùng cho response mutation lẻ."""
+    return _tien_ve_map(sb, [str(ar_id)]).get(str(ar_id), {})
 
 
 # Loại lần TT quẹt thẻ tín dụng — đồng bộ gateway_routes.py:512 (candidates match cổng).
@@ -549,8 +587,12 @@ def _bank_vn_date(transaction_date: Any) -> str | None:
     return dt.date().isoformat()
 
 
-def _tien_ve_map(sb, ar_ids: list[str]) -> dict[str, tuple[str | None, str | None]]:
-    """Ngày tiền về (sớm, muộn) của mỗi AR — TỪ giao dịch cổng/bank ĐÃ KHỚP.
+def _tien_ve_map(sb, ar_ids: list[str]) -> dict[str, dict[str, tuple[str | None, str | None]]]:
+    """Ngày tiền về (sớm, muộn) PER-COURSE của mỗi AR — TỪ giao dịch cổng/bank ĐÃ KHỚP.
+
+    Trả {ar_id: {course_code: (som, muon)}}. Line thanh toán thuộc PR (không gắn
+    sẵn với bé) → _pair_course_dates ghép line↔khoá: nhiều bé mỗi bé 1 ngày riêng;
+    1 bé nhiều lần (tín dụng/cọc) giữ range. Xem _pair_course_dates.
 
     Thẻ/trả góp: ngày tiền về TK = gateway_transactions.funded_date (match_status=
     'matched') — KHỚP sao kê ngân hàng + BC04 (đối soát xuất HĐ theo tiền thực về TK,
@@ -567,18 +609,29 @@ def _tien_ve_map(sb, ar_ids: list[str]) -> dict[str, tuple[str | None, str | Non
         return {}
     CHUNK = 150
 
-    # 1) AR → pr_id
+    # 1) AR → pr_id + danh sách khoá (code, amount) theo thứ tự uids_data
     pr_by_ar: dict[str, str] = {}
+    courses_by_ar: dict[str, list[tuple[str, float]]] = {}
     for i in range(0, len(ids), CHUNK):
         try:
-            res = sb.table("active_requests").select("id, pr_id").in_("id", ids[i : i + CHUNK]).execute()
+            res = sb.table("active_requests").select("id, pr_id, uids_data").in_("id", ids[i : i + CHUNK]).execute()
         except Exception:
             continue
         for r in (res.data or []):
             aid = str(r.get("id") or "")
+            if not aid:
+                continue
             prid = str(r.get("pr_id") or "")
-            if aid and prid:
+            if prid:
                 pr_by_ar[aid] = prid
+            clist: list[tuple[str, float]] = []
+            for ub in (r.get("uids_data") or []):
+                if not isinstance(ub, dict):
+                    continue
+                for c in (ub.get("courses") or []):
+                    if isinstance(c, dict) and c.get("code"):
+                        clist.append((str(c["code"]), float(c.get("amount") or 0)))
+            courses_by_ar[aid] = clist
     pr_ids = list({p for p in pr_by_ar.values() if p})
 
     # 2) payment_lines của các PR → line_id → (pr_id, method)
@@ -639,13 +692,13 @@ def _tien_ve_map(sb, ar_ids: list[str]) -> dict[str, tuple[str | None, str | Non
             if lid in line_meta and d:
                 date_by_pr.setdefault(line_meta[lid][0], []).append(d)
 
-    # 4) gộp về AR (min/max); AR chưa có ngày → fallback Sổ (không hồi quy)
-    out: dict[str, tuple[str | None, str | None]] = {}
+    # 4) gán per-course (ghép line↔khoá); AR chưa có ngày → fallback Sổ (không hồi quy)
+    out: dict[str, dict[str, tuple[str | None, str | None]]] = {}
     uncovered: list[str] = []
     for aid in ids:
         dates = date_by_pr.get(pr_by_ar.get(aid) or "", [])
         if dates:
-            out[aid] = (min(dates), max(dates))
+            out[aid] = _pair_course_dates(courses_by_ar.get(aid, []), dates)
         else:
             uncovered.append(aid)
     if uncovered:
@@ -657,7 +710,7 @@ def _serialize_ar(
     row: dict[str, Any],
     pr: dict[str, Any] | None = None,
     sale_name_map: dict[str, str] | None = None,
-    tien_ve: tuple[str | None, str | None] | None = None,
+    tien_ve: dict[str, tuple[str | None, str | None]] | None = None,
     credit_settlement_pending: bool = False,
     is_credit_order: bool = False,
 ) -> dict[str, Any]:
@@ -674,6 +727,10 @@ def _serialize_ar(
             next_course = dict(course)
             next_course["order_id"] = _course_order_id(next_course)
             next_course.pop("orderId", None)
+            if tien_ve is not None:
+                c_som, c_muon = tien_ve.get(str(next_course.get("code") or ""), (None, None))
+                next_course["tien_ve_som"] = c_som
+                next_course["tien_ve_muon"] = c_muon
             next_courses.append(next_course)
         next_uid["courses"] = next_courses
         uids_data.append(next_uid)
@@ -701,7 +758,11 @@ def _serialize_ar(
         "is_credit_order": bool(is_credit_order),
     }
     if tien_ve is not None:
-        out["tien_ve_som"], out["tien_ve_muon"] = tien_ve
+        # AR-level = min/max across khoá (giữ field cũ cho consumer + FE fallback)
+        _soms = [v[0] for v in tien_ve.values() if v[0]]
+        _muons = [v[1] for v in tien_ve.values() if v[1]]
+        out["tien_ve_som"] = min(_soms) if _soms else None
+        out["tien_ve_muon"] = max(_muons) if _muons else None
     if pr is not None:
         target, received = _pr_amounts(pr)
         budget = max(target, received)
@@ -899,25 +960,19 @@ def _fetch_prs_by_ids(sb, pr_ids: list[str]) -> dict[str, dict[str, Any]]:
 
 
 def _next_ar_id(sb, year: int | None = None) -> str:
-    yr = year or datetime.now(timezone.utc).year
-    prefix = f"AR-{yr}-"
-    try:
-        res = (
-            sb.table("active_requests")
-            .select("id")
-            .like("id", f"{prefix}%")
-            .order("id", desc=True)
-            .limit(1)
-            .execute()
-        )
-        if res.data:
-            tail = str(res.data[0]["id"]).rsplit("-", 1)[-1]
-            n = int(tail) + 1
-        else:
-            n = 1
-    except Exception:
-        n = 1
-    return f"{prefix}{n:04d}"
+    """Cấp mã AR qua DB sequence atomic (next_active_request_id) — mirror
+    _allocate_pr_id. Counter đơn điệu, KHÔNG phụ thuộc MAX của hàng còn sống →
+    id đã cấp không bao giờ bị cấp lại dù AR bị xoá (ca 20/10: AR-2026-1664 tái
+    dùng sang PR khác sau khi xoá). Bỏ pattern MAX+1 cũ (còn là bug concurrency:
+    2 sale báo đơn cùng giây → trùng id). Xem migration
+    migrations/2026-10-20-ar-id-sequence.sql + docs/learnings/
+    outbox-source-id-must-not-depend-on-reusable-ar-id.md."""
+    from rpc_helpers import rpc_next_active_request_id
+
+    ar_id = rpc_next_active_request_id(sb, year).strip()
+    if not ar_id:
+        raise HTTPException(500, "RPC next_active_request_id không trả mã AR")
+    return ar_id
 
 
 def _fetch_payment_request(sb, pr_id: str) -> dict[str, Any]:
@@ -1008,7 +1063,10 @@ def _sync_ledger_courses_from_uids(sb, ar_id: str, uids_data: list) -> None:
             if not isinstance(c, dict):
                 continue
             code = str(c.get("code") or "").strip()
-            if code and _course_order_id(c):
+            # M1 real-time: gọi sync cho MỌI course có code (kể cả chưa order_id).
+            # sync_ledger_from_ar_course tự guard "chỉ ghi khi tiền đã về" và gắn
+            # order_id sau khi kích hoạt → đơn báo-đơn lên Sổ ngay, không chờ order_id.
+            if code:
                 sync_ledger_from_ar_course(sb, ar_id, code)
 
 
@@ -1392,6 +1450,27 @@ def _parse_create_ar_payload(raw: Any) -> tuple[str | None, str | None, list[Any
     return None, None, _coerce_uids_payload(raw)
 
 
+def _ar_notify_nonce(saved_ar: dict[str, Any]) -> str:
+    """Nonce bền theo TỪNG AR để source_id outbox KHÔNG chỉ phụ thuộc ar_id.
+
+    `_next_ar_id` sinh id kiểu MAX(id)+1 → khi AR có số lớn nhất bị XOÁ, id đó
+    bị TÁI DÙNG cho AR mới. Nếu source_id = md5(ar_id[+suffix]), tin TEXT của AR
+    mới sẽ TRÙNG source_id với row outbox còn sót của AR cũ (đã xoá) → bị
+    UNIQUE(source_table, source_id, event_type) nuốt im lặng → MẤT chữ, sale chỉ
+    thấy ảnh bill (ca 17/10: C Phương/Alina tái dùng AR-2026-1623 của bé Thương).
+
+    `notify_key` (uuid random, default gen_random_uuid() — xem migration
+    docs/migrations/2026-10-17_add_active_requests_notify_key.sql) là DUY NHẤT cho
+    mỗi dòng AR, kể cả khi id bị tái dùng, và KHÔNG đổi sau insert nên giữ nguyên
+    ngữ nghĩa idempotency theo :edit:/:append: (notify_key cố định, suffix phân
+    biệt từng đợt). Rỗng khi thiếu notify_key (AR cũ trước migration, hoặc migration
+    chưa chạy) → công thức rút về md5(ar_id[+suffix]) cũ → tương thích ngược, không
+    crash, chỉ là chưa chống tái dùng id cho tới khi migration chạy xong.
+    """
+    key = str(saved_ar.get("notify_key") or "").strip()
+    return f"@{key}" if key else ""
+
+
 def _enqueue_activation_request_created_zalo(
     sb, saved_ar: dict[str, Any], pr: dict[str, Any] | None
 ) -> None:
@@ -1486,7 +1565,9 @@ def _enqueue_activation_request_created_zalo(
         )
 
         ar_id = str(saved_ar.get("id") or "")
-        source_uuid = str(uuid.UUID(hashlib.md5(ar_id.encode()).hexdigest()))
+        # nonce theo created_at → AR tái dùng id vẫn ra source_id khác (xem
+        # _ar_notify_nonce). Zalo không có luồng edit/append nên không dùng suffix.
+        source_uuid = str(uuid.UUID(hashlib.md5(f"{ar_id}{_ar_notify_nonce(saved_ar)}".encode()).hexdigest()))
 
         try:
             sb.table("zalo_outbox").insert(
@@ -1928,9 +2009,13 @@ def _enqueue_activation_request_created_dingtalk(
         )
 
         ar_id = str(saved_ar.get("id") or "")
+        # nonce theo created_at → AR tái dùng id (MAX+1 sau khi xoá) vẫn ra source_id
+        # khác, hết nuốt tin TEXT (xem _ar_notify_nonce). Rỗng khi thiếu created_at →
+        # md5(ar_id+suffix) cũ.
+        ar_nonce = _ar_notify_nonce(saved_ar)
         # source_suffix (append lần 2): outbox UNIQUE(source_table, source_id, event_type)
         # — giữ md5(ar_id) là tin bổ sung bị drop im lặng (G3).
-        source_uuid = str(uuid.UUID(hashlib.md5(f"{ar_id}{source_suffix}".encode()).hexdigest()))
+        source_uuid = str(uuid.UUID(hashlib.md5(f"{ar_id}{ar_nonce}{source_suffix}".encode()).hexdigest()))
         outbox_message = result["message"]
         if is_contact_supplement:
             outbox_message = "🔄 SALE VỪA BỔ SUNG THÔNG TIN ĐƠN\n" + outbox_message
@@ -1972,7 +2057,7 @@ def _enqueue_activation_request_created_dingtalk(
         # Create lần đầu (suffix="") giữ nguyên source_id cũ → tương thích ngược.
         for bill in bill_urls:
             bill_hash = hashlib.md5(bill.encode()).hexdigest()
-            bill_source = str(uuid.UUID(hashlib.md5(f"{ar_id}:bill:{bill_hash}{source_suffix}".encode()).hexdigest()))
+            bill_source = str(uuid.UUID(hashlib.md5(f"{ar_id}{ar_nonce}:bill:{bill_hash}{source_suffix}".encode()).hexdigest()))
             try:
                 _insert_outbox({
                     "event_type": "activation_request_created",
@@ -2463,6 +2548,24 @@ def _stamp_order_id_changes(
     return audit_changes
 
 
+def _push_cs_handover_for_oid_changes(sb, ar_row, oid_changes) -> None:
+    """Sale→CS handover (khâu 1): order_id set qua đường full-PATCH detail drawer → đẩy
+    dòng bàn giao sang Google Sheet cho MỖI course vừa được gán order_id. Non-fatal +
+    idempotent (dedup handover_pushed_at), nên trùng với đường per-course cũng an toàn."""
+    try:
+        from cs_handover_sheet import maybe_push_cs_handover
+    except Exception as exc:
+        print(f"[cs_handover] import lỗi (non-fatal): {exc}")
+        return
+    for oc in oid_changes or []:
+        if oc.get("action") != "set":
+            continue
+        try:
+            maybe_push_cs_handover(sb, ar_row, oc.get("code"))
+        except Exception as exc:
+            print(f"[cs_handover] full-PATCH hook failed (non-fatal): {exc}")
+
+
 def register_activation_routes(app, supabase_factory):
 
     @app.get("/api/v1/active-requests", tags=["Activation"])
@@ -2573,7 +2676,7 @@ def register_activation_routes(app, supabase_factory):
                 r,
                 pr_map.get(str(r.get("pr_id") or "")),
                 snm,
-                tien_ve=tv_map.get(str(r.get("id") or ""), (None, None)),
+                tien_ve=tv_map.get(str(r.get("id") or ""), {}),
                 credit_settlement_pending=credit_map.get(str(r.get("pr_id") or "")) == "pending",
                 is_credit_order=str(r.get("pr_id") or "") in credit_map,
             )
@@ -2598,7 +2701,7 @@ def register_activation_routes(app, supabase_factory):
 
         row = res.data[0]
         pr = _fetch_payment_request(sb, str(row.get("pr_id") or "")) if row.get("pr_id") else None
-        return _serialize_ar_with_hold(sb, row, pr, tien_ve=_tien_ve_bounds(sb, ar_id))
+        return _serialize_ar_with_hold(sb, row, pr, tien_ve=_tien_ve_courses(sb, ar_id))
 
     @app.get("/api/v1/payment-requests/{pr_id}/course-budget", tags=["Activation"])
     def get_pr_course_budget(pr_id: str, authorization: str | None = Header(None)):
@@ -2676,6 +2779,27 @@ def register_activation_routes(app, supabase_factory):
             sb.table("active_requests").delete().eq("id", ar_id).execute()
         except Exception as exc:
             raise HTTPException(500, f"Khong xoa active_requests: {exc}") from exc
+
+        # Ghi audit + snapshot để truy vết (ai/khi nào) VÀ khôi phục được. Trước
+        # đây xoá AR không để lại dấu vết nào → ca 20/10 (Chị Thái) không biết ai
+        # xoá, phải đào ops_ar_change_log để dựng lại. log_audit tự nuốt lỗi,
+        # không bao giờ làm hỏng thao tác xoá.
+        from audit import log_audit
+
+        log_audit(
+            sb,
+            actor.email,
+            "activation.ar_deleted",
+            "active_request",
+            ar_id,
+            {
+                "pr_id": row.get("pr_id"),
+                "status": row.get("status"),
+                "customer_name": row.get("customer_name"),
+                "course_count": len(courses),
+                "uids_data": row.get("uids_data") or [],
+            },
+        )
 
         return {"ok": True, "id": ar_id}
 
@@ -2818,7 +2942,8 @@ def register_activation_routes(app, supabase_factory):
                         ) from exc
                 pr_map = _fetch_prs_by_ids(sb, [str(merged.get("pr_id") or "")])
                 _maybe_enqueue_ar_edit_dingtalk(sb, current, merged, pr_map)
-                return _serialize_ar_with_hold(sb, merged, pr_map.get(str(merged.get("pr_id") or "")), tien_ve=_tien_ve_bounds(sb, ar_id))
+                _push_cs_handover_for_oid_changes(sb, merged, oid_changes)
+                return _serialize_ar_with_hold(sb, merged, pr_map.get(str(merged.get("pr_id") or "")), tien_ve=_tien_ve_courses(sb, ar_id))
             patch["uids_data"] = uids_data
             patch["status"] = guarded_status
             guarded_uids = uids_data
@@ -2860,7 +2985,8 @@ def register_activation_routes(app, supabase_factory):
                 sb.rpc("enqueue_course_activated_if_all_ordered", {"p_ar_id": ar_id}).execute()
             except Exception as exc:
                 print(f"[dingtalk] course_activated backstop failed (non-fatal): {exc}")
-        return _serialize_ar_with_hold(sb, merged, pr_map.get(str(merged.get("pr_id") or "")), tien_ve=_tien_ve_bounds(sb, ar_id))
+            _push_cs_handover_for_oid_changes(sb, merged, oid_changes)
+        return _serialize_ar_with_hold(sb, merged, pr_map.get(str(merged.get("pr_id") or "")), tien_ve=_tien_ve_courses(sb, ar_id))
 
     @app.patch("/api/v1/active-requests/{ar_id}/credit-referral", tags=["Activation"])
     def credit_referral(
@@ -2971,6 +3097,12 @@ def register_activation_routes(app, supabase_factory):
             hold_note=hold_note,
             crm_address_confirmed=crm_address_confirmed,
         )
+        # M1 real-time: báo đơn (TẠO AR) cũng ghi Sổ ngay nếu tiền đã về. Trước
+        # đây chỉ đường SỬA (PATCH) mới gọi sync → đơn báo-xong-chưa-kích-hoạt bị sót.
+        try:
+            _sync_ledger_courses_from_uids(sb, str(saved.get("id") or ""), saved.get("uids_data") or [])
+        except Exception as exc:
+            print(f"[activation] sync So luc tao AR loi (non-fatal): {exc}")
         return _serialize_ar_with_hold(sb, saved, pr)
 
     @app.post(
@@ -3007,6 +3139,12 @@ def register_activation_routes(app, supabase_factory):
             hold_note=hold_note,
             crm_address_confirmed=crm_address_confirmed,
         )
+        # M1 real-time: báo đơn (TẠO AR) cũng ghi Sổ ngay nếu tiền đã về. Trước
+        # đây chỉ đường SỬA (PATCH) mới gọi sync → đơn báo-xong-chưa-kích-hoạt bị sót.
+        try:
+            _sync_ledger_courses_from_uids(sb, str(saved.get("id") or ""), saved.get("uids_data") or [])
+        except Exception as exc:
+            print(f"[activation] sync So luc tao AR loi (non-fatal): {exc}")
         return _serialize_ar_with_hold(sb, saved, pr)
 
     @app.post("/api/v1/active-requests/{ar_id}/append", tags=["Activation"])
@@ -3069,6 +3207,12 @@ def register_activation_routes(app, supabase_factory):
         except Exception as exc:
             raise HTTPException(500, f"Khong cap nhat active_requests: {exc}") from exc
         updated = (upd.data or [{**ar_row, **patch}])[0]
+
+        # M1 real-time: báo đơn bổ sung cũng ghi Sổ ngay cho course mới (nếu tiền đã về).
+        try:
+            _sync_ledger_courses_from_uids(sb, ar_id, merged)
+        except Exception as exc:
+            print(f"[activation] sync So luc append loi (non-fatal): {exc}")
 
         _writeback_pr_uid_from_ar(sb, updated, pr, merged)
 
@@ -3155,9 +3299,15 @@ def register_activation_routes(app, supabase_factory):
                 sb.rpc("enqueue_course_activated_if_all_ordered", {"p_ar_id": ar_id}).execute()
             except Exception as exc:
                 print(f"[dingtalk] course_activated backstop failed (non-fatal): {exc}")
+            # Sale→CS handover (khâu 1): đẩy dòng bàn giao sang Google Sheet khi course có order_id
+            try:
+                from cs_handover_sheet import maybe_push_cs_handover
+                maybe_push_cs_handover(sb, row, course_code)
+            except Exception as exc:
+                print(f"[cs_handover] hook failed (non-fatal): {exc}")
             pr_map = _fetch_prs_by_ids(sb, [str(row.get("pr_id") or "")])
             return _serialize_ar_with_hold(sb, row, pr_map.get(str(row.get("pr_id") or "")),
-                                           tien_ve=_tien_ve_bounds(sb, ar_id))
+                                           tien_ve=_tien_ve_courses(sb, ar_id))
 
         row = rpc_active_request_row(
             sb,
@@ -3172,7 +3322,7 @@ def register_activation_routes(app, supabase_factory):
         )
         pr_map = _fetch_prs_by_ids(sb, [str(row.get("pr_id") or "")])
         return _serialize_ar_with_hold(sb, row, pr_map.get(str(row.get("pr_id") or "")),
-                                       tien_ve=_tien_ve_bounds(sb, ar_id))
+                                       tien_ve=_tien_ve_courses(sb, ar_id))
 
     @app.post(
         "/api/v1/active-requests/{ar_id}/request-invoice",

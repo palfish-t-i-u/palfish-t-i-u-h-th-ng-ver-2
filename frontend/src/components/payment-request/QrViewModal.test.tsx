@@ -231,11 +231,11 @@ describe("QrViewModal — img.vietqr.io URL building", () => {
     expect(parseQrParams(getQrImg().src).accountName).toBe(BANK_INFO.accountName);
   });
 
-  it("path PNG đúng pattern {bin}-{accountNo}-compact2.png", () => {
+  it("path đúng pattern {bin}-{accountNo}-compact2.svg (vietqr.io chuyển sang svg 20/10)", () => {
     expect.assertions(1);
     render(<QrViewModal qr={makeQr()} request={makeRequest()} onClose={() => {}} />);
     const { pathPng } = parseQrParams(getQrImg().src);
-    expect(pathPng).toBe(`/image/${BANK_INFO.bin}-${BANK_INFO.accountNo}-compact2.png`);
+    expect(pathPng).toBe(`/image/${BANK_INFO.bin}-${BANK_INFO.accountNo}-compact2.svg`);
   });
 
   it("URL khác nhau cho 2 PR khác nhau (smoke test phân biệt PR-0057 vs PR-0066)", () => {

@@ -1143,21 +1143,6 @@ def sync_ledger_from_ar_course(
             return None
 
         order_id = str(course.get("order_id") or course.get("orderId") or "").strip()
-        if not order_id:
-            return None
-
-        for field, val in (("crm_order_id", order_id), ("ma_don_hang", course_code)):
-            existing = (
-                sb.table("so_doanh_thu")
-                .select("id")
-                .eq("loai_nhap", "tu_dong")
-                .eq(field, val)
-                .limit(1)
-                .execute()
-            )
-            if existing.data:
-                return str(existing.data[0]["id"])
-
         pr_id = str(ar_row.get("pr_id") or "").strip()
         pr: dict[str, Any] | None = None
         if pr_id:
@@ -1169,6 +1154,45 @@ def sync_ledger_from_ar_course(
                 .execute()
             )
             pr = pr_res.data[0] if pr_res.data else None
+
+        # M1 real-time: đơn ĐÃ BÁO nhưng chưa có order_id vẫn ghi Sổ ngay (cờ
+        # "chưa kích hoạt" = crm_order_id rỗng) MIỄN LÀ tiền đã về (line paid /
+        # card tạm). Khi kích hoạt (có order_id) hàm được gọi lại → gắn order_id
+        # vào chính dòng này (gỡ cờ), KHÔNG đẻ dòng mới.
+        if not order_id:
+            if not pr_id or _resolve_payment_time_from_pr(sb, pr_id) is None:
+                return None
+
+        # Idempotent theo khoá ổn định: crm_order_id (khi đã kích hoạt), rồi
+        # ma_don_hang (course_code — có sẵn từ lúc báo đơn).
+        if order_id:
+            crm_match = (
+                sb.table("so_doanh_thu")
+                .select("id")
+                .eq("loai_nhap", "tu_dong")
+                .eq("crm_order_id", order_id)
+                .limit(1)
+                .execute()
+            )
+            if crm_match.data:
+                return str(crm_match.data[0]["id"])
+        code_match = (
+            sb.table("so_doanh_thu")
+            .select("id, crm_order_id")
+            .eq("loai_nhap", "tu_dong")
+            .eq("ma_don_hang", course_code)
+            .limit(1)
+            .execute()
+        )
+        if code_match.data:
+            row_id = str(code_match.data[0]["id"])
+            # Dòng báo-đơn cũ (chưa order_id) nay kích hoạt → gắn order_id = gỡ cờ.
+            if order_id and not str(code_match.data[0].get("crm_order_id") or "").strip():
+                sb.table("so_doanh_thu").update({
+                    "crm_order_id": order_id,
+                    "updated_by_email": actor_email,
+                }).eq("id", row_id).execute()
+            return row_id
 
         vnd = int(float(course.get("amount") or 0))
         rate = DEFAULT_TY_GIA
@@ -1219,7 +1243,7 @@ def sync_ledger_from_ar_course(
             "loai_nhap": "tu_dong",
             "don_hang_id": None,
             "ma_don_hang": course_code,
-            "crm_order_id": order_id,
+            "crm_order_id": order_id or None,
             "loai": loai_val or None,
             "note": f"AR {ar_id}",
             "created_by_email": actor_email,
@@ -1277,7 +1301,10 @@ def sync_ledger_from_ar_course(
                 sb.table("so_doanh_thu").update(update_payload).eq("id", match_id).execute()
                 return match_id
 
-        if uid:
+        # Loose-match (ghép app↔dòng import tay) CHỈ khi đã có order_id (lúc kích
+        # hoạt). Lúc báo đơn (chưa order_id) luôn insert dòng tu_dong sạch, không
+        # ghép vào dòng tay (tránh ghi nhầm loai_nhap + lọt cờ payroll).
+        if uid and order_id:
             loose_match = (
                 sb.table("so_doanh_thu")
                 .select("id, loai_nhap, loai")

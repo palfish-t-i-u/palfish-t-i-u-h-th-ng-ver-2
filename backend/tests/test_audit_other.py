@@ -232,6 +232,44 @@ class TestOTHER04_DeleteRevenueAuditLog:
 
 
 # ─────────────────────────────────────────────
+# OTHER-05 · Xoá Active Request phải ghi audit log + snapshot
+# ─────────────────────────────────────────────
+# Tình huống: AR báo đơn của khách bị xoá → app mất record, hiện lại nút báo đơn
+# → không ai biết ai xoá, khi nào, đơn chứa gì (ca 20/10 "Chị Thái"). Phải có
+# audit + snapshot uids_data để truy vết VÀ khôi phục.
+
+class TestOTHER05_DeleteActiveRequestAuditLog:
+
+    def test_delete_active_request_has_audit_log(self):
+        """
+        delete_active_request phải gọi log_audit() với snapshot (uids_data).
+        """
+        import activation_routes as ar_mod
+
+        source = inspect.getsource(ar_mod)
+
+        delete_match = re.search(
+            r'(def\s+delete_active_request\b.*?)(?=\n    @app\.|\ndef\s|\Z)',
+            source, re.S,
+        )
+        if not delete_match:
+            pytest.skip("Không tìm thấy function delete_active_request")
+
+        delete_source = delete_match.group(1)
+
+        has_audit = bool(re.search(r'log_audit\s*\(', delete_source))
+        has_snapshot = bool(re.search(r'uids_data', delete_source))
+
+        if not (has_audit and has_snapshot):
+            pytest.fail(
+                "OTHER-05 FAIL: delete_active_request() không ghi audit log kèm "
+                "snapshot. AR báo đơn bị xoá → không truy được ai/khi nào/chứa gì, "
+                "không khôi phục được (ca 20/10 'Chị Thái'). "
+                "Cần log_audit(..., 'activation.ar_deleted', ..., {uids_data: ...})."
+            )
+
+
+# ─────────────────────────────────────────────
 # OTHER-05 · Xuất hoá đơn batch phải idempotent
 # ─────────────────────────────────────────────
 # Tình huống: Ops bấm xuất → hệ thống đánh dấu 10 đơn = "Đã xuất HD"

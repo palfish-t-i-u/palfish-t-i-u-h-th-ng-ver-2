@@ -295,3 +295,46 @@ class TestEnqueueActivationRequestCreatedDingtalk:
         assert len(calls) == 1
         assert "image_url" not in calls[0]
         assert "image_urls" not in calls[0]
+
+    def test_notify_key_nonce_in_source_id(self):
+        """notify_key có mặt → source_id = md5(ar_id + '@' + notify_key) (text + bill)."""
+        sb, calls = _build_dt_sb(
+            staff_rows=[{"email": "sale@test.com", "team": "Inhouse 1"}],
+            group_rows=[{"team_code": "Inhouse 1", "is_active": True}],
+            line_rows=[{"bill_image": "https://x/bill.jpg", "bill_images": None, "method": "qr", "status": "paid"}],
+        )
+        ar = _sample_saved_ar(notify_key="a24bc3563f32")
+        activation_routes._enqueue_activation_request_created_dingtalk(sb, ar, _sample_pr())
+        text_row, img_row = calls[0], calls[1]
+        expect_text = str(uuid.UUID(hashlib.md5(b"AR-2026-9001@a24bc3563f32").hexdigest()))
+        assert text_row["source_id"] == expect_text
+        _bhash = hashlib.md5(b"https://x/bill.jpg").hexdigest()
+        expect_bill = str(uuid.UUID(hashlib.md5(
+            f"AR-2026-9001@a24bc3563f32:bill:{_bhash}".encode()).hexdigest()))
+        assert img_row["source_id"] == expect_bill
+
+    def test_reused_ar_id_distinct_notify_key_no_collision(self):
+        """BUG 17/10: _next_ar_id = MAX+1 → id AR bị XOÁ được tái dùng. Nếu source_id
+        chỉ md5(ar_id), tin TEXT của AR mới trùng source_id row cũ → UNIQUE nuốt → mất
+        chữ. notify_key (uuid random mỗi AR) phải làm 2 AR cùng id ra source_id TEXT
+        khác nhau, VÀ khác row cũ kiểu md5(ar_id) thuần (row lịch sử còn sót)."""
+        pr = _sample_pr()
+
+        def _text_source_id(ar):
+            sb, calls = _build_dt_sb(
+                staff_rows=[{"email": "sale@test.com", "team": "Inhouse 1"}],
+                group_rows=[{"team_code": "Inhouse 1", "is_active": True}],
+                line_rows=[],
+            )
+            activation_routes._enqueue_activation_request_created_dingtalk(sb, ar, pr)
+            return calls[0]["source_id"]
+
+        # AR cũ (bé Thương) và AR mới tái dùng id (C Phương) — notify_key khác nhau
+        old_sid = _text_source_id(_sample_saved_ar(notify_key="11111111-1111-1111-1111-111111111111"))
+        new_sid = _text_source_id(_sample_saved_ar(notify_key="22222222-2222-2222-2222-222222222222"))
+        assert old_sid != new_sid  # không còn bị UNIQUE nuốt
+
+        # row lịch sử (trước fix, source_id = md5(ar_id) thuần) KHÔNG đụng tin mới
+        legacy_sid = str(uuid.UUID(hashlib.md5(b"AR-2026-9001").hexdigest()))
+        assert new_sid != legacy_sid
+        assert old_sid != legacy_sid

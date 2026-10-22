@@ -13,7 +13,7 @@ Xem docs/learnings/timestamp-vs-date-funded-date-gateway.md.
 """
 from __future__ import annotations
 
-from activation_routes import _bank_vn_date, _funded_vn_date, _tien_ve_map
+from activation_routes import _bank_vn_date, _funded_vn_date, _pair_course_dates, _tien_ve_map
 
 
 # ---------------------------------------------------------------------------
@@ -80,9 +80,12 @@ class _FakeSB:
 def _fake_sb():
     return _FakeSB({
         "active_requests": [
-            {"id": "AR1", "pr_id": "PR1"},   # thẻ/trả góp
-            {"id": "AR2", "pr_id": "PR2"},   # CK
-            {"id": "AR3", "pr_id": "PR3"},   # không có line → fallback Sổ
+            {"id": "AR1", "pr_id": "PR1",   # thẻ/trả góp
+             "uids_data": [{"courses": [{"code": "C1", "amount": 1000}]}]},
+            {"id": "AR2", "pr_id": "PR2",   # CK
+             "uids_data": [{"courses": [{"code": "C2", "amount": 1000}]}]},
+            {"id": "AR3", "pr_id": "PR3",   # không có line → fallback Sổ
+             "uids_data": [{"courses": [{"code": "C3", "amount": 1000}]}]},
         ],
         "payment_lines": [
             {"id": "L1", "payment_request_id": "PR1", "method": "installment"},
@@ -96,28 +99,67 @@ def _fake_sb():
             {"payment_line_id": "L2", "transaction_date": "2026-09-02T18:00:00+00:00"},
         ],
         "so_doanh_thu": [
-            {"note": "AR AR3", "ngay_tien_ve": "2026-08-30"},
+            {"note": "AR AR3", "ma_don_hang": "C3", "ngay_tien_ve": "2026-08-30"},
         ],
     })
 
 
 def test_tien_ve_map_the_lay_ngay_funded():
     out = _tien_ve_map(_fake_sb(), ["AR1", "AR2", "AR3"])
-    # thẻ/trả góp → ngày tiền về TK (funded), KHÔNG phải ngày quẹt
-    assert out["AR1"] == ("2026-09-03", "2026-09-03")
+    # thẻ/trả góp → ngày tiền về TK (funded), KHÔNG phải ngày quẹt — per-course
+    assert out["AR1"] == {"C1": ("2026-09-03", "2026-09-03")}
 
 
 def test_tien_ve_map_ck_lay_ngay_bank_gio_vn():
     out = _tien_ve_map(_fake_sb(), ["AR1", "AR2", "AR3"])
-    # CK → transaction_date đổi giờ VN (+7) = 09-03
-    assert out["AR2"] == ("2026-09-03", "2026-09-03")
+    # CK → transaction_date đổi giờ VN (+7) = 09-03 — per-course
+    assert out["AR2"] == {"C2": ("2026-09-03", "2026-09-03")}
 
 
 def test_tien_ve_map_fallback_so_khi_khong_co_giao_dich():
     out = _tien_ve_map(_fake_sb(), ["AR1", "AR2", "AR3"])
-    # AR3 không có payment_line khớp → fallback ngày Sổ
-    assert out["AR3"] == ("2026-08-30", "2026-08-30")
+    # AR3 không có payment_line khớp → fallback ngày Sổ (per-course theo ma_don_hang)
+    assert out["AR3"] == {"C3": ("2026-08-30", "2026-08-30")}
 
 
 def test_tien_ve_map_empty_input():
     assert _tien_ve_map(_fake_sb(), []) == {}
+
+
+# ---------------------------------------------------------------------------
+# _pair_course_dates — ghép line↔khoá per-bé (thuần, không I/O)
+# ---------------------------------------------------------------------------
+
+def test_pair_2_be_2_ngay_tach_rieng():
+    # Ca PR-2309: 2 bé, 2 line 2 ngày → mỗi bé ngày RIÊNG (sớm=muộn). Dates chưa sort.
+    out = _pair_course_dates([("C1", 1000.0), ("C2", 1000.0)], ["2026-10-09", "2026-10-08"])
+    assert out == {"C1": ("2026-10-08", "2026-10-08"), "C2": ("2026-10-09", "2026-10-09")}
+
+
+def test_pair_1_khoa_nhieu_line_giu_range():
+    # Tín dụng/cọc: 1 khoá, 2 ngày → giữ (min, max) — KHÔNG regression.
+    out = _pair_course_dates([("C1", 35000.0)], ["2026-08-21", "2026-09-03"])
+    assert out == {"C1": ("2026-08-21", "2026-09-03")}
+
+
+def test_pair_lech_so_line_khoa_fallback():
+    # 2 khoá nhưng chỉ 1 ngày (1 bé chưa tiền về) → fallback (min,max) cả 2.
+    out = _pair_course_dates([("C1", 1000.0), ("C2", 1000.0)], ["2026-10-08"])
+    assert out == {"C1": ("2026-10-08", "2026-10-08"), "C2": ("2026-10-08", "2026-10-08")}
+
+
+def test_pair_co_khoa_0d_fallback():
+    # 2 khoá paying + 1 khoá 0đ refer, 2 ngày → paying(2) != courses(3) → fallback cả 3.
+    out = _pair_course_dates(
+        [("C1", 1000.0), ("C2", 1000.0), ("CR", 0.0)], ["2026-10-08", "2026-10-09"]
+    )
+    assert out == {
+        "C1": ("2026-10-08", "2026-10-09"),
+        "C2": ("2026-10-08", "2026-10-09"),
+        "CR": ("2026-10-08", "2026-10-09"),
+    }
+
+
+def test_pair_khong_ngay():
+    out = _pair_course_dates([("C1", 1000.0)], [])
+    assert out == {"C1": (None, None)}

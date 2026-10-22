@@ -3,6 +3,7 @@ import { usePaymentFlow } from "../contexts/PaymentFlowContext";
 import { usePermission } from "../hooks/usePermission";
 import { endpoints, type BankTransaction, type BankMatchCandidate, type BankTransactionTeam } from "../lib/api";
 import { fetchAllBankTxns } from "../lib/fetchAllBankTxns";
+import { isSepayAccount } from "../constants/bank";
 import {
   type FlatTransaction,
   METHOD_META,
@@ -627,8 +628,14 @@ export default function ReconciliationTab() {
     for (const t of transactions) {
       const st = txnDisplayStatus(t);
       if (st === "awaiting") {
-        // Non-cash tạo từ 14/7 không thuộc tab Chờ xác nhận → không tính vào badge/KPI
-        if (t.method !== "cash" && t.createdAt >= AWAITING_CASH_ONLY_SINCE) continue;
+        // Non-cash tạo từ 14/7 KHÔNG thuộc tab Chờ xác nhận — TRỪ TK không nối SePay
+        // (VD VCB HCM): không có bank_transaction tự khớp → vẫn cần kế toán tick tay ở đây.
+        if (
+          t.method !== "cash" &&
+          t.createdAt >= AWAITING_CASH_ONLY_SINCE &&
+          isSepayAccount(t.bank)
+        )
+          continue;
         c.awaiting++;
         sums.awaiting += t.amount;
       } else if (st === "confirmed") {
@@ -655,7 +662,8 @@ export default function ReconciliationTab() {
       if (
         tab === "awaiting" &&
         t.method !== "cash" &&
-        t.createdAt >= AWAITING_CASH_ONLY_SINCE
+        t.createdAt >= AWAITING_CASH_ONLY_SINCE &&
+        isSepayAccount(t.bank)
       )
         return false;
       if (tab === "confirmed" && st !== "confirmed") return false;

@@ -204,7 +204,7 @@ class TestArDingtalkContentKey:
 def _patch_dependencies(pr):
     with patch("activation_routes.resolve_actor", return_value=MagicMock(email="actor@test.com")), \
          patch("activation_routes._fetch_prs_by_ids", return_value={pr["id"]: pr}), \
-         patch("activation_routes._tien_ve_bounds", return_value=(None, None)), \
+         patch("activation_routes._tien_ve_courses", return_value={}), \
          patch("activation_routes._sync_ledger_courses_from_uids"), \
          patch("activation_routes._writeback_child_uids_to_pr"), \
          patch("activation_routes._validate_course_amounts"), \

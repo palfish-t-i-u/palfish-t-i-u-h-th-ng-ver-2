@@ -6,6 +6,8 @@ Written by the `extract-approach` skill. One insight per file.
 
 ## Index
 
+- [b3-tien-ve-per-course-not-per-pr](b3-tien-ve-per-course-not-per-pr.md) — B3 cột "tiền về sớm/muộn" tính `min/max` cả PR rồi dán lên MỌI bé → đơn nhiều bé, bé hôm qua bị kéo mốc sang hôm nay (PR-2309); `payment_lines` thuộc PR không gắn course → `_pair_course_dates` ghép line↔khoá (số line==số khoá + >0đ → 1-1 theo thứ tự; else fallback min/max=cũ); filter ngày + `invoiceDateFor` cũng phải per-course
+
 <!-- Add entries below: - [topic](filename.md) — one-line hook -->
 - [reject-line-does-not-unlink-bank-txn](reject-line-does-not-unlink-bank-txn.md) — hủy (reject) lần TT chỉ lật status `payment_lines`, KHÔNG chạm `bank_transactions` → giao dịch SePay đã ghép nhầm vẫn treo `manual_matched` trỏ line rejected = mồ côi, tab Đối soát tưởng đã ghép; không có endpoint đảo ghép nào (ghép 2 nửa/hủy 1 nửa = gap vô ý, không phải thiết kế); ca PR-1819→2073 28/09 gỡ+gắn lại bằng DB; fix: reject phải nhả txn về pending
 - [payoo-funded-date-autofill-multi-txn-lumps](payoo-funded-date-autofill-multi-txn-lumps.md) — auto-fill funded_date từ SePay settlement chỉ xử lý 1-to-1; multi-txn lump (1 bank = N gateway) phải backfill tay; BC04 dedup dùng settlement_code=PAYOO-{sepay_id}

@@ -1,5 +1,6 @@
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { LEAD_SOURCES, LY_DO_KHONG_GHEP, NEW_CHECK_SOURCES, channelCodeFromValue, channelValue, defaultChannelForSource, findSourceByKey, resolveChannel, sourceHasChannels } from "../../constants/leadSource";
+import { CARE_CHANNELS } from "../../constants/careChannel";
 import type {
   ActiveRequest,
   AddPaymentAttemptPayload,
@@ -36,6 +37,7 @@ import {
   paymentAttemptLabel,
   paymentConfirmationText,
   isForeignCustomer,
+  isHandoverComplete,
   isHoldActivationLocked,
   prCreatedBeforeCccdLive,
   REFERRAL_STATUS_HEADER,
@@ -1072,7 +1074,7 @@ export const ActiveRequestMiniCardV2 = memo(function ActiveRequestMiniCardV2({
     <div className={`panel ar-mini-card ${allocation.isOver ? "is-over-allocated" : ""}`}>
       <div className="panel-head ar-mini-head">
         <h4>
-          <Icons.CheckSquare size={15} /> Tạo gói học
+          <Icons.CheckSquare size={15} /> Báo đơn & Tạo gói học
           <span className="num-pill">{ar.id}</span>
         </h4>
         <span
@@ -2999,8 +3001,8 @@ export default function PaymentRequestDetailDrawer({
                 }
                 setArDraftRows([
                   reportBtn.isAppend
-                    ? { childName: "", uid: "", phone: "", phoneCountry: request.country || "VN", packageName: "", amount: arUnallocated, leadSource: request.leadSource || "", leadChannel: request.leadChannel || "" }
-                    : { childName: splitChildNames(request.childName)[0] ?? "", uid: request.uid ?? "", phone: (request.phone ?? "").replace(/\D/g, ""), phoneCountry: request.country || "VN", packageName: "", amount: Math.max(0, activatableReceived(request)), leadSource: request.leadSource || "", leadChannel: request.leadChannel || "" },
+                    ? { childName: "", uid: "", phone: "", phoneCountry: request.country || "VN", packageName: "", amount: arUnallocated, leadSource: request.leadSource || "", leadChannel: request.leadChannel || "", careChannel: "", careContactId: "", handoverNote: "" }
+                    : { childName: splitChildNames(request.childName)[0] ?? "", uid: request.uid ?? "", phone: (request.phone ?? "").replace(/\D/g, ""), phoneCountry: request.country || "VN", packageName: "", amount: Math.max(0, activatableReceived(request)), leadSource: request.leadSource || "", leadChannel: request.leadChannel || "", careChannel: "", careContactId: "", handoverNote: "" },
                 ]);
                 setHoldActivation(false);
                 setHoldNote("");
@@ -3038,7 +3040,8 @@ export default function PaymentRequestDetailDrawer({
           : 0;
         const arRemaining = arReceived - arAlreadyAllocated - arTotal;
         const arRowsValid = arDraftRows.length > 0 && arDraftRows.every(
-          (r) => r.packageName.trim() && r.amount > 0
+          // Bàn giao CS (khâu 1) per-bé: BẮT BUỘC đủ Kênh + Contact ID + Note mỗi dòng gói
+          (r) => r.packageName.trim() && r.amount > 0 && isHandoverComplete(r.careChannel, r.careContactId, r.handoverNote)
         );
         const referralDraftError = validateReferralBonusDraft(arDraftRows);
         const arValid = arRowsValid && arRemaining >= 0 && !referralDraftError;
@@ -3317,6 +3320,46 @@ export default function PaymentRequestDetailDrawer({
                       </div>
                     </div>
                   )}
+                  {/* Bàn giao cho CS — per bé (khâu 1). Đổ sang sheet bàn giao khi đơn có Order ID. */}
+                  <div style={{ marginTop: 8, padding: "10px 12px", border: "1px solid var(--primary-100)", borderRadius: 8, background: "var(--primary-50)" }}>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: "var(--primary-700)", marginBottom: 6 }}>
+                      Bàn giao cho CS — bé này <span style={{ color: "var(--danger)" }}>*</span>
+                    </div>
+                    <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+                      <div className="field" style={{ flex: 1, marginBottom: 0 }}>
+                        <label>Kênh chăm sóc</label>
+                        <select
+                          value={row.careChannel ?? ""}
+                          onChange={(e) => setArRow(i, { careChannel: e.target.value })}
+                          style={{ font: "inherit", fontSize: 13, width: "100%", borderRadius: 8, padding: "7px 8px", border: row.careChannel ? "1px solid var(--border)" : "1px solid var(--danger)" }}
+                        >
+                          <option value="">— Chọn kênh —</option>
+                          {CARE_CHANNELS.map((c) => (
+                            <option key={c} value={c}>{c}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="field" style={{ flex: 1, marginBottom: 0 }}>
+                        <label>Contact ID</label>
+                        <input
+                          placeholder="VD: 0901xxxxxx hoặc @username"
+                          value={row.careContactId ?? ""}
+                          onChange={(e) => setArRow(i, { careContactId: e.target.value })}
+                          style={(row.careContactId ?? "").trim() ? undefined : { borderColor: "var(--danger)" }}
+                        />
+                      </div>
+                    </div>
+                    <div className="field" style={{ marginBottom: 0 }}>
+                      <label>Note bàn giao</label>
+                      <textarea
+                        placeholder="Thông tin cần bàn giao cho CS của bé này (lịch học, yêu cầu GV, lưu ý khi chăm...)"
+                        value={row.handoverNote ?? ""}
+                        onChange={(e) => setArRow(i, { handoverNote: e.target.value })}
+                        rows={2}
+                        style={{ width: "100%", resize: "vertical", fontSize: 13, boxSizing: "border-box", borderRadius: 8, padding: "8px 10px", border: (row.handoverNote ?? "").trim() ? "1px solid var(--border)" : "1px solid var(--danger)" }}
+                      />
+                    </div>
+                  </div>
                 </div>
               ))}
               <button
@@ -3327,16 +3370,23 @@ export default function PaymentRequestDetailDrawer({
                   border: "1.5px dashed var(--primary)", color: "var(--primary)",
                   background: "var(--primary-50)", fontWeight: 600,
                 }}
-                onClick={() => setArDraftRows((rows) => [...rows, {
-                  childName: "",
-                  uid: request.uid ?? "",
-                  phone: "",
-                  phoneCountry: request.country || "VN",
-                  packageName: "",
-                  amount: 0,
-                  leadSource: request.leadSource || "",
-                  leadChannel: request.leadChannel || "",
-                }])}
+                onClick={() => setArDraftRows((rows) => {
+                  const last = rows[rows.length - 1];
+                  return [...rows, {
+                    childName: "",
+                    uid: request.uid ?? "",
+                    phone: "",
+                    phoneCountry: request.country || "VN",
+                    packageName: "",
+                    amount: 0,
+                    leadSource: request.leadSource || "",
+                    leadChannel: request.leadChannel || "",
+                    // Prefill Kênh + Contact ID từ dòng trước (cùng phụ huynh); Note để trống nhập mới
+                    careChannel: last?.careChannel ?? "",
+                    careContactId: last?.careContactId ?? "",
+                    handoverNote: "",
+                  }];
+                })}
               >
                 <Icons.Plus size={13} /> Thêm gói
               </button>

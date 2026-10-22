@@ -169,12 +169,14 @@ export function deriveInvoiceRows(ars: ActiveRequest[], prs: PaymentRequest[]): 
  * - Đã xuất HĐ → ngày lập HĐ (invoicedAt) — khớp kỳ kê khai thuế tháng.
  * - Chờ xuất → NGÀY TIỀN VỀ muộn nhất (tiền đã về đủ), fallback sớm nhất → ngày tạo.
  * Dùng tienVeMuon (không phải sớm) để đơn nhiều lần TT neo vào ngày tiền về ĐỦ.
- * Filter và cả 2 cột hiển thị (desktop + mobile) dùng CHUNG hàm này để không lệch.
+ * Ưu tiên mốc PER-COURSE (từng bé) → đơn nhiều bé mỗi bé neo ngày xuất HĐ riêng;
+ * fallback mốc AR-level (BE cũ / khoá chưa có mốc). Cả 2 cột hiển thị (desktop +
+ * mobile) dùng CHUNG hàm này để không lệch.
  */
 export function invoiceDateFor(row: InvoiceRow): string {
   return row.course.invoiced
     ? row.course.invoicedAt || row.ar.createdAt
-    : row.ar.tienVeMuon ?? row.ar.tienVeSom ?? row.ar.createdAt;
+    : row.course.tienVeMuon ?? row.course.tienVeSom ?? row.ar.tienVeMuon ?? row.ar.tienVeSom ?? row.ar.createdAt;
 }
 
 export function countAwaitingTransactions(requests: PaymentRequest[]) {
