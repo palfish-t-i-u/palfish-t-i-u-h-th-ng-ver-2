@@ -185,7 +185,7 @@ def _protected_cols(service, spreadsheet_id: str, tab: str) -> set[int]:
             service.spreadsheets()
             .get(
                 spreadsheetId=spreadsheet_id,
-                fields="sheets(properties(title),protectedRanges(range(startRowIndex,endRowIndex,startColumnIndex,endColumnIndex)))",
+                fields="sheets(properties(title),protectedRanges(range(startRowIndex,endRowIndex,startColumnIndex,endColumnIndex),warningOnly))",
             )
             .execute()
         )
@@ -197,6 +197,9 @@ def _protected_cols(service, spreadsheet_id: str, tab: str) -> set[int]:
         if (sh.get("properties") or {}).get("title") != tab:
             continue
         for pr in sh.get("protectedRanges", []) or []:
+            # warningOnly=True chỉ cảnh báo, KHÔNG chặn ghi API → không né (né sẽ mất data).
+            if pr.get("warningOnly"):
+                continue
             rng = pr.get("range") or {}
             # Chỉ né protected range toàn cột (không giới hạn hàng) — mới chặn hàng append mới.
             if rng.get("startRowIndex") is None and rng.get("endRowIndex") is None:
