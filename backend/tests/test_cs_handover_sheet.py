@@ -37,8 +37,8 @@ class TestRouting:
     def test_4_team_new_vs_renew(self):
         assert resolve_route("Offline", False)[1] == "Bàn giao KH mới + gia hạn Offline team"
         assert resolve_route("Offline", True)[1] == "Bàn giao KH mới + gia hạn Offline team"
-        assert resolve_route("Inhouse 2", False)[1] == "Bàn giao KH mới Team 2"
-        assert resolve_route("Inhouse 2", True)[1] == "Bàn giao KH gia hạn Team 2"
+        assert resolve_route("Inhouse 2", False) is None  # ĐÃ BỎ: Team 2 là tab QUERY-driven
+        assert resolve_route("Inhouse 2", True) is None
         assert resolve_route("HCM (Online)", False)[1] == "Bàn giao KH "
         assert resolve_route("Inhouse 1", False)[1] == "Bàn giao KH mới"
         assert resolve_route("Inhouse 1", True)[1] == " Bàn giao KH gia hạn"
@@ -69,6 +69,16 @@ class TestFieldValues:
         assert v["kenh_cham_soc"] == "Zalo"
         assert v["contact_id"] == "84-937865100"
         assert v["note"] == "care kĩ"
+
+    def test_sdt_format_local_to_intl(self):
+        # DB lưu số nội địa → format kèm mã nước "84-..."
+        ub = {"uid": "33", "name": "Be", "phone": "977770297", "country": "VN"}
+        v = build_field_values(PR, ub, COURSE, is_gia_han=False, sale_name="S")
+        assert v["sdt"] == "84-977770297"
+        # khách nước ngoài theo block.country
+        ub_jp = {"uid": "33", "name": "Be", "phone": "8013204159", "country": "JP"}
+        v2 = build_field_values(PR, ub_jp, COURSE, is_gia_han=False, sale_name="S")
+        assert v2["sdt"].startswith("81-")
 
 
 class TestRowMapping:
@@ -204,7 +214,7 @@ def _ar(is_gia_han=True, order_id="X", pushed=False):
             "uids_data": [{"uid": "3307", "name": "Uy Kha", "phone": "84-937865100", "courses": [course]}]}
 
 
-def _patch(monkeypatch, calls, team="Inhouse 2", header=None):
+def _patch(monkeypatch, calls, team="Inhouse 1", header=None):
     import cs_handover_sheet as m
     monkeypatch.setattr(m, "_fetch_pr", lambda sb, pid: {"name": "C", "child_name": "", "phone": "84-9", "sale_email": "s@pf.vn"})
     monkeypatch.setattr(m, "_fetch_sale", lambda sb, e: {"display_name": "Full Name", "team": team})
@@ -221,7 +231,7 @@ class TestOrchestration:
         calls = {"append": [], "mark": []}
         m = _patch(monkeypatch, calls)
         m.maybe_push_cs_handover(None, _ar(is_gia_han=True), "CC-1")
-        assert calls["append"][0][0] == "Bàn giao KH gia hạn Team 2"
+        assert calls["append"][0][0] == " Bàn giao KH gia hạn"  # Inhouse 1 gia hạn (dấu cách đầu)
         assert calls["mark"] == ["CC-1"]
 
     def test_dedup_skip(self, monkeypatch):
