@@ -12,6 +12,7 @@ Non-fatal: lỗi ghi sheet KHÔNG làm fail việc gắn order_id/ledger. Dedup 
 from __future__ import annotations
 
 import os
+import re
 from datetime import datetime, timezone
 from typing import Any
 
@@ -48,9 +49,9 @@ _FIELD_HEADERS: dict[str, list[str]] = {
     "ten_hoc_sinh": ["Tên học sinh"],
     "uid": ["UID"],
     "sdt": ["SDT KH", "SDT", "SĐT"],
-    # Gói học: KHÔNG auto-ghi. App dùng mã CRM nội bộ (vd "2/W- NEW 24 PHI+2 HN",
-    # đếm theo buổi) còn cột sheet là dropdown nhãn theo tháng ("Philipine 6 tháng").
-    # Quy đổi buổi→tháng lossy + sheet dropdown sai chính tả → để trống cho sale/CS chọn.
+    # Gói học: auto-fill per-sheet (xem _goi_hoc_label). Giá trị tính riêng từng tab
+    # (tháng vs mã buổi) nên maybe_push_cs_handover set field này; build_field_values KHÔNG.
+    "goi_hoc": ["Gói học"],
     "so_tien": ["Số tiền"],
     "kenh_cham_soc": ["Kênh liên hệ"],
     "contact_id": ["Contact ID"],
@@ -315,6 +316,118 @@ def _mark_handover_pushed(sb, ar_id: str, uids_data: list[Any], course_code: str
     sb.table("active_requests").update({"uids_data": uids_data}).eq("id", ar_id).execute()
 
 
+# --- Gói học: auto-fill per-sheet (logic "Split package" của Chung, port 22/10) ---
+# Buổi gốc → số tháng. App/CRM đặt tên theo buổi (vd "48 PHI+5"), sheet dropdown theo tháng.
+_TERM_MONTHS = {24: 3, 32: 4, 48: 6, 72: 9, 96: 12, 144: 18, 192: 24}
+_VALID_MONTHS = {3, 4, 6, 9, 12, 18, 24, 36}
+# Combo chuẩn có mặt ở các dropdown — dùng khi tab KHÔNG đọc được dropdown (vd IH1 mới range-ref).
+# Native 4/18 KHÔNG nằm đây → edge để trống cho đồng nhất (edge → blank).
+_SAFE_FALLBACK = {("PHI", m) for m in (3, 4, 6, 9, 12, 18, 24)} | {("US-UK", m) for m in (3, 6, 9, 12, 24)}
+
+
+def _parse_course(name: str) -> tuple[str, int | None, int | None, int | None]:
+    """course.name → (loại PHI/US-UK/CONFLICT/'', base, bonus, tháng)."""
+    phi = bool(re.search(r"PHI", name, re.I)) or ("菲" in name) or bool(re.search(r"(^|[^A-Za-z])PH(?![A-Za-z])", name, re.I))
+    usuk = (bool(re.search(r"(^|[^A-Za-z])US(?![A-Za-z])", name, re.I))
+            or bool(re.search(r"(^|[^A-Za-z])UK(?![A-Za-z])", name, re.I))
+            or bool(re.search(r"Native", name, re.I)) or bool(re.search(r"欧美|欧|美|英", name)))
+    ct = "CONFLICT" if (phi and usuk) else ("PHI" if phi else ("US-UK" if usuk else ""))
+    m = re.search(r"(\d+)\s*[A-Za-z一-鿿_\-]*\s*\+\s*(\d+)", name)
+    if m:
+        base, bonus = int(m.group(1)), int(m.group(2))
+    else:
+        b = re.search(r"(\d+)\s*(?:B|节)(?![A-Za-z])", name, re.I)
+        base, bonus = (int(b.group(1)), None) if b else (None, None)
+    months = _TERM_MONTHS.get(base) if ct in ("PHI", "US-UK") else None
+    return ct, base, bonus, months
+
+
+def _parse_dropdown_entry(s: str) -> tuple[str, int] | None:
+    """1 mục dropdown ('Philipine 6 tháng','Phil 9 tháng','Phi 6th','Native 12th','Phil 1 năm')
+    → (loại, tháng); None nếu rác (Ket/buổi/Gói học)."""
+    tn = s.strip().lower()
+    if re.search(r"\d+\s*b(?:uổi|uoi)?\b", tn) or "ket" in tn or tn in ("gói học", "goi hoc"):
+        return None
+    if re.search(r"nativ|欧|美|英|us-?uk", tn):
+        typ = "US-UK"
+    elif re.search(r"phi|菲", tn):
+        typ = "PHI"
+    else:
+        return None
+    if re.search(r"1\s*n[ăa]m", tn):
+        return (typ, 12)
+    m = re.search(r"(\d+)\s*(?:tháng|thang|th|t)\b", tn) or re.search(r"(\d+)", tn)
+    if not m:
+        return None
+    mo = int(m.group(1))
+    return (typ, mo) if mo in _VALID_MONTHS else None
+
+
+def _build_thang_index(dropdown: list[str]) -> dict[tuple[str, int], str]:
+    """{(loại,tháng): chuỗi dropdown ĐÚNG}. Ưu tiên mục có 'tháng' đầy đủ, rồi ngắn gọn."""
+    idx: dict[tuple[str, int], str] = {}
+
+    def score(entry: str) -> tuple[bool, int]:
+        e = entry.lower()
+        return (("tháng" in e or "thang" in e), -len(entry))
+    for e in dropdown:
+        k = _parse_dropdown_entry(e)
+        if k and (k not in idx or score(e) > score(idx[k])):
+            idx[k] = e
+    return idx
+
+
+def _canonical_goi(ct: str, months: int) -> str:
+    return f"{'Philipine' if ct == 'PHI' else 'Native'} {months} tháng"
+
+
+def _read_goi_hoc_dropdown(service, spreadsheet_id: str, tab: str, col0: int) -> list[str]:
+    """Runtime-read: danh sách giá trị dropdown (ONE_OF_LIST) của cột Gói học. Non-fatal."""
+    colA1 = _col_a1(col0)
+    try:
+        meta = (
+            service.spreadsheets()
+            .get(
+                spreadsheetId=spreadsheet_id,
+                ranges=[f"'{tab}'!{colA1}2:{colA1}400"],
+                includeGridData=True,
+                fields="sheets(data(rowData(values(dataValidation(condition(type,values(userEnteredValue)))))))",
+            )
+            .execute()
+        )
+        best: list[str] = []
+        for rd in meta["sheets"][0]["data"][0].get("rowData", []):
+            for cell in rd.get("values", []):
+                dv = cell.get("dataValidation") or {}
+                if (dv.get("condition") or {}).get("type") != "ONE_OF_LIST":
+                    continue
+                vals = [v.get("userEnteredValue") for v in dv["condition"].get("values", [])]
+                if len(vals) > len(best):
+                    best = [v for v in vals if v]
+        return best
+    except Exception as exc:
+        print(f"[cs_handover] đọc dropdown Gói học lỗi (bỏ qua): {exc}")
+        return []
+
+
+def _goi_hoc_label(service, spreadsheet_id: str, tab: str, header: list[Any], course_name: str) -> str:
+    """Nhãn Gói học đúng format của tab. '' nếu không suy được (gói hiếm → để trống)."""
+    gi = _match_col(header, _FIELD_HEADERS["goi_hoc"], set())
+    if gi is None or not course_name:
+        return ""
+    ct, base, bonus, months = _parse_course(course_name)
+    if "Team 2" in tab:  # Team 2: ghi mã buổi "base+bonus" (dropdown free-text)
+        return f"{base}+{bonus}" if (base is not None and bonus is not None) else ""
+    if ct not in ("PHI", "US-UK") or not months:
+        return ""  # edge (gói hiếm / CONFLICT) → để trống cho sale chọn
+    dropdown = _read_goi_hoc_dropdown(service, spreadsheet_id, tab, gi)
+    if dropdown:
+        # Đọc được dropdown: khớp thì ghi chuỗi đúng; KHÔNG khớp (edge, vd Native 4) → để trống.
+        return _build_thang_index(dropdown).get((ct, months)) or ""
+    # Dropdown không đọc được (vd IH1 mới range-ref): canonical cho combo chuẩn, edge → để trống.
+    return _canonical_goi(ct, months) if (ct, months) in _SAFE_FALLBACK else ""
+
+
 def maybe_push_cs_handover(sb, ar_row: dict[str, Any], course_code: str) -> None:
     """Đẩy 1 dòng bàn giao cho course vừa có order_id. Non-fatal — nuốt mọi lỗi (chỉ log)."""
     try:
@@ -357,6 +470,10 @@ def maybe_push_cs_handover(sb, ar_row: dict[str, Any], course_code: str) -> None
         if not header:
             print(f"[cs_handover] skip: không đọc được header tab {tab!r} ({spreadsheet_id})")
             return
+        # Gói học: auto-fill per-sheet (runtime-read dropdown của tab). Rỗng → không ghi cột này.
+        goi_hoc = _goi_hoc_label(service, spreadsheet_id, tab, header, str(course.get("name") or ""))
+        if goi_hoc:
+            field_values["goi_hoc"] = goi_hoc
         row, owned_cols = build_row_values(header, field_values)
         _append_row(service, spreadsheet_id, tab, row, owned_cols)
         _mark_handover_pushed(sb, ar_id, uids, course_code)

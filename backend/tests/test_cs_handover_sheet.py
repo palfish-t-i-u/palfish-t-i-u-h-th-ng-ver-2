@@ -5,6 +5,9 @@ from cs_handover_sheet import (
     build_row_values,
     _col_a1,
     _row_segments,
+    _parse_course,
+    _build_thang_index,
+    _goi_hoc_label,
 )
 
 # Header thật (rút gọn) — KH mới (Offline, dòng 2) vs Team 2 (dòng 1).
@@ -141,6 +144,54 @@ class TestRowSegments:
         assert _row_segments(["a", "b", "c"], set()) == []
 
 
+class TestGoiHoc:
+    """Auto-fill Gói học per-sheet: parse + index + nhãn đúng format từng tab."""
+
+    def test_parse_course(self):
+        assert _parse_course("2/W- NEW 48 PHI+5 HN") == ("PHI", 48, 5, 6)
+        assert _parse_course("2/W- NEW 32 US-UK+2 HN") == ("US-UK", 32, 2, 4)
+        assert _parse_course("2/W- NEW 192 PHI+20 HN") == ("PHI", 192, 20, 24)
+        assert _parse_course("12/M - NEW 30 PHI+10 HN")[3] is None   # base 30 ngoài bảng → để trống
+        assert _parse_course("96 PHI")[1] is None                    # thiếu +Y → base None
+
+    def test_thang_index_per_tab(self):
+        # Mỗi tab chỉ có 1 chính tả cho "4 tháng"
+        assert _build_thang_index(["Philippines 4 tháng"])[("PHI", 4)] == "Philippines 4 tháng"
+        assert _build_thang_index(["Philipine 4 tháng"])[("PHI", 4)] == "Philipine 4 tháng"
+        # Ưu tiên mục có 'tháng' hơn 'th' (IH1 gia hạn loạn)
+        assert _build_thang_index(["Native 6th", "Native 6 tháng"])[("US-UK", 6)] == "Native 6 tháng"
+        assert _build_thang_index(["Phi 6 tháng", "Phil 9 tháng"])[("PHI", 9)] == "Phil 9 tháng"
+        # Rác bị loại
+        assert _build_thang_index(["Ket 36b", "Gói học", "Philippines 250b"]) == {}
+
+    def test_label_team2_lesson(self):
+        assert _goi_hoc_label(None, "x", "Bàn giao KH mới Team 2", ["Gói học"], "2/W- NEW 48 PHI+5 HN") == "48+5"
+        assert _goi_hoc_label(None, "x", "Bàn giao KH gia hạn Team 2", ["Gói học"], "2/W- NEW 32 US-UK+2 HN") == "32+2"
+        assert _goi_hoc_label(None, "x", "Bàn giao KH mới Team 2", ["Gói học"], "96 PHI") == ""  # hiếm
+
+    def test_label_thang_match_and_edge(self, monkeypatch):
+        import cs_handover_sheet as m
+        # Offline dropdown có "Philippines 4 tháng" (riêng), KHÔNG có Native 4
+        monkeypatch.setattr(m, "_read_goi_hoc_dropdown",
+                            lambda svc, sid, tab, gi: ["Philippines 4 tháng", "Philipine 6 tháng", "Native 6 tháng"])
+        tab = "Bàn giao KH mới + gia hạn Offline team"
+        assert m._goi_hoc_label("SVC", "x", tab, ["Gói học"], "2/W- NEW 32 PHI+3 HN") == "Philippines 4 tháng"
+        # Native 4 không có trong dropdown → để trống (edge)
+        assert m._goi_hoc_label("SVC", "x", tab, ["Gói học"], "2/W- NEW 32 US-UK+2 HN") == ""
+
+    def test_label_thang_no_dropdown_fallback(self, monkeypatch):
+        import cs_handover_sheet as m
+        # Dropdown không đọc được (vd IH1 mới range-ref) → canonical cho combo chuẩn, edge → trống
+        monkeypatch.setattr(m, "_read_goi_hoc_dropdown", lambda svc, sid, tab, gi: [])
+        tab = "Bàn giao KH mới"
+        assert m._goi_hoc_label("SVC", "x", tab, ["Gói học"], "2/W- NEW 48 PHI+5 HN") == "Philipine 6 tháng"
+        assert m._goi_hoc_label("SVC", "x", tab, ["Gói học"], "2/W- NEW 32 US-UK+2 HN") == ""   # Native 4 edge
+
+    def test_label_no_goi_hoc_col(self):
+        # Header không có cột Gói học → ""
+        assert _goi_hoc_label(None, "x", "Bàn giao KH mới Team 2", ["STT", "Sale"], "2/W- NEW 48 PHI+5 HN") == ""
+
+
 def _ar(is_gia_han=True, order_id="X", pushed=False):
     course = {
         "code": "CC-1", "name": "Phil", "amount": 100, "order_id": order_id,
@@ -161,6 +212,7 @@ def _patch(monkeypatch, calls, team="Inhouse 2", header=None):
     monkeypatch.setattr(m, "_read_header_cells", lambda svc, sid, tab: header or HEADER_TEAM2)
     monkeypatch.setattr(m, "_append_row", lambda svc, sid, tab, row, owned: calls["append"].append((tab, row)))
     monkeypatch.setattr(m, "_mark_handover_pushed", lambda sb, ar, uids, cc: calls["mark"].append(cc))
+    monkeypatch.setattr(m, "_read_goi_hoc_dropdown", lambda svc, sid, tab, gi: [])
     return m
 
 
