@@ -2551,7 +2551,7 @@ def _stamp_order_id_changes(
 def _push_cs_handover_for_oid_changes(sb, ar_row, oid_changes) -> None:
     """Sale→CS handover (khâu 1): order_id set qua đường full-PATCH detail drawer → đẩy
     dòng bàn giao sang Google Sheet cho MỖI course vừa được gán order_id. Non-fatal +
-    idempotent (dedup handover_pushed_at), nên trùng với đường per-course cũng an toàn."""
+    idempotent (claim qua bảng cs_handover_log), nên trùng với đường per-course cũng an toàn."""
     try:
         from cs_handover_sheet import maybe_push_cs_handover
     except Exception as exc:
@@ -2561,7 +2561,8 @@ def _push_cs_handover_for_oid_changes(sb, ar_row, oid_changes) -> None:
         if oc.get("action") != "set":
             continue
         try:
-            maybe_push_cs_handover(sb, ar_row, oc.get("code"))
+            # v2: truyền id → hàm re-fetch AR mới, không dùng snapshot `merged` (race đẩy đôi)
+            maybe_push_cs_handover(sb, str(ar_row.get("id") or ""), oc.get("code"))
         except Exception as exc:
             print(f"[cs_handover] full-PATCH hook failed (non-fatal): {exc}")
 
@@ -3103,6 +3104,19 @@ def register_activation_routes(app, supabase_factory):
             _sync_ledger_courses_from_uids(sb, str(saved.get("id") or ""), saved.get("uids_data") or [])
         except Exception as exc:
             print(f"[activation] sync So luc tao AR loi (non-fatal): {exc}")
+        # Sale→CS handover v2 (G1-T6): bàn giao ngay LÚC BÁO ĐƠN cho mỗi course có Kênh/Contact
+        # (không chờ order_id). Non-fatal; worker là dự phòng/retry.
+        try:
+            from cs_handover_sheet import maybe_push_cs_handover
+            saved_id = str(saved.get("id") or "")
+            for ub in saved.get("uids_data") or []:
+                if not isinstance(ub, dict):
+                    continue
+                for c in ub.get("courses") or []:
+                    if isinstance(c, dict) and (c.get("care_channel") or c.get("care_contact_id")):
+                        maybe_push_cs_handover(sb, saved_id, str(c.get("code") or ""))
+        except Exception as exc:
+            print(f"[cs_handover] hook bao don failed (non-fatal): {exc}")
         return _serialize_ar_with_hold(sb, saved, pr)
 
     @app.post(
@@ -3145,6 +3159,19 @@ def register_activation_routes(app, supabase_factory):
             _sync_ledger_courses_from_uids(sb, str(saved.get("id") or ""), saved.get("uids_data") or [])
         except Exception as exc:
             print(f"[activation] sync So luc tao AR loi (non-fatal): {exc}")
+        # Sale→CS handover v2 (G1-T6): bàn giao ngay LÚC BÁO ĐƠN cho mỗi course có Kênh/Contact
+        # (không chờ order_id). Non-fatal; worker là dự phòng/retry.
+        try:
+            from cs_handover_sheet import maybe_push_cs_handover
+            saved_id = str(saved.get("id") or "")
+            for ub in saved.get("uids_data") or []:
+                if not isinstance(ub, dict):
+                    continue
+                for c in ub.get("courses") or []:
+                    if isinstance(c, dict) and (c.get("care_channel") or c.get("care_contact_id")):
+                        maybe_push_cs_handover(sb, saved_id, str(c.get("code") or ""))
+        except Exception as exc:
+            print(f"[cs_handover] hook bao don failed (non-fatal): {exc}")
         return _serialize_ar_with_hold(sb, saved, pr)
 
     @app.post("/api/v1/active-requests/{ar_id}/append", tags=["Activation"])
@@ -3302,7 +3329,8 @@ def register_activation_routes(app, supabase_factory):
             # Sale→CS handover (khâu 1): đẩy dòng bàn giao sang Google Sheet khi course có order_id
             try:
                 from cs_handover_sheet import maybe_push_cs_handover
-                maybe_push_cs_handover(sb, row, course_code)
+                # v2: truyền ar_id để hàm tự re-fetch AR mới (snapshot `row` có thể cũ → race đẩy đôi)
+                maybe_push_cs_handover(sb, ar_id, course_code)
             except Exception as exc:
                 print(f"[cs_handover] hook failed (non-fatal): {exc}")
             pr_map = _fetch_prs_by_ids(sb, [str(row.get("pr_id") or "")])

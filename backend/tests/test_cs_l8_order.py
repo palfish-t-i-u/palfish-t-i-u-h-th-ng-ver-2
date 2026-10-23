@@ -94,40 +94,56 @@ class TestHelpers:
 class TestUpsertDedup:
     def test_appended_when_empty(self):
         svc = FakeSheets([HEADER])
-        assert l8.upsert_l8_order(svc, HEADER, FIELDS, uid="3301", so_tien="9050000", order_id="ORD-1") == "appended"
+        assert l8.upsert_l8_order(svc, HEADER, FIELDS, uid="3301", so_tien="9050000", course_code="ORD-1") == "appended"
         assert svc.updates, "phải có ghi dòng mới"
 
     def test_stamped_on_sale_row(self):
         # dòng team điền (W trống), khớp UID+tiền → chỉ đóng dấu W, KHÔNG tạo mới
         svc = FakeSheets([HEADER, _row(uid="3301", tien="9,050,000", w="")])
-        assert l8.upsert_l8_order(svc, HEADER, FIELDS, uid="3301", so_tien="9050000", order_id="ORD-1") == "stamped"
+        assert l8.upsert_l8_order(svc, HEADER, FIELDS, uid="3301", so_tien="9050000", course_code="ORD-1") == "stamped"
         assert len(svc.updates) == 1
         rng, vals = svc.updates[0]
         assert vals == [["ORD-1"]] and rng.endswith("2")  # đóng dấu W dòng 2
 
     def test_exists_when_app_row(self):
         svc = FakeSheets([HEADER, _row(uid="3301", tien="9,050,000", w="ORD-1")])
-        assert l8.upsert_l8_order(svc, HEADER, FIELDS, uid="3301", so_tien="9050000", order_id="ORD-1") == "exists"
+        assert l8.upsert_l8_order(svc, HEADER, FIELDS, uid="3301", so_tien="9050000", course_code="ORD-1") == "exists"
         assert not svc.updates  # idempotent, không ghi
 
     def test_cleaned_when_both(self):
         svc = FakeSheets([HEADER, _row(uid="3301", tien="9,050,000", w="ORD-1"),
                           _row(uid="3301", tien="9,050,000", w="")])
-        assert l8.upsert_l8_order(svc, HEADER, FIELDS, uid="3301", so_tien="9050000", order_id="ORD-1") == "cleaned"
+        assert l8.upsert_l8_order(svc, HEADER, FIELDS, uid="3301", so_tien="9050000", course_code="ORD-1") == "cleaned"
 
     def test_ambiguous_two_sale_rows(self):
         svc = FakeSheets([HEADER, _row(uid="3301", tien="9,050,000", w=""),
                           _row(uid="3301", tien="9,050,000", w="")])
-        assert l8.upsert_l8_order(svc, HEADER, FIELDS, uid="3301", so_tien="9050000", order_id="ORD-1") == "ambiguous"
+        assert l8.upsert_l8_order(svc, HEADER, FIELDS, uid="3301", so_tien="9050000", course_code="ORD-1") == "ambiguous"
 
     def test_different_amount_not_matched(self):
         # cùng UID nhưng khác tiền → không coi là trùng → append mới
         svc = FakeSheets([HEADER, _row(uid="3301", tien="5,000,000", w="")])
-        assert l8.upsert_l8_order(svc, HEADER, FIELDS, uid="3301", so_tien="9050000", order_id="ORD-1") == "appended"
+        assert l8.upsert_l8_order(svc, HEADER, FIELDS, uid="3301", so_tien="9050000", course_code="ORD-1") == "appended"
+
+    def test_legacy_w_order_id_recognised(self):
+        # Dòng app ghi trước 23/10 có W = order_id CRM → vẫn coi là app_row (không append đôi)
+        svc = FakeSheets([HEADER, _row(uid="3301", tien="9,050,000", w="CRM-777")])
+        assert l8.upsert_l8_order(svc, HEADER, FIELDS, uid="3301", so_tien="9050000",
+                                  course_code="CC-9", legacy_order_id="CRM-777") == "exists"
+        assert not svc.updates
+        # Không truyền legacy → W lạ bị coi là dòng app của order khác → append mới
+        svc2 = FakeSheets([HEADER, _row(uid="3301", tien="9,050,000", w="CRM-777")])
+        assert l8.upsert_l8_order(svc2, HEADER, FIELDS, uid="3301", so_tien="9050000", course_code="CC-9") == "appended"
+
+    def test_stamp_writes_course_code(self):
+        svc = FakeSheets([HEADER, _row(uid="3301", tien="9,050,000", w="")])
+        assert l8.upsert_l8_order(svc, HEADER, FIELDS, uid="3301", so_tien="9050000",
+                                  course_code="CC-9", legacy_order_id="CRM-777") == "stamped"
+        assert svc.updates[0][1] == [["CC-9"]]  # W = course_code, KHÔNG phải order_id
 
     def test_dry_run_no_write(self):
         svc = FakeSheets([HEADER, _row(uid="3301", tien="9,050,000", w="")])
-        assert l8.upsert_l8_order(svc, HEADER, FIELDS, uid="3301", so_tien="9050000", order_id="ORD-1", dry_run=True) == "stamped"
+        assert l8.upsert_l8_order(svc, HEADER, FIELDS, uid="3301", so_tien="9050000", course_code="ORD-1", dry_run=True) == "stamped"
         assert not svc.updates  # dry-run không ghi
 
 

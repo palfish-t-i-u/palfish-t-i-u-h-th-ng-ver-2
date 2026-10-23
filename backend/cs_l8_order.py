@@ -13,7 +13,9 @@ Map (đã chốt qua data thật 22/10):
 - GV / Tạo nhóm GV: để TRỐNG (team điền — app không có).
 
 Dedup (khoá UID + Số tiền, con dấu W):
-  app_row = dòng có W == order_id (app đã ghi).  sale_row = dòng W trống, khớp UID+tiền (team điền).
+  W (App Order ID) = course_code của app (v2, 23/10); đọc CHẤP NHẬN legacy W = order_id CRM
+  (dòng app ghi trước 23/10).
+  app_row = dòng có W == course_code|legacy (app đã ghi).  sale_row = dòng W trống, khớp UID+tiền (team điền).
   - có app_row + sale_row  → xoá nội dung app_row, đóng dấu W lên sale_row   → 'cleaned'
   - chỉ app_row            → đã ghi rồi                                       → 'exists'
   - chỉ sale_row           → đóng dấu W lên sale_row (không tạo mới)          → 'stamped'
@@ -86,7 +88,9 @@ def _load_tvts(service) -> dict[str, str]:
         rows = res.get("values") or []
         m: dict[str, str] = {}
         for r in rows[2:]:
-            if len(r) > 9 and r[0] and r[9] and "HN2" in str(r[9]):
+            # Mã dạng "HN2 - X" / "HN1 - Y" / "OFF - Z" — mọi team (G3-T3 dùng cho dropdown Sale
+            # của IH1/Offline/HCM). Dòng rác không có " - " bị bỏ.
+            if len(r) > 9 and r[0] and r[9] and " - " in str(r[9]):
                 m[_fold(r[0])] = str(r[9]).strip()
         m.update(_TVTS_OVERRIDE)
         _tvts_cache, _tvts_loaded_at = m, now
@@ -131,7 +135,7 @@ def fetch_payment_date(sb, pr_id: str) -> str:
 
 def build_l8_fields(
     service, *, sale_crm_name: str, pr: dict[str, Any], uid_block: dict[str, Any],
-    course: dict[str, Any], is_gia_han: bool, payment_date: str, order_id: str,
+    course: dict[str, Any], is_gia_han: bool, payment_date: str, course_code: str,
     phone_intl: str,
 ) -> dict[str, list[str]]:
     """{candidate-header: value} cho 1 dòng L8. GV/Tạo nhóm KHÔNG có → bỏ (team điền)."""
@@ -150,7 +154,7 @@ def build_l8_fields(
         "Gói học": _goi_buoi(course.get("name")),
         "Trạng thái": "Chưa kích hoạt",
         "Tháng": f"{today.year}-{today.month}",
-        "App Order ID": str(order_id),
+        "App Order ID": str(course_code),
     }
 
 
@@ -172,18 +176,20 @@ def _plan_l8_row(header: list[Any], fields: dict[str, Any]) -> tuple[list[Any], 
 
 
 def upsert_l8_order(
-    service, header: list[Any], fields: dict[str, Any], *, uid: str, so_tien: str, order_id: str,
-    dry_run: bool = False,
+    service, header: list[Any], fields: dict[str, Any], *, uid: str, so_tien: str, course_code: str,
+    legacy_order_id: str = "", dry_run: bool = False,
 ) -> str:
     """Ghi/dedup 1 đơn vào L8. Xem docstring module cho 4 ca. Trả outcome string.
+    W = course_code; `legacy_order_id` (order_id CRM) chỉ dùng để NHẬN dòng app ghi trước 23/10.
     dry_run=True: KHÔNG ghi, chỉ in dự kiến."""
     uid_i = _match_col(header, ["UID"], set())
     tien_i = _match_col(header, ["Số tiền"], set())
     w_i = _match_col(header, ["App Order ID"], set())
     if uid_i is None or w_i is None:
         return "no_cols"
-    if not uid or not order_id:
+    if not uid or not course_code:
         return "skip"
+    markers = {str(course_code).strip()} | ({str(legacy_order_id).strip()} if str(legacy_order_id or "").strip() else set())
 
     last_col = max([i for i in (uid_i, tien_i, w_i) if i is not None] + [len(header) - 1])
     res = service.spreadsheets().values().get(
@@ -194,12 +200,12 @@ def upsert_l8_order(
         return str(r[i]) if (i is not None and len(r) > i) else ""
 
     target_uid = _norm(uid)
-    app_rows: list[int] = []   # W == order_id
+    app_rows: list[int] = []   # W ∈ {course_code, legacy order_id}
     sale_rows: list[int] = []  # W trống, UID (+tiền) khớp
     for ri in range(1, len(rows)):
         r = rows[ri]
         w = cell(r, w_i).strip()
-        if w == str(order_id):
+        if w in markers:
             app_rows.append(ri)
             continue
         if w:  # dòng app của order khác → bỏ qua
@@ -224,37 +230,37 @@ def upsert_l8_order(
             return "cleaned"
         for ri in app_rows:
             _clear_row_cells(service, ri + 1, owned)
-        _stamp_w(service, sale_rows[0] + 1, w_i, order_id)
+        _stamp_w(service, sale_rows[0] + 1, w_i, course_code)
         return "cleaned"
     if app_rows:
         if dry_run:
-            print(f"   [DRY] EXISTS: đã có dòng app W={order_id} tại dòng {app_rows[0]+1} → bỏ qua")
+            print(f"   [DRY] EXISTS: đã có dòng app W∈{sorted(markers)} tại dòng {app_rows[0]+1} → bỏ qua")
         return "exists"
     if len(sale_rows) > 1:
         if dry_run:
             print(f"   [DRY] AMBIGUOUS: {len(sale_rows)} dòng sale khớp {[r+1 for r in sale_rows]} → đóng dấu dòng đầu")
             return "ambiguous"
         print(f"[cs_l8] UID {uid} khớp {len(sale_rows)} dòng sale L8 — mập mờ, chỉ đóng dấu dòng đầu")
-        _stamp_w(service, sale_rows[0] + 1, w_i, order_id)
+        _stamp_w(service, sale_rows[0] + 1, w_i, course_code)
         return "ambiguous"
     if sale_rows:
         if dry_run:
-            print(f"   [DRY] STAMPED: đóng dấu W={order_id} lên dòng sale {sale_rows[0]+1} (team đã điền đơn)")
+            print(f"   [DRY] STAMPED: đóng dấu W={course_code} lên dòng sale {sale_rows[0]+1} (team đã điền đơn)")
             return "stamped"
-        _stamp_w(service, sale_rows[0] + 1, w_i, order_id)
+        _stamp_w(service, sale_rows[0] + 1, w_i, course_code)
         return "stamped"
     # Ca 1: chưa có → append dòng mới + W.
     if dry_run:
         print(f"   [DRY] APPENDED: ghi dòng MỚI → {_row_preview()}")
         return "appended"
-    _append_l8(service, row_vals, owned)
+    _append_l8(service, row_vals, owned, rows=rows, header=header)
     return "appended"
 
 
-def _stamp_w(service, sheet_row: int, w_i: int, order_id: str) -> None:
+def _stamp_w(service, sheet_row: int, w_i: int, marker: str) -> None:
     service.spreadsheets().values().update(
         spreadsheetId=_SHEET_L8, range=f"'{_L8_TAB}'!{_col_a1(w_i)}{sheet_row}",
-        valueInputOption="RAW", body={"values": [[str(order_id)]]}).execute()
+        valueInputOption="RAW", body={"values": [[str(marker)]]}).execute()
 
 
 def _clear_row_cells(service, sheet_row: int, cols: set[int]) -> None:
@@ -265,9 +271,11 @@ def _clear_row_cells(service, sheet_row: int, cols: set[int]) -> None:
             valueInputOption="RAW", body={"values": [[""]]}).execute()
 
 
-def _append_l8(service, row_vals: list[Any], owned: set[int]) -> None:
-    """Ghi dòng mới ở hàng trống cuối, CHỈ các cột app sở hữu (đoạn liền kề)."""
-    row_no = _next_empty_row(service, _SHEET_L8, _L8_TAB)
+def _append_l8(service, row_vals: list[Any], owned: set[int], *,
+               rows: list[list[Any]] | None = None, header: list[Any] | None = None) -> None:
+    """Ghi dòng mới ở hàng trống kế tiếp NEO THEO CỘT KHOÁ (Họ tên/SDT/UID — plan v2 G3-T4),
+    CHỈ các cột app sở hữu (đoạn liền kề). `rows` = grid đã đọc trong upsert (không đọc lại)."""
+    row_no = _next_empty_row(service, _SHEET_L8, _L8_TAB, rows=rows, header=header, owned_cols=owned)
     segs: list[tuple[int, list[Any]]] = []
     cur_start: int | None = None
     cur: list[Any] = []
