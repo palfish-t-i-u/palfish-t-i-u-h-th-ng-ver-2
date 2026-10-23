@@ -34,14 +34,20 @@ _ROUTES: dict[str, tuple[str, str, str]] = {
     "Offline": (_SHEET_IH2_OFFLINE, "Bàn giao KH mới + gia hạn Offline team", "Bàn giao KH mới + gia hạn Offline team"),
     "Linh Dam (Store)": (_SHEET_IH2_OFFLINE, "Bàn giao KH mới + gia hạn Offline team", "Bàn giao KH mới + gia hạn Offline team"),
     "An Binh (Store)": (_SHEET_IH2_OFFLINE, "Bàn giao KH mới + gia hạn Offline team", "Bàn giao KH mới + gia hạn Offline team"),
-    # Inhouse 2 (Team 2) ĐÃ BỎ 22/10: 2 tab Team 2 cột B-N là công thức QUERY kéo từ
-    # "Dữ liệu KH tổng Team 2" (← sheet ngoài), KHÔNG ghi đè được (overwrite array). Handover
-    # IH2 do pipeline ngoài quản. Re-enable khi chốt cách đẩy field mới vào nguồn Team 2.
+    # Inhouse 2 (Team 2): 2 tab bàn giao cột A-N là công thức QUERY (đơn do team điền vào
+    # "Tổng hợp L8" ngoài → chảy sang). KHÔNG append được. Thay vào đó MATCH-WRITE: tìm dòng
+    # đơn theo UID rồi chỉ GHI 2 ô "Kênh liên hệ"/"Contact ID" (cột tay, team chừa sẵn).
+    # Xem _MATCH_WRITE_TEAMS + _match_write_handover. Re-enable 22/10.
+    "Inhouse 2": (_SHEET_IH2_OFFLINE, "Bàn giao KH mới Team 2", "Bàn giao KH gia hạn Team 2"),
     "HCM (Online)": (_SHEET_HCM, "Bàn giao KH ", "Bàn giao KH "),
     "Inhouse 1": (_SHEET_IH1, "Bàn giao KH mới", " Bàn giao KH gia hạn"),
 }
 # Team dùng tab CHUNG (KH mới + gia hạn 1 tab) → cần ghi cột tag "KH mới/ gia hạn".
 _SHARED_TAG_TEAMS = {"Offline", "Linh Dam (Store)", "An Binh (Store)", "HCM (Online)"}
+# Team ghi kiểu MATCH (không append): dòng đơn do team tự điền L8 → chảy sang tab bàn giao
+# qua QUERY. App chỉ tìm đúng dòng (theo UID + Số tiền) rồi bổ sung Kênh liên hệ + Contact ID
+# vào 2 ô cột tay có sẵn. KHÔNG tạo dòng mới → không trùng, không đụng L8.
+_MATCH_WRITE_TEAMS = {"Inhouse 2"}
 
 # app field → tên cột ứng viên (ưu tiên theo thứ tự; match theo tên, KHÔNG index).
 # Cột không có trong tab → bỏ qua field đó (ghi dòng một phần, CS/GVCN điền nốt).
@@ -268,6 +274,114 @@ def _append_row(service, spreadsheet_id: str, tab: str, row: list[Any], owned_co
         ).execute()
 
 
+def _digits(v: Any) -> str:
+    """Giữ lại chữ số (dùng cho chuỗi chung, KHÔNG dùng cho số tiền — xem _amount_key)."""
+    return re.sub(r"\D", "", str(v if v is not None else ""))
+
+
+def _amount_key(v: Any) -> str:
+    """Chuẩn hoá SỐ TIỀN để so khớp, chịu được cả 2 dạng:
+    - app: int 9050000 HOẶC float '8480000.0' (JSONB lưu lẫn lộn) → BỎ phần thập phân.
+    - sheet: '9.010.000' / '9,010,000' (dấu phân cách nghìn) → bỏ dấu.
+    KHÔNG dùng _digits cho số tiền: float '8480000.0' sẽ bị nuốt '.' → '84800000' (lệch 10×)."""
+    s = str(v if v is not None else "").strip()
+    if not s:
+        return ""
+    m = re.fullmatch(r"(\d+)(?:\.\d+)?", s)   # số thuần int/float → lấy phần nguyên
+    if m:
+        return m.group(1)
+    return re.sub(r"\D", "", s)               # '9.010.000' / '9,010,000' → '9010000'
+
+
+def _match_write_handover(
+    service, spreadsheet_id: str, tab: str, header: list[Any], field_values: dict[str, Any]
+) -> str:
+    """IH2 (match-write): dòng đơn do team điền L8 → chảy sang tab bàn giao (A-N là QUERY).
+    App KHÔNG append; chỉ tìm đúng dòng theo UID (+Số tiền) rồi GHI 2 ô "Kênh liên hệ" +
+    "Contact ID" (cột tay). Trả: 'written' | 'already' | 'not_found' | 'ambiguous' | 'no_cols'.
+    not_found = đơn chưa chảy sang (team chưa điền / chưa propagate) → worker thử lại sau.
+    """
+    uid_i = _match_col(header, _FIELD_HEADERS["uid"], set())
+    kenh_i = _match_col(header, _FIELD_HEADERS["kenh_cham_soc"], set())
+    contact_i = _match_col(header, _FIELD_HEADERS["contact_id"], set())
+    if uid_i is None or (kenh_i is None and contact_i is None):
+        return "no_cols"
+    tien_i = _match_col(header, _FIELD_HEADERS["so_tien"], set())
+
+    target_uid = _norm(field_values.get("uid"))
+    if not target_uid:
+        return "not_found"
+    target_tien = _amount_key(field_values.get("so_tien"))
+
+    need = [x for x in (uid_i, kenh_i, contact_i, tien_i) if x is not None]
+    last_col = max(need)
+    res = (
+        service.spreadsheets()
+        .values()
+        .get(spreadsheetId=spreadsheet_id, range=f"'{tab}'!A1:{_col_a1(last_col)}")
+        .execute()
+    )
+    rows = res.get("values") or []
+
+    def cell(r: list[Any], i: int | None) -> str:
+        return str(r[i]) if (i is not None and len(r) > i) else ""
+
+    matches: list[int] = []  # index trong rows (rows[0]=header)
+    for ri in range(1, len(rows)):
+        r = rows[ri]
+        if _norm(cell(r, uid_i)) != target_uid:
+            continue
+        # Nếu có Số tiền cả 2 bên → phải khớp (disambiguate khi 1 UID nhiều đơn cùng loại)
+        if target_tien and tien_i is not None:
+            rtien = _amount_key(cell(r, tien_i))
+            if rtien and rtien != target_tien:
+                continue
+        matches.append(ri)
+    if not matches:
+        return "not_found"
+    if len(matches) > 1:
+        print(f"[cs_handover] IH2 UID {target_uid} khớp {len(matches)} dòng tab {tab!r} — bỏ (verify tay)")
+        return "ambiguous"
+
+    ri = matches[0]
+    sheet_row = ri + 1  # rows[0] = dòng 1
+    r = rows[ri]
+    kenh_v = str(field_values.get("kenh_cham_soc") or "")
+    contact_v = str(field_values.get("contact_id") or "")
+    writes: list[tuple[int, str]] = []
+    changed = False
+    if kenh_i is not None and kenh_v:
+        if _norm(cell(r, kenh_i)) != _norm(kenh_v):
+            changed = True
+        writes.append((kenh_i, kenh_v))
+    if contact_i is not None and contact_v:
+        if _norm(cell(r, contact_i)) != _norm(contact_v):
+            changed = True
+        writes.append((contact_i, contact_v))
+    if not writes:
+        return "not_found"  # không có giá trị để ghi
+    if not changed:
+        return "already"
+    # Ghi: gộp 2 ô liền kề (U,V / S,T) thành 1 update; không thì ghi riêng.
+    writes.sort()
+    i = 0
+    while i < len(writes):
+        c0, v0 = writes[i]
+        vals = [v0]
+        j = i + 1
+        while j < len(writes) and writes[j][0] == c0 + (j - i):
+            vals.append(writes[j][1])
+            j += 1
+        service.spreadsheets().values().update(
+            spreadsheetId=spreadsheet_id,
+            range=f"'{tab}'!{_col_a1(c0)}{sheet_row}",
+            valueInputOption="USER_ENTERED",
+            body={"values": [vals]},
+        ).execute()
+        i = j
+    return "written"
+
+
 # --- Supabase helpers ---
 
 def _course_order_id(course: dict[str, Any]) -> str:
@@ -311,14 +425,20 @@ def _fetch_sale(sb, sale_email: str) -> dict[str, Any] | None:
     return res.data[0] if res.data else None
 
 
-def _mark_handover_pushed(sb, ar_id: str, uids_data: list[Any], course_code: str) -> None:
-    """Set handover_pushed_at per-course rồi ghi lại uids_data (dedup, không migration)."""
+def _set_course_ts(sb, ar_id: str, uids_data: list[Any], course_code: str, field: str) -> None:
+    """Set <field>=now (ISO) cho đúng course rồi ghi lại uids_data (dedup, không migration).
+    Mutate uids_data tại chỗ → caller đọc lại course.get(field) thấy ngay."""
     now = datetime.now(timezone.utc).isoformat()
     for ub in uids_data or []:
         for c in (ub.get("courses") or []):
             if str(c.get("code") or "") == str(course_code):
-                c["handover_pushed_at"] = now
+                c[field] = now
     sb.table("active_requests").update({"uids_data": uids_data}).eq("id", ar_id).execute()
+
+
+def _mark_handover_pushed(sb, ar_id: str, uids_data: list[Any], course_code: str) -> None:
+    """Đánh dấu handover HOÀN TẤT cho course (dedup + worker dừng retry)."""
+    _set_course_ts(sb, ar_id, uids_data, course_code, "handover_pushed_at")
 
 
 # --- Gói học: auto-fill per-sheet (logic "Split package" của Chung, port 22/10) ---
@@ -475,6 +595,43 @@ def maybe_push_cs_handover(sb, ar_row: dict[str, Any], course_code: str) -> None
         if not header:
             print(f"[cs_handover] skip: không đọc được header tab {tab!r} ({spreadsheet_id})")
             return
+
+        # IH2: 2 việc — (1) ghi ĐƠN vào L8 (dedup cột W); (2) ghi Kênh/Contact vào tab bàn giao.
+        # Mỗi việc 1 cờ; chỉ mark handover_pushed_at (HOÀN TẤT) khi CẢ HAI xong → worker retry
+        # phần còn thiếu tới khi đủ (đơn mới báo thường chưa chảy sang tab bàn giao ngay).
+        if team in _MATCH_WRITE_TEAMS:
+            import cs_l8_order as l8mod
+            order_id = _course_order_id(course)
+            # (1) Ghi đơn vào L8 — cờ con l8_order_pushed_at (tránh làm lại).
+            l8_done = bool(course.get("l8_order_pushed_at"))
+            if not l8_done:
+                try:
+                    l8_header = l8mod.read_l8_header(service)
+                    if l8_header:
+                        pay_date = l8mod.fetch_payment_date(sb, str(ar_row.get("pr_id") or ""))
+                        l8_fields = l8mod.build_l8_fields(
+                            service, sale_crm_name=str(sale.get("crm_name") or sale_name),
+                            pr=pr, uid_block=uid_block, course=course, is_gia_han=is_gia_han,
+                            payment_date=pay_date, order_id=order_id,
+                            phone_intl=str(field_values.get("sdt") or ""))
+                        oc = l8mod.upsert_l8_order(
+                            service, l8_header, l8_fields,
+                            uid=str(uid_block.get("uid") or ""),
+                            so_tien=_amount_key(course.get("amount")), order_id=order_id)
+                        print(f"[cs_handover] IH2 L8 {oc} AR {ar_id} course {course_code}")
+                        if oc in ("appended", "stamped", "exists", "cleaned", "ambiguous"):
+                            _set_course_ts(sb, ar_id, uids, course_code, "l8_order_pushed_at")
+                            l8_done = True
+                except Exception as exc:
+                    print(f"[cs_handover] IH2 L8 lỗi (bỏ qua, retry sau): {exc}")
+            # (2) Ghi Kênh/Contact vào tab bàn giao.
+            bg = _match_write_handover(service, spreadsheet_id, tab, header, field_values)
+            print(f"[cs_handover] IH2 bàn giao {bg} AR {ar_id} course {course_code} → {tab!r}")
+            bg_done = bg in ("written", "already")
+            if l8_done and bg_done:
+                _mark_handover_pushed(sb, ar_id, uids, course_code)
+            return
+
         # Gói học: auto-fill per-sheet (runtime-read dropdown của tab). Rỗng → không ghi cột này.
         goi_hoc = _goi_hoc_label(service, spreadsheet_id, tab, header, str(course.get("name") or ""))
         if goi_hoc:
