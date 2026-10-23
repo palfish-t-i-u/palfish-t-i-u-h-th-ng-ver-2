@@ -396,6 +396,12 @@ class TestDropdown:
         assert m._sale_label("S", "x", "t", hdr, crm_name="Nguyen Van A", full_name="Nguyễn Văn A") == "Nguyễn Văn A"
         monkeypatch.setattr(m, "_read_col_dropdown", lambda svc, sid, tab, c: [])
         assert m._sale_label("S", "x", "t", hdr, crm_name="Nguyen Van A", full_name="Nguyễn Văn A") == "Nguyễn Văn A"
+        # IH1: luôn mã ngắn kể cả tab không dropdown (KH mới 23/10: 7 dòng app full name vs team ThaoPT/SonTT)
+        assert m._sale_label("S", "x", "t", hdr, crm_name="Nguyen Van A", full_name="Nguyễn Văn A", team="Inhouse 1") == "AnhNV"
+        # IH1 nhưng không có trong TVTS → full name
+        assert m._sale_label("S", "x", "t", hdr, crm_name="Ai Do", full_name="Ai Đó", team="Inhouse 1") == "Ai Đó"
+        # Team khác không dropdown → full name (chưa rõ quy ước)
+        assert m._sale_label("S", "x", "t", hdr, crm_name="Nguyen Van A", full_name="Nguyễn Văn A", team="HCM (Online)") == "Nguyễn Văn A"
 
     def test_read_col_dropdown_list_and_range(self):
         import cs_handover_sheet as m

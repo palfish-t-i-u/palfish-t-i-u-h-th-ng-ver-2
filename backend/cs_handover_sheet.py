@@ -639,14 +639,17 @@ def _dropdown_value(options: list[str], *cands: Any) -> str | None:
 _TVTS_PREFIX_RE = re.compile(r"^[A-Za-z0-9]+\s*-\s*")
 
 
-def _sale_label(service, spreadsheet_id: str, tab: str, header: list[Any], *, crm_name: str, full_name: str) -> str:
-    """Ô Sale: nếu cột có dropdown → mã TVTS ('HN1 - X' / 'X') hay full name khớp list; không
-    khớp / không dropdown → full name (hành vi cũ). Tránh sheet báo 'Không hợp lệ'."""
+# Team ghi Sale bằng MÃ NGẮN TVTS ở MỌI tab (kể cả tab không dropdown — IH1 KH mới 23/10: team
+# "ThaoPT/SonTT", app ghi full name → lệch quy ước). Team khác chưa rõ quy ước → chỉ đổi khi có dropdown.
+_SHORT_CODE_TEAMS = {"Inhouse 1"}
+
+
+def _sale_label(service, spreadsheet_id: str, tab: str, header: list[Any], *, crm_name: str, full_name: str,
+                team: str = "") -> str:
+    """Ô Sale: mã TVTS ngắn nếu team dùng mã ngắn (IH1) hoặc cột có dropdown khớp mã; không tra
+    được → full name (hành vi cũ). Tránh sheet báo 'Không hợp lệ' / lệch quy ước team."""
     si = _match_col(header, _FIELD_HEADERS["sale"], set())
     if si is None:
-        return full_name
-    opts = _read_col_dropdown(service, spreadsheet_id, tab, si)
-    if not opts:
         return full_name
     code = ""
     try:
@@ -655,7 +658,12 @@ def _sale_label(service, spreadsheet_id: str, tab: str, header: list[Any], *, cr
     except Exception as exc:
         print(f"[cs_handover] tra TVTS cho Sale lỗi (bỏ qua): {exc}")
     short = _TVTS_PREFIX_RE.sub("", code) if code else ""
-    return _dropdown_value(opts, code, short, full_name) or full_name
+    opts = _read_col_dropdown(service, spreadsheet_id, tab, si)
+    if opts:
+        return _dropdown_value(opts, code, short, full_name) or (short if team in _SHORT_CODE_TEAMS else full_name) or full_name
+    if team in _SHORT_CODE_TEAMS and short:
+        return short
+    return full_name
 
 
 def _kenh_label(service, spreadsheet_id: str, tab: str, header: list[Any], value: str) -> str:
@@ -1044,7 +1052,7 @@ def maybe_push_cs_handover(sb, ar_ref: Any, course_code: str, *, dry_run: bool =
         field_values["app_order_id"] = code  # marker dòng app (tab chưa có cột → bỏ qua)
         field_values["sale"] = _sale_label(service, spreadsheet_id, tab, header,
                                            crm_name=str(sale.get("crm_name") or ""),
-                                           full_name=str(field_values.get("sale") or ""))
+                                           full_name=str(field_values.get("sale") or ""), team=team)
 
         rows = _read_tab_rows(service, spreadsheet_id, tab)  # đọc 1 lần: match + neo hàng trống
         hidx = _header_row_index(rows)
