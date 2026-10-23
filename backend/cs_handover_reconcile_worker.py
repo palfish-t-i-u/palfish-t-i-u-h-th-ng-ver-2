@@ -1,9 +1,9 @@
-"""Worker dọn nền cho handover Team 2 (IH2 — match-write).
+"""Worker dọn nền cho Sale→CS handover (mọi team) — plan v2 23/10.
 
-Lúc báo đơn, đơn thường CHƯA chảy sang tab bàn giao (team điền L8 sau / cơ chế copy
-L8→"Dữ liệu KH tổng Team 2" chưa chạy) nên `maybe_push_cs_handover` trả 'not_found' và
-KHÔNG mark pushed. Worker này định kỳ quét lại các course đã báo đơn nhưng chưa ghi được,
-thử match-write lại — tới khi đơn hiện ra thì ghi Kênh liên hệ + Contact ID.
+Mỗi tick: (1) `reconcile_pending`: course có Kênh/Contact mà cs_handover_log chưa xong /
+retryable (IH2 not_found khi đơn chưa chảy sang tab bàn giao, verify_failed, failed, claim treo)
+→ gọi lại `maybe_push_cs_handover`; (2) `cs_handover_dedup.reconcile_duplicates`: quét sheet
+3 team append, gom dòng app (marker) + dòng team trùng → merge/dup_manual.
 
 Lịch phân tầng theo giờ VN (anh Minh chốt 22/10) — CS cần data sớm trong giờ làm:
     08:30–18:00  → 5 phút/lần
@@ -21,7 +21,8 @@ import asyncio
 from datetime import datetime, timedelta, timezone
 from typing import Any, Callable
 
-from cs_handover_sheet import _course_order_id, maybe_push_cs_handover
+import cs_handover_store as _store
+from cs_handover_sheet import maybe_push_cs_handover
 
 VN = timezone(timedelta(hours=7))
 # Chỉ quét đơn gần đây — chặn trường hợp đơn kẹt (ambiguous/không bao giờ khớp) retry mãi.
@@ -51,8 +52,9 @@ def _course_has_handover(c: dict[str, Any]) -> bool:
 
 
 def reconcile_pending(sb) -> int:
-    """Quét ARs gần đây, thử ghi handover cho course pending (có order_id + có Kênh/Contact
-    nhưng chưa pushed). maybe_push_cs_handover tự dedup + chỉ mark khi ghi thành công.
+    """Quét ARs gần đây, thử ghi handover cho course pending. v2 (G1): trạng thái lấy từ
+    bảng cs_handover_log (1 query batch) — KHÔNG đọc cờ JSONB nữa; chỉ gọi push cho course
+    `needs_retry` (chưa có row / retryable / claim treo). maybe_push tự claim + mark.
     Trả số course đã THỬ xử lý (để log)."""
     cutoff = (datetime.now(timezone.utc) - timedelta(days=LOOKBACK_DAYS)).isoformat()
     try:
@@ -65,17 +67,33 @@ def reconcile_pending(sb) -> int:
     except Exception as exc:
         print(f"[cs_handover_worker] fetch ARs lỗi: {exc}")
         return 0
-    attempted = 0
+    # (ar_id, code) ứng viên: có Kênh/Contact (G2: KHÔNG cần order_id — trigger = báo đơn).
+    candidates: list[tuple[str, str]] = []
     for ar in res.data or []:
+        ar_id = str(ar.get("id") or "")
         for ub in ar.get("uids_data") or []:
+            if not isinstance(ub, dict):
+                continue
             for c in ub.get("courses") or []:
-                if (
-                    _course_order_id(c)
-                    and not c.get("handover_pushed_at")
-                    and _course_has_handover(c)
-                ):
-                    maybe_push_cs_handover(sb, ar, str(c.get("code") or ""))
-                    attempted += 1
+                if not isinstance(c, dict):
+                    continue
+                code = str(c.get("code") or "").strip()
+                if code and _course_has_handover(c):
+                    candidates.append((ar_id, code))
+    if not candidates:
+        return 0
+    try:
+        statuses = _store.fetch_statuses(sb, [code for _, code in candidates])
+    except Exception as exc:
+        print(f"[cs_handover_worker] fetch statuses lỗi: {exc}")
+        return 0
+    attempted = 0
+    for ar_id, code in candidates:
+        if not _store.needs_retry(statuses.get(code)):
+            continue
+        outcome = maybe_push_cs_handover(sb, ar_id, code)
+        print(f"[cs_handover_worker] {code} → {outcome}")
+        attempted += 1
     return attempted
 
 
@@ -96,6 +114,14 @@ async def start_reconcile_worker(sb_factory: Callable[[], Any]) -> None:
                 n = reconcile_pending(sb)
                 if n:
                     print(f"[cs_handover_worker] attempted {n} pending handover(s)")
+                # G4: quét sheet gom trùng app + team (merge / dup_manual). Non-fatal.
+                try:
+                    from cs_handover_dedup import reconcile_duplicates
+                    d = reconcile_duplicates(sb)
+                    if d:
+                        print(f"[cs_handover_worker] dedup handled {d} pair(s)")
+                except Exception as exc:
+                    print(f"[cs_handover_worker] dedup error: {exc}")
             sleep_s = _next_sleep_seconds(datetime.now(VN))
         except Exception as exc:
             print(f"[cs_handover_worker] loop error: {exc}")

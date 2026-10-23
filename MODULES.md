@@ -59,6 +59,16 @@
 - BE: `backend/activation_routes.py` — AR CRUD, allocation guard, match đơn CRM, enqueue Zalo, **append bé/gói** (`POST /active-requests/{ar_id}/append`, `_append_children_core`, `_max_course_seq`)
 - API groups: `endpoints.activeRequests`, `endpoints.activationUrgentRemind`
 
+#### Sale→CS handover khâu 1 (ghi sheet bàn giao lúc báo đơn) — plan `docs/plans/PLAN_cs_handover_v2_hybrid_2026-10-23.md`
+- `backend/cs_handover_sheet.py` — `maybe_push_cs_handover(sb, ar_id, code, dry_run)`: gate Kênh/Contact → claim → upsert 3 team (match phone9+tên bé → fill-empty | append neo cột khoá + verify | ambiguous), IH2 match-write; dropdown-aware Sale/Kênh; routes `_ROUTES`
+- `backend/cs_handover_store.py` — bảng `cs_handover_log` (claim atomic / mark / needs_retry) — nguồn sự thật dedup, KHÔNG dùng cờ JSONB
+- `backend/cs_l8_order.py` — IH2: ghi ĐƠN vào "Tổng hợp L8" (dedup cột W = course_code, legacy order_id), TVTS code, Loại cts
+- `backend/cs_handover_reconcile_worker.py` — worker nền lịch phân tầng: retry pending + gọi dedup
+- `backend/cs_handover_dedup.py` — quét sheet gom dòng app (marker) + dòng team trùng → merge / dup_manual
+- Hook: `activation_routes.py` (2 endpoint tạo AR + PATCH course + full-PATCH) → truyền `ar_id`; env `CS_HANDOVER_WORKER_ENABLED`
+- Migration: `backend/migrations/2026-10-23-cs-handover-log.sql`
+- Tests: `backend/tests/test_cs_handover_sheet.py`, `test_cs_handover_v2.py`, `test_cs_handover_dedup.py`, `test_cs_l8_order.py`
+
 ### B4 — Xuất hóa đơn
 - FE: `frontend/src/components/InvoiceRequestTab.tsx` + `frontend/src/components/invoice/InvoiceRowCards.tsx` (mobile)
 - BE: `backend/invoice_routes.py` — duyệt đơn CRM + xuất hóa đơn (stages CHO_XAC_NHAN → CHO_XUAT_HD → DA_XUAT_HD)
@@ -161,6 +171,7 @@
 - `backend/scripts/zalo_archive_cron.py` — dọn zalo_outbox
 - `backend/scripts/clean_test_data.py`, `create_test_accounts.py`, `check_auth_activation.py`, `list_unlinked_crm.py` — tiện ích test/debug
 - `backend/scripts/check_gsheet_dup.py`, `dedup_gsheet_ledger.py` — audit dedup ledger
+- `backend/scripts/cs_handover_cleanup_20261023.py` — sheet ops handover (marker-cols / delete-dup / merge-dup / relocate / fix-sale-codes; dry-run mặc định, `--apply`); `cs_handover_dryrun.py` — dry-run đơn thật (`--fresh --dedup`)
 - `scripts/sync_so_doanh_thu_to_lark.py` — sync ledger → Lark
 
 ## 12. Docs hướng dẫn người dùng (HDSD)

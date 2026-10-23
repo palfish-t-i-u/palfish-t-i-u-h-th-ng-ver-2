@@ -203,52 +203,263 @@ class TestGoiHoc:
         assert _goi_hoc_label(None, "x", "Bàn giao KH mới Team 2", ["STT", "Sale"], "2/W- NEW 48 PHI+5 HN") == ""
 
 
-def _ar(is_gia_han=True, order_id="X", pushed=False):
+def _ar(is_gia_han=True, order_id="X", handover=True):
     course = {
         "code": "CC-1", "name": "Phil", "amount": 100, "order_id": order_id,
         "lead_source": "gia_han" if is_gia_han else "",
-        "care_channel": "Zalo", "care_contact_id": "84-937865100", "handover_note": "ok",
+        "care_channel": "Zalo" if handover else "", "care_contact_id": "84-937865100" if handover else "",
+        "handover_note": "ok" if handover else "",
     }
-    if pushed:
-        course["handover_pushed_at"] = "now"
     return {"id": "AR1", "pr_id": "PR1",
             "uids_data": [{"uid": "3307", "name": "Uy Kha", "phone": "84-937865100", "courses": [course]}]}
 
 
-def _patch(monkeypatch, calls, team="Inhouse 1", header=None):
+class FakeStore:
+    """Giả bảng cs_handover_log trong RAM (v2): fetch/claim/mark + is_done/needs_retry thật."""
+
+    def __init__(self, rows=None, claim_ok=True):
+        import cs_handover_store as real
+        self.rows = dict(rows or {})
+        self.claim_ok = claim_ok
+        self.claims: list[str] = []
+        self.marks: list[tuple[str, str]] = []
+        self.is_done = real.is_done
+        self.needs_retry = real.needs_retry
+
+    def fetch_statuses(self, sb, codes):
+        return {c: self.rows[c] for c in codes if c in self.rows}
+
+    def claim(self, sb, code, ar_id, **kw):
+        self.claims.append(code)
+        if not self.claim_ok:
+            return False
+        self.rows[code] = {"course_code": code, "status": "claimed", "ar_id": ar_id, **kw}
+        return True
+
+    def mark(self, sb, code, status, **fields):
+        self.marks.append((code, status))
+        self.rows.setdefault(code, {})
+        self.rows[code].update({"status": status, **{k: v for k, v in fields.items() if v is not None}})
+
+
+def _patch(monkeypatch, calls, team="Inhouse 1", header=None, store=None):
     import cs_handover_sheet as m
+    store = store or FakeStore()
+    monkeypatch.setattr(m, "_store", store)
+    monkeypatch.setattr(m, "_fetch_ar", lambda sb, ar_id: calls.get("db_ar"))  # None → fallback snapshot
     monkeypatch.setattr(m, "_fetch_pr", lambda sb, pid: {"name": "C", "child_name": "", "phone": "84-9", "sale_email": "s@pf.vn"})
     monkeypatch.setattr(m, "_fetch_sale", lambda sb, e: {"display_name": "Full Name", "team": team})
     monkeypatch.setattr(m, "_sheets_write_service", lambda: "SVC")
-    monkeypatch.setattr(m, "_read_header_cells", lambda svc, sid, tab: header or HEADER_TEAM2)
-    monkeypatch.setattr(m, "_append_row", lambda svc, sid, tab, row, owned: calls["append"].append((tab, row)))
-    monkeypatch.setattr(m, "_mark_handover_pushed", lambda sb, ar, uids, cc: calls["mark"].append(cc))
-    monkeypatch.setattr(m, "_read_goi_hoc_dropdown", lambda svc, sid, tab, gi: [])
-    return m
+    hdr = header or HEADER_TEAM2
+    monkeypatch.setattr(m, "_read_header_cells", lambda svc, sid, tab: hdr)
+    # G3: tab rows (mặc định chỉ header → 0 match → append), dropdown rỗng, verify OK
+    monkeypatch.setattr(m, "_read_tab_rows", lambda svc, sid, tab: calls.get("rows") or [hdr])
+    monkeypatch.setattr(m, "_read_col_dropdown", lambda svc, sid, tab, c: (calls.get("dropdown") or {}).get(c, []))
+    monkeypatch.setattr(m, "_protected_cols", lambda svc, sid, tab: set())
+    monkeypatch.setattr(m, "_verify_row", lambda svc, sid, tab, r, h, fv: calls.get("verify", True))
+
+    def _fill(svc, sid, tab, sheet_row, existing, header_, fv, blocked):
+        calls.setdefault("fill", []).append((sheet_row, dict(fv)))
+        return [1]
+    monkeypatch.setattr(m, "_fill_empty_cells", _fill)
+
+    def _append(svc, sid, tab, row, owned, **kw):
+        calls["append"].append((tab, row))
+        return 42
+    monkeypatch.setattr(m, "_append_row", _append)
+    return m, store
 
 
 class TestOrchestration:
     def test_happy_gia_han_to_renew_tab(self, monkeypatch):
-        calls = {"append": [], "mark": []}
-        m = _patch(monkeypatch, calls)
-        m.maybe_push_cs_handover(None, _ar(is_gia_han=True), "CC-1")
+        calls = {"append": []}
+        m, store = _patch(monkeypatch, calls)
+        out = m.maybe_push_cs_handover(None, _ar(is_gia_han=True), "CC-1")
+        assert out == "appended"
         assert calls["append"][0][0] == " Bàn giao KH gia hạn"  # Inhouse 1 gia hạn (dấu cách đầu)
-        assert calls["mark"] == ["CC-1"]
+        assert store.claims == ["CC-1"]           # claim TRƯỚC khi ghi sheet
+        assert store.marks == [("CC-1", "appended")]
+        assert store.rows["CC-1"]["sheet_row"] == 42 and store.rows["CC-1"]["marker"] == "CC-1"
 
-    def test_dedup_skip(self, monkeypatch):
-        calls = {"append": [], "mark": []}
-        m = _patch(monkeypatch, calls)
-        m.maybe_push_cs_handover(None, _ar(pushed=True), "CC-1")
+    def test_refetch_prefers_db_over_snapshot(self, monkeypatch):
+        # Snapshot request thiếu Kênh/Contact, DB đã có → dùng DB (chống hook dùng AR cũ).
+        calls = {"append": [], "db_ar": _ar()}
+        m, store = _patch(monkeypatch, calls)
+        out = m.maybe_push_cs_handover(None, _ar(handover=False), "CC-1")
+        assert out == "appended" and len(calls["append"]) == 1
+
+    def test_no_order_id_still_pushes(self, monkeypatch):
+        # G2: trigger = báo đơn có Kênh/Contact, KHÔNG chờ order_id.
+        calls = {"append": []}
+        m, store = _patch(monkeypatch, calls)
+        assert m.maybe_push_cs_handover(None, _ar(order_id=""), "CC-1") == "appended"
+
+    def test_marker_written_when_tab_has_column(self, monkeypatch):
+        calls = {"append": []}
+        header = list(HEADER_TEAM2) + ["App Order ID"]
+        m, store = _patch(monkeypatch, calls, header=header)
+        assert m.maybe_push_cs_handover(None, _ar(), "CC-1") == "appended"
+        row = calls["append"][0][1]
+        assert row[len(header) - 1] == "CC-1"
+        # Tab chưa có cột → không ghi marker, không lỗi
+        calls2 = {"append": []}
+        m, store = _patch(monkeypatch, calls2)
+        assert m.maybe_push_cs_handover(None, _ar(), "CC-1") == "appended"
+        assert "CC-1" not in calls2["append"][0][1]
+
+    def test_accepts_ar_id_string(self, monkeypatch):
+        calls = {"append": [], "db_ar": _ar()}
+        m, store = _patch(monkeypatch, calls)
+        assert m.maybe_push_cs_handover(None, "AR1", "CC-1") == "appended"
+        calls["db_ar"] = None
+        assert m.maybe_push_cs_handover(None, "AR1", "CC-1") == "no_ar"
+
+    def test_dedup_done_in_store(self, monkeypatch):
+        calls = {"append": []}
+        m, store = _patch(monkeypatch, calls, store=FakeStore({"CC-1": {"status": "appended"}}))
+        assert m.maybe_push_cs_handover(None, _ar(), "CC-1") == "already"
+        assert calls["append"] == [] and store.claims == []
+
+    def test_fresh_claim_held_elsewhere(self, monkeypatch):
+        from datetime import datetime, timezone
+        calls = {"append": []}
+        row = {"status": "claimed", "claimed_at": datetime.now(timezone.utc).isoformat()}
+        m, store = _patch(monkeypatch, calls, store=FakeStore({"CC-1": row}))
+        assert m.maybe_push_cs_handover(None, _ar(), "CC-1") == "claimed_elsewhere"
         assert calls["append"] == []
 
-    def test_no_order_id_skip(self, monkeypatch):
-        calls = {"append": [], "mark": []}
-        m = _patch(monkeypatch, calls)
-        m.maybe_push_cs_handover(None, _ar(order_id=""), "CC-1")
-        assert calls["append"] == []
+    def test_claim_lost_race_no_write(self, monkeypatch):
+        calls = {"append": []}
+        m, store = _patch(monkeypatch, calls, store=FakeStore(claim_ok=False))
+        assert m.maybe_push_cs_handover(None, _ar(), "CC-1") == "claimed_elsewhere"
+        assert store.claims == ["CC-1"] and calls["append"] == [] and store.marks == []
+
+    def test_retryable_row_is_retried(self, monkeypatch):
+        calls = {"append": []}
+        m, store = _patch(monkeypatch, calls, store=FakeStore({"CC-1": {"status": "failed"}}))
+        assert m.maybe_push_cs_handover(None, _ar(), "CC-1") == "appended"
+
+    def test_sheet_error_marks_failed(self, monkeypatch):
+        calls = {"append": []}
+        m, store = _patch(monkeypatch, calls)
+
+        def boom(*a, **k):
+            raise RuntimeError("quota")
+        monkeypatch.setattr(m, "_append_row", boom)
+        assert m.maybe_push_cs_handover(None, _ar(), "CC-1") == "error"
+        assert store.marks == [("CC-1", "failed")] and "quota" in store.rows["CC-1"]["last_error"]
+
+    def test_no_handover_skip_without_log_row(self, monkeypatch):
+        # Thiếu Kênh/Contact → không đẩy dòng rỗng và KHÔNG ghi row log (PATCH điền sau vẫn đẩy được)
+        calls = {"append": []}
+        m, store = _patch(monkeypatch, calls)
+        assert m.maybe_push_cs_handover(None, _ar(handover=False), "CC-1") == "no_handover"
+        assert calls["append"] == [] and store.claims == [] and store.marks == [] and store.rows == {}
 
     def test_unrouted_team_skip(self, monkeypatch):
-        calls = {"append": [], "mark": []}
-        m = _patch(monkeypatch, calls, team="Khác")
-        m.maybe_push_cs_handover(None, _ar(), "CC-1")
+        calls = {"append": []}
+        m, store = _patch(monkeypatch, calls, team="Khác")
+        assert m.maybe_push_cs_handover(None, _ar(), "CC-1") == "unrouted"
+        assert calls["append"] == [] and store.claims == []
+
+    def test_dry_run_no_claim_no_write(self, monkeypatch):
+        calls = {"append": []}
+        m, store = _patch(monkeypatch, calls)
+        assert m.maybe_push_cs_handover(None, _ar(), "CC-1", dry_run=True) == "appended"
+        assert calls["append"] == [] and store.claims == [] and store.marks == []
+
+    # ---- G3: upsert 3 team ----
+    def _team_row(self, sdt="84-937865100", child="Uy Kha", uid="", date="", kenh="", marker=""):
+        # HEADER_KH_MOI: 1=Ngày bàn giao, 4=Tên học sinh, 5=UID, 6=SDT KH, 9=Kênh liên hệ, cuối=App Order ID
+        r = [""] * (len(HEADER_KH_MOI) + 1)
+        r[1], r[4], r[5], r[6], r[9] = date, child, uid, sdt, kenh
+        r[len(HEADER_KH_MOI)] = marker
+        return r
+
+    def _today(self):
+        from datetime import datetime, timezone, timedelta
+        return datetime.now(timezone(timedelta(hours=7))).strftime("%d/%m/%Y")
+
+    def test_match_team_row_fill_empty(self, monkeypatch):
+        hdr = list(HEADER_KH_MOI) + ["App Order ID"]
+        calls = {"append": [], "rows": [["banner"], hdr, self._team_row(date=self._today())]}
+        m, store = _patch(monkeypatch, calls, header=hdr)
+        assert m.maybe_push_cs_handover(None, _ar(is_gia_han=False), "CC-1") == "matched"
         assert calls["append"] == []
+        assert calls["fill"][0][0] == 3  # header dòng 2 → dòng team = 3
+        assert store.rows["CC-1"]["status"] == "matched" and store.rows["CC-1"]["sheet_row"] == 3
+        assert store.rows["CC-1"]["marker"] == "CC-1"
+
+    def test_old_row_same_customer_not_matched(self, monkeypatch):
+        # Đơn CŨ cùng khách (gia hạn) ngoài cửa sổ 14 ngày → append dòng mới, không điền vào dòng cũ
+        hdr = list(HEADER_KH_MOI) + ["App Order ID"]
+        calls = {"append": [], "rows": [["banner"], hdr, self._team_row(date="01/03/2026")]}
+        m, store = _patch(monkeypatch, calls, header=hdr)
+        assert m.maybe_push_cs_handover(None, _ar(is_gia_han=False), "CC-1") == "appended"
+        assert "fill" not in calls
+
+    def test_marker_of_other_course_not_matched(self, monkeypatch):
+        hdr = list(HEADER_KH_MOI) + ["App Order ID"]
+        calls = {"append": [], "rows": [["banner"], hdr, self._team_row(date=self._today(), marker="CC-OTHER")]}
+        m, store = _patch(monkeypatch, calls, header=hdr)
+        assert m.maybe_push_cs_handover(None, _ar(is_gia_han=False), "CC-1") == "appended"
+
+    def test_own_marker_row_rematched(self, monkeypatch):
+        # Retry sau verify_failed: dòng có marker == code → coi là dòng mình → matched (không append đôi)
+        hdr = list(HEADER_KH_MOI) + ["App Order ID"]
+        calls = {"append": [], "rows": [["banner"], hdr, self._team_row(date=self._today(), marker="CC-1")]}
+        m, store = _patch(monkeypatch, calls, header=hdr, store=FakeStore({"CC-1": {"status": "verify_failed"}}))
+        assert m.maybe_push_cs_handover(None, _ar(is_gia_han=False), "CC-1") == "matched"
+
+    def test_two_team_rows_ambiguous(self, monkeypatch):
+        hdr = list(HEADER_KH_MOI) + ["App Order ID"]
+        today = self._today()
+        calls = {"append": [], "rows": [["banner"], hdr, self._team_row(date=today), self._team_row(date=today)]}
+        m, store = _patch(monkeypatch, calls, header=hdr)
+        assert m.maybe_push_cs_handover(None, _ar(is_gia_han=False), "CC-1") == "ambiguous"
+        assert calls["append"] == [] and store.rows["CC-1"]["status"] == "ambiguous"
+
+    def test_verify_failed_marks_retryable(self, monkeypatch):
+        calls = {"append": [], "verify": False}
+        m, store = _patch(monkeypatch, calls)
+        assert m.maybe_push_cs_handover(None, _ar(), "CC-1") == "verify_failed"
+        assert store.rows["CC-1"]["status"] == "verify_failed" and store.needs_retry(store.rows["CC-1"])
+
+    def test_dropdown_sale_and_kenh(self, monkeypatch):
+        import cs_l8_order as l8
+        hdr = list(HEADER_KH_MOI)
+        sale_i, kenh_i = hdr.index("Sale"), hdr.index("Kênh liên hệ")
+        calls = {"append": [], "dropdown": {sale_i: ["HuyenVTK", "LyVC", "Khác"], kenh_i: ["Zalo", "Kakao Talk", "Facebook"]}}
+        m, store = _patch(monkeypatch, calls, header=hdr)
+        monkeypatch.setattr(m, "_fetch_sale", lambda sb, e: {"display_name": "Full Name", "crm_name": "Vu Thi Khanh Huyen", "team": "Inhouse 1"})
+        monkeypatch.setattr(l8, "_load_tvts", lambda svc: {"vu thi khanh huyen": "HN2 - HuyenVTK"})
+        ar = _ar(is_gia_han=False)
+        ar["uids_data"][0]["courses"][0]["care_channel"] = "kakao"
+        assert m.maybe_push_cs_handover(None, ar, "CC-1") == "appended"
+        row = calls["append"][0][1]
+        assert row[sale_i] == "HuyenVTK"       # mã ngắn ∈ dropdown (không còn 'Không hợp lệ')
+        assert row[kenh_i] == "Kakao Talk"     # kakao → giá trị list (startswith duy nhất)
+
+    def test_ih2_pending_then_done(self, monkeypatch):
+        import cs_l8_order as l8
+        calls = {"append": []}
+        m, store = _patch(monkeypatch, calls, team="Inhouse 2")
+        monkeypatch.setattr(l8, "read_l8_header", lambda svc: ["UID", "App Order ID"])
+        monkeypatch.setattr(l8, "fetch_payment_date", lambda sb, pid: None)
+        monkeypatch.setattr(l8, "build_l8_fields", lambda *a, **k: {})
+        l8_calls = []
+
+        def _upsert(*a, **k):
+            assert k["course_code"] == "CC-1" and k["legacy_order_id"] == "X"  # W = course_code (G2-T3)
+            l8_calls.append(1)
+            return "appended"
+        monkeypatch.setattr(l8, "upsert_l8_order", _upsert)
+        bg = {"v": "not_found"}
+        monkeypatch.setattr(m, "_match_write_handover", lambda *a, **k: bg["v"])
+        # Lần 1: L8 ghi xong, tab bàn giao chưa có đơn → not_found (retryable), l8_status lưu lại.
+        assert m.maybe_push_cs_handover(None, _ar(is_gia_han=False), "CC-1") == "ih2_pending"
+        assert store.rows["CC-1"]["status"] == "not_found" and store.rows["CC-1"]["l8_status"] == "appended"
+        # Lần 2 (worker): KHÔNG gọi L8 lại, bàn giao written → done.
+        bg["v"] = "written"
+        assert m.maybe_push_cs_handover(None, _ar(is_gia_han=False), "CC-1") == "ih2_done"
+        assert len(l8_calls) == 1 and store.rows["CC-1"]["status"] == "done"
