@@ -118,6 +118,26 @@ def reconcile_pending(sb) -> int:
     return attempted
 
 
+def backfill_l8_payment_dates(sb, service=None) -> int:
+    """Ứng viên = log IH2 đã ghi L8 (status done/not_found, l8_status appended|stamped) trong
+    LOOKBACK_DAYS → cs_l8_order.backfill_payment_dates (chỉ điền ô G trống khi PR đủ tiền)."""
+    import cs_l8_order as l8
+    import cs_handover_dedup as dd
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=LOOKBACK_DAYS)).isoformat()
+    res = (sb.table(_store.TABLE).select("course_code, ar_id")
+           .eq("team", "Inhouse 2").in_("status", ["done", "not_found"])
+           .in_("l8_status", ["appended", "stamped"]).gte("updated_at", cutoff).execute())
+    cands = [{"course_code": r["course_code"], "ar_id": r.get("ar_id")} for r in (res.data or [])]
+    if not cands:
+        return 0
+    if service is None:
+        if dd._svc is None:
+            import cs_handover_sheet as hs
+            dd._svc = hs._sheets_write_service()
+        service = dd._svc
+    return l8.backfill_payment_dates(sb, service, cands)
+
+
 async def start_reconcile_worker(sb_factory: Callable[[], Any]) -> None:
     """Vòng lặp nền: chạy reconcile rồi ngủ theo tầng giờ. Non-fatal — nuốt mọi lỗi."""
     print("[cs_handover_worker] starting...")
@@ -143,6 +163,13 @@ async def start_reconcile_worker(sb_factory: Callable[[], Any]) -> None:
                         print(f"[cs_handover_worker] dedup handled {d} pair(s)")
                 except Exception as exc:
                     print(f"[cs_handover_worker] dedup error: {exc}")
+                # IH2: điền bổ sung 'Ngày chuyển tiền' trên L8 khi tiền về ĐỦ sau lúc báo đơn. Non-fatal.
+                try:
+                    b = backfill_l8_payment_dates(sb)
+                    if b:
+                        print(f"[cs_handover_worker] L8 backfill ngày chuyển tiền: {b}")
+                except Exception as exc:
+                    print(f"[cs_handover_worker] L8 backfill error: {exc}")
             sleep_s = _next_sleep_seconds(datetime.now(VN))
         except Exception as exc:
             print(f"[cs_handover_worker] loop error: {exc}")
