@@ -141,7 +141,9 @@ function arInvoiceActionLabel(action: ArInvoiceAction): string {
     case "all_invoiced":
       return "Tất cả khoá học của AR đã xuất hoá đơn";
     case "all_requested":
-      return "Đã yêu cầu xuất hoá đơn — xử lý tiếp ở B4 (Xuất hoá đơn)";
+      return action.invoicedCount > 0
+        ? `Đã xuất ${action.invoicedCount}/${action.total} khoá — khoá còn lại đã yêu cầu, xử lý tiếp ở B4 (Xuất hoá đơn)`
+        : "Đã yêu cầu xuất hoá đơn — xử lý tiếp ở B4 (Xuất hoá đơn)";
     default:
       return "";
   }
@@ -2277,6 +2279,13 @@ export default function ActivationTab() {
     return m;
   }, [activeRequests, prById]);
 
+  // Tổng số khoá mỗi AR (không phụ thuộc lọc) — chip HĐ theo bé chỉ hiện khi AR >1 khoá.
+  const courseCountByAr = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const ar of activeRequests) m.set(ar.id, ar.uids.reduce((n, u) => n + u.courses.length, 0));
+    return m;
+  }, [activeRequests]);
+
   const holdArs = useMemo(
     () => rows.filter((a) => arHoldPending(a)),
     [rows]
@@ -2527,7 +2536,8 @@ export default function ActivationTab() {
             title={tip}
             style={{ background: "var(--info-bg)", color: "var(--info-text)", whiteSpace: "nowrap" }}
           >
-            <Icons.CheckCircle size={11} /> Đã yêu cầu
+            <Icons.CheckCircle size={11} />{" "}
+            {action.invoicedCount > 0 ? `Đã xuất ${action.invoicedCount}/${action.total}` : "Đã yêu cầu"}
           </span>
         );
       default:
@@ -2688,6 +2698,7 @@ export default function ActivationTab() {
     ctx: {
       isFirstOfGroup: boolean;
       groupSize: number;
+      arCourseCount: number;
       action: ArInvoiceAction;
       selectable: boolean;
       checked: boolean;
@@ -2787,7 +2798,29 @@ export default function ActivationTab() {
           </div>
         </td>
         )}
-        {isVisible("package") && <td>{row.packageName || "—"}</td>}
+        {isVisible("package") && (
+        <td>
+          {row.packageName || "—"}
+          {/* Trạng thái HĐ của RIÊNG bé này — ô Xuất HĐ là cấp AR nên lọc còn 1 bé
+              vẫn phải thấy bé đó đã xuất hay mới yêu cầu (feedback chị Sương Mai 23/10). */}
+          {ctx.arCourseCount > 1 && (row.invoiced || row.invoiceRequested) && (
+            <div style={{ marginTop: 4 }}>
+              {row.invoiced ? (
+                <span className="invoice-chip" style={{ fontSize: 10.5 }}>
+                  <Icons.Doc size={10} /> Đã xuất{row.invoiceId ? ` · ${row.invoiceId}` : ""}
+                </span>
+              ) : (
+                <span
+                  className="badge"
+                  style={{ fontSize: 10.5, background: "var(--info-bg)", color: "var(--info-text)", whiteSpace: "nowrap" }}
+                >
+                  <Icons.CheckCircle size={10} /> Đã yêu cầu
+                </span>
+              )}
+            </div>
+          )}
+        </td>
+        )}
         {isVisible("amount") && (
         <td style={{ textAlign: "right" }}>
           <span style={{ fontWeight: 700, color: "var(--money)" }}>{vnd(row.amount)}</span>
@@ -3204,6 +3237,7 @@ export default function ActivationTab() {
                         renderCourseRow(row, tint, {
                           isFirstOfGroup: ri === 0,
                           groupSize: group.rows.length,
+                          arCourseCount: courseCountByAr.get(group.arId) ?? group.rows.length,
                           action,
                           selectable,
                           checked,

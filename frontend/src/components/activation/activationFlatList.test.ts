@@ -68,6 +68,24 @@ describe("flatCourseRows", () => {
     expect(row.amount).toBe(1_000_000);
   });
 
+  it("map trạng thái HĐ theo TỪNG khoá (đã yêu cầu / đã xuất + mã HĐ)", () => {
+    const rows = flatCourseRows([
+      ar({
+        uids: [
+          { uid: "U1", phone: "0", country: "VN", courses: [course({ courseCode: "C1", invoiceRequestedAt: "2026-10-23 12:16" })] },
+          {
+            uid: "U2",
+            phone: "0",
+            country: "VN",
+            courses: [course({ courseCode: "C2", invoiced: true, invoiceId: "INV-2026-1971", invoiceRequestedAt: "2026-10-23 12:16" })],
+          },
+        ],
+      }),
+    ]);
+    expect(rows[0]).toMatchObject({ invoiced: false, invoiceRequested: true, invoiceId: null });
+    expect(rows[1]).toMatchObject({ invoiced: true, invoiceRequested: true, invoiceId: "INV-2026-1971" });
+  });
+
   it("uidName lấy từ tên bé (multi-con); null khi không có", () => {
     const withName = ar({ uids: [{ uid: "U9", name: "Bé Bơ", phone: "0", country: "VN", courses: [course()] }] });
     expect(flatCourseRows([withName])[0].uidName).toBe("Bé Bơ");
@@ -188,12 +206,20 @@ describe("summarizeArInvoiceAction", () => {
     expect(a).toEqual({ kind: "all_invoiced" });
   });
 
-  it("all_requested: hết khoá chờ nhưng chưa xuất hết (còn khoá mới yêu cầu)", () => {
+  it("all_requested: hết khoá chờ nhưng chưa xuất hết → đếm số khoá đã xuất (AR-1731: 1/2)", () => {
     const a = summarizeArInvoiceAction([
       { invoiced: true, requested: false, hardMissing: [] },
       { invoiced: false, requested: true, hardMissing: [] },
     ]);
-    expect(a).toEqual({ kind: "all_requested" });
+    expect(a).toEqual({ kind: "all_requested", invoicedCount: 1, total: 2 });
+  });
+
+  it("all_requested: chưa xuất khoá nào → invoicedCount 0", () => {
+    const a = summarizeArInvoiceAction([
+      { invoiced: false, requested: true, hardMissing: [] },
+      { invoiced: false, requested: true, hardMissing: [] },
+    ]);
+    expect(a).toEqual({ kind: "all_requested", invoicedCount: 0, total: 2 });
   });
 
   it("ready: còn khoá chờ, không vướng blocker cứng", () => {
@@ -226,7 +252,7 @@ describe("isArInvoiceActionable", () => {
     expect(isArInvoiceActionable({ kind: "ready" })).toBe(true);
     expect(isArInvoiceActionable({ kind: "empty" })).toBe(false);
     expect(isArInvoiceActionable({ kind: "all_invoiced" })).toBe(false);
-    expect(isArInvoiceActionable({ kind: "all_requested" })).toBe(false);
+    expect(isArInvoiceActionable({ kind: "all_requested", invoicedCount: 0, total: 1 })).toBe(false);
     expect(isArInvoiceActionable({ kind: "blocked", missing: ["số tiền"] })).toBe(false);
   });
 });

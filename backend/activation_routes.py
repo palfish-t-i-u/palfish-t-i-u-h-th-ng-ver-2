@@ -27,7 +27,7 @@ from invoice_routes import (
     _build_excel_orders,
     _build_excel_products,
 )
-from revenue_routes import sync_ledger_from_ar_course
+from revenue_routes import ky_tu_gio_thuc, sync_ledger_from_ar_course
 from course_invoice_name import course_invoice_name
 from env_utils import dingtalk_event_enabled
 from rbac import resolve_actor
@@ -453,27 +453,77 @@ def _tien_ve_map_from_ledger(
     return out
 
 
+# Tiền về thiếu ≤ 2% tổng gói (phí cổng/làm tròn) vẫn coi là ĐỦ ở lần TT cuối.
+PAIR_SHORTFALL_TOLERANCE = 0.02
+
+
 def _pair_course_dates(
     courses: list[tuple[str, float]],
-    funded_dates: list[str],
+    funded: list[tuple[str, str | None, float]],
 ) -> dict[str, tuple[str | None, str | None]]:
-    """Gán ngày tiền về cho TỪNG khoá (bé) trong 1 AR.
+    """Gán (sớm, muộn) cho TỪNG khoá (bé) trong 1 AR — đổ dần theo SỐ TIỀN.
 
-    - courses: [(course_code, amount)] theo thứ tự uids_data.
-    - funded_dates: ngày tiền về (ISO "YYYY-MM-DD") của các line thuộc PR.
+    - courses: [(course_code, amount)] theo thứ tự uids_data (thứ tự báo đơn).
+    - funded: [(ngày giao dịch, ngày tiền về TK, số tiền)] các line đã khớp giao dịch.
+      Ngày giao dịch = ngày doanh thu (CK: ngày bank theo luật 22h; thẻ: ngày quẹt).
+      Ngày tiền về TK = CK: ngày bank; thẻ: funded_date (None → lấy ngày giao dịch).
 
-    Ghép 1-1 (mỗi bé 1 ngày riêng) CHỈ khi an toàn: có ngày + số line == số khoá +
-    mọi khoá đều >0đ → khoá[i] ↔ ngày[i] (sort tăng dần), trả (ngày, ngày).
-    Ngược lại (1 khoá nhiều line = tín dụng/cọc; lệch số line↔khoá; có khoá 0đ
-    refer) → mọi khoá nhận (min, max) cả PR = hành vi cũ, KHÔNG regression.
+    Nghĩa 2 cột (anh Minh + chị Sương Mai 9/10, chốt lại 23/10):
+    - SỚM = ngày giao dịch của line làm bé ĐỦ tiền = ngày doanh thu → kế toán lọc
+      cột này để xuất HĐ ("doanh thu ngày nào xuất HĐ ngày đó"). Khớp All File chị Hiền.
+    - MUỘN = ngày tiền về TK muộn nhất trong các line góp vào bé → đối soát sao kê.
+    Line sort theo ngày giao dịch, đổ lần lượt vào khoá theo thứ tự báo đơn. VD PR-2548
+    (cọc 5tr 20/10 + 29,98tr 22/10, 2 bé × 17,49tr) → cả 2 bé (22/10, 22/10): khoản cọc
+    KHÔNG phải ngày doanh thu. Ghép 1-1 theo SỐ LƯỢNG line, hay lấy "đồng đầu tiên" làm
+    sớm, đều là bẫy — xem learning b3-tien-ve-per-course-not-per-pr.md.
+    - Khoá 0đ (tặng kèm refer) → (min giao dịch, max tiền về) cả PR.
+    - Thiếu ≤ PAIR_SHORTFALL_TOLERANCE → khoá chưa đầy coi như đủ ở line cuối.
+      Thiếu nhiều hơn (data lệch / line chưa khớp) → khoá chưa đầy nhận (min, max)
+      cả PR, không khoá nào mất ngày.
+    - Tiền PR về NHIỀU hơn tổng khoá của AR quá ngưỡng → không biết tiền nào của
+      AR này (PR chia nhiều AR, hoặc data lệch) → mọi khoá nhận (min, max) cả PR.
+      Đổ dần từ 0 ở đây sẽ lấy tiền của AR anh em (bẫy gateway-fee-doubled-multi-con).
     """
     codes = [c for c, _ in courses]
-    agg = (min(funded_dates), max(funded_dates)) if funded_dates else (None, None)
-    paying = [c for c, amt in courses if amt and amt > 0]
-    if funded_dates and len(funded_dates) == len(courses) == len(paying):
-        ordered = sorted(funded_dates)
-        return {code: (d, d) for code, d in zip(codes, ordered)}
-    return {code: agg for code in codes}
+    lines = sorted((tx, fd or tx, float(a or 0)) for tx, fd, a in funded if tx)
+    if not lines:
+        return {code: (None, None) for code in codes}
+    agg = (lines[0][0], max(fd for _, fd, _a in lines))
+    last_tx, last_fd = lines[-1][0], lines[-1][1]
+    paying_total = sum(amt for _, amt in courses if amt and amt > 0)
+    funded_total = sum(a for _, _fd, a in lines if a > 0)
+    near_full = paying_total > 0 and funded_total >= paying_total * (1 - PAIR_SHORTFALL_TOLERANCE)
+    if funded_total > paying_total * (1 + PAIR_SHORTFALL_TOLERANCE):
+        return {code: agg for code in codes}
+
+    queue = [[tx, fd, a] for tx, fd, a in lines if a > 0]
+    qi = 0
+    out: dict[str, tuple[str | None, str | None]] = {}
+    for code, amt in courses:
+        if not amt or amt <= 0:
+            out[code] = agg
+            continue
+        need = float(amt)
+        som: str | None = None
+        muon: str | None = None
+        while need > 0.5 and qi < len(queue):
+            tx, fd, avail = queue[qi]
+            muon = max(muon or fd, fd)
+            take = min(avail, need)
+            need -= take
+            queue[qi][2] -= take
+            if queue[qi][2] <= 0.5:
+                qi += 1
+            if need <= 0.5:
+                som = tx
+        if som is None:
+            if not near_full:
+                out[code] = agg
+                continue
+            som = last_tx
+            muon = max(muon or last_fd, last_fd)
+        out[code] = (som, muon)
+    return out
 
 
 def _tien_ve_courses(sb, ar_id: str) -> dict[str, tuple[str | None, str | None]]:
@@ -587,21 +637,50 @@ def _bank_vn_date(transaction_date: Any) -> str | None:
     return dt.date().isoformat()
 
 
+def _bank_revenue_date(transaction_date: Any) -> str | None:
+    """Ngày doanh thu của 1 khoản CK = kỳ theo luật Thu Hiền (ky_tu_gio_thuc): sau 22h VN
+    → ngày sau, trừ ngày cuối tháng. Cùng luật Sổ doanh thu/All File dùng."""
+    if not transaction_date:
+        return None
+    try:
+        dt = transaction_date if isinstance(transaction_date, datetime) else datetime.fromisoformat(str(transaction_date))
+    except (ValueError, TypeError):
+        return None
+    if not dt.tzinfo:
+        dt = dt.replace(tzinfo=timezone(timedelta(hours=7)))
+    return ky_tu_gio_thuc(dt).isoformat()
+
+
+def _swipe_vn_date(paid_at: Any) -> str | None:
+    """Ngày quẹt thẻ = ngày doanh thu đơn thẻ = (paid_at AT TIME ZONE 'UTC')::date — ép UTC,
+    KHÔNG đổi giờ VN (learning 2026-08-08-ct1-ngay-tien-ve-don-the-paid-at-utc.md)."""
+    if not paid_at:
+        return None
+    try:
+        dt = paid_at if isinstance(paid_at, datetime) else datetime.fromisoformat(str(paid_at))
+    except (ValueError, TypeError):
+        return None
+    if dt.tzinfo:
+        dt = dt.astimezone(timezone.utc)
+    return dt.date().isoformat()
+
+
 def _tien_ve_map(sb, ar_ids: list[str]) -> dict[str, dict[str, tuple[str | None, str | None]]]:
     """Ngày tiền về (sớm, muộn) PER-COURSE của mỗi AR — TỪ giao dịch cổng/bank ĐÃ KHỚP.
 
     Trả {ar_id: {course_code: (som, muon)}}. Line thanh toán thuộc PR (không gắn
-    sẵn với bé) → _pair_course_dates ghép line↔khoá: nhiều bé mỗi bé 1 ngày riêng;
-    1 bé nhiều lần (tín dụng/cọc) giữ range. Xem _pair_course_dates.
+    sẵn với bé) → _pair_course_dates đổ tiền các line vào từng khoá theo số tiền:
+    sớm = ngày giao dịch làm bé đủ tiền (ngày doanh thu), muộn = ngày tiền về TK.
 
-    Thẻ/trả góp: ngày tiền về TK = gateway_transactions.funded_date (match_status=
-    'matched') — KHỚP sao kê ngân hàng + BC04 (đối soát xuất HĐ theo tiền thực về TK,
-    không phải ngày quẹt). Đơn quẹt xong chưa settle (funded_date null) → fallback Sổ.
-    CK: ngày tiền về = bank_transactions.transaction_date (đổi giờ VN).
+    Mỗi line 2 mốc:
+    - Thẻ/trả góp (gateway_transactions match_status='matched'): giao dịch = ngày quẹt
+      (paid_at ép UTC); tiền về TK = funded_date (KHỚP sao kê + BC04). Chưa có
+      funded_date → tiền về TK tạm = ngày quẹt.
+    - CK (bank_transactions): giao dịch = transaction_date theo luật 22h; tiền về TK =
+      transaction_date giờ VN.
     AR không có giao dịch khớp → fallback _tien_ve_map_from_ledger (ngày Sổ) để không
     AR nào đang có ngày bị mất ngày.
-    CHỈ ĐỌC — KHÔNG đụng so_doanh_thu/BC/doanh thu (doanh thu vẫn = ngày quẹt; ngày ở
-    B3 = ngày tiền thực về TK, là khái niệm khác, cố ý lệch — như BC04 vs BC02).
+    CHỈ ĐỌC — KHÔNG đụng so_doanh_thu/BC/doanh thu; chỉ hiển thị + lọc B3 và mốc ngày B4.
     Batch theo chunk, KHÔNG N+1 (mirror _credit_hold_map).
     """
     ids = [str(a) for a in ar_ids if a]
@@ -634,14 +713,16 @@ def _tien_ve_map(sb, ar_ids: list[str]) -> dict[str, dict[str, tuple[str | None,
             courses_by_ar[aid] = clist
     pr_ids = list({p for p in pr_by_ar.values() if p})
 
-    # 2) payment_lines của các PR → line_id → (pr_id, method)
-    line_meta: dict[str, tuple[str, str]] = {}
+    # 2) payment_lines của các PR → line_id → (pr_id, method, amount)
+    line_meta: dict[str, tuple[str, str, float]] = {}
     for i in range(0, len(pr_ids), CHUNK):
         try:
             res = (
                 sb.table("payment_lines")
-                .select("id, payment_request_id, method")
+                .select("id, payment_request_id, method, amount")
                 .in_("payment_request_id", pr_ids[i : i + CHUNK])
+                # line bị từ chối còn dính giao dịch (link cũ) không được tính là tiền về
+                .in_("status", ["pending", "paid"])
                 .execute()
             )
         except Exception:
@@ -650,20 +731,30 @@ def _tien_ve_map(sb, ar_ids: list[str]) -> dict[str, dict[str, tuple[str | None,
             lid = str(r.get("id") or "")
             prid = str(r.get("payment_request_id") or "")
             if lid and prid:
-                line_meta[lid] = (prid, (r.get("method") or "").lower())
+                line_meta[lid] = (prid, (r.get("method") or "").lower(), float(r.get("amount") or 0))
     if not line_meta:
         return _tien_ve_map_from_ledger(sb, ids)
 
-    # 3) ngày tiền về TK: thẻ/trả góp = gateway.funded_date; CK = bank.transaction_date
-    date_by_pr: dict[str, list[str]] = {}
-    card_line_ids = [lid for lid, (_, m) in line_meta.items() if m in CREDIT_METHODS]
-    ck_line_ids = [lid for lid, (_, m) in line_meta.items() if m not in CREDIT_METHODS]
+    # 3) mỗi line: ngày giao dịch + ngày tiền về TK (nhiều giao dịch → lấy muộn nhất)
+    line_tx: dict[str, str] = {}
+    line_fd: dict[str, str] = {}
+
+    def _note_line_date(lid: str, tx: str | None, fd: str | None) -> None:
+        if lid not in line_meta:
+            return
+        if tx and tx > line_tx.get(lid, ""):
+            line_tx[lid] = tx
+        if fd and fd > line_fd.get(lid, ""):
+            line_fd[lid] = fd
+
+    card_line_ids = [lid for lid, (_, m, _a) in line_meta.items() if m in CREDIT_METHODS]
+    ck_line_ids = [lid for lid, (_, m, _a) in line_meta.items() if m not in CREDIT_METHODS]
 
     for i in range(0, len(card_line_ids), CHUNK):
         try:
             res = (
                 sb.table("gateway_transactions")
-                .select("payment_line_id, funded_date")
+                .select("payment_line_id, paid_at, funded_date")
                 .in_("payment_line_id", card_line_ids[i : i + CHUNK])
                 .eq("match_status", "matched")
                 .execute()
@@ -671,10 +762,8 @@ def _tien_ve_map(sb, ar_ids: list[str]) -> dict[str, dict[str, tuple[str | None,
         except Exception:
             continue
         for r in (res.data or []):
-            lid = str(r.get("payment_line_id") or "")
-            d = _funded_vn_date(r.get("funded_date"))
-            if lid in line_meta and d:
-                date_by_pr.setdefault(line_meta[lid][0], []).append(d)
+            fd = _funded_vn_date(r.get("funded_date"))
+            _note_line_date(str(r.get("payment_line_id") or ""), _swipe_vn_date(r.get("paid_at")) or fd, fd)
 
     for i in range(0, len(ck_line_ids), CHUNK):
         try:
@@ -687,18 +776,22 @@ def _tien_ve_map(sb, ar_ids: list[str]) -> dict[str, dict[str, tuple[str | None,
         except Exception:
             continue
         for r in (res.data or []):
-            lid = str(r.get("payment_line_id") or "")
-            d = _bank_vn_date(r.get("transaction_date"))
-            if lid in line_meta and d:
-                date_by_pr.setdefault(line_meta[lid][0], []).append(d)
+            td = r.get("transaction_date")
+            _note_line_date(str(r.get("payment_line_id") or ""), _bank_revenue_date(td), _bank_vn_date(td))
 
-    # 4) gán per-course (ghép line↔khoá); AR chưa có ngày → fallback Sổ (không hồi quy)
+    # line chưa khớp giao dịch (tiền chưa về TK) → không có ngày, không tham gia đổ tiền
+    funded_by_pr: dict[str, list[tuple[str, str | None, float]]] = {}
+    for lid, tx in line_tx.items():
+        prid, _m, amount = line_meta[lid]
+        funded_by_pr.setdefault(prid, []).append((tx, line_fd.get(lid), amount))
+
+    # 4) gán per-course (đổ tiền line→khoá); AR chưa có ngày → fallback Sổ (không hồi quy)
     out: dict[str, dict[str, tuple[str | None, str | None]]] = {}
     uncovered: list[str] = []
     for aid in ids:
-        dates = date_by_pr.get(pr_by_ar.get(aid) or "", [])
-        if dates:
-            out[aid] = _pair_course_dates(courses_by_ar.get(aid, []), dates)
+        funded = funded_by_pr.get(pr_by_ar.get(aid) or "", [])
+        if funded:
+            out[aid] = _pair_course_dates(courses_by_ar.get(aid, []), funded)
         else:
             uncovered.append(aid)
     if uncovered:

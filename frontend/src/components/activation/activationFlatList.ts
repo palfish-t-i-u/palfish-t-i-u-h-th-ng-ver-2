@@ -28,6 +28,10 @@ export interface CourseRow {
   /** Đã có Order ID (đã trim). */
   activated: boolean;
   invoiced: boolean;
+  /** Khoá này đã được yêu cầu xuất HĐ (chưa chắc đã xuất). */
+  invoiceRequested: boolean;
+  /** Mã HĐ của RIÊNG khoá này khi đã xuất (VD "INV-2026-1971"). */
+  invoiceId: string | null;
   /** Trạng thái thưởng giới thiệu của riêng khoá này; null nếu khoá không có thưởng. */
   referral: ReferralStatus | null;
   holdActivation: boolean;
@@ -80,6 +84,8 @@ export function flatCourseRows(ars: ActiveRequest[]): CourseRow[] {
           orderId,
           activated: orderId !== "",
           invoiced: Boolean(c.invoiced),
+          invoiceRequested: Boolean(c.invoiceRequestedAt),
+          invoiceId: (c.invoiceId ?? "").trim() || null,
           referral: courseReferral(c),
           holdActivation: Boolean(ar.holdActivation),
           holdNote: ar.holdNote ?? null,
@@ -141,13 +147,14 @@ export function groupRowsByAr(rows: CourseRow[]): CourseRowGroup[] {
  * - `empty`: AR không có khoá học nào.
  * - `all_invoiced`: mọi khoá đã xuất hoá đơn → không còn gì để yêu cầu.
  * - `all_requested`: không còn khoá "chờ" (khoá còn lại đã yêu cầu xuất) nhưng
- *   chưa xuất hết → hiện "Đã yêu cầu".
+ *   chưa xuất hết → hiện "Đã yêu cầu", hoặc "Đã xuất x/y" khi đã xuất một phần
+ *   (`invoicedCount` > 0) để không trông như chưa khoá nào được xuất.
  * - `blocked`: còn khoá chờ nhưng vướng điều kiện CỨNG (thiếu gói/số tiền/địa chỉ).
  * - `ready`: còn khoá chờ và không vướng cứng → cho phép Yêu cầu xuất HĐ cả AR. */
 export type ArInvoiceAction =
   | { kind: "empty" }
   | { kind: "all_invoiced" }
-  | { kind: "all_requested" }
+  | { kind: "all_requested"; invoicedCount: number; total: number }
   | { kind: "blocked"; missing: string[] }
   | { kind: "ready" };
 
@@ -167,7 +174,10 @@ export function summarizeArInvoiceAction(
   if (courses.length === 0) return { kind: "empty" };
   const pending = courses.filter((c) => !c.invoiced && !c.requested);
   if (pending.length === 0) {
-    return courses.every((c) => c.invoiced) ? { kind: "all_invoiced" } : { kind: "all_requested" };
+    const invoicedCount = courses.filter((c) => c.invoiced).length;
+    return invoicedCount === courses.length
+      ? { kind: "all_invoiced" }
+      : { kind: "all_requested", invoicedCount, total: courses.length };
   }
   const missing = [...new Set(pending.flatMap((c) => c.hardMissing))];
   if (missing.length > 0) return { kind: "blocked", missing };
