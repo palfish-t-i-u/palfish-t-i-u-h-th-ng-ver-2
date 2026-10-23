@@ -87,6 +87,27 @@ def reconcile_pending(sb) -> int:
     except Exception as exc:
         print(f"[cs_handover_worker] fetch statuses lỗi: {exc}")
         return 0
+    # Course ĐÃ ĐẨY mà PR bị huỷ SAU đó (sale huỷ/tạo lại đơn, PR-2590 23/10): ghi 'cancelled'
+    # + cảnh báo để người xử dòng sheet (app không tự xoá). 1 query batch theo pr_id.
+    try:
+        pr_by_ar = {str(ar.get("id") or ""): str(ar.get("pr_id") or "") for ar in res.data or []}
+        pr_ids = sorted({p for p in pr_by_ar.values() if p})
+        cancelled: dict[str, Any] = {}
+        for i in range(0, len(pr_ids), 200):
+            q = sb.table("payment_requests").select("id, cancelled_at").in_("id", pr_ids[i:i + 200]).eq("state", "cancelled").execute()
+            cancelled.update({str(r["id"]): r.get("cancelled_at") for r in (q.data or [])})
+        for ar_id, code in candidates:
+            pr_id = pr_by_ar.get(ar_id, "")
+            st = statuses.get(code) or {}
+            if pr_id in cancelled and str(st.get("status") or "") not in ("cancelled", ""):
+                if _store.is_done(st):
+                    print(f"[cs_handover_worker] CẢNH BÁO: {code} (AR {ar_id}) đã đẩy ({st.get('status')}, tab {st.get('tab')!r} dòng {st.get('sheet_row')}) nhưng PR {pr_id} bị huỷ lúc {cancelled[pr_id]} — xử tay dòng sheet")
+                _store.record(sb, code, ar_id, "cancelled",
+                              last_error=f"PR {pr_id} cancelled lúc {cancelled[pr_id]}; trước đó {st.get('status')}"
+                                         + (f" dòng {st.get('sheet_row')}" if st.get("sheet_row") else ""))
+                statuses[code] = {**st, "status": "cancelled"}
+    except Exception as exc:
+        print(f"[cs_handover_worker] kiểm PR cancelled lỗi (bỏ qua): {exc}")
     attempted = 0
     for ar_id, code in candidates:
         if not _store.needs_retry(statuses.get(code)):
@@ -95,6 +116,26 @@ def reconcile_pending(sb) -> int:
         print(f"[cs_handover_worker] {code} → {outcome}")
         attempted += 1
     return attempted
+
+
+def backfill_l8_payment_dates(sb, service=None) -> int:
+    """Ứng viên = log IH2 đã ghi L8 (status done/not_found, l8_status appended|stamped) trong
+    LOOKBACK_DAYS → cs_l8_order.backfill_payment_dates (chỉ điền ô G trống khi PR đủ tiền)."""
+    import cs_l8_order as l8
+    import cs_handover_dedup as dd
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=LOOKBACK_DAYS)).isoformat()
+    res = (sb.table(_store.TABLE).select("course_code, ar_id")
+           .eq("team", "Inhouse 2").in_("status", ["done", "not_found"])
+           .in_("l8_status", ["appended", "stamped"]).gte("updated_at", cutoff).execute())
+    cands = [{"course_code": r["course_code"], "ar_id": r.get("ar_id")} for r in (res.data or [])]
+    if not cands:
+        return 0
+    if service is None:
+        if dd._svc is None:
+            import cs_handover_sheet as hs
+            dd._svc = hs._sheets_write_service()
+        service = dd._svc
+    return l8.backfill_payment_dates(sb, service, cands)
 
 
 async def start_reconcile_worker(sb_factory: Callable[[], Any]) -> None:
@@ -122,6 +163,13 @@ async def start_reconcile_worker(sb_factory: Callable[[], Any]) -> None:
                         print(f"[cs_handover_worker] dedup handled {d} pair(s)")
                 except Exception as exc:
                     print(f"[cs_handover_worker] dedup error: {exc}")
+                # IH2: điền bổ sung 'Ngày chuyển tiền' trên L8 khi tiền về ĐỦ sau lúc báo đơn. Non-fatal.
+                try:
+                    b = backfill_l8_payment_dates(sb)
+                    if b:
+                        print(f"[cs_handover_worker] L8 backfill ngày chuyển tiền: {b}")
+                except Exception as exc:
+                    print(f"[cs_handover_worker] L8 backfill error: {exc}")
             sleep_s = _next_sleep_seconds(datetime.now(VN))
         except Exception as exc:
             print(f"[cs_handover_worker] loop error: {exc}")

@@ -241,6 +241,11 @@ class FakeStore:
         self.rows.setdefault(code, {})
         self.rows[code].update({"status": status, **{k: v for k, v in fields.items() if v is not None}})
 
+    def record(self, sb, code, ar_id, status, **fields):
+        self.marks.append((code, status))
+        self.rows.setdefault(code, {"course_code": code})
+        self.rows[code].update({"ar_id": ar_id, "status": status, **{k: v for k, v in fields.items() if v is not None}})
+
 
 def _patch(monkeypatch, calls, team="Inhouse 1", header=None, store=None):
     import cs_handover_sheet as m
@@ -355,6 +360,18 @@ class TestOrchestration:
         m, store = _patch(monkeypatch, calls)
         assert m.maybe_push_cs_handover(None, _ar(handover=False), "CC-1") == "no_handover"
         assert calls["append"] == [] and store.claims == [] and store.marks == [] and store.rows == {}
+
+    def test_pr_cancelled_not_pushed(self, monkeypatch):
+        # Sale huỷ PR rồi tạo lại (PR-2590 → PR-2602 23/10): course của PR huỷ KHÔNG được đẩy, log 'cancelled' terminal
+        calls = {"append": []}
+        m, store = _patch(monkeypatch, calls)
+        monkeypatch.setattr(m, "_fetch_pr", lambda sb, pid: {"id": "PR-1", "name": "C", "phone": "84-9", "sale_email": "s@pf.vn",
+                                                             "state": "cancelled", "cancelled_at": "2026-10-23T07:02:35Z"})
+        assert m.maybe_push_cs_handover(None, _ar(), "CC-1") == "pr_cancelled"
+        assert calls["append"] == [] and store.claims == []
+        assert store.rows["CC-1"]["status"] == "cancelled" and store.is_done(store.rows["CC-1"])
+        # Lần sau: already, không đụng sheet
+        assert m.maybe_push_cs_handover(None, _ar(), "CC-1") == "already"
 
     def test_unrouted_team_skip(self, monkeypatch):
         calls = {"append": []}

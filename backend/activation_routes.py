@@ -2548,6 +2548,30 @@ def _stamp_order_id_changes(
     return audit_changes
 
 
+_HANDOVER_FIELDS = ("care_channel", "care_contact_id", "handover_note")
+
+
+def _preserve_handover_fields(current_uids: list[Any], new_uids: list[Any]) -> None:
+    """Full-PATCH thay cả uids_data: course nào client gửi care_channel/care_contact_id/handover_note
+    = None (không có trong form sửa) thì GIỮ giá trị đang có theo course code. Chuỗi rỗng = xoá
+    có chủ ý (giữ nguyên). Sửa tại chỗ `new_uids`."""
+    cur: dict[str, dict[str, Any]] = {}
+    for ub in current_uids or []:
+        for c in (ub.get("courses") or []) if isinstance(ub, dict) else []:
+            if isinstance(c, dict) and c.get("code"):
+                cur[str(c["code"])] = c
+    for ub in new_uids or []:
+        for c in (ub.get("courses") or []) if isinstance(ub, dict) else []:
+            if not isinstance(c, dict):
+                continue
+            old = cur.get(str(c.get("code") or ""))
+            if not old:
+                continue
+            for f in _HANDOVER_FIELDS:
+                if c.get(f) is None and old.get(f) not in (None, ""):
+                    c[f] = old[f]
+
+
 def _push_cs_handover_for_oid_changes(sb, ar_row, oid_changes) -> None:
     """Sale→CS handover (khâu 1): order_id set qua đường full-PATCH detail drawer → đẩy
     dòng bàn giao sang Google Sheet cho MỖI course vừa được gán order_id. Non-fatal +
@@ -2846,6 +2870,9 @@ def register_activation_routes(app, supabase_factory):
             if not body.uids_data:
                 raise HTTPException(400, "uids_data phai co it nhat mot uid")
             uids_data = [uid.model_dump() for uid in body.uids_data]
+            # Giữ 3 ô bàn giao CS (Kênh/Contact/Note) khi client không gửi (full-PATCH từ màn
+            # B3/gắn order_id xoá sạch về null — AR-1746/1753 23/10). None = "không đổi".
+            _preserve_handover_fields(current.get("uids_data") or [], uids_data)
 
             changes = _diff_referral_courses(current.get("uids_data") or [], uids_data)
             if changes:

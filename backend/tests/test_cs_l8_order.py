@@ -91,6 +91,67 @@ class TestHelpers:
         assert _amount_key("") == "" and _amount_key(None) == ""
 
 
+class _SB:
+    """Fake supabase: payment_lines theo pr, payment_requests.target."""
+
+    def __init__(self, lines, target):
+        self.lines, self.target, self.t = lines, target, ""
+
+    def table(self, name): self.t = name; return self
+    def select(self, *_): return self
+    def eq(self, *_): return self
+    def in_(self, *_): return self
+    def limit(self, *_): return self
+
+    def execute(self):
+        class R:
+            def __init__(s, d): s.data = d
+        return R(self.lines if self.t == "payment_lines" else [{"target": self.target}])
+
+
+class TestPaymentDate:
+    # Mẹ Hà PR-2416 (23/10): lần 1 8.350.000 rejected (confirmed_at = giờ từ chối 19/10), lần 2 1.000.000 paid 14/10,
+    # lần 3 7.350.000 paid 19/10 → sale ghi 19/10 (ngày tiền về ĐỦ). Code cũ lấy min + tính cả rejected → 14/10.
+    LINES = [
+        {"amount": 8350000, "status": "rejected", "paid_at": None, "confirmed_at": "2026-10-19T02:30:00+00:00"},
+        {"amount": 1000000, "status": "paid", "paid_at": "2026-10-14T15:01:45+00:00", "confirmed_at": "2026-10-14T15:01:45+00:00"},
+        {"amount": 7350000, "status": "paid", "paid_at": "2026-10-19T02:08:11+00:00", "confirmed_at": "2026-10-19T02:08:11+00:00"},
+    ]
+
+    def test_latest_paid_when_fully_paid(self):
+        assert l8.fetch_payment_date(_SB(self.LINES, 8350000), "PR-2416") == "19/10/2026"
+
+    def test_rejected_only_is_empty(self):
+        assert l8.fetch_payment_date(_SB(self.LINES[:1], 8350000), "PR-1") == ""
+
+    def test_partial_payment_is_empty_until_full(self):
+        assert l8.fetch_payment_date(_SB(self.LINES[:2], 8350000), "PR-1") == ""   # mới 1tr/8,35tr
+        assert l8.fetch_payment_date(_SB(self.LINES[1:2], 1000000), "PR-1") == "14/10/2026"  # target = 1tr → đủ
+
+    def test_pending_only_is_empty(self):
+        assert l8.fetch_payment_date(_SB([{"amount": 1, "status": "pending", "paid_at": None, "confirmed_at": None}], 1), "PR-1") == ""
+
+    def test_backfill_only_empty_g_cells(self, monkeypatch):
+        hdr = ["STT", "TVTS", "Họ tên", "SDT", "UID", "Ngày chuyển tiền", "Số tiền", "App Order ID"]
+        grid = [hdr,
+                ["1", "HN2 - A", "KH", "84-9", "3301", "", "9.050.000", "CC-A"],          # G trống → điền
+                ["2", "HN2 - B", "KH", "84-8", "3302", "22/10/2026", "5.000.000", "CC-B"],  # đã có → không đụng
+                ["3", "HN2 - C", "KH", "84-7", "3303", "", "5.000.000", "CC-C"]]           # chưa đủ tiền → bỏ
+        svc = FakeSheets(grid)
+        monkeypatch.setattr(l8, "read_l8_header", lambda s: hdr)
+        monkeypatch.setattr(l8, "fetch_payment_date", lambda sb, pr: {"PR-A": "23/10/2026", "PR-B": "22/10/2026", "PR-C": ""}.get(pr, ""))
+
+        class SB:
+            def table(self, *_): return self
+            def select(self, *_): return self
+            def in_(self, *_): return self
+            def execute(self):
+                class R: data = [{"id": "AR-A", "pr_id": "PR-A"}, {"id": "AR-B", "pr_id": "PR-B"}, {"id": "AR-C", "pr_id": "PR-C"}]
+                return R()
+        n = l8.backfill_payment_dates(SB(), svc, [{"course_code": c, "ar_id": f"AR-{c[-1]}"} for c in ("CC-A", "CC-B", "CC-C", "CC-X")])
+        assert n == 1 and svc.updates == [("'Tổng hợp L8'!F2", [["23/10/2026"]])]
+
+
 class TestUpsertDedup:
     def test_appended_when_empty(self):
         svc = FakeSheets([HEADER])

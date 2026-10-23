@@ -318,6 +318,19 @@ class TestAnchoredNextRow:
         assert l8.upsert_l8_order(svc, hdr, fields, uid="3302", so_tien="5000000", course_code="CC-2") == "appended"
         assert all(rng.endswith("3") for rng, _ in svc.updates), svc.updates  # dòng 3, không phải 6
 
+    def test_l8_prefilled_thang_and_stt_not_occupied(self):
+        # L8 23/10: team điền sẵn STT + Tháng 8 dòng dưới dữ liệu → app phải ghi ngay dòng kế, không nhảy xuống 1404
+        import cs_l8_order as l8
+        hdr = ["STT", "TVTS", "Họ tên", "SDT", "UID", "Số tiền", "Tháng", "App Order ID"]
+        grid = [hdr, ["1395", "HN2 - A", "KH", "84-9", "3301", "9.050.000", "2026-10", "CC-1"]]
+        grid += [[str(1396 + i), "", "", "", "", "", "2026-10", ""] for i in range(8)]
+        svc = _FakeSvc(grid)
+        fields = {"TVTS": "HN2 - B", "Họ tên": "X", "SDT": "84-8", "UID": "3302", "Số tiền": "5000000", "Tháng": "2026-10", "App Order ID": "CC-2"}
+        assert l8.upsert_l8_order(svc, hdr, fields, uid="3302", so_tien="5000000", course_code="CC-2") == "appended"
+        assert all(rng.endswith("3") for rng, _ in svc.updates), svc.updates  # dòng 3 (ngay sau 1395), không phải 11
+        # cột Tháng vẫn được ghi (cùng giá trị), STT không đụng
+        assert not any("!A" in rng for rng, _ in svc.updates)
+
 
 class TestRecentAndFill:
     HDR = ["STT", "Ngày bàn giao", "Sale", "Tên KH", "Tên học sinh", "UID", "SDT KH", "Kênh liên hệ", "Contact ID", "Ghi chú"]
@@ -383,6 +396,12 @@ class TestDropdown:
         assert m._sale_label("S", "x", "t", hdr, crm_name="Nguyen Van A", full_name="Nguyễn Văn A") == "Nguyễn Văn A"
         monkeypatch.setattr(m, "_read_col_dropdown", lambda svc, sid, tab, c: [])
         assert m._sale_label("S", "x", "t", hdr, crm_name="Nguyen Van A", full_name="Nguyễn Văn A") == "Nguyễn Văn A"
+        # IH1: luôn mã ngắn kể cả tab không dropdown (KH mới 23/10: 7 dòng app full name vs team ThaoPT/SonTT)
+        assert m._sale_label("S", "x", "t", hdr, crm_name="Nguyen Van A", full_name="Nguyễn Văn A", team="Inhouse 1") == "AnhNV"
+        # IH1 nhưng không có trong TVTS → full name
+        assert m._sale_label("S", "x", "t", hdr, crm_name="Ai Do", full_name="Ai Đó", team="Inhouse 1") == "Ai Đó"
+        # Team khác không dropdown → full name (chưa rõ quy ước)
+        assert m._sale_label("S", "x", "t", hdr, crm_name="Nguyen Van A", full_name="Nguyễn Văn A", team="HCM (Online)") == "Nguyễn Văn A"
 
     def test_read_col_dropdown_list_and_range(self):
         import cs_handover_sheet as m
@@ -422,20 +441,21 @@ class TestWorkerReconcile:
         import cs_handover_reconcile_worker as w
 
         class SB:
-            def __init__(self, ars):
-                self.ars = ars
+            def __init__(self, ars, cancelled_prs=None):
+                self.ars, self.cancelled_prs, self.t = ars, cancelled_prs or [], ""
 
             def table(self, name):
-                assert name == "active_requests"
+                self.t = name
                 return self
 
-            def select(self, *_):
-                return self
-
-            def gte(self, *_):
-                return self
+            def select(self, *_): return self
+            def gte(self, *_): return self
+            def in_(self, *_): return self
+            def eq(self, *_): return self
 
             def execute(self):
+                if self.t == "payment_requests":
+                    return _Res([{"id": p, "cancelled_at": "2026-10-23T07:02:35Z"} for p in self.cancelled_prs])
                 return _Res(self.ars)
 
         fresh = _iso(datetime.now(timezone.utc))
@@ -451,15 +471,47 @@ class TestWorkerReconcile:
         # G2: C4 KHÔNG order_id vẫn là ứng viên (trigger = báo đơn); C5 không Kênh/Contact → bỏ.
         assert pushed == [("AR2", "C3"), ("AR2", "C4")] and n == 2
 
+    def test_pushed_course_whose_pr_cancelled_later_is_flagged(self, monkeypatch):
+        # PR-2590 23/10: course đã đẩy (done) rồi sale huỷ PR → worker ghi 'cancelled' + cảnh báo, không push lại
+        import cs_handover_reconcile_worker as w
+
+        class SB:
+            def __init__(self): self.t = ""
+            def table(self, name): self.t = name; return self
+            def select(self, *_): return self
+            def gte(self, *_): return self
+            def in_(self, *_): return self
+            def eq(self, *_): return self
+            def execute(self):
+                if self.t == "payment_requests":
+                    return _Res([{"id": "PR-X", "cancelled_at": "2026-10-23T07:02:35Z"}])
+                return _Res([{"id": "AR-X", "pr_id": "PR-X", "uids_data": [{"uid": "1", "courses": [
+                    {"code": "C-done", "care_channel": "Zalo"}, {"code": "C-new", "care_channel": "Zalo"}]}]}])
+
+        recorded = []
+        monkeypatch.setattr(w._store, "fetch_statuses", lambda sb, codes: {"C-done": {"status": "done", "tab": "T", "sheet_row": 9}})
+        monkeypatch.setattr(w._store, "record", lambda sb, code, ar_id, status, **f: recorded.append((code, status)))
+        pushed = []
+        monkeypatch.setattr(w, "maybe_push_cs_handover", lambda sb, ar_id, code: (pushed.append(code), "pr_cancelled")[1])
+        w.reconcile_pending(SB())
+        assert recorded == [("C-done", "cancelled")]   # course chưa có log → để maybe_push tự ghi cancelled
+        assert pushed == ["C-new"]                      # course done đã chuyển cancelled → không push lại
+
     def test_worker_passes_ar_id_not_snapshot(self, monkeypatch):
         import cs_handover_reconcile_worker as w
 
         class SB:
-            def table(self, *_): return self
+            def __init__(self): self.t = ""
+            def table(self, name): self.t = name; return self
             def select(self, *_): return self
             def gte(self, *_): return self
-            def execute(self): return _Res([{"id": "AR7", "pr_id": "P", "uids_data": [
-                {"uid": "1", "courses": [{"code": "C9", "order_id": "O", "care_channel": "Zalo"}]}]}])
+            def in_(self, *_): return self
+            def eq(self, *_): return self
+            def execute(self):
+                if self.t == "payment_requests":
+                    return _Res([])
+                return _Res([{"id": "AR7", "pr_id": "P", "uids_data": [
+                    {"uid": "1", "courses": [{"code": "C9", "order_id": "O", "care_channel": "Zalo"}]}]}])
 
         monkeypatch.setattr(w._store, "fetch_statuses", lambda sb, codes: {})
         seen = []

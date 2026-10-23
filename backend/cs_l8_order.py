@@ -112,25 +112,78 @@ def _goi_buoi(name: str) -> str:
 
 
 def fetch_payment_date(sb, pr_id: str) -> str:
-    """Ngày chuyển tiền = paid_at (fallback confirmed_at) sớm nhất của payment_lines. 'dd/mm/yyyy'|''."""
+    """Ngày chuyển tiền theo quy ước team (Mẹ Hà PR-2416, 23/10): ngày TIỀN VỀ ĐỦ = lần thanh toán
+    `paid` MUỘN NHẤT, bỏ lần `rejected` (vẫn có confirmed_at = giờ từ chối) và `pending`.
+    Chưa đủ tiền (tổng paid < target) → '' (worker điền bổ sung khi đủ). 'dd/mm/yyyy'|''."""
     if not pr_id:
         return ""
     try:
         res = (sb.table("payment_lines")
-               .select("paid_at, confirmed_at, status, payment_request_id")
+               .select("paid_at, confirmed_at, status, amount, payment_request_id")
                .eq("payment_request_id", pr_id).execute())
+        prres = sb.table("payment_requests").select("target").eq("id", pr_id).limit(1).execute()
     except Exception as exc:
         print(f"[cs_l8] fetch payment_lines {pr_id} lỗi: {exc}")
         return ""
-    dates = [str(r.get("paid_at") or r.get("confirmed_at")) for r in (res.data or [])
-             if (r.get("paid_at") or r.get("confirmed_at"))]
-    if not dates:
+    paid = [r for r in (res.data or []) if str(r.get("status") or "").lower() == "paid"
+            and (r.get("paid_at") or r.get("confirmed_at"))]
+    if not paid:
         return ""
+    target = float(((prres.data or [{}])[0] or {}).get("target") or 0)
+    total = sum(float(r.get("amount") or 0) for r in paid)
+    if target > 0 and total + 0.5 < target:
+        return ""  # chưa đủ tiền → sale chưa ghi ngày; worker backfill sau
     try:
-        dt = datetime.fromisoformat(min(dates).replace("Z", "+00:00")).astimezone(_VN)
-        return dt.strftime("%d/%m/%Y")
+        latest = max(str(r.get("paid_at") or r.get("confirmed_at")) for r in paid)
+        return datetime.fromisoformat(latest.replace("Z", "+00:00")).astimezone(_VN).strftime("%d/%m/%Y")
     except Exception:
         return ""
+
+
+def backfill_payment_dates(sb, service, candidates: list[dict[str, Any]]) -> int:
+    """Worker: điền 'Ngày chuyển tiền' cho dòng L8 có marker W = course_code mà ô G còn TRỐNG
+    (đơn báo lúc tiền chưa đủ). `candidates` = [{course_code, ar_id}] từ cs_handover_log (IH2,
+    gần đây). Đọc L8 1 lần; chỉ ghi ô trống. Trả số ô đã điền."""
+    if not candidates:
+        return 0
+    header = read_l8_header(service)
+    w_i = _match_col(header, ["App Order ID"], set())
+    g_i = _match_col(header, ["Ngày chuyển tiền"], set())
+    if w_i is None or g_i is None:
+        return 0
+    last = max(w_i, g_i)
+    rows = service.spreadsheets().values().get(
+        spreadsheetId=_SHEET_L8, range=f"'{_L8_TAB}'!A1:{_col_a1(last)}").execute().get("values", []) or []
+    by_marker: dict[str, int] = {}
+    for ri in range(1, len(rows)):
+        r = rows[ri]
+        m = str(r[w_i]).strip() if len(r) > w_i else ""
+        if m and m not in by_marker:
+            by_marker[m] = ri
+    todo = [c for c in candidates if c.get("course_code") in by_marker]
+    if not todo:
+        return 0
+    ar_ids = sorted({str(c.get("ar_id") or "") for c in todo if c.get("ar_id")})
+    pr_of: dict[str, str] = {}
+    for i in range(0, len(ar_ids), 200):
+        q = sb.table("active_requests").select("id, pr_id").in_("id", ar_ids[i:i + 200]).execute()
+        pr_of.update({str(r["id"]): str(r.get("pr_id") or "") for r in (q.data or [])})
+    n = 0
+    for c in todo:
+        code = str(c["course_code"])
+        ri = by_marker[code]
+        r = rows[ri]
+        if len(r) > g_i and str(r[g_i]).strip():
+            continue  # đã có ngày (team hoặc app ghi) → không đụng
+        d = fetch_payment_date(sb, pr_of.get(str(c.get("ar_id") or ""), ""))
+        if not d:
+            continue
+        service.spreadsheets().values().update(
+            spreadsheetId=_SHEET_L8, range=f"'{_L8_TAB}'!{_col_a1(g_i)}{ri + 1}",
+            valueInputOption="USER_ENTERED", body={"values": [[d]]}).execute()
+        print(f"[cs_l8] backfill Ngày chuyển tiền {code} dòng {ri + 1} = {d}")
+        n += 1
+    return n
 
 
 def build_l8_fields(
