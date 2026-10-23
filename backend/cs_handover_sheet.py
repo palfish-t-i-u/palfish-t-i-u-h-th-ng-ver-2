@@ -297,18 +297,33 @@ def _key_cols(header: list[Any]) -> set[int]:
     return out
 
 
-def _anchored_next_row(rows: list[list[Any]], header_idx: int, key_cols: set[int], owned_cols: set[int]) -> int:
+_PREFILL_HEADERS = ["STT", "Tháng"]   # cột team điền sẵn hàng loạt → KHÔNG coi là "dòng đã có người"
+
+
+def _prefill_cols(header: list[Any]) -> set[int]:
+    out: set[int] = set()
+    for h in _PREFILL_HEADERS:
+        i = _match_col(header, [h], set())
+        if i is not None:
+            out.add(i)
+    return out
+
+
+def _anchored_next_row(rows: list[list[Any]], header_idx: int, key_cols: set[int], owned_cols: set[int],
+                       ignore_cols: set[int] | None = None) -> int:
     """Hàng trống kế tiếp (1-based) NEO THEO CỘT KHOÁ (plan v2 G3-T4): last_data = dòng cuối có
-    ô khoá non-empty; target = dòng đầu > last_data mà MỌI cột app sở hữu đều trống. Ô nháp lẻ ở
-    cột không sở hữu (vd dropdown 'Und…' cột N, Ms Trinh 23/10) KHÔNG kéo điểm ghi xuống."""
+    ô khoá non-empty; target = dòng đầu > last_data mà mọi cột app sở hữu (trừ `ignore_cols` =
+    cột điền sẵn STT/Tháng) đều trống. Ô nháp lẻ ở cột không sở hữu (dropdown 'Und…' cột N, Ms
+    Trinh 23/10) hay cột Tháng điền sẵn 8 dòng (L8 1396–1403, 23/10) KHÔNG kéo điểm ghi xuống."""
     keys = sorted(key_cols) or sorted(owned_cols)
+    check = set(owned_cols) - set(ignore_cols or ())
     last = header_idx
     for ri in range(len(rows) - 1, header_idx, -1):
         if any(_cell(rows[ri], k).strip() for k in keys):
             last = ri
             break
     ri = last + 1
-    while ri < len(rows) and any(_cell(rows[ri], c).strip() for c in owned_cols):
+    while ri < len(rows) and any(_cell(rows[ri], c).strip() for c in check):
         ri += 1
     return ri + 1
 
@@ -324,7 +339,8 @@ def _next_empty_row(
         rows = _read_tab_rows(service, spreadsheet_id, tab)
     if not header or not owned_cols:
         return len(rows) + 1
-    return _anchored_next_row(rows, _header_row_index(rows), _key_cols(header), set(owned_cols))
+    return _anchored_next_row(rows, _header_row_index(rows), _key_cols(header), set(owned_cols),
+                              ignore_cols=_prefill_cols(header))
 
 
 def _append_row(

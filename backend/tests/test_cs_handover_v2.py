@@ -318,6 +318,19 @@ class TestAnchoredNextRow:
         assert l8.upsert_l8_order(svc, hdr, fields, uid="3302", so_tien="5000000", course_code="CC-2") == "appended"
         assert all(rng.endswith("3") for rng, _ in svc.updates), svc.updates  # dòng 3, không phải 6
 
+    def test_l8_prefilled_thang_and_stt_not_occupied(self):
+        # L8 23/10: team điền sẵn STT + Tháng 8 dòng dưới dữ liệu → app phải ghi ngay dòng kế, không nhảy xuống 1404
+        import cs_l8_order as l8
+        hdr = ["STT", "TVTS", "Họ tên", "SDT", "UID", "Số tiền", "Tháng", "App Order ID"]
+        grid = [hdr, ["1395", "HN2 - A", "KH", "84-9", "3301", "9.050.000", "2026-10", "CC-1"]]
+        grid += [[str(1396 + i), "", "", "", "", "", "2026-10", ""] for i in range(8)]
+        svc = _FakeSvc(grid)
+        fields = {"TVTS": "HN2 - B", "Họ tên": "X", "SDT": "84-8", "UID": "3302", "Số tiền": "5000000", "Tháng": "2026-10", "App Order ID": "CC-2"}
+        assert l8.upsert_l8_order(svc, hdr, fields, uid="3302", so_tien="5000000", course_code="CC-2") == "appended"
+        assert all(rng.endswith("3") for rng, _ in svc.updates), svc.updates  # dòng 3 (ngay sau 1395), không phải 11
+        # cột Tháng vẫn được ghi (cùng giá trị), STT không đụng
+        assert not any("!A" in rng for rng, _ in svc.updates)
+
 
 class TestRecentAndFill:
     HDR = ["STT", "Ngày bàn giao", "Sale", "Tên KH", "Tên học sinh", "UID", "SDT KH", "Kênh liên hệ", "Contact ID", "Ghi chú"]
