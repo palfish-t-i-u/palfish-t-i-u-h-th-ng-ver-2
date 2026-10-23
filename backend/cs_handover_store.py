@@ -19,8 +19,9 @@ TABLE = "cs_handover_log"
 # Trạng thái KHÔNG cần làm lại (đã xong hoặc cố tình bỏ).
 # LƯU Ý: course thiếu Kênh/Contact KHÔNG ghi row (không có 'skipped_no_handover' terminal) —
 # nếu ghi, sale điền Kênh sau qua PATCH sẽ bị chặn vĩnh viễn.
-TERMINAL = frozenset({"appended", "matched", "merged", "done", "dup_manual", "ambiguous", "held"})
+TERMINAL = frozenset({"appended", "matched", "merged", "done", "dup_manual", "ambiguous", "held", "cancelled"})
 # held = người vận hành giữ lại (vd Contact ID rác); đổi status → 'pending_retry' để đẩy.
+# cancelled = PR bị huỷ (sale huỷ/tạo lại đơn) → KHÔNG đẩy; đã đẩy trước đó → người xử dòng sheet.
 # Trạng thái worker sẽ thử lại.
 RETRYABLE = frozenset({"not_found", "verify_failed", "pending_retry", "failed"})
 # Claim treo quá lâu (process chết giữa chừng) → cho claim lại.
@@ -106,6 +107,19 @@ def claim(sb, course_code: str, ar_id: str, *, team: str = "", spreadsheet_id: s
         q = q.lt("claimed_at", cutoff)
     res = q.execute()
     return bool(res.data)
+
+
+def record(sb, course_code: str, ar_id: str, status: str, **fields: Any) -> None:
+    """Ghi trạng thái cho course dù CHƯA có row (upsert) — dùng cho kết luận cuối không cần claim
+    (vd 'cancelled'). Không đụng pushed_at/sheet_row cũ trừ khi truyền vào."""
+    code = str(course_code or "").strip()
+    if not code:
+        return
+    payload: dict[str, Any] = {"course_code": code, "ar_id": str(ar_id or ""), "status": status, "updated_at": _now_iso()}
+    for k, v in fields.items():
+        if v is not None:
+            payload[k] = v
+    sb.table(TABLE).upsert(payload, on_conflict="course_code").execute()
 
 
 def mark(sb, course_code: str, status: str, **fields: Any) -> None:

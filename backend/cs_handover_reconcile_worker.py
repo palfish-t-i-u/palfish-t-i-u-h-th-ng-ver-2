@@ -87,6 +87,27 @@ def reconcile_pending(sb) -> int:
     except Exception as exc:
         print(f"[cs_handover_worker] fetch statuses lỗi: {exc}")
         return 0
+    # Course ĐÃ ĐẨY mà PR bị huỷ SAU đó (sale huỷ/tạo lại đơn, PR-2590 23/10): ghi 'cancelled'
+    # + cảnh báo để người xử dòng sheet (app không tự xoá). 1 query batch theo pr_id.
+    try:
+        pr_by_ar = {str(ar.get("id") or ""): str(ar.get("pr_id") or "") for ar in res.data or []}
+        pr_ids = sorted({p for p in pr_by_ar.values() if p})
+        cancelled: dict[str, Any] = {}
+        for i in range(0, len(pr_ids), 200):
+            q = sb.table("payment_requests").select("id, cancelled_at").in_("id", pr_ids[i:i + 200]).eq("state", "cancelled").execute()
+            cancelled.update({str(r["id"]): r.get("cancelled_at") for r in (q.data or [])})
+        for ar_id, code in candidates:
+            pr_id = pr_by_ar.get(ar_id, "")
+            st = statuses.get(code) or {}
+            if pr_id in cancelled and str(st.get("status") or "") not in ("cancelled", ""):
+                if _store.is_done(st):
+                    print(f"[cs_handover_worker] CẢNH BÁO: {code} (AR {ar_id}) đã đẩy ({st.get('status')}, tab {st.get('tab')!r} dòng {st.get('sheet_row')}) nhưng PR {pr_id} bị huỷ lúc {cancelled[pr_id]} — xử tay dòng sheet")
+                _store.record(sb, code, ar_id, "cancelled",
+                              last_error=f"PR {pr_id} cancelled lúc {cancelled[pr_id]}; trước đó {st.get('status')}"
+                                         + (f" dòng {st.get('sheet_row')}" if st.get("sheet_row") else ""))
+                statuses[code] = {**st, "status": "cancelled"}
+    except Exception as exc:
+        print(f"[cs_handover_worker] kiểm PR cancelled lỗi (bỏ qua): {exc}")
     attempted = 0
     for ar_id, code in candidates:
         if not _store.needs_retry(statuses.get(code)):

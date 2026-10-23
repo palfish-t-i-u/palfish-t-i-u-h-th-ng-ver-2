@@ -775,7 +775,7 @@ def _fetch_pr(sb, pr_id: str) -> dict[str, Any] | None:
     try:
         res = (
             sb.table("payment_requests")
-            .select("id, name, child_name, phone, sale_email, country")
+            .select("id, name, child_name, phone, sale_email, country, state, cancelled_at")
             .eq("id", pr_id)
             .limit(1)
             .execute()
@@ -961,6 +961,14 @@ def maybe_push_cs_handover(sb, ar_ref: Any, course_code: str, *, dry_run: bool =
         if not pr:
             print(f"[cs_handover] skip AR {ar_id} course {code}: không có PR")
             return "no_pr"
+        # PR bị huỷ (sale huỷ / tạo lại đơn — PR-2590→PR-2602 23/10): KHÔNG đẩy. Đã đẩy rồi mà
+        # giờ mới huỷ → ghi 'cancelled' + log để người xử dòng sheet (app không tự xoá).
+        if str(pr.get("state") or "").lower() == "cancelled":
+            print(f"[cs_handover] PR {pr.get('id')} CANCELLED — không đẩy course {code} AR {ar_id}")
+            if not dry_run:
+                _store.record(sb, code, ar_id, "cancelled",
+                              last_error=f"PR {pr.get('id')} cancelled lúc {pr.get('cancelled_at')}; chưa đẩy")
+            return "pr_cancelled"
         sale_email = str(pr.get("sale_email") or "").strip().lower()
         sale = _fetch_sale(sb, sale_email) or {}
         team = get_canonical_team((sale.get("team") or "").strip())
