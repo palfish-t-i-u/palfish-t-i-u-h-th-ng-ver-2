@@ -37,8 +37,9 @@ class TestRouting:
     def test_4_team_new_vs_renew(self):
         assert resolve_route("Offline", False)[1] == "Bàn giao KH mới + gia hạn Offline team"
         assert resolve_route("Offline", True)[1] == "Bàn giao KH mới + gia hạn Offline team"
-        assert resolve_route("Inhouse 2", False) is None  # ĐÃ BỎ: Team 2 là tab QUERY-driven
-        assert resolve_route("Inhouse 2", True) is None
+        # Inhouse 2 RE-ENABLE 22/10 (match-write Kênh/Contact + ghi đơn L8).
+        assert resolve_route("Inhouse 2", False)[1] == "Bàn giao KH mới Team 2"
+        assert resolve_route("Inhouse 2", True)[1] == "Bàn giao KH gia hạn Team 2"
         assert resolve_route("HCM (Online)", False)[1] == "Bàn giao KH "
         assert resolve_route("Inhouse 1", False)[1] == "Bàn giao KH mới"
         assert resolve_route("Inhouse 1", True)[1] == " Bàn giao KH gia hạn"
