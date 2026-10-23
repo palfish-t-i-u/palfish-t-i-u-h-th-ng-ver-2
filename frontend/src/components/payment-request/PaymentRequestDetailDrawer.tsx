@@ -1432,6 +1432,11 @@ export const ActiveRequestMiniCardV2 = memo(function ActiveRequestMiniCardV2({
                         })()}
                       </div>
                     )}
+                    {!editing && ((c.careChannel ?? "").trim() || (c.careContactId ?? "").trim() || (c.handoverNote ?? "").trim()) && (
+                      <div style={{ gridColumn: "1 / -1", fontSize: 11, color: "var(--text-3)" }}>
+                        Bàn giao CS: {[c.careChannel, c.careContactId, c.handoverNote].map((s) => (s ?? "").trim()).filter(Boolean).join(" · ")}
+                      </div>
+                    )}
                     {!editing && c.leadSource === "gioi_thieu" &&
                       ((c.bonusSessionsReferee ?? 0) > 0 || (c.bonusSessionsReferrer ?? 0) > 0) && (() => {
                         const rs = getReferralStatus(c);
@@ -1521,6 +1526,63 @@ export const ActiveRequestMiniCardV2 = memo(function ActiveRequestMiniCardV2({
                         )}
                       </div>
                     )}
+                    {editing && (() => {
+                      // Bàn giao cho CS — sửa được kể cả khi gói đã tạo (courseLocked) để sale tự chữa Contact ID/Kênh điền sai.
+                      // Ô trống chỉ viền đỏ nhắc, KHÔNG chặn lưu (đơn cũ trước 22/10 không có dữ liệu).
+                      const setHandover = (patch: { careChannel?: string; careContactId?: string; handoverNote?: string }) =>
+                        mutate((next) => ({
+                          ...next,
+                          uids: next.uids.map((uu, idx) =>
+                            idx === uIdx
+                              ? {
+                                  ...uu,
+                                  courses: uu.courses.map((course) =>
+                                    course.courseCode === c.courseCode ? { ...course, ...patch } : course
+                                  ),
+                                }
+                              : uu
+                          ),
+                        }));
+                      return (
+                        <div style={{ gridColumn: "1 / -1", padding: "10px 12px", border: "1px solid var(--primary-100)", borderRadius: 8, background: "var(--primary-50)" }}>
+                          <div style={{ fontSize: 12, fontWeight: 600, color: "var(--primary-700)", marginBottom: 6 }}>
+                            Bàn giao cho CS — bé này
+                          </div>
+                          <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+                            <div className="field" style={{ flex: 1, marginBottom: 0 }}>
+                              <label>Kênh chăm sóc</label>
+                              <Combobox
+                                freeText
+                                value={c.careChannel ?? ""}
+                                onChange={(v) => setHandover({ careChannel: v })}
+                                options={CARE_CHANNELS.map((ch) => ({ value: ch, label: ch }))}
+                                placeholder="Chọn hoặc gõ kênh..."
+                                invalid={!(c.careChannel ?? "").trim()}
+                              />
+                            </div>
+                            <div className="field" style={{ flex: 1, marginBottom: 0 }}>
+                              <label>Contact ID</label>
+                              <input
+                                placeholder="VD: 0901xxxxxx hoặc @username"
+                                value={c.careContactId ?? ""}
+                                onChange={(e) => setHandover({ careContactId: e.target.value })}
+                                style={(c.careContactId ?? "").trim() ? undefined : { borderColor: "var(--danger)" }}
+                              />
+                            </div>
+                          </div>
+                          <div className="field" style={{ marginBottom: 0 }}>
+                            <label>Note bàn giao</label>
+                            <textarea
+                              placeholder="Thông tin cần bàn giao cho CS của bé này (lịch học, yêu cầu GV, lưu ý khi chăm...)"
+                              value={c.handoverNote ?? ""}
+                              onChange={(e) => setHandover({ handoverNote: e.target.value })}
+                              rows={2}
+                              style={{ width: "100%", resize: "vertical", fontSize: 13, boxSizing: "border-box", borderRadius: 8, padding: "8px 10px", border: (c.handoverNote ?? "").trim() ? "1px solid var(--border)" : "1px solid var(--danger)" }}
+                            />
+                          </div>
+                        </div>
+                      );
+                    })()}
                     {editing && c.leadSource === "gioi_thieu" && (() => {
                         const rs = getReferralStatus(c);
                         const panelStyle = REFERRAL_STATUS_PANEL_STYLE[rs];
@@ -3329,16 +3391,14 @@ export default function PaymentRequestDetailDrawer({
                     <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
                       <div className="field" style={{ flex: 1, marginBottom: 0 }}>
                         <label>Kênh chăm sóc</label>
-                        <select
+                        <Combobox
+                          freeText
                           value={row.careChannel ?? ""}
-                          onChange={(e) => setArRow(i, { careChannel: e.target.value })}
-                          style={{ font: "inherit", fontSize: 13, width: "100%", borderRadius: 8, padding: "7px 8px", border: row.careChannel ? "1px solid var(--border)" : "1px solid var(--danger)" }}
-                        >
-                          <option value="">— Chọn kênh —</option>
-                          {CARE_CHANNELS.map((c) => (
-                            <option key={c} value={c}>{c}</option>
-                          ))}
-                        </select>
+                          onChange={(v) => setArRow(i, { careChannel: v })}
+                          options={CARE_CHANNELS.map((c) => ({ value: c, label: c }))}
+                          placeholder="Chọn hoặc gõ kênh..."
+                          invalid={!(row.careChannel ?? "").trim()}
+                        />
                       </div>
                       <div className="field" style={{ flex: 1, marginBottom: 0 }}>
                         <label>Contact ID</label>

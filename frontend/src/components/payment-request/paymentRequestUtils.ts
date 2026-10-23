@@ -736,6 +736,12 @@ export function toActiveRequestPatchUidsData(ar: ActiveRequest): ActiveRequestPa
       tax_product_code: c.taxProductCode,
       lead_source: c.leadSource,
       lead_channel: c.leadChannel,
+      // Sale→CS handover (khâu 1): PHẢI gửi lại 3 ô, nếu không full-PATCH (sửa AR ở B3 / gắn
+      // order_id) ghi null đè → mất dữ liệu sale đã điền (AR-1746/1753 23/10). BE cũng giữ
+      // giá trị cũ khi nhận null (_preserve_handover_fields) — 2 lớp.
+      care_channel: c.careChannel,
+      care_contact_id: c.careContactId,
+      handover_note: c.handoverNote,
       referrer_uid: c.referrerUid,
       bonus_sessions_referee: c.bonusSessionsReferee,
       bonus_sessions_referrer: c.bonusSessionsReferrer,

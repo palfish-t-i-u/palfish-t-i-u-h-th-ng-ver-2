@@ -2548,10 +2548,34 @@ def _stamp_order_id_changes(
     return audit_changes
 
 
+_HANDOVER_FIELDS = ("care_channel", "care_contact_id", "handover_note")
+
+
+def _preserve_handover_fields(current_uids: list[Any], new_uids: list[Any]) -> None:
+    """Full-PATCH thay cả uids_data: course nào client gửi care_channel/care_contact_id/handover_note
+    = None (không có trong form sửa) thì GIỮ giá trị đang có theo course code. Chuỗi rỗng = xoá
+    có chủ ý (giữ nguyên). Sửa tại chỗ `new_uids`."""
+    cur: dict[str, dict[str, Any]] = {}
+    for ub in current_uids or []:
+        for c in (ub.get("courses") or []) if isinstance(ub, dict) else []:
+            if isinstance(c, dict) and c.get("code"):
+                cur[str(c["code"])] = c
+    for ub in new_uids or []:
+        for c in (ub.get("courses") or []) if isinstance(ub, dict) else []:
+            if not isinstance(c, dict):
+                continue
+            old = cur.get(str(c.get("code") or ""))
+            if not old:
+                continue
+            for f in _HANDOVER_FIELDS:
+                if c.get(f) is None and old.get(f) not in (None, ""):
+                    c[f] = old[f]
+
+
 def _push_cs_handover_for_oid_changes(sb, ar_row, oid_changes) -> None:
     """Sale→CS handover (khâu 1): order_id set qua đường full-PATCH detail drawer → đẩy
     dòng bàn giao sang Google Sheet cho MỖI course vừa được gán order_id. Non-fatal +
-    idempotent (dedup handover_pushed_at), nên trùng với đường per-course cũng an toàn."""
+    idempotent (claim qua bảng cs_handover_log), nên trùng với đường per-course cũng an toàn."""
     try:
         from cs_handover_sheet import maybe_push_cs_handover
     except Exception as exc:
@@ -2561,7 +2585,8 @@ def _push_cs_handover_for_oid_changes(sb, ar_row, oid_changes) -> None:
         if oc.get("action") != "set":
             continue
         try:
-            maybe_push_cs_handover(sb, ar_row, oc.get("code"))
+            # v2: truyền id → hàm re-fetch AR mới, không dùng snapshot `merged` (race đẩy đôi)
+            maybe_push_cs_handover(sb, str(ar_row.get("id") or ""), oc.get("code"))
         except Exception as exc:
             print(f"[cs_handover] full-PATCH hook failed (non-fatal): {exc}")
 
@@ -2845,6 +2870,9 @@ def register_activation_routes(app, supabase_factory):
             if not body.uids_data:
                 raise HTTPException(400, "uids_data phai co it nhat mot uid")
             uids_data = [uid.model_dump() for uid in body.uids_data]
+            # Giữ 3 ô bàn giao CS (Kênh/Contact/Note) khi client không gửi (full-PATCH từ màn
+            # B3/gắn order_id xoá sạch về null — AR-1746/1753 23/10). None = "không đổi".
+            _preserve_handover_fields(current.get("uids_data") or [], uids_data)
 
             changes = _diff_referral_courses(current.get("uids_data") or [], uids_data)
             if changes:
@@ -3103,6 +3131,19 @@ def register_activation_routes(app, supabase_factory):
             _sync_ledger_courses_from_uids(sb, str(saved.get("id") or ""), saved.get("uids_data") or [])
         except Exception as exc:
             print(f"[activation] sync So luc tao AR loi (non-fatal): {exc}")
+        # Sale→CS handover v2 (G1-T6): bàn giao ngay LÚC BÁO ĐƠN cho mỗi course có Kênh/Contact
+        # (không chờ order_id). Non-fatal; worker là dự phòng/retry.
+        try:
+            from cs_handover_sheet import maybe_push_cs_handover
+            saved_id = str(saved.get("id") or "")
+            for ub in saved.get("uids_data") or []:
+                if not isinstance(ub, dict):
+                    continue
+                for c in ub.get("courses") or []:
+                    if isinstance(c, dict) and (c.get("care_channel") or c.get("care_contact_id")):
+                        maybe_push_cs_handover(sb, saved_id, str(c.get("code") or ""))
+        except Exception as exc:
+            print(f"[cs_handover] hook bao don failed (non-fatal): {exc}")
         return _serialize_ar_with_hold(sb, saved, pr)
 
     @app.post(
@@ -3145,6 +3186,19 @@ def register_activation_routes(app, supabase_factory):
             _sync_ledger_courses_from_uids(sb, str(saved.get("id") or ""), saved.get("uids_data") or [])
         except Exception as exc:
             print(f"[activation] sync So luc tao AR loi (non-fatal): {exc}")
+        # Sale→CS handover v2 (G1-T6): bàn giao ngay LÚC BÁO ĐƠN cho mỗi course có Kênh/Contact
+        # (không chờ order_id). Non-fatal; worker là dự phòng/retry.
+        try:
+            from cs_handover_sheet import maybe_push_cs_handover
+            saved_id = str(saved.get("id") or "")
+            for ub in saved.get("uids_data") or []:
+                if not isinstance(ub, dict):
+                    continue
+                for c in ub.get("courses") or []:
+                    if isinstance(c, dict) and (c.get("care_channel") or c.get("care_contact_id")):
+                        maybe_push_cs_handover(sb, saved_id, str(c.get("code") or ""))
+        except Exception as exc:
+            print(f"[cs_handover] hook bao don failed (non-fatal): {exc}")
         return _serialize_ar_with_hold(sb, saved, pr)
 
     @app.post("/api/v1/active-requests/{ar_id}/append", tags=["Activation"])
@@ -3302,7 +3356,8 @@ def register_activation_routes(app, supabase_factory):
             # Sale→CS handover (khâu 1): đẩy dòng bàn giao sang Google Sheet khi course có order_id
             try:
                 from cs_handover_sheet import maybe_push_cs_handover
-                maybe_push_cs_handover(sb, row, course_code)
+                # v2: truyền ar_id để hàm tự re-fetch AR mới (snapshot `row` có thể cũ → race đẩy đôi)
+                maybe_push_cs_handover(sb, ar_id, course_code)
             except Exception as exc:
                 print(f"[cs_handover] hook failed (non-fatal): {exc}")
             pr_map = _fetch_prs_by_ids(sb, [str(row.get("pr_id") or "")])

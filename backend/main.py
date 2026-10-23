@@ -1449,3 +1449,17 @@ async def _start_dingtalk_worker() -> None:
     print("[dingtalk] starting outbox worker...")
     asyncio.create_task(start_dingtalk_outbox(_supabase))
 
+
+@app.on_event("startup")
+async def _start_cs_handover_worker() -> None:
+    import asyncio
+
+    if os.getenv("CS_HANDOVER_WORKER_ENABLED", "").strip().lower() != "true":
+        print("[cs_handover] reconcile worker disabled — set CS_HANDOVER_WORKER_ENABLED=true (IH2 handover: ghi đơn L8 + Kênh/Contact bàn giao)")
+        return
+
+    from cs_handover_reconcile_worker import start_reconcile_worker
+
+    print("[cs_handover] starting reconcile worker...")
+    asyncio.create_task(start_reconcile_worker(_supabase))
+

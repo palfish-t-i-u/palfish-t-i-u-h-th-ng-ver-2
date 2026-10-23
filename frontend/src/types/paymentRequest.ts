@@ -506,6 +506,10 @@ export type ActiveRequestPatchUidPayload = {
     tax_product_code?: string;
     lead_source?: string;
     lead_channel?: string;
+    /** Sale→CS handover — gửi lại để full-PATCH không xoá (xem toActiveRequestPatchUidsData). */
+    care_channel?: string;
+    care_contact_id?: string;
+    handover_note?: string;
     referrer_uid?: string;
     bonus_sessions_referee?: number;
     bonus_sessions_referrer?: number;
