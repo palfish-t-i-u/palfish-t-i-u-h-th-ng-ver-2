@@ -119,15 +119,15 @@ def reconcile_pending(sb) -> int:
 
 
 def backfill_l8_payment_dates(sb, service=None) -> int:
-    """Ứng viên = log IH2 đã ghi L8 (status done/not_found, l8_status appended|stamped) trong
-    LOOKBACK_DAYS → cs_l8_order.backfill_payment_dates (chỉ điền ô G trống khi PR đủ tiền)."""
+    """Ứng viên = log IH2 đã có marker trên L8 trong LOOKBACK_DAYS (marker not null; bỏ cancelled)
+    → cs_l8_order.backfill_payment_dates: điền ô G (Ngày chuyển tiền) + N (Note) còn trống."""
     import cs_l8_order as l8
     import cs_handover_dedup as dd
     cutoff = (datetime.now(timezone.utc) - timedelta(days=LOOKBACK_DAYS)).isoformat()
-    res = (sb.table(_store.TABLE).select("course_code, ar_id")
-           .eq("team", "Inhouse 2").in_("status", ["done", "not_found"])
-           .in_("l8_status", ["appended", "stamped"]).gte("updated_at", cutoff).execute())
-    cands = [{"course_code": r["course_code"], "ar_id": r.get("ar_id")} for r in (res.data or [])]
+    res = (sb.table(_store.TABLE).select("course_code, ar_id, marker, status")
+           .eq("team", "Inhouse 2").not_.is_("marker", "null").gte("updated_at", cutoff).execute())
+    cands = [{"course_code": r["course_code"], "ar_id": r.get("ar_id")}
+             for r in (res.data or []) if str(r.get("status") or "") != "cancelled"]
     if not cands:
         return 0
     if service is None:

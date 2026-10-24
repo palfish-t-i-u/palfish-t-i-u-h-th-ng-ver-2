@@ -15,9 +15,11 @@ FIELDS = {"TVTS": "HN2 - LyVC", "Loại cts": "Facebook", "Họ tên": "A - B", 
           "Trạng thái": "Chưa kích hoạt", "Tháng": "2026-10", "App Order ID": "ORD-1"}
 
 
-def _row(uid="", tien="", w=""):
+def _row(uid="", tien="", w="", note=""):
     r = [""] * len(HEADER)
     r[5], r[7], r[19] = uid, tien, w
+    if note:
+        r[13] = note   # cột Note (N)
     return r
 
 
@@ -206,6 +208,38 @@ class TestUpsertDedup:
         svc = FakeSheets([HEADER, _row(uid="3301", tien="9,050,000", w="")])
         assert l8.upsert_l8_order(svc, HEADER, FIELDS, uid="3301", so_tien="9050000", course_code="ORD-1", dry_run=True) == "stamped"
         assert not svc.updates  # dry-run không ghi
+
+
+class TestNoteFill:
+    """24/10: dẫn Note sale điền lúc báo đơn (IH2) vào cột Note (N) của L8 — chỉ ô trống, ko đè team."""
+    NOTE = "Lịch học linh hoạt"
+
+    def _fields(self):
+        f = dict(FIELDS)
+        f["Note"] = self.NOTE
+        return f
+
+    def test_stamped_fills_empty_note(self):
+        svc = FakeSheets([HEADER, _row(uid="3301", tien="9,050,000", w="")])
+        assert l8.upsert_l8_order(svc, HEADER, self._fields(), uid="3301", so_tien="9050000", course_code="CC-9") == "stamped"
+        assert ("'Tổng hợp L8'!T2", [["CC-9"]]) in svc.updates      # đóng dấu W
+        assert ("'Tổng hợp L8'!N2", [[self.NOTE]]) in svc.updates   # điền Note ô trống
+
+    def test_exists_fills_note_when_empty(self):
+        svc = FakeSheets([HEADER, _row(uid="3301", tien="9,050,000", w="CC-9")])  # app row, Note trống
+        assert l8.upsert_l8_order(svc, HEADER, self._fields(), uid="3301", so_tien="9050000", course_code="CC-9") == "exists"
+        assert ("'Tổng hợp L8'!N2", [[self.NOTE]]) in svc.updates
+
+    def test_exists_keeps_team_note(self):
+        svc = FakeSheets([HEADER, _row(uid="3301", tien="9,050,000", w="CC-9", note="team đã ghi")])
+        assert l8.upsert_l8_order(svc, HEADER, self._fields(), uid="3301", so_tien="9050000", course_code="CC-9") == "exists"
+        assert svc.updates == []   # có note team → không đè, không ghi gì
+
+    def test_appended_row_carries_note(self):
+        svc = FakeSheets([HEADER])
+        assert l8.upsert_l8_order(svc, HEADER, self._fields(), uid="3301", so_tien="9050000", course_code="CC-9") == "appended"
+        wrote = " ".join(str(v) for _, vals in svc.updates for row in vals for v in row)
+        assert self.NOTE in wrote   # dòng mới gồm Note
 
 
 class TestWorkerSchedule:
