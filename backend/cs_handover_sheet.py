@@ -520,7 +520,9 @@ def _recent_rows(header: list[Any], rows: list[list[Any]], header_idx: int, *, t
     return out
 
 
-_FILL_FIELDS = ("kenh_cham_soc", "contact_id", "note", "uid", "app_order_id", "gvcn")
+# GVCN KHÔNG nằm đây: Phase 2 ghi có điều kiện (trống | máy-ghi-trước) qua _write_gvcn,
+# không phải fill-empty thuần, nên tách khỏi _FILL_FIELDS.
+_FILL_FIELDS = ("kenh_cham_soc", "contact_id", "note", "uid", "app_order_id")
 
 
 def _fill_empty_cells(
@@ -696,8 +698,46 @@ def _gvcn_label(service, spreadsheet_id: str, tab: str, header: list[Any], name:
     return _dropdown_value(opts, name) or ""
 
 
+def _gvcn_decision(cur: str, desired: str, last: str) -> str | None:
+    """Phase 2 — giá trị GVCN NÊN ghi vào ô, hoặc None nếu bỏ qua:
+      - ô trống               → ghi `desired`
+      - ô == `last` (máy ghi) → ghi `desired` nếu khác (đổi GVCN → cập nhật); bằng → None
+      - ô khác `last`         → None (người điền / nguồn không rõ → KHÔNG đè)
+    `desired` rỗng → None. Giá trị máy ghi ở Phase 1 (chưa lưu last) → last='' nên coi như
+    người điền → không đè (an toàn)."""
+    d = (desired or "").strip()
+    if not d:
+        return None
+    c = (cur or "").strip()
+    if not c:
+        return d
+    if c == (last or "").strip() and d != c:
+        return d
+    return None
+
+
+def _write_gvcn(service, spreadsheet_id: str, tab: str, sheet_row: int, header: list[Any],
+                existing_row: list[Any], desired: str, last: str, blocked: set[int]) -> str | None:
+    """Ghi (có điều kiện) ô GVCN trên dòng đã có. Trả giá trị VỪA GHI (để lưu vào gvcn_written),
+    hoặc None nếu không ghi gì (giữ nguyên gvcn_written cũ)."""
+    gi = _match_col(header, _FIELD_HEADERS["gvcn"], set())
+    if gi is None or gi in blocked:
+        return None
+    val = _gvcn_decision(_cell(existing_row, gi), desired, last)
+    if not val:
+        return None
+    service.spreadsheets().values().update(
+        spreadsheetId=spreadsheet_id,
+        range=f"'{tab}'!{_col_a1(gi)}{sheet_row}",
+        valueInputOption="USER_ENTERED",
+        body={"values": [[val]]},
+    ).execute()
+    return val
+
+
 def _match_write_handover(
-    service, spreadsheet_id: str, tab: str, header: list[Any], field_values: dict[str, Any]
+    service, spreadsheet_id: str, tab: str, header: list[Any], field_values: dict[str, Any],
+    *, gvcn_last: str = "", out: dict[str, Any] | None = None,
 ) -> str:
     """IH2 (match-write): dòng đơn do team điền L8 → chảy sang tab bàn giao (A-N là QUERY).
     App KHÔNG append; chỉ tìm đúng dòng theo UID (+Số tiền) rồi GHI 2 ô "Kênh liên hệ" +
@@ -762,11 +802,16 @@ def _match_write_handover(
         if _norm(cell(r, contact_i)) != _norm(contact_v):
             changed = True
         writes.append((contact_i, contact_v))
-    # GVCN: CHỈ ghi khi ô trống (khác Kênh/Contact vốn ghi đè) — không clobber tên CS tự điền.
+    # GVCN (Phase 2): ghi khi trống, hoặc đè khi ô == giá trị máy ghi trước (đổi GVCN → cập nhật);
+    # ô người điền (khác gvcn_last) → KHÔNG đè. Báo giá trị vừa ghi qua `out` để caller lưu lại.
     gvcn_v = str(field_values.get("gvcn") or "")
-    if gvcn_i is not None and gvcn_v and not cell(r, gvcn_i).strip():
-        writes.append((gvcn_i, gvcn_v))
-        changed = True
+    if gvcn_i is not None:
+        gval = _gvcn_decision(cell(r, gvcn_i), gvcn_v, gvcn_last)
+        if gval:
+            writes.append((gvcn_i, gval))
+            changed = True
+            if out is not None:
+                out["gvcn_written"] = gval
     if not writes:
         return "not_found"  # không có giá trị để ghi
     if not changed:
@@ -1068,15 +1113,19 @@ def maybe_push_cs_handover(sb, ar_ref: Any, course_code: str, *, dry_run: bool =
                             l8_status, l8_done = oc, True
                 except Exception as exc:
                     print(f"[cs_handover] IH2 L8 lỗi (bỏ qua, retry sau): {exc}")
-            bg = "dry_run" if dry_run else _match_write_handover(service, spreadsheet_id, tab, header, field_values)
+            gvcn_out: dict[str, Any] = {}
+            bg = "dry_run" if dry_run else _match_write_handover(
+                service, spreadsheet_id, tab, header, field_values,
+                gvcn_last=str((st or {}).get("gvcn_written") or ""), out=gvcn_out)
             print(f"[cs_handover] IH2 bàn giao {bg} AR {ar_id} course {code} → {tab!r}")
             bg_done = bg in ("written", "already")
+            gw = gvcn_out.get("gvcn_written")
             if dry_run:
                 return "ih2_done" if l8_done else "ih2_pending"
             if l8_done and bg_done:
-                _store.mark(sb, code, "done", l8_status=l8_status or None, marker=code)
+                _store.mark(sb, code, "done", l8_status=l8_status or None, marker=code, gvcn_written=gw)
                 return "ih2_done"
-            _store.mark(sb, code, "not_found", l8_status=l8_status or None)
+            _store.mark(sb, code, "not_found", l8_status=l8_status or None, gvcn_written=gw)
             return "ih2_pending"
 
         # --- 3 team IH1/Offline/HCM: UPSERT (G3) = match dòng team → fill-empty | append + verify | ambiguous ---
@@ -1114,8 +1163,10 @@ def maybe_push_cs_handover(sb, ar_ref: Any, course_code: str, *, dry_run: bool =
                 return "matched"
             blocked = _protected_cols(service, spreadsheet_id, tab)
             written = _fill_empty_cells(service, spreadsheet_id, tab, sheet_row, rows[matches[0]], header, field_values, blocked)
-            _store.mark(sb, code, "matched", sheet_row=sheet_row, marker=code if mi is not None else None)
-            print(f"[cs_handover] matched AR {ar_id} course {code} → {tab!r} ({kind}) dòng {sheet_row}, điền cột {[_col_a1(c) for c in written]}")
+            gw = _write_gvcn(service, spreadsheet_id, tab, sheet_row, header, rows[matches[0]],
+                             str(field_values.get("gvcn") or ""), str((st or {}).get("gvcn_written") or ""), blocked)
+            _store.mark(sb, code, "matched", sheet_row=sheet_row, marker=code if mi is not None else None, gvcn_written=gw)
+            print(f"[cs_handover] matched AR {ar_id} course {code} → {tab!r} ({kind}) dòng {sheet_row}, điền cột {[_col_a1(c) for c in written]}{' +GVCN' if gw else ''}")
             return "matched"
 
         row, owned_cols = build_row_values(header, field_values)
@@ -1128,7 +1179,11 @@ def maybe_push_cs_handover(sb, ar_ref: Any, course_code: str, *, dry_run: bool =
             _store.mark(sb, code, "verify_failed", sheet_row=row_no, last_error="đọc lại dòng không khớp marker/SĐT")
             print(f"[cs_handover] VERIFY FAILED AR {ar_id} course {code} → {tab!r} dòng {row_no} (worker xử lại)")
             return "verify_failed"
-        _store.mark(sb, code, "appended", sheet_row=row_no, marker=code)
+        # Dòng mới (trống) → build_row_values đã ghi GVCN nếu tab có cột; nhớ lại để lần sau
+        # máy được phép cập nhật khi đổi GVCN.
+        gw_new = (str(field_values.get("gvcn") or "")
+                  if _match_col(header, _FIELD_HEADERS["gvcn"], set()) is not None else "")
+        _store.mark(sb, code, "appended", sheet_row=row_no, marker=code, gvcn_written=gw_new or None)
         print(f"[cs_handover] pushed AR {ar_id} course {code} → {tab!r} ({kind}) row {row_no}")
         return "appended"
     except Exception as exc:

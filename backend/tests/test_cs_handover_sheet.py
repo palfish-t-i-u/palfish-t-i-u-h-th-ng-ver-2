@@ -133,9 +133,55 @@ class TestGvcn:
     """GVCN (mảnh 2): chỉ ghi khi field_values có 'gvcn' (maybe_push set từ CS app); build_field_values
     KHÔNG tự set → cột GVCN của Chung không bị đụng ngoài ý muốn."""
 
-    def test_fill_fields_has_gvcn(self):
+    def test_gvcn_not_in_fill_fields(self):
+        # Phase 2: GVCN ghi có điều kiện (_write_gvcn), KHÔNG qua fill-empty thuần.
         from cs_handover_sheet import _FILL_FIELDS
-        assert "gvcn" in _FILL_FIELDS   # fill-empty được phép điền cột GVCN
+        assert "gvcn" not in _FILL_FIELDS
+
+    def test_gvcn_decision(self):
+        from cs_handover_sheet import _gvcn_decision
+        # ô trống → ghi desired
+        assert _gvcn_decision("", "Thu Hà", "") == "Thu Hà"
+        # ô == giá trị máy ghi trước, desired KHÁC → cập nhật (đổi GVCN)
+        assert _gvcn_decision("Thu Hà", "Lan Anh", "Thu Hà") == "Lan Anh"
+        # ô == máy ghi trước, desired GIỐNG → None (khỏi ghi lại)
+        assert _gvcn_decision("Thu Hà", "Thu Hà", "Thu Hà") is None
+        # ô KHÁC giá trị máy ghi (người điền tay) → None (không đè)
+        assert _gvcn_decision("Người Khác", "Lan Anh", "Thu Hà") is None
+        # chưa có last (Phase 1 / nguồn không rõ) mà ô có data → coi như tay → None
+        assert _gvcn_decision("Thu Hà", "Lan Anh", "") is None
+        # desired rỗng → None
+        assert _gvcn_decision("", "", "") is None
+
+    def test_write_gvcn_conditional(self):
+        from cs_handover_sheet import _write_gvcn
+
+        class _FakeSheets:
+            def __init__(self):
+                self.updates = []
+            def spreadsheets(self):
+                return self
+            def values(self):
+                return self
+            def update(self, spreadsheetId, range, valueInputOption, body):
+                self.updates.append((range, body["values"]))
+                return self
+            def execute(self):
+                return {}
+
+        header = ["UID", "GVCN"]  # GVCN ở cột B (index 1)
+        svc = _FakeSheets()
+        # ô trống → ghi
+        assert _write_gvcn(svc, "sid", "T", 5, header, ["u", ""], "Thu Hà", "", set()) == "Thu Hà"
+        # máy ghi trước (ô==last), desired đổi → đè
+        assert _write_gvcn(svc, "sid", "T", 5, header, ["u", "Thu Hà"], "Lan Anh", "Thu Hà", set()) == "Lan Anh"
+        # người điền (ô != last) → bỏ
+        assert _write_gvcn(svc, "sid", "T", 5, header, ["u", "Người khác"], "Lan Anh", "Thu Hà", set()) is None
+        # cột bị protect → bỏ
+        assert _write_gvcn(svc, "sid", "T", 5, header, ["u", ""], "Thu Hà", "", {1}) is None
+        # chỉ 2 lần ghi thật (trống + đè); ô người điền + cột protect bị bỏ
+        assert len(svc.updates) == 2
+        assert svc.updates[0][0] == "'T'!B5"
 
     def test_gvcn_not_touched_unless_set(self):
         v = build_field_values(PR, UID_BLOCK, COURSE, is_gia_han=False, sale_name="S")
