@@ -141,17 +141,20 @@ def fetch_payment_date(sb, pr_id: str) -> str:
 
 
 def backfill_payment_dates(sb, service, candidates: list[dict[str, Any]]) -> int:
-    """Worker: điền 'Ngày chuyển tiền' cho dòng L8 có marker W = course_code mà ô G còn TRỐNG
-    (đơn báo lúc tiền chưa đủ). `candidates` = [{course_code, ar_id}] từ cs_handover_log (IH2,
-    gần đây). Đọc L8 1 lần; chỉ ghi ô trống. Trả số ô đã điền."""
+    """Worker: với dòng L8 có marker W = course_code, điền BỔ SUNG 2 ô còn TRỐNG:
+      - 'Ngày chuyển tiền' (G): = lần paid muộn nhất khi đơn đủ tiền (báo lúc tiền chưa đủ);
+      - 'Note' (N): = handover_note sale điền lúc báo đơn (app trước 24/10 không ghi Note cho IH2).
+    `candidates` = [{course_code, ar_id}] từ cs_handover_log (IH2, gần đây). Đọc L8 1 lần; CHỈ ghi
+    ô trống (không đè team). Trả số ô đã điền."""
     if not candidates:
         return 0
     header = read_l8_header(service)
     w_i = _match_col(header, ["App Order ID"], set())
     g_i = _match_col(header, ["Ngày chuyển tiền"], set())
-    if w_i is None or g_i is None:
+    note_i = _match_col(header, ["Note"], set())
+    if w_i is None or (g_i is None and note_i is None):
         return 0
-    last = max(w_i, g_i)
+    last = max(x for x in (w_i, g_i, note_i) if x is not None)
     rows = service.spreadsheets().values().get(
         spreadsheetId=_SHEET_L8, range=f"'{_L8_TAB}'!A1:{_col_a1(last)}").execute().get("values", []) or []
     by_marker: dict[str, int] = {}
@@ -165,24 +168,38 @@ def backfill_payment_dates(sb, service, candidates: list[dict[str, Any]]) -> int
         return 0
     ar_ids = sorted({str(c.get("ar_id") or "") for c in todo if c.get("ar_id")})
     pr_of: dict[str, str] = {}
+    note_of: dict[str, str] = {}   # course_code → handover_note
     for i in range(0, len(ar_ids), 200):
-        q = sb.table("active_requests").select("id, pr_id").in_("id", ar_ids[i:i + 200]).execute()
-        pr_of.update({str(r["id"]): str(r.get("pr_id") or "") for r in (q.data or [])})
+        q = sb.table("active_requests").select("id, pr_id, uids_data").in_("id", ar_ids[i:i + 200]).execute()
+        for r in (q.data or []):
+            pr_of[str(r["id"])] = str(r.get("pr_id") or "")
+            for ub in r.get("uids_data") or []:
+                for cc in (ub.get("courses") or []) if isinstance(ub, dict) else []:
+                    if isinstance(cc, dict) and cc.get("code"):
+                        note_of[str(cc["code"])] = str(cc.get("handover_note") or "").strip()
+
+    def _cell(r: list[Any], i: int | None) -> str:
+        return str(r[i]) if (i is not None and len(r) > i) else ""
+
     n = 0
     for c in todo:
         code = str(c["course_code"])
         ri = by_marker[code]
         r = rows[ri]
-        if len(r) > g_i and str(r[g_i]).strip():
-            continue  # đã có ngày (team hoặc app ghi) → không đụng
-        d = fetch_payment_date(sb, pr_of.get(str(c.get("ar_id") or ""), ""))
-        if not d:
-            continue
-        service.spreadsheets().values().update(
-            spreadsheetId=_SHEET_L8, range=f"'{_L8_TAB}'!{_col_a1(g_i)}{ri + 1}",
-            valueInputOption="USER_ENTERED", body={"values": [[d]]}).execute()
-        print(f"[cs_l8] backfill Ngày chuyển tiền {code} dòng {ri + 1} = {d}")
-        n += 1
+        if g_i is not None and not _cell(r, g_i).strip():
+            d = fetch_payment_date(sb, pr_of.get(str(c.get("ar_id") or ""), ""))
+            if d:
+                service.spreadsheets().values().update(
+                    spreadsheetId=_SHEET_L8, range=f"'{_L8_TAB}'!{_col_a1(g_i)}{ri + 1}",
+                    valueInputOption="USER_ENTERED", body={"values": [[d]]}).execute()
+                print(f"[cs_l8] backfill Ngày chuyển tiền {code} dòng {ri + 1} = {d}")
+                n += 1
+        if note_i is not None and not _cell(r, note_i).strip() and note_of.get(code):
+            service.spreadsheets().values().update(
+                spreadsheetId=_SHEET_L8, range=f"'{_L8_TAB}'!{_col_a1(note_i)}{ri + 1}",
+                valueInputOption="USER_ENTERED", body={"values": [[note_of[code]]]}).execute()
+            print(f"[cs_l8] backfill Note {code} dòng {ri + 1}")
+            n += 1
     return n
 
 
@@ -207,6 +224,7 @@ def build_l8_fields(
         "Gói học": _goi_buoi(course.get("name")),
         "Trạng thái": "Chưa kích hoạt",
         "Tháng": f"{today.year}-{today.month}",
+        "Note": str(course.get("handover_note") or "").strip(),  # note sale điền lúc báo đơn → cột Note (N)
         "App Order ID": str(course_code),
     }
 
@@ -243,8 +261,10 @@ def upsert_l8_order(
     if not uid or not course_code:
         return "skip"
     markers = {str(course_code).strip()} | ({str(legacy_order_id).strip()} if str(legacy_order_id or "").strip() else set())
+    note_i = _match_col(header, ["Note"], set())            # cột Note (N) — chỉ fill ô trống
+    note_val = str(fields.get("Note") or "").strip()
 
-    last_col = max([i for i in (uid_i, tien_i, w_i) if i is not None] + [len(header) - 1])
+    last_col = max([i for i in (uid_i, tien_i, w_i, note_i) if i is not None] + [len(header) - 1])
     res = service.spreadsheets().values().get(
         spreadsheetId=_SHEET_L8, range=f"'{_L8_TAB}'!A1:{_col_a1(last_col)}").execute()
     rows = res.get("values") or []
@@ -276,6 +296,17 @@ def upsert_l8_order(
     def _row_preview() -> str:
         return " · ".join(f"{_col_a1(i)}={row_vals[i]!r}" for i in sorted(owned) if str(row_vals[i]).strip())
 
+    def _fill_note(ri: int) -> None:
+        """Điền Note vào ô Note của dòng team/app (ri 0-based) nếu đang TRỐNG — không đè note team."""
+        if note_i is None or not note_val:
+            return
+        if cell(rows[ri], note_i).strip():
+            return
+        service.spreadsheets().values().update(
+            spreadsheetId=_SHEET_L8, range=f"'{_L8_TAB}'!{_col_a1(note_i)}{ri + 1}",
+            valueInputOption="USER_ENTERED", body={"values": [[note_val]]}).execute()
+        print(f"[cs_l8] fill Note dòng {ri + 1} (W={course_code})")
+
     # Ca 4: có cả app_row + sale_row → xoá nội dung app_row, đóng dấu W lên sale_row.
     if app_rows and sale_rows:
         if dry_run:
@@ -284,10 +315,13 @@ def upsert_l8_order(
         for ri in app_rows:
             _clear_row_cells(service, ri + 1, owned)
         _stamp_w(service, sale_rows[0] + 1, w_i, course_code)
+        _fill_note(sale_rows[0])
         return "cleaned"
     if app_rows:
         if dry_run:
-            print(f"   [DRY] EXISTS: đã có dòng app W∈{sorted(markers)} tại dòng {app_rows[0]+1} → bỏ qua")
+            print(f"   [DRY] EXISTS: đã có dòng app W∈{sorted(markers)} tại dòng {app_rows[0]+1} → bỏ qua (fill Note nếu trống)")
+        else:
+            _fill_note(app_rows[0])   # dòng app đã có → bổ sung Note nếu còn trống (backfill đơn cũ)
         return "exists"
     if len(sale_rows) > 1:
         if dry_run:
@@ -295,12 +329,14 @@ def upsert_l8_order(
             return "ambiguous"
         print(f"[cs_l8] UID {uid} khớp {len(sale_rows)} dòng sale L8 — mập mờ, chỉ đóng dấu dòng đầu")
         _stamp_w(service, sale_rows[0] + 1, w_i, course_code)
+        _fill_note(sale_rows[0])
         return "ambiguous"
     if sale_rows:
         if dry_run:
             print(f"   [DRY] STAMPED: đóng dấu W={course_code} lên dòng sale {sale_rows[0]+1} (team đã điền đơn)")
             return "stamped"
         _stamp_w(service, sale_rows[0] + 1, w_i, course_code)
+        _fill_note(sale_rows[0])
         return "stamped"
     # Ca 1: chưa có → append dòng mới + W.
     if dry_run:
