@@ -129,6 +129,64 @@ class TestRowMapping:
         assert owned == {1, 2, 3, 4}     # sale, tên KH, UID, note
 
 
+class TestGvcn:
+    """GVCN (mảnh 2): chỉ ghi khi field_values có 'gvcn' (maybe_push set từ CS app); build_field_values
+    KHÔNG tự set → cột GVCN của Chung không bị đụng ngoài ý muốn."""
+
+    def test_fill_fields_has_gvcn(self):
+        from cs_handover_sheet import _FILL_FIELDS
+        assert "gvcn" in _FILL_FIELDS   # fill-empty được phép điền cột GVCN
+
+    def test_gvcn_not_touched_unless_set(self):
+        v = build_field_values(PR, UID_BLOCK, COURSE, is_gia_han=False, sale_name="S")
+        assert "gvcn" not in v          # build_field_values không tự set GVCN
+        _, owned = build_row_values(HEADER_KH_MOI, v)
+        assert HEADER_KH_MOI.index("GVCN") not in owned
+
+    def test_gvcn_written_when_set(self):
+        v = build_field_values(PR, UID_BLOCK, COURSE, is_gia_han=False, sale_name="S")
+        v["gvcn"] = "Thu Hà"            # như maybe_push làm sau khi hỏi CS app
+        gi_km = HEADER_KH_MOI.index("GVCN")
+        row, owned = build_row_values(HEADER_KH_MOI, v)
+        assert row[gi_km] == "Thu Hà" and gi_km in owned
+        gi_t2 = HEADER_TEAM2.index("GVCN")
+        row2, owned2 = build_row_values(HEADER_TEAM2, v)
+        assert row2[gi_t2] == "Thu Hà" and gi_t2 in owned2
+
+
+class TestGvcnClient:
+    def test_no_config_returns_empty(self, monkeypatch):
+        import cs_gvcn_client
+        monkeypatch.delenv("PALFISH_CS_SYNC_URL", raising=False)
+        monkeypatch.delenv("PALFISH_CS_SYNC_KEY", raising=False)
+        assert cs_gvcn_client.fetch_gvcn(["U1"]) == {}
+
+    def test_parses_assignments(self, monkeypatch):
+        import json
+        import cs_gvcn_client
+        monkeypatch.setenv("PALFISH_CS_SYNC_URL", "https://x/api/cs")
+        monkeypatch.setenv("PALFISH_CS_SYNC_KEY", "k")
+
+        class _Resp:
+            def read(self):
+                return json.dumps(
+                    {"assignments": [
+                        {"uid": "U1", "gvcn": "Thu Hà"},
+                        {"uid": "U2", "gvcn": ""},   # không có GVCN → bỏ
+                        {"uid": "", "gvcn": "X"},    # thiếu uid → bỏ
+                    ]}
+                ).encode("utf-8")
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a):
+                return False
+
+        monkeypatch.setattr(cs_gvcn_client.urllib.request, "urlopen", lambda *a, **k: _Resp())
+        assert cs_gvcn_client.fetch_gvcn(["U1", "U2"]) == {"U1": "Thu Hà"}
+
+
 class TestRowSegments:
     """_row_segments CHỈ ghi các cột trong write_cols (G3 sở hữu, trừ khóa) — cắt thành đoạn liền kề."""
 

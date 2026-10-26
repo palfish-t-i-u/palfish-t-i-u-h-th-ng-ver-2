@@ -69,6 +69,8 @@ _FIELD_HEADERS: dict[str, list[str]] = {
     "so_tien": ["Số tiền"],
     "kenh_cham_soc": ["Kênh liên hệ"],
     "contact_id": ["Contact ID"],
+    "gvcn": ["GVCN"],                    # CS phụ trách — đổ từ CS app (gvcn_sync), chỉ ghi khi trống
+
     "note": ["Note", "Ghi chú"],         # Team 2 note = "Note"; tab KH mới = "Ghi chú" (ô sale, khớp đầu tiên)
     "tag": ["KH mới/ gia hạn"],          # chỉ tab chung
     # Marker dòng app = course_code (cột cuối tab, chủ sheet thêm — G5-T1). Tab chưa có cột → bỏ qua.
@@ -518,7 +520,7 @@ def _recent_rows(header: list[Any], rows: list[list[Any]], header_idx: int, *, t
     return out
 
 
-_FILL_FIELDS = ("kenh_cham_soc", "contact_id", "note", "uid", "app_order_id")
+_FILL_FIELDS = ("kenh_cham_soc", "contact_id", "note", "uid", "app_order_id", "gvcn")
 
 
 def _fill_empty_cells(
@@ -679,6 +681,21 @@ def _kenh_label(service, spreadsheet_id: str, tab: str, header: list[Any], value
     return _dropdown_value(opts, value) or value
 
 
+def _gvcn_label(service, spreadsheet_id: str, tab: str, header: list[Any], name: str) -> str:
+    """Ô GVCN: khớp tên CS với option dropdown của tab (xử lý 'case khác' tên khác nhau giữa CS
+    và sheet). Tab không có cột GVCN → "". Có dropdown mà tên không khớp option nào → "" (không
+    ghi rác). Tab không có dropdown → ghi tên nguyên."""
+    if not name:
+        return ""
+    gi = _match_col(header, _FIELD_HEADERS["gvcn"], set())
+    if gi is None:
+        return ""
+    opts = _read_col_dropdown(service, spreadsheet_id, tab, gi)
+    if not opts:
+        return name
+    return _dropdown_value(opts, name) or ""
+
+
 def _match_write_handover(
     service, spreadsheet_id: str, tab: str, header: list[Any], field_values: dict[str, Any]
 ) -> str:
@@ -693,13 +710,14 @@ def _match_write_handover(
     if uid_i is None or (kenh_i is None and contact_i is None):
         return "no_cols"
     tien_i = _match_col(header, _FIELD_HEADERS["so_tien"], set())
+    gvcn_i = _match_col(header, _FIELD_HEADERS["gvcn"], set())
 
     target_uid = _norm(field_values.get("uid"))
     if not target_uid:
         return "not_found"
     target_tien = _amount_key(field_values.get("so_tien"))
 
-    need = [x for x in (uid_i, kenh_i, contact_i, tien_i) if x is not None]
+    need = [x for x in (uid_i, kenh_i, contact_i, tien_i, gvcn_i) if x is not None]
     last_col = max(need)
     res = (
         service.spreadsheets()
@@ -744,6 +762,11 @@ def _match_write_handover(
         if _norm(cell(r, contact_i)) != _norm(contact_v):
             changed = True
         writes.append((contact_i, contact_v))
+    # GVCN: CHỈ ghi khi ô trống (khác Kênh/Contact vốn ghi đè) — không clobber tên CS tự điền.
+    gvcn_v = str(field_values.get("gvcn") or "")
+    if gvcn_i is not None and gvcn_v and not cell(r, gvcn_i).strip():
+        writes.append((gvcn_i, gvcn_v))
+        changed = True
     if not writes:
         return "not_found"  # không có giá trị để ghi
     if not changed:
@@ -1003,6 +1026,18 @@ def maybe_push_cs_handover(sb, ar_ref: Any, course_code: str, *, dry_run: bool =
             return "no_header"
         # Kênh liên hệ theo dropdown của tab (G3-T3) — áp cho mọi team.
         field_values["kenh_cham_soc"] = _kenh_label(service, spreadsheet_id, tab, header, str(field_values.get("kenh_cham_soc") or ""))
+        # GVCN: nguồn ở CS app (gvcn_sync) — đổ cho cả KH mới (người xử lý ca tiếp nhận) lẫn
+        # gia hạn / KH cũ (CS hiện tại). CHỈ ghi khi ô trống (qua _FILL_FIELDS ở fill-empty, hoặc
+        # dòng append mới); tên không map được option dropdown → bỏ (guardrail: không ghi rác).
+        try:
+            import cs_gvcn_client as _gvcn
+            _guid = str(uid_block.get("uid") or "")
+            _gname = _gvcn.fetch_gvcn([_guid]).get(_guid, "") if _guid else ""
+            _glabel = _gvcn_label(service, spreadsheet_id, tab, header, _gname)
+            if _glabel:
+                field_values["gvcn"] = _glabel
+        except Exception as exc:  # noqa: BLE001 — GVCN không được chặn luồng bàn giao
+            print(f"[cs_handover] GVCN lỗi (bỏ qua): {exc}")
 
         # IH2: 2 việc — (1) ghi ĐƠN vào L8 (dedup cột W); (2) ghi Kênh/Contact vào tab bàn giao.
         # l8_status lưu trong cs_handover_log để không làm lại; status=done khi CẢ HAI xong,
