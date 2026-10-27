@@ -3061,15 +3061,21 @@ export default function PaymentRequestDetailDrawer({
                   setMissingBillsPopupOpen(true);
                   return;
                 }
-                setArDraftRows([
-                  reportBtn.isAppend
-                    ? { childName: "", uid: "", phone: "", phoneCountry: request.country || "VN", packageName: "", amount: arUnallocated, leadSource: request.leadSource || "", leadChannel: request.leadChannel || "", careChannel: "", careContactId: "", handoverNote: "" }
-                    : { childName: splitChildNames(request.childName)[0] ?? "", uid: request.uid ?? "", phone: (request.phone ?? "").replace(/\D/g, ""), phoneCountry: request.country || "VN", packageName: "", amount: Math.max(0, activatableReceived(request)), leadSource: request.leadSource || "", leadChannel: request.leadChannel || "", careChannel: "", careContactId: "", handoverNote: "" },
-                ]);
-                setHoldActivation(false);
-                setHoldNote("");
-                setCrmAddressConfirmed(false);
-                setCrmShakeError(false);
+                // Chỉ seed khi mở MỚI (chưa có nháp). Nếu đang có nháp dở (cùng PR — nháp bị
+                // xoá theo [request?.id] khi đổi PR, và sau khi gửi thành công) thì mở lại GIỮ
+                // NGUYÊN, không seed đè → không mất bé/gói đã điền nếu form lỡ bị đóng (click X/
+                // Đóng/nền). Xem docs/learnings/bao-don-draft-preserve-on-reopen.md
+                if (arDraftRows.length === 0) {
+                  setArDraftRows([
+                    reportBtn.isAppend
+                      ? { childName: "", uid: "", phone: "", phoneCountry: request.country || "VN", packageName: "", amount: arUnallocated, leadSource: request.leadSource || "", leadChannel: request.leadChannel || "", careChannel: "", careContactId: "", handoverNote: "" }
+                      : { childName: splitChildNames(request.childName)[0] ?? "", uid: request.uid ?? "", phone: (request.phone ?? "").replace(/\D/g, ""), phoneCountry: request.country || "VN", packageName: "", amount: Math.max(0, activatableReceived(request)), leadSource: request.leadSource || "", leadChannel: request.leadChannel || "", careChannel: "", careContactId: "", handoverNote: "" },
+                  ]);
+                  setHoldActivation(false);
+                  setHoldNote("");
+                  setCrmAddressConfirmed(false);
+                  setCrmShakeError(false);
+                }
                 setArPackageModalOpen(true);
               }}
             >
@@ -3123,7 +3129,10 @@ export default function PaymentRequestDetailDrawer({
         return (
         <div
           className="gmv-prototype-modal-scrim"
-          onClick={() => setArPackageModalOpen(false)}
+          // KHÔNG đóng form khi click ra nền: form báo đơn dài (nhiều bé/gói, điền vài phút),
+          // nền mờ 2 bên modal 720px là vùng bấm nhầm lớn — click nhầm khi thao tác nhanh /
+          // chuyển cửa sổ copy data từ Zalo là nguyên nhân chính "văng form phải điền lại".
+          // Đóng chủ đích bằng nút X hoặc Đóng. Xem docs/learnings/bao-don-draft-preserve-on-reopen.md
           style={{ zIndex: 140 }}
         >
           <div className="modal" style={{ width: "min(720px, 100%)" }} onClick={(e) => e.stopPropagation()}>
@@ -3475,8 +3484,10 @@ export default function PaymentRequestDetailDrawer({
                   {referralDraftError}
                 </div>
               )}
+              {/* "Đóng" (không phải "Huỷ"): chỉ ẩn form, GIỮ nháp đang điền. Mở lại khôi phục
+                  được — tránh mất dữ liệu nếu bấm nhầm. Nháp chỉ xoá khi gửi xong / đổi PR. */}
               <button type="button" className="btn btn-outline" onClick={() => setArPackageModalOpen(false)}>
-                Huỷ
+                Đóng
               </button>
               <button
                 type="button"
@@ -3505,7 +3516,14 @@ export default function PaymentRequestDetailDrawer({
                     } else {
                       await onCreateActiveRequest(rows, holdOpts);
                     }
+                    // Gửi thành công → đóng + XOÁ nháp để lần mở sau seed mới (vd. báo đơn bổ
+                    // sung). Đây là 1 trong 2 nơi DUY NHẤT được xoá nháp (nơi còn lại: đổi PR).
                     setArPackageModalOpen(false);
+                    setArDraftRows([]);
+                    setHoldActivation(false);
+                    setHoldNote("");
+                    setCrmAddressConfirmed(false);
+                    setCrmShakeError(false);
                   } catch {
                     /* apiNote set in context handler; keep modal open */
                   } finally {
