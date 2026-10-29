@@ -239,6 +239,8 @@ export interface ActiveRequest {
    * tới khi tiền về. BE tính ở list + mọi endpoint đơn-AR (batch gateway match). */
   creditSettlementPending?: boolean;
   isCreditOrder?: boolean;
+  /** TK nhận tiền CK — alias ngân hàng (VD "PalFish Hà Nội - MB Bank"). null = chưa rõ / tiền mặt. */
+  bankAccount?: string | null;
   updatedAt?: string;
 }
 
@@ -485,6 +487,7 @@ export type ActiveRequestApiRow = {
   tien_ve_muon?: string | null;
   credit_settlement_pending?: boolean;
   is_credit_order?: boolean;
+  bank_account?: string | null;
   payment_request?: { name?: string; email?: string; sale_name?: string; sale_email?: string };
 };
 

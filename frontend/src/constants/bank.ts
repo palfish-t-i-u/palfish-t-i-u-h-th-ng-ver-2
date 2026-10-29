@@ -71,6 +71,25 @@ export function isSepayAccount(alias: string | null | undefined): boolean {
   return acc ? acc.sepayConnected : true;
 }
 
+/** Rút gọn label + màu badge cho bank alias. null nếu alias trống/không rõ.
+ *  Dùng ở B2 (ChannelBadges) + B3 (cột TK nhận). */
+export function bankShortLabel(
+  alias: string | null | undefined,
+): { label: string; bg: string; fg: string } | null {
+  if (!alias) return null;
+  const lower = alias.toLowerCase();
+  if (lower.includes("mb")) return { label: "MB", bg: "#dbeafe", fg: "#1d4ed8" };
+  if (lower.includes("vcb") || lower.includes("vietcombank"))
+    return { label: "VCB", bg: "#fef3c7", fg: "#b45309" };
+  return null;
+}
+
+/** Map số tài khoản ngân hàng → BankAccount. null nếu không khớp. */
+export function accountNumberToBank(accountNo: string | null | undefined): BankAccount | null {
+  if (!accountNo) return null;
+  return BANK_ACCOUNTS.find((b) => b.accountNo === accountNo) ?? null;
+}
+
 export function buildVietQrUrl(amount: number, infoCode: string): string {
   const { bin, accountNo, accountName } = BANK_INFO;
   const params = new URLSearchParams({

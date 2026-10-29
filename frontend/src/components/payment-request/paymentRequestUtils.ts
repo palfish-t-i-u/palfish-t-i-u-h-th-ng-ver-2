@@ -419,6 +419,7 @@ export function fromApiActiveRequest(raw: ActiveRequestApiRow): ActiveRequest {
     tienVeMuon: "tien_ve_muon" in raw ? (raw.tien_ve_muon ?? null) : undefined,
     creditSettlementPending: raw.credit_settlement_pending ?? false,
     isCreditOrder: raw.is_credit_order ?? false,
+    bankAccount: raw.bank_account ?? null,
     uids: (raw.uids_data ?? []).map((u) => ({
       uid: u.uid ?? "",
       ...(u.name ? { name: u.name } : {}),

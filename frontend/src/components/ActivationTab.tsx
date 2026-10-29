@@ -35,6 +35,7 @@ import { AR_PER_PAGE, countCourseTabs, courseRowMatchesSearch, courseRowMatchesT
 import { normVi } from "../lib/textUtils";
 import { useColumnVisibility } from "../hooks/useColumnVisibility";
 import ColumnVisibilityMenu, { type ColumnOption } from "./ui/ColumnVisibilityMenu";
+import { bankShortLabel } from "../constants/bank";
 
 type ArTabId = "pending_order" | "activated" | "all";
 
@@ -51,6 +52,7 @@ const ACTIVATION_COLUMNS: readonly ColumnOption[] = [
   { key: "package", label: "Gói học", hideable: true },
   { key: "amount", label: "Tiền", hideable: true },
   { key: "order", label: "Order ID", hideable: true },
+  { key: "bankAccount", label: "TK nhận", hideable: true },
   { key: "status", label: "Trạng thái", hideable: true },
   { key: "referral", label: "Thưởng GT", hideable: true },
   { key: "createdAt", label: "Tạo lúc", hideable: true },
@@ -2875,6 +2877,18 @@ export default function ActivationTab() {
             {renderArInvoiceCell(row.arId, ctx.action)}
           </td>
         )}
+        {isVisible("bankAccount") && (
+        <td>
+          {(() => {
+            const b = bankShortLabel(row.bankAccount);
+            return b ? (
+              <span style={{ fontSize: 10.5, fontWeight: 600, padding: "1px 6px", borderRadius: 5, background: b.bg, color: b.fg }}>{b.label}</span>
+            ) : (
+              <span style={{ color: "var(--text-3)", fontSize: 11.5 }}>—</span>
+            );
+          })()}
+        </td>
+        )}
         {isVisible("status") && (
         <td>
           <div style={{ display: "flex", flexDirection: "column", gap: 4, alignItems: "flex-start" }}>
@@ -3210,6 +3224,7 @@ export default function ActivationTab() {
                       {isVisible("amount") && <th style={{ textAlign: "right" }}>Tiền</th>}
                       {isVisible("order") && <th>Order ID</th>}
                       <th>Xuất HĐ</th>
+                      {isVisible("bankAccount") && <th>TK nhận</th>}
                       {isVisible("status") && <th>Trạng thái</th>}
                       {isVisible("referral") && <th>Thưởng GT</th>}
                       {isVisible("createdAt") && <th>Tạo lúc</th>}

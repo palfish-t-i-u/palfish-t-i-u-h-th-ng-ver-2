@@ -9,6 +9,7 @@ import {
   vnd,
 } from "../payment-flow/paymentFlowUtils";
 import { formatPaymentDateTime } from "../payment-request/paymentRequestUtils";
+import { bankShortLabel } from "../../constants/bank";
 
 interface Props {
   transactions: FlatTransaction[];
@@ -80,7 +81,15 @@ export default function ReconTxnCards({
               { label: "Mã GD", value: t.code },
               { label: "Tạo lệnh lúc", value: `${created.date} ${created.time || ""}`.trim() },
               { label: "Tiền về lúc", value: paid ? `${paid.date} ${paid.time || ""}`.trim() : "—" },
-              { label: "Chi tiết", value: t.bank || t.cashier || "—" },
+              { label: "Chi tiết", value: (() => {
+                const b = bankShortLabel(t.bank);
+                return b ? (
+                  <span style={{ display: "inline-flex", gap: 4, alignItems: "center" }}>
+                    <span style={{ fontSize: 10.5, fontWeight: 600, padding: "1px 6px", borderRadius: 5, background: b.bg, color: b.fg }}>{b.label}</span>
+                    {t.bank}
+                  </span>
+                ) : (t.bank || t.cashier || "—");
+              })() },
             ]}
             onClick={() => onSelect(t)}
             actions={

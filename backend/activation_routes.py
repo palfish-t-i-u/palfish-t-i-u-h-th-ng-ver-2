@@ -799,6 +799,35 @@ def _tien_ve_map(sb, ar_ids: list[str]) -> dict[str, dict[str, tuple[str | None,
     return out
 
 
+def _bank_account_map(sb, pr_ids: list[str]) -> dict[str, str]:
+    """TK nhận (bank alias) theo PR — lấy từ payment_lines.bank_account (line CK/QR).
+
+    Trả {pr_id: alias} — VD "PalFish Hà Nội - MB Bank". PR không có line CK/QR → vắng.
+    """
+    if not pr_ids:
+        return {}
+    CHUNK = 150
+    out: dict[str, str] = {}
+    for i in range(0, len(pr_ids), CHUNK):
+        try:
+            res = (
+                sb.table("payment_lines")
+                .select("payment_request_id, bank_account")
+                .in_("payment_request_id", pr_ids[i : i + CHUNK])
+                .in_("status", ["pending", "paid"])
+                .not_.is_("bank_account", "null")
+                .execute()
+            )
+        except Exception:
+            continue
+        for r in (res.data or []):
+            prid = str(r.get("payment_request_id") or "")
+            ba = (r.get("bank_account") or "").strip()
+            if prid and ba and prid not in out:
+                out[prid] = ba
+    return out
+
+
 def _serialize_ar(
     row: dict[str, Any],
     pr: dict[str, Any] | None = None,
@@ -806,6 +835,7 @@ def _serialize_ar(
     tien_ve: dict[str, tuple[str | None, str | None]] | None = None,
     credit_settlement_pending: bool = False,
     is_credit_order: bool = False,
+    bank_account: str | None = None,
 ) -> dict[str, Any]:
     raw_uids_data = row.get("uids_data") or []
     uids_data: list[dict[str, Any]] = []
@@ -849,6 +879,7 @@ def _serialize_ar(
         "crm_address_confirmed": bool(row.get("crm_address_confirmed", True)),
         "credit_settlement_pending": bool(credit_settlement_pending),
         "is_credit_order": bool(is_credit_order),
+        "bank_account": bank_account or None,
     }
     if tien_ve is not None:
         # AR-level = min/max across khoá (giữ field cũ cho consumer + FE fallback)
@@ -2782,6 +2813,7 @@ def register_activation_routes(app, supabase_factory):
             # G4: light (B1) bỏ tien_ve + credit — 2 map nặng nhất, chỉ B3/B4 cần.
             _f_tv = None if light else _ex.submit(_tien_ve_map, sb, ar_ids)
             _f_credit = None if light else _ex.submit(_credit_hold_map, sb, pr_ids)
+            _f_bank = None if light else _ex.submit(_bank_account_map, sb, pr_ids)
             pr_map = _f_pr.result()
             try:
                 snm = _f_snm.result()
@@ -2789,6 +2821,7 @@ def register_activation_routes(app, supabase_factory):
                 snm = {}
             tv_map = _f_tv.result() if _f_tv is not None else {}
             credit_map = _f_credit.result() if _f_credit is not None else {}
+            bank_map = _f_bank.result() if _f_bank is not None else {}
         return [
             _serialize_ar(
                 r,
@@ -2797,6 +2830,7 @@ def register_activation_routes(app, supabase_factory):
                 tien_ve=tv_map.get(str(r.get("id") or ""), {}),
                 credit_settlement_pending=credit_map.get(str(r.get("pr_id") or "")) == "pending",
                 is_credit_order=str(r.get("pr_id") or "") in credit_map,
+                bank_account=bank_map.get(str(r.get("pr_id") or "")),
             )
             for r in rows
         ]

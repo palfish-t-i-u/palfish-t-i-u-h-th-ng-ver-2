@@ -3,7 +3,7 @@ import { usePaymentFlow } from "../contexts/PaymentFlowContext";
 import { usePermission } from "../hooks/usePermission";
 import { endpoints, type BankTransaction, type BankMatchCandidate, type BankTransactionTeam } from "../lib/api";
 import { fetchAllBankTxns } from "../lib/fetchAllBankTxns";
-import { isSepayAccount } from "../constants/bank";
+import { isSepayAccount, bankShortLabel, accountNumberToBank } from "../constants/bank";
 import {
   type FlatTransaction,
   METHOD_META,
@@ -362,6 +362,8 @@ const SOURCE_META: Record<"payos" | "sepay" | "manual", { label: string; bg: str
 function ChannelBadges({ t, matchedTxn }: { t: FlatTransaction; matchedTxn?: BankTransaction }) {
   const kind = KIND_META[transferKind(t)];
   const src = confirmSource(t, matchedTxn);
+  const bankAlias = t.bank || (matchedTxn ? accountNumberToBank(matchedTxn.account_number)?.alias : undefined);
+  const bank = bankShortLabel(bankAlias);
   return (
     <div style={{ display: "flex", gap: 4, flexWrap: "wrap", alignItems: "center" }}>
       <span style={{ fontSize: 10.5, fontWeight: 600, padding: "1px 6px", borderRadius: 5, background: kind.bg, color: kind.fg }}>
@@ -370,6 +372,11 @@ function ChannelBadges({ t, matchedTxn }: { t: FlatTransaction; matchedTxn?: Ban
       {src && (
         <span style={{ fontSize: 10.5, fontWeight: 600, padding: "1px 6px", borderRadius: 5, background: SOURCE_META[src].bg, color: SOURCE_META[src].fg }}>
           {SOURCE_META[src].label}
+        </span>
+      )}
+      {bank && (
+        <span style={{ fontSize: 10.5, fontWeight: 600, padding: "1px 6px", borderRadius: 5, background: bank.bg, color: bank.fg }}>
+          {bank.label}
         </span>
       )}
     </div>

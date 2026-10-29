@@ -42,6 +42,7 @@ export interface CourseRow {
   tienVeMuon: string | null;
   isCreditOrder: boolean;
   creditSettlementPending: boolean;
+  bankAccount: string | null;
 }
 
 export interface CourseRowGroup {
@@ -93,6 +94,7 @@ export function flatCourseRows(ars: ActiveRequest[]): CourseRow[] {
           tienVeMuon: c.tienVeMuon ?? ar.tienVeMuon ?? null,
           isCreditOrder: Boolean(ar.isCreditOrder),
           creditSettlementPending: Boolean(ar.creditSettlementPending),
+          bankAccount: ar.bankAccount ?? null,
         });
       });
     });

@@ -5,6 +5,7 @@ import {
   type EnrichedActiveRequest,
   vnd,
 } from "../payment-flow/paymentFlowUtils";
+import { bankShortLabel } from "../../constants/bank";
 
 interface Props {
   rows: EnrichedActiveRequest[];
@@ -86,6 +87,15 @@ export default function ActivationRowCards({
               {
                 label: "Order ID",
                 value: `${a.orderedCount}/${a.totalCourses}`,
+              },
+              {
+                label: "TK nhận",
+                value: (() => {
+                  const b = bankShortLabel(a.bankAccount);
+                  return b ? (
+                    <span style={{ fontSize: 10.5, fontWeight: 600, padding: "1px 6px", borderRadius: 5, background: b.bg, color: b.fg }}>{b.label}</span>
+                  ) : "—";
+                })(),
               },
               {
                 label: "Tạo lúc",
