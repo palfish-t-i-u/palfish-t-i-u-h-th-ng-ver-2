@@ -242,6 +242,95 @@ class TestNoteFill:
         assert self.NOTE in wrote   # dòng mới gồm Note
 
 
+class TestGvLabel:
+    """30/10: GV mặc định suy từ tên gói (đã kiểm chứng trên 264 đơn IH2 thật)."""
+
+    def test_phil_and_native_from_real_names(self):
+        for name, want in [
+            ("2/W- UPSALE 96 PHI+10 HN", "Phil 2b/tuần"),
+            ("2/W- NEW 48 PHI+5", "Phil 2b/tuần"),
+            ("2/W- Both AB (A-PH) REFER 48 PHI+5", "Phil 2b/tuần"),
+            ("2/W- Both AB REFER 24 PHI+2 HN", "Phil 2b/tuần"),
+            ("2/W- UPSALE 144 PHI+15 HN", "Phil 2b/tuần"),
+            ("2/W- UPSALE 24 US-UK+1 HN", "Native 2b/tuần"),
+            ("2/W- NEW 24 US-UK+1 HN", "Native 2b/tuần"),
+            ("2/W- Both AB REFER 24 US-UK+1 HN", "Native 2b/tuần"),
+            ("3/W - NEW 96 PHI+10+10 HN", "Phil 3b/tuần"),
+        ]:
+            assert l8.gv_label(name) == want, name
+
+    def test_blank_when_cannot_infer(self):
+        assert l8.gv_label("") == "" and l8.gv_label(None) == ""
+        assert l8.gv_label("Thuy Tien") == ""                       # tên tay, không có N/W
+        assert l8.gv_label("2/W- NEW 48 HN") == ""                  # thiếu loại PHI/US-UK
+        assert l8.gv_label("2/W- NEW 48 PHI US-UK+5") == ""         # CONFLICT → không đoán
+        assert l8.gv_label("1/M- NEW 12 PHI+1") == ""               # gói theo tháng, không có N/W
+
+    def test_for_course_matches_dropdown_option(self, monkeypatch):
+        monkeypatch.setattr(l8, "_read_col_dropdown", lambda *a, **k: ["Phil 2b/tuần ", "Phil 3b/tuần", "Native 2b/tuần"])
+        assert l8.gv_for_course(object(), HEADER, "2/W- NEW 48 PHI+5 HN") == "Phil 2b/tuần"   # chuỗi đúng option, bỏ khoảng trắng thừa
+
+    def test_for_course_skips_unknown_option(self, monkeypatch):
+        monkeypatch.setattr(l8, "_read_col_dropdown", lambda *a, **k: ["Phil 2b/tuần"])
+        assert l8.gv_for_course(object(), HEADER, "2/W- NEW 24 US-UK+1 HN") == ""             # không có option Native → không ghi rác
+
+    def test_for_course_falls_back_when_dropdown_unreadable(self, monkeypatch):
+        monkeypatch.setattr(l8, "_read_col_dropdown", lambda *a, **k: [])
+        assert l8.gv_for_course(object(), HEADER, "2/W- NEW 48 PHI+5 HN") == "Phil 2b/tuần"
+
+    def test_build_fields_carries_gv(self, monkeypatch):
+        monkeypatch.setattr(l8, "_read_col_dropdown", lambda *a, **k: [])
+        monkeypatch.setattr(l8, "tvts_code", lambda *a, **k: "HN2 - X")
+        f = l8.build_l8_fields(
+            object(), sale_crm_name="x", pr={"name": "Mẹ A"}, uid_block={"uid": "3301", "name": "bé B"},
+            course={"name": "2/W- UPSALE 48 PHI+5 HN", "amount": 8500000, "lead_source": "gia_han"},
+            is_gia_han=True, payment_date="", course_code="CC-1", phone_intl="84-9", header=HEADER)
+        assert f["GV"] == "Phil 2b/tuần" and f["Gói học"] == "48+5"
+
+
+class TestGvFill:
+    """GV điền khi ghi đơn, chỉ ô TRỐNG — sale đổi 3b/tuần (khách tăng cường) thì giữ nguyên."""
+
+    def _fields(self):
+        f = dict(FIELDS)
+        f["GV"] = "Phil 2b/tuần"
+        return f
+
+    @staticmethod
+    def _grow(uid="3301", w="", gv=""):
+        r = _row(uid=uid, tien="9,050,000", w=w)
+        r[8] = gv   # cột GV (I)
+        return r
+
+    def test_appended_row_carries_gv(self):
+        svc = FakeSheets([HEADER])
+        assert l8.upsert_l8_order(svc, HEADER, self._fields(), uid="3301", so_tien="9050000", course_code="CC-9") == "appended"
+        wrote = " ".join(str(v) for _, vals in svc.updates for row in vals for v in row)
+        assert "Phil 2b/tuần" in wrote
+
+    def test_stamped_fills_empty_gv(self):
+        svc = FakeSheets([HEADER, self._grow()])
+        assert l8.upsert_l8_order(svc, HEADER, self._fields(), uid="3301", so_tien="9050000", course_code="CC-9") == "stamped"
+        assert ("'Tổng hợp L8'!I2", [["Phil 2b/tuần"]]) in svc.updates
+
+    def test_stamped_keeps_sale_gv(self):
+        svc = FakeSheets([HEADER, self._grow(gv="Phil 3b/tuần")])
+        assert l8.upsert_l8_order(svc, HEADER, self._fields(), uid="3301", so_tien="9050000", course_code="CC-9") == "stamped"
+        assert not any(rng.endswith("I2") for rng, _ in svc.updates)   # không đè 3b/tuần của sale
+
+    def test_exists_keeps_edited_gv(self):
+        svc = FakeSheets([HEADER, self._grow(w="CC-9", gv="Phil 3b/tuần")])
+        assert l8.upsert_l8_order(svc, HEADER, self._fields(), uid="3301", so_tien="9050000", course_code="CC-9") == "exists"
+        assert svc.updates == []
+
+    def test_no_gv_field_leaves_cell_alone(self):
+        f = dict(FIELDS)
+        f["GV"] = ""    # tên gói không suy được → không ghi
+        svc = FakeSheets([HEADER, self._grow()])
+        assert l8.upsert_l8_order(svc, HEADER, f, uid="3301", so_tien="9050000", course_code="CC-9") == "stamped"
+        assert not any(rng.endswith("I2") for rng, _ in svc.updates)
+
+
 class TestWorkerSchedule:
     def _sl(self, h, m=0):
         return _next_sleep_seconds(datetime(2026, 10, 22, h, m, tzinfo=VN))

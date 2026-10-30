@@ -62,7 +62,7 @@
 #### Sale→CS handover khâu 1 (ghi sheet bàn giao lúc báo đơn) — plan `docs/plans/PLAN_cs_handover_v2_hybrid_2026-10-23.md`
 - `backend/cs_handover_sheet.py` — `maybe_push_cs_handover(sb, ar_id, code, dry_run)`: gate Kênh/Contact → claim → upsert 3 team (match phone9+tên bé → fill-empty | append neo cột khoá + verify | ambiguous), IH2 match-write; dropdown-aware Sale/Kênh; routes `_ROUTES`
 - `backend/cs_handover_store.py` — bảng `cs_handover_log` (claim atomic / mark / needs_retry) — nguồn sự thật dedup, KHÔNG dùng cờ JSONB
-- `backend/cs_l8_order.py` — IH2: ghi ĐƠN vào "Tổng hợp L8" (dedup cột W = course_code, legacy order_id), TVTS code, Loại cts
+- `backend/cs_l8_order.py` — IH2: ghi ĐƠN vào "Tổng hợp L8" (dedup cột W = course_code, legacy order_id), TVTS code, Loại cts, GV mặc định từ tên gói (`gv_label`, chỉ ô trống — learning `ih2-l8-gv-autofill-and-header-row.md`)
 - `backend/cs_handover_reconcile_worker.py` — worker nền lịch phân tầng: retry pending + gọi dedup
 - `backend/cs_handover_dedup.py` — quét sheet gom dòng app (marker) + dòng team trùng → merge / dup_manual
 - Hook: `activation_routes.py` (2 endpoint tạo AR + PATCH course + full-PATCH) → truyền `ar_id`; env `CS_HANDOVER_WORKER_ENABLED`

@@ -10,7 +10,10 @@ Map (đã chốt qua data thật 22/10):
 - Loại cts: lead_source (gia_han/kho_chung/gioi_thieu) ưu tiên, else lead_channel → nhãn L8.
 - Ngày chuyển tiền: payment_lines.paid_at (fallback confirmed_at) sớm nhất, giờ VN.
 - Gói học: mã buổi "base+bonus". Trạng thái: "Chưa kích hoạt" (team cập nhật sau). Tháng: YYYY-M.
-- GV / Tạo nhóm GV: để TRỐNG (team điền — app không có).
+- GV: mặc định suy từ tên gói ("2/W ... PHI" → "Phil 2b/tuần", US-UK → "Native 2b/tuần"); chỉ điền ô
+  TRỐNG, sale/team vẫn sửa được (vd khách học tăng cường 3b/tuần) — app không bao giờ đè. Có GV là mốc
+  "bàn giao" của IH2 được đóng dấu (handover_ts) nên điền ngay lúc báo đơn (30/10).
+- Tạo nhóm GV: để TRỐNG (team điền — app không có).
 
 Dedup (khoá UID + Số tiền, con dấu W):
   W (App Order ID) = course_code của app (v2, 23/10); đọc CHẤP NHẬN legacy W = order_id CRM
@@ -30,7 +33,10 @@ import unicodedata
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from cs_handover_sheet import _amount_key, _col_a1, _match_col, _next_empty_row, _norm, _read_header_cells
+from cs_handover_sheet import (
+    _amount_key, _col_a1, _dropdown_value, _match_col, _next_empty_row, _norm, _parse_course,
+    _read_col_dropdown, _read_header_cells,
+)
 
 _SHEET_L8 = "1H6hslccd_dEKwl6UOhn5Jebl6ppowno6WO1jfRINSTw"
 _L8_TAB = "Tổng hợp L8"
@@ -109,6 +115,38 @@ def tvts_code(service, crm_name: str) -> str:
 def _goi_buoi(name: str) -> str:
     m = re.search(r"(\d+)\s*[A-Za-z一-鿿_\-]*\s*\+\s*(\d+)", str(name or ""))
     return f"{m.group(1)}+{m.group(2)}" if m else ""
+
+
+_PER_WEEK_RE = re.compile(r"(?<!\d)([1-7])\s*/\s*W(?![A-Za-z])", re.I)
+
+
+def gv_label(name: Any) -> str:
+    """GV mặc định từ tên gói: loại giáo viên (PHI→Phil, US-UK→Native) + số buổi/tuần ('2/W' → 2b/tuần).
+    Gói không có 'N/W' (vd /M), thiếu loại hoặc CONFLICT → '' (để trống, không đoán). Kiểm chứng 30/10 trên
+    264 đơn IH2: đúng 249 — chỉ lệch khi khách tăng cường lên 3b/tuần (app chỉ có gói 2/W) → sale sửa tay."""
+    s = str(name or "")
+    ct = _parse_course(s)[0]
+    if ct not in ("PHI", "US-UK"):
+        return ""
+    m = _PER_WEEK_RE.search(s)
+    if not m:
+        return ""
+    return f"{'Phil' if ct == 'PHI' else 'Native'} {m.group(1)}b/tuần"
+
+
+def gv_for_course(service, header: list[Any] | None, name: Any) -> str:
+    """gv_label khớp đúng chuỗi dropdown cột GV của L8 (ô GV là dropdown). Đọc được dropdown mà không
+    có option tương ứng → '' (không ghi rác); không đọc được → dùng nhãn chuẩn."""
+    label = gv_label(name)
+    if not label or header is None:
+        return label
+    gi = _match_col(header, ["GV"], set())
+    if gi is None:
+        return ""
+    opts = _read_col_dropdown(service, _SHEET_L8, _L8_TAB, gi)
+    if not opts:
+        return label
+    return _dropdown_value(opts, label) or ""
 
 
 def fetch_payment_date(sb, pr_id: str) -> str:
@@ -206,9 +244,10 @@ def backfill_payment_dates(sb, service, candidates: list[dict[str, Any]]) -> int
 def build_l8_fields(
     service, *, sale_crm_name: str, pr: dict[str, Any], uid_block: dict[str, Any],
     course: dict[str, Any], is_gia_han: bool, payment_date: str, course_code: str,
-    phone_intl: str,
+    phone_intl: str, header: list[Any] | None = None,
 ) -> dict[str, list[str]]:
-    """{candidate-header: value} cho 1 dòng L8. GV/Tạo nhóm KHÔNG có → bỏ (team điền)."""
+    """{candidate-header: value} cho 1 dòng L8. GV suy từ tên gói (khớp dropdown nếu có `header`);
+    Tạo nhóm GV KHÔNG có → bỏ (team điền)."""
     parent = str(pr.get("name") or "").strip()
     child = str(uid_block.get("name") or pr.get("child_name") or "").strip()
     hoten = f"{parent} - {child}" if (parent and child) else (parent or child)
@@ -221,6 +260,7 @@ def build_l8_fields(
         "UID": str(uid_block.get("uid") or "").strip(),
         "Ngày chuyển tiền": payment_date,
         "Số tiền": _amount_key(course.get("amount")),   # '8480000' (bỏ .0) → Sheets tự format
+        "GV": gv_for_course(service, header, course.get("name")),
         "Gói học": _goi_buoi(course.get("name")),
         "Trạng thái": "Chưa kích hoạt",
         "Tháng": f"{today.year}-{today.month}",
@@ -263,8 +303,10 @@ def upsert_l8_order(
     markers = {str(course_code).strip()} | ({str(legacy_order_id).strip()} if str(legacy_order_id or "").strip() else set())
     note_i = _match_col(header, ["Note"], set())            # cột Note (N) — chỉ fill ô trống
     note_val = str(fields.get("Note") or "").strip()
+    gv_i = _match_col(header, ["GV"], set())                # cột GV (I) — chỉ fill ô trống
+    gv_val = str(fields.get("GV") or "").strip()
 
-    last_col = max([i for i in (uid_i, tien_i, w_i, note_i) if i is not None] + [len(header) - 1])
+    last_col = max([i for i in (uid_i, tien_i, w_i, note_i, gv_i) if i is not None] + [len(header) - 1])
     res = service.spreadsheets().values().get(
         spreadsheetId=_SHEET_L8, range=f"'{_L8_TAB}'!A1:{_col_a1(last_col)}").execute()
     rows = res.get("values") or []
@@ -296,16 +338,20 @@ def upsert_l8_order(
     def _row_preview() -> str:
         return " · ".join(f"{_col_a1(i)}={row_vals[i]!r}" for i in sorted(owned) if str(row_vals[i]).strip())
 
-    def _fill_note(ri: int) -> None:
-        """Điền Note vào ô Note của dòng team/app (ri 0-based) nếu đang TRỐNG — không đè note team."""
-        if note_i is None or not note_val:
+    def _fill_empty(ri: int, col_i: int | None, val: str, tag: str) -> None:
+        if col_i is None or not val:
             return
-        if cell(rows[ri], note_i).strip():
+        if cell(rows[ri], col_i).strip():
             return
         service.spreadsheets().values().update(
-            spreadsheetId=_SHEET_L8, range=f"'{_L8_TAB}'!{_col_a1(note_i)}{ri + 1}",
-            valueInputOption="USER_ENTERED", body={"values": [[note_val]]}).execute()
-        print(f"[cs_l8] fill Note dòng {ri + 1} (W={course_code})")
+            spreadsheetId=_SHEET_L8, range=f"'{_L8_TAB}'!{_col_a1(col_i)}{ri + 1}",
+            valueInputOption="USER_ENTERED", body={"values": [[val]]}).execute()
+        print(f"[cs_l8] fill {tag} dòng {ri + 1} (W={course_code})")
+
+    def _fill_blanks(ri: int) -> None:
+        """Điền Note + GV vào dòng team/app (ri 0-based) nếu ô đang TRỐNG — không đè giá trị team/sale."""
+        _fill_empty(ri, note_i, note_val, "Note")
+        _fill_empty(ri, gv_i, gv_val, "GV")
 
     # Ca 4: có cả app_row + sale_row → xoá nội dung app_row, đóng dấu W lên sale_row.
     if app_rows and sale_rows:
@@ -315,13 +361,13 @@ def upsert_l8_order(
         for ri in app_rows:
             _clear_row_cells(service, ri + 1, owned)
         _stamp_w(service, sale_rows[0] + 1, w_i, course_code)
-        _fill_note(sale_rows[0])
+        _fill_blanks(sale_rows[0])
         return "cleaned"
     if app_rows:
         if dry_run:
-            print(f"   [DRY] EXISTS: đã có dòng app W∈{sorted(markers)} tại dòng {app_rows[0]+1} → bỏ qua (fill Note nếu trống)")
+            print(f"   [DRY] EXISTS: đã có dòng app W∈{sorted(markers)} tại dòng {app_rows[0]+1} → bỏ qua (fill Note/GV nếu trống)")
         else:
-            _fill_note(app_rows[0])   # dòng app đã có → bổ sung Note nếu còn trống (backfill đơn cũ)
+            _fill_blanks(app_rows[0])   # dòng app đã có → bổ sung Note/GV nếu còn trống (backfill đơn cũ)
         return "exists"
     if len(sale_rows) > 1:
         if dry_run:
@@ -329,14 +375,14 @@ def upsert_l8_order(
             return "ambiguous"
         print(f"[cs_l8] UID {uid} khớp {len(sale_rows)} dòng sale L8 — mập mờ, chỉ đóng dấu dòng đầu")
         _stamp_w(service, sale_rows[0] + 1, w_i, course_code)
-        _fill_note(sale_rows[0])
+        _fill_blanks(sale_rows[0])
         return "ambiguous"
     if sale_rows:
         if dry_run:
             print(f"   [DRY] STAMPED: đóng dấu W={course_code} lên dòng sale {sale_rows[0]+1} (team đã điền đơn)")
             return "stamped"
         _stamp_w(service, sale_rows[0] + 1, w_i, course_code)
-        _fill_note(sale_rows[0])
+        _fill_blanks(sale_rows[0])
         return "stamped"
     # Ca 1: chưa có → append dòng mới + W.
     if dry_run:

@@ -1102,7 +1102,7 @@ def maybe_push_cs_handover(sb, ar_ref: Any, course_code: str, *, dry_run: bool =
                             service, sale_crm_name=str(sale.get("crm_name") or sale_name),
                             pr=pr, uid_block=uid_block, course=course, is_gia_han=is_gia_han,
                             payment_date=pay_date, course_code=code,
-                            phone_intl=str(field_values.get("sdt") or ""))
+                            phone_intl=str(field_values.get("sdt") or ""), header=l8_header)
                         oc = l8mod.upsert_l8_order(
                             service, l8_header, l8_fields,
                             uid=str(uid_block.get("uid") or ""),
