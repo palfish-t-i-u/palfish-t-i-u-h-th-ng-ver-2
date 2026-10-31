@@ -408,7 +408,7 @@ const AddPaymentForm = memo(function AddPaymentForm({
   onSubmit: (payload: AddPaymentAttemptPayload) => void;
 }) {
   const { profile } = useMe();
-  const availableBanks = getAvailableBanks(profile?.team);
+  const availableBanks = getAvailableBanks(profile?.team, profile?.role);
 
   const [method, setMethod] = useState<PaymentMethod>("qr");
   const remaining = Math.max(0, pr.target - pr.received);

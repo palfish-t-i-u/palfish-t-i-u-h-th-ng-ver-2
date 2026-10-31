@@ -51,9 +51,10 @@ export const BANK_ACCOUNTS: BankAccount[] = [
   },
 ];
 
-/** Trả về danh sách bank có thể chọn theo team của nhân sự.
- *  HCM (Online) → cả 2 bank; tất cả team khác → chỉ HN MB Bank. */
-export function getAvailableBanks(team: string | null | undefined): BankAccount[] {
+/** Trả về danh sách bank có thể chọn.
+ *  Admin/system/manager → tất cả bank; HCM (Online) → cả 2; team khác → chỉ HN MB Bank. */
+export function getAvailableBanks(team: string | null | undefined, role?: string | null): BankAccount[] {
+  if (role === "system" || role === "admin" || role === "manager") return BANK_ACCOUNTS;
   const isHcm = (team ?? "").toLowerCase().includes("hcm");
   return isHcm ? BANK_ACCOUNTS : BANK_ACCOUNTS.filter((b) => b.alias !== "PalFish HCM - Vietcombank");
 }
