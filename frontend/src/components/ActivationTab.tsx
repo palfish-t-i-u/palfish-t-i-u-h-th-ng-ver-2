@@ -478,7 +478,7 @@ const FOREIGN_COUNTRY_NAMES = new Set(
  * - Khách VN lấy HĐ: họ tên đầy đủ + số CCCD + email + địa chỉ Tỉnh + Phường/Xã
  *   (số nhà KHÔNG bắt buộc — "điền từ cấp xã trở lên là được").
  * - Khách OV lấy HĐ: họ tên + CCCD/hộ chiếu + email + tên nước.
- * - Doanh nghiệp: giữ như cũ — không blocker thông tin cá nhân mới.
+ * - Doanh nghiệp lấy HĐ: MST + tên đơn vị + email (thay CCCD/họ tên cá nhân).
  *
  * Thông tin lấy theo chain course → PR (khớp cách invoice ghép địa chỉ ở paymentFlowUtils),
  * nên AR do kế toán tạo tay (điền trên course) hay AR gắn PR đều check đúng.
@@ -495,6 +495,7 @@ export function getInvoiceBlockers(
     taxId?: string;
     invoiceCustomerName?: string;
     email?: string;
+    companyName?: string;
     createdAt?: string;
   } | null
 ): InvoiceBlocker[] {
@@ -544,6 +545,25 @@ export function getInvoiceBlockers(
       blockers.push({
         key: "email",
         text: "Khách lấy HĐ — còn thiếu email nhận hoá đơn. Bổ sung ở PR để xuất được hoá đơn.",
+      });
+    }
+  } else if (customerType === "business") {
+    if (!(course.taxCode?.trim() || pr.taxId?.trim())) {
+      blockers.push({
+        key: "taxCode",
+        text: "Doanh nghiệp lấy HĐ — còn thiếu mã số thuế (MST). Bổ sung ở PR để xuất được hoá đơn.",
+      });
+    }
+    if (!(course.companyName?.trim() || pr.companyName?.trim())) {
+      blockers.push({
+        key: "companyName",
+        text: "Doanh nghiệp lấy HĐ — còn thiếu tên đơn vị. Bổ sung ở PR để xuất được hoá đơn.",
+      });
+    }
+    if (!(course.email?.trim() || pr.email?.trim())) {
+      blockers.push({
+        key: "email",
+        text: "Doanh nghiệp lấy HĐ — còn thiếu email nhận hoá đơn. Bổ sung ở PR để xuất được hoá đơn.",
       });
     }
   }

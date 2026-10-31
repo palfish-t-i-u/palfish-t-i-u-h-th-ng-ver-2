@@ -5,7 +5,7 @@ Mirror logic FE getInvoiceBlockers (ActivationTab.tsx) — sửa rule thì sửa
 - Khách VN lấy HĐ: họ tên đầy đủ + số CCCD + email + địa chỉ Tỉnh + Phường/Xã
   (SỐ NHÀ KHÔNG bắt buộc).
 - Khách OV lấy HĐ: họ tên + CCCD/hộ chiếu + email + tên nước.
-- Doanh nghiệp: không blocker thông tin cá nhân mới.
+- Doanh nghiệp lấy HĐ: MST + tên đơn vị + email (thay CCCD/họ tên cá nhân).
 """
 from __future__ import annotations
 
@@ -175,19 +175,45 @@ def test_grandfather_created_at_thieu_hoac_hong_coi_la_moi():
 
 # ── Doanh nghiệp ─────────────────────────────────────────────────────────────
 
-def test_business_taker_khong_doi_thong_tin_ca_nhan():
-    pr = {
-        "wants_invoice": True,
-        "customer_type": "business",
-        "invoice_customer_name": "",
-        "tax_id": "",
-        "email": "",
-        "province": "Thành phố Hà Nội",
-        "ward": "Phường Hoàng Mai",
-        "address": "",
-    }
-    assert ar._course_invoice_blockers(_course(), pr) == []
-    assert any("địa chỉ" in b for b in _keys(_course(), {**pr, "ward": ""}))
+BIZ_FULL_PR = {
+    "wants_invoice": True,
+    "customer_type": "business",
+    "tax_id": "0123456789",
+    "company_name": "Công ty cổ phần ABC",
+    "email": "kt@abc.vn",
+    "province": "Thành phố Hà Nội",
+    "ward": "Phường Hoàng Mai",
+    "address": "",
+}
+
+
+def test_business_du_mst_ten_dn_email_khong_blocker():
+    assert ar._course_invoice_blockers(_course(), BIZ_FULL_PR) == []
+
+
+def test_business_thieu_mst():
+    pr = {**BIZ_FULL_PR, "tax_id": ""}
+    assert any("MST" in b for b in _keys(_course(), pr))
+
+
+def test_business_thieu_ten_don_vi():
+    pr = {**BIZ_FULL_PR, "company_name": ""}
+    assert any("tên đơn vị" in b for b in _keys(_course(), pr))
+
+
+def test_business_thieu_email():
+    pr = {**BIZ_FULL_PR, "email": ""}
+    assert any("email" in b for b in _keys(_course(), pr))
+
+
+def test_business_course_bu_cho_pr_thieu():
+    course = _course(tax_code="0123456789", company_name="ABC Corp", email="kt@abc.vn")
+    pr = {**BIZ_FULL_PR, "tax_id": "", "company_name": "", "email": ""}
+    assert ar._course_invoice_blockers(course, pr) == []
+
+
+def test_business_dia_chi_van_gate():
+    assert any("địa chỉ" in b for b in _keys(_course(), {**BIZ_FULL_PR, "ward": ""}))
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────

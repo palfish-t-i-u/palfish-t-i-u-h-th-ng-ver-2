@@ -1391,6 +1391,13 @@ def _course_invoice_blockers(course: dict[str, Any], pr: dict[str, Any] | None) 
             blockers.append("số CCCD/Hộ chiếu")
         if not (_clean_text(course.get("email")) or _clean_text(pr.get("email"))):
             blockers.append("email nhận HĐ")
+    elif customer_type == "business":
+        if not (_clean_text(course.get("tax_code")) or _clean_text(pr.get("tax_id"))):
+            blockers.append("mã số thuế doanh nghiệp (MST)")
+        if not (_clean_text(course.get("company_name")) or _clean_text(pr.get("company_name"))):
+            blockers.append("tên đơn vị")
+        if not (_clean_text(course.get("email")) or _clean_text(pr.get("email"))):
+            blockers.append("email nhận HĐ")
 
     province, ward, street, country = _invoice_addr_parts(course, pr)
     if not _invoice_address_complete(province, ward, street, country):
@@ -1487,6 +1494,20 @@ def _build_invoice_course_patch(
                 raise HTTPException(
                     400,
                     f"Khách lấy hoá đơn — còn thiếu: {', '.join(missing_info)}. "
+                    "Bổ sung ở PR hoặc điền trong form xuất HĐ.",
+                )
+        elif _clean_text(preview.get("customer_type")) == "business":
+            missing_biz: list[str] = []
+            if not _clean_text(preview.get("tax_code")):
+                missing_biz.append("mã số thuế doanh nghiệp (MST)")
+            if not _clean_text(preview.get("company_name")):
+                missing_biz.append("tên đơn vị")
+            if not _clean_text(preview.get("email")):
+                missing_biz.append("email nhận HĐ")
+            if missing_biz:
+                raise HTTPException(
+                    400,
+                    f"Doanh nghiệp lấy hoá đơn — còn thiếu: {', '.join(missing_biz)}. "
                     "Bổ sung ở PR hoặc điền trong form xuất HĐ.",
                 )
         if not _invoice_address_complete(province, ward, address, country):

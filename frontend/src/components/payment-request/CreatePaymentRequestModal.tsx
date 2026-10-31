@@ -543,7 +543,7 @@ export default function CreatePaymentRequestModal({
             />
             <div style={{ fontSize: 11.5, color: "var(--text-3)", lineHeight: 1.45, marginTop: 4 }}>
               {form.customerType === "business"
-                ? "Không bắt buộc — dùng khi doanh nghiệp cần xuất hóa đơn"
+                ? "Bắt buộc khi xuất hoá đơn doanh nghiệp — bổ sung sau được"
                 : "Bắt buộc khi khách lấy hóa đơn (yêu cầu thuế) — bổ sung sau được, cần đủ trước khi xuất HĐ"}
             </div>
           </div>

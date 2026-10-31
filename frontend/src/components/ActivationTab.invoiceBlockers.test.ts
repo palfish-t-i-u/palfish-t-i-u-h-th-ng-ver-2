@@ -164,19 +164,40 @@ describe("getInvoiceBlockers — grandfather đơn tạo trước live CCCD (27/
   });
 });
 
-describe("getInvoiceBlockers — doanh nghiệp ('vẫn thế' — không blocker cá nhân mới)", () => {
-  it("business taker: không đòi họ tên/CCCD/email; vẫn cần địa chỉ Tỉnh + Xã", () => {
-    const bizPr = {
-      wantsInvoice: true,
-      customerType: "business",
-      invoiceCustomerName: "",
-      taxId: "",
-      email: "",
-      province: "Thành phố Hà Nội",
-      ward: "Phường Hoàng Mai",
-      address: "",
-    };
-    expect(getInvoiceBlockers(fullCourse, bizPr)).toEqual([]);
-    expect(keys(fullCourse, { ...bizPr, ward: "" })).toContain("address");
+describe("getInvoiceBlockers — doanh nghiệp (MST + tên đơn vị + email)", () => {
+  const bizFullPr = {
+    wantsInvoice: true,
+    customerType: "business",
+    taxId: "0123456789",
+    companyName: "Công ty cổ phần ABC",
+    email: "kt@abc.vn",
+    province: "Thành phố Hà Nội",
+    ward: "Phường Hoàng Mai",
+    address: "",
+  };
+
+  it("business đủ MST + tên DN + email → không blocker", () => {
+    expect(getInvoiceBlockers(fullCourse, bizFullPr)).toEqual([]);
+  });
+
+  it("business thiếu MST → blocker taxCode", () => {
+    expect(keys(fullCourse, { ...bizFullPr, taxId: "" })).toContain("taxCode");
+  });
+
+  it("business thiếu tên đơn vị → blocker companyName", () => {
+    expect(keys(fullCourse, { ...bizFullPr, companyName: "" })).toContain("companyName");
+  });
+
+  it("business thiếu email → blocker email", () => {
+    expect(keys(fullCourse, { ...bizFullPr, email: "" })).toContain("email");
+  });
+
+  it("business vẫn cần địa chỉ Tỉnh + Xã", () => {
+    expect(keys(fullCourse, { ...bizFullPr, ward: "" })).toContain("address");
+  });
+
+  it("business KHÔNG đòi CCCD hay họ tên cá nhân", () => {
+    expect(keys(fullCourse, bizFullPr)).not.toContain("invoiceName");
+    expect(blocking(fullCourse, bizFullPr)).not.toContain("taxCode");
   });
 });
