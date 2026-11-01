@@ -1449,6 +1449,7 @@ def _build_invoice_course_patch(
     explicit_invoice_name = _clean_text({**course, **patch}.get("invoice_customer_name"))
     _fill_from_pr("invoice_customer_name", "name")
     _fill_from_pr("tax_code", "tax_id")
+    _fill_from_pr("company_name", "company_name")
     _fill_from_pr("email", "email")
     if not patch.get("phone") and pr:
         patch.setdefault("phone", _clean_text(pr.get("phone")))
