@@ -928,8 +928,9 @@ export function PaymentFlowProvider({
         const ar = fromApiActiveRequest(res.data.active_request);
         setActiveRequests((prev) => prev.map((x) => (x.id === arId ? ar : x)));
         setApiNote("");
-      } catch {
-        setApiNote("Xuất hoá đơn thất bại — kiểm tra thông tin KH trên PR.");
+      } catch (err: unknown) {
+        const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+        setApiNote(msg || "Xuất hoá đơn thất bại — kiểm tra thông tin KH trên PR.");
       }
     },
     []

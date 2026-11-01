@@ -66,7 +66,11 @@ export function isRowComplete(row: InvoiceRow) {
   // Non-taker (khách không lấy HĐ): không cần địa chỉ — khớp gate backend
   // (_invoice_blockers return sớm khi !wants_invoice, activation_routes.py:1181).
   if (!row.pr?.wantsInvoice) return base;
-  return base && Boolean(d.address || d.ward || d.province);
+  const hasAddr = Boolean(d.address || d.ward || d.province);
+  if (d.customerType === "business") {
+    return base && Boolean(d.taxCode?.trim()) && Boolean(d.companyName?.trim()) && Boolean(d.email?.trim()) && hasAddr;
+  }
+  return base && hasAddr;
 }
 
 function InvoiceDetailDrawer({
@@ -318,6 +322,7 @@ export default function InvoiceRequestTab() {
     const toIssue = selectedRows.filter((r) => !r.course.invoiced && isRowComplete(r));
     const issuedForExport: InvoiceRow[] = [];
     let failCount = 0;
+    let firstError = "";
 
     for (const row of toIssue) {
       try {
@@ -332,8 +337,12 @@ export default function InvoiceRequestTab() {
           }
         }
         issuedForExport.push({ ...row, ar, course: updatedCourse });
-      } catch {
+      } catch (err: unknown) {
         failCount += 1;
+        if (!firstError) {
+          const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+          if (msg) firstError = msg;
+        }
       }
     }
 
@@ -349,7 +358,7 @@ export default function InvoiceRequestTab() {
       setTab("issued");
     }
     if (failCount > 0) {
-      setBulkError(`${failCount}/${toIssue.length} hóa đơn xuất thất bại — kiểm tra Order ID và thông tin KH.`);
+      setBulkError(firstError || `${failCount}/${toIssue.length} hóa đơn xuất thất bại — kiểm tra Order ID và thông tin KH.`);
     }
     setSelectedKeys(new Set());
     setBulkExporting(false);
