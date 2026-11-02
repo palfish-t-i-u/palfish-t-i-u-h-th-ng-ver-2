@@ -1369,6 +1369,27 @@ def bank_simulate(body: BankSimulateBody, authorization: str = Header(...)):
     raise HTTPException(404, "Order not found")
 
 
+@app.post("/api/cs-gvcn-webhook")
+async def cs_gvcn_webhook(request: Request):
+    """CS app gửi khi handler thay đổi → ghi GVCN lên sheet bàn giao."""
+    key = request.headers.get("x-cs-sync-key", "")
+    expected = os.environ.get("PALFISH_CS_SYNC_KEY", "").strip()
+    if not expected or key != expected:
+        raise HTTPException(403, "forbidden")
+    body = await request.json()
+    uid = str(body.get("uid") or "").strip()
+    handler = str(body.get("handler") or "").strip()
+    if not uid or not handler:
+        return {"ok": False, "reason": "missing uid or handler"}
+    try:
+        from cs_handover_sheet import write_gvcn_for_uid
+        result = write_gvcn_for_uid(_supabase(), uid, handler)
+    except Exception as exc:
+        print(f"[cs-gvcn-webhook] error: {exc}")
+        return {"ok": False, "reason": str(exc)}
+    return {"ok": True, "result": result}
+
+
 register_admin_routes(app, _supabase)
 register_invoice_routes(app, _supabase)
 register_payment_request_routes(app, _supabase)

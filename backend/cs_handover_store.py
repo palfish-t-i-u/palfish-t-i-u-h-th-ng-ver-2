@@ -61,7 +61,7 @@ def needs_retry(row: dict[str, Any] | None) -> bool:
     return False
 
 
-def claim(sb, course_code: str, ar_id: str, *, team: str = "", spreadsheet_id: str = "", tab: str = "") -> bool:
+def claim(sb, course_code: str, ar_id: str, *, team: str = "", spreadsheet_id: str = "", tab: str = "", uid: str = "") -> bool:
     """Giành quyền xử lý course. True = mình giữ; False = kênh khác đang giữ / đã xong.
 
     1) INSERT ignore-duplicates (PostgREST `Prefer: resolution=ignore-duplicates`): có row trả về
@@ -75,6 +75,7 @@ def claim(sb, course_code: str, ar_id: str, *, team: str = "", spreadsheet_id: s
     payload = {
         "course_code": code, "ar_id": str(ar_id or ""), "team": team or None,
         "spreadsheet_id": spreadsheet_id or None, "tab": tab or None,
+        "uid": uid or None,
         "status": "claimed", "claimed_at": _now_iso(), "updated_at": _now_iso(),
     }
     try:

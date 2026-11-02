@@ -3,6 +3,7 @@ from cs_handover_sheet import (
     resolve_route,
     build_field_values,
     build_row_values,
+    write_gvcn_for_uid,
     _col_a1,
     _row_segments,
     _parse_course,
@@ -584,3 +585,30 @@ class TestOrchestration:
         bg["v"] = "written"
         assert m.maybe_push_cs_handover(None, _ar(is_gia_han=False), "CC-1") == "ih2_done"
         assert len(l8_calls) == 1 and store.rows["CC-1"]["status"] == "done"
+
+
+class TestWriteGvcnForUid:
+    """write_gvcn_for_uid — webhook handler ghi GVCN lên sheet."""
+
+    def test_not_found_when_no_log(self, monkeypatch):
+        from cs_handover_sheet import write_gvcn_for_uid
+
+        class _FakeSb:
+            def table(self, name):
+                return self
+            def select(self, *a):
+                return self
+            def eq(self, *a):
+                return self
+            def in_(self, *a):
+                return self
+            def execute(self):
+                class R:
+                    data = []
+                return R()
+        assert write_gvcn_for_uid(_FakeSb(), "999", "thu_ha") == "not_found"
+
+    def test_skipped_when_empty_args(self):
+        from cs_handover_sheet import write_gvcn_for_uid
+        assert write_gvcn_for_uid(None, "", "thu_ha") == "skipped"
+        assert write_gvcn_for_uid(None, "123", "") == "skipped"

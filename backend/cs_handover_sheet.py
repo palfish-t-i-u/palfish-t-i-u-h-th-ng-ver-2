@@ -1058,7 +1058,8 @@ def maybe_push_cs_handover(sb, ar_ref: Any, course_code: str, *, dry_run: bool =
         field_values = build_field_values(pr, uid_block, course, is_gia_han=is_gia_han, sale_name=sale_name)
 
         if not dry_run:
-            claimed = _store.claim(sb, code, ar_id, team=team, spreadsheet_id=spreadsheet_id, tab=tab)
+            claimed = _store.claim(sb, code, ar_id, team=team, spreadsheet_id=spreadsheet_id, tab=tab,
+                                   uid=str(uid_block.get("uid") or ""))
             if not claimed:
                 return "claimed_elsewhere"  # kênh khác (worker/hook) đang giữ hoặc vừa xong
 
@@ -1194,3 +1195,83 @@ def maybe_push_cs_handover(sb, ar_ref: Any, course_code: str, *, dry_run: bool =
             except Exception as exc2:
                 print(f"[cs_handover] mark failed lỗi: {exc2}")
         return "error"
+
+
+# ---- GVCN webhook handler (event-driven reverse sync) -------------------------
+
+def write_gvcn_for_uid(sb, uid: str, handler_username: str) -> str:
+    """Webhook từ CS app: handler thay đổi → ghi GVCN lên sheet bàn giao cho UID.
+    Trả: 'written' | 'not_found' | 'skipped' | 'error'."""
+    if not uid or not handler_username:
+        return "skipped"
+    logs = (
+        sb.table("cs_handover_log")
+        .select("id, spreadsheet_id, tab, sheet_row, gvcn_written, course_code")
+        .eq("uid", uid)
+        .in_("status", ["done", "matched", "appended"])
+        .execute()
+        .data
+    )
+    if not logs:
+        return "not_found"
+
+    import cs_gvcn_client as _gvcn
+    gvcn_name = _gvcn.fetch_gvcn([uid]).get(uid, "")
+    if not gvcn_name:
+        gvcn_name = handler_username
+
+    service = _sheets_write_service()
+    written_any = False
+    for log in logs:
+        try:
+            ssid = log["spreadsheet_id"]
+            tab = log["tab"]
+            sheet_row = log.get("sheet_row")
+            header = _read_header_cells(service, ssid, tab)
+            if not header:
+                continue
+
+            desired = _gvcn_label(service, ssid, tab, header, gvcn_name)
+            if not desired:
+                continue
+
+            if sheet_row:
+                rng = f"'{tab}'!A{sheet_row}:{_col_a1(len(header) - 1)}{sheet_row}"
+                existing_row = (
+                    service.spreadsheets().values()
+                    .get(spreadsheetId=ssid, range=rng).execute()
+                    .get("values", [[]])[0]
+                )
+            else:
+                uid_i = _match_col(header, _FIELD_HEADERS["uid"], set())
+                if uid_i is None:
+                    continue
+                last_col = max(uid_i, _match_col(header, _FIELD_HEADERS["gvcn"], set()) or 0)
+                res = (
+                    service.spreadsheets().values()
+                    .get(spreadsheetId=ssid, range=f"'{tab}'!A1:{_col_a1(last_col)}")
+                    .execute()
+                )
+                rows = res.get("values") or []
+                matches = [
+                    i for i in range(1, len(rows))
+                    if _norm(_cell(rows[i], uid_i)) == _norm(uid)
+                ]
+                if len(matches) != 1:
+                    continue
+                sheet_row = matches[0] + 1
+                existing_row = rows[matches[0]]
+
+            blocked = _protected_cols(service, ssid, tab)
+            last = str(log.get("gvcn_written") or "")
+            gw = _write_gvcn(service, ssid, tab, sheet_row, header, existing_row,
+                             desired, last, blocked)
+            if gw:
+                sb.table("cs_handover_log").update({"gvcn_written": gw}).eq("id", log["id"]).execute()
+                written_any = True
+                print(f"[cs-gvcn-webhook] wrote GVCN={gw!r} for UID {uid} → {tab!r} row {sheet_row}")
+        except Exception as exc:
+            print(f"[cs-gvcn-webhook] error processing log {log.get('id')}: {exc}")
+            continue
+
+    return "written" if written_any else "skipped"
