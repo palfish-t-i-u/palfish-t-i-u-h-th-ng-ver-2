@@ -1379,11 +1379,12 @@ async def cs_gvcn_webhook(request: Request):
     body = await request.json()
     uid = str(body.get("uid") or "").strip()
     handler = str(body.get("handler") or "").strip()
+    display_name = str(body.get("display_name") or "").strip()
     if not uid or not handler:
         return {"ok": False, "reason": "missing uid or handler"}
     try:
         from cs_handover_sheet import write_gvcn_for_uid
-        result = write_gvcn_for_uid(_supabase(), uid, handler)
+        result = write_gvcn_for_uid(_supabase(), uid, handler, display_name=display_name)
     except Exception as exc:
         print(f"[cs-gvcn-webhook] error: {exc}")
         return {"ok": False, "reason": str(exc)}

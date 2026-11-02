@@ -13,9 +13,11 @@ Non-fatal: lỗi ghi sheet KHÔNG làm fail việc báo đơn/gắn order_id/led
 """
 from __future__ import annotations
 
+import json
 import os
 import re
 import unicodedata
+import urllib.request
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -1000,6 +1002,39 @@ def _find_course(uids: list[Any], course_code: str) -> tuple[dict[str, Any] | No
     return None, None
 
 
+def _fire_cs_intake_webhook(field_values: dict[str, Any], team: str, course_code: str, is_gia_han: bool) -> None:
+    """POST đơn bàn giao sang CS app để tạo ticket trực tiếp (bỏ qua BQ latency)."""
+    base = os.environ.get("PALFISH_CS_SYNC_URL", "").strip().rstrip("/")
+    key = os.environ.get("PALFISH_CS_SYNC_KEY", "").strip()
+    if not base or not key:
+        return
+    payload = json.dumps({
+        "type": "intake",
+        "course_code": course_code,
+        "uid": str(field_values.get("uid") or ""),
+        "phone": str(field_values.get("sdt") or ""),
+        "child_name": str(field_values.get("ten_hoc_sinh") or ""),
+        "parent_name": str(field_values.get("ten_kh") or ""),
+        "sale": str(field_values.get("sale") or ""),
+        "amount": str(field_values.get("so_tien") or ""),
+        "care_channel": str(field_values.get("kenh_cham_soc") or ""),
+        "contact_id": str(field_values.get("contact_id") or ""),
+        "team": team,
+        "tag": "Gia hạn" if is_gia_han else "KH mới",
+        "note": str(field_values.get("note") or ""),
+        "gvcn": str(field_values.get("gvcn") or ""),
+    }).encode()
+    req = urllib.request.Request(
+        f"{base}?resource=intake_push", data=payload, method="POST",
+        headers={"x-cs-sync-key": key, "Content-Type": "application/json"},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=5) as resp:  # noqa: S310
+            print(f"[cs_handover] intake webhook ok: {resp.read().decode()[:200]}")
+    except Exception as exc:  # noqa: BLE001
+        print(f"[cs_handover] intake webhook lỗi (bỏ qua, BQ fallback): {exc}")
+
+
 def maybe_push_cs_handover(sb, ar_ref: Any, course_code: str, *, dry_run: bool = False) -> str:
     """Đẩy handover cho 1 course. v2 (plan 23/10 G1): `ar_ref` = ar_id (str) HOẶC dict — luôn
     RE-FETCH AR mới từ DB (không tin snapshot request). Thứ tự: gate → claim (DB, atomic) →
@@ -1125,6 +1160,10 @@ def maybe_push_cs_handover(sb, ar_ref: Any, course_code: str, *, dry_run: bool =
                 return "ih2_done" if l8_done else "ih2_pending"
             if l8_done and bg_done:
                 _store.mark(sb, code, "done", l8_status=l8_status or None, marker=code, gvcn_written=gw)
+                try:
+                    _fire_cs_intake_webhook(field_values, team, code, is_gia_han)
+                except Exception:  # noqa: BLE001
+                    pass
                 return "ih2_done"
             _store.mark(sb, code, "not_found", l8_status=l8_status or None, gvcn_written=gw)
             return "ih2_pending"
@@ -1168,6 +1207,10 @@ def maybe_push_cs_handover(sb, ar_ref: Any, course_code: str, *, dry_run: bool =
                              str(field_values.get("gvcn") or ""), str((st or {}).get("gvcn_written") or ""), blocked)
             _store.mark(sb, code, "matched", sheet_row=sheet_row, marker=code if mi is not None else None, gvcn_written=gw)
             print(f"[cs_handover] matched AR {ar_id} course {code} → {tab!r} ({kind}) dòng {sheet_row}, điền cột {[_col_a1(c) for c in written]}{' +GVCN' if gw else ''}")
+            try:
+                _fire_cs_intake_webhook(field_values, team, code, is_gia_han)
+            except Exception:  # noqa: BLE001
+                pass
             return "matched"
 
         row, owned_cols = build_row_values(header, field_values)
@@ -1186,6 +1229,10 @@ def maybe_push_cs_handover(sb, ar_ref: Any, course_code: str, *, dry_run: bool =
                   if _match_col(header, _FIELD_HEADERS["gvcn"], set()) is not None else "")
         _store.mark(sb, code, "appended", sheet_row=row_no, marker=code, gvcn_written=gw_new or None)
         print(f"[cs_handover] pushed AR {ar_id} course {code} → {tab!r} ({kind}) row {row_no}")
+        try:
+            _fire_cs_intake_webhook(field_values, team, code, is_gia_han)
+        except Exception:  # noqa: BLE001
+            pass
         return "appended"
     except Exception as exc:
         print(f"[cs_handover] push non-fatal error: {exc}")
@@ -1199,7 +1246,7 @@ def maybe_push_cs_handover(sb, ar_ref: Any, course_code: str, *, dry_run: bool =
 
 # ---- GVCN webhook handler (event-driven reverse sync) -------------------------
 
-def write_gvcn_for_uid(sb, uid: str, handler_username: str) -> str:
+def write_gvcn_for_uid(sb, uid: str, handler_username: str, *, display_name: str = "") -> str:
     """Webhook từ CS app: handler thay đổi → ghi GVCN lên sheet bàn giao cho UID.
     Trả: 'written' | 'not_found' | 'skipped' | 'error'."""
     if not uid or not handler_username:
@@ -1215,8 +1262,11 @@ def write_gvcn_for_uid(sb, uid: str, handler_username: str) -> str:
     if not logs:
         return "not_found"
 
-    import cs_gvcn_client as _gvcn
-    gvcn_name = _gvcn.fetch_gvcn([uid]).get(uid, "")
+    # 2-hop: CS gửi display_name trực tiếp → không cần callback
+    gvcn_name = display_name.strip() if display_name else ""
+    if not gvcn_name:
+        import cs_gvcn_client as _gvcn
+        gvcn_name = _gvcn.fetch_gvcn([uid]).get(uid, "")
     if not gvcn_name:
         gvcn_name = handler_username
 
