@@ -413,15 +413,28 @@ def actor_ma_nv(actor: Actor) -> str | None:
     return code or None
 
 
+def _payslip_view_all_emails() -> set[str]:
+    """Allowlist email được xem HẾT phiếu lương (env PAYSLIP_VIEW_ALL_EMAILS, phân cách
+    bằng dấu phẩy). Rỗng/chưa đặt = chưa bật allowlist (giữ hành vi cũ: mọi role system
+    xem hết) để deploy code không đổi gì cho tới khi env được đặt."""
+    raw = os.getenv("PAYSLIP_VIEW_ALL_EMAILS", "") or ""
+    return {e.strip().lower() for e in raw.split(",") if e.strip()}
+
+
 def visible_payslip_codes(sb, actor: Actor) -> list[str] | None:
     """Mã NV mà actor được xem phiếu lương.
 
-    None = xem hết (chỉ admin/system).
+    None = xem hết. Điều kiện: role system VÀ (env PAYSLIP_VIEW_ALL_EMAILS chưa đặt,
+    hoặc email actor nằm trong allowlist đó). role system KHÔNG đủ khi allowlist đã bật:
+    email trong SYSTEM_ADMIN_EMAILS / metadata admin vẫn là system ở mọi module khác
+    nhưng chỉ thấy phiếu của chính mình nếu không nằm trong allowlist.
     Mọi role khác (kể cả leader/manager/ops) chỉ thấy phiếu của chính mình.
     """
     role = _normalize_role(actor.role)
     if role == "system":
-        return None
+        allow = _payslip_view_all_emails()
+        if not allow or (actor.email or "").strip().lower() in allow:
+            return None
 
     own = actor_ma_nv(actor)
     return [own] if own else []

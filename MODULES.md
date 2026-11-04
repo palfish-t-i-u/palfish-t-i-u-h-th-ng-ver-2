@@ -197,8 +197,9 @@ Kế hoạch đầy đủ: `docs/plans/HANDOFF_HDSD_DOCS_ROUTE_PIVOT_2026-07-27.
 - FE Types: `frontend/src/types/payroll.ts` — `PayslipStage`, `PayslipListItem`, `PayslipDetail`
 - FE API: `frontend/src/lib/api/payroll.ts` — `listPayslips`, `getPayslip`, `confirmPayslip`, `requestReview`
 - BE Routes: `backend/payroll_routes.py` — `POST /receive`, `GET /payslips`, `GET /payslips/{id}`, `PATCH /confirm`, `PATCH /review` (auto-khóa mùng 4)
-- BE RBAC: `backend/rbac.py` — `visible_payslip_codes`, `actor_ma_nv` (sale=mình / leader=team / manager=team / ops+system=hết)
-- Migration: `backend/migrations/2026-08-14-payslips-m4.sql` (bảng `payslips`), `2026-08-14-payslips-m4-rbac-audit.sql` (cột `nhan_su_sale.ma_nv` + bảng `payslip_views`)
+- BE RBAC: `backend/rbac.py` — `visible_payslip_codes`, `actor_ma_nv`, `_payslip_view_all_emails` (mọi role = chỉ phiếu mình; xem hết = role system + (env `PAYSLIP_VIEW_ALL_EMAILS` chưa đặt, hoặc email nằm trong danh sách đó))
+- BE Test RBAC: `backend/tests/test_payslip_view_all_allowlist.py` — allowlist xem hết phiếu (6 cases)
+- Migration: `backend/migrations/2026-08-14-payslips-m4.sql` (bảng `payslips`), `2026-08-14-payslips-m4-rbac-audit.sql` (cột `nhan_su_sale.ma_nv` + bảng `payslip_views`), `2026-11-04-hien-ma-nv.sql` (dòng nhan_su_sale + mã HN0062 cho chị Hiền để xác nhận phiếu)
 - Gate Script: `docs/apps-script/PhieuLuongGate.gs` — Sheet → POST `/receive` (đã nối prod, chờ Trang bật)
 - Contract: `docs/PHIEU_LUONG_CONTRACT.md` — payload keys byte-exact, 6 block, 5 cột status
 - Tests: `backend/tests/test_payroll_receive.py` (6), `test_payroll_view.py` (9) — 15 pass
