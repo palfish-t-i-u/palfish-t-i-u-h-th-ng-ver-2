@@ -49,17 +49,8 @@ var AF_COL_HCM = {
 };
 
 // =====================================================================
-// MENU
+// MENU — moved into BangLuong.gs onOpen() as a single unified menu
 // =====================================================================
-
-function createMenuDoiSoatDT_() {
-  SpreadsheetApp.getUi().createMenu('⚙ Đối soát DT')
-    .addItem('📥 B1a — Kéo All File Thu Hiền', 'keoAllFile')
-    .addItem('📥 B1b — Kéo Sổ doanh thu (App)', 'keoSoDT')
-    .addSeparator()
-    .addItem('📊 B2 — So khớp Sổ ↔ All File', 'doiSoatSoDT')
-    .addToUi();
-}
 
 // =====================================================================
 // B1a — KÉO ALL FILE THU HIỀN

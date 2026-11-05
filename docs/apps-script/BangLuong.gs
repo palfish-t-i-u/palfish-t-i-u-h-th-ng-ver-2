@@ -270,9 +270,11 @@ function onOpen(){
     .addItem('📋 Mở hàng đợi', 'moHangDoi')
     .addItem('🔃 Đồng bộ xác nhận từ app', 'pullConfirmsFromApp')
     .addItem('🧪 Test kết nối Gate', 'testGateKetNoi')
+    .addSeparator()
+    .addItem('📥 B1a — Kéo All File Thu Hiền', 'keoAllFile')
+    .addItem('📥 B1b — Kéo Sổ doanh thu (App)', 'keoSoDT')
+    .addItem('📊 B2 — So khớp Sổ ↔ All File', 'doiSoatSoDT')
     .addToUi();
-
-  createMenuDoiSoatDT_();
 
   if (PropertiesService.getScriptProperties().getProperty('PL_DEV') === '1') {
     ui.createMenu('🧪 Chạy test')
