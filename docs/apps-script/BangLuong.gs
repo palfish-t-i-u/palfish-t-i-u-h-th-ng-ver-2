@@ -272,6 +272,8 @@ function onOpen(){
     .addItem('🧪 Test kết nối Gate', 'testGateKetNoi')
     .addToUi();
 
+  createMenuDoiSoatDT_();
+
   if (PropertiesService.getScriptProperties().getProperty('PL_DEV') === '1') {
     ui.createMenu('🧪 Chạy test')
       .addItem('chayTestThuan', 'chayTestThuan')
