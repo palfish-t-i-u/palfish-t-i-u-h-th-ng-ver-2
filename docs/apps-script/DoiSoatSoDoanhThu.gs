@@ -52,7 +52,7 @@ var AF_COL_HCM = {
 // MENU
 // =====================================================================
 
-function onOpen() {
+function createMenuDoiSoatDT_() {
   SpreadsheetApp.getUi().createMenu('⚙ Đối soát DT')
     .addItem('📥 B1a — Kéo All File Thu Hiền', 'keoAllFile')
     .addItem('📥 B1b — Kéo Sổ doanh thu (App)', 'keoSoDT')
