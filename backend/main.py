@@ -1391,6 +1391,23 @@ async def cs_gvcn_webhook(request: Request):
     return {"ok": True, "result": result}
 
 
+@app.get("/api/cs-proxy")
+async def cs_proxy(request: Request, resource: str = "", uids: str = ""):
+    """Proxy cho bot first-lesson gọi CS app qua Render (IP đã được CS app cho phép)."""
+    key = request.headers.get("x-cs-sync-key", "")
+    expected = os.environ.get("PALFISH_CS_SYNC_KEY", "").strip()
+    if not expected or key != expected:
+        raise HTTPException(403, "forbidden")
+    if resource != "gvcn_sync":
+        raise HTTPException(400, f"unsupported resource: {resource}")
+    uid_list = [u.strip() for u in uids.split(",") if u.strip()]
+    if not uid_list:
+        return {"assignments": []}
+    from cs_gvcn_client import fetch_gvcn
+    result = fetch_gvcn(uid_list)
+    return {"assignments": [{"uid": k, "gvcn": v} for k, v in result.items()]}
+
+
 register_admin_routes(app, _supabase)
 register_invoice_routes(app, _supabase)
 register_payment_request_routes(app, _supabase)
